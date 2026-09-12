@@ -30,19 +30,20 @@ const NON_ACTIONABLE_DISPOSITIONS = Object.freeze([
  * }>}
  */
 export const BACKLOG_POLICY = Object.freeze({
-  // Owner directive (2026-08-18): every bug is P1. A numeric ceiling and that
-  // rule cannot coexist — there are 33 open bugs and the count moves daily, so
-  // any finite number just reschedules this failure. `null` means uncapped.
+  // Uncapped. The cap of 5 was dropped when "every bug is P1" made a numeric
+  // ceiling incoherent; that derivation has since been removed (owner
+  // decision, 2026-09-09) and the queue was left uncapped rather than
+  // silently re-capped, because restoring a ceiling would fail the gate on a
+  // backlog nobody has re-triaged. Whether P1 should be capped again is an
+  // open question, not a settled one.
   //
-  // What the old cap of 5 bought was the meaning of P1: "actionable now". That
-  // meaning now comes from the label itself — a bug is actionable by
-  // definition, and work that is genuinely not actionable still has to say so
-  // through `blocked`/`epic`/`decision-needed`/`acceptance-needed`, which a P1
-  // still may not carry. Ordering within P1 is no longer expressed by scarcity.
-  // `null` means uncapped; a number caps the actionable P1 queue. Annotated
-  // because the frozen literal would otherwise infer the type `null`, and the
-  // comparison below — and the policy tests that exercise a real cap — both
-  // treat it as a number.
+  // What a cap bought was the meaning of P1: "actionable now". That meaning
+  // now rests on the rule below — a P1 may not also carry
+  // `blocked`/`epic`/`decision-needed`/`acceptance-needed`, so work that is
+  // not actionable has to say why. `null` means uncapped; a number caps the
+  // queue. Annotated because the frozen literal would otherwise infer the type
+  // `null`, and the comparison below — and the policy tests that exercise a
+  // real cap — both treat it as a number.
   /** @type {number | null} */
   maxActionableP1: null,
   priorities: PRIORITIES,

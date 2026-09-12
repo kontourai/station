@@ -84,7 +84,7 @@ const CHECKPOINT_IDENT = {
   email: 'checkpoints@station.local',
 } as const;
 
-export type CheckpointDegradedReason =
+type CheckpointDegradedReason =
   | 'not_a_git_repository'
   | 'unborn_head'
   | 'detached_head'
@@ -108,12 +108,12 @@ export type CheckpointCaptureResult =
       detail?: string;
     };
 
-export interface ReadCheckpointResult {
+interface ReadCheckpointResult {
   status: 'ok' | 'missing' | 'object_pruned';
   checkpoint?: CapturedCheckpoint;
 }
 
-export type CheckpointRefStoreCaptureInput = {
+type CheckpointRefStoreCaptureInput = {
   repoDir: string;
   threadId: string;
   checkpointId: string;
@@ -127,7 +127,7 @@ export type CheckpointRefStoreCaptureInput = {
   turnId: string;
 };
 
-export interface CheckpointRefStoreOptions {
+interface CheckpointRefStoreOptions {
   /** Per-invocation git timeout. Default CHECKPOINT_GIT_TIMEOUT_MS. */
   gitTimeoutMs?: number;
 }

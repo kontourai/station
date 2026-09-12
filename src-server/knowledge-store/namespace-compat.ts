@@ -32,7 +32,7 @@ import type {
 } from '@kontourai/station-contracts/knowledge-store';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 
-export interface ProjectNamespacesToRootsOptions {
+interface ProjectNamespacesToRootsOptions {
   /** Injectable "now" for deterministic tests (Addendum J.5 precedent). Defaults to `new Date()`. */
   now?: Date;
   /** Which registered adapter backs the mapped roots. Default: `kit-default-store` — the

@@ -18,7 +18,7 @@ import './FolderBrowserModal.css';
  * the neutral `folder-browser__*` defaults and this component's own
  * stylesheet.
  */
-export interface FolderBrowserClassNames {
+interface FolderBrowserClassNames {
   overlay?: string;
   panel?: string;
   header?: string;
@@ -50,7 +50,7 @@ const DEFAULT_CLASS_NAMES: Required<FolderBrowserClassNames> = {
   name: 'folder-browser__name',
 };
 
-export interface FolderBrowserModalProps {
+interface FolderBrowserModalProps {
   /** Directory to start browsing from; empty resolves to the server default. */
   initialPath?: string;
   onSelect: (path: string) => void;
@@ -127,6 +127,7 @@ export function FolderBrowserModal({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabelledBy={titleId}
       overlayClassName={cx.overlay}

@@ -11,6 +11,9 @@ import {
   type IPtyProcess,
   PtyUnavailableError,
 } from '../domain/pty-adapter.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger({ name: 'node-pty-adapter' });
 
 let nodePtyPromise: Promise<typeof import('node-pty')> | null = null;
 let didFixSpawnHelper = false;
@@ -36,12 +39,14 @@ function ensureSpawnHelper(): void {
         try {
           chmodSync(p, 0o755);
         } catch (e) {
-          console.debug('Failed to chmod spawn-helper:', p, e);
+          logger.debug('Failed to chmod spawn-helper', { path: p, error: e });
         }
       }
     }
   } catch (e) {
-    console.debug('Failed to fix node-pty spawn-helper permissions:', e);
+    logger.debug('Failed to fix node-pty spawn-helper permissions', {
+      error: e,
+    });
   }
 }
 

@@ -2,7 +2,7 @@ import type { UIMessage } from 'ai';
 import {
   publicAgentIdFromRuntimeKey,
   runtimeAgentKey,
-} from '../../routes/agents/runtime-agent-identity.js';
+} from '../../services/agents/runtime-agent-identity.js';
 /**
  * Strands Agents SDK adapter — maps Strands API to the framework-agnostic interfaces.
  *

@@ -121,7 +121,6 @@ export function PathAutocomplete({
   onBlur,
   placeholder,
   disabled,
-  apiBase: _apiBase,
   className,
   id,
   autoFocus = true,
@@ -136,7 +135,6 @@ export function PathAutocomplete({
   onBlur?: () => void;
   placeholder?: string;
   disabled?: boolean;
-  apiBase: string;
   className?: string;
   id?: string;
   autoFocus?: boolean;

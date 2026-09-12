@@ -40,18 +40,20 @@ import {
   raceWithSignal,
   throwIfAborted,
 } from '../../utils/bounded-async.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
-import type {
-  ProviderAdapterModelCatalog,
-  ProviderAdapterShape,
-  ProviderAdoptionHooks,
-  ProviderDiscardSessionRecovery,
-  ProviderNativeSessionIdentity,
-  ProviderSendTurnInput,
-  ProviderSession,
-  ProviderSessionAdoptInput,
-  ProviderSessionStartInput,
-  ProviderTurnStartResult,
+import {
+  type ProviderAdapterModelCatalog,
+  type ProviderAdapterShape,
+  type ProviderAdoptionHooks,
+  type ProviderDiscardSessionRecovery,
+  type ProviderNativeSessionIdentity,
+  type ProviderSendTurnInput,
+  type ProviderSession,
+  type ProviderSessionAdoptInput,
+  type ProviderSessionStartInput,
+  ProviderTurnEndedError,
+  type ProviderTurnStartResult,
 } from '../adapter-shape.js';
 import { buildCliRuntimePrerequisites } from '../auth/cli-auth.js';
 import {
@@ -86,7 +88,6 @@ import {
 } from './codex-adapter-transport.js';
 import type { CodexSessionRecord } from './codex-adapter-types.js';
 import {
-  type CodexApprovalKnobs,
   mapCodexKnobsToApprovalMode,
   resolveCodexExecutionKnobs,
 } from './codex-approval-mode.js';
@@ -98,6 +99,9 @@ import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 
 type CodexAdapterLogger = Pick<Logger, 'warn'>;
+type CodexExecutionKnobs = NonNullable<
+  ReturnType<typeof resolveCodexExecutionKnobs>
+>;
 
 interface CodexAdapterOptions {
   processFactory?: (
@@ -407,22 +411,26 @@ function readCodexAdoptionRolloutHeader(
 function validateCodexForkExecution(
   result: unknown,
   expectedCwd: string | undefined,
-  expectedApprovalPolicy: CodexApprovalKnobs['approvalPolicy'],
-  expectedSandbox: CodexApprovalKnobs['sandbox'],
+  expectedKnobs?: CodexExecutionKnobs,
 ): void {
   const response = record(result);
   const sandbox = record(response?.sandbox);
-  const expectedSandboxType = {
-    'danger-full-access': 'dangerFullAccess',
-    'read-only': 'readOnly',
-    'workspace-write': 'workspaceWrite',
-  }[expectedSandbox];
+  const expectedSandboxType = expectedKnobs
+    ? {
+        'danger-full-access': 'dangerFullAccess',
+        'read-only': 'readOnly',
+        'workspace-write': 'workspaceWrite',
+      }[expectedKnobs.sandbox]
+    : undefined;
   if (
     !response ||
     typeof expectedCwd !== 'string' ||
     response.cwd !== expectedCwd ||
-    response.approvalPolicy !== expectedApprovalPolicy ||
-    sandbox?.type !== expectedSandboxType
+    !boundedIdentifier(response.approvalPolicy) ||
+    !boundedIdentifier(sandbox?.type) ||
+    (expectedKnobs !== undefined &&
+      (response.approvalPolicy !== expectedKnobs.approvalPolicy ||
+        sandbox.type !== expectedSandboxType))
   ) {
     throw new Error(
       'Codex fork response did not confirm the requested workspace and execution policy.',
@@ -1236,18 +1244,7 @@ export class CodexAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
-    if (
-      this.transport.hasSession(input.threadId) ||
-      this.startingSessionThreads.has(input.threadId)
-    ) {
-      throw new Error(`Codex session already exists: ${input.threadId}`);
-    }
-    this.startingSessionThreads.add(input.threadId);
-    try {
-      return await this.startReservedSession(input);
-    } finally {
-      this.startingSessionThreads.delete(input.threadId);
-    }
+    return this.startWithReservation(input);
   }
 
   async adoptSession(
@@ -1255,6 +1252,16 @@ export class CodexAdapter implements ProviderAdapterShape {
     hooks?: ProviderAdoptionHooks,
   ): Promise<ProviderSession> {
     const adoption = this.validateNativeAdoption(input, hooks);
+    return this.startWithReservation(
+      { ...input, credentialProfileRef: undefined, resumeCursor: undefined },
+      adoption,
+    );
+  }
+
+  private async startWithReservation(
+    input: ProviderSessionStartInput,
+    adoption?: CodexNativeAdoption,
+  ): Promise<ProviderSession> {
     if (
       this.transport.hasSession(input.threadId) ||
       this.startingSessionThreads.has(input.threadId)
@@ -1263,10 +1270,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
     this.startingSessionThreads.add(input.threadId);
     try {
-      return await this.startReservedSession(
-        { ...input, resumeCursor: undefined },
-        adoption,
-      );
+      return await this.startReservedSession(input, adoption);
     } finally {
       this.startingSessionThreads.delete(input.threadId);
     }
@@ -1690,10 +1694,15 @@ export class CodexAdapter implements ProviderAdapterShape {
         input.modelOptions,
         input.reviewIsolation,
       );
-      const result = adoption
-        ? await this.forkNativeAdoption(record, adoption, {
+      const approvalWire = approvalKnobs
+        ? {
             approvalPolicy: approvalKnobs.approvalPolicy,
             sandbox: approvalKnobs.sandbox,
+          }
+        : {};
+      const result = adoption
+        ? await this.forkNativeAdoption(record, adoption, {
+            approvalKnobs,
             serviceTier: modelOptions.fastMode ? 'fast' : null,
           })
         : resumeCursor
@@ -1701,16 +1710,14 @@ export class CodexAdapter implements ProviderAdapterShape {
               threadId: resumeCursor.codexThreadId,
               cwd: input.cwd,
               model: input.modelId,
-              approvalPolicy: approvalKnobs.approvalPolicy,
-              sandbox: approvalKnobs.sandbox,
+              ...approvalWire,
               serviceTier: modelOptions.fastMode ? 'fast' : null,
               persistExtendedHistory: false,
             })
           : await this.transport.sendRequest(record, 'thread/start', {
               cwd: input.cwd,
               model: input.modelId,
-              approvalPolicy: approvalKnobs.approvalPolicy,
-              sandbox: approvalKnobs.sandbox,
+              ...approvalWire,
               experimentalRawEvents: false,
               persistExtendedHistory: false,
               serviceTier: modelOptions.fastMode ? 'fast' : null,
@@ -1792,13 +1799,17 @@ export class CodexAdapter implements ProviderAdapterShape {
         ...reportedModelMetadata(reportedModelFromInit),
         reasoningEffort: mapReasoningEffort(modelOptions),
         fastMode: modelOptions.fastMode ?? false,
-        approvalPolicy: approvalKnobs.approvalPolicy,
-        sandbox: approvalKnobs.sandbox,
-        // Resolved approvalMode alongside the raw knobs, so the client can
-        // track a durable lastAppliedApprovalMode baseline at session
-        // start without re-deriving it from provider-specific knobs
-        // (archive#727 review round 3, item 1).
-        approvalMode: mapCodexKnobsToApprovalMode(approvalKnobs),
+        ...(approvalKnobs
+          ? {
+              approvalPolicy: approvalKnobs.approvalPolicy,
+              sandbox: approvalKnobs.sandbox,
+              // Resolved approvalMode alongside the raw knobs, so the client can
+              // track a durable lastAppliedApprovalMode baseline at session
+              // start without re-deriving it from provider-specific knobs
+              // (archive#727 review round 3, item 1).
+              approvalMode: mapCodexKnobsToApprovalMode(approvalKnobs),
+            }
+          : {}),
         codexThreadId: codexThread.id,
         // Source-home continuations remain distinct from connection profiles
         // and the process-global Codex home.
@@ -1881,8 +1892,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     record: CodexSessionRecord,
     adoption: CodexNativeAdoption,
     execution: {
-      approvalPolicy: CodexApprovalKnobs['approvalPolicy'];
-      sandbox: CodexApprovalKnobs['sandbox'];
+      approvalKnobs?: CodexExecutionKnobs;
       serviceTier: string | null;
     },
   ): Promise<unknown> {
@@ -1897,9 +1907,14 @@ export class CodexAdapter implements ProviderAdapterShape {
         lastTurnId: boundary.providerTurnId,
         cwd: adoption.input.cwd,
         threadSource: adoption.marker,
-        approvalPolicy: execution.approvalPolicy,
-        sandbox: execution.sandbox,
+        ...(execution.approvalKnobs
+          ? {
+              approvalPolicy: execution.approvalKnobs.approvalPolicy,
+              sandbox: execution.approvalKnobs.sandbox,
+            }
+          : {}),
         serviceTier: execution.serviceTier,
+        ephemeral: false,
         ...(adoption.input.modelId !== undefined
           ? { model: adoption.input.modelId }
           : {}),
@@ -1927,8 +1942,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     validateCodexForkExecution(
       result,
       adoption.input.cwd,
-      execution.approvalPolicy,
-      execution.sandbox,
+      execution.approvalKnobs,
     );
     if (!endsAtCompletedCodexTurn(child.turns, boundary.providerTurnId)) {
       throw new Error(
@@ -2068,7 +2082,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         );
       }
       (this.options.logger ?? console).warn?.(
-        `Codex app-home profile lookup failed; continuing with the global Codex config: ${error instanceof Error ? error.message : String(error)}`,
+        `Codex app-home profile lookup failed; continuing with the global Codex config: ${errorMessage(error)}`,
       );
       return undefined;
     }
@@ -2115,8 +2129,12 @@ export class CodexAdapter implements ProviderAdapterShape {
         ],
         model: input.modelId,
         effort: mapReasoningEffort(modelOptions),
-        approvalPolicy: approvalKnobs.approvalPolicy,
-        sandbox: approvalKnobs.sandbox,
+        ...(approvalKnobs
+          ? {
+              approvalPolicy: approvalKnobs.approvalPolicy,
+              sandbox: approvalKnobs.sandbox,
+            }
+          : {}),
         serviceTier: modelOptions.fastMode ? 'fast' : undefined,
       });
       providerOps.add(1, {
@@ -2193,11 +2211,15 @@ export class CodexAdapter implements ProviderAdapterShape {
         ...(input.recoveryCorrelationId
           ? { recoveryCorrelationId: input.recoveryCorrelationId }
           : {}),
-        approvalPolicy: approvalKnobs.approvalPolicy,
-        sandbox: approvalKnobs.sandbox,
-        // Lets the client track a durable lastAppliedApprovalMode baseline
-        // (archive#727 review round 3, item 1 — the pending-apply chip state).
-        approvalMode: mapCodexKnobsToApprovalMode(approvalKnobs),
+        ...(approvalKnobs
+          ? {
+              approvalPolicy: approvalKnobs.approvalPolicy,
+              sandbox: approvalKnobs.sandbox,
+              // Lets the client track a durable lastAppliedApprovalMode baseline
+              // (archive#727 review round 3, item 1 — the pending-apply chip state).
+              approvalMode: mapCodexKnobsToApprovalMode(approvalKnobs),
+            }
+          : {}),
         [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
           input.modelId,
           input.modelId ? record.session.model : undefined,
@@ -2223,6 +2245,47 @@ export class CodexAdapter implements ProviderAdapterShape {
         turnId,
       ),
     };
+  }
+
+  async steerTurn(
+    threadId: string,
+    input: string,
+    turnId: string,
+  ): Promise<void> {
+    const record = this.transport.requireSession(threadId);
+    if (record.activeTurnId !== turnId) {
+      throw new ProviderTurnEndedError();
+    }
+    const text = input.trim();
+    if (!text) {
+      throw new Error('Steer input is empty.');
+    }
+    try {
+      await this.transport.sendRequest(record, 'turn/steer', {
+        threadId: record.codexThreadId,
+        input: [{ type: 'text', text, text_elements: [] }],
+        expectedTurnId: turnId,
+      });
+    } catch (error) {
+      const message = errorMessage(error).toLowerCase();
+      if (
+        message.includes('no active turn') ||
+        message.includes('cannot accept same-turn steering')
+      ) {
+        throw new ProviderTurnEndedError();
+      }
+      throw error;
+    }
+    this.transport.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: this.now().toISOString(),
+      turnId,
+      method: 'turn.started',
+      prompt: text,
+      inputKind: 'steer',
+    });
   }
 
   async interruptTurn(threadId: string, turnId?: string) {

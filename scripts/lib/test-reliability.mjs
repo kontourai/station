@@ -31,6 +31,7 @@ import {
 import { normalizeGitOrigin } from '@kontourai/station-contracts/git-remote-identity';
 import { assertSupportedNode } from '../node-runtime-contract.mjs';
 import { isPnpmRepository } from '../workspace-dependency-provenance.mjs';
+import { npmInvocation } from './npm-cli.mjs';
 import { readPnpmLockfile, readPnpmWorkspace } from './pnpm-lockfile.mjs';
 import {
   PRODUCT_LAW_OBSERVATION_TIMEOUT_ENV,
@@ -461,7 +462,8 @@ export function detectNpmVersion({ cwd = process.cwd() } = {}) {
   if (npmVersionCache.has(cacheKey)) return npmVersionCache.get(cacheKey);
   let version;
   try {
-    const result = spawnSync('npm', ['--version'], {
+    const npm = npmInvocation(['--version']);
+    const result = spawnSync(npm.command, npm.args, {
       cwd: cacheKey,
       encoding: 'utf8',
       windowsHide: true,

@@ -25,7 +25,7 @@ export {
 } from './paneHostShellBindings';
 
 /** The identities the mounting placement binds for its occupant's intents. */
-export interface InProcessPaneHostScope {
+interface InProcessPaneHostScope {
   /** The Project this pane occurrence is bound to, when it binds one. */
   projectSlug?: string;
   /**

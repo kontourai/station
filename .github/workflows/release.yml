@@ -156,7 +156,7 @@ jobs:
           name: station-release-client-build-provenance-${{ github.run_id }}
           path: release-client-build-provenance
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -279,7 +279,7 @@ jobs:
           name: station-release-client-build-provenance-${{ github.run_id }}
           path: release-client-build-provenance
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -382,7 +382,7 @@ jobs:
           name: station-release-client-build-provenance-${{ github.run_id }}
           path: release-client-build-provenance
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -513,6 +513,10 @@ jobs:
       GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_PLAY_SERVICE_ACCOUNT: ${{ vars.GCP_PLAY_SERVICE_ACCOUNT }}
       ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS }}
+      # `aapt` and `apksigner` live in build-tools, which setup-android does
+      # not put on PATH. Pin the same release nightly-native-stage.yml pins
+      # so the verification below resolves them by path.
+      ANDROID_BUILD_TOOLS_VERSION: '36.0.0'
       VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
       VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
       # The channel is part of the signed app identity, not provider-managed
@@ -530,7 +534,7 @@ jobs:
           name: station-release-client-build-provenance-${{ github.run_id }}
           path: release-client-build-provenance
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -542,7 +546,7 @@ jobs:
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with: { distribution: temurin, java-version: 17 }
       - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
-      - run: sdkmanager "ndk;27.0.12077973"
+      - run: sdkmanager "ndk;27.0.12077973" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
       - name: Resolve native update feed contract
         id: update_feed
         run: |
@@ -596,7 +600,9 @@ jobs:
           fi
           node scripts/apply-android-channel-icons.mjs "$icon_channel"
       - name: Apply native credential bootstrap to the channel namespace
-        run: node scripts/apply-android-native-bootstrap.mjs
+        run: |
+          node scripts/apply-android-native-bootstrap.mjs
+          node scripts/apply-android-network-policy.mjs
       # Must run AFTER init (which generates gen/android) and BEFORE the build
       # that packages its assets. The preflight-staged manifest already binds
       # the verified tag ref, SHA, and one sampled timestamp, so this writer
@@ -664,11 +670,14 @@ jobs:
       - name: Verify Android package version and platform signatures
         run: |
           apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)
-          aapt dump badging "$apk" | grep -F "versionName='$RELEASE_VERSION'"
-          aapt dump badging "$apk" | grep -F "versionCode='$ANDROID_VERSION_CODE'"
-          aapt dump badging "$apk" | grep -F "package: name='$ANDROID_PACKAGE_NAME'"
-          aapt dump badging "$apk" | grep -F "application-label:'$ANDROID_PRODUCT_NAME'"
-          apksigner verify --verbose --print-certs "$apk"
+          aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/aapt"
+          apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/apksigner"
+          "$aapt" dump xmltree "$apk" AndroidManifest.xml | grep -E 'android:usesCleartextTraffic.*0xffffffff'
+          "$aapt" dump badging "$apk" | grep -F "versionName='$RELEASE_VERSION'"
+          "$aapt" dump badging "$apk" | grep -F "versionCode='$ANDROID_VERSION_CODE'"
+          "$aapt" dump badging "$apk" | grep -F "package: name='$ANDROID_PACKAGE_NAME'"
+          "$aapt" dump badging "$apk" | grep -F "application-label:'$ANDROID_PRODUCT_NAME'"
+          "$apksigner" verify --verbose --print-certs "$apk"
           jarsigner -verify -strict -verbose src-desktop/gen/android/app/build/outputs/bundle/universalRelease/*.aab
       - name: Audit packaged Android capabilities
         run: |
@@ -716,7 +725,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -794,7 +803,7 @@ jobs:
             const labels = Object.entries(metadata.labels).map(([key, value]) => `${key}=${value}`).join("\n");
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `staging_tag=${metadata.image}:sha-${metadata.sha}\nlabels<<EOF\n${labels}\nEOF\n`);
           '
-      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+      - uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4.3.0
       - name: Authenticate to GHCR with the ephemeral workflow token
         env:
           GITHUB_ACTOR: ${{ github.actor }}
@@ -900,7 +909,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

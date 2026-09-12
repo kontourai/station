@@ -2,8 +2,14 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  modelPreferenceKey,
+  readModelPickerPreferences,
+  resetModelPickerPreferencesCacheForTests,
+  updateModelPickerPreferences,
+} from '../settings/modelPickerPreferences';
 
 let awsProfilesResult: {
   data?: { profiles: string[]; available: boolean };
@@ -18,6 +24,13 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 import { ProviderConnectionForm } from '../views/provider-settings/ProviderConnectionForm';
 import type { ProviderConnection } from '../views/provider-settings/types';
+
+// The device projection this page now reads. `undefined` is the honest
+// default: what a server that has not answered yet returns, where HostAction
+// makes no claim about a second machine.
+vi.mock('../hooks/useDevicePresentation', () => ({
+  useDevicePresentation: () => undefined,
+}));
 
 function bedrockForm(
   config: Record<string, unknown> = { region: '' },
@@ -34,6 +47,83 @@ function bedrockForm(
     lastCheckedAt: null,
   };
 }
+
+/*
+ * Before the shared notice, this page surfaced one ONLY when a check had been
+ * refused or the endpoint was unreachable -- so the most common reason a model
+ * connection cannot be used, no key saved, produced no notice at all, while the
+ * engine page named the prerequisite, its remedy and the machine. These two
+ * cases are the states that used to be silent.
+ */
+describe('ProviderConnectionForm — the readiness notice covers every not-ready state', () => {
+  function unmetKeyForm(): Omit<ProviderConnection, 'id'> {
+    return {
+      kind: 'model',
+      type: 'anthropic',
+      name: 'My Anthropic',
+      config: {},
+      enabled: true,
+      capabilities: ['llm'],
+      status: 'missing_prerequisites',
+      prerequisites: [
+        {
+          id: 'anthropic-api-key',
+          name: 'Anthropic API Key',
+          description: 'Add an API key to use this provider.',
+          status: 'missing',
+          category: 'required',
+        },
+      ],
+      lastCheckedAt: null,
+    };
+  }
+
+  function renderSaved(form: Omit<ProviderConnection, 'id'>) {
+    return render(
+      <ProviderConnectionForm
+        form={form}
+        isNew={false}
+        selectedProviderId="anthropic-1"
+        testResult={null}
+        testError={null}
+        isTesting={false}
+        onSetField={vi.fn()}
+        onSetConfigField={vi.fn()}
+        onTypeChange={vi.fn()}
+        onTestConnection={vi.fn()}
+      />,
+    );
+  }
+
+  test('a saved connection with no key names the remedy and the prerequisite', () => {
+    renderSaved(unmetKeyForm());
+
+    // The remedy, not a generic "not ready": there is no sign-in to perform.
+    expect(screen.getAllByText('API key required')).not.toHaveLength(0);
+    expect(
+      screen.getAllByText('Add an API key to use this provider.'),
+    ).not.toHaveLength(0);
+    expect(screen.getAllByText('Anthropic API Key')).not.toHaveLength(0);
+  });
+
+  test('a ready connection shows no notice', () => {
+    renderSaved({
+      ...unmetKeyForm(),
+      status: 'ready',
+      prerequisites: [
+        {
+          id: 'anthropic-api-key',
+          name: 'Anthropic API Key',
+          description: 'Add an API key to use this provider.',
+          status: 'installed',
+          category: 'required',
+        },
+      ],
+    });
+
+    expect(screen.queryByText('API key required')).toBeNull();
+  });
+});
 
 describe('ProviderConnectionForm — Bedrock auth modes (docs/design/connections-onboarding.md §3.1)', () => {
   beforeEach(() => {
@@ -173,7 +263,9 @@ describe('ProviderConnectionForm — Bedrock auth modes (docs/design/connections
 
     expect(screen.queryByLabelText('AWS profile')).toBeNull();
     expect(
-      screen.getByText("An AWS config file wasn't found on this computer."),
+      screen.getByText(
+        "An AWS config file wasn't found on the computer Station runs on.",
+      ),
     ).toBeTruthy();
   });
 
@@ -966,6 +1058,118 @@ describe('ProviderConnectionForm — Anthropic and Google default model (review 
     expect(Array.from(select.options).map((option) => option.value)).toEqual([
       '',
       'claude-x',
+    ]);
+  });
+});
+
+describe('provider-scoped bulk model visibility', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetModelPickerPreferencesCacheForTests();
+  });
+
+  test('hides and restores all listed models while preserving preferences and serving configuration', () => {
+    const own = modelPreferenceKey('provider-a', 'shared');
+    const custom = modelPreferenceKey('provider-a', 'custom');
+    const other = modelPreferenceKey('provider-b', 'shared');
+    updateModelPickerPreferences(() => ({
+      favorites: [own],
+      recents: [own],
+      hidden: [other, custom],
+      order: [custom, own],
+    }));
+    const onSetField = vi.fn();
+    const onSetConfigField = vi.fn();
+    const form = anthropicForm({
+      config: {
+        defaultModel: 'shared',
+        modelOptions: [
+          { id: 'shared', name: 'Shared' },
+          { id: 'custom', name: 'Custom' },
+        ],
+      },
+    });
+    const props = {
+      form,
+      isNew: false,
+      selectedProviderId: 'provider-a',
+      testResult: null,
+      testError: null,
+      isTesting: false,
+      onSetField,
+      onSetConfigField,
+      onTypeChange: vi.fn(),
+      onTestConnection: vi.fn(),
+    };
+    const view = render(<ProviderConnectionForm {...props} />);
+    expect(screen.getByRole('status').textContent).toBe('1 of 2 visible');
+    fireEvent.click(screen.getByRole('button', { name: 'Hide all (2)' }));
+    expect(new Set(readModelPickerPreferences().hidden)).toEqual(
+      new Set([own, custom, other]),
+    );
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Hide all (2)',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(screen.getByRole('status').textContent).toBe('0 of 2 visible');
+    expect(readModelPickerPreferences()).toMatchObject({
+      favorites: [own],
+      recents: [own],
+      order: [custom, own],
+    });
+    expect(onSetField).not.toHaveBeenCalled();
+    expect(onSetConfigField).not.toHaveBeenCalled();
+    expect(
+      (screen.getByLabelText('Default model') as HTMLSelectElement).value,
+    ).toBe('shared');
+    view.unmount();
+    act(() => resetModelPickerPreferencesCacheForTests());
+    render(<ProviderConnectionForm {...props} />);
+    expect(screen.getByRole('status').textContent).toBe('0 of 2 visible');
+    fireEvent.click(screen.getByRole('button', { name: 'Show all (2)' }));
+    expect(readModelPickerPreferences().hidden).toEqual([other]);
+    expect(readModelPickerPreferences()).toMatchObject({
+      favorites: [own],
+      recents: [own],
+      order: [custom, own],
+    });
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Show all (2)',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  test('switching providers applies bulk action only to the newly selected catalog', () => {
+    const props = {
+      form: anthropicForm({
+        config: { modelOptions: [{ id: 'shared', name: 'Shared' }] },
+      }),
+      isNew: false,
+      selectedProviderId: 'provider-a',
+      testResult: null,
+      testError: null,
+      isTesting: false,
+      onSetField: vi.fn(),
+      onSetConfigField: vi.fn(),
+      onTypeChange: vi.fn(),
+      onTestConnection: vi.fn(),
+    };
+    const view = render(<ProviderConnectionForm {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide all (1)' }));
+    view.rerender(
+      <ProviderConnectionForm {...props} selectedProviderId="provider-b" />,
+    );
+    expect(screen.getByRole('status').textContent).toBe('1 of 1 visible');
+    fireEvent.click(screen.getByRole('button', { name: 'Hide all (1)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show all (1)' }));
+    expect(readModelPickerPreferences().hidden).toEqual([
+      modelPreferenceKey('provider-a', 'shared'),
     ]);
   });
 });

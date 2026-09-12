@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Checkbox } from '../../components/Checkbox';
 import { CheckGlyph, WarningGlyph } from '../../components/icons/Glyph';
 import {
@@ -20,13 +21,15 @@ export function InstallPreviewModal({
   installPending: boolean;
   onClose: () => void;
   onToggleSkip: (key: string) => void;
-  onConfirm: () => void;
+  onConfirm: (dataPolicy?: 'preserve' | 'retain-and-reset') => void;
 }) {
+  const [resetData, setResetData] = useState(false);
   const hasBlockingConflict = previewData.components.some(
     (component) => component.skippable === false && !!component.conflict,
   );
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabelledBy="install-preview-title"
       overlayClassName="plugins__modal-overlay"
@@ -86,7 +89,7 @@ export function InstallPreviewModal({
                     }}
                   >
                     <span
-                      className={`plugins__cap plugins__cap--${component.type === 'agent' ? 'agent' : component.type === 'workspace' ? 'workspace' : component.type === 'provider' ? 'provider' : 'bundle'}`}
+                      className={`plugins__cap plugins__cap--${component.type === 'agent' ? 'agent' : component.type === 'layout' ? 'workspace' : component.type === 'provider' ? 'provider' : 'bundle'}`}
                     >
                       {component.type}
                     </span>
@@ -152,7 +155,7 @@ export function InstallPreviewModal({
                         {dependency.components.map((component) => (
                           <span
                             key={`${component.type}:${component.id}`}
-                            className={`plugins__cap plugins__cap--sm plugins__cap--${component.type === 'agent' ? 'agent' : component.type === 'workspace' ? 'workspace' : 'provider'}`}
+                            className={`plugins__cap plugins__cap--sm plugins__cap--${component.type === 'agent' ? 'agent' : component.type === 'layout' ? 'workspace' : 'provider'}`}
                           >
                             {component.type}:{component.id}
                           </span>
@@ -162,6 +165,18 @@ export function InstallPreviewModal({
                 </div>
               ))}
             </div>
+          </div>
+        )}
+        {previewData.existingDataScope && (
+          <div>
+            <p>Existing plugin data will be preserved.</p>
+            <Checkbox
+              checked={resetData}
+              onChange={() => setResetData((value) => !value)}
+              disabled={installPending}
+            >
+              Start with new data and retain the current data separately
+            </Checkbox>
           </div>
         )}
         <ResponsiveSurfaceActions className="plugins__preview-actions">
@@ -175,10 +190,20 @@ export function InstallPreviewModal({
           <button
             type="button"
             className="plugins__install-btn"
-            onClick={onConfirm}
+            onClick={() =>
+              onConfirm(
+                previewData.existingDataScope && resetData
+                  ? 'retain-and-reset'
+                  : 'preserve',
+              )
+            }
             disabled={installPending || hasBlockingConflict}
           >
-            {installPending ? 'Installing...' : 'Confirm Install'}
+            {installPending
+              ? 'Installing...'
+              : resetData
+                ? 'Confirm Install with New Data'
+                : 'Confirm Install'}
           </button>
         </ResponsiveSurfaceActions>
       </div>

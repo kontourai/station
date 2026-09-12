@@ -30,8 +30,9 @@ import {
   storeIntegrityExitCode,
   verifySqliteStore,
 } from '@kontourai/station-shared/sqlite-store-integrity';
+import { errorMessage } from '../utils/error-message.js';
 
-export interface StoreIntegrityProbeDeps {
+interface StoreIntegrityProbeDeps {
   verify?: typeof verifySqliteStore;
   now?: () => Date;
   write?: (line: string) => void;
@@ -46,7 +47,7 @@ const USAGE = 'Usage: store-integrity-probe <databasePath> [<databasePath>...]';
  * proven separately against a real child, because a returned number is not an
  * exit status.
  */
-export function runStoreIntegrityProbe(
+function runStoreIntegrityProbe(
   argv: readonly string[],
   deps: StoreIntegrityProbeDeps = {},
 ): number {
@@ -106,9 +107,7 @@ if (isEntrypoint) {
     // `unavailable`, never `corrupt`: the caller acts on `corrupt` by
     // recording a marker against the user's history, and a crash is no
     // evidence at all about the bytes.
-    process.stderr.write(
-      `store-integrity-probe: ${error instanceof Error ? error.message : String(error)}\n`,
-    );
+    process.stderr.write(`store-integrity-probe: ${errorMessage(error)}\n`);
     process.exitCode = STORE_INTEGRITY_EXIT_CODE.unavailable;
   }
 }

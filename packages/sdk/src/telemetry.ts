@@ -1,5 +1,5 @@
 import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
-import { _getApiBase, _getPluginName } from './api';
+import { _getApiBase, _getPluginName } from './api-core';
 
 interface TelemetryEvent {
   event: string;
@@ -11,23 +11,37 @@ interface TelemetryEvent {
 const buffer: TelemetryEvent[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 const FLUSH_INTERVAL = 10_000;
+const MAX_BUFFERED_EVENTS = 1000;
+let flushInFlight: Promise<void> | null = null;
 
-async function flush() {
-  if (buffer.length === 0) return;
+function flush(): Promise<void> {
+  if (flushInFlight) return flushInFlight;
+  if (buffer.length === 0) return Promise.resolve();
   const events = buffer.splice(0);
-  try {
-    const apiBase = await _getApiBase();
-    await fetch(`${apiBase}/api/telemetry/events`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        [STATION_PLUGIN_HEADER]: _getPluginName(),
-      },
-      body: JSON.stringify({ events }),
-    });
-  } catch {
-    /* best-effort */
-  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
+  flushInFlight = (async () => {
+    try {
+      const apiBase = await _getApiBase();
+      await fetch(`${apiBase}/api/telemetry/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          [STATION_PLUGIN_HEADER]: _getPluginName(),
+        },
+        body: JSON.stringify({ events }),
+        signal: controller.signal,
+      });
+    } catch {
+      /* best-effort diagnostics */
+    } finally {
+      clearTimeout(timeout);
+    }
+  })().finally(() => {
+    flushInFlight = null;
+    if (buffer.length) scheduleFlush();
+  });
+  return flushInFlight;
 }
 
 function scheduleFlush() {
@@ -40,6 +54,7 @@ function scheduleFlush() {
 
 export const telemetry = {
   track(event: string, attributes: Record<string, string | number> = {}) {
+    if (buffer.length === MAX_BUFFERED_EVENTS) return;
     buffer.push({
       event,
       plugin: _getPluginName(),

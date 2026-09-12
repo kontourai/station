@@ -33,7 +33,7 @@ export interface ConversationStats {
   };
 }
 
-export interface ConversationStatsViewInput {
+interface ConversationStatsViewInput {
   stats?: Omit<ConversationStats, 'estimatedCost'> & {
     estimatedCost?: number | null;
   };

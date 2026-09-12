@@ -5,8 +5,11 @@ import {
   type KnowledgeNamespaceConfig,
 } from '@kontourai/station-contracts/knowledge';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
+import { createLogger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
 import { defaultKnowledgeStorageDir } from './knowledge-storage.js';
+
+const logger = createLogger({ name: 'knowledge-namespaces' });
 
 export function listKnowledgeNamespaces(
   projectSlug: string,
@@ -49,8 +52,8 @@ function warnOnceAboutLegacyKnowledgeDir(
 ): void {
   if (warnedLegacyKnowledgeDirs.has(legacy)) return;
   warnedLegacyKnowledgeDirs.add(legacy);
-  console.warn(
-    `[knowledge] Namespace storageDir "${configured}" now resolves to ${expanded}. ` +
+  logger.warn(
+    `Namespace storageDir "${configured}" now resolves to ${expanded}. ` +
       `Content was found at ${legacy}, written before tilde paths were expanded. ` +
       `Move it to keep it — its vector embeddings still exist and will otherwise ` +
       `return results for documents the list no longer shows.`,

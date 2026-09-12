@@ -4,12 +4,14 @@
  * These observations are display-only. Product behavior must never refuse,
  * defer, prioritize, or otherwise gate user work from this module's output.
  */
-import { cpus } from 'node:os';
 
-export const RUNTIME_RESOURCE_POSTURE_DEGRADED_BUSY_PERCENT = 85;
-export const RUNTIME_RESOURCE_POSTURE_CRITICAL_BUSY_PERCENT = 95;
-export const RUNTIME_RESOURCE_POSTURE_CACHE_MS = 2_000;
-export const RUNTIME_RESOURCE_POSTURE_SAMPLE_GAP_MS = 500;
+import { cpus } from 'node:os';
+import { sleep } from '../../utils/sleep.js';
+
+const RUNTIME_RESOURCE_POSTURE_DEGRADED_BUSY_PERCENT = 85;
+const RUNTIME_RESOURCE_POSTURE_CRITICAL_BUSY_PERCENT = 95;
+const RUNTIME_RESOURCE_POSTURE_CACHE_MS = 2_000;
+const RUNTIME_RESOURCE_POSTURE_SAMPLE_GAP_MS = 500;
 
 type CpuSnapshot = ReturnType<typeof cpus>;
 type CpuTimes = { idle: number; total: number; cpuCount: number };
@@ -30,7 +32,7 @@ type RuntimeObservedPosture<TKind extends 'healthy' | 'degraded' | 'critical'> =
     busyPercent: number;
   };
 
-export type RuntimeResourcePosture =
+type RuntimeResourcePosture =
   | RuntimeObservedPosture<'healthy'>
   | RuntimeObservedPosture<'degraded'>
   | RuntimeObservedPosture<'critical'>
@@ -58,7 +60,7 @@ export interface RuntimeEngineStartLease {
   release(): void;
 }
 
-export interface RuntimeResourcePostureProbeOptions {
+interface RuntimeResourcePostureProbeOptions {
   /** Numeric diagnostic observation seam for deterministic tests. */
   sample?: () => Promise<HostPressureSample>;
   now?: () => number;
@@ -102,10 +104,6 @@ export function computeRuntimeCpuBusyPercent(
   return Math.round(((totalDelta - idleDelta) / totalDelta) * 100);
 }
 
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /** Product-owned sampler used only by the diagnostics endpoint. */
 export function createRuntimeCpuSampler(
   options: {
@@ -116,7 +114,7 @@ export function createRuntimeCpuSampler(
   } = {},
 ): () => Promise<HostPressureSample> {
   const readCpus = options.readCpus ?? cpus;
-  const waitForGap = options.wait ?? wait;
+  const waitForGap = options.wait ?? sleep;
   const now = options.now ?? Date.now;
   const sampleGapMs =
     options.sampleGapMs ?? RUNTIME_RESOURCE_POSTURE_SAMPLE_GAP_MS;

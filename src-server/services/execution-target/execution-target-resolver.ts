@@ -82,7 +82,7 @@ export interface ExecutionTargetResolverDependencies {
   now?: () => Date;
 }
 
-export interface ResolvedExecutionTarget {
+interface ResolvedExecutionTarget {
   /** Private access authority. Never serialize this object. */
   access: EnvironmentAccess;
   agentId: AgentId;
@@ -90,9 +90,11 @@ export interface ResolvedExecutionTarget {
   provider: EngineId;
   modelLaunchPlan: ModelLaunchPlan;
   /**
-   * The model this turn actually launches with: the caller's per-turn override
+   * The resolved new-session model request: the caller's per-turn override
    * when there is one, otherwise the Agent's own `execution.modelId`. archive#3406:
-   * only the override used to reach the adapter, so an Agent that named a model
+   * Same-engine cursor continuations retain their observed model unless the
+   * caller supplies an override. Previously only the override reached the
+   * adapter, so an Agent that named a model
    * ran on the engine's default and said nothing -- and the ACP adapter's
    * apply-and-verify block (acp-adapter.ts) was skipped entirely, because it is
    * reached only when a model is requested. Resolve it here, once, so every
@@ -106,7 +108,7 @@ export interface ResolvedExecutionTarget {
   receipt: ExecutionResolutionReceipt;
 }
 
-function assertConnectionReady(connection: ConnectionConfig): void {
+export function assertConnectionReady(connection: ConnectionConfig): void {
   if (connection.kind !== 'agent') {
     throw new Error(
       `Agent binding '${connection.id}' does not resolve to an engine connection`,

@@ -22,7 +22,10 @@ const resetRecovery = vi.fn((apiBase: string, sessionId: string) => {
   recoveryBudget.delete(`${apiBase}\u0000${sessionId}`);
 });
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async () => ({
+  extractUIBlocks: (
+    await import('../../../packages/sdk/src/query-domains/uiBlocks')
+  ).extractUIBlocks,
   fetchSessionEventWindowCapability: (...args: unknown[]) =>
     fetchCapability(...args),
   claimSessionEventWindowCapabilityRecovery: (...args: unknown[]) =>
@@ -38,6 +41,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS: 60_000,
 }));
 
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 
 const baseSession = {
@@ -60,6 +64,179 @@ const event = (eventId: string, method: string, fields = {}) => ({
 });
 
 describe('useActiveChatTranscript', () => {
+  test('switching conversations never assigns the previous reader child to the new chat', async () => {
+    const parentId = 'reader-parent-tab';
+    const childId = 'reader-fork-tab';
+    for (const id of [parentId, childId])
+      activeChatsStore.initChat(id, {
+        agentSlug: 'claude',
+        agentName: 'Claude',
+        title: id,
+      });
+    activeChatsStore.updateChat(parentId, {
+      conversationId: 'parent-conversation',
+      currentSessionId: 'parent-execution',
+    });
+    activeChatsStore.updateChat(childId, {
+      conversationId: 'fork-conversation',
+      requestedModel: 'chosen-model',
+    });
+    let resolveFork!: (value: unknown) => void;
+    fetchWindow.mockImplementation((conversationId: string) =>
+      conversationId === 'parent-conversation'
+        ? Promise.resolve({
+            protocolVersion: 1,
+            currentSessionId: 'parent-execution',
+            watermark: 1,
+            hasMore: false,
+            events: [],
+          })
+        : new Promise((resolve) => {
+            resolveFork = resolve;
+          }),
+    );
+    const { result, rerender, unmount } = renderHook(
+      ({ session }) => useActiveChatTranscript('http://station.test', session),
+      {
+        initialProps: {
+          session: {
+            ...baseSession,
+            id: parentId,
+            conversationId: 'parent-conversation',
+            currentSessionId: 'parent-execution',
+          } as ChatSession,
+        },
+      },
+    );
+    try {
+      await waitFor(() =>
+        expect(result.current.currentSessionId).toBe('parent-execution'),
+      );
+      rerender({
+        session: {
+          ...baseSession,
+          id: childId,
+          conversationId: 'fork-conversation',
+          orchestrationSessionStarted: false,
+        } as ChatSession,
+      });
+      expect(
+        activeChatsStore.getSnapshot()[childId].currentSessionId,
+      ).toBeUndefined();
+      expect(activeChatsStore.getSnapshot()[childId].requestedModel).toBe(
+        'chosen-model',
+      );
+      rerender({
+        session: {
+          ...baseSession,
+          id: childId,
+          conversationId: 'fork-conversation',
+        } as ChatSession,
+      });
+      await waitFor(() => expect(resolveFork).toBeDefined());
+      await act(async () =>
+        resolveFork({
+          protocolVersion: 1,
+          currentSessionId: 'fork-execution',
+          watermark: 1,
+          hasMore: false,
+          events: [],
+        }),
+      );
+      expect(activeChatsStore.getSnapshot()[childId].currentSessionId).toBe(
+        'fork-execution',
+      );
+    } finally {
+      unmount();
+      activeChatsStore.removeChat(parentId);
+      activeChatsStore.removeChat(childId);
+    }
+  });
+
+  test('observing a new child schedules authoritative open once without clearing the draft', async () => {
+    const id = 'live-boundary-conversation';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Boundary',
+    });
+    activeChatsStore.updateChat(id, {
+      conversationId: id,
+      currentSessionId: 'old-child',
+      input: 'keep my draft',
+    });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [],
+      currentSessionId: 'new-child',
+    });
+    const session: ChatSession = {
+      ...baseSession,
+      id,
+      conversationId: id,
+      currentSessionId: 'old-child',
+    };
+    const { rerender, unmount } = renderHook(
+      ({ session }) => useActiveChatTranscript('http://station.test', session),
+      { initialProps: { session } },
+    );
+    await waitFor(() =>
+      expect(activeChatsStore.getSnapshot()[id]).toMatchObject({
+        currentSessionId: 'new-child',
+        conversationOpenPending: true,
+        input: 'keep my draft',
+      }),
+    );
+    activeChatsStore.updateChat(id, { conversationOpenPending: false });
+    rerender({ session: { ...session, currentSessionId: 'new-child' } });
+    expect(activeChatsStore.getSnapshot()[id].conversationOpenPending).toBe(
+      false,
+    );
+    unmount();
+    activeChatsStore.removeChat(id);
+  });
+
+  test('stale hook props cannot clear an already-adopted child stream', async () => {
+    const id = 'already-adopted-child';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'claude',
+      agentName: 'Claude',
+      title: 'Live',
+    });
+    activeChatsStore.updateChat(id, {
+      conversationId: id,
+      currentSessionId: 'new-child',
+      orchestrationTurnOpen: true,
+      openTurnId: 'new-turn',
+      streamingMessage: { role: 'assistant', content: 'new live answer' },
+    });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [],
+      currentSessionId: 'new-child',
+    });
+    const { unmount } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', {
+        ...baseSession,
+        id,
+        conversationId: id,
+        currentSessionId: 'old-child',
+      }),
+    );
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalled());
+    expect(activeChatsStore.getSnapshot()[id]).toMatchObject({
+      currentSessionId: 'new-child',
+      openTurnId: 'new-turn',
+      streamingMessage: { content: 'new live answer' },
+    });
+    unmount();
+    activeChatsStore.removeChat(id);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     recoveryBudget.clear();
@@ -371,7 +548,13 @@ describe('useActiveChatTranscript', () => {
           toolCallId: 'same-call',
           toolName: 'shell',
           status: 'success',
-          output: 'done',
+          output: {
+            uiBlock: {
+              type: 'card',
+              title: 'Replay card',
+              body: 'Kept result',
+            },
+          },
         }),
         event('e3', 'turn.completed', {
           turnId: 'turn-1',
@@ -385,6 +568,17 @@ describe('useActiveChatTranscript', () => {
     await waitFor(() => expect(result.current.messages).toHaveLength(2));
     expect(result.current.messages[1]?.contentParts).toContainEqual(
       expect.objectContaining({ type: 'tool-invocation', sourceEventId: 'e2' }),
+    );
+    expect(result.current.messages[1]?.contentParts).toContainEqual(
+      expect.objectContaining({
+        type: 'ui-block',
+        toolCallId: 'same-call',
+        sourceEventId: 'e2',
+        uiBlock: expect.objectContaining({
+          id: 'e2-block-0',
+          title: 'Replay card',
+        }),
+      }),
     );
   });
 

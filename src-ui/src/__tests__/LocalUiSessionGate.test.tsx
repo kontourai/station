@@ -13,6 +13,10 @@ import { LocalUiSessionGate } from '../components/LocalUiSessionGate';
 import { ApiBaseProvider } from '../contexts/ApiBaseContext';
 import { DEGRADED_QUERY_TIMEOUT_MS } from '../hooks/useDegradedQueryState';
 import { resetLocalUiBootstrapForTests } from '../lib/local-ui-bootstrap';
+import {
+  LOCAL_UI_SESSION_ATTEMPT_LIMIT,
+  LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS,
+} from '../lib/local-ui-session-retry';
 import { PlatformBootstrap } from '../platform/PlatformProfileContext';
 
 function ProtectedDataProbe({ onMount }: { onMount: () => void }) {
@@ -51,7 +55,7 @@ describe('LocalUiSessionGate (station#2093)', () => {
     renderGate(<ProtectedDataProbe onMount={protectedMount} />);
 
     await screen.findByRole('heading', {
-      name: 'Connect to your Station host',
+      name: 'Connect to a Station',
     });
     expect(
       screen.getByRole('button', { name: 'Pair with a code' }),
@@ -64,6 +68,11 @@ describe('LocalUiSessionGate (station#2093)', () => {
       {
         credentials: 'include',
         headers: { Accept: 'application/json' },
+        // #1661: the read carries the gate's own deadline. Still the whole init
+        // object rather than `objectContaining`, so a fourth key would fail here;
+        // what the deadline DOES is driven through the gate in
+        // `LocalUiSessionGate.proxyClassification.test.tsx`.
+        signal: expect.any(AbortSignal),
       },
     );
   });
@@ -90,26 +99,37 @@ describe('LocalUiSessionGate (station#2093)', () => {
   test('preserves the browser access context while the Station UI proxy reports its host unavailable', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(
-        Response.json({ ready: false, status: 'unavailable' }, { status: 503 }),
+      .mockImplementation(() =>
+        Promise.resolve(
+          Response.json(
+            { ready: false, status: 'unavailable' },
+            { status: 503 },
+          ),
+        ),
       );
     const protectedMount = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     renderGate(<ProtectedDataProbe onMount={protectedMount} />);
 
-    await screen.findByRole('heading', {
-      name: 'Reconnecting to this Station',
-    });
+    await screen.findByRole(
+      'heading',
+      { name: 'Reconnecting to this Station' },
+      // The gate now retries an `unavailable` answer before rendering this
+      // screen (#1639), so it arrives one bounded ladder later.
+      { timeout: LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS + 750 },
+    );
     expect(screen.getByRole('alert').textContent).toMatch(
       /host process is down or recovering/i,
     );
-    expect(screen.queryByText('Connect to your Station host')).toBeNull();
+    expect(screen.queryByText('Connect to Station')).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Pair with a code' }),
     ).toBeNull();
     expect(protectedMount).not.toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Every attempt the bound allows, and no more. The ladder's own pins live in
+    // `LocalUiSessionGate.hostRetry.test.tsx`.
+    expect(fetchMock).toHaveBeenCalledTimes(LOCAL_UI_SESSION_ATTEMPT_LIMIT);
   });
 
   test.each([

@@ -29,16 +29,9 @@
  */
 
 import { createHash } from 'node:crypto';
-import {
-  closeSync,
-  fsyncSync,
-  openSync,
-  renameSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs';
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import { canonicalizeForDigest } from '@kontourai/station-contracts/fleet-routing-receipt';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 
 export { canonicalizeForDigest as canonicalize };
 
@@ -55,7 +48,7 @@ export interface ChainedReceipt {
  * take two coordinated edits instead of one `head -n -1`, and to make an
  * anchor that has been removed report `unknown` rather than `intact`.
  */
-export interface ReceiptChainAnchor {
+interface ReceiptChainAnchor {
   lastReceiptId: string;
   recordCount: number;
 }
@@ -63,7 +56,7 @@ export interface ReceiptChainAnchor {
 /** Three-state, because "we did not check" must never render as "it verified". */
 export type ReceiptChainStatus = 'intact' | 'broken' | 'unknown';
 
-export interface ReceiptChainVerdict {
+interface ReceiptChainVerdict {
   status: ReceiptChainStatus;
   brokenAtReceiptId: string | null;
   message: string;
@@ -83,34 +76,14 @@ function anchorPathFor(logPath: string): string {
 }
 
 /**
- * Atomic anchor write: temp file, fsync, rename. The same shape
- * `SshEnvironmentProfileStore` and `PeerCredentialStore` use — a torn anchor
- * would report `broken` on a perfectly good log, which trains readers to
- * ignore the verdict.
+ * Atomic anchor write. A torn anchor would report `broken` on a perfectly
+ * good log, which trains readers to ignore the verdict, so the
+ * temp/fsync/rename sequence belongs to the shared durable writer rather
+ * than to a fourth copy of it here. `indent: null` keeps the anchor's
+ * compact single-line document exactly as it has always been written.
  */
 function writeAnchorSync(logPath: string, anchor: ReceiptChainAnchor): void {
-  const target = anchorPathFor(logPath);
-  const temp = `${target}.${process.pid}.tmp`;
-  try {
-    writeFileSync(temp, `${JSON.stringify(anchor)}\n`, {
-      encoding: 'utf8',
-      mode: 0o600,
-    });
-    const handle = openSync(temp, 'r');
-    try {
-      fsyncSync(handle);
-    } finally {
-      closeSync(handle);
-    }
-    renameSync(temp, target);
-  } catch (error) {
-    try {
-      unlinkSync(temp);
-    } catch {
-      // Best-effort cleanup; the throw below is the signal that matters.
-    }
-    throw error;
-  }
+  writeJsonDurably(anchorPathFor(logPath), anchor, { indent: null });
 }
 
 async function readAnchor(
@@ -207,7 +180,7 @@ export class HashChainedReceiptLog<TSealed extends ChainedReceipt> {
   }
 }
 
-export interface ChainedReceiptPage<TSealed extends ChainedReceipt> {
+interface ChainedReceiptPage<TSealed extends ChainedReceipt> {
   receipts: TSealed[];
   totalRecords: number;
   verdict: ReceiptChainVerdict;

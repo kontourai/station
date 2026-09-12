@@ -53,9 +53,9 @@ import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
-import { waitForReceipt } from '../../../services/infra/receipt-bus.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -265,7 +265,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     });
   }
 
-  async function setup(searchMode?: 'device' | 'whois' | 'home' | 'operator') {
+  async function setup(
+    searchMode?: 'device' | 'whois' | 'home' | 'operator',
+    taskReferences = false,
+  ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
     const roomHomeDir = mkdtempSync(
       join(tmpdir(), 'station-device-chat-room-'),
@@ -273,12 +276,21 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     directories.push(roomHomeDir);
     const store = new EventStore(join(roomHomeDir, 'orchestration.sqlite'));
     let runtimeSearch: ReturnType<typeof createRuntimeSearch> | undefined;
+    let orchestration: OrchestrationService | undefined;
     if (searchMode) {
       for (const [threadId, userId] of [
         ['device-owned', `human:device:${paired.device.id}`],
         ['whois-owned', 'human:tailscale-serve:owner@github'],
         ['legacy-owned', getCachedUser().alias],
       ]) {
+        if (taskReferences)
+          store.upsertSession({
+            threadId,
+            provider: 'claude',
+            status: 'closed',
+            createdAt: '2026-09-04T00:00:00Z',
+            updatedAt: '2026-09-04T00:00:00Z',
+          });
         store.appendEvent({
           eventId: `${threadId}:start`,
           threadId,
@@ -286,7 +298,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           provider: 'claude',
           method: 'session.started',
           createdAt: '2026-09-04T00:00:00Z',
-          metadata: { userId },
+          metadata: {
+            userId,
+            ...(taskReferences ? { projectSlug: task.projectId } : {}),
+          },
         });
         store.appendEvent({
           eventId: `${threadId}:exact`,
@@ -297,8 +312,19 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           createdAt: '2026-09-04T00:00:01Z',
           prompt: 'cobalt receipt',
         });
+        if (taskReferences)
+          store.appendEvent({
+            eventId: `${threadId}:done`,
+            threadId,
+            turnId: `${threadId}:turn`,
+            provider: 'claude',
+            method: 'turn.completed',
+            createdAt: '2026-09-04T00:00:02Z',
+            finishReason: 'stop',
+            outputText: 'An exact public answer.',
+          });
       }
-      const orchestration = new OrchestrationService({
+      orchestration = new OrchestrationService({
         eventStore: store,
         adoptionLedger: store.createAdoptionLedger(),
         eventBus: new EventBus(),
@@ -310,11 +336,19 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         logger: { debug() {}, warn() {} },
         legacyPersonalOwner: getCachedUser().alias,
       });
-      const settled = waitForReceipt(
-        (receipt) => receipt.kind === 'session.attachment.settled',
-      );
       orchestration.initialize();
-      await settled;
+      // Registered BEFORE the barrier is awaited. The barrier resolves only
+      // from the `finally` in `initialize()`; if that never runs, an `await`
+      // placed ahead of this push leaves `afterEach` with nothing to close,
+      // so the runtime and its SQLite handle leak into every later test in
+      // the file. `runtimeSearch` is deliberately optional here — it does not
+      // exist yet, and a barrier that never resolved means it never will.
+      searchCleanup.push(async () => {
+        await runtimeSearch?.close();
+        await orchestration!.shutdown();
+        await expect.poll(() => store.close().kind).toBe('closed');
+      });
+      await awaitSessionAttachmentSettled(orchestration);
       runtimeSearch = createRuntimeSearch({
         stationId: '22222222-2222-4222-8222-222222222222',
         tasks: new TaskGraphService(roomHomeDir, {
@@ -322,12 +356,24 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         }),
         transcripts: orchestration,
       });
-      searchCleanup.push(async () => {
-        await runtimeSearch!.close();
-        await orchestration.shutdown();
-        await expect.poll(() => store.close().kind).toBe('closed');
-      });
     }
+    const project = {
+      id: task.projectId,
+      slug: task.projectId,
+      name: 'Project',
+      workingDirectory: roomHomeDir,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+    };
+    const taskGraph = taskReferences
+      ? new TaskGraphService(roomHomeDir, {
+          projectService: { getProject: () => project },
+        })
+      : undefined;
+    const referenceTask = await taskGraph?.createTask({
+      projectId: task.projectId,
+      title: 'Kept answer',
+    });
     const app = new Hono();
     const context = deepStub({
       app,
@@ -349,12 +395,22 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       monitoringEvents: [],
       orchestrationEventStore: store,
       ...(runtimeSearch ? { runtimeSearch } : {}),
-      taskGraphService: {
+      ...(taskReferences
+        ? {
+            orchestrationService: deepStub({
+              sessionQueries: orchestration!.sessionQueries,
+              canUserReadSession:
+                orchestration!.canUserReadSession.bind(orchestration),
+            }),
+          }
+        : {}),
+      taskGraphService: taskGraph ?? {
         readTaskView: (id: string) => (id === task.id ? task : null),
         listTasks: () => [],
       },
       projectService: {
         listProjects: () => [{ id: task.projectId, slug: 'project' }],
+        ...(taskReferences ? { getProject: () => project } : {}),
       },
       environmentSecurityService: environmentSecurityServiceFor(pairing),
     });
@@ -364,8 +420,58 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         typeof configureRuntimeRoutesProduction
       >[0],
     );
-    return { app, store, roomRuntime: result.projectTaskRoomRuntime!, paired };
+    return {
+      app,
+      store,
+      roomRuntime: result.projectTaskRoomRuntime!,
+      paired,
+      referenceTask,
+    };
   }
+
+  test('Task answer pins use the same verified device owner as exact answer reads', async () => {
+    const { app, roomRuntime, paired, referenceTask } = await setup(
+      'device',
+      true,
+    );
+    searchCleanup.unshift(async () => {
+      await roomRuntime.close();
+    });
+    const headers = {
+      Authorization: `Bearer ${paired.credential}`,
+      'Content-Type': 'application/json',
+    };
+    for (const [sessionId, expected] of [
+      ['device-owned', 201],
+      ['legacy-owned', 404],
+      ['whois-owned', 404],
+    ] as const) {
+      const answer = await app.request(
+        `/api/orchestration/sessions/${sessionId}/turns/${sessionId}:turn`,
+        { headers },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(answer.status, JSON.stringify(await answer.json())).toBe(
+        expected === 201 ? 200 : 404,
+      );
+      const response = await app.request(
+        `/api/tasks/${referenceTask!.id}/references`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            kind: 'turn',
+            sessionId,
+            turnId: `${sessionId}:turn`,
+          }),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(response.status, JSON.stringify(await response.json())).toBe(
+        expected,
+      );
+    }
+  });
 
   test.each(['device', 'whois', 'home', 'operator'] as const)(
     'search and exact open use actual %s ingress ownership, not the OS alias',
@@ -406,9 +512,13 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         mode === 'home' || mode === 'operator'
           ? 'legacy-owned'
           : `${mode}-owned`;
-      expect(body.data.results.map((row: any) => row.scope.sessionId)).toEqual(
-        mode === 'operator' ? [] : [expected],
-      );
+      // The source states ride in the failure message: a provider that timed
+      // out or a read the attachment gate refused answers 200 with an empty
+      // list, which reads exactly like a wrong owner filter (station#1707).
+      expect(
+        body.data.results.map((row: any) => row.scope.sessionId),
+        JSON.stringify(body.data.sources),
+      ).toEqual(mode === 'operator' ? [] : [expected]);
       const opened = await app.request(
         '/api/search/resolve-open',
         {

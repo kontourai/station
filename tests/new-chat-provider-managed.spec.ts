@@ -334,9 +334,16 @@ test('provider-managed project ignores a stale unsupported project model even wh
   await openNewChatForViewport(page);
 
   await expect(page.getByText('New Chat')).toBeVisible({ timeout: 3000 });
-  await expect(
-    page.locator('.new-chat-modal__context-button', { hasText: 'My Project' }),
-  ).toBeVisible();
+  // Last-visited context must not silently bind a new chat. Choose the
+  // project explicitly before checking its model/engine behavior.
+  const projectContext = page.locator('.new-chat-modal__context-button');
+  await expect(projectContext).toContainText('No workspace');
+  await projectContext.click();
+  await page
+    .locator('.new-chat-modal__dropdown, .new-chat-modal__context-sheet')
+    .getByRole('button', { name: /My Project/ })
+    .click();
+  await expect(projectContext).toContainText('My Project');
   await expect(
     page.locator('.new-chat-modal__agent', { hasText: 'Station' }),
   ).toBeVisible();
@@ -356,7 +363,7 @@ test('provider-managed project ignores a stale unsupported project model even wh
 
   await page.locator('.new-chat-modal__agent', { hasText: 'Station' }).click();
   const activeModel = page.locator('.chat-input__model-btn');
-  await expect(activeModel).toContainText('Local Ollama');
+  await expect(activeModel).toHaveAccessibleName(/Model: Local Ollama/);
   await expect(activeModel).toContainText('Llama 3.2');
   await activeModel.click();
   const picker = page.getByRole('dialog', { name: 'Choose model' });
@@ -382,9 +389,16 @@ test('selected project context shows Station via the global provider-managed fal
   await expect(page.getByText('New Chat')).toBeVisible({ timeout: 3000 });
   // Scope to the modal's context button — the expanded sidebar also surfaces
   // the project name now.
-  await expect(
-    page.locator('.new-chat-modal__context-button', { hasText: 'My Project' }),
-  ).toBeVisible();
+  // Last-visited context must not silently bind a new chat. Choose the
+  // project explicitly before checking its model/engine behavior.
+  const projectContext = page.locator('.new-chat-modal__context-button');
+  await expect(projectContext).toContainText('No workspace');
+  await projectContext.click();
+  await page
+    .locator('.new-chat-modal__dropdown, .new-chat-modal__context-sheet')
+    .getByRole('button', { name: /My Project/ })
+    .click();
+  await expect(projectContext).toContainText('My Project');
   const breadcrumb = page.locator(
     '.new-chat-modal__context-button .new-chat-modal__cwd-breadcrumb',
   );
@@ -647,7 +661,7 @@ test('new chat selected and hovered rows meet contrast in light and dark themes'
     await expect(station).toHaveClass(/new-chat-modal__agent--selected/);
     // Clearing the filter resets the index to 0 (`NewChatModal.tsx:544-548`),
     // and index 0 is Station: with no Recent group both rows sit in the one
-    // "Engines on this machine" band in `/api/agents` order
+    // "AI apps" band in `/api/agents` order
     // (`new-chat-modal-utils.ts:512-517, 575-582`).
     await search.fill('');
     await expect(page.locator('.new-chat-modal__agent')).toHaveCount(2);
@@ -724,18 +738,24 @@ test('new chat remains touch-usable and scrollable at 390x844', async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installVisualViewportFixture(page);
-  await seedRoutes(page, {
-    runtimeConnections: Array.from({ length: 12 }, (_, index) =>
-      agentConnectionFixture({
-        id: `runtime-${index}`,
-        type: `runtime-${index}`,
-        name: `Runtime ${index}`,
-        description: `Connected coding runtime ${index}`,
-        config: { executionClass: 'external' },
-        runtimeCatalog: { source: 'live', models: [], builtInModels: [] },
-      }),
-    ),
-  });
+  await seedRoutes(page);
+  await page.route('**/api/agents', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: [
+          ...AGENTS,
+          ...Array.from({ length: 12 }, (_, index) => ({
+            ...AGENTS[0],
+            slug: `saved-agent-${index}`,
+            name: `Saved agent ${index}`,
+            engineDefault: false,
+            description: `Distinct saved agent ${index}`,
+          })),
+        ],
+      },
+    }),
+  );
   await page.addInitScript(() => localStorage.removeItem('recentAgents'));
   await page.goto('/?dock=open');
   await openNewChatForViewport(page);
@@ -934,7 +954,7 @@ test('OpenCode exposes live model switching in chat at 390x844', async ({
   await page.locator('.new-chat-modal__agent', { hasText: 'OpenCode' }).click();
 
   const activeModel = page.locator('.chat-input__model-btn');
-  await expect(activeModel).toContainText('OpenCode');
+  await expect(activeModel).toHaveAccessibleName(/Model: OpenCode/);
   await expect(activeModel).toContainText('Big Pickle');
   // Glossary vocabulary only (docs/design/chat-composer.md §3.3) — the
   // internal 'runtime' source label renders as "reported by app", not the
@@ -1114,7 +1134,7 @@ test('new chat shows Station when the Station Agent matches the capability set',
   // puts Station in the engine band, and the row's accessible name is
   // "<name> <readiness state>" (`AgentReadinessCell.tsx:71`).
   const dialog = page.getByRole('dialog', { name: 'New Chat' });
-  await expect(dialog.getByText('Engines on this machine')).toBeVisible();
+  await expect(dialog.getByText('AI apps')).toBeVisible();
   await expect(dialog.getByText('Your agents')).toHaveCount(0);
   await expect(
     dialog.getByRole('button', { name: 'Station Ready' }),

@@ -44,9 +44,18 @@ import {
   resolveCssImports,
 } from '../../../tests/helpers/css-cascade-fixture';
 
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate: vi.fn() }),
-}));
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({ navigate: vi.fn() });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 vi.mock('../hooks/useIsMobile', () => ({
   useIsMobile: () => false,
   MOBILE_MEDIA_QUERY: '(max-width: 768px)',
@@ -97,8 +106,19 @@ Object.defineProperty(window, 'matchMedia', {
 const STATION_AGENT_NEEDING_SETUP = {
   slug: 'station',
   name: 'Station',
-  engineId: 'station',
-  engineDisplayName: 'Station',
+  // A NON-station engine whose chip label is longer than the space left
+  // beside "Station" at the narrowest rail under ANY font metrics: the
+  // wrap-under-pressure scenario must not depend on a platform's glyph
+  // widths. The original fixture's chip was the constant short readiness
+  // pill, so whether it wrapped beside or below the name rode entirely on
+  // the runner's font packages — the hosted image's fonts changed
+  // (Nightly 34573339929) and the same tree flipped green→red with no code
+  // change (macOS never matched it). `engineChipLabel` renders
+  // `engineDisplayName` verbatim for a non-station engine, so the fixture
+  // forces the overflowing case the D10 contract is about.
+  engineId: 'codex',
+  engineDisplayName:
+    'an engine whose chip label is far too long for one rail line',
   provenance: { origin: 'builtin' },
   available: false,
   unavailableReason: 'no enabled LLM provider connection is configured.',

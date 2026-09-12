@@ -460,10 +460,7 @@ async function openDefaultAgentSession(page: import('@playwright/test').Page) {
   await expect(
     page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1),
   ).toBeVisible({ timeout: 15_000 });
-  await page
-    .locator('.chat-dock__tab-actions .chat-dock__new')
-    .nth(1)
-    .dispatchEvent('click');
+  await page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1).click();
   // archive#3309 (`components/agent-selection-policy.ts:129-141`,
   // `ChatDock.tsx:1005-1016`): with exactly one chat-ready agent — which is
   // all this fixture seeds — the dock's New button opens that chat DIRECTLY
@@ -533,12 +530,14 @@ test.describe('Default agent workflow', () => {
       // (`src-ui/src/slashCommands/builtins.ts:70-115`), and with no custom
       // commands and no command skills seeded it says so.
       ['/commands', /No commands defined/],
-      ['/stats', /No conversation ID available/],
+      ['/stats', /Messages: 0\. No usage recorded yet\./],
     ] as const) {
       await textarea.fill(command);
       await sendButton.click();
       await expect(page.locator('body')).toContainText(matcher);
     }
+
+    expect(executionRequests).toHaveLength(0);
 
     await textarea.fill('say hi in 3 words');
     await sendButton.click();
@@ -631,6 +630,12 @@ test.describe('Default agent workflow', () => {
                 answerability: { answerable: true },
               },
               currentSessionId,
+              execution: {
+                sessionId: currentSessionId,
+                agentId: 'station',
+                provider: 'station-agent',
+                model: DEFAULT_AGENT.model,
+              },
               transcript: {
                 available: true,
                 owner: 'runtime',

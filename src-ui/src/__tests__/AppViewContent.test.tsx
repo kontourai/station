@@ -270,7 +270,7 @@ describe('AppViewContent — R3 un-stacking', () => {
         ?.getAttribute('data-route-key'),
     ).toBe('task:task-beta');
   });
-  test('suppresses NewProjectModal on project-new while the setup launcher is blocking full-screen', () => {
+  test('a setup reminder cannot suppress explicit project creation', async () => {
     isBlockingFullScreen = true;
 
     render(
@@ -281,7 +281,7 @@ describe('AppViewContent — R3 un-stacking', () => {
       />,
     );
 
-    expect(screen.queryByTestId('new-project-modal')).toBeNull();
+    expect(await screen.findByTestId('new-project-modal')).toBeTruthy();
   });
 
   test('renders NewProjectModal on project-new once the setup launcher is no longer blocking', async () => {

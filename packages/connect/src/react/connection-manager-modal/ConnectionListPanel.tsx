@@ -53,6 +53,7 @@ interface ConnectionListPanelProps {
   onScanQr: () => void;
   onEnterPairingCode: () => void;
   enterPairingCodeRef?: Ref<HTMLButtonElement>;
+  onPairPhone?: () => void;
   onViewDevices: () => void;
   onDiscover: () => void;
   /**
@@ -450,6 +451,7 @@ export function ConnectionListPanel({
   onScanQr,
   onEnterPairingCode,
   enterPairingCodeRef,
+  onPairPhone,
   onViewDevices,
   onDiscover,
   discoveryAvailable,
@@ -589,53 +591,101 @@ export function ConnectionListPanel({
       </div>
 
       <div className="station-connect-footer">
-        {/* station#4513: the second of the sheet's two intro sentences —
-            deleted; the labeled buttons below already say what each does. */}
-        <button
-          type="button"
-          onClick={() => onRequestAccess()}
-          className="station-connect-btn station-connect-btn--primary"
+        <section
+          className="station-connect-footer__group"
+          aria-label="Connect this device"
         >
-          Request access
-        </button>
-        <button
-          type="button"
-          onClick={onAddManual}
-          className="station-connect-btn station-connect-btn--secondary"
-        >
-          Add a Station address
-        </button>
-        <button
-          type="button"
-          onClick={onScanQr}
-          className="station-connect-btn station-connect-btn--secondary"
-        >
-          Scan a QR code
-        </button>
-        <button
-          ref={enterPairingCodeRef}
-          type="button"
-          onClick={onEnterPairingCode}
-          className="station-connect-btn station-connect-btn--secondary"
-        >
-          Enter a pairing code
-        </button>
-        {discoveryAvailable && (
+          <h3>Connect this device</h3>
+          <p>
+            Request approval from{' '}
+            {connections.find(
+              (connection) => connection.id === activeConnectionId,
+            )?.name ?? 'the selected Station'}{' '}
+            to use it here.
+          </p>
           <button
             type="button"
-            onClick={onDiscover}
+            onClick={() =>
+              onRequestAccess(
+                connections.find(
+                  (connection) => connection.id === activeConnectionId,
+                ),
+              )
+            }
+            className="station-connect-btn station-connect-btn--primary"
+          >
+            Request access
+          </button>
+        </section>
+        <section
+          className="station-connect-footer__group"
+          aria-label="Connect to another Station"
+        >
+          <h3>Connect to another computer</h3>
+          <p>
+            Use its Station address, or a QR code or pairing code created there.
+          </p>
+          <button
+            type="button"
+            onClick={onAddManual}
             className="station-connect-btn station-connect-btn--secondary"
           >
-            Find other Stations
+            Add a Station address
           </button>
-        )}
-        <button
-          type="button"
-          onClick={onViewDevices}
-          className="station-connect-footer__devices"
+          <button
+            type="button"
+            onClick={onScanQr}
+            className="station-connect-btn station-connect-btn--secondary"
+          >
+            Scan a QR code
+          </button>
+          <button
+            ref={enterPairingCodeRef}
+            type="button"
+            onClick={onEnterPairingCode}
+            className="station-connect-btn station-connect-btn--secondary"
+          >
+            Enter a pairing code
+          </button>
+          {discoveryAvailable && (
+            <button
+              type="button"
+              onClick={onDiscover}
+              className="station-connect-btn station-connect-btn--secondary"
+            >
+              Find other Stations
+            </button>
+          )}
+        </section>
+        <section
+          className="station-connect-footer__group"
+          aria-label="Manage access to this Station"
         >
-          Paired devices
-        </button>
+          <h3>Connect another device to this Station</h3>
+          <p>
+            Invite your phone to{' '}
+            {connections.find(
+              (connection) => connection.id === activeConnectionId,
+            )?.name ?? 'the selected Station'}
+            . Both devices use the same Station server.
+          </p>
+          {onPairPhone && (
+            <button
+              type="button"
+              onClick={onPairPhone}
+              className="station-connect-btn station-connect-btn--primary"
+            >
+              Connect another device
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onViewDevices}
+            className="station-connect-footer__devices"
+          >
+            Paired devices
+          </button>
+        </section>
       </div>
     </>
   );

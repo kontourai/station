@@ -318,6 +318,10 @@
   color: var(--text-muted);
 }
 
+.project-page__section-label-icon {
+  vertical-align: -0.15em;
+}
+
 .project-page__section-label {
   font-size: var(--text-sm);
   font-weight: 600;

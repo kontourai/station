@@ -14,6 +14,7 @@ import {
   installE2EMockedStationConnection,
   installE2EWorkspacePaneCatalog,
 } from './helpers/current-station-contract';
+import { dismissSetupLauncher } from './helpers/orchestration';
 
 const STATUS_READY = JSON.stringify({
   ready: true,
@@ -192,12 +193,6 @@ async function seedRoutes(page: import('@playwright/test').Page) {
   ]);
 }
 
-async function dismissSetupLauncher(page: import('@playwright/test').Page) {
-  await page.evaluate(() => {
-    document.querySelector('[data-testid="setup-launcher"]')?.remove();
-  });
-}
-
 async function dragDockTo(page: Page, placement: 'left' | 'right') {
   const handle = page.getByRole('button', { name: 'Move the dock' });
   const handleBox = await handle.boundingBox();
@@ -221,6 +216,17 @@ async function dragDockTo(page: Page, placement: 'left' | 'right') {
   await page.mouse.up();
 }
 
+async function settleDock(page: Page) {
+  const dock = page.locator('.chat-dock');
+  await expect(dock).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  await dock.evaluate(async (element) => {
+    await Promise.allSettled(
+      element.getAnimations().map((animation) => animation.finished),
+    );
+  });
+}
+
 test.describe('Dock Mode Preference', () => {
   test.beforeEach(async ({ page }) => {
     await seedRoutes(page);
@@ -230,11 +236,11 @@ test.describe('Dock Mode Preference', () => {
     page,
   }) => {
     await page.goto('/');
-    await page.waitForTimeout(2000);
+    await settleDock(page);
     await dismissSetupLauncher(page);
 
     await page.locator('.chat-dock__header').click();
-    await page.waitForTimeout(300);
+    await settleDock(page);
 
     const openButton = page
       .locator('.chat-dock__tab-actions .chat-dock__new')
@@ -283,22 +289,6 @@ test.describe('Dock Mode Preference', () => {
     expect(openStyles.height).toBeGreaterThan(28);
     expect(newStyles.height).toBeGreaterThan(28);
     expect(maximizeStyles.height).toBeGreaterThan(28);
-
-    const [openShortcutSize, maximizeShortcutSize] = await Promise.all([
-      openButton
-        .locator('.chat-dock__subtitle')
-        .evaluate((el) => getComputedStyle(el).fontSize),
-      maximizeButton
-        .locator('.chat-dock__subtitle')
-        .evaluate((el) => getComputedStyle(el).fontSize),
-    ]);
-
-    expect(parseFloat(openShortcutSize)).toBeLessThan(
-      parseFloat(openStyles.fontSize),
-    );
-    expect(parseFloat(maximizeShortcutSize)).toBeLessThan(
-      parseFloat(maximizeStyles.fontSize),
-    );
   });
 
   // The current inbox toggle contract unmounts the panel when closed and
@@ -306,59 +296,42 @@ test.describe('Dock Mode Preference', () => {
   test('bottom-mode inbox toggle unmounts the panel and opens it again', async ({
     page,
   }) => {
-    await page.goto('/');
-    await page.waitForTimeout(2000);
+    await page.goto('/?dock=open');
+    await settleDock(page);
     await dismissSetupLauncher(page);
-
-    await page.locator('.chat-dock__header').click();
-    await page.waitForTimeout(300);
-
-    const initiallyClosed = page.getByRole('button', {
+    const more = page.getByRole('button', {
+      name: 'More dock actions',
+      exact: true,
+    });
+    await more.click();
+    const expand = page.getByRole('menuitemcheckbox', {
       name: 'Expand chat list',
+      exact: true,
     });
-    if (await initiallyClosed.isVisible()) {
-      await initiallyClosed.click();
+    if (await expand.isVisible()) {
+      await expand.click();
+      await more.click();
     }
-
-    const tabBarToggle = page.getByRole('button', {
+    const collapse = page.getByRole('menuitemcheckbox', {
       name: 'Collapse chat list',
+      exact: true,
     });
-    await expect(tabBarToggle).toHaveAttribute('aria-pressed', 'true');
-
+    await expect(collapse).toHaveAttribute('aria-checked', 'true');
     const landmark = page.getByRole('complementary', { name: 'Inbox chats' });
     await expect(landmark).toHaveCount(1);
-    const openBox = await page.locator('.chat-dock-inbox').boundingBox();
-    expect(openBox).not.toBeNull();
+    const openBox = await landmark.boundingBox();
     expect(openBox!.width).toBeGreaterThanOrEqual(240);
     expect(openBox!.width).toBeLessThanOrEqual(360);
-
-    await tabBarToggle.click();
-
-    const tabBarToggleCollapsed = page.getByRole('button', {
-      name: 'Expand chat list',
-    });
-    await expect(tabBarToggleCollapsed).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
+    await collapse.click();
     await expect(landmark).toHaveCount(0);
-    await expect(page.locator('.chat-dock-inbox')).toHaveCount(0);
-
-    await tabBarToggleCollapsed.click();
-
-    await expect(tabBarToggle).toHaveAttribute('aria-pressed', 'true');
+    await more.click();
+    await expect(expand).toHaveAttribute('aria-checked', 'false');
+    await expand.click();
     await expect(landmark).toHaveCount(1);
     await expect
-      .poll(
-        async () =>
-          (await page.locator('.chat-dock-inbox').boundingBox())?.width,
-        { timeout: 2000 },
-      )
+      .poll(async () => (await landmark.boundingBox())?.width)
       .toBeGreaterThanOrEqual(240);
-    const reopenedBox = await page.locator('.chat-dock-inbox').boundingBox();
-    expect(reopenedBox).not.toBeNull();
-    expect(reopenedBox!.width).toBeGreaterThanOrEqual(240);
-    expect(reopenedBox!.width).toBeLessThanOrEqual(360);
+    expect((await landmark.boundingBox())!.width).toBeLessThanOrEqual(360);
   });
 
   test('right dock mode never renders the inbox chat list or its toggle', async ({
@@ -371,18 +344,18 @@ test.describe('Dock Mode Preference', () => {
     await page.goto(
       '/projects/dev/layouts/code?dock=open&dockSlotPlacement=right',
     );
-    await page.waitForTimeout(3000);
+    await settleDock(page);
     await dismissSetupLauncher(page);
 
     await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--right/);
     await expect(
       page.getByRole('complementary', { name: 'Inbox chats' }),
     ).toHaveCount(0);
+    await page
+      .getByRole('button', { name: 'More dock actions', exact: true })
+      .click();
     await expect(
-      page.getByRole('button', { name: 'Collapse chat list' }),
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole('button', { name: 'Expand chat list' }),
+      page.getByRole('menuitemcheckbox', { name: /chat list/ }),
     ).toHaveCount(0);
   });
 
@@ -392,7 +365,7 @@ test.describe('Dock Mode Preference', () => {
     await page.goto(
       '/projects/dev/layouts/code?dock=open&dockSlotPlacement=left',
     );
-    await page.waitForTimeout(3000);
+    await settleDock(page);
     await dismissSetupLauncher(page);
 
     const appMain = page.locator('.app__main');
@@ -417,7 +390,7 @@ test.describe('Dock Mode Preference', () => {
       dockBox!.x + dockBox!.width - 2,
     );
 
-    const resizeHandle = page.getByRole('separator', {
+    const resizeHandle = page.getByRole('button', {
       name: 'Resize chat dock',
     });
     const resizeBox = await resizeHandle.boundingBox();
@@ -440,13 +413,15 @@ test.describe('Dock Mode Preference', () => {
     await page.goto(
       '/projects/dev/layouts/code?dock=open&dockSlotPlacement=right',
     );
-    await page.waitForTimeout(3000);
+    await settleDock(page);
     await dismissSetupLauncher(page);
 
     const dock = page.locator('.chat-dock');
     await expect(dock).toHaveClass(/chat-dock--right/);
     await expect(dock).not.toHaveClass(/is-maximized/);
-    await page.getByRole('button', { name: /^Maximize chat dock$/ }).click();
+    await page
+      .getByRole('button', { name: 'Expand dock region to workspace' })
+      .click();
     await expect(dock).toHaveClass(/is-maximized/);
 
     const mainBox = await page.locator('.app__main').boundingBox();
@@ -470,11 +445,11 @@ test.describe('Dock Mode Preference', () => {
     page,
   }) => {
     await page.goto('/projects/dev/layouts/code');
-    await page.waitForTimeout(3000);
+    await settleDock(page);
 
     // Cycle dock mode with keyboard shortcut
     await page.keyboard.press('Meta+Shift+M');
-    await page.waitForTimeout(500);
+    await settleDock(page);
 
     // URL should now contain dockSlotPlacement, cycled from the device setting.
     const url = new URL(page.url());
@@ -497,7 +472,7 @@ test.describe('Dock Mode Preference', () => {
       );
     });
     await page.goto('/projects/dev/layouts/code?dockSlotPlacement=bottom');
-    await page.waitForTimeout(3000);
+    await settleDock(page);
 
     const chatDock = page.locator('.chat-dock');
     await expect(chatDock).toHaveClass(/chat-dock--bottom(?!-)/);
@@ -522,7 +497,7 @@ test.describe('Dock Mode Preference', () => {
     });
 
     await page.goto('/');
-    await page.waitForTimeout(2000);
+    await settleDock(page);
 
     const chatDock = page.locator('.chat-dock');
     await expect(chatDock).toHaveClass(/chat-dock--right/);
@@ -530,36 +505,6 @@ test.describe('Dock Mode Preference', () => {
     // No URL param was written just from resolving the fallback.
     const url = new URL(page.url());
     expect(url.searchParams.has('dockSlotPlacement')).toBe(false);
-  });
-
-  test('an explicit dock-mode choice from the chat settings panel persists to the device-scope store', async ({
-    page,
-  }) => {
-    await page.goto('/');
-    await page.waitForTimeout(2000);
-    await dismissSetupLauncher(page);
-
-    await page.locator('.chat-dock__header').click();
-    await page.waitForTimeout(300);
-    await page.getByTitle('Chat settings').click();
-
-    const modal = page.locator('.chat-settings-modal');
-    await expect(modal).toBeVisible();
-    await modal.getByRole('menuitemradio', { name: 'Right' }).click();
-    await modal.getByRole('button', { name: 'Done' }).click();
-
-    const persistedDockMode = await page.evaluate(() => {
-      const raw = localStorage.getItem('station-device-settings-v1');
-      const envelope = raw ? JSON.parse(raw) : null;
-      return envelope?.values?.dockSlotPlacement ?? null;
-    });
-    expect(persistedDockMode).toBe('right');
-
-    // And the URL param still wins on this same page (existing behavior),
-    // confirming the write-both contract rather than one replacing the
-    // other.
-    const url = new URL(page.url());
-    expect(url.searchParams.get('dockSlotPlacement')).toBe('right');
   });
 
   test('drag left then right persists across reload, and the keyboard placement menu converges on that state', async ({
@@ -615,10 +560,11 @@ test.describe('Dock Mode Preference', () => {
     // that assertion passed on a menu nobody could reach. Measure the box.
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
-    await page.waitForTimeout(2000);
+    await settleDock(page);
     await dismissSetupLauncher(page);
     await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--bottom/);
 
+    await page.locator('.chat-dock__header').hover();
     await page.getByRole('button', { name: 'Move the dock' }).click();
     const menu = page.getByRole('menu', { name: 'Dock placement' });
     await expect(menu).toBeVisible();
@@ -667,12 +613,15 @@ test.describe('Dock Mode Preference', () => {
     page,
   }) => {
     await page.goto('/');
-    await page.waitForTimeout(2000);
+    await settleDock(page);
     await dismissSetupLauncher(page);
     await page.locator('.chat-dock__header').click();
-    await page.getByTitle('Chat settings').click();
-    await page.getByRole('menuitemradio', { name: 'Right' }).click();
-    await page.getByRole('button', { name: 'Done' }).click();
+    await page.locator('.chat-dock__header').hover();
+    await page.getByRole('button', { name: 'Move the dock' }).click();
+    await page
+      .getByRole('menu', { name: 'Dock placement' })
+      .getByRole('menuitemradio', { name: 'Right' })
+      .click();
     await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--right/);
 
     await page.setViewportSize({ width: 390, height: 844 });
@@ -705,28 +654,11 @@ test.describe('Dock Mode — Mobile', () => {
     await seedRoutes(page);
   });
 
-  test('keyboard shortcut text is hidden on mobile', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(2000);
-
-    const subtitles = page.locator('.chat-dock .chat-dock__subtitle');
-    const count = await subtitles.count();
-    // The one-row mobile header renders no shortcut hints at all, which meets
-    // this test's intent more strongly than rendering-then-hiding them. Any
-    // that DO exist must still be hidden, which the loop below enforces.
-    for (let i = 0; i < count; i++) {
-      const display = await subtitles
-        .nth(i)
-        .evaluate((el) => getComputedStyle(el).display);
-      expect(display).toBe('none');
-    }
-  });
-
   test('header controls show icons instead of visible text labels on mobile', async ({
     page,
   }) => {
     await page.goto('/');
-    await page.waitForTimeout(2000);
+    await settleDock(page);
     await dismissSetupLauncher(page);
 
     // archive#972 collapsed the mobile chat chrome to the one-row
@@ -790,7 +722,7 @@ test.describe('Dock Mode — Mobile', () => {
       );
     });
     await page.goto('/projects/dev/layouts/code');
-    await page.waitForTimeout(3000);
+    await settleDock(page);
     await dismissSetupLauncher(page);
 
     const chatDock = page.locator('.chat-dock');

@@ -226,7 +226,7 @@ export function renderMarkdown(source) {
   // item is one block, not one block per line. Open blocks collect their
   // continuation lines until a blank line or another block starts. Lists
   // nest by indentation: a deeper item opens a list inside the current <li>.
-  let listStack = [];
+  const listStack = [];
   let openItem = null;
   let paragraph = [];
 

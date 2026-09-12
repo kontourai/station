@@ -11,7 +11,7 @@ export interface ConversationSessionLineage {
   createdAt: string;
 }
 
-export type ConversationSessionLineageConflictReason =
+type ConversationSessionLineageConflictReason =
   | 'session-already-linked'
   | 'ordinal-already-linked'
   | 'immutable-facts-mismatch';
@@ -39,7 +39,7 @@ export class ConversationSessionLineageConflictError extends Error {
   }
 }
 
-export type ConversationSessionLineageStructureReason =
+type ConversationSessionLineageStructureReason =
   | 'invalid-root'
   | 'missing-predecessor'
   | 'conversation-mismatch'
@@ -76,7 +76,7 @@ export function isSameConversationSessionLineage(
   );
 }
 
-export interface ConversationSessionLineagePersistence {
+interface ConversationSessionLineagePersistence {
   recordInitial(lineage: ConversationSessionLineage): {
     lineage: ConversationSessionLineage;
     outcome: 'created' | 'existing';

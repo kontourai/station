@@ -1,7 +1,7 @@
 import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
 import {
   type FetchSseConnection,
-  fetchMonitoringEvents,
+  fetchMonitoringEventWindow,
   fetchSSE,
   useMonitoringStatsQuery,
 } from '@kontourai/station-sdk';
@@ -190,6 +190,26 @@ function orderedRecentEvents(events: MonitoringEvent[]): MonitoringEvent[] {
     : ordered;
 }
 
+/** The store owns chronology; insert after equal timestamps to keep arrival order. */
+function insertRecentEvent(
+  events: MonitoringEvent[],
+  event: MonitoringEvent,
+): MonitoringEvent[] {
+  const time = monitoringEventTime(event);
+  let low = 0;
+  let high = events.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (monitoringEventTime(events[mid]) <= time) low = mid + 1;
+    else high = mid;
+  }
+  if (low === 0 && events.length === MAX_RETAINED_EVENTS) return events;
+  const result = events.slice();
+  result.splice(low, 0, event);
+  if (result.length > MAX_RETAINED_EVENTS) result.shift();
+  return result;
+}
+
 class MonitoringStore {
   private events: MonitoringEvent[] = [];
   private listeners = new Set<() => void>();
@@ -204,6 +224,7 @@ class MonitoringStore {
     connectionStatus: 'connected' | 'connecting' | 'disconnected' | 'error';
     isLoading: boolean;
     readError: unknown;
+    historyTruncated: boolean;
   } | null = null;
   isLiveMode: boolean = true;
   dateRange: { start?: Date; end?: Date } | null = null;
@@ -219,6 +240,7 @@ class MonitoringStore {
    * independent facts about independent transports.
    */
   readError: unknown = null;
+  private historyTruncated = false;
   /**
    * The bounds the read that produced `readError` actually asked for
    * (archive#3653/archive#3658). Retry must re-ask THAT interval:
@@ -297,6 +319,7 @@ class MonitoringStore {
         connectionStatus: this.connectionStatus,
         isLoading: this.isLoading,
         readError: this.readError,
+        historyTruncated: this.historyTruncated,
       };
     }
     return this.cachedSnapshot;
@@ -322,11 +345,12 @@ class MonitoringStore {
       this.readError = null;
       this.failedWindow = null;
       this.notify();
-      const events = (await fetchMonitoringEvents(
+      const window = await fetchMonitoringEventWindow(
         start,
         end,
         controller.signal,
-      )) as MonitoringEvent[];
+        { limit: MAX_RETAINED_EVENTS },
+      );
       if (
         controller.signal.aborted ||
         generation !== this.hydrationGeneration ||
@@ -334,7 +358,12 @@ class MonitoringStore {
       ) {
         return;
       }
-      this.events = this.mergeHydratedEvents(events);
+      this.events = this.mergeHydratedEvents(
+        window.events as MonitoringEvent[],
+      );
+      this.historyTruncated =
+        window.truncated ||
+        window.events.length + this.liveArrivals.length > MAX_RETAINED_EVENTS;
       this.failedWindow = null;
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -475,10 +504,11 @@ class MonitoringStore {
           // ordering rule the hydration merge uses (see
           // `orderedRecentEvents`), so the list is chronological at every
           // moment rather than only just after a merge.
-          this.events = orderedRecentEvents([...this.events, data]);
+          this.historyTruncated ||= this.events.length === MAX_RETAINED_EVENTS;
+          this.events = insertRecentEvent(this.events, data);
           // Also held unreconciled, so a later hydration snapshot cannot
           // silently drop an event the operator has already been shown.
-          this.liveArrivals = orderedRecentEvents([...this.liveArrivals, data]);
+          this.liveArrivals = insertRecentEvent(this.liveArrivals, data);
           this.notify();
         } catch (error) {
           log.api('Failed to parse event:', error);
@@ -554,6 +584,7 @@ class MonitoringStore {
   clearEvents() {
     this.events = [];
     this.liveArrivals = [];
+    this.historyTruncated = false;
     this.notify();
   }
 }
@@ -597,6 +628,7 @@ export function useMonitoring() {
     connectionStatus: data.connectionStatus,
     isLoading: data.isLoading,
     readError: data.readError,
+    historyTruncated: data.historyTruncated,
     retryRead,
     clearEvents,
     setDateRange,

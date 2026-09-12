@@ -6,6 +6,7 @@
 import {
   useInterruptDelegatedTaskMutation,
   useOrchestrationSessionQuery,
+  useStopProviderTaskMutation,
 } from '@kontourai/station-sdk';
 import {
   cacheInclusiveTotalTokens,
@@ -139,6 +140,20 @@ function TaskRow({
   }, [detail.data]);
   const interrupt = useInterruptDelegatedTaskMutation();
   const stopRequested = interrupt.isPending || interrupt.isSuccess;
+  /**
+   * station#1877: a provider subagent has no delegate thread, so it gets its
+   * own task-scoped control rather than borrowing the delegate one. The
+   * engine emits a `task_notification` with status `stopped`, so the card
+   * settles through the ordinary path and nothing is assumed here.
+   */
+  const stopProviderTask = useStopProviderTaskMutation();
+  const providerSessionThreadId = entry.sessionThreadId ?? '';
+  const isRunningProviderTask =
+    entry.state === 'running' &&
+    entry.stop?.kind === 'provider-task-stop' &&
+    providerSessionThreadId.length > 0;
+  const providerStopRequested =
+    stopProviderTask.isPending || stopProviderTask.isSuccess;
 
   return (
     <li className="background-tasks-sheet__row">
@@ -216,6 +231,30 @@ function TaskRow({
           )}
         </div>
       )}
+      {isRunningProviderTask && (
+        <div className="background-tasks-sheet__task-footer">
+          <span className="background-tasks-sheet__task-actions">
+            <button
+              type="button"
+              className="background-tasks-sheet__action background-tasks-sheet__action--stop"
+              disabled={providerStopRequested}
+              onClick={() =>
+                stopProviderTask.mutate({
+                  threadId: providerSessionThreadId,
+                  taskId: entry.id,
+                })
+              }
+            >
+              {providerStopRequested ? 'Stopping…' : 'Stop'}
+            </button>
+          </span>
+          {stopProviderTask.isError && (
+            <span className="background-tasks-sheet__error" role="alert">
+              Could not stop this subagent. Try again.
+            </span>
+          )}
+        </div>
+      )}
     </li>
   );
 }
@@ -261,6 +300,7 @@ export function BackgroundTasksSheet({
 
   return (
     <ResponsiveDialogSurface
+      layer="popover"
       onClose={onClose}
       ariaLabel="Background tasks"
       overlayClassName="background-tasks-sheet-overlay background-tasks-sheet-overlay--start"

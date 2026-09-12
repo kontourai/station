@@ -166,7 +166,7 @@ export class FleetInferenceRoutingError extends ModelInvocationError {
   }
 }
 
-export interface FleetInferenceModelOptions {
+interface FleetInferenceModelOptions {
   environmentId: string;
   environmentLabel: string | null;
   apiBase: string;

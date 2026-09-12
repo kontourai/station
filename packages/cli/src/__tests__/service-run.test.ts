@@ -6,12 +6,34 @@ import {
   upsertInstance,
 } from '@kontourai/station-shared/instance-registry';
 import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import type { CollectedChildStatus } from '../commands/lifecycle.js';
 import { superviseService } from '../commands/service-run.js';
 
+// The supervisor base was the fixed path `/tmp/station-service`. The
+// escalation-ledger test below really `mkdirSync`s `<base>/logs` and writes a
+// JSON ledger into it, and nothing removed the directory, so it persisted
+// between runs in a directory shared with the whole host.
+//
+// That test cannot read a predecessor's ledger -- it writes its own `[1,2,3]`
+// before the harness and unlinks it in `finally`. The reachable hazard is its
+// SIBLING escalation tests, which read the ledger they expect to be absent:
+// should that `finally` ever fail to run, a stale file from an earlier run of
+// this suite is what they would find. Any other process on the host could also
+// occupy or replace an unowned path.
+//
+// Deriving the base from an owned root makes each run hermetic; `afterAll`
+// removes THIS root. Other `mkdtempSync` roots in this file are pre-existing
+// and still uncleaned.
+const SERVICE_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-service-run-'));
+const SERVICE_BASE = join(SERVICE_TEMP_ROOT, 'station-service');
+
+afterAll(() => {
+  rmSync(SERVICE_TEMP_ROOT, { force: true, recursive: true });
+});
+
 const lifecycle = {
-  baseDir: '/tmp/station-service',
+  baseDir: SERVICE_BASE,
   homeSource: '--base' as const,
   host: '127.0.0.1',
   instanceName: 'service-test',
@@ -93,8 +115,10 @@ function makeSupervisor(options: {
     return 1 as never;
   });
   const publishServiceLiveness = vi.fn();
+  const desktopCompanion = { check: vi.fn() };
   const supervision = superviseService(lifecycle, {
     collect: options.collect as never,
+    desktopCompanion,
     exit,
     needsBuildForInstance: options.needsBuildForInstance,
     // Hermetic: the real publisher writes to `lifecycle.baseDir`, a shared
@@ -122,6 +146,7 @@ function makeSupervisor(options: {
   };
   return {
     exit,
+    desktopCompanion,
     publishServiceLiveness,
     pendingTicks: () => ticks.length,
     runTick,
@@ -133,6 +158,21 @@ function makeSupervisor(options: {
 }
 
 describe('service supervisor', () => {
+  test('maintains the desktop companion only while its owned service remains alive', async () => {
+    const collect = vi
+      .fn()
+      .mockResolvedValue(instanceStatus(okChild(11), okChild(12)));
+    const supervisor = makeSupervisor({ collect });
+    await supervisor.supervision;
+    expect(supervisor.desktopCompanion.check).toHaveBeenCalledTimes(1);
+    await supervisor.runTick();
+    expect(supervisor.desktopCompanion.check).toHaveBeenCalledTimes(2);
+    collect.mockResolvedValue({ found: false });
+    await supervisor.runTick();
+    expect(supervisor.desktopCompanion.check).toHaveBeenCalledTimes(2);
+    expect(supervisor.stop).toHaveBeenCalled();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -571,7 +611,7 @@ describe('service supervisor', () => {
   });
 
   test('a wedge that survived repeated restarts suspends escalation instead of looping (sol #2669 finding 1)', async () => {
-    const ledgerDir = '/tmp/station-service/logs';
+    const ledgerDir = join(SERVICE_BASE, 'logs');
     mkdirSync(ledgerDir, { recursive: true });
     // Three prior escalations "recently" on the harness clock (which starts
     // at 0 and advances 12s per tick) — all within the 15m window.

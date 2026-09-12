@@ -19,7 +19,7 @@ const TENANT_PREFIX = 'personal-controller:';
 
 type PeerSnapshot = NonNullable<ReturnType<PeerCredentialStore['get']>>;
 
-export interface HomeTransferRoomBinding {
+interface HomeTransferRoomBinding {
   readonly tenantId: string;
   readonly channelId: string;
   readonly controllerEnvironmentId: string;
@@ -38,7 +38,7 @@ export interface HomeTransferBoundOwner {
   readonly peerFingerprint: string;
 }
 
-export type HomeTransferOwnerResolutionResult =
+type HomeTransferOwnerResolutionResult =
   | {
       readonly kind: 'bound-owners';
       readonly transfer: PlannedHomeTransfer;
@@ -53,11 +53,11 @@ export type HomeTransferOwnerResolutionResult =
     }
   | { readonly kind: 'denied' | 'conflict' | 'not-found' | 'unavailable' };
 
-export type HomeTransferRoomBindingResult =
+type HomeTransferRoomBindingResult =
   | { readonly kind: 'bound'; readonly binding: HomeTransferRoomBinding }
   | { readonly kind: 'denied' | 'conflict' | 'not-found' | 'unavailable' };
 
-export interface HomeTransferRoomBindingService {
+interface HomeTransferRoomBindingService {
   enroll(
     operatorPrincipal: RuntimeAuthenticatedRequestPrincipal,
     input: {

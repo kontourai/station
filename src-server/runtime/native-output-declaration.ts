@@ -7,6 +7,7 @@
  * must be removed before ordinary tool output is persisted or sent to a
  * client.
  */
+
 import crypto from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
@@ -16,6 +17,7 @@ import type {
   DeclaredSessionOutputRecord,
 } from '@kontourai/station-contracts/session-output-declaration';
 import { DECLARED_SESSION_OUTPUT_V1 } from '@kontourai/station-contracts/session-output-declaration';
+import { isRecord } from '../utils/is-record.js';
 import {
   currentNativeOutputCallScope,
   currentNativeOutputDeclarationOperation,
@@ -25,11 +27,11 @@ import {
 } from './native-output-turn-grant.js';
 
 export const NATIVE_OUTPUT_DECLARATION_TOOL = 'declare_output';
-export const NATIVE_OUTPUT_DECLARATION_MAX_PENDING = 256;
-export const NATIVE_OUTPUT_DECLARATION_TTL_MS = 60_000;
+const NATIVE_OUTPUT_DECLARATION_MAX_PENDING = 256;
+const NATIVE_OUTPUT_DECLARATION_TTL_MS = 60_000;
 export const NATIVE_OUTPUT_DECLARATION_MAX_FILE_BYTES = 5 * 1024 * 1024;
 
-export type NativeOutputDeclarationInput = {
+type NativeOutputDeclarationInput = {
   label?: unknown;
   file?: { path?: unknown; mediaType?: unknown };
   pullRequest?: {
@@ -42,12 +44,12 @@ export type NativeOutputDeclarationInput = {
   };
 };
 
-export type NativeOutputDeclarationToolResult = {
+type NativeOutputDeclarationToolResult = {
   declarationHandle: string;
 };
 
 /** The only declaration result that may cross back into an engine transcript. */
-export type NativeOutputDeclarationPublicResult = {
+type NativeOutputDeclarationPublicResult = {
   declared: true;
   kind: 'workspace-file' | 'pull-request';
   label?: string;
@@ -58,7 +60,7 @@ export type NativeOutputDeclarationPublicResult = {
  * deliberately distinct from a declaration failure: malformed engine input
  * must not reach the operation's authority, capacity, workspace, or PR seams.
  */
-export type NativeOutputDeclarationInputRefusal = {
+type NativeOutputDeclarationInputRefusal = {
   declared: false;
   reason: 'invalid-declaration-input';
 };
@@ -98,10 +100,6 @@ const boundedText = (value: unknown, max: number): string | undefined =>
   typeof value === 'string' && value.length > 0 && value.length <= max
     ? value
     : undefined;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
 
 function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
   return Object.keys(value).every((key) => keys.includes(key));

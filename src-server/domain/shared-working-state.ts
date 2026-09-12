@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { canonicalizeForDigest } from '@kontourai/station-contracts/fleet-routing-receipt';
 import { sharedWorkingStateOperations } from '../telemetry/metrics.js';
+import { isRecord } from '../utils/is-record.js';
 
 /** Station-owned semantics. A transport never supplies a library wire format. */
 export const SHARED_WORKING_STATE_SCHEMA_VERSION = 1 as const;
@@ -13,12 +14,12 @@ export const DEFAULT_RETAINED_WORKING_STATE_OPERATIONS = 256;
 export const DEFAULT_DEFERRED_WORKING_STATE_OPERATIONS = 64;
 export const DEFAULT_DEFERRED_WORKING_STATE_BYTES = 65_536;
 
-export type DocumentId = string;
-export type ReplicaId = string;
-export type ActorId = string;
-export type OperationId = string;
+type DocumentId = string;
+type ReplicaId = string;
+type ActorId = string;
+type OperationId = string;
 export type RevisionId = string;
-export type AtomId = string;
+type AtomId = string;
 
 export interface WorkingStateScope {
   readonly projectId: string;
@@ -60,7 +61,7 @@ export interface InsertTextOperation extends OperationBase {
   readonly text: string;
 }
 
-export interface DeleteTextOperation extends OperationBase {
+interface DeleteTextOperation extends OperationBase {
   readonly kind: 'delete';
   readonly target: readonly AtomId[];
 }
@@ -74,7 +75,7 @@ export interface WorkingStateWriteAuthorization {
   readonly allowedActorIds: ReadonlySet<ActorId>;
 }
 
-export type OperationRejectionReason =
+type OperationRejectionReason =
   | 'malformed'
   | 'unsupported_version'
   | 'wrong_document'
@@ -83,7 +84,7 @@ export type OperationRejectionReason =
   | 'operation_equivocation'
   | 'deferred_limit_exceeded';
 
-export interface DeferredRelease {
+interface DeferredRelease {
   readonly operationId: OperationId;
   readonly outcome: 'applied' | 'rejected';
   readonly reason?: OperationRejectionReason;
@@ -147,7 +148,7 @@ export interface WorkingStateSnapshot {
   }[];
 }
 
-export type ResyncResult =
+type ResyncResult =
   | {
       readonly outcome: 'delta';
       readonly fromRevision: RevisionId;
@@ -160,7 +161,7 @@ export type ResyncResult =
       readonly supportedVersions: readonly number[];
     };
 
-export interface SharedWorkingStateOptions {
+interface SharedWorkingStateOptions {
   readonly scope: WorkingStateScope;
   readonly snapshot?: WorkingStateSnapshot;
   /** Retained replay payloads; requests cannot widen this local safety bound. */
@@ -187,10 +188,6 @@ function digest(value: unknown): string {
   return createHash('sha256')
     .update(JSON.stringify(canonicalizeForDigest(value)) ?? 'null')
     .digest('hex');
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isWellFormedUnicode(value: string): boolean {
@@ -995,7 +992,7 @@ export interface SharedWorkingStateRecoveryPort {
   reconcile(currentLiveAuthorization?: unknown): readonly DeferredRelease[];
 }
 
-export interface SharedWorkingStatePorts {
+interface SharedWorkingStatePorts {
   readonly live: SharedWorkingStateLivePort;
   readonly recovery: SharedWorkingStateRecoveryPort;
 }

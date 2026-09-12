@@ -8,7 +8,7 @@ import { Hono } from 'hono';
 import type { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import type { ClientConnectionPresence } from '../../services/ssh/client-connection-presence.js';
 
-export interface LiveActivityRouteDeps {
+interface LiveActivityRouteDeps {
   readonly roomRuntime?: ProjectTaskRoomRuntime;
   readonly connectedClientPresence: ClientConnectionPresence;
   readonly activePairedDeviceIds: () => readonly string[];

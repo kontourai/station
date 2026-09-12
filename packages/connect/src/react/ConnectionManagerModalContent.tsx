@@ -91,6 +91,7 @@ interface ConnectionManagerModalContentProps {
   originIsStation?: boolean;
   /** Native shell name, when this UI is not running in a browser. */
   hostAppName?: string;
+  pairingClientChannel?: 'stable' | 'beta' | 'nightly';
   /** Native desktop keeps bearer values host-side and disables manual entry. */
   allowManualCredentials?: boolean;
   /** Host-owned request transport for native management routes. */
@@ -161,6 +162,7 @@ export function ConnectionManagerModalContent({
   onPairingReviewDismissed,
   originIsStation = true,
   hostAppName,
+  pairingClientChannel,
   allowManualCredentials = true,
   authenticatedRequest,
   onRestartInjectedConnection,
@@ -214,6 +216,9 @@ export function ConnectionManagerModalContent({
           name: activeConnection.name,
         }
       : null;
+  const [hostPairingReturnPanel, setHostPairingReturnPanel] = useState<
+    'list' | 'devices'
+  >('devices');
   const [panel, setPanel] = useState<ConnectionManagerPanel>(
     // An untargeted request-access panel is the FIRST-RUN shape: it asks for a
     // host address. Showing that to someone re-pairing a saved connection
@@ -374,9 +379,33 @@ export function ConnectionManagerModalContent({
     [cancelCandidateReview],
   );
 
+  // `checkOne` outlives this component by design: the pairing paths close the
+  // manager (`onCloseRef.current()`) and only then start the health check, so
+  // its store writes (handshake reconciliation, success/failure evidence) must
+  // still land after unmount — do not turn this into an abort of the whole
+  // flow. Only the local state updates below are unmount-sensitive. React
+  // drops an update on an unmounted fiber, but resolving its lane first reads
+  // `window.event`, and once a jsdom test environment has been torn down that
+  // is a ReferenceError inside a promise nothing awaits: the Nightly shard
+  // failed on exactly that with every test green.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const checkOne = useCallback(
     async (conn: SavedConnection) => {
-      setHealthMap((m) => ({ ...m, [conn.id]: null }));
+      const setHealthIfMounted = (
+        update: (
+          m: Record<string, boolean | null>,
+        ) => Record<string, boolean | null>,
+      ) => {
+        if (mountedRef.current) setHealthMap(update);
+      };
+      setHealthIfMounted((m) => ({ ...m, [conn.id]: null }));
       let publicHandshakeVerified = false;
       try {
         const targetUrl = conn.endpointCandidate?.url ?? conn.url;
@@ -437,12 +466,14 @@ export function ConnectionManagerModalContent({
           throw new Error('public_handshake_rejected');
         }
       } catch {
-        setSelectionError(
-          `Could not verify ${conn.name || conn.url} as a Station. Check its address and Station version, then try again.`,
-        );
+        if (mountedRef.current) {
+          setSelectionError(
+            `Could not verify ${conn.name || conn.url} as a Station. Check its address and Station version, then try again.`,
+          );
+        }
       }
       if (conn.endpointCandidate) {
-        setHealthMap((m) => ({ ...m, [conn.id]: false }));
+        setHealthIfMounted((m) => ({ ...m, [conn.id]: false }));
         return;
       }
       const result = await checkHealth(
@@ -462,7 +493,7 @@ export function ConnectionManagerModalContent({
             ? result.reason
             : 'unreachable',
         );
-        setHealthMap((m) => ({ ...m, [conn.id]: false }));
+        setHealthIfMounted((m) => ({ ...m, [conn.id]: false }));
         return;
       }
       if (ok) {
@@ -478,7 +509,7 @@ export function ConnectionManagerModalContent({
             : 'unreachable',
         );
       }
-      setHealthMap((m) => ({ ...m, [conn.id]: ok }));
+      setHealthIfMounted((m) => ({ ...m, [conn.id]: ok }));
     },
     [
       checkHealth,
@@ -867,7 +898,7 @@ export function ConnectionManagerModalContent({
             {defaultMutationError}
           </div>
         )}
-        {selectionError && (
+        {selectionError && panel !== 'request-access' && (
           <div
             role="status"
             className="station-connect-row__meta station-connect-row__meta--warning"
@@ -950,6 +981,10 @@ export function ConnectionManagerModalContent({
             onEnterPairingCode={() => {
               restorePairingCodeFocusRef.current = true;
               setPanel('pair-code');
+            }}
+            onPairPhone={() => {
+              setHostPairingReturnPanel('list');
+              setPanel('pair-host');
             }}
             onViewDevices={() => setPanel('devices')}
             discoveryAvailable={providerCount > 0}
@@ -1064,22 +1099,26 @@ export function ConnectionManagerModalContent({
             request={authenticatedRequest}
             allowManualCredentials={allowManualCredentials}
             hostAppName={hostAppName}
-            onPairDevice={() => setPanel('pair-host')}
+            onPairDevice={() => {
+              setHostPairingReturnPanel('devices');
+              setPanel('pair-host');
+            }}
             onBack={() => setPanel('list')}
           />
         )}
 
         {panel === 'pair-host' && (
           <HostDevicePairingPanel
+            initialClientChannel={pairingClientChannel}
             apiBase={activeConnection?.url ?? window.location.origin}
-            publicEndpoint={window.location.origin}
+            publicEndpoint={activeConnection?.url ?? window.location.origin}
             getCredential={() =>
               activeConnection
                 ? getConnectionCredential(activeConnection.id)
                 : undefined
             }
             request={authenticatedRequest}
-            onCancel={() => setPanel('devices')}
+            onCancel={() => setPanel(hostPairingReturnPanel)}
           />
         )}
 

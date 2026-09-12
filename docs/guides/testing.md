@@ -1,5 +1,43 @@
 # Testing Guide
 
+## Repository-wide code health
+
+`npm run audit:code-health` runs the installed Fallow version's full dead-code,
+complexity, and duplication analyses. It also records a byte-hashed inventory
+of the tracked and unignored tree, including extensionless launchers and native
+entrypoints. Unrecognized files remain visible instead of being silently excluded. The normal
+`npm run fallow:audit` command is a changed-file review, not a full-tree audit.
+
+`npm run test:full:audit` is the coordinated full-corpus diagnostic that continues
+after independent assertion failures. It has a 60-minute aggregate execution
+budget and retains the existing cataloged per-group budgets; individual test
+timeouts are unchanged. It retains a failing verdict and stops on
+cancellation, truncated output, or unsafe process cleanup. The ordinary
+`npm run test:full` retains its fail-fast behavior. Neither is promotion evidence.
+
+For an exhaustive repair pass, collect the complete independent failure set with
+`npm run test:full:audit` before starting another repair batch. Record each failure
+as a product defect, fixture or assertion defect, environmental failure, or
+unresolved; retain its revision, reproduction, and evidence for that classification.
+A timeout alone does not establish flakiness. Fix confirmed causes with focused
+regressions, then freeze the candidate for completion verification. Any source
+change requires fresh evidence for the affected completion scope; diagnostic
+passes from different revisions cannot be combined into a green completion claim.
+
+Read `.kontourai/veritas/external/fallow-audit.json` and its linked raw reports.
+A missing metric or incomplete tool invocation is an error, never zero findings.
+The inventory does not follow symbolic links. Analyzer configuration, supported
+languages, public exports, and ignore patterns remain explicit limits; native
+code needs the native checks separately. Estimated coverage is not test execution.
+
+Triage candidates against callers before deletion. Worker entrypoints, build
+recipes, fixtures, generated browser bundles, and public package exports often
+have no ordinary import edge. Complexity alone does not justify extracting
+wrappers or splitting a cohesive validator. Keep a ledger of confirmed findings,
+false positives with caller evidence, fixes, measurements, and unverified areas.
+An exhaustive inventory must never be reported as exhaustive manual review or
+as proof that no improvements remain.
+
 ## Fixture fidelity and test effectiveness
 
 Blocking checks must name the failure they prevent. Documentation gates should
@@ -8,6 +46,41 @@ boundaries; prose wording and line wrapping are editorial, not release criteria.
 For shared behavior changes, inspect dependent callers and tests, and exercise
 the production integration point rather than a retired helper or mock seam.
 Keep a known-bad catch case and a harmless-change control when repairing a gate.
+
+Fixtures that hold startup or shutdown gates must release them during teardown
+even when an assertion fails. Wait for the owned lifecycle signal within the
+test's existing overall budget instead of adding an unrelated polling deadline.
+Cached data alone does not prove that a refresh succeeded; cover failed refreshes
+and subsequent recovery when asserting readiness or performance marks.
+Record both ends of a reference timing interval through the same clock
+representation. Keep the ordering validator strict; epoch conversion can lose
+precision even when both values came from the same browser clock.
+Match browser apply marks to the committed authority revision using browser-local
+ordering. A server timestamp is not an operation identity. Preserve raw times
+and let timing validation reject incompatible clock evidence; never clamp it.
+For bundle growth, compare emitted rules as well as source imports. Tailwind
+scans text, including comments and fixtures, so a prose-only change can emit an
+unused utility. Attribute the generated rule before changing a CSS ceiling;
+remove accidental utility generation instead of charging it to a feature.
+Exercise read-only POST routes through the global HTTP middleware as well as
+their route handler. They must not broadcast data-change invalidations: doing
+so makes an active query refetch itself. Keep positive controls for real writes,
+and preserve authentication and request-budget enforcement independently.
+
+For read-cost regressions, assert file reads or payload construction through the
+real request/component owner, then change the backing data and re-read. A cache
+that is fast only because it returns stale or cross-user data is a regression.
+Time-window pruning must use observed event timestamps, not ingest filenames.
+Collapsed payloads should construct their bodies only after expansion. Browser
+geometry requires the real component, styles, and normal user actions; CSS-text
+checks cannot prove that a target is visible or clickable. Helpers used only by
+tests cannot establish that their intended caller still exists.
+
+The fixture guard rejects the narrow `if (stored) { expect(...) }` pattern when
+`stored` is a localStorage observation and there is no alternative assertion.
+It is a syntax check, not a general assertion-strength proof. Seed legacy values
+and inspect the current store's persisted envelope when testing migrations.
+
 
 Changed-test diagnostics retain up to 32 explicit test targets even when broader
 verification is deferred. Their failures block fast feedback; their passes remain
@@ -28,6 +101,15 @@ Use this route for weak-test cleanup, fixture repairs, and performance work. The
 
 ### Authoring fixtures
 
+The E2E runner confines external-session observation to temporary history roots
+using `STATION_EXTERNAL_CODEX_SOURCE_ROOT` and
+`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`. The `smoke-live` server retains the host's
+CLI authentication configuration so installed-CLI journeys can execute real
+turns. Other suites also isolate the CLI configuration directories. Fixture
+writers always receive temporary provider directories; never seed test history
+into the host's authenticated CLI home or treat an empty auth directory as
+evidence that the host is logged out.
+
 Use the shared typed factory and assert the rendered engine/model/approval state before exercising that path. A chat titled “Claude” is not evidence that it runs in the external-engine mode. For restored chats, supply the authoritative conversation-open response and the conversation-scoped transcript endpoint; sessionStorage is only a client seed. In a mock API router, declare optional reads with their actual envelopes or a deliberate unavailable response. End an unknown branch with `rejectUnexpectedFixtureRequest` and use the audited `test` fixture so those failures cannot disappear at teardown.
 
 User journeys use normal `click`, `fill`, keyboard, and pointer actions. Do not use forced clicks, `dispatchEvent('click')`, DOM `.click()`, or remove a disabled/inert guard to get past an obstruction. Establish the right surface first, then assert its prerequisite. A test may deliberately inject provider protocol events or a clipboard payload when that is its named seam; this is not a substitute for a user's click.
@@ -44,7 +126,7 @@ Per-journey files describe the measured phase; only a completed wrapper summary 
 
 ### Mutation safety and interpretation
 
-`test:mutation:smoke` runs five curated defects: eager unused highlighting, missing empty-state rendering, repeated acknowledgement reads, property-order-dependent scope identity, and missing fixture engine identity. Select one with `--case=<id>`. New cases belong in the runner's registry and must name both the source mutation and the exact failing assertion.
+`test:mutation:smoke` runs curated source and fixture defects covering rendering, scope and engine identity, repeated reads, storage migration, indexed-event selection, API-base publication, and readiness-fixture premises. The readiness cases prove that missing or mismatched decoys fail the fixture premise instead of passing while testing nothing. Select one with `--case=<id>`. The runner registry owns the case inventory; new cases must name the mutation and exact failing assertion. Budget three runs of the target file per case: baseline, injected, and restored.
 
 The runner requires a clean linked worktree, takes an exclusive lock, owns the test process tree, and retains baseline/injected/restored logs and recovery bytes under `.kontourai/test-mutations/`. An import error, missing test, wrong root, timeout, truncated output, or unrelated failure is not catch evidence. Restoration only replaces the exact injected bytes; intervening edits are preserved. After an abnormal interruption, inspect the record and run `npm run test:mutation:smoke -- --recover=<path/to/recovery.json>` on the same revision. Recovery refuses a live owner and verifies original bytes against git. Run the case again after recovery.
 
@@ -84,6 +166,18 @@ marks incomplete identities instead of presenting aggregate counts as a
 diagnosable bundle, and `incompleteReasons` names every shortfall in words
 rather than leaving a bare `complete: false`.
 
+Changed-test execution discovers Vitest's related files first, combines them
+with the enabled explicit manifest targets, and runs each selected file once.
+The subset uses the same resource groups and worker limits as `test:full`:
+ordinary files use four workers, process-heavy files use two, and exclusive
+or shared-output groups run serially. Groups run in sequence. Deferred lanes
+remain deferred; this grouping does not broaden a bounded CI selection.
+Discovery has a 60-second deadline and a 1 MiB output limit. Discovery and
+test commands own their process trees, including cancellation and settlement.
+Missing or unsafe selected files and discovery failures stop execution and
+produce a preparation error in the diagnostic; they never count as executed
+tests or a passing empty selection.
+
 Test outcomes are read from Vitest's own report, never derived by subtraction.
 `executed` counts what actually ran (`passed + failed`); a deliberate skip
 (`describe.skipIf`) and a `test.todo` are itemised as `skipped` and `todo`
@@ -107,6 +201,14 @@ evidence: it runs base-pinned affected Vitest tests followed by fixed bounded
 invariants, not the global static/build chain or full corpus.
 Ordinary pull requests use focused evidence plus `npm run ci:fast`.
 GitHub's merge queue runs the required checks on the synthesized latest-main candidate.
+The iOS relevance check compares pull-request and merge-queue candidates from
+their merge base to the candidate head, so changes added only to a newer base
+do not trigger a candidate build. The shared change classifier retains direct
+before-to-after ranges for push classification, while the iOS workflow keeps
+running every admitted push and manual dispatch. The `pull_request_target` job
+executes the base-controlled classifier and runs the iOS check when that
+classifier is missing, fails, or returns anything other than one exact
+`relevant=true` or `relevant=false` line.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
@@ -137,7 +239,7 @@ npm run verify                    # broad diagnostic escalation when explicitly 
 npm run test:focused -- <file...> # pinned single-file runs (never ad hoc `npx vitest` — it can resolve a sibling worktree's config; see AGENTS.md)
 npm run test:coverage             # with coverage report
 npm run install:playwright        # install repo-local Chromium once (E2E specs AND test:full's BannerHost touch-target check)
-npm run install:playwright:ci     # install Chromium plus OS dependencies for CI runners
+npm run install:playwright:ci     # CI runners: Chromium into the ambient PLAYWRIGHT_BROWSERS_PATH, bounded retry, no root (station#1648)
 npm run test:e2e:product          # promoted product Playwright suite via ./station temp-home instance
 npm run test:e2e:starter-clean-install  # fresh-home Starter journey; inherited telemetry is disabled
 npm run test:e2e:smoke-live       # live app smoke via ./station temp-home instance
@@ -243,6 +345,58 @@ which already contains current `main` and any earlier queued changes. The
 physical Windows
 workflow remains a separate post-merge hardware-reference diagnostic and does
 not replace the PR gate.
+
+### Unified usability feedback
+
+The fresh-home workflow combines its route walkthrough, core-loop receipts,
+UI sweep result, and semantic image review into one report. The implementation
+is `scripts/usability-feedback.mjs`; the workflow uploads `report.json` and
+`report.md` and updates one rolling comment on the audit batch issue.
+
+Run the existing walkthrough and core-loop commands first, then:
+
+```bash
+UI_AUDIT_REVISION=$(git rev-parse HEAD) node scripts/usability-feedback.mjs
+```
+
+Only `test-results/fresh-home-walkthrough/gallery/*.png` is sent for image
+review. Use isolated test homes, not personal desktop captures. The reviewer
+uses `OPENAI_API_KEY`, optional `OPENAI_BASE_URL`, and `UI_REVIEW_MODEL` (matching
+the repository review model by default). The hosted workflow reuses the
+repository's existing review credential. It sends four images per request,
+records their SHA-256 hashes, and requires an acknowledgement of every image.
+Missing credentials, missing artifacts, invalid output, incomplete responses,
+and unexercised journeys are `NOT_VERIFIED`. Exit 0 means all reported checks
+passed; 1 means a failure or candidate visual finding; 2 means incomplete
+coverage. Local callers must provide `UI_SWEEP_RESULT=success` only after
+actually running the UI sweep.
+
+For a local review using the installed Muse CLI and its configured provider,
+set `UI_REVIEW_BACKEND=muse`. This does not require the CI review API key.
+Muse receives only the named screenshots and review prompt; shell, file writes,
+web tools, personal context, and session logging are disabled for that run.
+The same per-image accounting and completed-response validation still apply.
+For gallery-only input, place `capture.json` and its PNGs under `<input>/gallery`:
+
+```bash
+UI_AUDIT_REVISION=<captured-commit-sha> UI_REVIEW_BACKEND=muse \
+  node scripts/usability-feedback.mjs <input> <report-directory> --gallery-only
+```
+
+The default Responses API backend remains available through `OPENAI_API_KEY`,
+`OPENAI_BASE_URL`, and `UI_REVIEW_MODEL`. Image capability and funded access
+must both be available; missing credentials or partial responses remain
+`NOT_VERIFIED`, while visible defect candidates retain `FAIL`.
+
+Image findings are candidates requiring reproduction, not permission to edit
+code or replace reference images. The exact pixel comparison remains a separate
+check against the reviewed gallery baseline below. A screenshot audit cannot
+establish model/cache continuity, device delivery, or the absence of a transient
+error between frames. Exercise those journeys and retain their separate results.
+For UI repairs, capture the failing state, add a meaningful behavior or browser
+geometry regression, fix it, and repeat the same action sequence. Include narrow
+regions inside wide windows, hover and keyboard focus, external sessions, and
+reconnection; do not merely reload the default home screen.
 
 ### Targeted screenshot capture and the baseline diff loop (station#4464)
 
@@ -358,12 +512,64 @@ Baseline artifacts (both committed):
   the committed baseline — a last resort, not a first move. `screenshot:diff`
   then skips it **loudly** (named in the table as `skipped-volatile`),
   never silently folding it into "unchanged" and never failing the run over
-  it.
+  it. Such a screen gets no `<name>.png`: `screenshot:baseline` stores no
+  image for it and `screenshot:diff` never reads one. If you want a reference
+  purely for human eyeballing, hand-add it as
+  `tests/screenshots.baseline/<name>.reference.png` — a name no capture
+  writes, and the only one a full-run regeneration preserves (#1652). A file
+  at `<name>.png` for a volatile entry is an unclaimed leftover and the next
+  full-run regeneration deletes it; a partial run prunes nothing either way.
 
 Typical loop: `npm run test:e2e:screenshot -- --screens=<touched screens>`,
 then `npm run screenshot:diff -- --screens=<touched screens>` to see whether
 the change moved any pixels, without paying for a full 29-screen run or
 committing a new baseline until the change is intentional.
+
+#### Where the gate runs, and which renderer the baseline is bound to
+
+`.github/workflows/nightly-gallery.yml` runs the capture and the exact diff
+daily, in a **digest-pinned Playwright container** on a hosted runner. That is
+not an implementation detail: the comparator hashes a decoded RGBA buffer with
+no threshold, so a baseline is only meaningful against the renderer that
+produced it, and that renderer has to be reproducible. `--font-sans` resolves
+to `"DM Sans", system-ui, sans-serif` and the bundled woff2 subsets cover
+latin + latin-ext only, so the glyphs the UI draws for `⌘`, `⋯`, `→`, `●` and
+`✓` come from the **host's** fonts — pinning the image by digest pins the
+rasterizer, fontconfig and that font set together. The job logs the Playwright
+build and the resolved font families for exactly this reason.
+
+**The render container's font set is part of the baseline.** A hash captured
+under one font set is not a claim about the UI alone; it is a claim about the
+UI as drawn by that container's fonts, and changing the image's fonts
+invalidates every baseline exactly as a product change would.
+`npm run ui-glyph-coverage:ratchet` (in `verify:static`) derives which
+codepoints that applies to, by parsing the `unicode-range` declarations out of
+`src-ui/src/fonts.css` and requiring every uncovered codepoint the UI ships to
+be declared in `scripts/ui-glyph-coverage-allowlist.json` with a reason
+(#1649). Read that allowlist as the list of glyphs the baseline is borrowing
+from the container. It does not prove any of them renders — nothing in this
+repository opens a font — only that the dependency is written down. Note that
+DM Sans is published in latin and latin-ext only, so this cannot be closed by
+re-subsetting; #1704 shrinks it by replacing the icon-shaped glyphs.
+
+Two consequences worth stating plainly:
+
+- **Regenerate a baseline from the CI renderer, not from a laptop**, and as its
+  own commit that changes nothing else. A regeneration on a developer machine
+  bakes in that machine's fonts along with whatever upstream drift has
+  accumulated, under whoever happens to be holding the branch.
+- **Bump the container in lockstep with `@playwright/test`**, and expect a
+  re-baseline to be part of that change. A rebuilt base image published under
+  the same tag is a different renderer wearing the same name, which is why the
+  pin is a digest rather than `v1.62.1-noble`.
+
+  What is enforced, and what is not: `ci-workflow-contract.test.ts` asserts the
+  **version** in the image reference equals the `@playwright/test` version
+  resolved in `pnpm-lock.yaml` (the lockfile, not the caret range in
+  `package.json`, so a resolved minor bump cannot slip past). The **digest** is
+  not checked and cannot be — nothing in this repository derives it. A digest
+  that no longer matches its tag's contents therefore surfaces as a Playwright
+  launch error in the nightly, not as a silent renderer change.
 
 ### Region grid parity (`scripts/region-grid-parity.mjs`)
 
@@ -489,7 +695,7 @@ If verification succeeds but guard finalization cannot finish, the runner report
 next install until it is inspected. Unexpected guard children are never
 recursively deleted. This is cooperative install coordination and a recovery
 aid for generated dependencies, not a rollback transaction or user-data backup:
-workspace-local dependency trees and lockfiles remain npm-owned, and no
+workspace-local dependency trees and lockfiles remain pnpm-owned, and no
 hostile same-user/path-swap or power-loss archive guarantee is made.
 
 `npm run dependencies:ci` does **not** provision Playwright browsers. The
@@ -563,6 +769,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `test-changed` | `npm run test:changed` | per-edit local feedback | Vitest related imports + dynamic-boundary edges | changed-scope selector | diagnostic | test-impact manifest |
 | `prepush` | `npm run test:prepush` | pre-push / focused floor | prepare:verify-static + prepush test tier | focused floor | diagnostic | prepush test-group manifest |
 | `test-full` | `npm run test:full` | diagnostic full corpus | resource-profiled Vitest corpus + dogfood-reconcile | static / integration | diagnostic | command only |
+| `test-full-audit` | `npm run test:full:audit` | repository-wide diagnostic audit | complete Vitest corpus, retaining independent failures | static / integration | diagnostic | command only |
 | `test-coverage` | `npm run test:coverage` | explicit coverage / risk | serialized coverage corpus + dogfood-reconcile | static / integration | diagnostic | command only |
 | `verify-static` | `npm run verify:static` | diagnostic static gate | node-runtime, naming, UI-contract, platform, workflow ratchets, lint, typecheck | static / integration | diagnostic | command only |
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |

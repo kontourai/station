@@ -26,6 +26,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { npmInvocation } from './lib/npm-cli.mjs';
 
 const ROOT = process.cwd();
 const EXAMPLES_DIR = join(ROOT, 'examples');
@@ -153,7 +154,8 @@ function buildExample(dir, name) {
   const scripts = JSON.parse(readFileSync(pkgPath, 'utf8')).scripts ?? {};
   if (!scripts.build) return { name, status: 'no-build-script' };
 
-  const result = spawnSync('npm', ['run', 'build'], {
+  const npm = npmInvocation(['run', 'build']);
+  const result = spawnSync(npm.command, npm.args, {
     cwd: dir,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],

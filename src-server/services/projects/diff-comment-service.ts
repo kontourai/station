@@ -14,7 +14,10 @@ import type {
   DiffComment,
   DiffCommentCreateInput,
 } from '@kontourai/station-contracts/diff-comment';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  type FileMutationLock,
+} from '@kontourai/station-shared/lifecycle-events';
 import {
   reviewCommentsCreated,
   reviewCommentsDeleted,
@@ -23,20 +26,14 @@ import {
 import { JsonFileStore } from '../infra/json-store.js';
 
 type DiffCommentStore = Pick<JsonFileStore<DiffComment[]>, 'read' | 'write'>;
-// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
-// so a contended acquisition yields the event loop; sync test fakes remain
-// assignable (awaiting a non-promise is a no-op).
-type DiffCommentMutationLock = (
-  lockPath: string,
-) => (() => void | Promise<void>) | Promise<() => void | Promise<void>>;
 type DiffCommentStoreFactory = (storePath: string) => DiffCommentStore;
 
 const GENERATED_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-export interface DiffCommentServiceOptions {
+interface DiffCommentServiceOptions {
   /** Injectable only for deterministic cross-process mutation tests. */
-  acquireMutationLock?: DiffCommentMutationLock;
+  acquireMutationLock?: FileMutationLock;
   /** Injectable only for durable-write fault-injection tests. */
   storeFactory?: DiffCommentStoreFactory;
 }
@@ -64,7 +61,7 @@ export class DiffCommentStoreUnavailableError extends Error {
 }
 
 export class DiffCommentService {
-  private readonly acquireMutationLock: DiffCommentMutationLock;
+  private readonly acquireMutationLock: FileMutationLock;
   private readonly storeFactory: DiffCommentStoreFactory;
 
   constructor(options: DiffCommentServiceOptions = {}) {

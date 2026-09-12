@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const box = vi.hoisted(() => ({
   apiBase: 'https://monitoring-hydration.example.test',
+  truncated: false,
 }));
 const fetchHistorical = vi.hoisted(() => vi.fn());
 const sse = vi.hoisted(() => ({
@@ -24,7 +25,10 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: box.apiBase }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
-  fetchMonitoringEvents: fetchHistorical,
+  fetchMonitoringEventWindow: async (...args: unknown[]) => ({
+    events: await fetchHistorical(...args),
+    truncated: box.truncated,
+  }),
   fetchSSE,
   useMonitoringStatsQuery: () => ({ data: undefined }),
 }));
@@ -74,6 +78,7 @@ const event = (name: string) => [
 describe('MonitoringContext historical hydration', () => {
   afterEach(() => {
     vi.clearAllMocks();
+    box.truncated = false;
   });
 
   test('newer remount hydration wins when an older request resolves last', async () => {
@@ -540,4 +545,40 @@ describe('MonitoringContext historical hydration', () => {
       'newer historical',
     );
   });
+});
+
+test('a bounded hydration discloses truncation and a live insertion does not re-sort the retained corpus', async () => {
+  let timeReads = 0;
+  const events = Array.from({ length: 1000 }, (_, index) => ({
+    timestamp: new Date(index * 1000).toISOString(),
+    get 'timestamp.ms'() {
+      timeReads++;
+      return index * 1000;
+    },
+    'trace.id': String(index),
+    'gen_ai.operation.name': 'invoke_agent',
+    'span.kind': 'start',
+  }));
+  box.apiBase = 'https://monitoring-insertion-cost.example.test';
+  box.truncated = true;
+  fetchHistorical.mockResolvedValue(events);
+  const mounted = renderHook(() => useMonitoring(), { wrapper });
+  await waitFor(() => expect(mounted.result.current.events).toHaveLength(1000));
+  expect(fetchHistorical.mock.calls.at(-1)?.[3]).toEqual({ limit: 1000 });
+  expect(mounted.result.current.historyTruncated).toBe(true);
+  timeReads = 0;
+  act(() =>
+    sse.onMessage?.({
+      data: JSON.stringify({
+        timestamp: new Date(500500).toISOString(),
+        'timestamp.ms': 500500,
+        'trace.id': 'late',
+      }),
+    }),
+  );
+  expect(mounted.result.current.events).toHaveLength(1000);
+  expect(mounted.result.current.events[500]['trace.id']).toBe('late');
+  expect(timeReads).toBeLessThan(20);
+  mounted.unmount();
+  box.truncated = false;
 });

@@ -249,6 +249,16 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   })),
   journeys: [
     {
+      path: 'tests/connect-modal.spec.ts',
+      journey:
+        'manual connection consent, keyboard access, and saved host management',
+    },
+    {
+      path: 'tests/connect-remote-auth-recovery.spec.ts',
+      journey:
+        'phone connection access and authenticated recovery before protected bootstrap',
+    },
+    {
       path: 'tests/csp-shell.spec.ts',
       journey: 'built shell startup and connection recovery navigation',
     },
@@ -303,10 +313,16 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
   parallelSafe: [
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
+    'tests/sidebar-file-intake.spec.ts',
+    'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
+    'tests/code-block-actions.spec.ts',
+    'tests/model-visibility.spec.ts',
+    'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
+    'tests/monitoring-and-chrome.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
     'tests/sidebar-geometry.spec.ts',
     'tests/project-lifecycle.spec.ts',
@@ -536,6 +552,36 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/code-block-actions.spec.ts',
+    bucket: 'product',
+    surface: 'Long transcript code blocks',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production code-block frame and styles bundled in memory; browser layout drives the long-block boundary. Clipboard success/refusal is a browser-local fixture, with no OS clipboard or live Station writes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/model-visibility.spec.ts',
+    bucket: 'product',
+    surface: 'Provider model preferences',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production provider form and device preference store bundled in memory with one unused SDK query stub. Browser-local interactions prove provider bulk visibility, preserved default model, keyboard operation and phone-sized light/dark controls. No live instance or shared outputs.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/image-preview-inspection.spec.ts',
+    bucket: 'product',
+    surface: 'Chat and workspace image previews',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real production image inspector and dialog components with browser-decoded PNG input; verifies zoom, pointer and touch pan, keyboard and gallery focus, full backdrop coverage, failure state and narrow theme/rotation geometry. Bundling is in-memory; no live Station instance or shared output writes.',
+    exceptions: [],
+  },
+  {
     path: 'tests/agent-editor-geometry.spec.ts',
     bucket: 'product',
     surface: 'Agents',
@@ -616,6 +662,26 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/sidebar-file-intake.spec.ts',
+    bucket: 'product',
+    surface: 'Sidebar file intake',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production sidebar rows, composer receiver and upload staging with exact HTTP fixtures. CDP supplies an external file drag from a test-owned output file; draft preservation and no-send behavior are asserted.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/attention-file-replies.spec.ts',
+    bucket: 'product',
+    surface: 'Attention input replies',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real input-reply, file normalization, staging and SDK clients with exact browser-local HTTP and model-observation fixtures; covers upload failure, immutable send retry, separate drafts and request/authority changes, with no live service writes.',
+    exceptions: [],
+  },
+  {
     path: 'tests/diagnostics-bundle.spec.ts',
     bucket: 'product',
     surface: 'Settings',
@@ -623,6 +689,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Diagnostics bundle download, dated filename, canonical failure state, and retry behavior.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/monitoring-and-chrome.spec.ts',
+    bucket: 'product',
+    surface: 'Monitoring',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Mounted payload work and real responsive chrome geometry; replaces source-string layout claims.',
     exceptions: [],
   },
   {
@@ -734,6 +810,26 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/workspace-pane-host-actions.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves one host action bar across direct and placed real Project Pane routes, keyboard Agent selection and 390px reflow. Provider transport is intercepted; server integration separately proves actual captured invocation.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/workspace-pane-host-actions-live.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real browser host action through SDK, HTTP and captured permission/Agent admission into the external Muse echo provider, with exact turn completion read from EventStore and displayed in conversation. Requires ready Muse; no paid model or route interception.',
+    exceptions: [],
+  },
+  {
     path: 'tests/default-agent-workflow.spec.ts',
     bucket: 'product',
     surface: 'Agents',
@@ -764,9 +860,11 @@ export const e2eManifest = [
       'rather than living in tests/android/, whose lane a src-ui change never ' +
       'triggers (build-android.yml is path-filtered to src-desktop and six ' +
       'named scripts), so the guard would never have run where it is needed.',
-    // The 390/360 cases are skipped with #1401 named as the reason, not
-    // deleted: un-skipping them is the check that proves that fix.
-    exceptions: ['test.skip'],
+    // No exception any more: the 390 and 360 cases were skipped with the fix
+    // that would un-skip each named in its own reason, and both have landed
+    // (#1401/#1424 for 390, #1132 for 360). All four widths are enforced, so
+    // the file carries no `test.skip` for this to exempt.
+    exceptions: [],
   },
   {
     path: 'tests/mobile-dock-clearance.spec.ts',
@@ -1549,7 +1647,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'station#3805: one unmocked browser journey from a newly created, runner-owned home through explicit model setup, first-run completion, real direct-chat Work, a real scheduled-check Starter, reload, and exact Scheduler receipt/output inspection. It proves no Project or Task is silently seeded, inherits no telemetry configuration, and uses an explicit healthy resource observation so unrelated host load cannot substitute an honest deferral for this product-path proof.',
+      'station#3805: one unmocked browser journey from a newly created, runner-owned home through explicit model setup, first-run completion, real direct-chat Work, explicit opt-in to developer tools for the scheduled-check Starter, reload, and exact Scheduler receipt/output inspection. It proves no Project or Task is silently seeded, inherits no telemetry configuration, and uses an explicit healthy resource observation so unrelated host load cannot substitute an honest deferral for this product-path proof.',
     exceptions: [],
   },
   {
@@ -1683,15 +1781,6 @@ export const e2eManifest = [
     exceptions: ['waitForTimeout'],
   },
   {
-    path: 'tests/android/app-load.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale: 'Android app-load coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
     path: 'tests/android/desktop-regression.spec.ts',
     bucket: 'android',
     surface: 'Android',
@@ -1699,7 +1788,7 @@ export const e2eManifest = [
     primary: false,
     rationale:
       'Android desktop-regression coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
+    exceptions: [],
   },
   {
     path: 'tests/android/landscape-chrome.spec.ts',
@@ -1720,31 +1809,12 @@ export const e2eManifest = [
     exceptions: ['waitForTimeout'],
   },
   {
-    path: 'tests/android/navigation.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale: 'Android navigation coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
     path: 'tests/android/split-pane-mobile.spec.ts',
     bucket: 'android',
     surface: 'Android',
     tierTarget: 'partial',
     primary: false,
     rationale: 'Android split-pane coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
-    path: 'tests/android/webview-compat.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale:
-      'Android webview compatibility coverage runs in the Android matrix.',
     exceptions: ['waitForTimeout'],
   },
 ];

@@ -14,7 +14,7 @@ export interface UsagePricingSnapshotCapture {
   }): Promise<PricingSnapshot | undefined>;
 }
 
-export interface BedrockPricingCatalogAuthority {
+interface BedrockPricingCatalogAuthority {
   getModelPricing(region?: string): Promise<ModelPricing[]>;
 }
 

@@ -1,7 +1,25 @@
-import { homedir } from 'node:os';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from 'vitest';
 import { expandTilde, resolveHomeDir } from '../paths.js';
+
+// `/tmp/station-home` was a fixed name in the shared system temp directory, so
+// any other process on the host could leave a regular file there and break this
+// test for a reason unrelated to `resolveHomeDir` (#1790). Own the root.
+const TEST_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-paths-test-'));
+const STATION_HOME_DIR = join(TEST_TEMP_ROOT, 'station-home');
+
+afterAll(() => {
+  rmSync(TEST_TEMP_ROOT, { force: true, recursive: true });
+});
 
 describe('resolveHomeDir', () => {
   let saved: string | undefined;
@@ -16,8 +34,8 @@ describe('resolveHomeDir', () => {
   });
 
   test('uses STATION_HOME when set', () => {
-    process.env.STATION_HOME = '/tmp/station-home';
-    expect(resolveHomeDir()).toBe('/tmp/station-home');
+    process.env.STATION_HOME = STATION_HOME_DIR;
+    expect(resolveHomeDir()).toBe(STATION_HOME_DIR);
   });
 
   test('defaults to the stable runtime below STATION_ROOT when unset', () => {

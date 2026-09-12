@@ -451,13 +451,58 @@ describe('TerminalService', () => {
     }
   });
 
-  test('write is no-op for unknown session', () => {
+  // Both cases used to assert nothing at all ("should not throw"), which a
+  // method that closed the WRONG session, or wrote into one, would also
+  // satisfy. Each opens a real session first so "no-op" has something
+  // observable to be a no-op against.
+
+  test('write for an unknown session id reaches no live PTY', async () => {
+    await svc.open({
+      projectSlug: 'live',
+      terminalId: 't1',
+      cwd: homedir(),
+      cols: 80,
+      rows: 24,
+    });
+    const proc = await pty.spawn.mock.results[0]!.value;
+    proc.write.mockClear();
+
     svc.write('unknown:t1', 'data');
-    // Should not throw
+
+    expect(proc.write).not.toHaveBeenCalled();
+    expect(svc.readProcess('unknown:t1')).toBeNull();
+    expect(svc.listProcessSummaries().map((s) => s.sessionId)).toEqual([
+      'live:t1',
+    ]);
   });
 
-  test('close is no-op for unknown session', async () => {
-    await svc.close('unknown:t1');
-    // Should not throw
+  test('close for an unknown session id leaves the live session open', async () => {
+    const history = createMockHistoryStore();
+    const local = new TerminalService(pty as any, history as any);
+    try {
+      await local.open({
+        projectSlug: 'live',
+        terminalId: 't1',
+        cwd: homedir(),
+        cols: 80,
+        rows: 24,
+      });
+      const proc = await pty.spawn.mock.results[0]!.value;
+      proc.kill.mockClear();
+      history.save.mockClear();
+
+      await local.close('unknown:t1');
+
+      // `close` returns before its side effects when the id is unknown: no
+      // kill, no persist, and the real session is still running.
+      expect(proc.kill).not.toHaveBeenCalled();
+      expect(history.save).not.toHaveBeenCalled();
+      expect(local.readProcess('live:t1')?.process.status).toBe('running');
+      expect(local.listProcessSummaries().map((s) => s.sessionId)).toEqual([
+        'live:t1',
+      ]);
+    } finally {
+      await local.dispose();
+    }
   });
 });

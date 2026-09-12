@@ -95,11 +95,17 @@ describe('the connection banner slot bounds without reserving', () => {
     expect(critical).toMatch(/z-index:\s*auto/);
     const [criticalCard] = ruleBodiesFor(
       css,
-      '.app__main:has(> .chat-dock.is-maximized) > .banner-host.banner-host--critical-chrome :is(.banner-host__item--critical-chrome, .banner-host__cap--critical-chrome)',
+      '.app__main:has(> .chat-dock.is-maximized) > .banner-host--critical-chrome .banner-host__item--critical-chrome',
     );
     expect(criticalCard).toBeDefined();
+    // #1132: the card moved a tier up when the cap joined it above the dock,
+    // so the cap can stay tucked BEHIND the card it hangs off while both
+    // clear the dock. Equal tiers would have painted the cap's border and
+    // background over the card's bottom edge (the cap is a later sibling).
+    // The cap's own half of this contract is pinned in
+    // `critical-chrome-over-maximized-region.test.tsx`.
     expect(criticalCard).toMatch(
-      /z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/,
+      /z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*2\)/,
     );
   });
 

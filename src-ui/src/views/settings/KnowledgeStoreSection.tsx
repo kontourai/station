@@ -33,7 +33,6 @@ import { useState } from 'react';
 import { ArchiveGlyph, BrainGlyph } from '../../components/icons/Glyph';
 import { PathAutocomplete } from '../../components/PathAutocomplete';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
-import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { errorText } from '../../utils/errorText';
 import './KnowledgeStoreSection.css';
@@ -47,7 +46,6 @@ const OBSIDIAN_ADAPTER_ID = 'kit-obsidian-store';
  * ever shown while there is no personal root yet (a user has exactly one
  * personal root — once it exists there is nothing left to connect). */
 function ConnectObsidianVault() {
-  const { apiBase } = useApiBase();
   const createRoot = useCreateKnowledgeRootMutation();
   const validateRoot = useValidateKnowledgeRootMutation();
   const [open, setOpen] = useState(false);
@@ -85,7 +83,6 @@ function ConnectObsidianVault() {
           setValidated(null);
         }}
         placeholder="/path/to/vault"
-        apiBase={apiBase}
         className="editor-input knowledge-store-section__obsidian-input"
       />
       <span className="settings__field-hint">
@@ -154,17 +151,7 @@ function ConnectObsidianVault() {
   );
 }
 
-/**
- * `guard` is `SettingsView.tsx`'s own `useUnsavedGuard` guard (
- * finding, 1) — the "Open Knowledge infrastructure" cross-link
- * below must route through it like every other navigation trigger on a page
- * with dirty state.
- */
-export function KnowledgeStoreSection({
-  guard,
-}: {
-  guard: (callback: () => void) => void;
-}) {
+export function KnowledgeStoreSection() {
   const { navigate } = useNavigation();
   const rootsQuery = useKnowledgeRootsQuery();
   const adaptersQuery = useKnowledgeAdaptersQuery();
@@ -192,7 +179,7 @@ export function KnowledgeStoreSection({
           <button
             type="button"
             className="button button--link"
-            onClick={() => guard(() => navigate('/connections/knowledge'))}
+            onClick={() => navigate('/connections/knowledge')}
           >
             Open Knowledge infrastructure
           </button>

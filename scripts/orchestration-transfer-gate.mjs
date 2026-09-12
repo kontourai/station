@@ -208,13 +208,37 @@ export function primaryCheckoutRoot(candidateRoot) {
 }
 
 /**
+ * The one place a baseline's directory name is spelled.
+ *
+ * Exported because `scripts/worktree-hygiene.mjs` has to recognise these to
+ * report them, and a prefix restated in two files is the drift this repository
+ * has been bitten by before. A reader of the inventory cannot otherwise tell a
+ * regenerable baseline from a bisect or a review pin: both are detached HEADs.
+ */
+export const TRANSFER_BASELINE_PREFIX = '4294-transfer-baseline-';
+
+/**
+ * The base SHA a path names, or null when the path is not a baseline.
+ *
+ * Deliberately derives nothing from the filesystem: this answers "what does
+ * this NAME claim", so a caller can compare that claim against the worktree's
+ * actual HEAD rather than trusting the directory name.
+ */
+export function transferBaselineShaFromPath(path) {
+  const name = basename(String(path).replace(/[/]+$/, ''));
+  if (!name.startsWith(TRANSFER_BASELINE_PREFIX)) return null;
+  const sha = name.slice(TRANSFER_BASELINE_PREFIX.length);
+  return /^[0-9a-f]{12}$/.test(sha) ? sha : null;
+}
+
+/**
  * Where a baseline belongs relative to a given checkout root: a sibling of the
  * checkout, never nested inside it. A nested checkout makes one repository
  * look like many to anything walking the tree (`scripts/worktree-hygiene.mjs`
  * exists to flag exactly that), and nothing reaps what it cannot find.
  */
 export function baselineRootFor(checkoutRoot, baseSha) {
-  const name = `4294-transfer-baseline-${baseSha.slice(0, 12)}`;
+  const name = `${TRANSFER_BASELINE_PREFIX}${baseSha.slice(0, 12)}`;
   const parent = dirname(resolve(checkoutRoot));
   return basename(parent) === 'station-worktrees'
     ? resolve(parent, name)

@@ -113,6 +113,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { errorMessage } from '../../utils/error-message.js';
 import { JsonFileStore } from '../infra/json-store.js';
 
 /** File name under the Station home. */
@@ -179,7 +180,7 @@ export interface ProjectResourceShadowRecord {
   entries: ShadowRecordEntry[];
 }
 
-export type ShadowRecordRead =
+type ShadowRecordRead =
   /** No file. The observer has never recorded a comparison in this home. */
   | { state: 'never-observed'; path: string }
   /**
@@ -340,7 +341,7 @@ function readRecordFile(filePath: string): RecordFileRead {
   } catch (error) {
     return {
       kind: 'unusable',
-      reason: error instanceof Error ? error.message : String(error),
+      reason: errorMessage(error),
     };
   }
   // VERSION BEFORE SHAPE, and the order is the whole point (round 3, MEDIUM).
@@ -519,7 +520,7 @@ export function recordShadowComparison(
  * would let one blind spot hide behind another (protocol §6, "prefer an
  * exact set to a floor").
  */
-export interface ShadowPopulation {
+interface ShadowPopulation {
   id: string;
   /** What real-world shape produces it, for the reader's own output. */
   description: string;

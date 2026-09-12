@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
-import { expect, type Page, type TestInfo, test } from '@playwright/test';
+import { expect, type Page, type TestInfo } from '@playwright/test';
 import { createDailyDriverScenarioObservation } from '../scripts/lib/daily-driver-scenario-observation.mjs';
 import {
   buildLongSessionTurns,
@@ -20,6 +20,7 @@ import {
   seedDailyDriverShell,
   transcriptLocator,
 } from './helpers/daily-driver-shell';
+import { test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
   waitForMockOrchestrationSse,
@@ -306,18 +307,21 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
       const settleThread = SETTLE_THREADS[path.profile]!;
       const failureThread = FAILURE_THREADS[path.profile]!;
       const settledAnswer = `Settled answer for ${path.profile}.`;
-      // The serving Station's own session record: empty until the failure
-      // phase, then the failed session archive#3213's banner exists for.
+      // Use the ordinary declared Session records until the failure phase
+      // supplies the failed record archive#3213's banner exists for.
       // Typed against the SDK's own summary rather than a bag of fields: a
       // rename on the server's serializer then breaks typecheck here instead
       // of leaving this scenario green on a shape the product stopped
       // emitting. It does not pin field SEMANTICS — only the shape.
-      let sessionReadModel: OrchestrationSessionSummary[] = [];
+      let sessionReadModel: OrchestrationSessionSummary[] | undefined;
       const shell = await seedDailyDriverShell(page, {
         agents: SHELL_AGENTS,
         conversations: SHELL_CONVERSATIONS,
         extraRoutes: async (routePath, route) => {
-          if (routePath !== '/api/orchestration/sessions/read-model')
+          if (
+            routePath !== '/api/orchestration/sessions/read-model' ||
+            sessionReadModel === undefined
+          )
             return false;
           await route.fulfill({
             status: 200,
@@ -603,6 +607,7 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
         {
           conversationId: path.conversationId,
           agentSlug: path.agentSlug,
+          connectionId: path.connectionId,
           title: `${path.runtimeName} agreement`,
           model: path.model,
         },
@@ -890,12 +895,14 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
         {
           conversationId: threadId,
           agentSlug: path.agentSlug,
+          connectionId: path.connectionId,
           title: `${path.runtimeName} stress`,
           model: path.model,
         },
         {
           conversationId: STRESS_SIBLING_THREAD,
           agentSlug: 'claude',
+          connectionId: 'claude',
           title: 'Stress sibling',
         },
       ]);
@@ -905,11 +912,13 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
         turnCount: 1_000,
       });
       await page.route(
-        `**/api/orchestration/sessions/${threadId}/event-window**`,
+        `**/api/orchestration/conversations/${threadId}/event-window**`,
         createLongSessionEventWindowHandler({
           threadId,
+          conversationId: threadId,
           provider: path.provider,
           availableTurns: () => turns,
+          currentSessionId: () => shell.sessionIds(threadId).at(-1) ?? threadId,
         }),
       );
 
@@ -931,20 +940,49 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
 
       // 1. Stream while scrolled up: an incoming turn must not hijack the
       // reader's scroll position, and mounted rows must stay bounded.
-      await transcript.evaluate((element) => {
-        element.scrollTop = Math.max(
-          1,
-          Math.floor(element.scrollHeight / 2) - element.clientHeight,
-        );
-        // Wheel-then-scroll is how a real reader leaves the tail; the
-        // transcript's follow-the-tail state keys off user gestures, not
-        // bare programmatic scrollTop writes.
-        element.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
-        element.dispatchEvent(new Event('scroll', { bubbles: true }));
-      });
-      const scrollBefore = await transcript.evaluate(
-        (element) => element.scrollTop,
+      await transcript.hover();
+      const wheelDelta = await transcript.evaluate(
+        (element) =>
+          Math.floor(element.scrollHeight / 2) -
+          element.clientHeight -
+          element.scrollTop,
       );
+      await page.mouse.wheel(0, wheelDelta || -1);
+      let anchor: { id: string; offset: number } | null = null;
+      let stableSamples = 0;
+      await expect
+        .poll(
+          async () => {
+            const current = await transcript.evaluate((element) => {
+              const bounds = element.getBoundingClientRect();
+              const row = [
+                ...element.querySelectorAll<HTMLElement>(
+                  '[data-transcript-row]',
+                ),
+              ].find((node) => {
+                const rect = node.getBoundingClientRect();
+                return rect.bottom > bounds.top && rect.top < bounds.bottom;
+              });
+              return row
+                ? {
+                    id: row.dataset.transcriptRow!,
+                    offset: row.getBoundingClientRect().top - bounds.top,
+                  }
+                : null;
+            });
+            stableSamples =
+              current &&
+              anchor?.id === current.id &&
+              Math.abs(anchor.offset - current.offset) <= 1
+                ? stableSamples + 1
+                : 0;
+            anchor = current;
+            return stableSamples;
+          },
+          { message: 'reader anchor did not settle after wheel input' },
+        )
+        .toBeGreaterThanOrEqual(2);
+      const retainedAnchor = anchor!;
       const scrolledTurnId = `dd-stress-${path.profile}-scrolled`;
       const scrolledText = `Scrolled-up stream for ${path.profile}.`;
       await emitTurnEvent(page, {
@@ -962,14 +1000,30 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
           method: 'content.text-delta',
           extra: { itemId: scrolledTurnId, delta: `${scrolledText} ` },
         });
-      const scrollAfter = await transcript.evaluate(
-        (element) => element.scrollTop,
-      );
-      const scrollHeldDuringStream = Math.abs(scrollAfter - scrollBefore) <= 2;
-      expect(
-        scrollHeldDuringStream,
-        `performance-stress (${path.profile}): streaming while scrolled up must not move the reader; scrollTop ${scrollBefore} -> ${scrollAfter}`,
-      ).toBe(true);
+      // Live content has its own renderer until the turn settles; it is not
+      // counted in the historical virtualizer's retained-row total yet.
+      await expect(
+        transcript.getByText(scrolledText, { exact: false }),
+      ).toBeVisible();
+      const readerDrift = () =>
+        transcript.evaluate((element, saved) => {
+          const row = [
+            ...element.querySelectorAll<HTMLElement>('[data-transcript-row]'),
+          ].find((node) => node.dataset.transcriptRow === saved.id);
+          return row
+            ? Math.abs(
+                row.getBoundingClientRect().top -
+                  element.getBoundingClientRect().top -
+                  saved.offset,
+              )
+            : Number.POSITIVE_INFINITY;
+        }, retainedAnchor);
+      await expect
+        .poll(readerDrift, {
+          message: `performance-stress (${path.profile}): streaming moved the retained reader anchor`,
+        })
+        .toBeLessThanOrEqual(2);
+      const scrollHeldDuringStream = (await readerDrift()) <= 2;
       const mountedRowsDuringStream = await mountedTranscriptRows(page);
       await emitTurnEvent(page, {
         threadId,

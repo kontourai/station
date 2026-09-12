@@ -126,6 +126,17 @@ export interface ProviderDiscardSessionRecovery {
   resumeCursor?: unknown;
 }
 
+/**
+ * Outcome of a task-scoped stop.
+ *
+ * `no-active-task` is a normal race, not a failure: a subagent can settle
+ * between a client rendering its stop control and the request arriving.
+ */
+export type ProviderTaskStopResult =
+  | { outcome: 'stopped'; taskId: string }
+  | { outcome: 'no-active-task'; taskId: string }
+  | { outcome: 'unsupported' };
+
 /** Target-specific result of an interrupt request. */
 export type ProviderInterruptTurnResult =
   | { outcome: 'cancelled'; turnId: string }
@@ -192,6 +203,20 @@ export interface ProviderAdapterShape {
   ): Promise<ProviderInterruptTurnResult>;
   /** Present only when the adapter has a real additive-input channel for a running turn. */
   steerTurn?(threadId: string, input: string, turnId: string): Promise<void>;
+  /**
+   * Stop ONE provider-reported subagent without ending the turn or its
+   * siblings.
+   *
+   * Present only where the engine exposes a task-scoped stop. Absent is the
+   * honest answer for an engine whose only stop is turn-scoped: the caller
+   * must not fall back to interrupting the turn, because that ends every
+   * other running subagent too — the precise outcome this seam exists to
+   * avoid.
+   */
+  stopProviderTask?(
+    threadId: string,
+    taskId: string,
+  ): Promise<ProviderTaskStopResult>;
   respondToRequest(
     threadId: string,
     requestId: string,
@@ -302,7 +327,7 @@ export function isProviderAdapterShape(
   );
 }
 
-export type ProviderAdapterRegistrationProvenance = 'builtin' | 'plugin';
+type ProviderAdapterRegistrationProvenance = 'builtin' | 'plugin';
 
 const providerAdapterProvenance = new WeakMap<
   ProviderAdapterShape,

@@ -1,5 +1,9 @@
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  captureLoggerLines,
+  stopLoggerCaptures,
+} from '../../../__test-utils__/logger-capture.js';
 import { BedrockAdapter } from '../../../providers/adapters/bedrock-adapter.js';
 import { OllamaAdapter } from '../../../providers/adapters/ollama-adapter.js';
 import { EventBus } from '../../orchestration/event-bus.js';
@@ -41,6 +45,7 @@ describe('runtime auth health monitor', () => {
     // restores ALL mocks (spies included) after every test regardless of
     // whether the test's own `mockRestore()` ran, so one red stays one red.
     vi.restoreAllMocks();
+    stopLoggerCaptures();
   });
 
   test.each([
@@ -376,7 +381,7 @@ describe('runtime auth health monitor', () => {
 
   test('station#3509: a user-initiated cancellation is not a malformed turn.completed', () => {
     const bus = new EventBus();
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warning = captureLoggerLines();
     const monitor = new RuntimeAuthHealthMonitor(bus);
     bus.emit(
       SERVER_EVENTS.ORCHESTRATION_EVENT,
@@ -411,8 +416,8 @@ describe('runtime auth health monitor', () => {
     );
 
     expect(monitor.getFailure('codex')).not.toBeNull();
-    expect(warning).not.toHaveBeenCalled();
-    warning.mockRestore();
+    expect(warning.at('warn')).toHaveLength(0);
+    warning.stop();
     monitor.dispose();
   });
 
@@ -508,7 +513,7 @@ describe('runtime auth health monitor', () => {
   // now proves the ACCEPTANCE path executes too.
   test("a well-formed finishReason: 'other' does not trip the malformed diagnostic, and still does not clear a recorded auth failure", () => {
     const bus = new EventBus();
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warning = captureLoggerLines();
     const monitor = new RuntimeAuthHealthMonitor(bus);
     bus.emit(
       SERVER_EVENTS.ORCHESTRATION_EVENT,
@@ -530,11 +535,11 @@ describe('runtime auth health monitor', () => {
     // Half 1: well-formed, not malformed. Pre-fix, this event alone made
     // EventBus's listener catch fire and console.warn once; this asserts it
     // did not.
-    expect(warning).not.toHaveBeenCalled();
+    expect(warning.at('warn')).toHaveLength(0);
     // Half 2: still no clear authority. The auth failure recorded by the
     // first event must survive untouched.
     expect(monitor.getFailure('codex')).not.toBeNull();
-    warning.mockRestore();
+    warning.stop();
     monitor.dispose();
   });
 
@@ -556,7 +561,7 @@ describe('runtime auth health monitor', () => {
 
   test('ignores unrelated canonical runtime methods without a health diagnostic', () => {
     const bus = new EventBus();
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warning = captureLoggerLines();
     const monitor = new RuntimeAuthHealthMonitor(bus);
     bus.emit(
       SERVER_EVENTS.ORCHESTRATION_EVENT,
@@ -568,8 +573,8 @@ describe('runtime auth health monitor', () => {
     );
 
     expect(monitor.getFailure('codex')).toBeNull();
-    expect(warning).not.toHaveBeenCalled();
-    warning.mockRestore();
+    expect(warning.at('warn')).toHaveLength(0);
+    warning.stop();
     monitor.dispose();
   });
 
@@ -846,7 +851,7 @@ describe('runtime auth health monitor', () => {
   test('emits one generic diagnostic for a malformed relevant event without retaining its contents', () => {
     const bus = new EventBus();
     const changed = vi.fn();
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warning = captureLoggerLines();
     bus.subscribe((event) => {
       if (event.event === SERVER_EVENTS.RUNTIME_HEALTH_CHANGED) changed(event);
     });
@@ -870,19 +875,17 @@ describe('runtime auth health monitor', () => {
 
     expect(monitor.getFailure('codex')).toBeNull();
     expect(changed).not.toHaveBeenCalled();
-    expect(warning).toHaveBeenCalledTimes(1);
-    expect(warning).toHaveBeenCalledWith(
-      'Event listener threw; keeping the subscription:',
-      SERVER_EVENTS.ORCHESTRATION_EVENT,
-      expect.objectContaining({
-        name: 'RuntimeAuthHealthEventDiagnostic',
+    expect(warning.at('warn')).toHaveLength(1);
+    expect(warning.at('warn')[0]).toMatchObject({
+      msg: 'Event listener threw; keeping the subscription',
+      event: SERVER_EVENTS.ORCHESTRATION_EVENT,
+      error: expect.objectContaining({
+        type: 'RuntimeAuthHealthEventDiagnostic',
         message: 'Runtime authentication health event is invalid.',
       }),
-    );
-    expect(JSON.stringify(warning.mock.calls)).not.toContain(
-      'secret-token-value',
-    );
-    warning.mockRestore();
+    });
+    expect(JSON.stringify(warning.lines())).not.toContain('secret-token-value');
+    warning.stop();
     monitor.dispose();
   });
 
@@ -991,22 +994,22 @@ describe('runtime auth health monitor', () => {
     },
   ])('diagnoses malformed relevant event without mutation: %o', (event) => {
     const bus = new EventBus();
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warning = captureLoggerLines();
     const monitor = new RuntimeAuthHealthMonitor(bus);
     bus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, { event });
 
     expect(monitor.getFailure('codex')).toBeNull();
-    expect(warning).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(warning.mock.calls)).not.toContain(
+    expect(warning.at('warn')).toHaveLength(1);
+    expect(JSON.stringify(warning.lines())).not.toContain(
       JSON.stringify(event),
     );
-    warning.mockRestore();
+    warning.stop();
     monitor.dispose();
   });
 
   test('does not let malformed terminal events clear a recorded failure', () => {
     const bus = new EventBus();
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warning = captureLoggerLines();
     const monitor = new RuntimeAuthHealthMonitor(bus);
     bus.emit(
       SERVER_EVENTS.ORCHESTRATION_EVENT,
@@ -1054,14 +1057,14 @@ describe('runtime auth health monitor', () => {
     // Both malformed events throw the identical diagnostic message, so
     // EventBus's per-listener same-message throttle (event-bus.ts) collapses
     // them into one warning rather than two.
-    expect(warning).toHaveBeenCalledTimes(1);
-    warning.mockRestore();
+    expect(warning.at('warn')).toHaveLength(1);
+    warning.stop();
     monitor.dispose();
   });
 
   test('keeps provider streak state bounded without silently evicting it', () => {
     const bus = new EventBus();
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warning = captureLoggerLines();
     const monitor = new RuntimeAuthHealthMonitor(bus, {
       maxProviders: 2,
     });
@@ -1083,15 +1086,15 @@ describe('runtime auth health monitor', () => {
     expect(monitor.getFailure('codex')).not.toBeNull();
     expect(monitor.getFailure('claude')).not.toBeNull();
     expect(monitor.getFailure('bedrock')).toBeNull();
-    expect(warning).toHaveBeenCalledWith(
-      'Event listener threw; keeping the subscription:',
-      SERVER_EVENTS.ORCHESTRATION_EVENT,
-      expect.objectContaining({
-        name: 'RuntimeAuthHealthCapacityError',
+    expect(warning.at('warn')[0]).toMatchObject({
+      msg: 'Event listener threw; keeping the subscription',
+      event: SERVER_EVENTS.ORCHESTRATION_EVENT,
+      error: expect.objectContaining({
+        type: 'RuntimeAuthHealthCapacityError',
         message:
           'Runtime authentication health provider capacity is exhausted.',
       }),
-    );
+    });
 
     bus.emit(
       SERVER_EVENTS.ORCHESTRATION_EVENT,
@@ -1103,7 +1106,7 @@ describe('runtime auth health monitor', () => {
     );
     fail('bedrock');
     expect(monitor.getFailure('bedrock')).not.toBeNull();
-    warning.mockRestore();
+    warning.stop();
     monitor.dispose();
   });
 

@@ -7,7 +7,7 @@ import {
   captureReturnFocus,
   restoreReturnFocus,
 } from '@kontourai/station-shared/return-focus';
-import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { buildInfo } from '../../build-info';
 import { useAllActiveChats } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
@@ -16,7 +16,10 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
-import { useNavigation } from '../../contexts/NavigationContext';
+import {
+  useNavigation,
+  useNavigationActions,
+} from '../../contexts/NavigationContext';
 import { openChatsStore, useOpenChats } from '../../contexts/open-chats-store';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
@@ -59,10 +62,20 @@ const loadSidebarOpenChats = () =>
  */
 export const OPEN_CHATS_SIDEBAR_CAP = 3;
 
-export function ProjectSidebar() {
+function ProjectSidebarImpl() {
   const { projects, isLoading } = useProjects();
-  const { selectedProject, selectedProjectLayout, navigate, pathname } =
-    useNavigation();
+  // The rows under this component are not memoized, so this subscription is
+  // what decides whether they re-render: a whole-snapshot read re-rendered
+  // every mounted row on every dock toggle, font-size write and
+  // workspace-pane change. These three fields are all the sidebar reads.
+  const { selectedProject, selectedProjectLayout, pathname } = useNavigation(
+    (state) => ({
+      selectedProject: state.selectedProject,
+      selectedProjectLayout: state.selectedProjectLayout,
+      pathname: state.pathname,
+    }),
+  );
+  const { navigate } = useNavigationActions();
   // #928 C2a: Home is a region surface whose only placement is `main`, so
   // "go Home" REVEALS it — `showSurface('home')` places it in `main` and the
   // model navigates to `/` — rather than navigating to `/` and showing
@@ -97,8 +110,6 @@ export function ProjectSidebar() {
     platformProfile.clientBuild?.builtAt,
     { development: platformProfile.isDevBuild },
   );
-  const clientBuildLabel =
-    clientBuild.state === 'available' ? `Built ${clientBuild.age}` : undefined;
   const homeLabel = platformProfile.isTauri
     ? [
         appName,
@@ -287,8 +298,6 @@ export function ProjectSidebar() {
           appName={appName}
           homeLabel={homeLabel}
           channelBadge={releaseChannelBadge}
-          buildLabel={clientBuildLabel}
-          buildDescription={clientBuild.description}
           collapsed={effectiveCollapsed}
           isMobile={isMobile}
           onCloseMobile={() => setMobileOpen(false)}
@@ -552,3 +561,14 @@ export function ProjectSidebar() {
     </>
   );
 }
+
+/**
+ * The sidebar takes no props, so this boundary is total: it re-renders for
+ * its own subscriptions (navigation selector, projects, chats, device
+ * settings — context and store reads reach a memoized component unchanged)
+ * and for nothing its parent does. `App` reads the whole navigation snapshot,
+ * including the `lastProject` memory a selector cannot see, so without this
+ * every mounted row still re-rendered on every dock toggle through App's
+ * re-render, whatever this component subscribed to.
+ */
+export const ProjectSidebar = memo(ProjectSidebarImpl);

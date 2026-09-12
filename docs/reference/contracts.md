@@ -113,3 +113,9 @@ It supplies no candidate kind, deployment scope, owner projection identity,
 promotion verdict, or effect result. Generic record `active` is not learning
 activation. All restricted/unavailable/refused outcomes omit source identity.
 The full `LearningReviewProjection` lifecycle contract is unchanged.
+
+`AttentionInputReplyContext` on the attention subpath projects one exact open
+input request's reply binding and declared file/image transport. `needs_input`
+items may carry `inputReference`; approval/permission references keep their
+separate meaning. `OrchestrationSendTurnInput.expectedInputRequest` is a
+constraint, not a grant, and is removed before the adapter receives input.

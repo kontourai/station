@@ -14,6 +14,40 @@ import { dirname } from 'node:path';
 import { fsyncDirectorySync } from './fs-windows-compat.js';
 
 /**
+ * How a value becomes the bytes on disk.
+ *
+ * Both durable seams own the temp/fsync/rename sequence but not the document
+ * format, because a store's existing file IS its format: migrating a writer
+ * that emits compact JSON, or one that omits the trailing newline, must not
+ * silently rewrite every reader's bytes. Each seam keeps its own historical
+ * default, so a caller that passes nothing is byte-identical to before.
+ */
+export interface JsonSerializationOptions {
+  /**
+   * `JSON.stringify` indent. `null` selects the compact single-line form —
+   * distinct from omitting the field, which takes the seam's default. Read
+   * this field with an explicit `undefined` check: `?? default` would turn a
+   * deliberate `null` into the default and quietly re-indent the store.
+   */
+  indent?: number | null;
+  /** Whether the document ends with a newline. */
+  trailingNewline?: boolean;
+}
+
+/** The one place an indent/newline choice becomes bytes. */
+export function serializeJsonDocument(
+  value: unknown,
+  indent: number | null,
+  trailingNewline: boolean,
+): string {
+  const body =
+    indent === null
+      ? JSON.stringify(value)
+      : JSON.stringify(value, null, indent);
+  return trailingNewline ? `${body}\n` : body;
+}
+
+/**
  * Writes JSON so that a reader after a crash sees either the previous bytes or
  * the new ones, never a torn file.
  *
@@ -28,7 +62,11 @@ import { fsyncDirectorySync } from './fs-windows-compat.js';
  * two of them skipped the final directory fsync, which is the step whose
  * absence is invisible until a machine loses power.
  */
-export function writeJsonDurably(path: string, value: unknown): void {
+export function writeJsonDurably(
+  path: string,
+  value: unknown,
+  options?: JsonSerializationOptions,
+): void {
   const directory = dirname(path);
   // lstat FIRST, not existsSync: existsSync follows the link, so a DANGLING
   // symlink would fall through to mkdir and fail with a bare ENOENT instead
@@ -63,12 +101,34 @@ export function writeJsonDurably(path: string, value: unknown): void {
         (constants.O_NOFOLLOW ?? 0),
       0o600,
     );
-    writeFileSync(descriptor, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    writeFileSync(
+      descriptor,
+      serializeJsonDocument(
+        value,
+        // `?? 2` would be wrong: `null` is a caller asking for compact JSON.
+        options?.indent === undefined ? 2 : options.indent,
+        options?.trailingNewline ?? true,
+      ),
+      'utf8',
+    );
     fsyncSync(descriptor);
     closeSync(descriptor);
     descriptor = undefined;
     renameSync(temporary, path);
-    fsyncDirectorySync(directory);
+    // The rename IS the commit point. The directory fsync only makes that
+    // entry survive a power loss; it cannot un-publish bytes a reader can
+    // already see. Reporting it would tell the caller the write did not
+    // happen when it did, and callers act on that: `recordCorruptionObserved`
+    // returns "this call did not write it", `cloud-project-import` prints
+    // "registration is unconfirmed" for a receipt that is on disk, and the
+    // plugin install transaction rolls plugin state back while
+    // `registry-installs.json` already names the new plugin.
+    // `publishJsonFileWithOwnedLock` has always swallowed this; the sync seam
+    // now matches it. What is given up is a signal about DURABILITY only —
+    // the caller is never told the entry may not survive a crash.
+    try {
+      fsyncDirectorySync(directory);
+    } catch {}
   } finally {
     if (descriptor !== undefined) {
       try {

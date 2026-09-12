@@ -49,6 +49,7 @@ import type {
 } from '@kontourai/station-contracts/workflow';
 import { WORKFLOW_NEXT_ACTION_STATUSES } from '@kontourai/station-contracts/workflow';
 import { workflowSidecarTransitions } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   flowAgentsRoot,
   legacyFlowAgentsRoot,
@@ -141,6 +142,8 @@ export class WorkflowSidecarService {
 
   /** List the workspace's task sidecars (valid state.json files). */
   listTasks(cwd: string): WorkflowTaskSummary[] {
+    // Flow Agents resolves linked worktrees through Git. Resolve once for
+    // this request, not once per sidecar, while keeping later requests fresh.
     const roots = [
       { dir: flowAgentsRoot(cwd), relative: STATION_ARTIFACT_ROOTS.flowAgents },
       {
@@ -161,7 +164,8 @@ export class WorkflowSidecarService {
         if (!entry.isDirectory() || entry.name === 'archive') continue;
         if (!TASK_SLUG_PATTERN.test(entry.name)) continue;
         if (seen.has(entry.name)) continue;
-        const state = this.tryReadState(cwd, entry.name);
+        const paths = workflowSidecarTaskPaths(cwd, entry.name, roots[0].dir);
+        const state = this.tryReadState(paths.readStateFile, entry.name);
         if (!state) continue;
         const runCorrelation = this.projectRunCorrelation(state);
         seen.add(entry.name);
@@ -180,9 +184,7 @@ export class WorkflowSidecarService {
           // back to per-task reads or, worse, to guessing.
           ...(runCorrelation ? { runCorrelation } : {}),
           ...(state.flow_run ? { flowRun: state.flow_run } : {}),
-          hasHandoff: fs.existsSync(
-            workflowSidecarTaskPaths(cwd, entry.name).readHandoffFile,
-          ),
+          hasHandoff: fs.existsSync(paths.readHandoffFile),
           path: `${root.relative}/${entry.name}`,
         });
       }
@@ -193,11 +195,9 @@ export class WorkflowSidecarService {
   /** Read a task's state.json; null when it does not exist. */
   readState(cwd: string, taskSlug: string): WorkflowState | null {
     this.assertTaskSlug(taskSlug);
-    const file = this.readStateFile(cwd, taskSlug);
-    if (!fs.existsSync(file)) return null;
-    const parsed = this.parseJsonFile(file);
-    this.assertValid('state', parsed, file);
-    return parsed as WorkflowState;
+    return this.readStateAtPath(
+      workflowSidecarTaskPaths(cwd, taskSlug).readStateFile,
+    );
   }
 
   /** Read a task's handoff.json; null when it does not exist. */
@@ -336,8 +336,11 @@ export class WorkflowSidecarService {
 
   // ── internals ────────────────────────────────────────
 
-  private readStateFile(cwd: string, taskSlug: string): string {
-    return workflowSidecarTaskPaths(cwd, taskSlug).readStateFile;
+  private readStateAtPath(file: string): WorkflowState | null {
+    if (!fs.existsSync(file)) return null;
+    const parsed = this.parseJsonFile(file);
+    this.assertValid('state', parsed, file);
+    return parsed as WorkflowState;
   }
 
   private readHandoffFile(cwd: string, taskSlug: string): string {
@@ -370,13 +373,13 @@ export class WorkflowSidecarService {
     }
   }
 
-  private tryReadState(cwd: string, taskSlug: string): WorkflowState | null {
+  private tryReadState(file: string, taskSlug: string): WorkflowState | null {
     try {
-      return this.readState(cwd, taskSlug);
+      return this.readStateAtPath(file);
     } catch (error) {
       this.logger?.warn('Skipping invalid workflow sidecar', {
         taskSlug,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return null;
     }
@@ -388,14 +391,14 @@ export class WorkflowSidecarService {
       raw = fs.readFileSync(file, 'utf-8');
     } catch (error) {
       throw new WorkflowSidecarNotFoundError(
-        `Cannot read ${file}: ${error instanceof Error ? error.message : String(error)}`,
+        `Cannot read ${file}: ${errorMessage(error)}`,
       );
     }
     try {
       return JSON.parse(raw);
     } catch (error) {
       throw new WorkflowSidecarInvalidError(
-        `Invalid JSON in ${file}: ${error instanceof Error ? error.message : String(error)}`,
+        `Invalid JSON in ${file}: ${errorMessage(error)}`,
       );
     }
   }
@@ -526,7 +529,7 @@ export class WorkflowSidecarService {
         this.logger?.warn('Failed to load Flow Agents sidecar schema', {
           kind,
           schemaDir: this.schemaDir,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
     }

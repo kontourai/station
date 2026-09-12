@@ -66,9 +66,18 @@ vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
 
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate: vi.fn() }),
-}));
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({ navigate: vi.fn() });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { alias: 'operator' } }),
@@ -82,8 +91,8 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
   }),
 }));
 
-vi.mock('../hooks/useMessageContext', () => ({
-  useMessageContext: () => ({ getComposedContext: () => '' }),
+vi.mock('../contexts/MessageContextContext', () => ({
+  useMessageContextContext: () => ({ getComposedContext: () => '' }),
 }));
 
 vi.mock('../hooks/useShareReceiver', () => ({
@@ -809,10 +818,15 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       recoveryActions: [] as const,
     };
     const { rerender } = renderDock({
+      orchestrationSession: null,
+      read: 'absent',
       session: buildSession({
+        currentSessionId: base.currentSessionId,
+        orchestrationSessionStarted: true,
         conversationOpenState: { ...base, canContinue: false },
       }),
     });
+    expect(screen.queryByTestId('chat-dock-session-record-missing')).toBeNull();
     expect(chatInputPropsMock.current?.disabled).toBe(true);
     rerender(
       <QueryClientProvider client={new QueryClient()}>

@@ -1,28 +1,55 @@
 import {
-  lazy,
   type ReactNode,
-  Suspense,
   useCallback,
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import {
+  getLocalUiSessionAttempt,
   recheckLocalUiSessionAfterPairing,
   resolveLocalUiSession,
+  subscribeLocalUiSessionAttempt,
 } from '../lib/local-ui-bootstrap';
-import { GuidedConnect } from './GuidedConnect';
+import { LOCAL_UI_SESSION_ATTEMPT_LIMIT } from '../lib/local-ui-session-retry';
+import { ElapsedWait } from './ElapsedWait';
+import { LazyBoundary } from './LazyBoundary';
 import { SkeletonBlock } from './state';
 
-const UnpairedSampleWorkspace = lazy(async () => {
+const loadGuidedConnect = () =>
+  import('./GuidedConnect').then((module) => ({
+    default: module.GuidedConnect,
+  }));
+
+const loadUnpairedSampleWorkspace = async () => {
   const module = await import('./first-run/UnpairedSampleWorkspace');
   return { default: module.UnpairedSampleWorkspace };
-});
+};
 
 interface LocalUiSessionGateProps {
   apiBase: string;
   children: ReactNode;
+}
+
+/**
+ * The retry the resolution is currently making, in both of the gate's pending
+ * treatments (#1639). Not a new surface: the wait already had a sentence and a
+ * degraded alert, and this says which attempt they are waiting on.
+ *
+ * Renders nothing on the first attempt, so an ordinary resolution reads exactly
+ * as it did. Only a real retry — a host that answered `unavailable` and is being
+ * asked again — puts a sentence on screen.
+ */
+function RetryAttempt({ attempt }: { attempt: number }) {
+  if (attempt <= 1) return null;
+  return (
+    <p>
+      Station&rsquo;s host was not ready. Asking again — attempt {attempt} of{' '}
+      {LOCAL_UI_SESSION_ATTEMPT_LIMIT}.
+    </p>
+  );
 }
 
 /**
@@ -42,6 +69,17 @@ export function LocalUiSessionGate({
     Awaited<ReturnType<typeof resolveLocalUiSession>>
   > | null>(null);
   const [sampleOpen, setSampleOpen] = useState(false);
+  const [accessStartedAt] = useState(Date.now);
+  // Deliberately NOT passed as `useDegradedQueryState`'s `resetKey`: the
+  // degraded window measures how long this browser has been waiting for ONE
+  // answer, and a retry does not restart that wait — it is part of it. Bumping
+  // it per attempt would let a resolution spend the whole ladder without ever
+  // admitting it was slow.
+  const identityAttempt = useSyncExternalStore(
+    subscribeLocalUiSessionAttempt,
+    getLocalUiSessionAttempt,
+    getLocalUiSessionAttempt,
+  );
   const accessCheck = useDegradedQueryState({ isPending: !resolution });
 
   useEffect(() => {
@@ -78,6 +116,8 @@ export function LocalUiSessionGate({
             Station is taking longer than expected to answer this
             browser&rsquo;s access check.
           </p>
+          <RetryAttempt attempt={identityAttempt} />
+          <ElapsedWait startedAt={accessStartedAt} />
           <button type="button" onClick={() => window.location.reload()}>
             Try again
           </button>
@@ -85,33 +125,39 @@ export function LocalUiSessionGate({
       );
     }
     return (
-      <main aria-live="polite">Checking this browser's Station access…</main>
+      <main aria-live="polite">
+        <p>Checking this browser's Station access…</p>
+        <RetryAttempt attempt={identityAttempt} />
+        <ElapsedWait startedAt={accessStartedAt} />
+      </main>
     );
   }
   if (resolution.kind === 'access-required') {
     if (sampleOpen) {
       return (
         <section aria-label="Station sample workspace">
-          <Suspense
-            fallback={
-              // SHELL-13: not a twelfth wait sentence. The wait names itself
-              // in the skeleton's `label`; only the pre-auth access check
-              // above still renders a full-screen sentence, and it is the one
-              // recorded exception to the vocabulary.
+          <LazyBoundary
+            load={loadUnpairedSampleWorkspace}
+            componentProps={{ onConnect: () => setSampleOpen(false) }}
+            pending={
               <SkeletonBlock count={2} label="Opening the sample workspace" />
             }
-          >
-            <UnpairedSampleWorkspace onConnect={() => setSampleOpen(false)} />
-          </Suspense>
+          />
         </section>
       );
     }
     return (
       <section aria-label="Station access required">
         {resolution.message && <p role="alert">{resolution.message}</p>}
-        <GuidedConnect
-          onSessionEstablished={handleSessionEstablished}
-          onExploreSample={() => setSampleOpen(true)}
+        <LazyBoundary
+          load={loadGuidedConnect}
+          componentProps={{
+            onSessionEstablished: handleSessionEstablished,
+            onExploreSample: () => setSampleOpen(true),
+          }}
+          pending={
+            <SkeletonBlock count={1} label="Opening connection options" />
+          }
         />
       </section>
     );
@@ -127,7 +173,8 @@ export function LocalUiSessionGate({
       <main className="local-ui-session-recovery" aria-live="polite">
         <h1>Reconnecting to this Station</h1>
         <p role="alert">
-          Station&rsquo;s host process is down or recovering. This
+          Station&rsquo;s host process is down or recovering — it answered that
+          way {LOCAL_UI_SESSION_ATTEMPT_LIMIT} times in a row. This
           browser&rsquo;s current access stays in place; reload after the host
           restarts.
         </p>

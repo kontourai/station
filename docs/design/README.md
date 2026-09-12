@@ -66,6 +66,7 @@ category.
 - [pane-or-shell.md](pane-or-shell.md) — Pane or shell: the criterion
 - [placement.md](placement.md) — Placement: regions, surfaces, layouts, panes, pane hosts
 - [plugin-authority-model.md](plugin-authority-model.md) — The plugin authority model: contributions, loci, and where consent belongs
+- [plugin-installation-lifecycle.md](plugin-installation-lifecycle.md) — Plugin installation lifecycle
 - [plugin-knowledge-store-contributions.md](plugin-knowledge-store-contributions.md) — Plugin-contributed Knowledge stores
 - [pnpm-workspace-installation.md](pnpm-workspace-installation.md) — pnpm workspace installation
 - [portable-project-identity.md](portable-project-identity.md) — Design: portable Project identity — remote-keyed resources, per-Station bindings
@@ -73,6 +74,7 @@ category.
 - [private-cloud-environment.md](private-cloud-environment.md) — Private cloud Station environment
 - [project-task-room-history.md](project-task-room-history.md) — Project/Task room history
 - [revision-bound-evidence.md](revision-bound-evidence.md) — Design: revision-bound evidence
+- [session-tape-replay.md](session-tape-replay.md) — Session tape replay
 - [settings-architecture.md](settings-architecture.md) — Settings Architecture: scope-first settings for Station
 - [shared-working-state.md](shared-working-state.md) — Shared working-state protocol
 - [shell-skeletons.md](shell-skeletons.md) — Design: Shell skeletons (#193 shell convergence)

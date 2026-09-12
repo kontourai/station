@@ -24,6 +24,7 @@ vi.mock('../contexts/NavigationContext', () => ({
 
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useShortcutDisplay: () => '',
+  useShortcutDisplayLookup: () => (_id: string) => '',
 }));
 
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -70,6 +71,9 @@ function renderHeader(
     onDockPlacementChange: vi.fn(),
     regionVisible: true,
     shellMaximized: false,
+    // Chat's shell. Required since #1386, which retired the "dock region"
+    // fallback that only Chat's own header ever rendered.
+    surfaceTitle: 'Chat',
     ...overrides,
   };
   return {
@@ -426,7 +430,7 @@ describe('one-bar rule (#3309)', () => {
       'New',
       'More dock actions',
       'Expand dock region to workspace',
-      'Hide dock region',
+      'Hide Chat',
     ]);
     // The gear is a row of that one menu now, not a control of its own.
     expect(screen.queryByRole('button', { name: 'Chat settings' })).toBeNull();

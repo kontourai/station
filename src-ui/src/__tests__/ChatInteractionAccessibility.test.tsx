@@ -95,7 +95,7 @@ describe('chat interaction accessibility', () => {
     // Raw internal state strings never render (the old card printed
     // `state` verbatim as a badge).
     expect(screen.queryByText('running')).toBeNull();
-    expect(screen.getByText('Reading README.md')).toBeTruthy();
+    expect(screen.queryByText('Reading README.md')).toBeNull();
 
     toggle.focus();
     fireEvent.keyDown(toggle, { key: 'Enter' });

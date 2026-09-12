@@ -192,7 +192,7 @@ export async function resolveAttachedProjectRoots(
   return resolved;
 }
 
-export interface AttachedSessionFollowServiceOptions {
+interface AttachedSessionFollowServiceOptions {
   sources: AttachedSessionSource[];
   eventStore: EventStore;
   /** Adoption's composed Interface, used only for durable cursor ownership. */
@@ -914,7 +914,7 @@ export function resolveAttachedSessionPollInterval(
  * to. "Exact match, or an honest unavailable" is the same idiom archive#189
  * slice 4 settled on.
  */
-export type AttachedProjectAttribution =
+type AttachedProjectAttribution =
   | {
       state: 'attributed';
       slug: string;

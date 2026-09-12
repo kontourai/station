@@ -27,6 +27,7 @@
  * (ish) and injectable: the only I/O is the `fs` port (defaults to real
  * `node:fs`/`node:fs/promises`).
  */
+
 import {
   constants as nodeFsConstants,
   lstatSync as nodeLstatSync,
@@ -44,6 +45,7 @@ import {
 } from 'node:fs/promises';
 import { basename, dirname, join, normalize, relative, sep } from 'node:path';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
+import { errorMessage } from '../../utils/error-message.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 
 /** Matches the `any`-typed logger convention used across `providers/adapters`. */
@@ -107,7 +109,7 @@ export interface AppHomeDirEntry {
   isSymbolicLink(): boolean;
 }
 
-export interface AppHomeStat {
+interface AppHomeStat {
   isSymbolicLink: boolean;
   isFile: boolean;
   isDirectory: boolean;
@@ -123,7 +125,7 @@ export interface AppHomeStat {
  * swapped after the check (mirrors
  * `claude-skills-materialization.ts`'s `SkillMaterializationFileHandle`).
  */
-export interface AppHomeFileHandle {
+interface AppHomeFileHandle {
   isFile: boolean;
   size: number;
   read(): Promise<Buffer>;
@@ -557,7 +559,7 @@ export async function ensureAppHomeProfile(
   return { dir, created: outcome === 'created' };
 }
 
-export type MarkAppHomeProfileImportedResult =
+type MarkAppHomeProfileImportedResult =
   | { ok: true }
   | { ok: false; reason: 'marker-not-regular-file' | 'temp-marker-collision' };
 
@@ -662,11 +664,20 @@ export async function markAppHomeProfileImported(
   // Commit atomically. `rename()` never follows a symlink at `markerPath`
   // — it replaces that path entry itself — so this is safe regardless of
   // what (if anything) raced into place there since the check above.
-  await fs.rename(tempPath, markerPath);
+  try {
+    await fs.rename(tempPath, markerPath);
+  } catch (error) {
+    // A failed commit must not leave the staged marker behind. The temp name
+    // carries a random suffix, so nothing ever reuses or reaps it: without
+    // this the profile dir accumulates one orphan per failed import, and the
+    // collision refusal above is the only thing that would ever notice.
+    await fs.rmRecursive(tempPath).catch(() => {});
+    throw error;
+  }
   return { ok: true };
 }
 
-export interface ImportClaudeGlobalSnapshotOptions {
+interface ImportClaudeGlobalSnapshotOptions {
   /** The user's real global Claude config dir (read-only — never written to). */
   globalDir: string;
   /** The Station-owned profile dir being seeded — must resolve inside `appHomesRootDir(homeDir)`. */
@@ -882,7 +893,7 @@ async function importGlobalSnapshot(
         ? 'global-config-dir-missing'
         : 'global-config-dir-unreadable';
     logger.warn?.(
-      `App home import: could not read global config dir '${globalDir}': ${error instanceof Error ? error.message : String(error)}`,
+      `App home import: could not read global config dir '${globalDir}': ${errorMessage(error)}`,
     );
     return {
       outcome: 'failed',
@@ -1028,10 +1039,7 @@ async function importGlobalSnapshot(
         try {
           await fs.rename(backupPath, destPath);
         } catch (restoreError) {
-          const detailMsg =
-            restoreError instanceof Error
-              ? restoreError.message
-              : String(restoreError);
+          const detailMsg = errorMessage(restoreError);
           // Item 3 (security review round 4): never delete a backup this
           // call could not actually restore from — it is the ONLY
           // remaining copy of the user's pre-import content.
@@ -1065,10 +1073,7 @@ async function importGlobalSnapshot(
           await fs.rmRecursive(destPath);
         }
       } catch (restoreError) {
-        const detailMsg =
-          restoreError instanceof Error
-            ? restoreError.message
-            : String(restoreError);
+        const detailMsg = errorMessage(restoreError);
         if (entry.hadPrior) {
           // Item 3: same "never delete an unrestored backup" posture as
           // the per-entry restore above.
@@ -1094,8 +1099,7 @@ async function importGlobalSnapshot(
         `App home import: preserving backup dir '${backupDir}' — ${restoreFailures.length} entr${restoreFailures.length === 1 ? 'y' : 'ies'} could not be restored during rollback and remain recoverable there.`,
       );
     }
-    const commitDetail =
-      commitError instanceof Error ? commitError.message : String(commitError);
+    const commitDetail = errorMessage(commitError);
     const detail =
       restoreFailures.length > 0
         ? `${commitDetail}; unrestored backups preserved: ${restoreFailures
@@ -1161,7 +1165,7 @@ export async function importCodexGlobalSnapshot(
  */
 export const APP_HOME_USAGE_MAX_ENTRIES = 10_000;
 
-export interface AppHomeProfileUsage {
+interface AppHomeProfileUsage {
   sizeBytes: number;
   entryCount: number;
   truncated: boolean;

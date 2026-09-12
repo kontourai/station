@@ -70,6 +70,7 @@ import {
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
   PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
@@ -1194,6 +1195,15 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       reason: 'public challenge proof',
     },
     {
+      id: 'public:pairing-local-access',
+      transport: 'http',
+      method: 'POST',
+      prefix: PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
+      match: 'exact',
+      capability: 'public',
+      reason: 'direct-loopback owner-secret access review',
+    },
+    {
       id: 'public:pairing-local-grant',
       transport: 'http',
       method: 'POST',
@@ -1728,6 +1738,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // caller's own Session. Their GET leaves inherit read; narrative and
     // assessment replacement/removal are owner mutations and inherit operate.
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/outputs' },
+    // The input-reply context read (#1855) resolves ONE pending input
+    // request inside the caller's own thread: it requires the request
+    // principal to be current (checked before AND after the service call)
+    // and passes the caller's read authority into the service, so it
+    // discloses no thread the family's session reads do not already expose
+    // and crosses no Environment/Station boundary. Read tier is intended.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/input-requests/:requestId',
+    },
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/turns/:turnId/narrative/target',
@@ -2039,6 +2059,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // delegation: both can resolve a target Environment and run an Agent.
     // POST therefore inherits the orchestration family's operate scope.
     { method: 'POST', path: '/api/orchestration/chat' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/pane-host/:projectSlug/catalog',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/pane-host/:projectSlug/prepare',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/pane-host/:projectSlug/execute',
+    },
     { method: 'POST', path: '/api/orchestration/chat/delegated' },
     { method: 'POST', path: '/api/orchestration/chat/background' },
     {
@@ -2124,6 +2156,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/orchestration/sessions/:threadId/event-window',
     },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/events' },
+    // station#1877: stops ONE provider-reported subagent inside a session the
+    // caller already reaches through this family. It mutates, but no more
+    // sensitively than `delegations/:taskId/interrupt` directly above, which
+    // is the same shape — a task-scoped stop — and inherits here too. It
+    // returns only `{outcome, taskId}` for a task on THIS Station: no other
+    // environment's data, no other Station's, and nothing about a task the
+    // caller could not already observe through this family's session reads.
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/flow-run' },
     // archive#2802: a thread's recorded turn-checkpoint outcomes. Deliberate
     // family inheritance, considered: the records do carry the bound
@@ -2648,6 +2691,27 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/plugins/:name/settings' },
     { method: 'PUT', path: '/api/plugins/:name/settings' },
     { method: 'POST', path: '/api/plugins/:name/update' },
+    // station#1744 (routes added by station#1377): the retained-recovery
+    // leaves of `plugin-install-routes.ts`. `GET /:name/retained-generations`
+    // pages `packageMcpJournal.history()` — this Station's own generation
+    // records for one plugin (journal/plugin/incarnation ids, content digest,
+    // counts), no filesystem path; the family's `GET /api/plugins` listing
+    // already returns each plugin's `packageRoot` and digest to the same
+    // read-tier caller, so this discloses strictly less. `GET
+    // /:name/recovery-preview` returns `inspectRetainedPluginRecovery`'s
+    // `view` (manifest, expected installation revision, permission basis,
+    // dependency approvals, a recovery revision hash) and drops `source`;
+    // it only reads the journal, manifests and digests — same shape as the
+    // sibling `POST /preview`. `POST /:name/recover` re-materializes an
+    // already-selected, locally retained generation through the SAME
+    // `installPluginFromSource` seam `POST /install` and `POST /:name/update`
+    // call, with the same operator-decision consent gate and no remote
+    // fetch — a subset of `update`'s mutation surface, so the family's
+    // ordinary mutate tier is the consistent call. None returns another
+    // environment's or another Station's data.
+    { method: 'GET', path: '/api/plugins/:name/retained-generations' },
+    { method: 'GET', path: '/api/plugins/:name/recovery-preview' },
+    { method: 'POST', path: '/api/plugins/:name/recover' },
     { method: 'GET', path: '/api/plugins/check-updates' },
     // POST /api/plugins/:name/fetch is currently a stub that always 403s
     // ("Plugin fetch proxy is disabled until plugin execution identity is

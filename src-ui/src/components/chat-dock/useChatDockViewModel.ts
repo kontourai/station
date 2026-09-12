@@ -25,9 +25,10 @@ import {
   resolveSessionExecutionSummary,
   runtimeCatalogVisibleModels,
 } from '../../utils/execution';
-import type {
-  ModelProviderOption,
-  SelectableModel,
+import {
+  type ModelProviderOption,
+  modelIdentityLabel,
+  type SelectableModel,
 } from '../../utils/modelCapabilities';
 
 type ModelOption = { id: string; name: string };
@@ -56,7 +57,7 @@ function ensureActiveModelOption(
   return [
     {
       id: currentModelId,
-      name: currentModelId,
+      name: modelIdentityLabel(currentModelId),
       providerId,
       providerName,
       providerType,
@@ -235,10 +236,17 @@ export function useChatDockViewModel({
     (layout: any) => layout.type === 'coding',
   );
 
+  const observedExecution =
+    activeSessionForHook?.conversationOpenState?.status === 'resolved'
+      ? activeSessionForHook.conversationOpenState.execution
+      : undefined;
   const agentConnectionId =
-    activeSessionForHook?.agentConnectionId ??
-    agentForHook?.execution?.agentConnectionId ??
-    null;
+    observedExecution &&
+    observedExecution.sessionId === activeSessionForHook?.currentSessionId
+      ? (observedExecution?.engineConnectionId ?? null)
+      : (activeSessionForHook?.agentConnectionId ??
+        agentForHook?.execution?.agentConnectionId ??
+        null);
   const runtimeConnection = agentConnections.find(
     (connection) => connection.id === agentConnectionId,
   );
@@ -466,6 +474,7 @@ export function useChatDockViewModel({
     modelSupportsAttachments,
     modelProviderLabel,
     modelProviders,
+    modelConnections,
     modelsLoading,
     modelsStale,
     sessionCodingLayout,

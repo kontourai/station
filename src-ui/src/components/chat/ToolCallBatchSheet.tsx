@@ -8,7 +8,7 @@ import './chat.css';
 
 export interface ToolCallBatchSheetProps<P extends ToolCallLike> {
   group: ToolCallGroup<P>;
-  renderCall: (part: P, index: number) => ReactNode;
+  renderCall: (part: P, index: number, expanded?: boolean) => ReactNode;
   titleId: string;
   onClose: () => void;
 }
@@ -30,6 +30,7 @@ export function ToolCallBatchSheet<P extends ToolCallLike>({
 }: ToolCallBatchSheetProps<P>) {
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabelledBy={titleId}
       historyMode="entry"
@@ -38,7 +39,7 @@ export function ToolCallBatchSheet<P extends ToolCallLike>({
     >
       <div className="tool-call-batch-sheet__header">
         <h3 id={titleId} className="tool-call-batch-sheet__title">
-          {group.summary}
+          {group.aggregateSummary}
         </h3>
         <ResponsiveDialogCloseButton
           onClick={onClose}
@@ -51,7 +52,8 @@ export function ToolCallBatchSheet<P extends ToolCallLike>({
             key={call.part.toolCallId ?? `tool-call-row:${call.index}`}
             className="tool-call-batch-sheet__row"
           >
-            {renderCall(call.part, call.index)}
+            {/* An explicit disclosure overrides the inline visibility preference. */}
+            {renderCall(call.part, call.index, true)}
           </div>
         ))}
       </div>

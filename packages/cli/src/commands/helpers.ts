@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { readPluginManifest } from '@kontourai/station-shared/parsers';
@@ -109,7 +109,9 @@ export function resolveLifecycleHomeTarget(
   const env = options.env ?? process.env;
 
   if (options.tempHome) {
-    const projectHome = normalizeHomePath(createStationTempDirSync('dev-home'));
+    const projectHome = normalizeHomePath(
+      realpathSync(createStationTempDirSync('dev-home')),
+    );
     return {
       projectHome,
       isDefaultHome: false,

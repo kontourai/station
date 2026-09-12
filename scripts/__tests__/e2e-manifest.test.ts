@@ -158,6 +158,7 @@ describe('e2e manifest', () => {
       'tests/agents-new-muse-echo-turn.spec.ts',
       'tests/csp-shell.spec.ts',
       'tests/plugin-bundle-csp.spec.ts',
+      'tests/workspace-pane-host-actions-live.spec.ts',
       'tests/bundled-plugin-registry-lifecycle.spec.ts',
       'tests/ui-crud-smoke.spec.ts',
       'tests/knowledge-onboarding-smoke.spec.ts',
@@ -270,6 +271,10 @@ describe('e2e manifest', () => {
       flakePolicy: 'fail-and-fix-no-retry',
     });
     expect(PR_BROWSER_SMOKE_CONTRACT.journeys).toEqual([
+      expect.objectContaining({ path: 'tests/connect-modal.spec.ts' }),
+      expect.objectContaining({
+        path: 'tests/connect-remote-auth-recovery.spec.ts',
+      }),
       expect.objectContaining({ path: 'tests/csp-shell.spec.ts' }),
       expect.objectContaining({ path: 'tests/ui-crud-smoke.spec.ts' }),
       expect.objectContaining({

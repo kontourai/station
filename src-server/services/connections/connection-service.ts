@@ -55,6 +55,7 @@ import {
   setCredentialRecoveryAutomaticPolicy,
   upsertCredentialProfile,
 } from '../../providers/app-home/credential-profile-registry.js';
+import { errorMessage } from '../../utils/error-message.js';
 
 type CredentialProfileApplicationSettlement =
   | { kind: 'staged' }
@@ -169,7 +170,7 @@ export class ModelSelectionRequiredError extends Error {
 }
 
 /** Opaque, in-memory handoff between selection/staging and provider adoption. */
-export interface CredentialProfileApplicationAttempt {
+interface CredentialProfileApplicationAttempt {
   connectionId: string;
   attemptId: string;
   candidateProfileRef: string;
@@ -2809,7 +2810,7 @@ export class ConnectionService {
           ? 'The provider answered with an empty model catalog.'
           : (catalog.reason ?? 'This provider offers no model catalog.');
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorMessage(error);
       const reasonKind = classifyCatalogFailure(error);
       if (reasonKind !== 'no-catalog') {
         return {
@@ -2915,7 +2916,7 @@ export class ConnectionService {
       return {
         status: 'failed',
         reason: describeChatProbeFailure(
-          error instanceof Error ? error.message : String(error),
+          errorMessage(error),
           providerHttpErrorStatus(error),
         ),
       };

@@ -93,7 +93,7 @@ jobs:
       # Publishing uses the frozen dependency lifecycle install. The npm CLI
       # remains the OIDC publisher; pnpm owns only dependency installation.
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -456,7 +456,7 @@ jobs:
         # v2 pushes via the GitHub API BY DEFAULT (push-with-git-cli: false),
         # which is the same no-persisted-credentials model commitMode:
         # github-api gave us on v1 — the fleet checkout still persists none.
-        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
           # v2 requires the token as an INPUT; the GITHUB_TOKEN env var is
           # explicitly not a substitute (v2.0.0 release notes).

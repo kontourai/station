@@ -353,13 +353,10 @@ const UNTHEMED_FALLBACK: string[] = [
   '--color-danger',
   '--color-negative',
   '--overlay-scrim',
-  '--status-success',
-  '--status-warning',
   '--success',
   '--surface-hover',
   '--surface-raised',
   '--warning',
-  '--warning-color',
 ];
 
 /**

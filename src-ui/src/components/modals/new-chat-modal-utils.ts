@@ -48,7 +48,7 @@ export const GLOBAL_CONTEXT = '__global__';
  * + connection `oc-elsewhere` → `/tmp/s1089-project`), and a connection
  * default outranks `$HOME`.
  */
-export type NewChatWorkspaceHint =
+type NewChatWorkspaceHint =
   | { kind: 'project'; path: string }
   | { kind: 'connection'; path: string }
   | { kind: 'home' };
@@ -84,7 +84,7 @@ export const NEW_CHAT_AGENT_NOT_SET_UP_LABEL = AGENT_NOT_SET_UP_LABEL;
  * `description` is always the complete text either way: nothing is truncated
  * in the DOM, only in pixels, so `aria-describedby` is unaffected.
  */
-export type NewChatAgentUnavailability =
+type NewChatAgentUnavailability =
   | { kind: 'state'; stateLabel: string; description: string }
   | { kind: 'reason'; description: string };
 
@@ -255,14 +255,14 @@ export interface NewChatModalContextOption {
   workingDirectory?: string;
 }
 
-export interface NewChatModalAgentGroup {
+interface NewChatModalAgentGroup {
   label: string;
   icon?: string;
   glyph?: 'engine' | 'globe' | 'plug' | 'time';
   agents: AgentData[];
 }
 
-export interface NewChatModalViewModel {
+interface NewChatModalViewModel {
   isGlobal: boolean;
   selectedProject: ProjectMetadata | undefined;
   contextOptions: NewChatModalContextOption[];

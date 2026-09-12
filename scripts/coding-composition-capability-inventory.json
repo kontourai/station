@@ -257,7 +257,7 @@
       ],
       "testProofs": [
         {
-          "path": "src-server/routes/plugins/__tests__/plugin-install-shared.test.ts",
+          "path": "src-server/services/plugins/__tests__/plugin-install-transaction.test.ts",
           "anchor": "describe('installPluginFromSource',"
         },
         {

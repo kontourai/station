@@ -23,7 +23,7 @@ import {
   cleanupE2ERun,
   discoverE2EDaemon,
   E2E_SUITE_PORTS,
-  e2ePhaseOutputRoot,
+  e2eProviderConfigEnv,
   e2eTestResultsRoot,
   establishedUserPlaywrightEnv,
   extractE2EUiBootstrapToken,
@@ -175,22 +175,6 @@ describe('runE2EExecutionPhases', () => {
     );
     expect(calls).toEqual(['parallel-safe', 'shared-instance-exclusive']);
   });
-
-  test('gives product phases distinct nested roots and leaves other suites flat', () => {
-    expect(e2ePhaseOutputRoot('/results/run', 'product', 'parallel-safe')).toBe(
-      '/results/run/parallel-safe',
-    );
-    expect(
-      e2ePhaseOutputRoot(
-        '/results/run',
-        'product',
-        'shared-instance-exclusive',
-      ),
-    ).toBe('/results/run/shared-instance-exclusive');
-    expect(e2ePhaseOutputRoot('/results/run', 'extended', 'extended')).toBe(
-      '/results/run',
-    );
-  });
 });
 
 describe('full-run failure evidence retention', () => {
@@ -219,6 +203,11 @@ describe('full-run failure evidence retention', () => {
     mkdirSync(join(resultRoot, 'shared-instance-exclusive'), {
       recursive: true,
     });
+    writeFileSync(join(resultRoot, '.DS_Store'), 'Finder metadata');
+    writeFileSync(
+      join(resultRoot, 'parallel-safe', '.DS_Store'),
+      'Finder metadata',
+    );
     writeFileSync(
       join(resultRoot, 'parallel-safe', '.last-run.json'),
       '{"status":"failed"}',
@@ -278,20 +267,35 @@ describe('full-run failure evidence retention', () => {
         'utf8',
       ),
     ).toBe('parallel trace');
+    expect(
+      existsSync(join(evidenceRoot, 'buckets', 'product', '.DS_Store')),
+    ).toBe(false);
+    expect(
+      existsSync(
+        join(evidenceRoot, 'buckets', 'product', 'parallel-safe', '.DS_Store'),
+      ),
+    ).toBe(false);
   });
 
-  test('does not hide a non-file that uses the Playwright bookkeeping name', () => {
-    cleanupRoot = mkdtempSync(join(tmpdir(), 'station-e2e-retain-'));
-    const resultRoot = join(cleanupRoot, 'test-results', 'e2e-product-fixture');
-    mkdirSync(join(resultRoot, '.last-run.json'), { recursive: true });
-    expect(() =>
-      retainE2EBucketFailureEvidence({
-        testResultsRoot: resultRoot,
-        evidenceRoot: join(cleanupRoot, 'evidence'),
-        suite: 'product',
-      }),
-    ).toThrow('ignored entry is not a regular file');
-  });
+  test.each(['.last-run.json', '.DS_Store'])(
+    'does not hide a non-file that uses bookkeeping name %s',
+    (name) => {
+      cleanupRoot = mkdtempSync(join(tmpdir(), 'station-e2e-retain-'));
+      const resultRoot = join(
+        cleanupRoot,
+        'test-results',
+        'e2e-product-fixture',
+      );
+      mkdirSync(join(resultRoot, name), { recursive: true });
+      expect(() =>
+        retainE2EBucketFailureEvidence({
+          testResultsRoot: resultRoot,
+          evidenceRoot: join(cleanupRoot, 'evidence'),
+          suite: 'product',
+        }),
+      ).toThrow('ignored entry is not a regular file');
+    },
+  );
 });
 
 describe('settleE2EExecution', () => {
@@ -1596,6 +1600,11 @@ describe('classifyStartFailure (#1177)', () => {
 });
 
 describe('portBiasJitter (#1177)', () => {
+  test('keeps screenshot addresses stable without changing other suites', () => {
+    expect(portBiasJitter(() => 0.1, 'screenshot')).toBe(0);
+    expect(portBiasJitter(() => 0.9, 'screenshot')).toBe(0);
+    expect(portBiasJitter(() => 0.5, 'product')).toBe(240);
+  });
   test('is a whole number of 30-port blocks within the bounded band', () => {
     for (const seed of [0, 0.1, 0.5, 0.99, 0.999999]) {
       const jitter = portBiasJitter(() => seed);
@@ -1719,6 +1728,29 @@ describe('establishedUserPlaywrightEnv', () => {
 });
 
 describe('suiteStationE2EEnv', () => {
+  test.each(['smoke-live', 'product', 'first-run'])(
+    'keeps %s history isolated with the correct authentication boundary',
+    (suite) => {
+      const roots = { claude: '/fixture/claude', codex: '/fixture/codex' };
+      const inherited = {
+        CLAUDE_CONFIG_DIR: '/host/claude',
+        CODEX_HOME: '/host/codex',
+      };
+      const env = e2eProviderConfigEnv(suite, roots, inherited);
+      expect(env.STATION_EXTERNAL_CLAUDE_SOURCE_ROOT).toBe(roots.claude);
+      expect(env.STATION_EXTERNAL_CODEX_SOURCE_ROOT).toBe(roots.codex);
+      expect(env.CLAUDE_CONFIG_DIR).toBe(
+        suite === 'smoke-live' ? inherited.CLAUDE_CONFIG_DIR : roots.claude,
+      );
+      expect(env.CODEX_HOME).toBe(
+        suite === 'smoke-live' ? inherited.CODEX_HOME : roots.codex,
+      );
+      expect(e2eProviderConfigEnv('smoke-live', roots, {})).toMatchObject({
+        CLAUDE_CONFIG_DIR: undefined,
+        CODEX_HOME: undefined,
+      });
+    },
+  );
   test('gives the Starter clean-install journey a fresh first-run environment with telemetry disabled', () => {
     expect(suiteStationE2EEnv('starter-clean-install')).toEqual({
       STATION_E2E_FIRST_RUN: '1',
@@ -1797,6 +1829,52 @@ describe('Starter clean-install suite routing', () => {
 // Review LOW: pin the loop behavior itself, not just the classifier —
 // advancement, cleanup, fatal termination, and exhaustion diagnostics.
 describe('startWithPortRetry (#1177 review round 1)', () => {
+  test.each(['fresh', 'stale', 'other-port', 'truncated-tail'])(
+    'daemon log evidence: %s',
+    async (kind) => {
+      cleanupRoot = mkdtempSync(join(tmpdir(), 'station-start-log-'));
+      const logPath = join(cleanupRoot, 'station.log');
+      const collision = 'Port 3242 is already in use or unavailable.';
+      writeFileSync(logPath, kind === 'stale' ? collision : 'previous run\n');
+      let attempts = 0;
+      const stopInstance = vi.fn(async () => {});
+      const deps = {
+        label: 'log-evidence',
+        logPath,
+        preferredPorts: { server: 3242, ui: 5274 },
+        maxAttempts: 2,
+        pickServerPort: async (port: number) => port,
+        pickUiPort: async (port: number) => port,
+        startInstance: async () => {
+          attempts += 1;
+          if (attempts === 2) return { code: 0, output: '' };
+          if (kind !== 'stale') {
+            writeFileSync(
+              logPath,
+              `${'x'.repeat(20_000)}\n${kind === 'other-port' ? 'Port 9999 is already in use or unavailable.' : kind === 'truncated-tail' ? `${collision}\n${'x'.repeat(20_000)}` : collision}`,
+              { flag: 'a' },
+            );
+          }
+          return { code: 1, output: 'Station failed to start' };
+        },
+        stopInstance,
+        warn: vi.fn(),
+      };
+      if (kind === 'fresh') {
+        await expect(startWithPortRetry(deps)).resolves.toEqual({
+          serverPort: 3272,
+          uiPort: 5304,
+        });
+        expect(stopInstance).toHaveBeenCalledOnce();
+      } else {
+        await expect(startWithPortRetry(deps)).rejects.toThrow(
+          'not a port collision',
+        );
+        expect(stopInstance).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   function harness(outputs: Array<{ code: number; output: string }>) {
     const calls: Array<{ serverPort: number; uiPort: number }> = [];
     const stops: number[] = [];
@@ -1881,3 +1959,23 @@ describe('startWithPortRetry (#1177 review round 1)', () => {
     );
   });
 });
+
+test.runIf(process.platform !== 'win32').each(['S', 'Z'])(
+  'process identity observes %s state in one snapshot',
+  (state) => {
+    const started = 'Thu Sep 10 01:02:10 2026';
+    const runPs = vi.fn((_file, args) => ({
+      status: 0,
+      stdout:
+        args[1] === 'lstart=,pgid=,stat='
+          ? `${started} 42 ${state}\n`
+          : args[1] === 'lstart='
+            ? `${started}\n`
+            : '42\n',
+    }));
+    expect(processIdentity(42, runPs)).toEqual(
+      state === 'Z' ? null : { pid: 42, processStart: started, pgid: 42 },
+    );
+    expect(runPs).toHaveBeenCalledOnce();
+  },
+);

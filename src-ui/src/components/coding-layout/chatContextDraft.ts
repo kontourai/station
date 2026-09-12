@@ -1,4 +1,4 @@
-export interface CodingChatContextItem {
+interface CodingChatContextItem {
   id: string;
   label: string;
   detail: string;

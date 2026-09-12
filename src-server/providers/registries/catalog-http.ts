@@ -1,10 +1,11 @@
+import { errorMessage } from '../../utils/error-message.js';
 import type { ModelCatalogRequest } from '../llm/model-provider-types.js';
 
 export const DEFAULT_MODEL_CATALOG_MAX_ENTRIES = 1000;
 export const DEFAULT_MODEL_CATALOG_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_MODEL_CATALOG_MAX_PAGES = 32;
 
-export interface CatalogByteBudget {
+interface CatalogByteBudget {
   remainingBytes: number;
 }
 
@@ -98,9 +99,7 @@ function parseCatalogJson(text: string): unknown {
     return JSON.parse(text);
   } catch (error) {
     throw new ModelCatalogShapeError(
-      `Model catalog response is not JSON: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Model catalog response is not JSON: ${errorMessage(error)}`,
     );
   }
 }

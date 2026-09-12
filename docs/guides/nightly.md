@@ -16,20 +16,25 @@ stable Station install (`io.kontourai.station`) and never touch it.
 
 `.github/workflows/nightly.yml` builds and publishes the Android nightly.
 
-**Cadence: at most one scheduled build per day, and only on days `main`
-moved.** The single schedule trigger fires at 09:00 UTC — early morning in the
-maintainer's timezone, so a day's work starts against a build of the previous
-day's merges. The scheduled job compares `HEAD` against the rolling `nightly`
-tag (the commit the last published nightly was cut from) and builds nothing
-when they match: a new version number over identical content is a version
-number that lies. A quiet day therefore produces no update on a tester's
-device, by design. Manual same-day rebuilds are the one exception, below.
+**Cadence: every six hours, and only when `main` moved.** The schedule trigger
+fires at 00:00, 06:00, 12:00, and 18:00 UTC. The scheduled job compares `HEAD`
+against the rolling `nightly` tag (the commit the last published nightly was
+cut from) and builds nothing when they match and the deploy ledger records
+that ship: a new version number over identical content is a version number
+that lies. A quiet interval therefore produces no update on a tester's device,
+by design. The tag alone is not the evidence — the macOS marker moves before
+its publish is verified, so the decision also requires a ledger row per
+platform at the tag's commit
+(see [Native Nightly cohort](./native-releases.md#native-nightly-cohort)).
+Scheduled same-day ships of new content automatically take the next reserved
+version code. Manual `rebuild_index` remains the exception for rebuilding a
+commit that already shipped, below.
 
 **What a tester should expect.** The job has a 90-minute timeout (plus
 possible queueing for fleet capacity), and Play typically processes an
-internal-track upload within minutes, so on an active day expect the new build
-within a few hours of 09:00 UTC — and query Play Console, not this doc or the
-workflow's exit code, for actual delivery state. When it reaches a given
+internal-track upload within minutes, so on an active day expect a new build
+within a few hours of each scheduled slot — and query Play Console, not this
+doc or the workflow's exit code, for actual delivery state. When it reaches a given
 device after that is the device's Play auto-update policy, not this pipeline;
 opening the Play Store listing and updating manually is always current. The
 nightly appears as its own app ("Station Nightly", with the nightly launcher
@@ -68,7 +73,7 @@ or treated as verified output.
 
 **The rolling `nightly` tag advances only after a successful publish.** A
 failed run leaves the tag alone, so the next scheduled run retries the same
-content instead of silently skipping a day.
+content instead of silently skipping an interval.
 
 Trust boundary: this is an internal testing track for invited testers, not a
 public release ring. Unlike tag releases, the scheduled job does not pause for

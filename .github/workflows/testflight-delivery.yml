@@ -143,7 +143,7 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/git/tags/$github_tag_object_sha" > "$github_tag"
           node scripts/verify-ios-testflight-internal-tag.mjs --source-ref '${{ inputs.source_ref }}' --source-sha '${{ inputs.source_sha }}' --channel '${{ inputs.channel }}' --marketing-version '${{ inputs.marketing_version }}' --bundle-version '${{ inputs.bundle_version }}' --expected-fingerprint "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT" --local-tag-object-sha "$local_tag_object_sha" --github-ref "$github_ref" --github-tag "$github_tag" --gpg-status "$gpg_status"
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -165,7 +165,15 @@ jobs:
           node scripts/ios-testflight-channel.mjs --channel '${{ inputs.channel }}' --marketing-version '${{ inputs.marketing_version }}' --bundle-version '${{ inputs.bundle_version }}' --output "$RUNNER_TEMP/tauri.ios.channel.json"
           icon=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.env.RUNNER_TEMP + "/tauri.ios.channel.json", "utf8")).bundle.icon[0]')
           test -s "src-desktop/$icon"
-          printf '{"channel":"%s","sourceSha":"%s","icon":"%s","iconSha256":"%s"}\n' '${{ inputs.channel }}' '${{ inputs.source_sha }}' "$icon" "$(shasum -a 256 "src-desktop/$icon" | awk '{print $1}')" > provider-receipts/channel-icon-receipt.json
+          # bundle.icon only reaches desktop bundling, so the receipt names it
+          # as desktopBundleIcon*: which desktop master the overlay bound, never
+          # the icon in the IPA. The iOS catalog is rebuilt from the committed
+          # per-channel set below; the derived iconSet*/catalogMatchesChannelSet/
+          # shippedIcon* fields are added by `ios-channel-icons.mjs verify`
+          # once the IPA exists (#1776).
+          icon_set=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).iosIconSet);' '${{ inputs.channel }}')
+          test -d "src-desktop/$icon_set"
+          printf '{"channel":"%s","sourceSha":"%s","desktopBundleIcon":"%s","desktopBundleIconSha256":"%s"}\n' '${{ inputs.channel }}' '${{ inputs.source_sha }}' "$icon" "$(shasum -a 256 "src-desktop/$icon" | awk '{print $1}')" > provider-receipts/channel-icon-receipt.json
       - name: Initialize the channel-specific Xcode project
         working-directory: src-desktop
         run: |
@@ -180,6 +188,13 @@ jobs:
           done
           rm -rf gen/apple
           npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.ios.channel.json"
+          # `tauri ios init` renders Assets.xcassets/AppIcon.appiconset from its
+          # template with Tauri's DEFAULT PNGs (nothing under icons/ios/ for it
+          # to copy), and gen/apple was just deleted, so the catalog holds the
+          # Tauri logo here (#1776, Nightly 34196525973). Replace it with the
+          # channel's committed set; the script fails closed if the set lacks a
+          # file Contents.json references or a template default survives.
+          node ../scripts/ios-channel-icons.mjs apply '${{ inputs.channel }}'
           for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
             ditto "$preserved/$item" "gen/apple/$item"
           done
@@ -257,6 +272,10 @@ jobs:
           preserved="$RUNNER_TEMP/station-ios-preserved"
           rm -rf gen/apple
           npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json"
+          # This second init also rewrote the catalog with the template
+          # defaults; `tauri ios build` compiles THIS catalog, so apply the
+          # channel set again before anything else touches gen/apple.
+          node ../scripts/ios-channel-icons.mjs apply '${{ inputs.channel }}'
           for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
             ditto "$preserved/$item" "gen/apple/$item"
           done
@@ -316,9 +335,14 @@ jobs:
           test "$(printf '%s\n' "$packaged_manifest" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
           cmp "src-desktop/station-client-build.json" "$packaged_manifest"
           test -s "$app/Assets.car"
-          generated_icon="src-desktop/gen/apple/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png"
-          test -s "$generated_icon"
-          node --input-type=module -e 'import { readFileSync, writeFileSync } from "node:fs"; import { createHash } from "node:crypto"; const receipt=JSON.parse(readFileSync("provider-receipts/channel-icon-receipt.json","utf8")); receipt.generatedAsset="AppIcon-512@2x.png"; receipt.generatedAssetSha256=createHash("sha256").update(readFileSync(process.argv[1])).digest("hex"); writeFileSync("provider-receipts/channel-icon-receipt.json", JSON.stringify(receipt,null,2)+"\n", { mode: 0o600 });' "$generated_icon"
+          # Fail closed unless the catalog xcodebuild compiled is byte-for-byte
+          # the channel's committed set AND the loose AppIcon60x60@2x.png in
+          # the .app is that set's icon pixel for pixel (Xcode re-encodes it
+          # as CgBI, so it is reverted and decoded before comparing). The
+          # receipt's iconSetSha256 / catalogMatchesChannelSet /
+          # shippedIconPixelsMatchChannelSet are the outcome of those
+          # comparisons, not recorded digests (#1776).
+          node scripts/ios-channel-icons.mjs verify '${{ inputs.channel }}' --app "$app" --receipt provider-receipts/channel-icon-receipt.json
           /usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$app/Info.plist" | grep -Fx "$(node -p 'JSON.parse(require("node:fs").readFileSync(process.env.RUNNER_TEMP + "/tauri.ios.channel.json", "utf8")).plugins["deep-link"].mobile[0].scheme[0]')"
           entitlements="$RUNNER_TEMP/station-ios-entitlements.plist"
           entitlements_json="$RUNNER_TEMP/station-ios-entitlements.json"
@@ -402,7 +426,7 @@ jobs:
           node scripts/verify-ios-testflight-authority.mjs --source-ref "$source_ref" --source-sha '${{ inputs.source_sha }}'
           echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -421,6 +445,10 @@ jobs:
           test "$ipa" = 'staged/release-assets/station-${{ inputs.release_label }}-ios-device.ipa'
           test -s staged/src-desktop/station-client-build.json
           test -s staged/provider-receipts/channel-icon-receipt.json
+          # The staged bytes were audited when built; refuse to upload unless
+          # that audit derived (not recorded) that the catalog and the shipped
+          # icon are the channel's set (#1776).
+          node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.channel!==process.argv[2]||value.catalogMatchesChannelSet!==true||value.shippedIconPixelsMatchChannelSet!==true||!/^[0-9a-f]{64}$/.test(value.iconSetSha256??"")) process.exit(1)' staged/provider-receipts/channel-icon-receipt.json '${{ inputs.channel }}'
           node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.kind!=="testflight-source-identity"||value.sourceSha!==process.argv[2]||value.channel!==process.argv[3]||value.bundleVersion!==process.argv[4]) process.exit(1)' staged/staged-identity/source-identity.json '${{ inputs.source_sha }}' '${{ inputs.channel }}' '${{ inputs.bundle_version }}'
           mkdir -p release-assets provider-receipts staged-identity
           cp "$ipa" release-assets/
@@ -477,7 +505,7 @@ jobs:
           --app-id '${{ steps.app_store.outputs.app_id }}'
           --bundle-version '${{ inputs.bundle_version }}'
           --deadline-seconds 1800
-      - name: Record processed provider receipt and attach the channel group
+      - name: Record processed provider receipt and channel group membership
         env:
           WORKFLOW_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |

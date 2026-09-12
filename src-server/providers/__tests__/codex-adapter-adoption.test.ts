@@ -221,8 +221,7 @@ describe('Codex native attached-session adoption', () => {
       lastTurnId: TURN_ID,
       cwd: '/workspace',
       threadSource: MARKER,
-      approvalPolicy: 'never',
-      sandbox: 'danger-full-access',
+      ephemeral: false,
       serviceTier: null,
       model: 'gpt-requested',
     });
@@ -378,12 +377,19 @@ describe('Codex native attached-session adoption', () => {
         processFactory: () => process,
         resolveSourceHome: () => '/source-home',
       });
-      const adoption = adapter.adoptSession(adoptInput(), {
-        onProviderChildCreationStarted: vi.fn(),
-        onProviderChildCreated: created,
-      });
+      const adoption = adapter.adoptSession(
+        adoptInput({ modelOptions: { approvalMode: 'never' } }),
+        {
+          onProviderChildCreationStarted: vi.fn(),
+          onProviderChildCreated: created,
+        },
+      );
       await initialize(process);
       const fork = await waitForCall(process, 'thread/fork');
+      expect(fork.params).toMatchObject({
+        approvalPolicy: 'never',
+        sandbox: 'danger-full-access',
+      });
       respond(process, fork, forkResult({}, responseOverride));
 
       await expect(adoption).rejects.toThrow(/workspace and execution policy/);

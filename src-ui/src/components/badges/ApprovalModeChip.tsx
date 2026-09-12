@@ -30,7 +30,7 @@ const loadComposerModeSheet = () =>
     default: module.ComposerModeSheet,
   }));
 
-export interface ApprovalModeChipProps {
+interface ApprovalModeChipProps {
   /** The session's clean engine-connection identity (for example `codex`). */
   engineConnectionId?: string | null;
   /**
@@ -139,11 +139,11 @@ export function ApprovalModeChip({
   const appliedMode = isApprovalMode(lastAppliedApprovalMode)
     ? lastAppliedApprovalMode
     : undefined;
-  // Once the adapter has emitted a durable session/turn receipt, that fact is
-  // the chip's authority. Requested/default state remains the fallback before
-  // the first receipt and the picker input for the next turn.
-  const displayedMode = appliedMode ?? effective.mode;
   const isOverride = effective.source === 'session override';
+  // Once the adapter has emitted a durable session/turn receipt, that fact is
+  // the chip's authority. With no receipt and no Station override, do not
+  // invent Ask/Never — inherit the engine config (station#1950).
+  const displayedMode = appliedMode ?? effective.mode;
   const isPendingApply =
     isOverride && effective.mode === 'never' && appliedMode !== 'never';
 

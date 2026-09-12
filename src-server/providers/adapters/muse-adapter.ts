@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
@@ -18,6 +18,7 @@ import {
   providerOps,
 } from '../../telemetry/metrics.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import type {
   ProviderAdapterShape,
@@ -35,6 +36,10 @@ import {
   AsyncEventQueue,
   type AsyncEventStreamOptions,
 } from '../sessions/async-event-queue.js';
+import {
+  decodeChatAttachments,
+  rejectFileAttachments,
+} from '../sessions/chat-attachments.js';
 import {
   buildMuseExecArgs,
   parseMuseLine,
@@ -200,8 +205,9 @@ const MUSE_E2E_SMOKE_LIVE_INSTANCE = /^e2e-smoke-live-[a-z0-9]+-[a-z0-9]+$/;
  * the server's cwd is otherwise enough to put ANY variable into `process.env`.
  * That is the case this gate is for, and there the name alone is inert.
  *
- * On a DIRECTLY-LAUNCHED server (`npm run dev:server` / `start:server`, which
- * load dotenv before anything else) there is no attestation at all: nothing
+ * On a DIRECTLY-LAUNCHED server (`npm run dev:server`, or the built
+ * `dist-server/command-station.js` entry run by hand — both load dotenv before
+ * anything else) there is no attestation at all: nothing
  * server-side produces or cross-checks either marker, so a `.env` can set all
  * three variables and the override applies. This gate accepts that residual
  * rather than closing it — exactly as `resource-posture.ts` does with the same
@@ -216,7 +222,7 @@ function museProviderOverrideContained(env: NodeJS.ProcessEnv): boolean {
 }
 
 /** Why a named override did not become argv. */
-export interface MuseProviderOverrideRefusal {
+interface MuseProviderOverrideRefusal {
   /**
    * `uncontained-environment` — the runtime is not the disposable E2E one, so
    * the variable has no effect here whatever it says.
@@ -391,7 +397,12 @@ export class MuseAdapter implements ProviderAdapterShape {
     // NOT claimed: nothing in the observed JSONL stream describes a tool call,
     // muse exposes no approval channel, and Station implements no adoption of
     // a pre-existing muse session.
-    capabilities: ['agent-runtime', 'session-lifecycle', 'external-process'],
+    capabilities: [
+      'agent-runtime',
+      'session-lifecycle',
+      'external-process',
+      'image-input',
+    ],
     continuity: { resume: 'none', fork: 'none', rewind: 'none' },
     builtin: true,
     engineId: engineId('muse'),
@@ -675,7 +686,38 @@ export class MuseAdapter implements ProviderAdapterShape {
     this.reportProviderNoticeOnce();
     const turnId = crypto.randomUUID();
     const modelId = input.modelId ?? record.modelId;
+    const decoded = decodeChatAttachments(input.attachments);
+    rejectFileAttachments('Muse Code', decoded);
+    if (decoded.length && this.providerOverride === 'echo')
+      throw new Error('Muse echo does not accept image attachments.');
+    let imageDirectory: string | undefined;
+    const imagePaths: string[] = [];
+    const cleanupImages = () => {
+      if (!imageDirectory) return;
+      try {
+        rmSync(imageDirectory, { recursive: true, force: true, maxRetries: 3 });
+      } catch {
+        this.options.logger?.warn?.('Muse image staging cleanup was deferred.');
+      }
+      imageDirectory = undefined;
+    };
+    try {
+      if (decoded.length)
+        imageDirectory = mkdtempSync(join(tmpdir(), 'station-muse-images-'));
+      for (const [index, image] of decoded.entries()) {
+        const extension = image.attachment.mimeType.split('/')[1];
+        const path = join(imageDirectory!, `${index}.${extension}`);
+        writeFileSync(path, Buffer.from(image.base64, 'base64'), {
+          mode: 0o600,
+        });
+        imagePaths.push(path);
+      }
+    } catch (error) {
+      cleanupImages();
+      throw error;
+    }
     const args = buildMuseExecArgs({
+      imagePaths,
       sessionId: record.museSessionId,
       prompt: input.input,
       modelId,
@@ -685,11 +727,23 @@ export class MuseAdapter implements ProviderAdapterShape {
       ...(this.providerOverride ? { provider: this.providerOverride } : {}),
     });
 
-    const spawned = this.processFactory(args, record.cwd);
+    let spawned: MuseSpawnResult;
+    try {
+      spawned = this.processFactory(args, record.cwd);
+    } catch (error) {
+      cleanupImages();
+      throw error;
+    }
     const turn: MuseActiveTurn = {
       turnId,
       process: spawned.process,
-      release: spawned.release,
+      release: () => {
+        try {
+          spawned.release?.();
+        } finally {
+          cleanupImages();
+        }
+      },
       startedAt: Date.now(),
       outputText: '',
       settled: false,
@@ -1334,7 +1388,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       .then(() => true)
       .catch((error: unknown) => {
         this.options.logger?.warn?.(
-          `Muse turn process termination was not confirmed: ${error instanceof Error ? error.message : String(error)}`,
+          `Muse turn process termination was not confirmed: ${errorMessage(error)}`,
         );
         return false;
       })

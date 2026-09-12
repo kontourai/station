@@ -37,17 +37,20 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const require = createRequire(import.meta.url);
-const { createConsoleHubServer } =
-  require('@kontourai/console/console-server/dist/src/console-foundation/console-hub-server.js') as {
-    createConsoleHubServer: (options?: Record<string, unknown>) => {
-      server: import('node:http').Server;
-      listen(
-        options?: { host?: string; port?: number },
-        callback?: () => void,
-      ): import('node:http').Server;
-      close(callback?: (error?: Error) => void): import('node:http').Server;
-    };
+// Root export (see console-bridge.test.ts): the 2.8.0 exports map refuses
+// the deep dist path this suite used to require. `createConsoleHubServer`
+// is re-exported from the same console-foundation index the root maps to,
+// so the REAL shipped hub constructor stays the test's oracle.
+const { createConsoleHubServer } = require('@kontourai/console') as {
+  createConsoleHubServer: (options?: Record<string, unknown>) => {
+    server: import('node:http').Server;
+    listen(
+      options?: { host?: string; port?: number },
+      callback?: () => void,
+    ): import('node:http').Server;
+    close(callback?: (error?: Error) => void): import('node:http').Server;
   };
+};
 
 const THREAD = 'thread-bridge-1';
 
@@ -344,6 +347,54 @@ describe('ConsoleBridgeService', () => {
     );
     expect(manifest.status.recordCount).toBe(4);
     expect(manifest.status.sessionStatus).toBe('completed');
+    await service.stop();
+  });
+
+  test('removes the staged segment when its rename fails', async () => {
+    // The export retries the same segment from this exact failure, and the
+    // temp name carries a timestamp -- so without the cleanup a segment that
+    // fails repeatedly fills the events directory with orphans nothing reaps.
+    const workspace = join(dir, 'workspace-segment-temp');
+    const logger = makeLogger();
+    const service = new ConsoleBridgeService({
+      eventBus: bus,
+      eventStore: store,
+      logger,
+      config: resolveConsoleBridgeConfig({ STATION_CONSOLE_FILE_SINK: '1' }),
+      flushDelayMs: 0,
+      fileSystem: {
+        existsSync: fs.existsSync,
+        mkdirSync: fs.mkdirSync,
+        readFileSync: fs.readFileSync,
+        renameSync: (source, destination) => {
+          if (String(destination).endsWith('.jsonl')) {
+            throw new Error('injected segment rename interruption');
+          }
+          fs.renameSync(source, destination);
+        },
+        unlinkSync: fs.unlinkSync,
+        writeFileSync: fs.writeFileSync,
+      },
+    });
+    service.start();
+    for (const event of gatedSessionEvents(workspace)) {
+      emitThroughStore(store, bus, event);
+    }
+    await service.flushNow();
+
+    const segmentDirectory = join(
+      workspace,
+      '.kontourai',
+      'console',
+      'events',
+      'station-bridge',
+      'project',
+      'station-local',
+      THREAD,
+    );
+    expect(
+      fs.readdirSync(segmentDirectory).filter((name) => name.endsWith('.tmp')),
+    ).toEqual([]);
     await service.stop();
   });
 

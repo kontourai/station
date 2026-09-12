@@ -1,4 +1,3 @@
-import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { contextRegistry } from '@kontourai/station-sdk';
 import { ChatHttpError } from '@kontourai/station-sdk/client';
@@ -7,7 +6,7 @@ import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import { buildOutgoingUserMessage } from '../useActiveChatSessions.helpers';
-import { sendExecutionMessage } from '../useOrchestration';
+import { isReplayThread } from './replay/replay-registry';
 
 /**
  * Pending-queue drain for orchestration-driven sessions (Claude/Codex
@@ -88,16 +87,31 @@ function isDefinitiveClientRejection(error: unknown): boolean {
 export function drainQueuedMessageOnTurnCompleted(
   apiBase: string,
   threadId: string,
+  reviewed = false,
 ) {
+  if (isReplayThread(threadId)) return;
   const chat = activeChatsStore.getSnapshot()[threadId];
   if (
     !chat?.queuedMessages?.length ||
     chat.isEditingQueue ||
+    (chat.queuedMessageFailure?.reviewReason === 'execution-binding-changed' &&
+      !reviewed) ||
     !conversationCanMutate(chat)
   ) {
     return;
   }
 
+  // The popped head is still owned by this execution during the settle
+  // delay, even though it is no longer visible in queuedMessages.
+  const bindingKeys = [
+    'conversationId',
+    'currentSessionId',
+    'agentSlug',
+    'executionMode',
+    'orchestrationProvider',
+    'agentConnectionId',
+  ] as const;
+  const scheduledBinding = bindingKeys.map((key) => chat[key]);
   const [nextMessage, ...remainingQueue] = chat.queuedMessages;
   const continueUnbound =
     chat.queuedMessageFailure?.code === 'continuation_workspace_unbound';
@@ -108,17 +122,53 @@ export function drainQueuedMessageOnTurnCompleted(
     queuedMessageFailure: undefined,
   });
 
-  setTimeout(() => {
+  setTimeout(async () => {
+    let dispatchForeground: typeof import('../../lib/foregroundMessageDispatch').dispatchForeground;
+    try {
+      ({ dispatchForeground } = await import(
+        '../../lib/foregroundMessageDispatch'
+      ));
+    } catch (error) {
+      const failed = activeChatsStore.getSnapshot()[threadId];
+      if (failed) {
+        activeChatsStore.updateChat(threadId, {
+          queuedMessages: [nextMessage, ...(failed.queuedMessages ?? [])],
+          queuedMessageFailure: {
+            message: error instanceof Error ? error.message : String(error),
+            at: Date.now(),
+          },
+        });
+      }
+      return;
+    }
+    // Loading the send chunk can yield; re-read authority before mutating.
     const current = activeChatsStore.getSnapshot()[threadId];
     if (!current) {
       return;
     }
+    const changedBinding = bindingKeys.some(
+      (key, index) => current[key] !== scheduledBinding[index],
+    );
     // The terminal event and the resolver can race across the settle delay.
     // Requeue the exact head before any optimistic row or provider effect if
     // the current authoritative state ceased to admit continuation.
-    if (!conversationCanMutate(current)) {
+    if (
+      changedBinding ||
+      !conversationCanMutate(current) ||
+      current.queuedMessageFailure?.reviewReason === 'execution-binding-changed'
+    ) {
       activeChatsStore.updateChat(threadId, {
         queuedMessages: [nextMessage, ...(current.queuedMessages ?? [])],
+        ...(changedBinding
+          ? {
+              queuedMessageFailure: {
+                reviewReason: 'execution-binding-changed' as const,
+                message:
+                  'This conversation changed Agent or Session. Review queued messages before retrying.',
+                at: Date.now(),
+              },
+            }
+          : {}),
       });
       return;
     }
@@ -142,32 +192,14 @@ export function drainQueuedMessageOnTurnCompleted(
       return;
     }
 
-    sendExecutionMessage({
+    dispatchForeground({
       apiBase,
-      target: {
-        ...(!current.projectSlug || continueUnbound
-          ? { environment: { kind: 'current' as const } }
-          : {}),
-        agent: agentId(current.agentSlug),
-        ...(current.model || Object.keys(current.providerOptions ?? {}).length
-          ? {
-              model: {
-                ...(current.model ? { override: current.model } : {}),
-                ...(current.providerOptions
-                  ? { options: current.providerOptions }
-                  : {}),
-              },
-            }
-          : {}),
-        ...(current.projectSlug && !continueUnbound
-          ? {
-              workspace: {
-                kind: 'project',
-                projectSlug: current.projectSlug,
-              },
-            }
-          : {}),
-      },
+      sessionId: threadId,
+      clientTurnId: clientId,
+      agentSlug: current.agentSlug,
+      projectSlug: continueUnbound ? undefined : current.projectSlug,
+      model: current.model,
+      providerOptions: current.providerOptions,
       message: nextMessage,
       conversationId: current.conversationId ?? threadId,
       // Queued sends recompute ambient context at drain time so the model

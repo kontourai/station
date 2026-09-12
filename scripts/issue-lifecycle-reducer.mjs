@@ -1,13 +1,11 @@
 /** Deterministic, deliberately narrow reducer for the two issue handoff labels. */
-import { BACKLOG_POLICY } from './backlog-priority-policy.mjs';
 import { NEEDS_MAINTAINER, NEEDS_REPORTER } from './lifecycle-labels.mjs';
 
-// Re-exported so existing importers keep working; the names live in a leaf
-// module because this file's policy import reaches label-manifest.mjs, which
-// must not import back into a module still being evaluated (#1312).
+// Re-exported so existing importers keep working. The names live in an
+// import-free leaf that `label-manifest.mjs` also reads; that arrangement
+// outlived the cycle it was built for (#1312), which this file's dropped
+// policy import had closed.
 export { NEEDS_MAINTAINER, NEEDS_REPORTER };
-export const BUG_LABEL = 'bug';
-export const BUG_PRIORITY = 'P1';
 export const LIFECYCLE_LABELS = Object.freeze([
   NEEDS_MAINTAINER,
   NEEDS_REPORTER,
@@ -45,25 +43,6 @@ export function isSubstantiveReply(body) {
   return /[\p{L}\p{N}]/u.test(visible);
 }
 
-/**
- * Pure policy derivation, not a judgment call: the backlog policy's owner
- * directive is "every bug is P1", so a `bug` label with no classification
- * label yet derives exactly one addition. An issue that already carries any
- * classification (a priority or a non-actionable disposition) is left alone —
- * deliberate classification stays with the filer for everything else, and the
- * backlog gate remains the backstop.
- */
-function bugClassificationAdditions(labels) {
-  const existing = labelNames(labels);
-  if (!existing.has(BUG_LABEL)) return [];
-  if (
-    BACKLOG_POLICY.classificationLabels.some((label) => existing.has(label))
-  ) {
-    return [];
-  }
-  return [BUG_PRIORITY];
-}
-
 function patchFor(labels, desired) {
   const existing = labelNames(labels);
   const add = existing.has(desired) ? [] : [desired];
@@ -80,21 +59,7 @@ function patchFor(labels, desired) {
 export function reduceIssueLifecycle(input) {
   const labels = input.issue?.labels ?? [];
   if (input.kind === 'issue-opened' || input.kind === 'issue-reopened') {
-    const patch = patchFor(labels, NEEDS_MAINTAINER);
-    return {
-      add: [...patch.add, ...bugClassificationAdditions(labels)],
-      remove: patch.remove,
-    };
-  }
-  if (
-    input.kind === 'maintainer-requested-reporter' &&
-    input.label === BUG_LABEL
-  ) {
-    // The workflow routes every `labeled` event here; a later-arriving `bug`
-    // label derives P1 the same way it does at filing. No permission check:
-    // GitHub already restricts labeling to triage+, and the derivation is
-    // unconditional policy either way.
-    return { add: bugClassificationAdditions(labels), remove: [] };
+    return patchFor(labels, NEEDS_MAINTAINER);
   }
   if (
     input.kind === 'maintainer-requested-reporter' &&

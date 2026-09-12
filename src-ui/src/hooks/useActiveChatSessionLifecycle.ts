@@ -36,17 +36,7 @@ export function useCreateChatSession() {
         title: title || 'New chat',
         projectSlug,
         projectName,
-        executionMode: execution?.executionMode,
-        executionScope: execution?.executionScope,
-        agentConnectionId: execution?.agentConnectionId,
-        providerId: execution?.providerId,
-        defaultProviderId: execution?.defaultProviderId,
-        provider: execution?.provider,
-        model: execution?.model,
-        modelSource: execution?.modelSource,
-        defaultModel: execution?.defaultModel,
-        defaultModelSource: execution?.defaultModelSource,
-        providerOptions: execution?.providerOptions,
+        ...execution,
       });
       return sessionId;
     },
@@ -104,17 +94,10 @@ export function useOpenConversation(apiBase: string) {
         conversationId,
         projectSlug,
         projectName,
-        executionMode: execution?.executionMode,
-        executionScope: execution?.executionScope,
-        agentConnectionId: execution?.agentConnectionId,
-        providerId: execution?.providerId,
-        defaultProviderId: execution?.defaultProviderId,
-        provider: execution?.provider,
-        model: execution?.model,
-        modelSource: execution?.modelSource,
-        defaultModel: execution?.defaultModel,
-        defaultModelSource: execution?.defaultModelSource,
-        providerOptions: execution?.providerOptions,
+        ...execution,
+        // A newly opened durable Conversation needs the same authority check
+        // as a restored tab before the composer may submit its first message.
+        conversationOpenPending: true,
         // A replay-seeded fork has a durable Conversation and copied history,
         // but no execution Session until its first divergent turn.
         orchestrationSessionStarted:

@@ -40,9 +40,18 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate: vi.fn() }),
-}));
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({ navigate: vi.fn() });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 vi.mock('../contexts/ActiveChatsContext', () => ({
   useActiveChatActions: () => ({
     updateChat: vi.fn(),
@@ -50,8 +59,8 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
     addEphemeralMessage: vi.fn(),
   }),
 }));
-vi.mock('../hooks/useMessageContext', () => ({
-  useMessageContext: () => ({ getComposedContext: () => '' }),
+vi.mock('../contexts/MessageContextContext', () => ({
+  useMessageContextContext: () => ({ getComposedContext: () => '' }),
 }));
 vi.mock('../hooks/useShareReceiver', () => ({ useShareReceiver: () => {} }));
 vi.mock('../hooks/useSTT', () => ({

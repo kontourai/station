@@ -117,6 +117,13 @@ describe('toolNameForDenialMessage (station#3210 part 1)', () => {
     expect(rendered.endsWith('…')).toBe(true);
   });
 
+  test('the cap ships at 64 code points', () => {
+    // A literal. Every assertion above is `DENIAL_TOOL_NAME_MAX_LENGTH + 1`
+    // and stays green at any value, so how much of a tool's name a user is
+    // shown in a denial should move only as a visible decision.
+    expect(DENIAL_TOOL_NAME_MAX_LENGTH).toBe(64);
+  });
+
   test('an empty or fully-stripped name still renders a readable sentence', () => {
     expect(toolNameForDenialMessage('')).toBe('?');
     expect(denialReason({ toolName: '\n\n', predicate: 'was denied.' })).toBe(

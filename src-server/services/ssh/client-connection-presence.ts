@@ -5,7 +5,7 @@ export const CLIENT_CONNECTION_LEASE_MS = 90_000;
 export const CLIENT_CONNECTION_CAPACITY = 256;
 export const CLIENT_CONNECTIONS_PER_DEVICE_CAPACITY = 32;
 
-export interface ConnectedClientSnapshot {
+interface ConnectedClientSnapshot {
   readonly deviceId: string;
   readonly sessionCount: number;
   readonly connectedAt: number;

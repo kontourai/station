@@ -1,13 +1,10 @@
-import {
-  existsSync,
-  lstatSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-} from 'node:fs';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { buildPlugin as buildPluginBundle } from '@kontourai/station-shared/build';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import { capturePluginRuntimeArtifactAsync } from '../../services/plugins/plugin-runtime-artifact.js';
 import type { Logger } from '../../utils/logger.js';
 import { errorMessage } from '../schemas/schemas.js';
 
@@ -37,19 +34,6 @@ function containedRegularFile(root: string, candidate: string): string | null {
   return candidatePath;
 }
 
-function containedPluginRoot(pluginsDir: string, pluginRoot: string): boolean {
-  if (!existsSync(pluginRoot)) return false;
-  const pluginRootStat = lstatSync(pluginRoot);
-  if (pluginRootStat.isSymbolicLink() || !pluginRootStat.isDirectory()) {
-    return false;
-  }
-  const pluginsPath = realpathSync(pluginsDir);
-  const pluginPath = realpathSync(pluginRoot);
-  return (
-    pluginPath === pluginsPath || pluginPath.startsWith(`${pluginsPath}${sep}`)
-  );
-}
-
 export function assertPluginBundleAssetsContained(pluginDir: string): void {
   for (const file of ['bundle.js', 'bundle.css']) {
     const assetPath = join(pluginDir, 'dist', file);
@@ -59,43 +43,30 @@ export function assertPluginBundleAssetsContained(pluginDir: string): void {
   }
 }
 
-/** Resolve a plugin bundle file by manifest name (not folder name). */
-export function resolvePluginBundle(
+/** Capture before reading and check again before delivering executable bytes. */
+export async function readPluginBundle(
   pluginsDir: string,
   name: string,
-  file: string,
-  logger: Logger,
-): string | null {
-  const directPluginRoot = join(pluginsDir, name);
-  if (containedPluginRoot(pluginsDir, directPluginRoot)) {
-    const direct = containedRegularFile(
-      directPluginRoot,
-      join(directPluginRoot, 'dist', file),
+  file: 'bundle.js' | 'bundle.css',
+  journal?: PackageMcpAdmissionJournal,
+): Promise<string | null> {
+  try {
+    const artifact = await capturePluginRuntimeArtifactAsync(
+      pluginsDir,
+      name,
+      journal,
     );
-    if (direct) return direct;
+    if (!artifact) return null;
+    const path = containedRegularFile(
+      artifact.packageRoot,
+      join(artifact.packageRoot, 'dist', file),
+    );
+    if (!path) return null;
+    const content = await readFile(path, 'utf8');
+    return (await artifact.isCurrentAsync()) ? content : null;
+  } catch {
+    return null;
   }
-  if (!existsSync(pluginsDir)) return null;
-
-  for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const pluginRoot = join(pluginsDir, entry.name);
-    if (!containedPluginRoot(pluginsDir, pluginRoot)) continue;
-
-    try {
-      const manifest = JSON.parse(
-        readFileSync(join(pluginRoot, 'plugin.json'), 'utf-8'),
-      ) as PluginManifest;
-      if (manifest.name === name) {
-        return containedRegularFile(pluginRoot, join(pluginRoot, 'dist', file));
-      }
-    } catch (error) {
-      logger.debug('Failed to read plugin manifest for bundle resolution', {
-        error,
-      });
-    }
-  }
-
-  return null;
 }
 
 /** Run plugin build if build script or entrypoint exists. */
@@ -103,9 +74,10 @@ export async function buildPlugin(
   pluginDir: string,
   name: string,
   logger: Logger,
+  manifest?: PluginManifest,
 ): Promise<void> {
   try {
-    const result = await buildPluginBundle(pluginDir);
+    const result = await buildPluginBundle(pluginDir, 'production', manifest);
     if (result.built) {
       logger.info(`Plugin ${name}: build complete`);
     }

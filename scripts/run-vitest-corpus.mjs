@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 
-import { spawnSync as defaultSpawnSync, spawn } from 'node:child_process';
+import {
+  spawnSync as defaultSpawnSync,
+  execFileSync,
+  spawn,
+} from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -10,6 +15,7 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from './lib/owned-process.mjs';
+import { FULL_REGRESSION_PHASES } from './verification-lanes.mjs';
 import {
   discoverVitestResourceGroups,
   ORDINARY_MAX_WORKERS,
@@ -102,7 +108,7 @@ function corpusDescriptors(groupName, shard) {
   return [selected];
 }
 
-function groupFiles(groups, name) {
+export function groupFiles(groups, name) {
   const keys = {
     ordinary: 'ordinary',
     'process-heavy': 'processHeavy',
@@ -170,6 +176,7 @@ export function runWindowsSerializedCorpus({
   root = process.cwd(),
   spawnSync = defaultSpawnSync,
   signal,
+  timeoutMs,
   groupName,
   shard,
   groups,
@@ -200,6 +207,7 @@ export function runWindowsSerializedCorpus({
     encoding: 'utf8',
     windowsHide: true,
     maxBuffer: OUTPUT_LIMIT_BYTES,
+    ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
   });
   const stdout = result.stdout ?? '';
   const stderr = result.stderr ?? '';
@@ -216,6 +224,9 @@ export function runWindowsSerializedCorpus({
       selected?.resultName ?? selected?.name ?? 'windows-serialized-fallback',
     status: result.status,
     passed: result.status === 0 && !error,
+    ...(result.signal || result.error?.code === 'ETIMEDOUT'
+      ? { cancelled: true }
+      : {}),
     error: error ? String(error.message ?? error) : null,
     stdout,
     stderr,
@@ -416,7 +427,7 @@ export function emitResult(result) {
   }
 }
 
-/** Fail fast, preserving the historical test:full behavior after a failure. */
+/** Default fail-fast; audits can collect independent failures without claiming a pass. */
 export async function runVitestCorpus({
   root = process.cwd(),
   groups,
@@ -427,6 +438,7 @@ export async function runVitestCorpus({
   onResult = emitResult,
   groupName,
   shard,
+  keepGoing = false,
 } = {}) {
   if (signal?.aborted) {
     const result = terminalFailure(
@@ -452,24 +464,69 @@ export async function runVitestCorpus({
       return { passed: false, results };
     }
     const files = groupFiles(resolvedGroups, descriptor.name);
-    const result =
-      platform === 'win32'
-        ? runWindowsSerialized({
-            root,
-            signal,
-            groupName: descriptor.name,
-            shard: descriptor.shard,
-            groups: resolvedGroups,
-          })
-        : await runGroup(descriptor, files, { root, signal });
+    const phase = FULL_REGRESSION_PHASES.find(
+      (entry) =>
+        entry.id === `test-full-${descriptor.resultName ?? descriptor.name}`,
+    );
+    if (keepGoing && !phase)
+      throw new Error('Audit group has no declared execution budget');
+    const groupController = keepGoing ? new AbortController() : null;
+    const abortGroup = () => groupController?.abort(signal?.reason);
+    signal?.addEventListener('abort', abortGroup, { once: true });
+    const timer = groupController
+      ? setTimeout(
+          () => groupController.abort('group execution deadline'),
+          phase.timeoutMs,
+        )
+      : null;
+    let result;
+    try {
+      result =
+        platform === 'win32'
+          ? runWindowsSerialized({
+              root,
+              signal: groupController?.signal ?? signal,
+              groupName: descriptor.name,
+              shard: descriptor.shard,
+              groups: resolvedGroups,
+              ...(keepGoing ? { timeoutMs: phase.timeoutMs } : {}),
+            })
+          : await runGroup(descriptor, files, {
+              root,
+              signal: groupController?.signal ?? signal,
+            });
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+      signal?.removeEventListener('abort', abortGroup);
+    }
     results.push(result);
     onResult?.(result);
-    if (!result.passed) return { passed: false, results };
+    if (
+      !result.passed &&
+      (!keepGoing || result.cancelled || result.error || result.status !== 1)
+    ) {
+      return { passed: false, results };
+    }
   }
-  return { passed: results.length === descriptors.length, results };
+  return {
+    passed:
+      results.length === descriptors.length &&
+      results.every((result) => result.passed),
+    results,
+  };
 }
 
 export function parseVitestCorpusArguments(args) {
+  if (args.includes('--keep-going')) {
+    if (args.filter((argument) => argument === '--keep-going').length !== 1)
+      throw new Error('usage: --keep-going may be supplied once');
+    return {
+      ...parseVitestCorpusArguments(
+        args.filter((argument) => argument !== '--keep-going'),
+      ),
+      keepGoing: true,
+    };
+  }
   if (args.length === 0) return {};
   if (args.length > 2)
     throw new Error(
@@ -509,10 +566,52 @@ async function main() {
     registerProcessSignal(name, () => controller.abort(name)),
   );
   try {
+    const options = parseVitestCorpusArguments(process.argv.slice(2));
     const result = await runVitestCorpus({
-      ...parseVitestCorpusArguments(process.argv.slice(2)),
+      ...options,
       signal: controller.signal,
     });
+    if (options.keepGoing) {
+      const directory = resolve('.kontourai/vitest-corpus-audit');
+      mkdirSync(directory, { recursive: true });
+      const path = resolve(directory, `${Date.now()}-${process.pid}.json`);
+      writeFileSync(
+        path,
+        JSON.stringify(
+          {
+            schemaVersion: 1,
+            revision: execFileSync('git', ['rev-parse', 'HEAD'], {
+              encoding: 'utf8',
+              windowsHide: true,
+            }).trim(),
+            selection: options,
+            passed: result.passed,
+            groups: result.results.map(
+              ({
+                name,
+                passed,
+                status,
+                error,
+                cancelled,
+                outputBytes,
+                cleanup,
+              }) => ({
+                name,
+                passed,
+                status,
+                error,
+                cancelled,
+                outputBytes,
+                cleanup,
+              }),
+            ),
+          },
+          null,
+          2,
+        ),
+      );
+      process.stdout.write(`[vitest-corpus] audit matrix: ${path}\n`);
+    }
     process.exitCode = result.passed ? 0 : 1;
   } catch (error) {
     process.stderr.write(

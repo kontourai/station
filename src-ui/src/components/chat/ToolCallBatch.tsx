@@ -47,7 +47,7 @@ export interface ToolCallBatchProps<P extends ToolCallLike> {
    * per-part `ToolCallDisplay` renderer (including its `onApprove` wiring)
    * so this component never builds a second detail renderer.
    */
-  renderCall: (part: P, index: number) => ReactNode;
+  renderCall: (part: P, index: number, expanded?: boolean) => ReactNode;
 }
 
 /**
@@ -107,10 +107,51 @@ export function ToolCallBatch<P extends ToolCallLike>({
               : `${group.unresolvedCount} with no result`}
           </span>
         )}
+        {group.awaitingApprovalCount > 0 && (
+          <span className="tool-call-batch__awaiting">
+            {group.awaitingApprovalCount === 1
+              ? 'Awaiting approval'
+              : `${group.awaitingApprovalCount} awaiting approval`}
+          </span>
+        )}
+        {group.deniedCount > 0 && (
+          <span className="tool-call-batch__failed">
+            {group.deniedCount === 1
+              ? '1 denied'
+              : `${group.deniedCount} denied`}
+          </span>
+        )}
+        {group.cancelledCount > 0 && (
+          <span className="tool-call-batch__unresolved">
+            {group.cancelledCount === 1
+              ? '1 cancelled'
+              : `${group.cancelledCount} cancelled`}
+          </span>
+        )}
         <span className="tool-call-batch__chevron" aria-hidden="true">
           ›
         </span>
       </button>
+      {group.progressMessage && (
+        <div
+          className="tool-call-batch__progress"
+          role="status"
+          aria-live="polite"
+        >
+          {group.progressMessage}
+        </div>
+      )}
+      {!isOpen &&
+        group.calls
+          .filter((call) => call.awaitingApproval)
+          .map((call) => (
+            <div
+              key={call.part.toolCallId ?? `awaiting:${call.index}`}
+              className="tool-call-batch__pending-grant"
+            >
+              {renderCall(call.part, call.index, true)}
+            </div>
+          ))}
       {isOpen && (
         <ToolCallBatchSheetBoundary
           group={group}

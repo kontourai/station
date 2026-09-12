@@ -11,15 +11,22 @@ import type {
   ScheduleNotificationOpts,
 } from '@kontourai/station-contracts/notification';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  type FileMutationLock,
+} from '@kontourai/station-shared/lifecycle-events';
 import {
   classifyNotificationCategory,
   NOTIFICATION_TTL_MS,
 } from '@kontourai/station-shared/notification-priority';
 import type { INotificationProvider } from '../../providers/provider-interfaces.js';
 import { notificationOps } from '../../telemetry/metrics.js';
+import { isRecord } from '../../utils/is-record.js';
+import { createLogger } from '../../utils/logger.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import type { EventBus } from '../orchestration/event-bus.js';
+
+const logger = createLogger({ name: 'notification-service' });
 
 type NotificationActionLease = {
   id: string;
@@ -39,9 +46,6 @@ type NotificationStore = Pick<
   JsonFileStore<StoredNotification[]>,
   'read' | 'write'
 >;
-type NotificationMutationLock = (
-  lockPath: string,
-) => Promise<() => void | Promise<void>>;
 type NotificationStoreFactory = (storePath: string) => NotificationStore;
 const ACTION_LEASE_MS = 30_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
@@ -73,7 +77,7 @@ type NotificationClearResult = NotificationClearMutation['result'];
 
 export interface NotificationServiceOptions {
   /** Injectable only for deterministic cross-process mutation tests. */
-  acquireMutationLock?: NotificationMutationLock;
+  acquireMutationLock?: FileMutationLock;
   /** Injectable only for durable-write fault-injection tests. */
   storeFactory?: NotificationStoreFactory;
   /** Injectable only to hold a reserved action before provider dispatch. */
@@ -111,7 +115,7 @@ export class NotificationService {
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private readonly storePath: string;
-  private readonly acquireMutationLock: NotificationMutationLock;
+  private readonly acquireMutationLock: FileMutationLock;
   private readonly beforeActionDispatch?: (
     notificationId: string,
   ) => Promise<void>;
@@ -891,11 +895,10 @@ export class NotificationService {
     try {
       this.onAsyncDispatchError?.(operation, error);
     } catch (observerError) {
-      console.warn(
-        'Notification async adapter error observer failed',
+      logger.warn('Notification async adapter error observer failed', {
         operation,
-        observerError,
-      );
+        error: observerError,
+      });
     }
   }
 
@@ -953,11 +956,10 @@ export class NotificationService {
           const items = await provider.poll();
           for (const opts of items) await this.schedule(provider.id, opts);
         } catch (e) {
-          console.debug(
-            'Failed to poll notification provider:',
-            provider.id,
-            e,
-          );
+          logger.debug('Failed to poll notification provider', {
+            provider: provider.id,
+            error: e,
+          });
         }
       }
       if (provider.syncStatus) {
@@ -976,11 +978,10 @@ export class NotificationService {
             }
           }
         } catch (e) {
-          console.debug(
-            'Failed to sync status for notification provider:',
-            provider.id,
-            e,
-          );
+          logger.debug('Failed to sync status for notification provider', {
+            provider: provider.id,
+            error: e,
+          });
         }
       }
     }
@@ -1224,10 +1225,6 @@ function isPositiveInteger(value: unknown): value is number {
 
 function isPositiveOrZeroInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**

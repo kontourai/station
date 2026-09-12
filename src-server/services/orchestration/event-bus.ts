@@ -4,6 +4,10 @@
  */
 
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
+import { errorMessage } from '../../utils/error-message.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger({ name: 'event-bus' });
 
 export interface ServerEvent {
   event: ServerEventName;
@@ -99,7 +103,7 @@ export class EventBus {
     event: ServerEventName,
     error: unknown,
   ): void {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     const now = Date.now();
     const state = this.listenerFailures.get(listener);
     const sinceLastWarning = state
@@ -122,13 +126,10 @@ export class EventBus {
       lastMessage: message,
       suppressed: 0,
     });
-    console.warn(
-      'Event listener threw; keeping the subscription:',
+    logger.warn('Event listener threw; keeping the subscription', {
       event,
       error,
-      ...(suppressed > 0
-        ? [`(${suppressed} further failures suppressed since the last warning)`]
-        : []),
-    );
+      ...(suppressed > 0 ? { suppressedSinceLastWarning: suppressed } : {}),
+    });
   }
 }

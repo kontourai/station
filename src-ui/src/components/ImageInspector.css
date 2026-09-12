@@ -1,0 +1,68 @@
+.image-inspector {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  gap: 8px;
+  color: var(--text-primary);
+}
+.image-inspector__controls {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.image-inspector__controls .button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.image-inspector__controls output {
+  min-width: 5ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.image-inspector__viewport {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: none;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  cursor: grab;
+}
+.image-inspector__viewport:active {
+  cursor: grabbing;
+}
+.image-inspector__viewport:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+.image-inspector__canvas {
+  min-width: 100%;
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+}
+.image-inspector__canvas img {
+  display: block;
+  max-width: none;
+  max-height: none;
+  user-select: none;
+}
+.image-inspector__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  flex-shrink: 0;
+}

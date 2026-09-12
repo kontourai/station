@@ -163,6 +163,13 @@ usage unavailable until it can establish a durable child-only baseline, rather
 than reporting inherited tokens as new spending. This limitation does not
 prevent transcript observation or continuation.
 
+`STATION_EXTERNAL_CODEX_SOURCE_ROOT` and `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`
+can select separate read-only history roots. Each root contains the engine's
+`sessions` or `projects` directory, respectively. These overrides affect
+transcript observation only; they do not change the CLI's authentication or
+execution configuration. Without an override, observation uses `CODEX_HOME`
+or `CLAUDE_CONFIG_DIR`, then the engine's default home directory.
+
 ### The receipt envelope
 
 Every lifecycle-control dispatch — success or failure — returns a receipt so a caller can prove a command

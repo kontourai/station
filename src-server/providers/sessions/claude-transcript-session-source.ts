@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { isRecord } from '../../utils/is-record.js';
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
@@ -38,7 +39,7 @@ const DEFAULT_READ_YIELD_EVERY_LINES = 256;
 const EPOCH = '1970-01-01T00:00:00.000Z';
 const SOURCE_HOME_NAMESPACE = 'claude-config-home';
 
-export interface ClaudeTranscriptSessionSourceOptions {
+interface ClaudeTranscriptSessionSourceOptions {
   /** Claude config directory, not its projects child. */
   configDir?: string;
   maxCandidates?: number;
@@ -76,6 +77,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
   constructor(options: ClaudeTranscriptSessionSourceOptions = {}) {
     this.configDir =
       options.configDir ??
+      process.env.STATION_EXTERNAL_CLAUDE_SOURCE_ROOT ??
       process.env.CLAUDE_CONFIG_DIR ??
       join(homedir(), '.claude');
     this.projectsDir = join(this.configDir, 'projects');
@@ -797,10 +799,6 @@ function mapToolResult(
       output: raw.content,
     },
   ];
-}
-
-function isRecord(value: unknown): value is Record<string, any> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function text(value: unknown): string | undefined {

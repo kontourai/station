@@ -23,7 +23,6 @@ export function PluginManagementView({
   const {
     addLayoutToProjects,
     addPluginLayout,
-    apiBase,
     assigningLayout,
     changelogData,
     changelogExpanded,
@@ -91,6 +90,7 @@ export function PluginManagementView({
     <>
       <SplitPaneLayout
         label="plugins"
+        listClassName="plugins__list"
         title="Plugins"
         subtitle="Manage installed plugins"
         items={items}
@@ -222,7 +222,6 @@ export function PluginManagementView({
       />
 
       <PluginModalStack
-        apiBase={apiBase}
         showInstallModal={showInstallModal}
         showFolderPicker={showFolderPicker}
         previewData={previewData}
@@ -233,6 +232,12 @@ export function PluginManagementView({
         installMessage={installMessage}
         message={message}
         removeConfirm={removeConfirm}
+        removalRetainsData={plugins.some(
+          (plugin) =>
+            plugin.name === removeConfirm &&
+            !('status' in plugin) &&
+            plugin.retainedOnRemoval === true,
+        )}
         layoutAssignment={layoutAssignment}
         projects={projects}
         quickProjectName={quickProjectName}
@@ -249,7 +254,9 @@ export function PluginManagementView({
         onCloseFolderPicker={() => setShowFolderPicker(false)}
         onClosePreview={() => setPreviewData(null)}
         onToggleSkip={togglePreviewSkip}
-        onConfirmInstall={() => install(Array.from(previewSkips))}
+        onConfirmInstall={(dataPolicy) =>
+          install(Array.from(previewSkips), dataPolicy)
+        }
         onCancelRemove={() => setRemoveConfirm(null)}
         onConfirmRemove={remove}
         onCloseLayoutAssignment={() => setLayoutAssignment(null)}

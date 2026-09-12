@@ -86,8 +86,8 @@ const receipt = () =>
 describe('AttachedSessionAdoption', () => {
   it('rejects unsupported external continuation before resolving or invoking an adapter', async () => {
     const source: ProviderSession = {
-      provider: 'bedrock',
-      threadId: 'external:bedrock:fixture',
+      provider: 'acp',
+      threadId: 'external:acp:fixture',
       status: 'ready',
       cwd: '/fixture/project',
       controlMode: 'read-only-attached',

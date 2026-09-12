@@ -1,3 +1,13 @@
+import type {
+  PluginProviderReadView,
+  PluginProviderVisibility,
+} from '../plugin-provider-visibility.js';
+
+export type {
+  PluginProviderReadView,
+  PluginProviderVisibility,
+} from '../plugin-provider-visibility.js';
+
 /**
  * Provider registry — generic workspace-scoped store with backward-compat wrappers
  */
@@ -8,6 +18,7 @@ import {
   awaitSettlementWithin,
   raceWithSignal,
 } from '../../utils/bounded-async.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   type ProviderAdapterShape,
   setProviderAdapterRegistrationProvenance,
@@ -38,15 +49,22 @@ import type {
 import { PROVIDER_TYPE_META } from '../provider-interfaces.js';
 import { createIntegrationRegistryProvider } from './integration-registry-provider.js';
 
+const logger = createLogger({ name: 'provider-registry' });
+
 // ── Generic Store ──────────────────────────────────────
 
 interface ProviderEntry {
+  visibility?: PluginProviderVisibility;
+  publicHandle?: any;
+  identity?: string;
+  viewHandles?: WeakMap<PluginProviderReadView, any>;
   provider: any;
   source: string;
   builtin: boolean;
 }
 
 export interface PreparedPluginProviderRegistration {
+  visibility?: PluginProviderVisibility;
   type: string;
   provider: any;
   source: string;
@@ -251,7 +269,7 @@ function commitProviderAdapterLaunchabilityRevision(): void {
     try {
       listener(providerAdapterLaunchabilityRevision);
     } catch {
-      console.debug('Provider adapter launchability listener failed.');
+      logger.debug('Provider adapter launchability listener failed.');
     }
   }
 }
@@ -299,30 +317,135 @@ export function registerPullRequestProvider(provider: IPullRequestProvider) {
   registerProvider('pullRequest', provider, { builtin: true });
 }
 
-export function getProvider<T>(type: string, layout?: string): T | null {
-  if (layout) {
-    const wsEntry =
-      pluginStore.get(type)?.get(layout) ?? store.get(type)?.get(layout);
-    if (wsEntry) return wsEntry.provider as T;
+function providerVisible(
+  entry: ProviderEntry,
+  view?: PluginProviderReadView,
+): boolean {
+  try {
+    return (
+      !entry.visibility ||
+      (view ? entry.visibility.permits(view) : entry.visibility.ready())
+    );
+  } catch {
+    return false;
   }
-  const globalEntry =
-    pluginStore.get(type)?.get('*') ?? store.get(type)?.get('*');
-  return globalEntry ? (globalEntry.provider as T) : null;
 }
 
-export function listProviders(type: string): ProviderEntry[] {
-  // Check additive store first
+function providerHandle(
+  entry: ProviderEntry,
+  view?: PluginProviderReadView,
+): any {
+  if (
+    !entry.visibility ||
+    entry.provider === null ||
+    (typeof entry.provider !== 'object' && typeof entry.provider !== 'function')
+  )
+    return entry.provider;
+  const prior = view ? entry.viewHandles?.get(view) : entry.publicHandle;
+  if (prior) return prior;
+  const cleanup = new Set<PropertyKey>([
+    'dispose',
+    'stopAll',
+    'stopSession',
+    'interruptTurn',
+  ]);
+  const assertCurrent = () => {
+    if (!providerVisible(entry, view))
+      throw new Error('Plugin provider is unavailable.');
+  };
+  const handle: any = new Proxy(
+    {},
+    {
+      get(_target, key) {
+        if (key === 'provider' && entry.identity !== undefined)
+          return entry.identity;
+        const target = entry.provider;
+        // Stable Adapter identity remains usable by the existing retirement owner.
+        // Cleanup may drain authority already issued; it cannot start new work.
+        if (!cleanup.has(key)) assertCurrent();
+        const value = Reflect.get(target, key, target);
+        if (typeof value !== 'function') return value;
+        return (...args: unknown[]) => {
+          if (!cleanup.has(key)) assertCurrent();
+          const result = Reflect.apply(value, target, args);
+          return result === target ? handle : result;
+        };
+      },
+      has(_target, key) {
+        assertCurrent();
+        return key in entry.provider;
+      },
+      ownKeys() {
+        assertCurrent();
+        return Reflect.ownKeys(entry.provider);
+      },
+      getOwnPropertyDescriptor(_target, key) {
+        assertCurrent();
+        const descriptor = Reflect.getOwnPropertyDescriptor(
+          entry.provider,
+          key,
+        );
+        return descriptor
+          ? {
+              configurable: true,
+              enumerable: descriptor.enumerable,
+              get: () => handle[key],
+            }
+          : undefined;
+      },
+      set(_target, key, value) {
+        assertCurrent();
+        return Reflect.set(entry.provider, key, value);
+      },
+    },
+  );
+  if (typeof entry.provider?.provider === 'string')
+    setProviderAdapterRegistrationProvenance(handle, 'plugin');
+  if (view) {
+    entry.viewHandles ??= new WeakMap();
+    entry.viewHandles.set(view, handle);
+  } else entry.publicHandle = handle;
+  return handle;
+}
+
+export function getProvider<T>(
+  type: string,
+  layout?: string,
+  view?: PluginProviderReadView,
+): T | null {
+  for (const region of layout ? [layout, '*'] : ['*']) {
+    for (const entry of [
+      pluginStore.get(type)?.get(region),
+      store.get(type)?.get(region),
+    ]) {
+      if (entry && providerVisible(entry, view))
+        return providerHandle(entry, view) as T;
+    }
+  }
+  return null;
+}
+
+export function listProviders(
+  type: string,
+  view?: PluginProviderReadView,
+): ProviderEntry[] {
+  const expose = (entry: ProviderEntry): ProviderEntry => ({
+    provider: providerHandle(entry, view),
+    source: entry.source,
+    builtin: entry.builtin,
+  });
   const additive = [
     ...(additiveStore.get(type) ?? []),
     ...(pluginAdditiveStore.get(type) ?? []),
-  ];
-  if (additive.length > 0) return additive;
-  // Singleton: collect all workspace entries
+  ].filter((entry) => providerVisible(entry, view));
+  if (additive.length > 0) return additive.map(expose);
   const typeMap = new Map(store.get(type));
   for (const [workspace, entry] of pluginStore.get(type) ?? []) {
-    typeMap.set(workspace, entry);
+    if (providerVisible(entry, view)) typeMap.set(workspace, entry);
   }
-  return Array.from(typeMap.values());
+  return Array.from(typeMap.values())
+    .filter((entry) => providerVisible(entry, view))
+    .map(expose);
 }
 
 export function clearAll(): void {
@@ -374,6 +497,11 @@ function registerPreparedInto(
 ): void {
   const entry = {
     provider: registration.provider,
+    visibility: registration.visibility,
+    identity:
+      typeof registration.provider?.provider === 'string'
+        ? registration.provider.provider
+        : undefined,
     source: registration.source,
     builtin: false,
   };
@@ -390,22 +518,6 @@ function registerPreparedInto(
   const byWorkspace = targetStore.get(registration.type) ?? new Map();
   byWorkspace.set(workspace, entry);
   targetStore.set(registration.type, byWorkspace);
-}
-
-export async function registerPreparedPluginProviders(
-  registrations: PreparedPluginProviderRegistration[],
-): Promise<void> {
-  const sources = new Set(
-    registrations.map((registration) => registration.source),
-  );
-  if (sources.size > 1) {
-    throw new Error(
-      'Incremental plugin provider registration requires one source generation.',
-    );
-  }
-  const source = sources.values().next().value;
-  if (!source) return;
-  await replacePluginProvidersForSource(source, registrations);
 }
 
 async function replacePluginProvidersForSourceInsideMutation(
@@ -658,9 +770,11 @@ export function registerProviderAdapters(
   }
 }
 
-export function getProviderAdapters(): ProviderAdapterShape[] {
+export function getProviderAdapters(
+  view?: PluginProviderReadView,
+): ProviderAdapterShape[] {
   const active = new Map<string, ProviderEntry>();
-  for (const entry of listProviders('providerAdapter')) {
+  for (const entry of listProviders('providerAdapter', view)) {
     const adapter = entry.provider as ProviderAdapterShape;
     const current = active.get(adapter.provider);
     if (!current || !entry.builtin) {
@@ -674,20 +788,27 @@ export function getProviderAdapters(): ProviderAdapterShape[] {
 
 export function getProviderAdapter(
   provider: EngineId,
+  view?: PluginProviderReadView,
 ): ProviderAdapterShape | undefined {
-  return getProviderAdapters().find((adapter) => adapter.provider === provider);
+  return getProviderAdapters(view).find(
+    (adapter) => adapter.provider === provider,
+  );
 }
 
-export function createProviderAdapterRegistry(): IProviderAdapterRegistry {
+export function createProviderAdapterRegistry(
+  view?: PluginProviderReadView,
+): IProviderAdapterRegistry {
   return {
     register(adapter) {
+      if (view)
+        throw new Error('Plugin composition views cannot register providers.');
       registerProviderAdapter(adapter);
     },
     get(provider) {
-      return getProviderAdapter(provider);
+      return getProviderAdapter(provider, view);
     },
     list() {
-      return getProviderAdapters();
+      return getProviderAdapters(view);
     },
     onChange(listener) {
       return providerAdapterLaunchabilitySource.onLaunchabilityChange(listener);
@@ -697,19 +818,11 @@ export function createProviderAdapterRegistry(): IProviderAdapterRegistry {
 
 // ── Auth ───────────────────────────────────────────────
 
-export function registerAuthProvider(provider: IAuthProvider) {
-  registerProvider('auth', provider);
-}
-
 export function getAuthProvider(): IAuthProvider {
   return getProvider<IAuthProvider>('auth') ?? new DefaultAuthProvider();
 }
 
 // ── User Identity ──────────────────────────────────────
-
-export function registerUserIdentityProvider(provider: IUserIdentityProvider) {
-  registerProvider('userIdentity', provider);
-}
 
 export function getUserIdentityProvider(): IUserIdentityProvider {
   return (
@@ -719,12 +832,6 @@ export function getUserIdentityProvider(): IUserIdentityProvider {
 }
 
 // ── User Directory ─────────────────────────────────────
-
-export function registerUserDirectoryProvider(
-  provider: IUserDirectoryProvider,
-) {
-  registerProvider('userDirectory', provider);
-}
 
 export function getUserDirectoryProvider(): IUserDirectoryProvider {
   return (
@@ -805,7 +912,7 @@ export function registerPluginRegistryProvider(
   registerProvider('pluginRegistry', provider, { source });
 }
 
-// Accessed via dynamic import() namespace in plugin-install-shared.
+// Accessed via dynamic import() namespace in plugin-install-transaction.
 // fallow-ignore-next-line unused-export
 export function getPluginRegistryProviders(): {
   provider: IPluginRegistryProvider;

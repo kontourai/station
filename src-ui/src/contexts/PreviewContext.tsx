@@ -6,13 +6,16 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { ResponsiveDialogCloseButton } from '../components/ResponsiveDialogSurface';
+import type { PreviewItem } from '../components/ImagePreviewContent';
+import { LazyBoundary } from '../components/LazyBoundary';
+import {
+  ResponsiveDialogHeader,
+  ResponsiveDialogSurface,
+} from '../components/ResponsiveDialogSurface';
+import { SkeletonBlock } from '../components/state';
 
-interface PreviewItem {
-  url: string;
-  mediaType: string;
-  name?: string;
-}
+const loadImagePreviewContent = () =>
+  import('../components/ImagePreviewContent');
 
 interface PreviewContextType {
   openPreview: (item: PreviewItem, items?: PreviewItem[]) => void;
@@ -38,22 +41,6 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
     setItems([]);
   }, []);
 
-  const currentIdx = current
-    ? items.findIndex((i) => i.url === current.url)
-    : -1;
-  const canPrev = currentIdx > 0;
-  const canNext = currentIdx < items.length - 1;
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') closePreview();
-    else if (e.key === 'ArrowLeft' && canPrev)
-      setCurrent(items[currentIdx - 1]);
-    else if (e.key === 'ArrowRight' && canNext)
-      setCurrent(items[currentIdx + 1]);
-  };
-
-  const canPreview = (mediaType?: string) => mediaType?.startsWith('image/');
-
   // archive#3796: one memoised value per provider — a fresh object literal
   // here republishes the context to every consumer on any render of this
   // provider, whatever the render was actually about.
@@ -65,58 +52,29 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
   return (
     <PreviewContext.Provider value={value}>
       {children}
-      {current && canPreview(current.mediaType) && (
-        <div
-          className="image-preview-modal"
-          data-escape-owner
-          onClick={closePreview}
-          onKeyDown={handleKeyDown}
-          role="dialog"
-          aria-label="Preview"
-          ref={(el) => el?.focus()}
+      {current?.mediaType?.startsWith('image/') && (
+        <ResponsiveDialogSurface
+          onClose={closePreview}
+          ariaLabel="Preview"
+          layer="dialog"
+          overlayClassName="image-preview-overlay"
+          panelClassName="image-preview-panel"
         >
-          <ResponsiveDialogCloseButton
-            className="image-preview-modal__close"
-            onClick={closePreview}
-            label="Close preview"
+          <ResponsiveDialogHeader
+            title={current.name || 'Image preview'}
+            closeLabel="Close preview"
+            onClose={closePreview}
           />
-          {canPrev && (
-            <button
-              type="button"
-              className="image-preview-modal__nav image-preview-modal__nav--prev"
-              onClick={(e) => {
-                e.stopPropagation();
-                setCurrent(items[currentIdx - 1]);
-              }}
-            >
-              ‹
-            </button>
-          )}
-          <img
-            src={current.url}
-            alt={current.name || 'Preview'}
-            className="image-preview-modal__image"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                event.currentTarget.click();
-              }
+          <LazyBoundary
+            load={loadImagePreviewContent}
+            componentProps={{
+              current,
+              items,
+              onSelect: setCurrent,
             }}
+            pending={<SkeletonBlock count={1} label="Loading image preview" />}
           />
-          {canNext && (
-            <button
-              type="button"
-              className="image-preview-modal__nav image-preview-modal__nav--next"
-              onClick={(e) => {
-                e.stopPropagation();
-                setCurrent(items[currentIdx + 1]);
-              }}
-            >
-              ›
-            </button>
-          )}
-        </div>
+        </ResponsiveDialogSurface>
       )}
     </PreviewContext.Provider>
   );

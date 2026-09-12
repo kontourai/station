@@ -51,7 +51,7 @@ type ToolNameMapping = Map<
   }
 >;
 
-export interface RuntimeInitializationContext {
+interface RuntimeInitializationContext {
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
@@ -133,10 +133,12 @@ export interface RuntimeInitializationContext {
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
   };
   onAgentConfigurationReady?: (revisions: {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
   }) => void;
   guardDefaultAgentTools?: (tools: any[]) => any[];
   replaceTemplateVariables: (text: string, agentName?: string) => string;

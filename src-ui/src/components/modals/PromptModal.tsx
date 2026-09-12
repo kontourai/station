@@ -7,7 +7,7 @@ import {
   ResponsiveSurfaceActions,
 } from '../ResponsiveDialogSurface';
 
-export interface PromptModalProps {
+interface PromptModalProps {
   isOpen: boolean;
   title: string;
   /** Label shown above the input. */
@@ -70,6 +70,7 @@ export function PromptModal({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onCancel}
       ariaLabelledBy="prompt-modal-title"
       overlayClassName="modal-overlay"

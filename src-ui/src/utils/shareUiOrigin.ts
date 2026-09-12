@@ -1,6 +1,6 @@
 import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
 
-export type ShareUiOriginDecision =
+type ShareUiOriginDecision =
   | { verified: true; origin: string }
   | { verified: false; explanation: string };
 

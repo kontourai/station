@@ -646,20 +646,6 @@ button:hover {
   border-bottom: 1px solid var(--border-primary);
 }
 
-/* macOS overlay title bar (archive#3316): in the single-column layout the
-   toolbar spans the window's full width, so its first control (the
-   hamburger) sat under the native traffic lights. --titlebar-inset-left is
-   stamped on the root by PlatformBootstrap (80px on the macOS desktop
-   shell, unset everywhere else); max() keeps the normal 14px gutter for
-   browsers and non-mac shells. The two-column desktop layout is covered by
-   the sidebar's own is-desktop-mac rules (ProjectSidebar.css), which inset
-   the corner the sidebar occupies instead. */
-.header-divider {
-  width: 1px;
-  height: 16px;
-  background: var(--border-primary);
-}
-
 /* ── Mobile shared utilities ──
    Reusable primitives for the global mobile responsive foundation. Desktop is
    unaffected: .tap-target's min size is below typical desktop control sizes and
@@ -908,11 +894,80 @@ button:hover {
 
 /* Shared modal/drawer geometry. Surfaces opt in without changing their desktop
    presentation; the mobile rule binds them to the visual viewport so the
-   software keyboard cannot push actions below the reachable screen. */
+   software keyboard cannot push actions below the reachable screen.
+ *
+ * #1638/#1662: the layer below is the `layer` prop every consumer of
+ * `ResponsiveDialogSurface` is REQUIRED to declare, keyed off the attribute
+ * the component stamps from it, so the number a surface gets is the kind its
+ * author named rather than whatever its feature stylesheet happened to say.
+ *
+ * The `!important` is load-bearing. Method, because the outcome alone does not
+ * establish the cause: for each overlay below, the computed z-index is read in
+ * Chromium twice — once as declared, once with `!important` stripped from
+ * these three declarations only — AND once on the feature class ALONE. That
+ * third reading is what discriminates. Without it, "unaffected by
+ * `!important`" is equally well explained by the feature rule never applying
+ * at that viewport, which is exactly the trap the last entry sits in.
+ *
+ * SIX overlays that carry this class set a z-index of their own below the dock
+ * (`--layer-dock` 9200; `--layer-notification` 9400). The `!important`
+ * arbitrates FIVE:
+ *
+ *   selector                          alone   +class   stripped
+ *   .tool-call-batch-sheet__overlay    1000    10000       1000
+ *   .delegation-launcher__overlay        35    10000         35
+ *   .command-launcher__overlay           30    10000         30
+ *   .active-work-frame__overlay          20    10000         20
+ *   .drill-down-overlay                1000    10000       1000
+ *
+ * The first four are later than this rule in the built entry stylesheet
+ * (measured: +24 to +55 KB past it) at equal specificity — single class
+ * against single class — so without `!important` source order hands them the
+ * feature value. `.drill-down-overlay` is not in the entry sheet at all; it
+ * rides a lazily loaded chunk, and the reading above composes that chunk
+ * AFTER the entry sheet, which is the order a dynamic import produces. That
+ * ordering is the condition for its row, so it is stated rather than implied.
+ *
+ * Every surface portals to the body now, so one reading its feature value
+ * would land behind the dock entirely rather than being clamped by it.
+ *
+ * The sixth, `.mobile-task-switcher__overlay`, is UNAFFECTED either way, and
+ * its cause is source order rather than `!important` — which took the third
+ * reading to establish. Its `z-index: 70` lives inside the shell mobile
+ * breakpoint (the one `useIsMobile` keeps in lockstep: max-width 768px, or a
+ * coarse pointer under 540px tall — spelled out rather than quoted verbatim,
+ * because the lockstep scanner reads this file as source text and cannot tell
+ * a quoted at-rule in prose from a real one). At a desktop viewport it does
+ * not apply at all, so any conclusion drawn there is about a rule that was
+ * never in the cascade. Measured at 390x844,
+ * where it IS live: alone it computes 70, so the rule applies; with this class
+ * it computes 10000 both as declared and with `!important` stripped. Its rule
+ * sits ~68 KB EARLIER than this one, so at equal specificity this rule already
+ * wins on order. Do not cite it as justification for these declarations.
+ *
+ * One overlay, `.plugins__confirm-overlay`, asks for `--layer-dialog + 1` to
+ * cover a sibling dialog. The `!important` already defeated that before the
+ * portal, so it is inert now exactly as it was then — a stacked confirm
+ * resolves against its sibling by DOM order, which is what it already did.
+ *
+ * The remaining overlays that carry this class have nothing to arbitrate, but
+ * not for the reason an earlier draft of this comment gave: it said they
+ * declare `--layer-dialog` themselves, and seven of them declare no z-index at
+ * all (`.request-inspection-overlay`, `.composer-popover-overlay`,
+ * `.background-tasks-sheet-overlay`, `.first-run-chapter__overlay`,
+ * `.agent-actions-overlay`, `.learning-source-overlay`,
+ * `.basis-pane-fallback-overlay`). They compute automatically and take
+ * whatever these rules give them, which is a different fact with the same
+ * consequence. The rest do declare `--layer-dialog`, so they agree with these
+ * rules by coincidence rather than by arbitration. */
 .responsive-surface-overlay {
   --responsive-visual-viewport-height: 100dvh;
   --responsive-visual-viewport-top: 0px;
   z-index: var(--layer-dialog) !important;
+}
+
+.responsive-surface-overlay[data-responsive-layer="popover"] {
+  z-index: var(--layer-surface-popover) !important;
 }
 
 .responsive-surface-overlay[data-responsive-layer="system"] {
@@ -962,39 +1017,6 @@ button:hover {
   align-items: center;
 }
 
-.header-nav-btn {
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-secondary);
-  padding: 5px 10px;
-  border-radius: 4px;
-  font-size: var(--text-md);
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background-color var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard),
-    border-color var(--motion-fast) var(--ease-standard);
-}
-
-.header-nav-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--border-primary);
-}
-
-.header-nav-btn.is-active {
-  color: var(--accent-primary);
-  background: transparent;
-  border-color: transparent;
-  border-bottom: 2px solid var(--accent-primary);
-  border-radius: 4px 4px 0 0;
-}
-
-.header-hamburger {
-  display: none;
-}
-
 /* Mobile: hamburger + logo in toolbar */
 .app-toolbar__sidebar-toggle {
   display: none;
@@ -1029,31 +1051,6 @@ button:hover {
 .theme-toggle:hover {
   border-color: var(--accent-primary);
   color: var(--text-primary);
-}
-
-.management-notice {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 24px;
-  background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border-primary);
-  font-size: var(--text-md);
-  color: var(--text-secondary);
-}
-
-.management-notice button {
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border-secondary);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.management-notice button:hover {
-  border-color: var(--accent-primary);
 }
 
 .toast {
@@ -1220,69 +1217,6 @@ button:hover {
   cursor: not-allowed;
 }
 
-.quick-actions {
-  display: flex;
-  flex: 1;
-  justify-content: flex-end;
-  gap: 24px;
-  align-items: center;
-}
-
-.quick-actions--placeholder {
-  justify-content: center;
-  font-size: var(--text-md);
-  color: var(--text-muted);
-}
-
-.quick-actions__group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 220px;
-}
-
-.quick-actions__label {
-  font-size: var(--text-base);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-}
-
-.quick-actions__buttons {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.quick-actions__button {
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--accent-primary);
-  background: transparent;
-  color: var(--accent-primary);
-  cursor: pointer;
-  font-size: var(--text-md);
-}
-
-.quick-actions__button:hover {
-  background: var(--accent-medium);
-}
-
-.quick-actions__button--secondary {
-  border-color: var(--border-light);
-  color: var(--text-secondary);
-}
-
-.quick-actions__button--secondary:hover {
-  border-color: var(--text-tertiary);
-  background: var(--bg-tertiary);
-}
-
-.quick-actions__helper {
-  font-size: var(--text-base);
-  color: var(--text-disabled);
-}
-
 .sidebar {
   width: 280px;
   background: var(--bg-secondary);
@@ -1311,41 +1245,6 @@ button:hover {
   flex: 1;
   overflow-y: auto;
   padding: 12px;
-}
-
-.agent-item {
-  padding: 12px 16px;
-  margin-bottom: 8px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition:
-    background-color var(--motion-base) var(--ease-standard),
-    border-color var(--motion-base) var(--ease-standard);
-  background: var(--bg-tertiary);
-  border: 2px solid transparent;
-}
-
-.agent-item:hover {
-  background: var(--bg-elevated);
-}
-
-.agent-item.active {
-  background: var(--bg-highlight);
-  border-color: var(--accent-primary);
-}
-
-.agent-item h3 {
-  font-size: var(--text-lg);
-  font-weight: 500;
-  margin-bottom: 4px;
-}
-
-.agent-item p {
-  font-size: var(--text-base);
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .main-content {
@@ -1601,16 +1500,6 @@ button:hover {
   background: var(--text-inverted);
 }
 
-.chat-dock__resize-handle--horizontal {
-  top: 0;
-  bottom: 0;
-  left: 0;
-  right: auto;
-  width: 6px;
-  height: auto;
-  cursor: ew-resize;
-}
-
 /* Rotated grip for the side-panel (width) handle. */
 .chat-dock__resize-grip--vertical {
   width: 4px;
@@ -1840,18 +1729,10 @@ button:hover {
    `.dock-placement-menu__item.dock-placement-menu__item` rule that carried it
    for one member of this family is where the shared rule now sits. */
 
-/* Opens UPWARD. The handle lives in the dock's header, and a bottom dock sits
-   at the very bottom of the viewport — so `top: 100%` put the menu below the
-   fold: measured at y=895 with a height of 102 in a 900px viewport, five
-   pixels of it on screen. Playwright still called it visible, because a
-   non-empty box with visible CSS is visible by that definition even when it
-   is off the bottom of the window, which is why an E2E assertion passed on a
-   menu nobody could reach. The dock is the lowest chrome there is; there is
-   nothing below it to open into.
- *
- * Visual spec (radius, padding, row height, inset, group treatment) comes from
- * `.menu-surface` above; what is left here is where this one opens.
- */
+/* Fallback before DockPlacementControl measures the available space. The
+   control chooses above/below and bounds height before paint; side and
+   maximized headers cannot use the bottom dock's upward-only assumption.
+   Visual treatment remains owned by the shared menu surface. */
 .dock-placement-menu {
   position: absolute;
   z-index: var(--layer-popover);
@@ -3114,10 +2995,19 @@ button:hover {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   /* The branch glyph and the branch name are one token; without this the
-     header squeezed "main" onto a second line under the ⎇, and a long branch
-     name broke across three. A squeezed badge ellipsises instead. */
+     header squeezed "main" onto a second line under the branch glyph, and a
+     long branch name broke across three. A squeezed badge ellipsises
+     instead. */
   min-width: 0;
   white-space: nowrap;
+}
+/* The glyph is inline rather than a flex item on purpose: `.git-badge__branch`
+   below owns the text-overflow ellipsis that keeps a long branch name on one
+   line, and that needs the name to be text directly inside a non-flex box.
+   An inline SVG sits on the text baseline, so nudge it onto the optical
+   centre of the name beside it. */
+.git-badge__branch-icon {
+  vertical-align: -0.15em;
 }
 .git-badge__branch {
   min-width: 0;
@@ -3575,6 +3465,14 @@ button:hover {
   white-space: nowrap;
 }
 
+.chat-dock__active-identity-origin {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: min(165px, 35%);
+}
+
 /* #1552 D3: quiet until the row is engaged.
  *
  * `opacity: 0` + `pointer-events: none`, NOT `display: none` or `visibility:
@@ -3798,17 +3696,6 @@ button:hover {
   background: var(--accent-primary);
   color: var(--text-on-accent);
   border-color: var(--accent-primary);
-}
-
-.chat-header {
-  padding: 20px;
-  border-bottom: 1px solid var(--border-primary);
-  background: var(--bg-secondary);
-}
-
-.chat-header h2 {
-  font-size: var(--text-2xl);
-  font-weight: 600;
 }
 
 .chat-messages--empty {
@@ -4264,14 +4151,16 @@ button.background-tasks-banner:focus-visible {
   clip: rect(0 0 0 0);
 }
 
-/* #1130/#1170 sweep: `CollaborativeEditorPane.tsx` (remote-cursor-count and
-   working-revision live regions) and `OutboundQueuedMessages.tsx` (offline
-   queue announcement) both reached for a bare `className="sr-only"` — a name
-   no stylesheet in this repo defined, so the "visually-hidden" text rendered
-   fully visible instead. Every other call site above scopes its own
-   feature-named class to this identical clip technique rather than sharing
-   one; these two independently reached for a shared generic name instead, so
-   this is that shared utility rather than a fifth near-identical copy. */
+/* #1130/#1170 sweep: several call sites reached for a bare
+   `className="sr-only"` — a name no stylesheet in this repo defined, so the
+   "visually-hidden" text rendered fully visible instead. Every other call
+   site above scopes its own feature-named class to this identical clip
+   technique rather than sharing one; these independently reached for a shared
+   generic name instead, so this is that shared utility rather than a fifth
+   near-identical copy. (One of the two originally named here,
+   `CollaborativeEditorPane.tsx`, was never mounted and has been deleted; the
+   rule stays because `OutboundQueuedMessages.tsx` and three other live
+   surfaces still use the class.) */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -4632,6 +4521,13 @@ button.tool-call__line:hover {
   font-style: italic;
 }
 
+.tool-call-batch__progress {
+  margin: 0 0 2px 19px;
+  color: var(--text-muted);
+  font-size: 0.78em;
+  font-style: italic;
+}
+
 /* Outcome flags on the collapsed row. --bg-tertiary rather than a
    --color-bg-tertiary alias: the alias was never defined and painted nothing
    (station#1246). */
@@ -4853,6 +4749,12 @@ button.tool-call__line:hover {
   /* station#1569 (item 3): not an error colour — nothing failed. It is the
      same "we do not know" the row's own badge carries, so it reads as a
      qualifier on the summary rather than a verdict. */
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.tool-call-batch__awaiting {
+  flex-shrink: 0;
   color: var(--text-secondary);
   font-weight: 600;
 }
@@ -5088,34 +4990,11 @@ button.tool-call__line:hover {
   z-index: var(--layer-popover);
 }
 
-.command-item {
-  padding: 10px 14px;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  transition:
-    background-color var(--motion-fast) var(--ease-standard),
-    border-left-color var(--motion-fast) var(--ease-standard);
-  border-left: 3px solid transparent;
-}
-
-.command-item:hover,
-.command-item.selected {
-  background: var(--bg-tertiary);
-  border-left-color: var(--accent-primary);
-}
-
 .command-name {
   font-family: var(--font-mono);
   font-weight: 600;
   color: var(--accent-primary);
   font-size: 0.95em;
-}
-
-.command-desc {
-  font-size: 0.85em;
-  color: var(--text-secondary);
 }
 
 .chat-input textarea {
@@ -5455,12 +5334,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-primary);
 }
 
-/* Forms */
-.form-panel {
-  padding: 24px;
-  max-width: 800px;
-}
-
 .form-group {
   margin-bottom: 24px;
 }
@@ -5531,90 +5404,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-muted);
 }
 
-.template-variables-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.template-variable-item {
-  display: grid;
-  grid-template-columns: 1fr 120px 1fr auto;
-  gap: 8px;
-  align-items: center;
-}
-
-.template-variable-item input,
-.template-variable-item select {
-  padding: 8px 12px;
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  background: var(--bg-input);
-  color: var(--text-primary);
-  font-size: var(--text-lg);
-}
-
 .form-error {
   display: block;
   margin-top: 6px;
   font-size: var(--text-base);
   color: var(--error-text);
-}
-
-.field-with-help {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.field-with-help input {
-  flex: 1;
-}
-
-.help-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--bg-elevated);
-  color: var(--text-muted);
-  font-size: var(--text-md);
-  font-weight: 600;
-  cursor: help;
-  text-decoration: none;
-  transition:
-    background-color var(--motion-base) var(--ease-standard),
-    color var(--motion-base) var(--ease-standard);
-  flex-shrink: 0;
-}
-
-.help-icon:hover {
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-}
-
-.generate-button {
-  margin-top: 8px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--accent-primary);
-  background: transparent;
-  color: var(--accent-primary);
-  font-size: var(--text-md);
-  cursor: pointer;
-  transition: background-color var(--motion-base) var(--ease-standard);
-}
-
-.generate-button:hover:not(:disabled) {
-  background: var(--accent-medium);
-}
-
-.generate-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* Modal */
@@ -5756,29 +5550,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   flex-shrink: 0;
 }
 
-.step-indicator {
-  padding: 14px 20px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: var(--text-lg);
-  font-weight: 500;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition:
-    color var(--motion-base) var(--ease-standard),
-    border-bottom-color var(--motion-base) var(--ease-standard);
-}
-
-.step-indicator:hover {
-  color: var(--text-primary);
-}
-
-.step-indicator.is-active {
-  color: var(--accent-primary);
-  border-bottom-color: var(--accent-primary);
-}
-
 .agent-editor__content {
   flex: 1;
   overflow-y: auto;
@@ -5792,36 +5563,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   padding: 12px 24px;
   border-top: 1px solid var(--border-primary);
   background: var(--bg-secondary);
-  flex-shrink: 0;
-}
-
-.tool-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-}
-
-.tool-checkbox {
-  display: flex;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  background: var(--bg-secondary);
-  cursor: pointer;
-  transition:
-    background-color var(--motion-base) var(--ease-standard),
-    border-color var(--motion-base) var(--ease-standard);
-}
-
-.tool-checkbox:hover {
-  border-color: var(--accent-primary);
-  background: var(--bg-tertiary);
-}
-
-.tool-checkbox input[type="checkbox"] {
-  width: 20px;
-  height: 20px;
   flex-shrink: 0;
 }
 
@@ -5843,67 +5584,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-muted);
 }
 
-.tool-meta {
-  font-size: var(--text-sm);
-  color: var(--text-disabled);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.quick-prompt-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
-  padding: 12px;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  background: var(--bg-secondary);
-}
-
-.quick-prompt-editor input {
-  width: 100%;
-}
-
-.quick-prompt-editor textarea {
-  width: 100%;
-  min-height: 80px;
-}
-
-.new-tool-form {
-  padding: 20px;
-  margin-bottom: 24px;
-  border: 1px solid var(--accent-primary);
-  border-radius: 10px;
-  background: var(--accent-subtle);
-}
-
-.new-tool-form h4 {
-  font-size: var(--text-xl);
-  font-weight: 600;
-  margin-bottom: 16px;
-  color: var(--accent-primary);
-}
-
-.empty-state-small {
-  padding: 32px;
-  text-align: center;
-  border: 1px dashed var(--border-dashed);
-  border-radius: 10px;
-  color: var(--text-muted);
-}
-
-/* App Toolbar Additions */
-.app-toolbar__title {
-  font-size: var(--text-2xl);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.app-toolbar__settings {
-  margin-left: auto;
-}
-
 @keyframes spin {
   from {
     transform: rotate(0deg);
@@ -5922,12 +5602,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-.hide-past-toggle:hover {
-  background: var(--color-bg-secondary) !important;
-  color: var(--color-text) !important;
-  border-color: var(--color-primary) !important;
 }
 
 /* Meeting body content - strip all colors and use theme */
@@ -6543,6 +6217,14 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     flex-direction: column;
   }
 
+  /* macOS overlay title bar (archive#3316): in the single-column layout the
+     toolbar spans the window's full width, so its first control (the
+     hamburger) sat under the native traffic lights. --titlebar-inset-left is
+     stamped on the root by PlatformBootstrap (80px on the macOS desktop
+     shell, unset everywhere else); max() keeps the normal 14px gutter for
+     browsers and non-mac shells. The two-column desktop layout is covered by
+     the sidebar's own is-desktop-mac rules (ProjectSidebar.css), which inset
+     the corner the sidebar occupies instead. */
   .app-toolbar {
     padding-left: max(14px, var(--titlebar-inset-left, 0px));
   }
@@ -6937,83 +6619,51 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 }
 
-/* Image Preview Modal */
-.image-preview-modal {
+/* Image Preview */
+.image-preview-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.9);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 20000;
-  cursor: pointer;
-  outline: none;
 }
-
-.image-preview-modal__image {
-  max-width: 90vw;
-  max-height: 90vh;
-  object-fit: contain;
-  border-radius: 8px;
-}
-
-.image-preview-modal__nav {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
+.image-preview-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(1100px, 96vw);
+  height: 90dvh;
+  max-width: 100%;
+  min-height: 0;
+  padding: 16px;
   background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
   color: var(--text-primary);
-  font-size: var(--text-6xl);
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  cursor: pointer;
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+}
+.image-preview-panel .responsive-dialog-header strong {
+  overflow-wrap: anywhere;
+}
+.image-preview-navigation {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
   display: flex;
-  align-items: center;
   justify-content: center;
-  z-index: 1;
-  opacity: 0.8;
-  transition:
-    opacity var(--motion-fast) var(--ease-standard),
-    background var(--motion-fast) var(--ease-standard);
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.image-preview-navigation .button {
+  min-height: 44px;
 }
 
-.image-preview-modal__nav:hover {
-  opacity: 1;
-  /* --accent-primary, not the --primary this read until archive#1254 — a name
-     with no declaration anywhere, so the hover changed opacity only and the
-     button kept its resting --bg-secondary fill. The glyph has to move with
-     the fill: --text-on-accent is the brand's declared contrast partner, and
-     --text-primary is not legible on the brand in either theme. */
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-}
-
-.image-preview-modal__nav--prev {
-  left: 20px;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
-}
-
-.image-preview-modal__nav--next {
-  right: 20px;
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
-}
-
-.image-preview-modal__close {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  z-index: 1;
-  opacity: 0.8;
-  transition: opacity var(--motion-fast) var(--ease-standard);
-}
-
-.image-preview-modal__close:hover {
-  opacity: 1;
+.image-preview-navigation .button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* File Part Preview */
@@ -7269,162 +6919,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   animation: acp-pulse var(--motion-status-pulse) var(--ease-standard) infinite;
 }
 
-/* ── ACP Preset Dropdown ── */
-.acp-preset-menu {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  margin-top: 4px;
-  z-index: 10;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  min-width: 220px;
-  overflow: hidden;
-}
-.acp-preset-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 14px;
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  font-size: var(--text-md);
-  text-align: left;
-}
-.acp-preset-item:hover {
-  background: var(--bg-hover);
-}
-.acp-preset-item--disabled {
-  opacity: 0.5;
-  cursor: default;
-  color: var(--text-muted);
-}
-.acp-preset-item--disabled:hover {
-  background: none;
-}
-.acp-preset-item__name {
-  font-weight: 500;
-  flex: 1;
-}
-.acp-preset-item__hint {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-}
-.acp-preset-divider {
-  height: 1px;
-  background: var(--border-primary);
-}
-.acp-registry-list {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.acp-registry-list .acp-preset-item {
-  min-height: 54px;
-}
-.acp-registry-list .acp-preset-item__name {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-/* ── ACP Custom Connection Modal ── */
-.acp-custom-modal {
-  max-width: 480px;
-  width: 90vw;
-}
-.acp-custom-modal__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.acp-custom-modal__label {
-  font-size: var(--text-base);
-  color: var(--text-secondary);
-  display: block;
-  margin-bottom: 4px;
-}
-.acp-custom-modal__input {
-  width: 100%;
-  padding: 8px 10px;
-  font-size: var(--text-md);
-  border-radius: 6px;
-  border: 1px solid var(--border-primary);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-}
-
-/* ── Workspace Onboarding ── */
-.workspace-onboarding {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 2rem;
-}
-.workspace-onboarding__inner {
-  max-width: 520px;
-  text-align: center;
-}
-.workspace-onboarding__icon {
-  width: 48px;
-  height: 48px;
-  margin-bottom: 16px;
-}
-.workspace-onboarding__title {
-  margin: 0 0 8px;
-  font-size: var(--text-4xl);
-  font-weight: 600;
-}
-.workspace-onboarding__desc {
-  margin: 0 0 32px;
-  font-size: var(--text-lg);
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-.workspace-onboarding__actions {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 360px;
-  margin: 0 auto;
-}
-.workspace-onboarding__card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 10px;
-  cursor: pointer;
-  color: inherit;
-  text-align: left;
-  transition: border-color var(--motion-base) var(--ease-standard);
-}
-.workspace-onboarding__card:hover {
-  border-color: var(--accent-primary);
-}
-.workspace-onboarding__card-icon {
-  font-size: var(--text-5xl);
-}
-.workspace-onboarding__card-title {
-  font-weight: 600;
-  font-size: var(--text-lg);
-}
-.workspace-onboarding__card-desc {
-  font-size: var(--text-base);
-  color: var(--text-secondary);
-  margin-top: 2px;
-}
-
 /* ── Project Dashboard ──────────────────────────────────────────── */
 
 .project-dashboard__modal-overlay {
@@ -7643,10 +7137,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-muted);
 }
 
-.app-toolbar__breadcrumb-current {
-  color: var(--text-secondary);
-}
-
 /* ── ChatDock Session Info Bar ──────────────────────────────────── */
 
 .chat-dock__session-info {
@@ -7760,15 +7250,16 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     grid-template-rows: auto minmax(0, 1fr) var(--region-bottom-track, 0);
   }
 
+  /* Each side track reads its OWN width. A single-side width alias used to
+     sit in this fallback chain naming one width for both sides, so it
+     DECLARED one side's number as the other side's fallback; it is retired
+     (#1374). The literal is the `chatDockWidth` device-setting default. */
   .app__main:has(> [data-region="left"]) {
-    --region-left-track: var(--region-left-size, var(--chat-dock-width, 400px));
+    --region-left-track: var(--region-left-size, 400px);
   }
 
   .app__main:has(> [data-region="right"]) {
-    --region-right-track: var(
-      --region-right-size,
-      var(--chat-dock-width, 400px)
-    );
+    --region-right-track: var(--region-right-size, 400px);
   }
 
   .app__main:has(> [data-region="bottom"]) {
@@ -8487,6 +7978,17 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   text-overflow: ellipsis;
 }
 
+.provider-detail__model-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.provider-detail__model-bulk .button {
+  min-height: 44px;
+}
+
 .provider-detail__model-actions .button {
   min-width: 36px;
   min-height: 36px;
@@ -8508,6 +8010,29 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   border-radius: 9px;
   color: var(--text-secondary);
   font-size: var(--text-sm);
+}
+
+/*
+ * The blocking prerequisite's own name, and the server's ordered remedy for
+ * it. Both were on the wire and neither was rendered here -- the notice used
+ * to print bare prerequisite names, which read as broken links rather than as
+ * the subject of the sentence above them.
+ */
+.provider-detail__notice-subject {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.provider-detail__notice-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.provider-detail__notice-steps code {
+  overflow-wrap: anywhere;
 }
 
 .provider-detail__disclosure {
@@ -9192,7 +8717,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    ════════════════════════════════════════════════════════════════════════ */
 
 .chat-dock__mobile-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(80px, 28%) minmax(0, 1fr);
   align-items: center;
   gap: var(--space-1);
   /* 12px of horizontal padding is a deliberate grab margin: the bar is the
@@ -9401,8 +8927,26 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   text-align: left;
 }
 
+.chat-dock__mobile-leading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
 .chat-dock__mobile-project {
-  flex: 0 1 34%;
+  flex: 1 1 0;
+  min-width: 44px;
+}
+
+.chat-dock__mobile-identity {
+  justify-content: center;
+  min-width: 0;
+  text-align: center;
+}
+
+.chat-dock__mobile-overflow-trigger {
+  justify-self: end;
 }
 
 .chat-dock__mobile-project-lines,
@@ -9414,6 +8958,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   justify-content: center;
   gap: 0;
   min-width: 0;
+}
+
+.chat-dock__mobile-identity .chat-dock__mobile-identity-lines {
+  align-items: center;
 }
 
 .chat-dock__mobile-identity:hover,
@@ -10005,4 +9553,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      `.session-history-controls__more`'s own override of the same base. */
   padding: 6px 12px;
   font-size: var(--text-sm);
+}
+
+.elapsed-wait {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-inline-start: 8px;
 }

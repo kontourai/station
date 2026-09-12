@@ -18,17 +18,20 @@ import { tmpdir } from 'node:os';
 import { join, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
+import { summarizeLaneResults } from '../lib/npm-lane-aggregate.mjs';
 import { captureOwnedProcessOutput } from '../lib/owned-process.mjs';
 import { executionEquivalenceKey } from '../lib/verification-coordinator.mjs';
 import {
   createVerificationReceipt,
   createVerificationRequest,
 } from '../lib/verification-receipt.mjs';
+import { redactVerificationOutput } from '../lib/verification-redaction.mjs';
 import {
   captureBoundedOutput,
   gcVerificationArtifacts,
   isContainedPathSuffix,
   MAX_REDACTED_ATTACHMENT_BYTES,
+  normalizeDeclaredCause,
   persistPlaywrightAttachments,
   persistVerificationOutput,
   projectVerificationArtifacts,
@@ -284,6 +287,77 @@ describe('verification reporter', () => {
     expect(summary.failingStep).toBe('typecheck:scripts');
   });
 
+  test('a failed coverage aggregate does not accuse its passing Android bucket', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> station@0.1.0 test:android',
+        '20 passed (1.0m)',
+        '════ Playwright coverage summary ════',
+        '  FAIL  smoke-live 3629s  3 failed, 26 passed',
+        '  PASS  android 103s  20 passed',
+      ].join('\n'),
+      terminal: { status: 'failed', exitCode: 1 },
+      counts: { executed: 49, passed: 46, failed: 3, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+    });
+    expect(summary.failingStep).toBeUndefined();
+    expect(summary.firstCausalExcerpt).toContain('FAIL  smoke-live');
+  });
+
+  test('a lane aggregate keeps its declared failure instead of blaming nested asset copying', () => {
+    const aggregate = summarizeLaneResults(
+      [
+        {
+          id: 'typecheck:scripts',
+          ok: false,
+          exitCode: 2,
+          seconds: 1,
+          stderr: 'scripts/probe.ts(1,1): error TS2322: wrong type',
+        },
+        {
+          id: 'typecheck:ui',
+          ok: true,
+          exitCode: 0,
+          seconds: 2,
+          stdout: '> station@0.1.0 copy-assets\nCopied assets',
+        },
+      ],
+      { label: 'typecheck' },
+    );
+    const summary = summarizeVerificationOutput({
+      stdout: aggregate.text,
+      terminal: { status: 'failed', exitCode: 1 },
+      counts: { executed: 2, passed: 1, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+    });
+    expect(summary.failingStep).toBeUndefined();
+    expect(summary.firstCausalExcerpt).toContain('typecheck:scripts');
+  });
+
+  test('cleanup failure after a passing aggregate does not blame its final test bucket', () => {
+    const summary = summarizeVerificationOutput({
+      stdout:
+        '> station@0.1.0 test:android\n20 passed\n════ Playwright coverage summary ════\n  PASS android 103s 20 passed',
+      stderr: 'Error: owned cleanup failed',
+      terminal: { status: 'failed', exitCode: 1 },
+      counts: { executed: 20, passed: 20, failed: 0, infrastructureErrors: 0 },
+      cleanup: { status: 'failed', survivingOwnedChildren: 1 },
+    });
+    expect(summary.failingStep).toBeUndefined();
+    expect(summary.firstCausalExcerpt).toContain('owned cleanup failed');
+  });
+
+  test('a later independent failing step remains attributable after an aggregate passed', () => {
+    const summary = summarizeVerificationOutput({
+      stdout:
+        'OK: typecheck -- all 13 lane(s) passed.\n> station@0.1.0 lint:check\nError: invalid syntax',
+      terminal: { status: 'failed', exitCode: 1 },
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+    });
+    expect(summary.failingStep).toBe('lint:check');
+  });
+
   // The release lane reported `failingStep: test:full:ordinary:raw` and a
   // `[vitest-corpus] ordinary: FAIL` tally for eight consecutive tagged
   // releases whose real terminal status was `timed_out`. Nothing had failed;
@@ -414,6 +488,437 @@ describe('verification reporter', () => {
     });
     expect(summary.firstCausalExcerpt).toContain('Some.test.tsx');
     expect(summary.causeStream).toBeUndefined();
+  });
+
+  // station#1827: the runner's own final word wins over the scan, for the one
+  // terminal it explains and no other. Both cases below feed the SAME capture
+  // and the SAME cause, so only the terminal discriminates them -- and the
+  // capture carries an `Error:`-shaped line the scan does choose, which is
+  // what gives the first assertion any power at all.
+  test('a runner-declared cause outranks the scan only for the terminal it explains (station#1827)', () => {
+    const capture = {
+      stdout: '          Error: observer failed',
+      stderr: '[station-ci-fast-owner-final] ci:fast exceeded its budget',
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      infrastructureCause: 'ci:fast exceeded its budget',
+      maxBytes: 2048,
+    };
+    const stopped = summarizeVerificationOutput({
+      ...capture,
+      terminal: { status: 'infrastructure_error', exitCode: null },
+    });
+    expect(stopped.firstCausalExcerpt).toBe('ci:fast exceeded its budget');
+    // Ranked below, never deleted: the scan stays a second line.
+    expect(stopped.causalExcerpts).toEqual([
+      'ci:fast exceeded its budget',
+      '          Error: observer failed',
+    ]);
+    // The `causeStream` caveat says the excerpt "was picked by severity and
+    // position". Nothing picked this one, so the caveat would be false.
+    expect(stopped.causeStream).toBeUndefined();
+
+    // Same cause, same capture, a status the cause does not explain. Nothing
+    // about a `failed` lane's reporting changes.
+    const red = summarizeVerificationOutput({
+      ...capture,
+      terminal: { status: 'failed', exitCode: 1 },
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+    });
+    expect(red.firstCausalExcerpt).toBe('          Error: observer failed');
+    expect(red.causalExcerpts).toEqual(['          Error: observer failed']);
+
+    // station#1827 fix round 2: this function uses the cause it is GIVEN and
+    // does not re-derive it, so the admission test here is shape-only. A
+    // caller that hands it nothing gets no cause and the scan wins. Rejecting
+    // a blank or unredacted declaration belongs to `normalizeDeclaredCause`
+    // and to `reportExecution`, which are where it is asserted -- putting a
+    // trim or a redaction pass here would be the second derivation that made
+    // the summary and the receipt disagree in the first place.
+    const absent = summarizeVerificationOutput({
+      ...capture,
+      terminal: { status: 'infrastructure_error', exitCode: null },
+      infrastructureCause: '',
+    });
+    expect(absent.firstCausalExcerpt).toBe('          Error: observer failed');
+
+    // station#1827 review item 7: the marker that says which of the two the
+    // head excerpt is. Withholding `causeStream` for a declared cause left the
+    // summary unable to say anything at all, so a declaration and a scan
+    // guess rendered identically.
+    expect(stopped.infrastructureCause).toBe('ci:fast exceeded its budget');
+    expect(stopped.causeStream).toBeUndefined();
+    expect(red.infrastructureCause).toBeUndefined();
+    expect(absent.infrastructureCause).toBeUndefined();
+
+    // station#1827 fix round 2: the parameter is used VERBATIM. This is the
+    // assertion that pins "no second derivation" directly, rather than
+    // through a consequence of it.
+    //
+    // Pinning it through non-idempotence does not work, and round 4 corrected
+    // why. The recorded reason was that a reorder had made the function
+    // idempotent over ~300k randomised inputs; that was false OF ROUND 4 --
+    // a structured sweep found inputs where it was not. (Round 5's exit
+    // condition made every accepted value a fixed point -- which round 6 then
+    // stopped being true by adding an arm that exits when the value is NOT
+    // one, and round 7 removed the last consumer that depended on it.) The
+    // round-4 randomised corpus simply never built
+    // one, because it contained no growth-producing redaction upstream of a
+    // token, which is the whole discriminating shape (the same blind spot the
+    // no-token-at-the-end sweep below had).
+    //
+    // The real reason the injection passed is narrower and duller: the
+    // FIXTURE value was one the normalizer returns unchanged, so re-deriving
+    // it was a no-op on that input whatever the function's general behaviour.
+    // A value the normalizer WOULD change is therefore the discriminator.
+    // A value the normalizer WOULD change is therefore the only discriminator
+    // left -- and it is the truer statement anyway, because the contract is
+    // "uses what it is given", not "happens to agree with a second pass".
+    //
+    // It reads as "the summarizer does not sanitize", and that is exactly
+    // right: sanitizing is `normalizeDeclaredCause`'s job, `reportExecution`
+    // is the only production caller, and a safety net here would be the
+    // second derivation wearing a disguise.
+    const unnormalized = '  padded declaration  ';
+    expect(normalizeDeclaredCause(unnormalized)).not.toBe(unnormalized);
+    const verbatim = summarizeVerificationOutput({
+      ...capture,
+      terminal: { status: 'infrastructure_error', exitCode: null },
+      infrastructureCause: unnormalized,
+    });
+    expect(verbatim.firstCausalExcerpt).toBe(unnormalized);
+    expect(verbatim.infrastructureCause).toBe(unnormalized);
+
+    // The marker is additive and LOWEST priority: a cap tight enough to cut
+    // the excerpt drops the marker rather than the excerpt. That direction is
+    // the point -- a reader who loses the marker assumes the excerpt was
+    // scanned, which understates confidence, where losing the excerpt would
+    // lose the diagnostic itself.
+    //
+    // It also bounds what this file can claim about the marker's VALUE. The
+    // implementation seeds it from the already-truncated `firstCausalExcerpt`
+    // so the two can never describe one declaration differently, but sweeping
+    // every cap from 180 to 3000 bytes finds no cap where the marker survives
+    // a truncated excerpt, so that choice is unobservable here: the equality
+    // below holds under either implementation. It is a guarantee by
+    // construction, asserted as far as it can be and no further.
+    const long = `ci:fast exceeded its budget ${'x'.repeat(300)}`;
+    let markersSeen = 0;
+    let truncationsSeen = 0;
+    for (const maxBytes of [200, 260, 340, 512, 2048]) {
+      const capped = summarizeVerificationOutput({
+        ...capture,
+        terminal: { status: 'infrastructure_error', exitCode: null },
+        infrastructureCause: long,
+        maxBytes,
+      });
+      // The excerpt is the declaration at every cap -- the byte budget cuts
+      // it, it never falls back to the decoy.
+      expect(long.startsWith(capped.firstCausalExcerpt as string)).toBe(true);
+      if ((capped.firstCausalExcerpt as string) === long) {
+        markersSeen += 1;
+        expect(capped.infrastructureCause).toBe(capped.firstCausalExcerpt);
+      } else {
+        truncationsSeen += 1;
+        expect(capped.infrastructureCause).toBeUndefined();
+      }
+    }
+    // Neither half of the sweep is vacuous: caps that really truncate, and at
+    // least one that really carries the marker.
+    expect(truncationsSeen).toBeGreaterThan(0);
+    expect(markersSeen).toBeGreaterThan(0);
+  });
+
+  // station#1827 review item 2: one normalization, shared by every writer that
+  // records a declared cause, so the summary and the receipt agree by
+  // structure rather than by two writers being written carefully.
+  // station#1827 fix round 2. This function is called ONCE per run and its
+  // result threaded to every consumer, so what has to hold is not that a
+  // second pass agrees -- it does not, and the delta review proved it -- but
+  // that the single value it returns is safe to persist and to render.
+  test('bounds and redacts a declared cause on its real end, and refuses a non-declaration (station#1827)', () => {
+    const esc = String.fromCharCode(27);
+    // Escapes come off BEFORE redaction, and this is the shape that proves the
+    // order rather than merely exercising it: a token whose CHARACTER CLASS
+    // the escape breaks. `ghp_[A-Za-z0-9]{36,}` sees only 20 alphanumerics
+    // before the escape and does not match, so redacting first leaves the
+    // token intact and the later strip reassembles it into the excerpt.
+    //
+    // A `Bearer <token>` fixture does NOT discriminate here -- that pattern's
+    // `[^\s"'`,;]+` matches the escape bytes too, so it redacts either way.
+    // (Found by injecting the reversed order and watching this test pass.)
+    const split = normalizeDeclaredCause(
+      `stopped after ghp_${'A'.repeat(20)}${esc}[0m${'B'.repeat(20)}`,
+    );
+    expect(split).toContain('[REDACTED]');
+    expect(split).not.toContain('ghp_');
+    expect(split).not.toContain('B'.repeat(20));
+    expect(split).not.toContain(esc);
+
+    // Not declarations.
+    expect(normalizeDeclaredCause('   ')).toBeNull();
+    expect(normalizeDeclaredCause('')).toBeNull();
+    expect(normalizeDeclaredCause(undefined)).toBeNull();
+    expect(normalizeDeclaredCause(`${esc}[0m`)).toBeNull();
+
+    // The case the delta review found, swept rather than sampled. A cause long
+    // enough to be cut lands the cut somewhere inside a token for SOME offset,
+    // and `verification-redaction.mjs` carries `$`-anchored rules for exactly
+    // that -- rules that can only fire on the string's real end. Bounding
+    // after redacting (the first round's order) left the fragment in the value
+    // AND made a second pass return something different.
+    //
+    // Three properties, on every offset: within the byte bound, no unredacted
+    // token fragment at the end, and never a partial `[REDACTED]` (a cut
+    // inside the replacement reads as content, not as a redaction).
+    // Every proper prefix of `[REDACTED]`, INCLUDING the nine-character
+    // `[REDACTED`. Round 4 wrote this regex stopping at `[REDACTE`, so it
+    // could not see the one shape round 6's fragment-strip fix is about, and
+    // the injection that defeats that fix passed against it. An assertion is
+    // only as wide as its pattern.
+    const partialMarker = /\[R(?:E(?:D(?:A(?:C(?:T(?:E(?:D)?)?)?)?)?)?)?$/;
+    // The canonical classes `verification-redaction.mjs` carries that CAN be
+    // left partial at an end. Round 7 added `Bearer`/`Basic` here, and both
+    // discriminate -- deleting either rule from the redactor gives 16 and 19
+    // hits.
+    //
+    // It also added a URL-credential clause, which round 8 removes: that form
+    // is rewritten mid-string, before any bound, so an end-anchored pattern
+    // can never see it, and the clause gave zero hits while 191 outputs
+    // carried the raw secret. A rule that cannot fire is not coverage. The
+    // assertion that does cover it is below, on the values themselves.
+    const tokenTail =
+      /(?:gh[pousr]_[A-Za-z0-9]*|github_pat_[A-Za-z0-9_]*|\bsk-[A-Za-z0-9_-]*|(?:AKIA|ASIA)[0-9A-Z]*|\b(?:Bearer|Basic)\s+(?!\[REDACTED\]$)\S*)$/i;
+    //
+    // Round-4 review, M2: this corpus was padding plus ONE token, which never
+    // makes redaction grow the value, so the growth branch -- cut back, strip
+    // the marker fragment, trim -- was never entered and the assertion was
+    // correct and powerless. 92 inputs violated the very property it states.
+    // A growth-producing redaction UPSTREAM of the trailing token is the
+    // entire discriminating case, so the sweep now carries one, and trailing
+    // words after the token so a cut can land just past `<token> `.
+    let cutInsideToken = 0;
+    let grewPastBound = 0;
+    for (let pad = 200; pad <= 520; pad += 4) {
+      for (const token of [
+        'ghp_ABCDEFG',
+        'github_pat_ABCDEFGHIJ',
+        'sk-ABCDEFGHIJ',
+        'AKIAABCDEFG',
+        'ghp_ABCDEFGHIJKLMNOPQRSTUV',
+        // The three classes the detector above used to omit, so the corpus
+        // and the detector are no longer drawn from one list.
+        'Bearer abcdefghijklmnop',
+        'Basic Zm9vOmJhcjpiYXo=',
+        'https://user:hunter2hunter2@example.test/path',
+      ]) {
+        for (const growth of [0, 1, 4, 16]) {
+          const prefix = 'Bearer s '.repeat(growth);
+          const raw = `${prefix}${'a'.repeat(pad)} ${token} and more trailing words here`;
+          const value = normalizeDeclaredCause(raw) as string;
+          expect(value).not.toBeNull();
+          expect(Buffer.byteLength(value)).toBeLessThanOrEqual(512);
+          expect(value).not.toMatch(tokenTail);
+          // The end-anchored pattern above cannot speak for a class that is
+          // rewritten mid-string, so the three fixtures added in round 7 are
+          // checked on their contents instead. They are fully redacted at
+          // baseline, unlike the four short tokens beside them, which survive
+          // by design -- the redactor's full-token rules need 36, 20 and 16
+          // characters and these are shorter.
+          for (const secret of [
+            'abcdefghijklmnop',
+            'Zm9vOmJhcjpiYXo=',
+            'hunter2hunter2',
+          ])
+            if (token.includes(secret)) expect(value).not.toContain(secret);
+          if (!value.endsWith('[REDACTED]'))
+            expect(value).not.toMatch(partialMarker);
+          // Not vacuous, in both directions: offsets that cut inside the
+          // token, and offsets where redaction grows the value past the bound
+          // and the growth branch runs.
+          if (Buffer.byteLength(raw) > 512 && value.endsWith('[REDACTED]'))
+            cutInsideToken += 1;
+          // Round-7 review: this used to test `value.includes('[REDACTED]')`,
+          // which the `Bearer s` prefix guarantees whenever `growth > 0` --
+          // so it counted every growth iteration rather than the condition it
+          // names. It now counts inputs whose redaction lands over the bound,
+          // which is a real condition and does discriminate; most of what it
+          // counts, though, is inputs that were already over the bound before
+          // redaction rather than pushed past it BY redaction, so read it as
+          // "the growth branch ran" and not as "redaction caused the cut".
+          if (
+            growth > 0 &&
+            Buffer.byteLength(redactVerificationOutput(raw)) > 512
+          )
+            grewPastBound += 1;
+        }
+      }
+    }
+    expect(cutInsideToken).toBeGreaterThan(0);
+    expect(grewPastBound).toBeGreaterThan(0);
+
+    // Round-4 review, H2: this function is the redaction BOUNDARY for the
+    // declared cause -- neither channel is redacted upstream and the value
+    // lands in a receipt CI uploads as an artifact. Round 3 bounded before
+    // redacting, which halves an encoded JSON layer; nothing then matches the
+    // escaped form, because the key matchers stop at the backslash. The whole
+    // secret survived, not a fragment. Swept because it depends on where the
+    // cut lands.
+    const encodedSecret = 'hunter2hunter2hunter2';
+    let encodedCarried = 0;
+    for (let pad = 350; pad <= 560; pad += 1) {
+      for (const layers of [1, 2]) {
+        let payload = JSON.stringify({ apiKey: encodedSecret });
+        for (let depth = 0; depth < layers; depth += 1)
+          payload = JSON.stringify({ data: payload });
+        const value = normalizeDeclaredCause(
+          `${'a'.repeat(pad)} ${payload}`,
+        ) as string;
+        expect(value).not.toContain(encodedSecret);
+        if (value?.includes('apiKey')) encodedCarried += 1;
+      }
+    }
+    // Not vacuous: the layer really does reach the bounded value at these
+    // offsets, redacted rather than absent.
+    expect(encodedCarried).toBeGreaterThan(0);
+
+    // The three null exits, which are not the same exit (round-5 addendum).
+    // Only the third loses something a runner said.
+    expect(normalizeDeclaredCause(undefined)).toBeNull();
+    expect(normalizeDeclaredCause(`${esc}[0m${esc}[31m  `)).toBeNull();
+    //
+    // The refusal. No corpus swept reaches the production cap, so driving the
+    // cap down to one on an input that genuinely needs two exercises the real
+    // branch with a real value. A value still being rewritten is not one to
+    // persist, so the function records nothing rather than its best effort.
+    const needsTwoPasses = `${'Bearer s '.repeat(16)}${'b'.repeat(200)} ghp_ABCDEFGHIJKLMNOPQRSTUV and more trailing words here`;
+    expect(normalizeDeclaredCause(needsTwoPasses)).not.toBeNull();
+    expect(normalizeDeclaredCause(needsTwoPasses, { maxPasses: 1 })).toBeNull();
+
+    // Round-5 review, H1: round 4 exited on "the redactor changes nothing",
+    // which a value ending `{"apiKey":[REDACTED]]` never satisfies -- the
+    // JSON-key rule's value class stops at the first `]`, so redaction appends
+    // one byte, the bound removes it, and the next pass is byte-identical.
+    // Eleven of 621 offsets PER CAP, at every cap including the production
+    // one, refused a cause whose secret had already been removed; and a
+    // refusal is silent, so the receipt went back to naming a scanned excerpt.
+    //
+    // The exit condition is now the fixed point of the whole step -- redact
+    // AND re-bound -- so an instability confined to a marker's spelling
+    // resolves instead of spinning. Swept, because a single offset proves
+    // nothing about a boundary condition.
+    let cycleShapesResolved = 0;
+    for (const cap of [40, 64, 128, 256, 512]) {
+      for (let pad = 0; pad <= 40; pad += 1) {
+        const cycling = `${'x'.repeat(pad)} {"apiKey":"SECRETVALUE0123456789","b":"c"}`;
+        const resolved = normalizeDeclaredCause(cycling, { maxBytes: cap });
+        // Never refused, and never carrying what it was asked to remove.
+        expect(resolved).not.toBeNull();
+        expect(resolved).not.toContain('SECRETVALUE0123456789');
+        expect(Buffer.byteLength(resolved as string)).toBeLessThanOrEqual(cap);
+        // Round-6 review, L2: this used to count values merely CONTAINING a
+        // marker, which most of the corpus does -- it could not notice the
+        // fixture drifting out of the class it exists to hold it in. The
+        // discriminating count is the oscillating one: values the redactor
+        // would still rewrite, which are exactly the ones round 4 refused.
+        if (redactVerificationOutput(resolved as string) !== resolved)
+          cycleShapesResolved += 1;
+      }
+    }
+    // Not vacuous: the sweep really does contain the oscillating class.
+    expect(cycleShapesResolved).toBeGreaterThan(0);
+
+    // Round-6 review, M2: the unquoted-JSON-value form of the same cycle. This
+    // one is fourteen bytes -- far below any bound -- so nothing ever cancels
+    // the bracket the redactor appends each pass, and round 5's at-cap fix
+    // could not reach it. Refused forever before this round, silently.
+    expect(normalizeDeclaredCause('{"apiKey":123}')).toBe(
+      '{"apiKey":[REDACTED]}',
+    );
+    // And the same class at a bound, where the far end loses a byte per pass
+    // as well. Round 7 corrected what this comment used to claim about it: the
+    // collapsed forms are EQUAL here, not a prefix, so this is a second
+    // arm-two shape rather than the arm-one shape it implied, and deleting
+    // arm one still resolves it.
+    //
+    // Arm one is load-bearing -- deleting it refuses 180 of 48,240 inputs in
+    // a JSON-shaped sweep across five caps -- but what pins it is the cycle
+    // sweep below, not this line.
+    expect(
+      normalizeDeclaredCause('yyyyy {"password":[1,2],"b":"c"}', {
+        maxBytes: 40,
+      }),
+    ).not.toBeNull();
+
+    // Round-6 review, M3: one strip can uncover another, and so can the trim
+    // between them. A cut inside `... [REDACTED [REDACTED]` used to leave
+    // `... [REDACTED` -- a partial marker, persisted into the receipt as text
+    // that reads like a redaction and is not one -- on 30 of 483 straddling
+    // inputs.
+    for (let pad = 480; pad <= 500; pad += 1) {
+      const straddling = normalizeDeclaredCause(
+        `${'f'.repeat(pad)} [REDACTED ghp_${'A'.repeat(40)}`,
+      ) as string;
+      expect(straddling).not.toBeNull();
+      if (!straddling.endsWith('[REDACTED]'))
+        expect(straddling).not.toMatch(partialMarker);
+    }
+
+    // Round-5 review, L3: the partial-marker strip runs only when the bound
+    // actually cut. Applied unconditionally it edited a declaration the runner
+    // made -- an open bracket is a proper prefix of `[REDACTED]`.
+    expect(normalizeDeclaredCause('ci:fast stopped at step [')).toBe(
+      'ci:fast stopped at step [',
+    );
+
+    // Re-applying the function to its own output is NOT identity, and this
+    // pins that rather than its opposite (round-7 review, H1 and M2).
+    //
+    // The version here until round 7 asserted identity, and said the
+    // envelope's correctness depended on it. Both halves were wrong: arm two
+    // returns the candidate at the moment the redactor still wants to append
+    // to it, so a second call starts from the appended form -- and all three
+    // of that assertion's seeds exit by arm ONE, where re-derivation happens
+    // to be identity, so it could not have seen the class it was written for.
+    // The envelope no longer re-derives at all; nothing does.
+    //
+    // Arm-one values: a second call reproduces them.
+    for (const seed of [
+      `${'x'.repeat(18)} {"apiKey":"SECRETVALUE0123456789","b":"c"}`,
+      needsTwoPasses,
+      'ci:fast exceeded its 12-minute feedback budget',
+    ]) {
+      const once = normalizeDeclaredCause(seed) as string;
+      expect(normalizeDeclaredCause(once)).toBe(once);
+    }
+    // Arm-two values: a second call MOVES them, by a byte inside the marker.
+    // This is the fact every consumer has to respect, so it is asserted as a
+    // fact rather than left as an argument.
+    for (const seed of ['{"apiKey":123}', 'ci:fast stopped: {"apiKey":123}']) {
+      const once = normalizeDeclaredCause(seed) as string;
+      expect(once).not.toBeNull();
+      expect(normalizeDeclaredCause(once)).not.toBe(once);
+      expect(normalizeDeclaredCause(once)).toBe(`${once.slice(0, -1)}]}`);
+    }
+
+    // Bounded in BYTES, codepoint-aligned, and never above the schema's own
+    // code-point wall. A surrogate pair is never cut in half.
+    for (const value of [
+      'a'.repeat(600),
+      // Space-separated so a byte cut lands immediately after a space. The
+      // trim that follows the bound has to precede redaction: a value ending
+      // in a space has no token at its end for the `$` rules to see.
+      'x '.repeat(400),
+      `e${'\u{1F600}'.repeat(400)}`,
+    ]) {
+      const once = normalizeDeclaredCause(value) as string;
+      expect(once).not.toBeNull();
+      expect(Buffer.byteLength(once)).toBeLessThanOrEqual(512);
+      // Round-4 review, L2: the line that used to sit here compared the value
+      // against a minimum of itself and 512, which is true for every string.
+      expect([...once].length).toBeLessThanOrEqual(512);
+      expect(once).toBe(once.trim());
+    }
   });
 
   // causeStream is an enum. Truncated to 's' it is a value outside its own

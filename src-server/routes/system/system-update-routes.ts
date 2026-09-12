@@ -21,6 +21,7 @@ import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resol
 import { type Context, Hono } from 'hono';
 import { systemOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
+import { isRecord } from '../../utils/is-record.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import { errorMessage } from '../schemas/schemas.js';
 import {
@@ -63,12 +64,6 @@ interface InstanceStateRecord {
   statePath: string;
   uiPid: number | null;
   uiPort: number;
-}
-
-function isRecord(
-  value: unknown,
-): value is Record<string, string | number | boolean | null | unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function parsePidList(raw: string): Array<number | null> {
@@ -632,7 +627,7 @@ export function createSystemUpdateRoutes(
         });
         hasUpstream = true;
       } catch (e) {
-        console.debug('Failed to check upstream branch:', e);
+        logger.debug('Failed to check upstream branch', { error: e });
         try {
           await execGit(['remote', 'get-url', 'origin'], {
             cwd: gitRoot,
@@ -651,10 +646,9 @@ export function createSystemUpdateRoutes(
           );
           hasUpstream = true;
         } catch (autoConfigureError) {
-          console.debug(
-            'Failed to auto-configure upstream:',
-            autoConfigureError,
-          );
+          logger.debug('Failed to auto-configure upstream', {
+            error: autoConfigureError,
+          });
         }
       }
 

@@ -98,7 +98,7 @@ export interface SshReachabilityEvidence {
   failure?: { code: SshReachabilityFailureCode; detail: string };
 }
 
-export interface SshUnknownHostKey {
+interface SshUnknownHostKey {
   /** `SHA256:...`, base64 without padding — byte-identical to what `ssh` prints. */
   fingerprint: string;
   /** The host-key algorithm this fingerprint belongs to (`ssh-ed25519`, …). */
@@ -121,7 +121,7 @@ interface SshAttemptResult {
   spawnFailed: boolean;
 }
 
-export type SshReachabilityAttempt = (
+type SshReachabilityAttempt = (
   args: readonly string[],
 ) => Promise<SshAttemptResult>;
 
@@ -130,7 +130,7 @@ export type SshReachabilityAttempt = (
  * `ssh-keyscan`'s raw stdout. Injectable so the unknown-host path is
  * testable without a network.
  */
-export type SshHostKeyScanner = (input: {
+type SshHostKeyScanner = (input: {
   host: string;
   port: number;
   keyTypes: readonly string[];
@@ -639,7 +639,7 @@ const MAX_ATTEMPT_OUTPUT_BYTES = 256 * 1024;
  * without a Windows host — the one thing a POSIX CI machine can actually
  * prove about the Windows path.
  */
-export type ProcessTreeKill =
+type ProcessTreeKill =
   | { kind: 'signal-group'; pid: number; signal: 'SIGKILL' }
   | { kind: 'taskkill'; command: string; args: string[] };
 

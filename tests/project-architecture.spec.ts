@@ -20,6 +20,7 @@ import {
   showRegionThroughOverflowMenu,
   surfaceDockShell,
 } from './helpers/region-placement';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 const STATUS_READY = JSON.stringify({
   ready: true,
@@ -100,7 +101,11 @@ const PROVIDERS = [
   },
 ];
 
-function seedRoutes(page: import('@playwright/test').Page) {
+async function seedRoutes(page: import('@playwright/test').Page) {
+  await page.route('**/api/**', async (route) => {
+    if (await fulfillStationShellRead(route)) return;
+    await route.fallback();
+  });
   return Promise.all([
     page.addInitScript(SEED_STORAGE),
     page.route('**/api/system/status', (r) =>
@@ -546,9 +551,7 @@ test.describe('Project Navigation', () => {
   });
 
   test('new project form renders', async ({ page }) => {
-    await page
-      .getByRole('button', { name: /New Project/ })
-      .dispatchEvent('click');
+    await page.getByRole('button', { name: /New Project/ }).click();
     await expect(page).toHaveURL(/\/projects\/new/);
     await expect(page.getByPlaceholder('My Project')).toBeVisible({
       timeout: 5000,
@@ -1054,7 +1057,7 @@ test.describe('Ambient chat dock host at 390x844', () => {
     await expect(page.locator('.chat-dock')).toHaveCount(1);
     await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
 
-    await showRegionThroughOverflowMenu(page, 'Show Activity');
+    await showRegionThroughOverflowMenu(page, 'Show Activity in the dock');
 
     // One slot still, and Activity holds it: Chat's shell is not rendered at
     // all, which is the phone fold rather than a hidden Chat.
@@ -1076,8 +1079,9 @@ test.describe('Ambient chat dock host at 390x844', () => {
     // Hidden through the docked pane's OWN header control, which is what a
     // phone user reaches for and which writes the region's visibility
     // (`useDockShellChrome`'s `applyDockSnap('collapsed')` →
-    // `setRegion({ visible: false })`). Scoped to the pane, because the ⋯
-    // menu carries a row of the same name.
+    // `setRegion({ visible: false })`). Still scoped to the pane, though the
+    // ⋯ menu's row no longer shares this name: since #1386 it says "Hide
+    // Activity from the dock".
     await surfaceDockShell(page, 'Activity')
       .getByRole('button', { name: 'Hide Activity', exact: true })
       .click();

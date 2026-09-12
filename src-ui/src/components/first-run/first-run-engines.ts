@@ -71,7 +71,7 @@ export interface FirstRunEngineOption {
   note?: string;
 }
 
-export interface FirstRunEnablePlanItem {
+interface FirstRunEnablePlanItem {
   engineId: string;
   name: string;
   /** The only thing the create needs: the server names the Agent. */
@@ -291,7 +291,7 @@ export function firstRunEngineRowLabel(option: FirstRunEngineOption): string {
     case 'detected_connect':
       return `Connect and set up ${option.name}`;
     case 'enabled':
-      return `Ready — ${option.name}`;
+      return `Set up — ${option.name}`;
     case 'available':
       return `Enable ${option.name}`;
     default:

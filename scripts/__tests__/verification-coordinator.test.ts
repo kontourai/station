@@ -49,18 +49,15 @@ import {
   createWslQuarantinedTest,
   WSL_QUARANTINE_REASON,
 } from '../lib/wsl-host-class.mjs';
+import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
-const ORDINARY_FULL_PHASE_IDS = Object.freeze([
-  'test-full-ordinary-1-of-8',
-  'test-full-ordinary-2-of-8',
-  'test-full-ordinary-3-of-8',
-  'test-full-ordinary-4-of-8',
-  'test-full-ordinary-5-of-8',
-  'test-full-ordinary-6-of-8',
-  'test-full-ordinary-7-of-8',
-  'test-full-ordinary-8-of-8',
-]);
+const FULL_PHASE_IDS = FULL_REGRESSION_PHASES.map((phase) => phase.id);
+const ORDINARY_FULL_PHASE_IDS = FULL_PHASE_IDS.filter((id) =>
+  id.startsWith('test-full-ordinary-'),
+);
+const phasesThrough = (id: string) =>
+  FULL_PHASE_IDS.slice(0, FULL_PHASE_IDS.indexOf(id) + 1);
 
 /**
  * station#4177 INTERIM quarantine — WSL2 fleet-runner host class ONLY.
@@ -337,7 +334,6 @@ function completionCoordinatorChild({
   laneId,
   binDirectory,
   mode,
-  countPath,
   releasePath,
   descendantPath,
 }: {
@@ -347,7 +343,6 @@ function completionCoordinatorChild({
   laneId: 'ci-fast' | 'full-regression';
   binDirectory: string;
   mode: 'fast' | 'hold-repo-governance' | 'hold-test-full-ordinary';
-  countPath: string;
   releasePath: string;
   descendantPath: string;
 }) {
@@ -373,7 +368,6 @@ function completionCoordinatorChild({
         ...process.env,
         PATH: `${binDirectory}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH ?? ''}`,
         STATION_FIXTURE_MODE: mode,
-        STATION_FIXTURE_COUNT: countPath,
         STATION_FIXTURE_RELEASE: releasePath,
         STATION_FIXTURE_DESCENDANT: descendantPath,
         STATION_FIXTURE_NPM: join(binDirectory, 'npm'),
@@ -681,6 +675,184 @@ describe('verification coordinator', () => {
     }
   });
 
+  test('the canonical receipt carries the ci-fast budget kill cause, not a scanned excerpt (station#1827)', async () => {
+    const temp = fixture();
+    const worktree = join(temp.root, 'ci-fast-budget-cause');
+    mkdirSync(worktree);
+    const stable = boundCoordinatorProvenance(worktree, 'ci-fast-budget-cause');
+    const request = createVerificationRequest('ci-fast', stable);
+    // A digest-bound, coherent changed-verification diagnostic is what makes
+    // `reportExecution` take its ORDINARY path for a ci-fast owner: without
+    // it the required attachment is unavailable and reporting throws into the
+    // catch branch, which is the only path that ever surfaced this cause.
+    const diagnosticRoot = join(worktree, '.kontourai/test-impact');
+    mkdirSync(diagnosticRoot, { recursive: true });
+    const diagnostic = {
+      schemaVersion: 1,
+      kind: 'station-test-changed-diagnostics',
+      complete: true,
+      incompleteReasons: [],
+      base: 'origin/main',
+      mergeBase: 'base-sha',
+      changedPathCount: 1,
+      provenance: {
+        repositoryId: stable.repositoryId,
+        headSha: stable.headSha,
+        workspaceDigest: stable.workspaceDigest,
+        environmentDigest: stable.environmentDigest,
+        dependencyDigest: stable.dependencyDigest,
+      },
+      selection: {
+        relatedPathCount: 1,
+        exactTestCount: 0,
+        deferredLanes: [],
+        escalated: false,
+      },
+      counts: {
+        executed: 1,
+        passed: 1,
+        failed: 0,
+        skipped: 0,
+        todo: 0,
+        infrastructureErrors: 0,
+        parserErrors: 0,
+        emptyReports: 0,
+      },
+      executions: [
+        {
+          kind: 'related',
+          exitCode: 0,
+          infrastructureError: false,
+          counts: { executed: 1, passed: 1, failed: 0, skipped: 0, todo: 0 },
+          failedTests: [],
+          failureIdentityCount: 0,
+          omittedFailureIdentities: 0,
+          failureIdentitiesComplete: true,
+        },
+      ],
+    };
+    const diagnosticContents = `${JSON.stringify(diagnostic)}\n`;
+    writeFileSync(
+      join(diagnosticRoot, 'changed-diagnostics.json'),
+      diagnosticContents,
+    );
+    writeFileSync(
+      join(diagnosticRoot, 'changed-verification.json'),
+      `${JSON.stringify({
+        request: { laneId: 'test-changed' },
+        provenance: { before: diagnostic.provenance },
+        artifacts: [
+          {
+            path: '.kontourai/test-impact/changed-diagnostics.json',
+            sha256: createHash('sha256')
+              .update(diagnosticContents)
+              .digest('hex'),
+          },
+        ],
+      })}\n`,
+    );
+    const cause = 'ci:fast exceeded its 12-minute feedback budget';
+    try {
+      const killed = await coordinateVerification({
+        laneId: 'ci-fast',
+        root: temp.root,
+        cwd: worktree,
+        collectProvenance: () => stable,
+        runner: async () => ({
+          status: 80,
+          infrastructureError: true,
+          infrastructureCause: cause,
+          output: {
+            // The decoy: a line a PASSING test prints on purpose, and the
+            // one the scan reported as the cause on PR #1787. Without it in
+            // the capture this test cannot tell "we surfaced the runner's
+            // own cause" from "nothing else was there to pick".
+            stdout: { text: '          Error: observer failed\n' },
+            stderr: {
+              text: `[station-ci-fast-owner-final] ${cause}\n`,
+            },
+          },
+        }),
+      });
+      expect(killed.receipt.terminal.status).toBe('infrastructure_error');
+      expect(killed.receipt.terminal.infrastructureCause).toBe(cause);
+      expect(killed.summary.firstCausalExcerpt).toBe(cause);
+      // station#1827 review item 7: the bounded summary ENVELOPE is a
+      // separate allow-list from the summarizer's own object, and it is what
+      // the CI annotation and the printed verdict read. A field the reporter
+      // computes but the envelope drops reaches no reader -- the exact way
+      // `causeStream` was lost once already.
+      expect(killed.summary.infrastructureCause).toBe(cause);
+      expect(killed.summary.causeStream).toBeUndefined();
+
+      // station#1827: the envelope is where the marker and the excerpt were
+      // derived through DIFFERENT transforms, and on this class they
+      // disagreed -- the round-4 envelope rendered nine extra bytes ending in
+      // a truncated `[REDACTED` where the receipt held none, so the page
+      // showed a redaction the record did not have.
+      //
+      // This is the test that reaches the envelope: `coordinateVerification`
+      // publishes, so `cycling.summary` IS `boundedSummaryEnvelope`'s output
+      // rather than the summarizer's.
+      //
+      // The cause is deliberately an ARM-TWO value (round-7 review): a short
+      // unquoted JSON value, well under the cap, so no bound is involved at
+      // all. `normalizeDeclaredCause` accepts it while the redactor still
+      // wants to append a bracket, which means re-deriving it MOVES it --
+      // `{"apiKey":[REDACTED]}` on the receipt becoming
+      // `{"apiKey":[REDACTED]]}` on the page. The previous fixture here was an
+      // at-cap value that exits by arm one, where every re-derivation is
+      // identity, so it could not reach the class it was written for.
+      // `force` because the request key is unchanged.
+      const cycling = await coordinateVerification({
+        laneId: 'ci-fast',
+        root: temp.root,
+        cwd: worktree,
+        force: true,
+        collectProvenance: () => stable,
+        runner: async () => ({
+          status: 80,
+          infrastructureError: true,
+          infrastructureCause: 'ci:fast stopped: {"apiKey":123}',
+          output: {
+            stdout: { text: '          Error: observer failed\n' },
+            stderr: { text: '' },
+          },
+        }),
+      });
+      const persisted = cycling.receipt.terminal.infrastructureCause;
+      // The fixture is only discriminating if it really is in that class: the
+      // secret is gone, and the value is one a second derivation would move.
+      expect(persisted).toBe('ci:fast stopped: {"apiKey":[REDACTED]}');
+      expect(persisted).not.toContain('123');
+      expect(cycling.summary.infrastructureCause).toBe(persisted);
+      expect(cycling.summary.firstCausalExcerpt).toBe(persisted);
+      // The THIRD field carrying the same string, and the one the page
+      // actually shows: `causalExcerptsOf` prefers this list over the single
+      // field, so the fenced block and every error annotation render its head
+      // (round-8 review, H1). Two fields agreeing while the rendered one does
+      // not is the defect wearing a disguise.
+      expect(cycling.summary.causalExcerpts[0]).toBe(persisted);
+      // The published bytes, not only the returned object: the canonical
+      // receipt is what a later reader opens, and it carried no cause at all.
+      const canonical = JSON.parse(
+        readFileSync(
+          join(
+            worktree,
+            '.kontourai',
+            'verification-receipts',
+            `${request.key}.canonical.json`,
+          ),
+          'utf8',
+        ),
+      );
+      expect(canonical.terminal.infrastructureCause).toBe(cause);
+      expect(canonical.terminal.reconcileNote).toBeUndefined();
+    } finally {
+      temp.remove();
+    }
+  });
+
   test('holds the artifact mutation fence until an owned writer settles', async () => {
     const temp = fixture();
     const worktree = join(temp.root, 'writer-worktree');
@@ -935,7 +1107,7 @@ describe('verification coordinator', () => {
         },
       });
 
-      expect(started).toEqual(['repo-governance']);
+      expect(started).toEqual(phasesThrough('repo-governance'));
       expect(result.receipt.terminal.passed).toBe(false);
     } finally {
       temp.remove();
@@ -1327,7 +1499,7 @@ describe('verification coordinator', () => {
       expect(first.disposition).toBe('executed');
       expect(projected.disposition).toBe('reused');
       expect(localReuse.disposition).toBe('reused');
-      expect(phaseCalls).toBe(18);
+      expect(phaseCalls).toBe(FULL_PHASE_IDS.length);
       expect(projected.receipt.request.worktree).toBe(secondWorktree);
       expect(localReuse.receipt.request.worktree).toBe(secondWorktree);
       expect(localReuse.receipt.artifacts).toEqual(projected.receipt.artifacts);
@@ -1365,18 +1537,10 @@ describe('verification coordinator', () => {
       const resumed = await coordinateVerification(options);
       expect(resumed.receipt.terminal.passed).toBe(true);
       expect(calls).toEqual([
-        '0:repo-governance',
-        '0:sdk-builds',
-        '0:verify-static',
-        ...ORDINARY_FULL_PHASE_IDS.map((id) => `0:${id}`),
-        '0:test-full-process-heavy',
-        '0:test-full-process-exclusive',
-        '0:test-full-coordinator-exclusive',
-        '0:test-full-credential-ledger-exclusive',
-        '0:test-full-shared-output',
-        '1:test-full-shared-output',
-        '1:test-full-dogfood-reconcile',
-        '1:app-builds',
+        ...phasesThrough('test-full-shared-output').map((id) => `0:${id}`),
+        ...FULL_PHASE_IDS.slice(
+          FULL_PHASE_IDS.indexOf('test-full-shared-output'),
+        ).map((id) => `1:${id}`),
       ]);
     } finally {
       temp.remove();
@@ -1785,32 +1949,21 @@ describe('verification coordinator', () => {
             job.state === 'queued',
         ),
       );
-      expect(phases).toEqual([
-        'repo-governance',
-        'sdk-builds',
-        'verify-static',
-      ]);
+      expect(phases).toEqual(
+        FULL_PHASE_IDS.slice(
+          0,
+          FULL_PHASE_IDS.indexOf(ORDINARY_FULL_PHASE_IDS[0]),
+        ),
+      );
       releaseLight();
       const [ciResult, lowResult] = await Promise.all([ci, low]);
       expect(lowResult.receipt.terminal.passed).toBe(true);
       expect(ciResult.receipt.terminal.passed).toBe(true);
-      expect(phases).toEqual([
-        'repo-governance',
-        'sdk-builds',
-        'verify-static',
-        ...ORDINARY_FULL_PHASE_IDS,
-        'test-full-process-heavy',
-        'test-full-process-exclusive',
-        'test-full-coordinator-exclusive',
-        'test-full-credential-ledger-exclusive',
-        'test-full-shared-output',
-        'test-full-dogfood-reconcile',
-        'app-builds',
-      ]);
+      expect(phases).toEqual(FULL_PHASE_IDS);
       const phaseArtifacts = ciResult.receipt.artifacts.filter((artifact) =>
         artifact.path.includes('/attachment-'),
       );
-      expect(phaseArtifacts).toHaveLength(18);
+      expect(phaseArtifacts).toHaveLength(FULL_PHASE_IDS.length);
       const records = phaseArtifacts.map((artifact) =>
         JSON.parse(readFileSync(join(worktree, artifact.path), 'utf8')),
       );
@@ -2056,6 +2209,7 @@ describe('verification coordinator', () => {
         heartbeatMs: 1,
         collectProvenance: () =>
           worktreeProvenance(fastWorktree, 'bounded-fast'),
+        hostCpuSampler: healthySampler(),
         runner: async () => ({ status: 0 }),
       });
       // `passed` is not earnable here — see the note on the first ci:fast
@@ -2125,15 +2279,16 @@ describe('verification coordinator', () => {
         fakeNpm,
         `#!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 
 const mode = process.env.STATION_FIXTURE_MODE;
-const countPath = process.env.STATION_FIXTURE_COUNT;
-const count = existsSync(countPath) ? Number(readFileSync(countPath, 'utf8')) + 1 : 1;
-writeFileSync(countPath, String(count));
+// The coordinator invokes \`npm run <privateScript>\`; hold on the phase's
+// own script so the fixture is bound to the phase identity, not to its
+// position in FULL_REGRESSION_PHASES.
+const script = process.argv[2] === 'run' ? process.argv[3] : undefined;
 const holds =
-  (mode === 'hold-test-full-ordinary' && count === 4) ||
-  (mode === 'hold-repo-governance' && count === 1);
+  (mode === 'hold-test-full-ordinary' && script === 'test:full:ordinary:1:raw') ||
+  (mode === 'hold-repo-governance' && script === 'proof:repo-governance');
 if (!holds) process.exit(0);
 if (mode === 'hold-test-full-ordinary') {
   const descendant = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1_000)'], {
@@ -2156,7 +2311,6 @@ setInterval(() => {
         laneId: 'full-regression',
         binDirectory,
         mode: 'hold-test-full-ordinary',
-        countPath: join(temp.root, 'first-count'),
         releasePath: join(temp.root, 'never-release-first'),
         descendantPath,
       });
@@ -2192,7 +2346,6 @@ setInterval(() => {
         laneId: 'full-regression',
         binDirectory,
         mode: 'hold-repo-governance',
-        countPath: join(temp.root, 'second-count'),
         releasePath: secondRelease,
         descendantPath: join(temp.root, 'second-descendant.json'),
       });
@@ -2215,7 +2368,6 @@ setInterval(() => {
         laneId: 'full-regression',
         binDirectory,
         mode: 'fast',
-        countPath: join(temp.root, 'third-count'),
         releasePath: join(temp.root, 'unused-third-release'),
         descendantPath: join(temp.root, 'third-descendant.json'),
       });
@@ -2237,7 +2389,6 @@ setInterval(() => {
         laneId: 'ci-fast',
         binDirectory,
         mode: 'fast',
-        countPath: join(temp.root, 'fast-count'),
         releasePath: join(temp.root, 'unused-fast-release'),
         descendantPath: join(temp.root, 'fast-descendant.json'),
       });
@@ -2380,6 +2531,7 @@ setInterval(() => {
       expect(stderr).toBeDefined();
       const text = readFileSync(join(worktree, stderr!.path), 'utf8');
       for (const id of [
+        'browser-prerequisite',
         'repo-governance',
         'sdk-builds',
         'verify-static',
@@ -2433,24 +2585,14 @@ setInterval(() => {
         const first = await coordinateVerification(options);
         expect(first.receipt.terminal.passed).toBe(false);
         expect(first.receipt.terminal.status).toBe('infrastructure_error');
-        expect(calls).toEqual(['0:repo-governance']);
+        expect(calls).toEqual([`0:${FULL_PHASE_IDS[0]}`]);
 
         attempt = 1;
         const retried = await coordinateVerification(options);
         expect(retried.receipt.terminal.passed).toBe(true);
         expect(calls).toEqual([
-          '0:repo-governance',
-          '1:repo-governance',
-          '1:sdk-builds',
-          '1:verify-static',
-          ...ORDINARY_FULL_PHASE_IDS.map((id) => `1:${id}`),
-          '1:test-full-process-heavy',
-          '1:test-full-process-exclusive',
-          '1:test-full-coordinator-exclusive',
-          '1:test-full-credential-ledger-exclusive',
-          '1:test-full-shared-output',
-          '1:test-full-dogfood-reconcile',
-          '1:app-builds',
+          `0:${FULL_PHASE_IDS[0]}`,
+          ...FULL_PHASE_IDS.map((id) => `1:${id}`),
         ]);
       } finally {
         temp.remove();
@@ -2488,24 +2630,14 @@ setInterval(() => {
         status: 'completed',
         passed: false,
       });
-      expect(calls).toEqual(['0:repo-governance']);
+      expect(calls).toEqual([`0:${FULL_PHASE_IDS[0]}`]);
 
       attempt = 1;
       const retried = await coordinateVerification(options);
       expect(retried.receipt.terminal.passed).toBe(true);
       expect(calls).toEqual([
-        '0:repo-governance',
-        '1:repo-governance',
-        '1:sdk-builds',
-        '1:verify-static',
-        ...ORDINARY_FULL_PHASE_IDS.map((id) => `1:${id}`),
-        '1:test-full-process-heavy',
-        '1:test-full-process-exclusive',
-        '1:test-full-coordinator-exclusive',
-        '1:test-full-credential-ledger-exclusive',
-        '1:test-full-shared-output',
-        '1:test-full-dogfood-reconcile',
-        '1:app-builds',
+        `0:${FULL_PHASE_IDS[0]}`,
+        ...FULL_PHASE_IDS.map((id) => `1:${id}`),
       ]);
     } finally {
       temp.remove();
@@ -2533,7 +2665,7 @@ setInterval(() => {
     try {
       const first = await coordinateVerification(options);
       expect(first.receipt.terminal.passed).toBe(true);
-      expect(executedPhases).toHaveLength(18);
+      expect(executedPhases).toHaveLength(FULL_PHASE_IDS.length);
 
       const path = join(
         worktree,
@@ -2675,12 +2807,7 @@ setInterval(() => {
           );
         },
       });
-      expect(phases).toEqual([
-        'repo-governance',
-        'sdk-builds',
-        'verify-static',
-        ORDINARY_FULL_PHASE_IDS[0],
-      ]);
+      expect(phases).toEqual(phasesThrough(ORDINARY_FULL_PHASE_IDS[0]));
       expect(timedOut.receipt.terminal).toMatchObject({
         status: 'timed_out',
         passed: false,
@@ -2757,7 +2884,7 @@ setInterval(() => {
           observed!.phase?.executionStartedAt ?? 0,
         );
         expect(observed!.phase).toMatchObject({
-          id: 'repo-governance',
+          id: FULL_PHASE_IDS[0],
           executionDeadlineAt: observed!.deadlineAt,
         });
         expect(result.receipt.terminal).toMatchObject({
@@ -4201,12 +4328,17 @@ setInterval(() => {
 
       const first = coordinatorChild(temp.root, firstWorktree, 'one');
       const second = coordinatorChild(temp.root, secondWorktree, 'two');
-      await waitFor(() =>
-        verificationStatus({ root: temp.root, capacity: 40 }).jobs.some(
-          (job) => job.state === 'queued',
-        ),
-      );
-      const snapshot = verificationStatus({ root: temp.root, capacity: 40 });
+      // Assert the observation that SATISFIED the wait, not a fresh one taken
+      // after it. Reading status twice opens a time-of-check/time-of-use window:
+      // `waitFor` sees a queued job, the scheduler admits it, and the second
+      // read reports `waiting: 0`. That lost deterministically on the hosted
+      // Linux runner while passing here, which reads as an unrelated flake on
+      // whichever pull request happens to route this suite (#1074).
+      let snapshot = verificationStatus({ root: temp.root, capacity: 40 });
+      await waitFor(() => {
+        snapshot = verificationStatus({ root: temp.root, capacity: 40 });
+        return snapshot.jobs.some((job) => job.state === 'queued');
+      });
       expect(snapshot.waiting).toBeGreaterThan(0);
       expect(snapshot.usedWeight).toBeLessThanOrEqual(40);
       const [one, two] = await Promise.all([collect(first), collect(second)]);
@@ -5443,14 +5575,19 @@ describe('verification coordinator host-pressure admission', () => {
         signal: controller.signal,
         runner: async () => ({ status: 0 }),
       });
-      await waitFor(() =>
-        verificationStatus({ root: temp.root }).jobs.some(
-          (job) => job.queueReason === 'host_pressure',
-        ),
-      );
-      const queued = verificationStatus({ root: temp.root }).jobs.find(
-        (job) => job.state === 'queued',
-      );
+      // Wait for the job this asserts on, then assert that same observation.
+      // Waiting on one read and asserting a second lets admission land in the
+      // gap, leaving `queued` undefined and the assertion reading
+      // "expected undefined to be 10000" rather than naming the race.
+      let queued:
+        | ReturnType<typeof verificationStatus>['jobs'][number]
+        | undefined;
+      await waitFor(() => {
+        queued = verificationStatus({ root: temp.root }).jobs.find(
+          (job) => job.state === 'queued',
+        );
+        return queued?.queueReason === 'host_pressure';
+      });
       // The bound was set at the start (10_000), before the first sample — not
       // slid to a later sample time by the initial healthy-then-unavailable
       // alternation.
@@ -5585,10 +5722,19 @@ describe('verification coordinator host-pressure admission', () => {
             return { status: 0 };
           },
         });
-        await waitFor(() => samples >= 3);
-        const queued = verificationStatus({ root: temp.root }).jobs.find(
-          (job) => job.state === 'queued' && job.key !== earlierKey,
-        );
+        // `samples >= 3` says nothing about the job this then asserts on, so
+        // require both before reading: the sample count AND the queued entry
+        // actually existing. Otherwise a slow enqueue leaves `queued`
+        // undefined and two assertions fail on absence rather than on value.
+        let queued:
+          | ReturnType<typeof verificationStatus>['jobs'][number]
+          | undefined;
+        await waitFor(() => {
+          queued = verificationStatus({ root: temp.root }).jobs.find(
+            (job) => job.state === 'queued' && job.key !== earlierKey,
+          );
+          return samples >= 3 && queued !== undefined;
+        });
         expect(queued?.queueReason).toBe('host_pressure_fifo');
         expect(queued?.blockingRequestKey).toBe(earlierKey);
         rmSync(earlier, { recursive: true, force: true });

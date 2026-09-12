@@ -48,7 +48,7 @@ import { SSE_KEEPALIVE_INTERVAL_MS } from '../../constants.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { ClientConnectionLease } from '../../services/ssh/client-connection-presence.js';
 import { sseOps } from '../../telemetry/metrics.js';
-import { streamSSE } from '../sse-response.js';
+import { SSE_KEEPALIVE_FRAME, streamSSE } from '../sse-response.js';
 
 export interface EventRouteDeps {
   eventBus: EventBus;
@@ -257,8 +257,12 @@ export function createEventRoutes({
         pendingEvents.length = 0;
         replayComplete = true;
 
+        // Not `sseKeepalive`: this stream's keepalive goes through
+        // `writeFrame`, which re-checks paired-device currency and can settle
+        // the disconnect, and touches the connection lease on a successful
+        // write. Writing straight to the stream would skip both.
         keepAlive = setInterval(() => {
-          writeFrame({ event: 'ping', data: '' })
+          writeFrame({ ...SSE_KEEPALIVE_FRAME })
             .then(() => clientLease?.touch())
             .catch(() => {});
         }, SSE_KEEPALIVE_INTERVAL_MS);

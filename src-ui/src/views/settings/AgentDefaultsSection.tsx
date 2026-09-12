@@ -30,7 +30,6 @@ export function AgentDefaultsSection({
   regionProvenance,
   showRegion,
   onRegionChange,
-  guard,
 }: {
   config: AppConfig;
   validationErrors: Record<string, string>;
@@ -42,13 +41,6 @@ export function AgentDefaultsSection({
   regionProvenance?: SettingProvenanceEntry;
   showRegion: boolean;
   onRegionChange: (value: string) => void;
-  /**
-   * `SettingsView.tsx`'s own `useUnsavedGuard` guard —
-   * ( 1): every navigation trigger from a page with dirty state
-   * must route through it (CLAUDE.md's unsaved-guard standard), including
-   * this section's own "Open Agents" cross-links.
-   */
-  guard: (callback: () => void) => void;
 }) {
   const { navigate } = useNavigation();
   const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
@@ -110,7 +102,7 @@ export function AgentDefaultsSection({
               <button
                 type="button"
                 className="button button--link"
-                onClick={() => guard(() => navigate('/agents'))}
+                onClick={() => navigate('/agents')}
               >
                 Open Agents
               </button>
@@ -147,7 +139,7 @@ export function AgentDefaultsSection({
                 <button
                   type="button"
                   className="button button--link"
-                  onClick={() => guard(() => navigate('/agents'))}
+                  onClick={() => navigate('/agents')}
                 >
                   Open Agents
                 </button>

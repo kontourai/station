@@ -4,6 +4,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type {
   ConnectionSmokeRunInput,
   ConnectionSmokeRunResult,
@@ -22,7 +23,7 @@ function redactSmokeFailure(value: unknown): string {
     .slice(0, 500);
 }
 
-export interface ConnectionSmokeDeps {
+interface ConnectionSmokeDeps {
   /**
    * The service's PUBLIC dispatch — carries the initialize() latch (T9)
    * and is the only entry accepting the third `internal` argument the
@@ -290,9 +291,7 @@ export class ConnectionSmoke {
           ok: false,
           durationMs: Date.now() - startedAt,
           reasonCode: turnStarted ? 'turn-failed' : 'start-failed',
-          reason: redactSmokeFailure(
-            error instanceof Error ? error.message : String(error),
-          ),
+          reason: redactSmokeFailure(errorMessage(error)),
           action: sessionStarted
             ? 'Check the runtime response and run the explicit smoke again.'
             : 'Check runtime prerequisites and authentication, then run the explicit smoke again.',

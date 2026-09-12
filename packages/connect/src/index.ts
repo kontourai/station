@@ -80,6 +80,7 @@ export {
 } from './core/environmentProfiles';
 export { HEALTH_PROBE_TIMEOUT_MS } from './core/healthProbe';
 export {
+  httpDevelopmentOrigin,
   isCleartextNonLoopback,
   normalizeHostInput,
 } from './core/hostInput';

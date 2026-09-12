@@ -91,10 +91,6 @@ import {
   RevisionEvidenceModule,
 } from '../../domain/revision-bound-evidence.js';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
-import {
-  isSessionContinuationBoundary,
-  isSessionSourceAffinity,
-} from '../../providers/sessions/session-source-affinity.js';
 import type { NativeOutputTerminalAdmission } from '../../runtime/native-output-declaration.js';
 import {
   attachmentBytesStripped,
@@ -136,16 +132,11 @@ import {
 } from '../search/isolated-transcript-search.js';
 import {
   awaitTurnResolution,
-  type TurnIdempotencyPersistence,
   type TurnIdempotencyProcessIdentity,
-  type TurnIdempotencyRecord,
   TurnIdempotencyStore,
 } from '../turn-idempotency.js';
 import {
-  AdoptionCommitFailure,
   type AdoptionLedger,
-  type AdoptionLedgerCoordinator,
-  type AdoptionReservation,
   createAdoptionLedger,
 } from './adoption-ledger.js';
 import {
@@ -230,7 +221,15 @@ import {
   type SessionWorkItemAdmissionRegistry,
 } from './session-work-item-admission.js';
 import type { SessionWorkItemCandidate } from './session-work-item-candidate.js';
+import { createSqliteAdoptionCoordinator } from './sqlite-adoption-persistence.js';
 import { createSqliteRevisionEvidencePersistence } from './sqlite-revision-evidence-persistence.js';
+import {
+  chatTurnDedupKey,
+  createSqliteTurnDedupPersistence,
+  TURN_DEDUP_MAX_ENTRIES,
+  turnDedupKey,
+  turnDedupThreadPrefix,
+} from './sqlite-turn-dedup-persistence.js';
 import {
   MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
   MAX_TOOL_RESULT_DESCRIPTOR_LABEL_BYTES,
@@ -1345,11 +1344,12 @@ export interface ConversationHistoryQuarantineRecord {
 }
 
 /**
- * Bound on retained turn-dedup rows. Exported so the `/chat` facade and this
- * store share ONE constant rather than each hardcoding 2000 — they did, in
- * two files, which is a drift waiting to happen.
+ * Bound on retained turn-dedup rows, owned by
+ * `./sqlite-turn-dedup-persistence.ts`. Re-exported here because the `/chat`
+ * facade imports it from this module.
  */
-export const TURN_DEDUP_MAX_ENTRIES = 2000;
+export { TURN_DEDUP_MAX_ENTRIES };
+
 const NATIVE_INVOCATION_TERMINAL_RETENTION = 1000;
 const VOICE_TURN_TERMINAL_RETENTION = 1000;
 const NATIVE_INVOCATION_STARTUP_ATTEMPTS = 8;
@@ -1713,7 +1713,10 @@ export class EventStore {
       ensureOrchestrationTurnDedupColumns(this.db);
       ensureOrchestrationBoundaryPurpose(this.db);
       this.turnIdempotence = new TurnIdempotencyStore(
-        new SqliteTurnIdempotencyPersistence(this.db, this.turnDedupMaxEntries),
+        createSqliteTurnDedupPersistence({
+          db: this.db,
+          maxEntries: this.turnDedupMaxEntries,
+        }),
         turnProcessIdentity,
       );
       ensureOrchestrationSessionStateColumns(this.db);
@@ -2277,12 +2280,43 @@ export class EventStore {
     return row ? { ...row } : undefined;
   }
 
-  bindProjectTaskRoomExecution(input: {
+  async bindProjectTaskRoomExecution(input: {
     projectId: string;
     taskId: string;
     sessionId: string;
-  }): { kind: 'bound' | 'conflict' | 'unavailable' } {
-    return bindProjectTaskRoomExecution(this.db, input);
+  }): Promise<{ kind: 'bound' | 'conflict' | 'unavailable' }> {
+    const deadline = performance.now() + SQLITE_BUSY_TIMEOUT_MS;
+    let backoff = 2;
+    for (;;) {
+      let result: ReturnType<typeof bindProjectTaskRoomExecution>;
+      let priorTimeout = SQLITE_BUSY_TIMEOUT_MS;
+      try {
+        const prior = this.db.prepare('PRAGMA busy_timeout').get() as {
+          timeout?: number;
+        };
+        if (Number.isSafeInteger(prior.timeout) && prior.timeout! >= 0)
+          priorTimeout = prior.timeout!;
+        // Room workers hold their write transaction while the main thread
+        // revalidates authorization. A synchronous SQLite wait here prevents
+        // that authorization from running. Retry only lock contention, with
+        // the same total budget, and yield so the worker can finish.
+        this.db.exec('PRAGMA busy_timeout = 0');
+        result = bindProjectTaskRoomExecution(this.db, input);
+      } catch {
+        return { kind: 'unavailable' };
+      } finally {
+        try {
+          this.db.exec(`PRAGMA busy_timeout = ${priorTimeout}`);
+        } catch {}
+      }
+      if (result.kind !== 'busy') return { kind: result.kind };
+      const remaining = deadline - performance.now();
+      if (remaining <= 0) return { kind: 'unavailable' };
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, Math.min(backoff, remaining)),
+      );
+      backoff = Math.min(backoff * 2, 64);
+    }
   }
 
   /** Private working-state worker over this exact orchestration SQLite file. */
@@ -4710,20 +4744,12 @@ export class EventStore {
    * payloads for rows the fold never reads. Measured on a real 51k-event/43-
    * thread store: 12.6ms -> 409ms and +212MB heap for identical output.
    *
-   * The fix: rank by `(thread_id, method)`, not `(thread_id)` alone, over
-   * ONLY {@link PROJECTION_FOLD_METHODS} — the finite set of methods any slot
-   * in the fold actually names. A thread's un-listed methods
-   * (`content.text-delta`, tool events, streamed deltas, ...) are never
-   * fetched, so a 50,000-delta thread costs the same as a two-event one.
-   * Ranking is done in a two-phase read: an inner CTE selects only `thread_id
-   * `/`method`/`sequence` (plus the implicit `rowid`) to compute
-   * `ROW_NUMBER()` per partition — a covering-index scan over
-   * `idx_events_history_projection(thread_id, method, sequence)` that never
-   * touches the `payload` column — and an outer join fetches the FULL row
-   * (payload included) only for the rows that survive `rn_desc = 1 OR
-   * rn_asc = 1`: at most two rows per (thread, method) requested. The
-   * "latest event of any method" companion query below uses the same
-   * two-phase shape over `idx_events_thread(thread_id, sequence)`.
+   * The requested thread/method matrix uses first/latest indexed row-id
+   * lookups over PROJECTION_FOLD_METHODS, then joins only the selected
+   * payloads. The latest-any companion also performs a top-one seek.
+   * Payload materialization is bounded by requested facts, not event history.
+   * Other operations (event counts and prompted-turn predicates) own their
+   * separate costs; this is not a claim that the whole request is constant-time.
    *
    * `firstTurnStartedWithPrompt`'s JSON predicate genuinely cannot skip
    * reading `payload` (it must inspect the prompt to test it), so that
@@ -4891,35 +4917,41 @@ export class EventStore {
   }
 
   /**
-   * Latest and first row per `(threadId, method)`, for every method in
-   * {@link PROJECTION_FOLD_METHODS} — the two-phase, payload-deferred ranking
-   * this method's docblock describes.
+   * First/latest indexed row-id bounds per requested thread and method.
+   * Only those payloads are materialized; history length does not determine
+   * how many rows the extrema lookup ranks or sorts.
    */
   private fetchRankedMethodFacts(
     threadIds: readonly string[],
   ): Map<string, Map<string, RankedMethodFact>> {
     const result = new Map<string, Map<string, RankedMethodFact>>();
-    const methodPlaceholders = PROJECTION_FOLD_METHODS.map(() => '?').join(
+    const methodPlaceholders = PROJECTION_FOLD_METHODS.map(() => '(?)').join(
       ', ',
     );
     for (const chunk of this.chunkArray(
       threadIds,
       EVENT_STORE_BATCH_CHUNK_SIZE,
     )) {
-      const threadPlaceholders = chunk.map(() => '?').join(', ');
+      const threadPlaceholders = chunk.map(() => '(?)').join(', ');
       const rows = this.db
         .prepare(
-          `WITH ranked AS (
-             SELECT rowid AS rid, thread_id, method,
-               ROW_NUMBER() OVER (PARTITION BY thread_id, method ORDER BY sequence DESC) AS rn_desc,
-               ROW_NUMBER() OVER (PARTITION BY thread_id, method ORDER BY sequence ASC) AS rn_asc
-             FROM orchestration_events
-             WHERE thread_id IN (${threadPlaceholders}) AND method IN (${methodPlaceholders})
-           )
-           SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.observed_at, event.sequence, event.global_sequence, ranked.rn_desc, ranked.rn_asc
-           FROM ranked
-           INNER JOIN orchestration_events AS event ON event.rowid = ranked.rid
-           WHERE ranked.rn_desc = 1 OR ranked.rn_asc = 1`,
+          `WITH requested(thread_id) AS (VALUES ${threadPlaceholders}),
+             methods(method) AS (VALUES ${methodPlaceholders}),
+             bounds AS (
+               SELECT
+                 (SELECT rowid FROM orchestration_events
+                  WHERE thread_id = requested.thread_id AND method = methods.method
+                  ORDER BY sequence DESC LIMIT 1) AS last_id,
+                 (SELECT rowid FROM orchestration_events
+                  WHERE thread_id = requested.thread_id AND method = methods.method
+                  ORDER BY sequence ASC LIMIT 1) AS first_id
+               FROM requested CROSS JOIN methods
+             )
+           SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.observed_at, event.sequence, event.global_sequence, 1 AS rn_desc, 0 AS rn_asc
+           FROM bounds JOIN orchestration_events AS event ON event.rowid = bounds.last_id
+           UNION ALL
+           SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.observed_at, event.sequence, event.global_sequence, 0 AS rn_desc, 1 AS rn_asc
+           FROM bounds JOIN orchestration_events AS event ON event.rowid = bounds.first_id`,
         )
         .all(...chunk, ...PROJECTION_FOLD_METHODS) as any[];
       for (const row of rows) {
@@ -4943,8 +4975,8 @@ export class EventStore {
 
   /**
    * Latest event of ANY method per thread — mirrors {@link latestEvent},
-   * batched. Same two-phase, payload-deferred shape over
-   * `idx_events_thread(thread_id, sequence)`.
+   * batched using one indexed top-one seek per requested thread. Payloads
+   * are read only after selecting the row id.
    */
   private fetchLatestAnyEvent(
     threadIds: readonly string[],
@@ -4954,19 +4986,17 @@ export class EventStore {
       threadIds,
       EVENT_STORE_BATCH_CHUNK_SIZE,
     )) {
-      const placeholders = chunk.map(() => '?').join(', ');
+      const placeholders = chunk.map(() => '(?)').join(', ');
       const rows = this.db
         .prepare(
-          `WITH ranked AS (
-             SELECT rowid AS rid,
-               ROW_NUMBER() OVER (PARTITION BY thread_id ORDER BY sequence DESC) AS rn
-             FROM orchestration_events
-             WHERE thread_id IN (${placeholders})
-           )
+          `WITH requested(thread_id) AS (VALUES ${placeholders})
            SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.observed_at, event.sequence, event.global_sequence
-           FROM ranked
-           INNER JOIN orchestration_events AS event ON event.rowid = ranked.rid
-           WHERE ranked.rn = 1`,
+           FROM requested
+           JOIN orchestration_events AS event ON event.rowid = (
+             SELECT rowid FROM orchestration_events
+             WHERE thread_id = requested.thread_id
+             ORDER BY sequence DESC LIMIT 1
+           )`,
         )
         .all(...chunk) as any[];
       for (const row of rows) {
@@ -7851,17 +7881,13 @@ export class EventStore {
 
   /** Deliberate composition seam; SQLite coordination remains private. */
   createAdoptionLedger(): AdoptionLedger {
-    const coordinator: AdoptionLedgerCoordinator = {
-      reserve: (reservation) => this.reserveAdoptionRecord(reservation),
-      replaceOwner: (input) => this.replaceAdoptionOwner(input),
-      updateOwned: (input) => this.updateOwnedAdoption(input),
-      commitOwned: (input) => this.commitOwnedAdoption(input),
-      completeCleanupOwned: (input) => this.completeOwnedAdoptionCleanup(input),
-      reservations: () => this.readAdoptionReservationRecords(),
-      reservesProviderCursor: (provider, providerResumeCursor) =>
-        this.adoptionReservesProviderCursor(provider, providerResumeCursor),
-    };
-    return createAdoptionLedger({ coordinator });
+    return createAdoptionLedger({
+      coordinator: createSqliteAdoptionCoordinator({
+        db: this.db,
+        upsertSession: (child) => this.upsertSession(child),
+        appendCommandReceipt: (receipt) => this.appendCommandReceipt(receipt),
+      }),
+    });
   }
 
   /** Same already-open home store; package callers never open another SQLite path. */
@@ -9129,288 +9155,6 @@ export class EventStore {
             .run(now, attemptId) as { changes: number | bigint },
         ),
     });
-  }
-
-  private reserveAdoptionRecord(reservation: AdoptionReservation): boolean {
-    const result = this.db
-      .prepare(
-        `INSERT OR IGNORE INTO provider_session_adoptions
-          (source_thread_id, target_thread_id, owner_id, owner_pid, owner_token, provider, source_session_id, source_kind, source_affinity, source_boundary, cwd, project_root, status, provider_resume_cursor, provider_cleanup_complete, flow_run_id, flow_run_resumed, flow_cleanup_complete, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        reservation.sourceThreadId,
-        reservation.targetThreadId,
-        reservation.ownerId,
-        reservation.ownerPid,
-        reservation.ownerToken,
-        reservation.provider,
-        reservation.sourceSessionId,
-        reservation.sourceKind,
-        reservation.sourceAffinity
-          ? JSON.stringify(reservation.sourceAffinity)
-          : null,
-        reservation.sourceBoundary
-          ? JSON.stringify(reservation.sourceBoundary)
-          : null,
-        reservation.cwd,
-        reservation.projectRoot,
-        reservation.status,
-        reservation.providerResumeCursor === undefined
-          ? null
-          : JSON.stringify(reservation.providerResumeCursor),
-        reservation.providerCleanupComplete ? 1 : 0,
-        reservation.flowRunId ?? null,
-        reservation.flowRunResumed === undefined
-          ? null
-          : reservation.flowRunResumed
-            ? 1
-            : 0,
-        reservation.flowCleanupComplete ? 1 : 0,
-        reservation.createdAt,
-        reservation.updatedAt,
-      ) as { changes: number };
-    return result.changes === 1;
-  }
-
-  private replaceAdoptionOwner(input: {
-    expected: {
-      sourceThreadId: string;
-      ownerId: string;
-      ownerPid: number;
-      ownerToken: string;
-    };
-    next: {
-      sourceThreadId: string;
-      ownerId: string;
-      ownerPid: number;
-      ownerToken: string;
-    };
-  }): AdoptionReservation | undefined {
-    this.db.exec('BEGIN IMMEDIATE');
-    try {
-      const result = this.db
-        .prepare(
-          `UPDATE provider_session_adoptions
-           SET owner_id = ?, owner_pid = ?, owner_token = ?, updated_at = ?
-           WHERE source_thread_id = ? AND owner_id = ? AND owner_pid = ? AND owner_token = ?`,
-        )
-        .run(
-          input.next.ownerId,
-          input.next.ownerPid,
-          input.next.ownerToken,
-          new Date().toISOString(),
-          input.expected.sourceThreadId,
-          input.expected.ownerId,
-          input.expected.ownerPid,
-          input.expected.ownerToken,
-        ) as { changes: number };
-      if (result.changes !== 1) {
-        this.db.exec('COMMIT');
-        return undefined;
-      }
-      const claimed = this.readAdoptionReservationRecord(
-        input.next.sourceThreadId,
-        input.next.ownerId,
-        input.next.ownerPid,
-        input.next.ownerToken,
-      );
-      this.db.exec('COMMIT');
-      return claimed;
-    } catch (error) {
-      this.rollbackAdoptionTransaction();
-      throw error;
-    }
-  }
-
-  private updateOwnedAdoption(input: {
-    claim: {
-      sourceThreadId: string;
-      ownerId: string;
-      ownerPid: number;
-      ownerToken: string;
-    };
-    next: AdoptionReservation;
-  }): AdoptionReservation | undefined {
-    this.db.exec('BEGIN IMMEDIATE');
-    try {
-      const result = this.db
-        .prepare(
-          `UPDATE provider_session_adoptions
-           SET status = ?, provider_resume_cursor = ?, provider_cleanup_complete = ?,
-               flow_run_id = ?, flow_run_resumed = ?, flow_cleanup_complete = ?, updated_at = ?
-           WHERE source_thread_id = ? AND owner_id = ? AND owner_pid = ? AND owner_token = ?`,
-        )
-        .run(
-          input.next.status,
-          input.next.providerResumeCursor === undefined
-            ? null
-            : JSON.stringify(input.next.providerResumeCursor),
-          input.next.providerCleanupComplete ? 1 : 0,
-          input.next.flowRunId ?? null,
-          input.next.flowRunResumed === undefined
-            ? null
-            : input.next.flowRunResumed
-              ? 1
-              : 0,
-          input.next.flowCleanupComplete ? 1 : 0,
-          new Date().toISOString(),
-          input.claim.sourceThreadId,
-          input.claim.ownerId,
-          input.claim.ownerPid,
-          input.claim.ownerToken,
-        ) as { changes: number };
-      if (result.changes !== 1) {
-        this.db.exec('COMMIT');
-        return undefined;
-      }
-      const updated = this.readAdoptionReservationRecord(
-        input.claim.sourceThreadId,
-        input.claim.ownerId,
-        input.claim.ownerPid,
-        input.claim.ownerToken,
-      );
-      this.db.exec('COMMIT');
-      return updated;
-    } catch (error) {
-      this.rollbackAdoptionTransaction();
-      throw error;
-    }
-  }
-
-  private rollbackAdoptionTransaction(): void {
-    try {
-      this.db.exec('ROLLBACK');
-    } catch {
-      // Preserve the durable/read failure that triggered cleanup.
-    }
-  }
-
-  private readAdoptionReservationRecords(): AdoptionReservation[] {
-    return this.db
-      .prepare(
-        `SELECT source_thread_id, target_thread_id, owner_id, owner_pid, owner_token, provider, source_session_id,
-                source_kind, source_affinity, source_boundary, cwd, project_root, status, provider_resume_cursor,
-                provider_cleanup_complete, flow_run_id, flow_run_resumed,
-                flow_cleanup_complete, created_at, updated_at
-         FROM provider_session_adoptions
-         ORDER BY created_at ASC`,
-      )
-      .all()
-      .map(mapAdoptionReservationRow);
-  }
-
-  private readAdoptionReservationRecord(
-    sourceThreadId: string,
-    ownerId: string,
-    ownerPid: number,
-    ownerToken: string,
-  ): AdoptionReservation | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT source_thread_id, target_thread_id, owner_id, owner_pid, owner_token, provider, source_session_id,
-                source_kind, source_affinity, source_boundary, cwd, project_root, status, provider_resume_cursor,
-                provider_cleanup_complete, flow_run_id, flow_run_resumed,
-                flow_cleanup_complete, created_at, updated_at
-         FROM provider_session_adoptions
-         WHERE source_thread_id = ? AND owner_id = ? AND owner_pid = ? AND owner_token = ?`,
-      )
-      .get(sourceThreadId, ownerId, ownerPid, ownerToken);
-    return row ? mapAdoptionReservationRow(row as any) : undefined;
-  }
-
-  private adoptionReservesProviderCursor(
-    provider: ProviderSession['provider'],
-    providerResumeCursor: unknown,
-  ): boolean {
-    if (providerResumeCursor === undefined) return false;
-    return Boolean(
-      this.db
-        .prepare(
-          `SELECT 1 FROM provider_session_adoptions
-           WHERE provider = ? AND provider_resume_cursor = ?
-           LIMIT 1`,
-        )
-        .get(provider, JSON.stringify(providerResumeCursor)),
-    );
-  }
-
-  private commitOwnedAdoption(input: {
-    claim: {
-      sourceThreadId: string;
-      ownerId: string;
-      ownerPid: number;
-      ownerToken: string;
-    };
-    child: ProviderSession;
-    receipt?: OrchestrationCommandReceipt;
-  }): boolean {
-    this.db.exec('BEGIN IMMEDIATE');
-    try {
-      if (
-        !this.readAdoptionReservationRecord(
-          input.claim.sourceThreadId,
-          input.claim.ownerId,
-          input.claim.ownerPid,
-          input.claim.ownerToken,
-        )
-      ) {
-        this.db.exec('COMMIT');
-        return false;
-      }
-      this.upsertSession(input.child);
-      if (input.receipt) this.appendCommandReceipt(input.receipt);
-      const deleted = this.db
-        .prepare(
-          `DELETE FROM provider_session_adoptions
-           WHERE source_thread_id = ? AND owner_id = ? AND owner_pid = ? AND owner_token = ?`,
-        )
-        .run(
-          input.claim.sourceThreadId,
-          input.claim.ownerId,
-          input.claim.ownerPid,
-          input.claim.ownerToken,
-        ) as {
-        changes: number;
-      };
-      if (deleted.changes !== 1) {
-        throw new Error('Adoption ownership changed inside its transaction.');
-      }
-      this.db.exec('COMMIT');
-      return true;
-    } catch (error) {
-      try {
-        this.db.exec('ROLLBACK');
-      } catch {
-        throw new AdoptionCommitFailure('unknown', error);
-      }
-      throw new AdoptionCommitFailure('rolled-back', error);
-    }
-  }
-
-  private completeOwnedAdoptionCleanup(input: {
-    claim: {
-      sourceThreadId: string;
-      ownerId: string;
-      ownerPid: number;
-      ownerToken: string;
-    };
-  }): boolean {
-    const deleted = this.db
-      .prepare(
-        `DELETE FROM provider_session_adoptions
-         WHERE source_thread_id = ? AND owner_id = ? AND owner_pid = ? AND owner_token = ?
-           AND flow_cleanup_complete = 1 AND provider_cleanup_complete = 1`,
-      )
-      .run(
-        input.claim.sourceThreadId,
-        input.claim.ownerId,
-        input.claim.ownerPid,
-        input.claim.ownerToken,
-      ) as {
-      changes: number;
-    };
-    return deleted.changes === 1;
   }
 
   appendCommandReceipt(receipt: OrchestrationCommandReceipt): void {
@@ -11014,46 +10758,6 @@ function parseHistoryEvent(
   return undefined;
 }
 
-function mapAdoptionReservationRow(row: any): AdoptionReservation {
-  const sourceAffinity =
-    row.source_affinity == null ? undefined : JSON.parse(row.source_affinity);
-  const sourceBoundary =
-    row.source_boundary == null ? undefined : JSON.parse(row.source_boundary);
-  if (sourceAffinity !== undefined && !isSessionSourceAffinity(sourceAffinity))
-    throw new Error('Stored adoption source affinity is invalid.');
-  if (
-    sourceBoundary !== undefined &&
-    (!sourceAffinity || !isSessionContinuationBoundary(sourceBoundary))
-  )
-    throw new Error('Stored adoption source boundary is invalid.');
-  return {
-    sourceThreadId: row.source_thread_id,
-    targetThreadId: row.target_thread_id,
-    ownerId: row.owner_id,
-    ownerPid: row.owner_pid,
-    ownerToken: row.owner_token,
-    provider: row.provider,
-    sourceSessionId: row.source_session_id,
-    sourceKind: row.source_kind,
-    ...(sourceAffinity ? { sourceAffinity } : {}),
-    ...(sourceBoundary ? { sourceBoundary } : {}),
-    cwd: row.cwd,
-    projectRoot: row.project_root,
-    status: row.status,
-    ...(row.provider_resume_cursor
-      ? { providerResumeCursor: JSON.parse(row.provider_resume_cursor) }
-      : {}),
-    providerCleanupComplete: row.provider_cleanup_complete === 1,
-    ...(row.flow_run_id ? { flowRunId: row.flow_run_id } : {}),
-    ...(row.flow_run_resumed === null
-      ? {}
-      : { flowRunResumed: row.flow_run_resumed === 1 }),
-    flowCleanupComplete: row.flow_cleanup_complete === 1,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
 function mapPersistedSessionRow(row: any): ProviderSession {
   const tenantExecutionContext = parsePersistedTenantExecutionContext(
     row.tenant_execution_context,
@@ -11194,152 +10898,4 @@ function mapCommandReceiptRow(
     createdAt: row.created_at,
     ...(clientOrigin ? { clientOrigin } : {}),
   };
-}
-
-/**
- * archive#1224 (offline): folds `(threadId, clientTurnId)` into the
- * flat key the shared `TurnIdempotencyStore` (`../turn-idempotency.ts`)
- * deals in, so the same `clientTurnId` reused on two different threads never
- * collides.
- *
- * archive#1224 HIGH fix (independent review): a plain `${threadId}::${id}`
- * join is NOT collision-free -- `orchestration.ts`'s schema allows any
- * string for `threadId`, so `threadId = 'thread::evil'` with
- * `clientTurnId = 'id'` and `threadId = 'thread'` with
- * `clientTurnId = 'evil::id'` would both join to the literal string
- * `thread::evil::id`. Length-prefixing `threadId` makes the encoding
- * unambiguous regardless of what characters either part contains: the first
- * `threadId.length` characters after the length prefix ARE `threadId`, full
- * stop, so no content inside `threadId` (including `::` itself) can ever be
- * misread as the separator.
- */
-function turnDedupKey(threadId: string, clientTurnId: string): string {
-  return `${turnDedupThreadPrefix(threadId)}${clientTurnId}`;
-}
-
-/**
- * The length-prefixed, unambiguous prefix identifying every dedup key for
- * `threadId` — see `turnDedupKey`'s doc comment. Exported (module-local)
- * for `EventStore.deleteThread`'s exact-prefix cleanup query.
- */
-function turnDedupThreadPrefix(threadId: string): string {
-  return `${threadId.length}:${threadId}::`;
-}
-function chatTurnDedupKey(clientTurnId: string): string {
-  return `chat:${clientTurnId.length}:${clientTurnId}`;
-}
-
-/**
- * SQLite-backed `TurnIdempotencyPersistence` adapter over
- * `orchestration_turn_dedup` — the storage half of the shared algorithm.
- * `EventStore` composes this into the behavioral TurnDeduplicator while
- * retaining SQLite and transaction ownership privately.
- */
-class SqliteTurnIdempotencyPersistence implements TurnIdempotencyPersistence {
-  constructor(
-    private readonly db: InstanceType<typeof DatabaseSync>,
-    private readonly maxEntries: number = TURN_DEDUP_MAX_ENTRIES,
-  ) {}
-
-  read(key: string): TurnIdempotencyRecord | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT value, created_at AS createdAt, owner_json AS ownerJson
-         FROM orchestration_turn_dedup
-         WHERE dedup_key = ?`,
-      )
-      .get(key) as
-      | { value: string | null; createdAt: number; ownerJson: string | null }
-      | undefined;
-    if (!row) return undefined;
-    return {
-      value: row.value,
-      createdAt: row.createdAt,
-      ...(row.ownerJson === null
-        ? {}
-        : { owner: parseTurnClaimOwner(row.ownerJson) }),
-    };
-  }
-
-  update<T>(
-    key: string,
-    updater: (current: TurnIdempotencyRecord | undefined) => {
-      record?: TurnIdempotencyRecord;
-      result: T;
-    },
-  ): T {
-    this.db.exec('BEGIN IMMEDIATE');
-    try {
-      const decision = updater(this.read(key));
-      if (decision.record)
-        this.db
-          .prepare(
-            `INSERT INTO orchestration_turn_dedup (dedup_key, value, created_at, owner_json) VALUES (?, ?, ?, ?) ON CONFLICT(dedup_key) DO UPDATE SET value = excluded.value, created_at = excluded.created_at, owner_json = excluded.owner_json`,
-          )
-          .run(
-            key,
-            decision.record.value,
-            decision.record.createdAt,
-            decision.record.owner
-              ? JSON.stringify(decision.record.owner)
-              : null,
-          );
-      else
-        this.db
-          .prepare('DELETE FROM orchestration_turn_dedup WHERE dedup_key = ?')
-          .run(key);
-      this.prune();
-      this.db.exec('COMMIT');
-      return decision.result;
-    } catch (error) {
-      try {
-        this.db.exec('ROLLBACK');
-      } catch {}
-      throw error;
-    }
-  }
-
-  private prune(): void {
-    // This is intentionally a soft cap. Resolved rows are safe to evict;
-    // unresolved claims are never evicted, regardless of owner liveness, so a
-    // turn in flight can never become claimable again because of retention.
-    // The single statement deletes at most the overflow, oldest first, without
-    // materializing rows or probing processes while the write lock is held.
-    this.db
-      .prepare(`DELETE FROM orchestration_turn_dedup
-        WHERE dedup_key IN (
-          SELECT dedup_key FROM orchestration_turn_dedup
-          WHERE value IS NOT NULL
-          ORDER BY created_at ASC, dedup_key ASC
-          LIMIT MAX(0, (SELECT count(*) FROM orchestration_turn_dedup) - ?)
-        )`)
-      .run(this.maxEntries);
-  }
-}
-
-function parseTurnClaimOwner(
-  raw: string,
-): import('../turn-idempotency.js').TurnClaimOwner {
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    throw new Error('Invalid orchestration turn claim owner_json');
-  }
-  if (
-    !value ||
-    typeof value !== 'object' ||
-    !Number.isInteger((value as any).pid) ||
-    (value as any).pid < 1 ||
-    typeof (value as any).token !== 'string' ||
-    !(value as any).token ||
-    !(
-      (value as any).identityKind === 'unverified' ||
-      ((value as any).identityKind === 'exact' &&
-        typeof (value as any).birth === 'string' &&
-        (value as any).birth)
-    )
-  )
-    throw new Error('Invalid orchestration turn claim owner_json');
-  return value as import('../turn-idempotency.js').TurnClaimOwner;
 }

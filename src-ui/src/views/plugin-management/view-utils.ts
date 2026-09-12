@@ -33,7 +33,7 @@ export function buildPluginListItems(plugins: Plugin[]) {
       : {
           id: pluginSelectionId(plugin),
           name: plugin.displayName || plugin.name,
-          subtitle: `v${plugin.version}${plugin.description ? ` · ${plugin.description}` : ''}`,
+          subtitle: `${plugin.installationReadiness?.state === 'pending' ? 'Activation pending · ' : plugin.installationReadiness?.state === 'unavailable' ? 'Unavailable · ' : ''}v${plugin.version}${plugin.description ? ` · ${plugin.description}` : ''}`,
         },
   );
 }
@@ -70,7 +70,7 @@ export function toggleSetValue(
  * word break (a dotted or slashed id) is returned unchanged rather than
  * mangled into a fabricated name, the same rule `prettifyModelId` follows.
  */
-export function humanizeContributionSlug(slug: string): string {
+function humanizeContributionSlug(slug: string): string {
   const id = slug.trim();
   if (!id || /[./:]/.test(id)) return id;
   return (
@@ -96,7 +96,7 @@ export function humanizeContributionSlug(slug: string): string {
  * the field called `name`, so the section promised things and rendered
  * `getting-started`.
  */
-export interface PluginContribution {
+interface PluginContribution {
   kind: 'layout' | 'pane' | 'agent' | 'provider';
   kindLabel: string;
   /** Stable within a plugin; the render key. */

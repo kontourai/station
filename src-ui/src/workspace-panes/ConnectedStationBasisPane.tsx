@@ -11,10 +11,7 @@ import {
   useTaskToolResultReferencesQuery,
 } from '@kontourai/station-sdk/task-tool-results';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import {
-  ResponsiveDialogHeader,
-  ResponsiveDialogSurface,
-} from '../components/ResponsiveDialogSurface';
+import { Dialog } from '../components/Dialog';
 import { SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 
@@ -365,16 +362,13 @@ function ToolResultInspector({
 }) {
   const result = inspection.data;
   return (
-    <ResponsiveDialogSurface
-      ariaLabel="Tool result"
+    <Dialog
+      title="Tool result"
+      closeLabel="Close tool result"
+      size="lg"
       panelClassName="station-basis-pane__inspector"
       onClose={onClose}
     >
-      <ResponsiveDialogHeader
-        title="Tool result"
-        closeLabel="Close tool result"
-        onClose={onClose}
-      />
       <div
         className="station-basis-pane__inspector-body"
         data-occurrence={occurrenceKey}
@@ -389,7 +383,7 @@ function ToolResultInspector({
           <SafeToolResultText resultRef={resultRef} result={result} />
         ) : null}
       </div>
-    </ResponsiveDialogSurface>
+    </Dialog>
   );
 }
 

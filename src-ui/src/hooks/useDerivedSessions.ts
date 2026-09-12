@@ -231,7 +231,14 @@ function deriveSession(
 
   // Derive agent name and title reactively
   const agentName = agent?.name || chatState.agentSlug || 'Unknown Agent';
-  const title = conversationMeta?.title || chatState.title || 'New chat';
+  const savedTitle = conversationMeta?.title || chatState.title;
+  const firstPrompt = allMessages.find(
+    (message) => message.role === 'user' && typeof message.content === 'string',
+  )?.content;
+  const title =
+    savedTitle && savedTitle !== 'New chat'
+      ? savedTitle
+      : firstPrompt?.trim().slice(0, 100) || 'New chat';
 
   return {
     id: chatId,
@@ -293,6 +300,7 @@ function deriveSession(
     activityHint: chatState.activityHint,
     backgroundTasks: chatState.backgroundTasks,
     liveUsage: chatState.liveUsage,
+    replay: chatState.replay,
   };
 }
 

@@ -1,6 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, type Page, type Route, test } from '@playwright/test';
+import { contrastRatio } from './helpers/color-contrast';
+import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
 
 /**
  * Build gallery — an at-a-glance contact sheet of what the current build looks
@@ -86,6 +88,10 @@ async function seedGalleryConnectionProfile(page: Page): Promise<void> {
               id: connectionId,
             },
             credentialState: 'saved',
+            // This fixture represents an already verified saved Station.
+            // Do not race a successful probe to decide whether the mismatch
+            // disclosure includes the cached-context explanation.
+            lastSuccessAt: 1_700_000_000_000,
           },
         ]),
       );
@@ -1273,6 +1279,109 @@ interface Screen {
 
 const SCREENS: Screen[] = [
   {
+    name: 'mobile-activity-compact',
+    title: 'Mobile — Activity controls in a short dock',
+    path: '/?surface=activity',
+    viewport: MOBILE,
+    waitFor: '.sessions-axis-tabs',
+    afterGoto: async (page) => {
+      const tab = page.getByRole('tab', { name: 'By app', exact: true });
+      await tab.click();
+      await expect(tab).toHaveAttribute('aria-selected', 'true');
+      for (const control of [
+        tab,
+        page.getByRole('button', { name: 'Start a task', exact: true }),
+      ]) {
+        await expect(control).toBeVisible();
+        expect(
+          await control.evaluate((node) => {
+            const box = node.getBoundingClientRect();
+            return (
+              box.top >= 0 &&
+              box.bottom <= window.innerHeight &&
+              node.contains(
+                document.elementFromPoint(
+                  box.x + box.width / 2,
+                  box.y + box.height / 2,
+                ),
+              )
+            );
+          }),
+        ).toBe(true);
+      }
+    },
+  },
+  ...[320, 390].flatMap((width): Screen[] => [
+    {
+      name: `mobile-http-consent-${width}`,
+      title: `Mobile — explicit HTTP development exception (${width}px)`,
+      path: '/settings?view=overview',
+      viewport: { width, height: 844 },
+      waitFor: '[data-testid="app-toolbar-connection"]',
+      afterGoto: async (page) => {
+        await page.getByTestId('app-toolbar-connection').click();
+        const dialog = page.getByRole('dialog');
+        await dialog
+          .getByRole('button', { name: 'Add a Station address', exact: true })
+          .click();
+        await dialog
+          .getByRole('textbox', { name: 'Station address', exact: true })
+          .fill('http://100.64.0.20:3492');
+        await expect(
+          dialog.getByRole('checkbox', {
+            name: 'Allow an unencrypted connection',
+          }),
+        ).not.toBeChecked();
+        await expect(
+          dialog.getByRole('button', { name: 'Add', exact: true }),
+        ).toBeDisabled();
+      },
+    },
+    {
+      name: `mobile-access-request-error-${width}`,
+      title: `Mobile — failed access request and retry (${width}px)`,
+      path: '/settings?view=overview',
+      viewport: { width, height: 844 },
+      waitFor: '[data-testid="app-toolbar-connection"]',
+      afterGoto: async (page) => {
+        const cleanup = await withRoute(
+          page,
+          '**/.well-known/station/v1/pairing/access-request',
+          (route) =>
+            route.fulfill({
+              status: 503,
+              contentType: 'application/json',
+              body: JSON.stringify({ error: 'temporarily_unavailable' }),
+            }),
+        );
+        try {
+          await page.getByTestId('app-toolbar-connection').click();
+          const dialog = page.getByRole('dialog');
+          await dialog
+            .getByRole('button', { name: 'Request access', exact: true })
+            .click();
+          await dialog
+            .getByRole('button', { name: 'Request access', exact: true })
+            .click();
+          await expect(dialog.getByRole('alert')).toHaveCount(1);
+          await expect(dialog.getByRole('alert')).toContainText(
+            'Connection request failed',
+          );
+          await expect(
+            dialog.getByRole('button', { name: 'Try again', exact: true }),
+          ).toBeVisible();
+          expect(
+            await contrastRatio(
+              dialog.getByRole('button', { name: 'Try again', exact: true }),
+            ),
+          ).toBeGreaterThanOrEqual(4.5);
+        } finally {
+          await cleanup();
+        }
+      },
+    },
+  ]),
+  {
     name: 'home',
     title: 'Home / Coding layout',
     path: '/',
@@ -1356,6 +1465,15 @@ const SCREENS: Screen[] = [
     title: 'Developer telemetry',
     path: '/developer/telemetry',
     viewport: DESKTOP,
+    afterGoto: async (page) => {
+      const toggles = page.locator(
+        '.event-filter.active, .live-mode-toggle.active',
+      );
+      await expect(toggles).toHaveCount(6);
+      for (const toggle of await toggles.all()) {
+        expect(await contrastRatio(toggle)).toBeGreaterThanOrEqual(4.5);
+      }
+    },
   },
   { name: 'profile', title: 'Profile', path: '/profile', viewport: DESKTOP },
   {
@@ -1481,7 +1599,9 @@ const SCREENS: Screen[] = [
     },
     afterGoto: async (page) => {
       try {
-        await page.getByPlaceholder('Search sessions…').fill('missing-session');
+        await page
+          .getByPlaceholder('Search conversations…')
+          .fill('missing-session');
         // The margin here covers the read-model fetch's own latency (>6s
         // wall-clock has been observed under host load — that signal is
         // archive#4466, not something this timeout fixes); a repeat-500
@@ -2426,6 +2546,17 @@ test('build gallery — capture key screens', async ({ page }) => {
   // banner fixture intentionally overrides only the handshake while that one
   // named screen is active, then unregisters itself via `withRoute`.
   await seedGalleryConnectionProfile(page);
+  // Each navigation starts with the same device placement. Closing a lazy
+  // Activity pane after mount races its restoration from the previous shot.
+  // Intentional region scenarios still open their surface through the URL.
+  await page.addInitScript(() => {
+    const key = 'station-device-settings-v1';
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+    const envelope = JSON.parse(raw);
+    if (envelope.values) delete envelope.values.regionArrangement;
+    localStorage.setItem(key, JSON.stringify(envelope));
+  });
   await page.route('**/.well-known/station/v1', fulfillGalleryStationHandshake);
   await page.route('**/api/system/identity', fulfillGalleryStationIdentity);
 
@@ -2547,49 +2678,88 @@ test('build gallery — capture key screens', async ({ page }) => {
         if (screen.beforeGoto) {
           await screen.beforeGoto(page);
         }
-        await page.goto(screen.path, { waitUntil: 'domcontentloaded' });
-        // Wait past the "Warming up" splash for the real app shell.
-        await page.waitForFunction(
-          () =>
-            !!document.querySelector('.app') &&
-            !document.body.textContent?.includes('Warming up'),
-          undefined,
-          { timeout: 20_000 },
-        );
-        if (screen.waitFor) {
-          await page.waitForSelector(screen.waitFor, { timeout: 10_000 });
-        }
-        // Let async panels settle so the shot reflects loaded data.
-        await page.waitForTimeout(1200);
-        // archive#4464: a web-font swap (FOUT/FOIT) landing mid-shot is a
-        // well-known source of exactly the kind of tiny, isolated
-        // text/border-edge pixel noise this feature's own
-        // two-consecutive-runs acceptance check was still catching after
-        // every other identified source was fixed — one capture can race the
-        // fallback-to-real-font swap and the next can miss it entirely.
-        await page.evaluate(() => document.fonts.ready);
-        if (!screen.expectSkeleton) {
-          await assertNoLoadingSkeleton(page);
-        }
-        if (screen.afterGoto) {
-          await screen.afterGoto(page);
-        }
-        // The identity-mismatch tile deliberately overrides the global healthy
-        // handshake and waits for its own deterministic blocked state. Every
-        // other screen must prove the gallery-wide route has reached the fixed
-        // healthy posture before capture rather than racing the opening probe.
-        if (screen.name !== 'overlay-connection-banner') {
-          await assertGalleryConnectionChrome(page);
-        }
-        await hideVolatileChrome(page);
-        await page.screenshot({
-          path: join(GALLERY_DIR, file),
-          fullPage: true,
-          // archive#4464: freeze CSS animations/transitions at their end state
-          // instead of racing them — `reducedMotion` above only sets the OS
-          // media-query preference, it does not itself stop an in-flight
-          // transition from being mid-frame at capture time.
-          animations: 'disabled',
+        // #1650: the ORDER of everything below lives in
+        // `runScreenshotCaptureSequence` so it is a unit a test can execute —
+        // a passing gallery run compares pixels and can never report a step
+        // having moved to the wrong side of another one. Each step's own
+        // reason stays here, next to the mechanic it performs. The web-font
+        // settle is the one step that module performs itself, against the page
+        // passed here, so the STEP MAP cannot wire in a settle that reads
+        // nothing. That the object passed here is the real page is checked by
+        // `typecheck:e2e` (the structural assignment on this line) and by
+        // reading the diff, like the other six steps.
+        await runScreenshotCaptureSequence(page, {
+          reachScreen: async () => {
+            await page.goto(screen.path, { waitUntil: 'domcontentloaded' });
+            // Wait past the "Warming up" splash for the real app shell.
+            await page.waitForFunction(
+              () =>
+                !!document.querySelector('.app') &&
+                !document.body.textContent?.includes('Warming up'),
+              undefined,
+              { timeout: 20_000 },
+            );
+            // Route-only captures must not inherit a drawer opened by an
+            // earlier scenario. Surface stress cases opt in through their URL.
+            const requestedState = new URL(
+              screen.path,
+              'http://gallery.invalid',
+            );
+            if (requestedState.searchParams.get('surface') !== 'activity') {
+              const hideActivity = page.getByRole('button', {
+                name: 'Hide Activity',
+                exact: true,
+              });
+              if (await hideActivity.count()) await hideActivity.click();
+            }
+            if (requestedState.searchParams.get('dock') !== 'open') {
+              const collapseChat = page.getByRole('button', {
+                name: 'Collapse chat',
+                exact: true,
+              });
+              if (await collapseChat.count()) await collapseChat.click();
+            }
+            if (screen.waitFor) {
+              await page.waitForSelector(screen.waitFor, { timeout: 10_000 });
+            }
+            // Let async panels settle so the shot reflects loaded data.
+            await page.waitForTimeout(1200);
+          },
+          assertNoLoadingSkeleton: screen.expectSkeleton
+            ? null
+            : () => assertNoLoadingSkeleton(page),
+          // Called as a method on `screen`, not as a bare extracted function:
+          // no declared hook uses `this` today, and this keeps that from being
+          // a precondition of the refactor rather than a property of the file.
+          afterGoto: screen.afterGoto
+            ? async () => {
+                await screen.afterGoto?.(page);
+              }
+            : null,
+          // The identity-mismatch tile deliberately overrides the global
+          // healthy handshake and waits for its own deterministic blocked
+          // state. Every other screen must prove the gallery-wide route has
+          // reached the fixed healthy posture before capture rather than
+          // racing the opening probe.
+          assertConnectionChrome:
+            screen.name === 'overlay-connection-banner'
+              ? null
+              : () => assertGalleryConnectionChrome(page),
+          hideVolatileChrome: () => hideVolatileChrome(page),
+          screenshot: async () => {
+            if (screen.name !== 'settings-info-tip') {
+              await page.mouse.move(0, 0);
+            }
+            await page.screenshot({
+              path: join(GALLERY_DIR, file),
+              fullPage: true,
+              // archive#4464: freeze CSS animations/transitions at their end
+              // state instead of racing them — `reducedMotion` above only sets
+              // the OS media-query preference, it does not itself stop an
+              // in-flight transition from being mid-frame at capture time.
+              animations: 'disabled',
+            });
+          },
         });
         shots.push({ screen, file, ok: true });
       } catch (error) {

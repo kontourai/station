@@ -132,6 +132,28 @@ describe('CodexRolloutSessionSource', () => {
     });
   });
 
+  test('an isolated history root does not scan the authenticated CLI home', async () => {
+    const authenticatedHome = fixtureRoot();
+    const isolatedHistory = fixtureRoot();
+    writeFileSync(rolloutPath(authenticatedHome), line(meta('host-session')));
+    vi.stubEnv('CODEX_HOME', authenticatedHome);
+    vi.stubEnv('STATION_EXTERNAL_CODEX_SOURCE_ROOT', isolatedHistory);
+    try {
+      expect(
+        (await new CodexRolloutSessionSource().discover()).sessions,
+      ).toHaveLength(0);
+      expect(
+        (
+          await new CodexRolloutSessionSource({
+            homeDir: authenticatedHome,
+          }).discover()
+        ).sessions,
+      ).toHaveLength(1);
+      expect(process.env.CODEX_HOME).toBe(authenticatedHome);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   test('maps pinned lifecycle, message, reasoning, tools, compaction, and cumulative usage without duplicate event messages', async () => {
     const root = fixtureRoot();
     const path = rolloutPath(root);

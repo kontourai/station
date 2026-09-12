@@ -14,6 +14,7 @@ import {
 } from '@kontourai/station-contracts/plugin-foreground-work';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import type { ActionOperationActor } from '../operations/action-operation-service.js';
 import {
@@ -28,7 +29,7 @@ const PUBLIC_TEXT_MAX = 320;
 const DEFAULT_OBSERVER_TIMEOUT_MS = 1_000;
 const MAX_OBSERVER_TIMEOUT_MS = 30_000;
 
-export interface PluginForegroundWorkOwner {
+interface PluginForegroundWorkOwner {
   /** Canonical manifest identity. */
   readonly pluginId: string;
   /** Opaque host-minted installation identity; never projected to a caller. */
@@ -39,7 +40,7 @@ export interface PluginForegroundWorkOwner {
   readonly machineId?: string;
 }
 
-export type PluginForegroundExecutionOwner =
+type PluginForegroundExecutionOwner =
   | {
       readonly id: string;
       readonly pid: number;
@@ -52,7 +53,7 @@ export type PluginForegroundExecutionOwner =
       readonly identityKind: 'unverified';
     };
 
-export interface PluginForegroundProcessIdentity {
+interface PluginForegroundProcessIdentity {
   probe(pid: number):
     | { readonly state: 'dead' }
     | { readonly state: 'unavailable' }
@@ -74,7 +75,7 @@ export interface PluginForegroundRunRecord extends PluginForegroundRun {
   readonly executionOwnerIdentityKind: 'exact' | 'unverified';
 }
 
-export type PluginForegroundRunTransition =
+type PluginForegroundRunTransition =
   | { readonly kind: 'applied'; readonly record: PluginForegroundRunRecord }
   | { readonly kind: 'stale'; readonly record?: PluginForegroundRunRecord }
   | { readonly kind: 'unavailable' };
@@ -115,12 +116,12 @@ export interface PluginForegroundRunCoordinator {
   active(): PluginForegroundRunRecord[];
 }
 
-export type PluginForegroundAuthorizationOutcome =
+type PluginForegroundAuthorizationOutcome =
   | { readonly kind: 'granted' }
   | { readonly kind: 'denied' }
   | { readonly kind: 'unavailable' };
 
-export interface PluginForegroundWorkAuthorizer {
+interface PluginForegroundWorkAuthorizer {
   authorize(input: {
     readonly owner: PluginForegroundWorkOwner;
     readonly declaration: PluginForegroundWorkDeclaration;
@@ -131,7 +132,7 @@ export interface PluginForegroundWorkAuthorizer {
     | Promise<PluginForegroundAuthorizationOutcome>;
 }
 
-export interface PluginForegroundCancellationAdapter {
+interface PluginForegroundCancellationAdapter {
   /** Return confirmed only after the exact worker/process has stopped. */
   cancel(input: {
     readonly runId: string;
@@ -139,11 +140,11 @@ export interface PluginForegroundCancellationAdapter {
   }): Promise<'confirmed' | 'refused' | 'unknown'>;
 }
 
-export interface PluginForegroundRunObserverHandle {
+interface PluginForegroundRunObserverHandle {
   update(run: PluginForegroundRun): Promise<void>;
 }
 
-export interface PluginForegroundRunObserver {
+interface PluginForegroundRunObserver {
   begin(input: {
     readonly owner: PluginForegroundWorkOwner;
     readonly declaration: PluginForegroundWorkDeclaration;
@@ -167,7 +168,7 @@ export interface PluginForegroundRunReader {
   >;
 }
 
-export interface PluginForegroundRunClaim {
+interface PluginForegroundRunClaim {
   beginEffect(now: string): Promise<PluginForegroundRunTransition>;
   completed(now: string): Promise<PluginForegroundRunTransition>;
   failedBeforeEffect(
@@ -188,7 +189,7 @@ export interface PluginForegroundRunClaim {
   ): Promise<PluginForegroundRunTransition>;
 }
 
-export type PluginForegroundRunStartResult =
+type PluginForegroundRunStartResult =
   | {
       readonly kind: 'admitted';
       readonly run: PluginForegroundRun;
@@ -206,7 +207,7 @@ export type PluginForegroundRunStartResult =
         | 'run-authority-unavailable';
     };
 
-export type PluginForegroundCancellationResult =
+type PluginForegroundCancellationResult =
   | { readonly kind: 'confirmed'; readonly run: PluginForegroundRun }
   | { readonly kind: 'refused'; readonly run: PluginForegroundRun }
   | { readonly kind: 'unknown'; readonly run: PluginForegroundRun }
@@ -700,7 +701,7 @@ export function createPluginForegroundRuns(options: {
               'Plugin foreground run late observation unavailable',
               {
                 runId,
-                error: error instanceof Error ? error.message : String(error),
+                error: errorMessage(error),
               },
             );
           }
@@ -732,7 +733,7 @@ export function createPluginForegroundRuns(options: {
       } catch (error) {
         options.logger?.warn('Plugin foreground run observation unavailable', {
           runId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
         return;
       }

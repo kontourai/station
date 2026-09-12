@@ -62,6 +62,7 @@ interface RegisteredPluginLayout {
   readonly component: LayoutComponent;
   readonly owner: PluginLayoutOwner;
   readonly isolated?: boolean;
+  isolatedLayouts?: WeakMap<LayoutCatalogContribution, LayoutComponent>;
   readonly plugin?: {
     readonly name: string;
     readonly declaredSlug: string;
@@ -256,7 +257,12 @@ export class PluginRegistry {
 
       let allBundlesLoaded = true;
       for (const plugin of plugins) {
-        if (!plugin.hasBundle) continue;
+        if (
+          !plugin.hasBundle ||
+          (plugin.installationReadiness !== undefined &&
+            plugin.installationReadiness?.state !== 'ready')
+        )
+          continue;
         if (remoteBrowserIsolation || remoteNativeIsolation) {
           if (!this.registerIsolatedPlugin(plugin, registryGeneration)) {
             allBundlesLoaded = false;
@@ -747,40 +753,38 @@ export class PluginRegistry {
     )
       return null;
     if (registration.isolated && registration.plugin) {
+      // Preserve React component and callback identity across host renders.
+      // Weak keys retain the exact authority binding without keeping retired
+      // catalog contributions alive. A registry reload drops the entire map.
+      registration.isolatedLayouts ??= new WeakMap();
+      const layouts = registration.isolatedLayouts;
+      const existing = layouts.get(contribution);
+      if (existing) return existing;
       const plugin = registration.plugin;
-      // The isolated host only renders for a remote Station's plugin Pane, so
-      // it must not ride the entry chunk (archive#2467's ratchet). LazyBoundary
-      // also gives a failed chunk fetch a contained retry instead of an
-      // unhandled rejection.
-      return () =>
-        isolatedPluginLayout({
-          plugin,
-          authorize: () =>
-            authorizesPluginLayout(
-              owner,
-              this.registryGeneration,
-              contribution,
-              true,
-            ),
-          onObservation: (exports: readonly string[]) => {
-            if (!exports.includes(plugin.declaredSlug))
-              this.markIsolatedPluginFailed(plugin.name);
-          },
-          onFailure: () => this.markIsolatedPluginFailed(plugin.name),
-        });
+      const props = {
+        plugin,
+        authorize: () =>
+          authorizesPluginLayout(
+            owner,
+            this.registryGeneration,
+            contribution,
+            true,
+          ),
+        onObservation: (exports: readonly string[]) => {
+          if (!exports.includes(plugin.declaredSlug))
+            this.markIsolatedPluginFailed(plugin.name);
+        },
+        onFailure: () => this.markIsolatedPluginFailed(plugin.name),
+      };
+      // The frame remains behind the existing lazy boundary.
+      const component: LayoutComponent = () => isolatedPluginLayout(props);
+      layouts.set(contribution, component);
+      return component;
     }
     return registration.component;
   }
 
-  getComponent(name: string): LayoutComponent | null {
-    return this.layouts.get(name)?.component ?? null;
-  }
-
   hasLayout(name: string): boolean {
-    return this.layouts.has(name);
-  }
-
-  hasComponent(name: string): boolean {
     return this.layouts.has(name);
   }
 
@@ -791,14 +795,8 @@ export class PluginRegistry {
     }));
   }
 
-  listComponents() {
-    return this.listLayouts();
-  }
   getLayoutManifest(name: string) {
     return this.pluginMeta.get(name) || null;
-  }
-  getComponentManifest(name: string) {
-    return this.getLayoutManifest(name);
   }
 
   /** Aggregate links from all plugins, optionally filtered by placement */

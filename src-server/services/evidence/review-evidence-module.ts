@@ -73,11 +73,11 @@ export interface ReviewExecutionInput {
   context: ReviewExecutionContext;
 }
 
-export interface ResolvedReviewReviewer extends ReviewReviewerDeclaration {
+interface ResolvedReviewReviewer extends ReviewReviewerDeclaration {
   actor: ReviewActorIdentity;
 }
 
-export interface ReviewExecutionContext {
+interface ReviewExecutionContext {
   requestedBy: { actorId: string; displayName?: string };
   userId?: string;
   tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext;
@@ -172,7 +172,7 @@ export interface ReviewPrincipalAuthority {
   resolveAgent(agentSlug: string): Promise<ReviewActorIdentity | null>;
 }
 
-export interface ReviewEvidenceObserver {
+interface ReviewEvidenceObserver {
   record(input: {
     operation: string;
     outcome: string;
@@ -195,7 +195,7 @@ export interface ReviewEvidenceAttachment {
   }): Promise<{ evidenceId: string }>;
 }
 
-export interface ReviewEvidenceModuleOptions {
+interface ReviewEvidenceModuleOptions {
   source: ReviewWorkspaceSource;
   executor: ReadOnlyReviewExecutor;
   receipts: ReviewReceiptStore;

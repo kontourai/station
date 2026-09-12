@@ -18,7 +18,6 @@ import { PageSection } from '../components/PageSection';
 import { PathAutocomplete } from '../components/PathAutocomplete';
 import { SectionNav } from '../components/SectionNav';
 import { ErrorState, Skeleton } from '../components/state';
-import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import type { ProjectConfig } from '../contexts/ProjectsContext';
 import { useShowSurface } from '../contexts/useShowSurface';
@@ -52,7 +51,6 @@ const PROJECT_SETTINGS_SECTIONS = [
 ] as const;
 
 export function ProjectSettingsView({ slug }: { slug: string }) {
-  const { apiBase } = useApiBase();
   const { navigate } = useNavigation();
   const showSurface = useShowSurface();
 
@@ -109,8 +107,8 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
 
   const isDirty =
     !isLoading && !!form && JSON.stringify(form) !== JSON.stringify(savedForm);
-  const { guard, DiscardModal } = useUnsavedGuard(isDirty);
-  useCloseShortcut(() => guard(() => navigate(`/projects/${slug}`)));
+  const { DiscardModal } = useUnsavedGuard(isDirty);
+  useCloseShortcut(() => navigate(`/projects/${slug}`));
 
   if (isLoadError && !project) {
     return (
@@ -204,7 +202,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         <button
           type="button"
           className="editor-btn"
-          onClick={() => guard(() => navigate(`/projects/${slug}`))}
+          onClick={() => navigate(`/projects/${slug}`)}
         >
           ← Back
         </button>
@@ -274,7 +272,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
               </label>
               <PathAutocomplete
                 id="project-working-directory"
-                apiBase={apiBase}
                 autoFocus={false}
                 suggestionsInitiallyOpen={false}
                 value={form.workingDirectory ?? ''}
@@ -417,7 +414,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         <ResourcesSection slug={slug} />
 
         {/* Knowledge */}
-        <KnowledgeSection slug={slug} guard={guard} />
+        <KnowledgeSection slug={slug} />
 
         {/* Danger Zone */}
         <PageSection

@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { isRecord } from '../../utils/is-record.js';
 import { projectCodexToolOutput } from '../adapters/codex-tool-output.js';
 import type {
   AttachedSessionCursor,
@@ -68,7 +69,7 @@ interface MappedRecord {
   state: ParserState;
 }
 
-export interface CodexRolloutSessionSourceOptions {
+interface CodexRolloutSessionSourceOptions {
   /** Codex config directory, not its sessions child. */
   homeDir?: string;
   maxCandidates?: number;
@@ -105,7 +106,10 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
 
   constructor(options: CodexRolloutSessionSourceOptions = {}) {
     this.homeDir =
-      options.homeDir ?? process.env.CODEX_HOME ?? join(homedir(), '.codex');
+      options.homeDir ??
+      process.env.STATION_EXTERNAL_CODEX_SOURCE_ROOT ??
+      process.env.CODEX_HOME ??
+      join(homedir(), '.codex');
     this.sessionsDir = join(this.homeDir, 'sessions');
     this.maxCandidates = boundedInteger(
       'maxCandidates',
@@ -1393,10 +1397,6 @@ function boundedPathText(value: unknown): string | undefined {
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isOffset(value: unknown): value is number {

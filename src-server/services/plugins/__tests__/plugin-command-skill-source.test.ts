@@ -28,7 +28,7 @@ function writePlugin(
   mkdirSync(join(dir, 'prompts'), { recursive: true });
   writeFileSync(
     join(dir, 'plugin.json'),
-    JSON.stringify({ name, ...manifest }, null, 2),
+    JSON.stringify({ name, version: '1.0.0', ...manifest }, null, 2),
     'utf-8',
   );
   for (const [file, content] of Object.entries(files)) {
@@ -132,6 +132,23 @@ describe('scanPluginCommandSkills', () => {
 
   test('a plugin that declares no prompt source contributes nothing', () => {
     writePlugin('quiet', {}, {});
+    expect(scanPluginCommandSkills(home, logger)).toEqual([]);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  test('a recognized Agent Plugin cannot activate the legacy prompts field', () => {
+    writePlugin(
+      'portable',
+      {
+        'legacy.md':
+          '---\nname: Legacy Backdoor\ndescription: Must stay ignored\n---\nBody.',
+      },
+      {
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        prompts: { source: 'prompts' },
+      },
+    );
+
     expect(scanPluginCommandSkills(home, logger)).toEqual([]);
     expect(logger.warn).not.toHaveBeenCalled();
   });

@@ -10,6 +10,7 @@ import {
   DEPENDENCY_SCOPE_ROOTS,
 } from './classify-ci-change.mjs';
 import { createAuditAttemptDiagnostics } from './lib/dependency-audit-diagnostics.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 import { collectPnpmAudits, runPnpmAudit } from './lib/pnpm-advisory.mjs';
 
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
@@ -261,6 +262,10 @@ function parseAudit(scope, input, reachability, resolvedVersions = {}) {
   return { counts, findings };
 }
 
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+/** Days of notice before an approval expires and the floor starts failing. */
+const EXPIRY_WARNING_DAYS = 14;
+
 function exceptionKey(value) {
   return `${value.scope}\u0000${value.package}\u0000${value.advisory}`;
 }
@@ -269,7 +274,7 @@ function residualKey(value) {
   return `${value.scope}\u0000${value.package}\u0000${value.version}\u0000${value.advisory}\u0000${value.reachability}`;
 }
 
-function validateExpiry(value, label, errors, now) {
+function validateExpiry(value, label, errors, now, warnings, descriptor) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     errors.push(`${label} expires must be an ISO YYYY-MM-DD date`);
     return;
@@ -283,9 +288,22 @@ function validateExpiry(value, label, errors, now) {
     expires.toISOString().slice(0, 10) !== value
   ) {
     errors.push(`${label} expires must be a valid calendar date (${value})`);
-  } else if (expires <= today) {
-    errors.push(`${label} is expired (${value})`);
+    return;
   }
+  if (expires <= today) {
+    errors.push(`${label} is expired (${value})`);
+    return;
+  }
+  // An expiry that lands on a quiet day reds whoever gates next, with no
+  // prior signal (#1753). Warn while the record can still be renewed; the
+  // floor itself is unchanged, so this never moves the exit code.
+  const days = Math.round(
+    (expires.valueOf() - today.valueOf()) / MILLISECONDS_PER_DAY,
+  );
+  if (days > EXPIRY_WARNING_DAYS) return;
+  warnings.push(
+    `${label} (${descriptor}) expires in ${days} day${days === 1 ? '' : 's'} (${value}) \u2014 renew or remediate before ${value}`,
+  );
 }
 
 function validateExceptions(input, scopes, now) {
@@ -311,6 +329,7 @@ function validateExceptions(input, scopes, now) {
   }
 
   const errors = [];
+  const warnings = [];
   const validated = [];
   const keys = new Set();
   for (const [index, rawException] of config.exceptions.entries()) {
@@ -358,7 +377,14 @@ function validateExceptions(input, scopes, now) {
       );
     }
     if (typeof exception.expires === 'string')
-      validateExpiry(exception.expires, `exception ${index + 1}`, errors, now);
+      validateExpiry(
+        exception.expires,
+        `exception ${index + 1}`,
+        errors,
+        now,
+        warnings,
+        `${exception.package} ${exception.advisory}`,
+      );
     const key = exceptionKey(exception);
     if (keys.has(key))
       errors.push(
@@ -406,7 +432,14 @@ function validateExceptions(input, scopes, now) {
       }
     }
     if (typeof residual.expires === 'string')
-      validateExpiry(residual.expires, label, errors, now);
+      validateExpiry(
+        residual.expires,
+        label,
+        errors,
+        now,
+        warnings,
+        `${residual.package} ${residual.advisory}`,
+      );
     const key = residualKey(residual);
     if (residualKeys.has(key))
       errors.push(
@@ -415,7 +448,7 @@ function validateExceptions(input, scopes, now) {
     residualKeys.add(key);
     residuals.push(residual);
   }
-  return { errors, validated, residuals };
+  return { errors, validated, residuals, warnings };
 }
 
 export function evaluateAuditPolicy(
@@ -471,6 +504,7 @@ export function evaluateAuditPolicy(
     errors: exceptionErrors,
     validated: exceptions,
     residuals,
+    warnings: expiryWarnings,
   } = validateExceptions(exceptionConfig, knownScopes, now);
   const allFindings = parsed.flatMap((entry) => entry.findings);
   const acceptedFindings = [];
@@ -563,6 +597,9 @@ export function evaluateAuditPolicy(
     trackedResiduals,
     untrackedResiduals,
     exceptionErrors,
+    // Advisory only: an approaching expiry is a reminder, never a verdict.
+    // `ok` above does not read it.
+    expiryWarnings,
   };
 }
 
@@ -595,6 +632,8 @@ export function formatPolicyReport(result) {
   }
   for (const error of result.exceptionErrors)
     lines.push(`EXCEPTION ERROR: ${error}`);
+  for (const warning of result.expiryWarnings ?? [])
+    lines.push(`WARN: ${warning}`);
   lines.push(
     result.ok
       ? 'PASS: no unaccepted critical/high advisories or production residuals'
@@ -743,13 +782,14 @@ export function runAuditAttempt(
     timeoutMs: AUDIT_TIMEOUT_MS,
   });
   args.push(...diagnostics.args);
+  const npm = npmInvocation(args);
   return new Promise((resolveAudit, rejectAudit) => {
     diagnostics.startChild();
     let child;
     try {
       child = execute(
-        'npm',
-        args,
+        npm.command,
+        npm.args,
         {
           cwd,
           encoding: 'utf8',
@@ -976,9 +1016,24 @@ function describeRange(range) {
  * registry -- which is to say, unreachable from a test, which is how a
  * message that explained nothing survived (#1442).
  */
+/**
+ * Render the approaching-expiry warnings as GitHub annotations. The
+ * scheduled run in .github/workflows/dependency-advisory.yml is the reader:
+ * a WARN line in a green log nobody opens is not a reminder, and the run
+ * summary is where a maintainer sees one without being blocked by it.
+ */
+export function formatExpiryAnnotations(result, env = process.env) {
+  if (env?.GITHUB_ACTIONS !== 'true') return [];
+  return (result?.expiryWarnings ?? []).map(
+    (warning) =>
+      `::warning title=Dependency advisory approval expiring::${warning}`,
+  );
+}
+
 export async function runPolicyCli({
   decide = dependencyAuditDecision,
   runAudits = collectAudits,
+  env = process.env,
 } = {}) {
   const decision = decide();
   if (!decision.required) {
@@ -1010,6 +1065,8 @@ export async function runPolicyCli({
   );
   const result = evaluateAuditPolicy(audits, exceptions);
   console.log(formatPolicyReport(result));
+  for (const annotation of formatExpiryAnnotations(result, env))
+    console.log(annotation);
   return result.ok ? 0 : 1;
 }
 

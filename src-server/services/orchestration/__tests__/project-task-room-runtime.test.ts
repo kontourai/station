@@ -332,6 +332,10 @@ function fixture(
     corruptRecovery?: boolean;
     revokeAfterRecoveryCheckpoint?: boolean;
     revokeOnRecoveryWrite?: number;
+    beforeRecoveryWrite?: (input: {
+      generation: string;
+      value: unknown;
+    }) => Promise<void>;
     revokeAfterWorkingRead?: boolean;
     recoveryValue?: unknown;
     readRecovery?: () => Promise<
@@ -439,6 +443,8 @@ function fixture(
       recovery: async (input) => {
         recoveryValues.push(input.value);
         recoveryWrites += 1;
+        if (options.beforeRecoveryWrite)
+          await options.beforeRecoveryWrite(input);
         if (options.revokeAfterRecoveryCheckpoint && recoveryWrites >= 2)
           revoked = true;
         if (
@@ -502,6 +508,89 @@ function fixture(
 }
 
 describe('ProjectTaskRoomRuntime', () => {
+  test.each(['heartbeat', 'cadence', 'snapshot'] as const)(
+    'concurrent %s cannot arm another request or invalidate its pending announcement',
+    async (activity) => {
+      let release!: () => void;
+      let reached!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const checkpoint = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      let holdNext = false;
+      let stored:
+        | { kind: 'available'; generation: string; value: unknown }
+        | undefined;
+      const { runtime, recoveryValues } = fixture({
+        readRecovery: async () => stored ?? { kind: 'unavailable' },
+        beforeRecoveryWrite: async (input) => {
+          stored = {
+            kind: 'available',
+            generation: input.generation,
+            value: input.value,
+          };
+          if (!holdNext) return;
+          holdNext = false;
+          reached();
+          await held;
+        },
+      });
+      const request = new Request('http://station');
+      let now = 100;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+      try {
+        await runtime.live({ taskId: task.id, request, command: 'join' });
+        now = 200;
+        holdNext = true;
+        const announced = runtime.live({
+          taskId: task.id,
+          request,
+          command: 'announce',
+        });
+        await checkpoint;
+        const prepared = recoveryValues().at(-1) as {
+          state: LiveWorkRecoveryState;
+        };
+        const intentId = prepared.state.pending.find(
+          (item) => item.intent.kind === 'announce',
+        )!.intent.intentId;
+        now = 201;
+        const concurrent =
+          activity === 'heartbeat'
+            ? runtime.live({ taskId: task.id, request, command: 'heartbeat' })
+            : activity === 'cadence'
+              ? runtime.subscriptionCadence({ taskId: task.id, request })
+              : runtime.subscribe({ taskId: task.id, request, emit: () => {} });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        const prematurelyArmed = recoveryValues().some((value) =>
+          (value as { armedIntentIds: string[] }).armedIntentIds.includes(
+            intentId,
+          ),
+        );
+        release();
+        const [announcementResult, concurrentResult] = await Promise.all([
+          announced,
+          concurrent,
+        ]);
+        expect(prematurelyArmed).toBe(false);
+        expect(announcementResult).toMatchObject({
+          kind: 'available',
+          result: { outcome: 'updated' },
+        });
+        if (activity === 'cadence') expect(concurrentResult).toBe(true);
+        else
+          expect(concurrentResult).toMatchObject({
+            kind: activity === 'snapshot' ? 'subscribed' : 'available',
+          });
+      } finally {
+        release();
+        await runtime.close();
+      }
+    },
+  );
+
   test('inspects exact transfer room identity without opening or publishing the room', async () => {
     const inspectionFixture = async (
       mode:
@@ -2173,6 +2262,34 @@ describe('ProjectTaskRoomRuntime', () => {
     expect(cadenceClock).toHaveBeenCalledTimes(1);
     await runtime.close();
     store.close();
+  });
+
+  test('reports a cursor read rate limit without misclassifying it as lost authorization', async () => {
+    const { runtime } = fixture();
+    const request = new Request('http://station');
+    const joined = await runtime.live({
+      taskId: task.id,
+      request,
+      command: 'join',
+    });
+    const document = await runtime.document({ taskId: task.id, request });
+    if (
+      joined.kind !== 'available' ||
+      (document.kind !== 'snapshot' && document.kind !== 'delta')
+    )
+      throw new Error('Expected joined room document');
+    for (let index = 0; index < 119; index++)
+      await runtime.live({ taskId: task.id, request, command: 'heartbeat' });
+    expect(
+      await runtime.live({
+        taskId: task.id,
+        request,
+        command: 'cursor',
+        generation: joined.generation,
+        workingRevision: document.revision,
+        selection: { anchor: 0, focus: 0 },
+      }),
+    ).toMatchObject({ kind: 'available', result: { outcome: 'rate_limited' } });
   });
 
   test('admits the intended 120 live transitions per minute without two checkpoint exports per command', async () => {

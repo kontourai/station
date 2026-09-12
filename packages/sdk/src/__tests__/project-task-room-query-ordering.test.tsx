@@ -356,7 +356,10 @@ test('a committed SSE cancels an authoritative GET and preserves its newer canon
     client,
     'task-1',
   );
-  const settled = refreshed.catch(() => {});
+  const settled = refreshed.then(
+    (value) => ({ value }),
+    (error: unknown) => ({ error }),
+  );
   await waitFor(() => expect(documentRequests).toHaveLength(1));
   callbacks!.onEvent({
     kind: 'document',
@@ -370,12 +373,40 @@ test('a committed SSE cancels an authoritative GET and preserves its newer canon
     revision: 'rev2',
     text: 'two',
   });
-  await settled;
+  expect(await settled).toEqual({
+    value: { kind: 'snapshot', revision: 'rev3', text: 'three' },
+  });
 
   expect(
     client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
   ).toEqual({ kind: 'snapshot', revision: 'rev3', text: 'three' });
 });
+
+test.each(['unchanged', 'gap'] as const)(
+  'cancelled recovery does not adopt %s cache data',
+  async (replacement) => {
+    const client = new QueryClient();
+    const queryKey = projectTaskRoomQueries.document('task-1').queryKey;
+    client.setQueryData(queryKey, {
+      kind: 'snapshot',
+      revision: 'old',
+      text: 'old text',
+    });
+    const refreshed = refetchAuthoritativeProjectTaskRoomDocument(
+      client,
+      'task-1',
+    );
+    const settled = refreshed.then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+    await waitFor(() => expect(documentRequests).toHaveLength(1));
+    if (replacement === 'gap')
+      client.setQueryData(queryKey, { kind: 'gap', floor: 'new' });
+    await client.cancelQueries({ queryKey }, { revert: false, silent: true });
+    expect(await settled).toEqual({ error: expect.any(Error) });
+  },
+);
 
 test('initial SSE snapshot cancels the older GET before cache publication and preserves mounted editor text', async () => {
   const client = new QueryClient({

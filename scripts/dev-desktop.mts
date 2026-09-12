@@ -16,7 +16,7 @@ import {
   spawnedStationRoot,
 } from '../packages/shared/src/runtime-path-resolver.js';
 
-export interface DesktopDevContract {
+interface DesktopDevContract {
   readonly productName: string;
   readonly identifier: string;
   readonly instance: string;

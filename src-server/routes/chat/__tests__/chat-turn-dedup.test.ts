@@ -10,7 +10,14 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from 'vitest';
 import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../../domain/migrations/003-orchestration-events.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import {
@@ -18,6 +25,23 @@ import {
   getChatTurnDedupStore,
   resetChatTurnDedupStoresForTest,
 } from '../chat-turn-dedup.js';
+
+// These project homes were the fixed paths `/tmp/station-test-home-{a,b,c}`,
+// and `getChatTurnDedupStore` really creates a store under each: it lands
+// `<home>/data/orchestration.sqlite` (plus `-shm`/`-wal`) and nothing removed
+// it. All three directories were observed on this host on 2026-09-08, dated
+// Sep 5 -- left by a run twelve days earlier.
+// A directory shared with every other process is the wrong place to persist
+// test state: it accumulates, and anything else on the host can occupy or
+// replace the name. Own the root, and remove it in `afterAll`.
+const DEDUP_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-dedup-home-'));
+const DEDUP_HOME_A = join(DEDUP_TEMP_ROOT, 'station-test-home-a');
+const DEDUP_HOME_B = join(DEDUP_TEMP_ROOT, 'station-test-home-b');
+const DEDUP_HOME_C = join(DEDUP_TEMP_ROOT, 'station-test-home-c');
+
+afterAll(() => {
+  rmSync(DEDUP_TEMP_ROOT, { force: true, recursive: true });
+});
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -545,14 +569,14 @@ describe('getChatTurnDedupStore', () => {
   });
 
   test('returns the SAME instance for the same projectHomeDir', () => {
-    const store1 = getChatTurnDedupStore('/tmp/station-test-home-a');
-    const store2 = getChatTurnDedupStore('/tmp/station-test-home-a');
+    const store1 = getChatTurnDedupStore(DEDUP_HOME_A);
+    const store2 = getChatTurnDedupStore(DEDUP_HOME_A);
     expect(store1).toBe(store2);
   });
 
   test('returns DIFFERENT instances for different projectHomeDirs', () => {
-    const store1 = getChatTurnDedupStore('/tmp/station-test-home-b');
-    const store2 = getChatTurnDedupStore('/tmp/station-test-home-c');
+    const store1 = getChatTurnDedupStore(DEDUP_HOME_B);
+    const store2 = getChatTurnDedupStore(DEDUP_HOME_C);
     expect(store1).not.toBe(store2);
   });
 });

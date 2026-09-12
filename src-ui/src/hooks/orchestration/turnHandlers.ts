@@ -25,6 +25,7 @@ import {
 import { finalizeAssistantTurn } from './assistantTurn';
 import { createAssistantStreamingMessage } from './messageParts';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
+import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationEvent } from './types';
 
 function repeatedErrorText(message: string, count: number) {
@@ -90,22 +91,50 @@ export function handleTurnStartedEvent(
     currentChat?.agentSlug &&
     currentChat.executionMode !== 'station'
   ) {
-    void import('../lastChosenModel')
-      .then(
-        ({
-          buildLastChosenModelBindingKeyFromIdentity,
-          trackLastChosenModel,
-        }) =>
-          trackLastChosenModel(
-            buildLastChosenModelBindingKeyFromIdentity(
-              currentChat.agentSlug as string,
-              currentChat.providerId ?? currentChat.agentConnectionId,
+    if (!isReplayThread(event.threadId)) {
+      void import('../lastChosenModel')
+        .then(
+          ({
+            buildLastChosenModelBindingKeyFromIdentity,
+            trackLastChosenModel,
+          }) =>
+            trackLastChosenModel(
+              buildLastChosenModelBindingKeyFromIdentity(
+                currentChat.agentSlug as string,
+                currentChat.providerId ?? currentChat.agentConnectionId,
+              ),
+              effectiveModel,
             ),
-            effectiveModel,
-          ),
-      )
-      .catch(() => undefined);
+        )
+        .catch(() => undefined);
+    }
   }
+  if (event.inputKind === 'steer') {
+    // A steer is more user input on the OPEN turn. It must not reset
+    // `streamingMessage` the way a fresh `turn.started` does — that wipe is
+    // how a Claude course-correction used to blank the in-flight answer.
+    const prompt = event.prompt?.trim();
+    const messages = [...(currentChat?.messages ?? [])];
+    if (prompt) {
+      messages.push({
+        role: 'user',
+        content: prompt,
+        timestamp: Date.parse(event.createdAt) || undefined,
+        turnId: event.turnId,
+        sessionId: event.threadId,
+      });
+    }
+    store.updateChat(event.threadId, {
+      pendingClientTurnId: undefined,
+      status: 'sending',
+      orchestrationTurnOpen: true,
+      openTurnId: event.turnId ?? currentChat?.openTurnId,
+      orchestrationStatus: 'running',
+      ...(prompt ? { messages } : {}),
+    });
+    return;
+  }
+
   store.updateChat(event.threadId, {
     // The dispatch this turn came from has started; the pre-start cancel
     // window it named is over
@@ -186,9 +215,10 @@ export function handleTurnCompletedEvent(
   // connection's window; the terminal is then the only identity available
   // and adopting it is correct. This mirrors `adoptTerminalIdentity` in
   // `runtime-event-projection.ts` exactly.
-  const openTurnId = activeChatsStore.getChatForExecutionSession(
+  const currentChat = activeChatsStore.getChatForExecutionSession(
     event.threadId,
-  )?.openTurnId;
+  );
+  const openTurnId = currentChat?.openTurnId;
   const historyRevision =
     activeChatsStore.getChatForExecutionSession(event.threadId)
       ?.orchestrationHistoryRevision ?? 0;
@@ -207,6 +237,13 @@ export function handleTurnCompletedEvent(
   );
   activeChatsStore.updateChat(event.threadId, {
     orchestrationHistoryRevision: historyRevision + 1,
+    ...(closesOpenTurn &&
+    currentChat?.conversationId &&
+    currentChat.currentSessionId === event.threadId &&
+    currentChat.conversationOpenState?.status === 'resolved' &&
+    !currentChat.conversationOpenState.canContinue
+      ? { conversationOpenPending: true, conversationOpenFailed: false }
+      : {}),
   });
   // Queue settlement is independent of the live streaming shell: provider
   // turn identity is exact evidence even for a delayed terminal event.
@@ -214,7 +251,9 @@ export function handleTurnCompletedEvent(
     activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
     event.threadId;
   reconcileDurableTurn(chatKey, event.turnId);
-  drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
+  if (!isReplayThread(event.threadId)) {
+    drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
+  }
 }
 
 export function handleTurnAbortedEvent(
@@ -264,6 +303,13 @@ export function handleTurnAbortedEvent(
     isProcessingStep: false,
     activityHint: undefined,
     orchestrationHistoryRevision: historyRevision + 1,
+    ...(chat?.conversationId &&
+    chat.currentSessionId === event.threadId &&
+    (!chat.openTurnId || chat.openTurnId === event.turnId) &&
+    chat.conversationOpenState?.status === 'resolved' &&
+    !chat.conversationOpenState.canContinue
+      ? { conversationOpenPending: true, conversationOpenFailed: false }
+      : {}),
   });
 }
 
@@ -390,6 +436,15 @@ export function handleRuntimeErrorEvent(
           },
         ];
   activeChatsStore.updateChat(event.threadId, {
+    ...(chat?.conversationId &&
+    chat.currentSessionId === event.threadId &&
+    (!chat.openTurnId ||
+      !terminalTurnId ||
+      chat.openTurnId === terminalTurnId) &&
+    chat.conversationOpenState?.status === 'resolved' &&
+    !chat.conversationOpenState.canContinue
+      ? { conversationOpenPending: true, conversationOpenFailed: false }
+      : {}),
     status: 'error',
     error: event.message,
     orchestrationStatus: 'errored',
@@ -422,7 +477,9 @@ export function handleRuntimeErrorEvent(
 export function handleRuntimeWarningEvent(
   event: Extract<OrchestrationEvent, { method: 'runtime.warning' }>,
 ) {
-  toastStore.show(event.message, event.threadId, 5000);
+  if (!isReplayThread(event.threadId)) {
+    toastStore.show(event.message, event.threadId, 5000);
+  }
 
   // archive#727 item 1b (CRITICAL): a mid-session escalation to 'never'
   // that the adapter rejected (no allowDangerouslySkipPermissions granted

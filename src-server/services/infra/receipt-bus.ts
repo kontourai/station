@@ -79,6 +79,15 @@ export type OrchestrationTestReceipt =
        * unanswerable arms of `projectRequestAnswerability` MUST await this:
        * before it the projection deliberately fails open, so an assertion
        * made earlier is measuring the fail-open window and not the predicate.
+       *
+       * CARRIES NO PUBLISHER, deliberately — one process, one boot was the
+       * only shape production has. A test that builds a runtime per test does
+       * not have that shape, and `waitForReceipt(r => r.kind === '...')` there
+       * resolves on whichever runtime settles first: a receipt published late
+       * by a runtime whose own wait was abandoned satisfies the NEXT wait,
+       * whose runtime is still inside its fail-open window (station#1707).
+       * Await `OrchestrationService#whenSessionAttachmentSettled()` instead
+       * whenever the caller means the runtime it constructed.
        */
       kind: 'session.attachment.settled';
     }

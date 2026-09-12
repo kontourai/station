@@ -10,11 +10,20 @@ of the explicit non-actionable dispositions: `blocked`, `epic`,
 issue. This makes an omitted disposition fail immediately, including on a
 newly opened issue; there is no grandfathered backlog ceiling or grace period.
 
-`P1` is the actionable queue. **Every bug is `P1`** (owner directive,
-2026-08-18), so the queue is uncapped: a numeric ceiling and that rule cannot
-coexist, and any finite number simply reschedules the failure as the bug count
-moves. `maxActionableP1` is `null`; the ceiling check is retained and still
-enforces any policy that sets one, so re-capping is a one-constant change.
+`P1` is the actionable queue. A `bug` label no longer implies `P1`, and no
+label implies any priority: priority is a triage judgement recorded by whoever
+triages, and the gate below is what requires one to arrive. Specific
+automation may still choose a priority for the issues it opens — the main-red
+tracker in `.github/workflows/main-health.yml` files itself as `bug` and `P1`
+— but that is its own triage decision, not a rule derived from a label.
+
+The queue is uncapped. `maxActionableP1` is `null`; the ceiling check is
+retained and still enforces any policy that sets one, so re-capping is a
+one-constant change. The cap of five was dropped in 2026-08 because "every bug
+is `P1`" made a finite ceiling incoherent. That rule is gone (owner decision,
+2026-09-09) and the queue was deliberately left uncapped rather than
+re-capped, since restoring a ceiling would fail the gate against a backlog
+nobody has re-triaged. Whether to cap it again is open.
 
 A `P1` issue still cannot also carry an explicit non-actionable disposition.
 That is now the load-bearing rule: work that is genuinely not actionable must
@@ -22,10 +31,6 @@ say so through `blocked`, `epic`, `decision-needed`, or `acceptance-needed`
 rather than through a lower priority. Non-actionable dispositions still count as
 classified, so a blocked or decision-needed issue does not need a priority
 simply to satisfy the policy.
-
-What the old cap of five bought was the meaning of `P1` — "actionable now".
-That meaning now comes from the label itself rather than from scarcity, and
-ordering within `P1` is no longer expressed by queue length.
 
 The GitHub workflow runs on issue lifecycle and label changes, daily for drift,
 and manually through `workflow_dispatch`. Its tests derive fixtures from the

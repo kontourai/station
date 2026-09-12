@@ -16,6 +16,7 @@ import {
   attachmentBlobBytesStored,
   attachmentBlobOperations,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 
 interface BlobStoreLogger {
   debug: (message: string, meta?: Record<string, unknown>) => void;
@@ -30,7 +31,7 @@ export const DEFAULT_ATTACHMENT_BLOB_RETENTION = {
   maxBytes: 512 * MIB,
 } as const;
 
-export interface AttachmentBlobRetentionPolicy {
+interface AttachmentBlobRetentionPolicy {
   maxAgeDays: number;
   maxBytes: number;
 }
@@ -47,7 +48,7 @@ export function isAttachmentBlobRef(value: unknown): value is string {
   return typeof value === 'string' && BLOB_REF_PATTERN.test(value);
 }
 
-export interface AttachmentBlobStoreOptions {
+interface AttachmentBlobStoreOptions {
   rootDir: string;
   logger?: BlobStoreLogger;
   retention?: Partial<AttachmentBlobRetentionPolicy>;
@@ -181,7 +182,7 @@ export class AttachmentBlobStore {
         outcome: 'failed',
       });
       this.logger?.warn('Attachment blob write failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return undefined;
     }
@@ -271,7 +272,7 @@ export class AttachmentBlobStore {
       files = this.listBlobs();
     } catch (error) {
       this.logger?.warn('Attachment blob retention could not list the store', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return;
     }
@@ -316,7 +317,7 @@ export class AttachmentBlobStore {
         outcome: 'failed',
       });
       this.logger?.warn('Attachment blob could not be reclaimed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return 0;
     }

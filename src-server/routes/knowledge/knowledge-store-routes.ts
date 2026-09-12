@@ -48,7 +48,7 @@ import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
 import { expandTilde } from '../../utils/paths.js';
 import { errorMessage } from '../schemas/schemas.js';
 
-export interface KnowledgeStoreRouteDeps {
+interface KnowledgeStoreRouteDeps {
   store: KnowledgeStoreProvider;
   /** Station home dir — same accessor `knowledge-index-routes.ts` already uses
    * (`context.configLoader.getProjectHomeDir()`). */

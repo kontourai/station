@@ -17,8 +17,8 @@ import {
   engineControlPlaneCapability,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
-import type { SessionLifecycleState } from '../../../packages/contracts/src/session-lifecycle.js';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import {
   builtinStationControlServerPath,
@@ -35,7 +35,7 @@ const GENUINE_STATION_CONTROL_TOOLSERVER = {
   args: [builtinStationControlServerPath()],
 };
 
-import { validateSessionLifecycleTransition } from '../../../packages/contracts/src/session-lifecycle.js';
+import { validateSessionLifecycleTransition } from '@kontourai/station-contracts/session-lifecycle';
 import {
   ACPProcess,
   type ACPProcessOptions,
@@ -75,6 +75,7 @@ class FakeAcpProcess {
   initResult:
     | {
         protocolVersion: number;
+        agentInfo?: { name: string; version?: string };
         agentCapabilities: {
           promptCapabilities: { image: boolean };
           loadSession?: boolean;
@@ -85,6 +86,12 @@ class FakeAcpProcess {
     protocolVersion: 1,
     agentCapabilities: { promptCapabilities: { image: true } },
   };
+  sessionId: string | null = null;
+  readonly extMethodCalls: Array<{
+    method: string;
+    params: Record<string, unknown>;
+  }> = [];
+  extMethodError?: unknown;
   destroyed = false;
   destroyCalls = 0;
   cancelCalls = 0;
@@ -122,8 +129,9 @@ class FakeAcpProcess {
     this.newSessionCalls += 1;
     this.newSessionMcpServers = mcpServers;
     if (this.newSessionError) throw this.newSessionError;
+    this.sessionId = `native-${this.opts.command}`;
     return {
-      sessionId: `native-${this.opts.command}`,
+      sessionId: this.sessionId,
       modes: { availableModes: [], currentModeId: 'default' },
       configOptions: this.newSessionConfigOptions,
     };
@@ -144,6 +152,7 @@ class FakeAcpProcess {
     this.loadSessionCalls += 1;
     this.loadSessionArgs = { sessionId, cwd, mcpServers };
     if (this.loadSessionError) throw this.loadSessionError;
+    this.sessionId = sessionId;
     await this.loadSessionPromise;
   }
 
@@ -189,6 +198,15 @@ class FakeAcpProcess {
   async cancel(): Promise<void> {
     this.cancelCalls += 1;
     await this.cancelPromise;
+  }
+
+  async extMethod(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
+    this.extMethodCalls.push({ method, params });
+    if (this.extMethodError) throw this.extMethodError;
+    return {};
   }
 
   async destroy(): Promise<void> {
@@ -4483,6 +4501,178 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
       headers: [{ name: 'Authorization', value: `Bearer ${TOKEN}` }],
     });
 
+    await adapter.stopAll();
+  });
+});
+
+describe('AcpAdapter.steerTurn', () => {
+  test('Kiro injects via _session/steer and keeps the in-flight prompt', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-kiro-steer',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-kiro-steer',
+      input: 'start',
+    });
+    await nextEvent(iterator, 'turn.started');
+
+    await adapter.steerTurn('thread-kiro-steer', 'go left', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([
+      {
+        method: '_session/steer',
+        params: {
+          sessionId: 'native-kiro-cli',
+          message: '<user_message>\ngo left\n</user_message>',
+        },
+      },
+    ]);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    expect(processes[0]?.promptContents).toHaveLength(1);
+    await expect(
+      nextEvent(iterator, 'steer turn.started'),
+    ).resolves.toMatchObject({
+      method: 'turn.started',
+      turnId: turn.turnId,
+      prompt: 'go left',
+      inputKind: 'steer',
+    });
+
+    processes[0]?.resolvePrompt('end_turn');
+    await expect(nextEvent(iterator, 'turn.completed')).resolves.toMatchObject({
+      method: 'turn.completed',
+      turnId: turn.turnId,
+    });
+    await adapter.stopAll();
+  });
+
+  test('Grok injects via _x.ai/interject without cancelling the turn', async () => {
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [
+        { id: 'kiro', command: 'grok', args: ['agent', 'stdio'] },
+      ],
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-grok-steer',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-grok-steer',
+      input: 'start',
+    });
+    await nextEvent(iterator, 'turn.started');
+
+    await adapter.steerTurn('thread-grok-steer', 'course correct', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([
+      {
+        method: '_x.ai/interject',
+        params: { sessionId: 'native-grok', text: 'course correct' },
+      },
+    ]);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    expect(processes[0]?.promptContents).toHaveLength(1);
+    await adapter.stopAll();
+  });
+
+  test('unknown ACP cancels and re-prompts on the same turn', async () => {
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-acp-fallback',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-acp-fallback',
+      input: 'start',
+    });
+    await nextEvent(iterator, 'turn.started');
+
+    await adapter.steerTurn(
+      'thread-acp-fallback',
+      'take this instead',
+      turn.turnId,
+    );
+
+    expect(processes[0]?.extMethodCalls).toEqual([]);
+    expect(processes[0]?.cancelCalls).toBe(1);
+    expect(processes[0]?.promptContents).toHaveLength(2);
+    expect(processes[0]?.promptContents[1]).toEqual([
+      { type: 'text', text: 'take this instead' },
+    ]);
+    await expect(
+      nextEvent(iterator, 'steer turn.started'),
+    ).resolves.toMatchObject({
+      method: 'turn.started',
+      turnId: turn.turnId,
+      inputKind: 'steer',
+    });
+
+    processes[0]?.resolvePrompt('end_turn');
+    await Promise.resolve();
+    await expect(
+      adapter.sendTurn({
+        threadId: 'thread-acp-fallback',
+        input: 'must still be the same turn',
+      }),
+    ).rejects.toThrow('already has an active turn');
+    processes[0]?.resolvePrompt('end_turn');
+    await expect(nextEvent(iterator, 'turn.completed')).resolves.toMatchObject({
+      method: 'turn.completed',
+      turnId: turn.turnId,
+    });
+    await adapter.stopAll();
+  });
+
+  test('Grok falls back to cancel-reprompt when interject is not implemented', async () => {
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [{ id: 'kiro', command: 'grok' }],
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-grok-fallback',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-grok-fallback',
+      input: 'start',
+    });
+    await nextEvent(iterator, 'turn.started');
+    const missing = Object.assign(new Error('Method not found'), {
+      code: -32601,
+    });
+    processes[0]!.extMethodError = missing;
+
+    await adapter.steerTurn('thread-grok-fallback', 'now', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls.map((call) => call.method)).toEqual([
+      '_x.ai/interject',
+      'x.ai/interject',
+    ]);
+    expect(processes[0]?.cancelCalls).toBe(1);
+    expect(processes[0]?.promptContents).toHaveLength(2);
     await adapter.stopAll();
   });
 });

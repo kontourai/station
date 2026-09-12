@@ -55,6 +55,120 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'latest-event-seek-order',
+    test: 'src-server/services/orchestration/__tests__/event-store.test.ts',
+    failure:
+      'the latest-any slot seeks once per requested thread instead of ranking history',
+    files: [
+      {
+        path: 'src-server/services/orchestration/event-store.ts',
+        change: (source) => {
+          const start = source.indexOf('  private fetchLatestAnyEvent(');
+          const end = source.indexOf('\n  /**', start);
+          if (start < 0 || end < start)
+            throw new Error('Latest-event method not found');
+          return (
+            source.slice(0, start) +
+            exactReplace(
+              source.slice(start, end),
+              'ORDER BY sequence DESC LIMIT 1',
+              'ORDER BY sequence ASC LIMIT 1',
+            ) +
+            source.slice(end)
+          );
+        },
+      },
+    ],
+  },
+  {
+    id: 'api-base-publication-race',
+    test: 'packages/sdk/src/__tests__/api-initialization.test.ts',
+    failure:
+      'pending readers observe the latest base at continuation rather than a superseded publication',
+    files: [
+      {
+        path: 'packages/sdk/src/api-core.ts',
+        change: (source) => {
+          let changed = exactReplace(
+            source,
+            'const deadline = performance.now() + 500;',
+            'const deadline = performance.now() + 500;\n  let observedBase = _apiBase;',
+          );
+          changed = exactReplace(
+            changed,
+            'const receive = () => {',
+            'const receive = () => {\n        observedBase = _apiBase;',
+          );
+          return exactReplace(
+            changed,
+            'return _apiBase;',
+            'return observedBase || _apiBase;',
+          );
+        },
+      },
+    ],
+  },
+
+  {
+    id: 'monitoring-file-reads',
+    test: 'src-server/runtime/conversation/__tests__/runtime-event-log.test.ts',
+    failure:
+      'skips unchanged disjoint files, but re-reads appended backfill and replaced files for each principal',
+    files: [
+      {
+        path: 'src-server/runtime/conversation/runtime-event-log.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'known?.signature === before &&',
+            'false && known?.signature === before &&',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'agent-catalog-reads',
+    test: 'src-server/routes/agents/__tests__/agents.routes.test.ts',
+    failure:
+      'GET / reads each persisted definition once and refreshes the catalog on the next request',
+    files: [
+      {
+        path: 'src-server/services/agents/agent-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const specs = new Map(',
+            'await this.configLoader.readAgentCatalog();\n    const specs = new Map(',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'collapsed-monitoring-payload',
+    test: 'src-ui/src/components/monitoring/event-entry/__tests__/EventEntrySections.doubleEncode.test.tsx',
+    failure: 'an object result renders as pretty-printed JSON',
+    files: [
+      {
+        path: 'src-ui/src/components/monitoring/event-entry/EventEntrySections.tsx',
+        change: (source) =>
+          exactReplace(source, '{open ? children() : null}', '{children()}'),
+      },
+    ],
+  },
+  {
+    id: 'retired-feature-settings',
+    test: 'src-ui/src/lib/__tests__/device-settings-store.test.ts',
+    failure: 'migrates featureSettings while retiring removed switches',
+    files: [
+      {
+        path: 'src-ui/src/lib/device-settings-store.ts',
+        change: (source) =>
+          exactReplace(source, 'delete value[key];', 'void key;'),
+      },
+    ],
+  },
+
+  {
     id: 'eager-highlighter',
     test: 'src-ui/src/__tests__/SyntaxHighlighterContext.test.tsx',
     failure:
@@ -131,6 +245,66 @@ export const MUTATIONS = [
             source.slice(node.body.end)
           );
         },
+      },
+    ],
+  },
+  // The two #1642 entries below are a different CATEGORY from the rest of this
+  // list, deliberately, and the distinction is why they are here at all. Every
+  // other entry injects a defect into SOURCE and proves a test notices. These
+  // two inject a defect into a FIXTURE and prove its premise assertion notices.
+  //
+  // `RouteViewReadiness.adapterScreens.test.tsx` pins its adapters with
+  // arrangements built on decoy elements — a hidden match before a visible one —
+  // and every one of those arrangements is only as good as the decoys still
+  // being matched by the locator under test. Break a decoy and the arrangement
+  // does not fail; it passes while testing nothing, and it still looks like
+  // coverage. That happened: renaming the route decoys left the suite green at
+  // exit 0 until a premise assertion was added.
+  //
+  // WHAT BEING IN THIS LIST DOES AND DOES NOT MEAN, stated because "registered
+  // in the mutation lane" reads as enforcement and is not. Nothing invokes this
+  // list: `test:mutation:smoke` is referenced by documentation and by hand, and
+  // `scripts/__tests__/test-mutations.test.ts` — the one thing a gate does run —
+  // exercises this driver's own logic and never touches `MUTATIONS`. So an entry
+  // here is a hand-runnable check and an executable record of the exact defect
+  // and the exact assertion that catches it. It is not a guard, and nothing
+  // notices if the property it describes stops holding.
+  //
+  // Which is also why the seven per-read mutations this file's #1642 arrangements
+  // were verified against are absent rather than "covered by these two": all nine
+  // are report-verified, and only these two are additionally re-runnable by
+  // anyone. Registering the rest would add executable records, not protection.
+  //
+  // COST, for whoever registers the next Chromium-backed case: each entry runs
+  // its target file three times — baseline, injected, restored, all three
+  // load-bearing, since a catch cannot be claimed without a green baseline and a
+  // green restore. A ~9 s suite therefore costs ~27 s per case.
+  {
+    id: 'readiness-route-decoys-unmatched',
+    test: 'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+    failure:
+      'a visible target between HIDDEN matches is still observed as ready',
+    files: [
+      {
+        path: 'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+        change: (source) =>
+          exactReplace(
+            source,
+            'class="target-surface" id="masking-first"',
+            'class="decoy-renamed" id="masking-first"',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'readiness-lazy-decoy-absent',
+    test: 'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+    failure: 'the quoted failure text is a VISIBLE failure, not index zero',
+    files: [
+      {
+        path: 'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+        change: (source) =>
+          exactReplace(source, 'decoy + failure,', 'failure,'),
       },
     ],
   },

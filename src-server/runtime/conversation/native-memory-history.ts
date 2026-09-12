@@ -1,7 +1,7 @@
 import type { GetMessagesOptions, StorageAdapter } from '@voltagent/core';
 import type { UIMessage } from 'ai';
 import { excludeChatErrorMarkers } from '../../adapters/file/memory-adapter-prompt-view.js';
-import { publicAgentIdFromRuntimeKey } from '../../routes/agents/runtime-agent-identity.js';
+import { publicAgentIdFromRuntimeKey } from '../../services/agents/runtime-agent-identity.js';
 import {
   isNativeMemoryContinuityBinding,
   type NativeMemoryContinuityBinding,

@@ -12,11 +12,14 @@ import type {
 } from '@kontourai/station-contracts/knowledge';
 import { isRepoRelativePath } from '@kontourai/station-contracts/project-identity';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
+import { createLogger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
   type ProjectWorkspacePathOptions,
   resolveProjectWorkspaceOutcome,
 } from '../projects/project-workspace-path.js';
+
+const logger = createLogger({ name: 'knowledge-scan' });
 
 const DEFAULT_EXTENSIONS = new Set([
   '.txt',
@@ -289,11 +292,10 @@ export function collectKnowledgeFiles(
     try {
       entries = readdirSync(currentPath);
     } catch (error) {
-      console.debug(
-        'Failed to read directory during knowledge scan:',
-        currentPath,
+      logger.debug('Failed to read directory during knowledge scan', {
+        path: currentPath,
         error,
-      );
+      });
       return;
     }
 
@@ -310,7 +312,7 @@ export function collectKnowledgeFiles(
           results.push(fullPath);
         }
       } catch (error) {
-        console.debug('Failed to stat file during knowledge scan:', error);
+        logger.debug('Failed to stat file during knowledge scan', { error });
       }
     }
   };

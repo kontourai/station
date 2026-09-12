@@ -3,7 +3,7 @@ import {
   type SelectableModel,
 } from '../../utils/modelCapabilities';
 
-export interface WorkingDirectoryParts {
+interface WorkingDirectoryParts {
   parentPath: string;
   leafName: string;
   hasWorkingDirectory: boolean;
@@ -168,18 +168,8 @@ export function chatModelLabel(
   return modelIdentityLabel(modelId, models);
 }
 
-/**
- * Whether the mobile task-switcher sheet can mount in this chrome — the other
- * half of the same question `inboxPanelMounts` answers for desktop. Named so
- * the routing guarantee can be DERIVED for both surfaces instead of one being
- * asserted in a test comment.
- */
-export function mobileTaskSwitcherMounts({ isMobile }: DockChrome): boolean {
-  return isMobile;
-}
-
 /** The minimal shape every project-name lookup below needs. */
-export interface ProjectNameLookup {
+interface ProjectNameLookup {
   slug: string;
   name: string;
 }
@@ -357,17 +347,7 @@ export function resolveDirectNewChatProjectSlug(input: {
   return input.dockChromeProjectSlug ?? undefined;
 }
 
-/**
- * station#4525 review MED-3 (design ruling): the New Chat modal's own
- * project-selection step defaults to the dock's shell-owned binding when
- * one is set (the owner's persistent-context design) — but for a user who
- * has never bound one, this restores the PRE-station#4525 behavior
- * (`useActiveProject`, the route-level "project I am currently viewing")
- * rather than leaving the picker unbound. A fork confirmation always wins
- * outright (its own explicit source project, not a default at all — see
- * `resolveDockBadgeProjectName`'s sibling note on why a fork never syncs
- * the ambient binding either, station#4525 review LOW-1).
- */
+/** New chat follows the project shown in its dock; an explicit fork wins. */
 export function resolveNewChatModalDefaultProjectSlug(input: {
   forkProjectSlug: string | undefined;
   hasImmutableProjectScope: boolean;
@@ -377,12 +357,10 @@ export function resolveNewChatModalDefaultProjectSlug(input: {
 }): string | undefined {
   if (input.forkProjectSlug) return input.forkProjectSlug;
   if (input.hasImmutableProjectScope) return input.immutableProjectSlug;
-  return (
-    input.dockChromeProjectSlug ?? input.routeActiveProjectSlug ?? undefined
-  );
+  return input.dockChromeProjectSlug ?? undefined;
 }
 
-export type OpenChatsCollectionRoute =
+type OpenChatsCollectionRoute =
   | { surface: 'task-switcher-sheet' }
   | {
       surface: 'inbox-panel';

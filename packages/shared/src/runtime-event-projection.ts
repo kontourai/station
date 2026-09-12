@@ -367,6 +367,32 @@ export function projectRuntimeEventsToMessages(
   for (const ev of events) {
     switch (ev.method) {
       case 'turn.started': {
+        if (ev.inputKind === 'steer') {
+          // Same open turn: append the user row and keep buffering the
+          // in-flight assistant. Emitting here would split the answer
+          // around the steer and leave a turn.started with no terminal.
+          turnAnchorEventId = ev.eventId;
+          stamp(ev.createdAt);
+          const steerParts: MessagePart[] = [];
+          if (ev.prompt) steerParts.push({ type: 'text', text: ev.prompt });
+          for (const attachment of ev.attachments ?? []) {
+            steerParts.push({
+              type: 'file',
+              ...(attachment.dataUrl === undefined
+                ? {}
+                : { url: attachment.dataUrl }),
+              ...(attachment.blobRef === undefined
+                ? {}
+                : { blobRef: attachment.blobRef }),
+              mediaType: attachment.mimeType,
+              name: attachment.name,
+            });
+          }
+          if (steerParts.length > 0) {
+            pushMessage('user', steerParts, 'steer');
+          }
+          break;
+        }
         if (turnOpen) emitAssistantTurn();
         turnOpen = true;
         turnIdentity = ev.turnId;
@@ -593,7 +619,14 @@ export function projectRuntimeEventsToMessages(
           carried ??
           superseded;
         if (existing) {
-          if (ev.toolName !== undefined) existing.toolName = ev.toolName;
+          // Imported result records may omit the name and normalize to "tool".
+          // Keep the actual invocation name instead of erasing its identity.
+          if (
+            ev.toolName !== undefined &&
+            (ev.toolName !== 'tool' || !existing.toolName)
+          ) {
+            existing.toolName = ev.toolName;
+          }
           existing.state = derivedState;
           existing.output = ev.output;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;

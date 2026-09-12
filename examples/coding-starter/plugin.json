@@ -5,9 +5,41 @@
   "description": "Code-focused starter layout with file browser, terminal notes, diff review, and chat handoff patterns.",
   "entrypoint": "src/index.tsx",
   "capabilities": ["chat", "navigation"],
-  "permissions": ["navigation.dock"],
+  "permissions": ["navigation.dock", "agents.invoke"],
   "layout": {
     "slug": "coding",
     "source": "./layout.json"
+  },
+  "agents": [
+    {
+      "slug": "coding-starter-assistant",
+      "source": "./agents/coding-starter-assistant/agent.json"
+    }
+  ],
+  "workspacePaneHost": {
+    "version": "station.workspace-pane-host-contribution/v1",
+    "actions": [
+      {
+        "id": "review-diff",
+        "label": "Review current diff",
+        "presentation": "action",
+        "intent": {
+          "kind": "prompt",
+          "prompt": "Review the current diff for correctness, missing tests, and risky assumptions."
+        }
+      }
+    ],
+    "agentSelection": {
+      "availableAgents": [
+        {
+          "kind": "own-plugin-agent",
+          "agentId": "coding-starter-assistant"
+        }
+      ],
+      "defaultAgent": {
+        "kind": "own-plugin-agent",
+        "agentId": "coding-starter-assistant"
+      }
+    }
   }
 }

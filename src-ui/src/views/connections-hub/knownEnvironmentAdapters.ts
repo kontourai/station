@@ -101,7 +101,7 @@ export function isPairedConnectionAuthorized(
   return connection.credentialState !== 'required';
 }
 
-export interface PairedAuthorizationLookup {
+interface PairedAuthorizationLookup {
   /** Keyed by the raw `SavedConnection.id` (matches a standalone, not-yet-merged `paired:<id>` `KnownEnvironment.id`). */
   byConnectionId: ReadonlyMap<string, boolean>;
   /** Keyed by the connection's own learned `environmentId`, when set (matches a merged card whose winning identity came from elsewhere — the SSH profile, or a manual entry that handshaked first). */
