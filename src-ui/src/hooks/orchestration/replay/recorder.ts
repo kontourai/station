@@ -187,14 +187,14 @@ function captureHistory(
     return;
   append({ kind: 'history', state });
 }
-export function recordReplayConnection(
+function recordReplayConnection(
   apiBase: string,
   connection: 'receiving' | 'interrupted' | 'closed' | 'caught-up',
 ): void {
   if (!recording || recording.apiBase !== apiBase) return;
   append({ kind: 'connection', status: connection });
 }
-export function recordReplaySnapshot(
+function recordReplaySnapshot(
   apiBase: string,
   payload: OrchestrationSnapshotPayload,
   reconnect: boolean,
