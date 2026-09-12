@@ -3,6 +3,7 @@ param(
   [Parameter(Mandatory=$true)][string]$InstallerB,
   [Parameter(Mandatory=$true)][string]$PayloadB,
   [Parameter(Mandatory=$true)][string]$ProofRoot,
+  [string]$InstallRoot,
   [switch]$KeepInstalled
 )
 $ErrorActionPreference = 'Stop'
@@ -11,6 +12,8 @@ $InstallerA = (Resolve-Path -LiteralPath $InstallerA).Path
 $InstallerB = (Resolve-Path -LiteralPath $InstallerB).Path
 $PayloadB = (Resolve-Path -LiteralPath $PayloadB).Path
 if (-not [IO.Path]::IsPathRooted($ProofRoot) -or (Test-Path $ProofRoot)) { throw 'Use a new absolute proof directory' }
+$install = if ($InstallRoot) { $InstallRoot } else { Join-Path $ProofRoot 'install' }
+if (-not [IO.Path]::IsPathRooted($install) -or (Test-Path $install)) { throw 'Use a new absolute install directory' }
 function Read-NightlyVersion([string]$path) {
   $info = (Get-Item -LiteralPath $path).VersionInfo
   if ($info.ProductName -ne 'Station Nightly') { throw 'Only Station Nightly installers may enter this fixture' }
@@ -34,7 +37,6 @@ if (@(NightlyRegistrations).Count) { throw 'An existing Nightly installation bel
 $defaultInstall = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Station Nightly'
 if (Test-Path $defaultInstall) { throw 'An unregistered default Nightly directory must be inspected before this fixture runs' }
 New-Item -ItemType Directory -Path $ProofRoot | Out-Null
-$install = Join-Path $ProofRoot 'install'
 $proofHome = Join-Path $ProofRoot 'home'
 New-Item -ItemType Directory -Path $proofHome | Out-Null
 Set-Content (Join-Path $proofHome 'preserve.txt') 'user-home-sentinel'
