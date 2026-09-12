@@ -148,6 +148,9 @@ export function PullRequestsPanel({
     (pullRequest) =>
       filter === 'ALL' || normalizedState(pullRequest.state) === filter,
   );
+  const observedAt = new Date(
+    pullRequests.dataUpdatedAt || Date.now(),
+  ).toISOString();
 
   return (
     <section className="pull-requests-panel" aria-label="Pull requests">
@@ -169,7 +172,7 @@ export function PullRequestsPanel({
               repository: pullRequest.repository,
               ref: pullRequest.ref,
               source: 'branch-derived' as const,
-              observedAt: new Date().toISOString(),
+              observedAt,
               status: {
                 state: 'current' as const,
                 title: pullRequest.title,
@@ -182,9 +185,7 @@ export function PullRequestsPanel({
       )}
       <PullRequestDependencyStacks
         pullRequests={result.data ?? []}
-        observedAt={new Date(
-          pullRequests.dataUpdatedAt || Date.now(),
-        ).toISOString()}
+        observedAt={observedAt}
         refreshing={pullRequests.isFetching}
         onRefresh={() => void pullRequests.refetch()}
         onOpen={setSelected}

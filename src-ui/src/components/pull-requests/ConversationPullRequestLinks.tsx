@@ -107,13 +107,9 @@ export function ConversationPullRequestLinks({
       repository: draft.repository.name,
       ref: draft.ref,
     }).every((value) => value.trim().length > 0);
-  const visibleLinks = [
-    ...(links.data?.links ?? []),
-    ...derived.filter(
-      (candidate) =>
-        !(links.data?.links ?? []).some((link) => key(link) === key(candidate)),
-    ),
-  ];
+  // One exact PR may have several owners. Keep each provenance visible so
+  // explicit unlink cannot erase a branch-derived or Task-kept association.
+  const visibleLinks = [...(links.data?.links ?? []), ...derived];
 
   return (
     <section

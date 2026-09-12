@@ -21,7 +21,7 @@ import {setClientCredentialResolver} from '@kontourai/station-sdk/client';
 window.scope={apiBase:'http://station.test',authorityKey:'link-owner',isCurrent:()=>true};
 setClientCredentialResolver(()=>({origin:window.scope.apiBase,requestAuthority:window.scope}));
 const request=(ref,sourceBranch,targetBranch)=>({provider:'github',host:'forge.test',repository:{owner:'team',name:'repo'},ref,nativeId:ref,url:'https://forge.test/team/repo/pull/'+ref,title:'Change '+ref,body:null,state:ref==='3'?'DRAFT':'OPEN',author:{login:'author'},sourceBranch,targetBranch,headSha:ref.repeat(40),commits:1,reviewStatus:'NONE',comments:0,mergeability:'unknown'});
-const derived=[{...request('2','layer-2','layer-1'),source:'branch-derived',observedAt:'2026-09-12T00:00:00Z',status:{state:'current',title:'Change 2',pullRequestState:'OPEN',head:'2'.repeat(40)}},{...request('9','task','main'),source:'task-declared',observedAt:'2026-09-12T00:00:00Z',status:{state:'unavailable',reason:'Provider permission expired'}}];
+const derived=[{...request('2','layer-2','layer-1'),source:'branch-derived',observedAt:'2026-09-12T00:00:00Z',status:{state:'current',title:'Change 2',pullRequestState:'OPEN',head:'2'.repeat(40)}},{provider:'github',host:'two.test',repository:{owner:'another',name:'repo'},ref:'17',source:'task-declared',observedAt:'2026-09-12T00:00:00Z',status:{state:'unavailable',reason:'Provider permission expired'}}];
 function App(){return <main><ConversationPullRequestLinks conversationId="conversation-1" suggested={{provider:'github',host:'forge.test',repository:{owner:'team',name:'repo'}}} derived={derived}/><PullRequestDependencyStacks pullRequests={[request('3','layer-3','layer-2'),request('1','layer-1','main'),request('2','layer-2','layer-1')]} observedAt="2026-09-12T00:00:00Z" refreshing={false} onRefresh={()=>{window.refreshed=true;}} onOpen={pr=>{window.opened=pr.ref;}}/></main>}
 createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><App/></QueryClientProvider>);
 `,
@@ -173,16 +173,16 @@ test('keeps same-number links distinct and shows explicit, derived and Task prov
 }, testInfo) => {
   const mutations = await mount(page);
   await expect(page.getByText('one.test/team/repo #17')).toBeVisible();
-  await expect(page.getByText('two.test/another/repo #17')).toBeVisible();
+  await expect(page.getByText('two.test/another/repo #17')).toHaveCount(2);
   await expect(page.getByText(/Derived from the current branch/)).toBeVisible();
   await expect(page.getByText(/Declared by a Task/)).toBeVisible();
   await expect(page.getByText(/permission expired/).first()).toBeVisible();
   const second = page
-    .getByText('two.test/another/repo #17')
-    .locator('..')
-    .locator('..');
+    .getByRole('listitem')
+    .filter({ hasText: 'two.test/another/repo #17Explicit' });
   await second.getByRole('button', { name: 'Unlink' }).click();
-  await expect(page.getByText('two.test/another/repo #17')).toHaveCount(0);
+  await expect(page.getByText('two.test/another/repo #17')).toHaveCount(1);
+  await expect(page.getByText(/Declared by a Task/)).toBeVisible();
   expect(mutations).toMatchObject([
     {
       method: 'DELETE',
