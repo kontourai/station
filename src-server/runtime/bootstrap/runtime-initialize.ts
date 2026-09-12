@@ -140,6 +140,7 @@ import {
   scheduleRuntimePluginUpdateCheck,
   startRuntimeACPConnections,
 } from './runtime-background-tasks.js';
+import { withStationShutdownOwnership } from './runtime-signal-ownership.js';
 import {
   checkOllamaAvailability,
   prepareRuntimeStartup,
@@ -961,11 +962,14 @@ export async function initializeRuntime(
     };
   };
 
-  const voltAgent = new VoltAgent({
-    agents,
-    logger: logger as any,
-    server: trackedServerFactory,
-  });
+  const voltAgent = withStationShutdownOwnership(
+    () =>
+      new VoltAgent({
+        agents,
+        logger: logger as any,
+        server: trackedServerFactory,
+      }),
+  );
   onVoltAgentCreated(voltAgent);
   await voltAgent.ready;
   if (serverStartInvoked) await serverStartup;
