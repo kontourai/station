@@ -144,3 +144,12 @@ input request's reply binding and declared file/image transport. `needs_input`
 items may carry `inputReference`; approval/permission references keep their
 separate meaning. `OrchestrationSendTurnInput.expectedInputRequest` is a
  constraint, not a grant, and is removed before the adapter receives input.
+
+## Mobile device inspection
+
+`@kontourai/station-contracts/mobile-device` owns `MobileDeviceTarget`,
+`MobileDeviceSummary`, `MobileDeviceInventory`, and `MobileDeviceCapture`.
+Host/device IDs are descriptive and carry no credentials, paths, or execution
+authority. A capture is one observed frame, not stream health or app/build
+identity. Runtime validation belongs to the helper, route, and SDK boundaries;
+see [Mobile device inspection](../guides/mobile-device-workspace.md).

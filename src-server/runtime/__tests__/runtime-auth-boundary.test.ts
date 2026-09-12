@@ -516,6 +516,63 @@ describe('central runtime HTTP security boundary', () => {
     ).toBe(200);
   });
 
+  it('accepts the exact Station cookie alongside large unrelated localhost cookies', async () => {
+    const { request } = createHarness();
+    const unrelated = `other-local-app=${'x'.repeat(4500)}`;
+    const cookie = `${unrelated}; station-device=${DEVICE_CREDENTIAL}`;
+    expect(
+      (
+        await request(
+          '/api/projects',
+          { headers: { Cookie: cookie } },
+          '127.0.0.1',
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(
+          '/api/projects',
+          {
+            method: 'POST',
+            headers: { Cookie: cookie, Origin: ALLOWED_ORIGIN },
+          },
+          '127.0.0.1',
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(
+          '/api/projects',
+          {
+            headers: {
+              Cookie: `${cookie}; __Host-station-device=${DEVICE_CREDENTIAL}`,
+            },
+          },
+          '127.0.0.1',
+        )
+      ).status,
+    ).toBe(401);
+  });
+
+  it('still rejects oversized headers and malformed Station cookies', async () => {
+    const { request } = createHarness();
+    for (const cookie of [
+      `other-local-app=${'x'.repeat(16 * 1024)}; station-device=${DEVICE_CREDENTIAL}`,
+      `other-local-app=${'x'.repeat(4500)}; station-device=invalid`,
+    ])
+      expect(
+        (
+          await request(
+            '/api/projects',
+            { headers: { Cookie: cookie } },
+            '127.0.0.1',
+          )
+        ).status,
+      ).toBe(401);
+  });
+
   it('carries a real paired-cookie principal through canonical middleware into mounted room routes and revokes it', async () => {
     let valid = true;
     const seen: unknown[] = [];

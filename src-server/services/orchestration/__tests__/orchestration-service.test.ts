@@ -796,6 +796,48 @@ describe('OrchestrationService', () => {
     receiptBus.resetForTest();
   });
 
+  test('stream routing names only the current lineage session and omits per-token routing work', () => {
+    const root = 'stream-routing-root';
+    const child = 'stream-routing-child';
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: root,
+      status: 'closed',
+      createdAt: '2026-09-12T00:00:00Z',
+      updatedAt: '2026-09-12T00:00:00Z',
+    });
+    eventStore.reserveConversationHandoff({
+      conversationId: root,
+      predecessorSessionId: root,
+      sessionId: child,
+      idempotencyKey: 'stream-routing',
+      targetAgentId: 'claude',
+      targetEnvironmentId: 'environment-current',
+      messageDigest: 'stream-routing-digest',
+      createdAt: '2026-09-12T00:01:00Z',
+    });
+    expect(
+      service.conversationStreamBinding({
+        threadId: root,
+        method: 'session.configured',
+      }),
+    ).toBeUndefined();
+    expect(
+      service.conversationStreamBinding({
+        threadId: child,
+        method: 'session.configured',
+      }),
+    ).toEqual({ conversationId: root, currentSessionId: child });
+    const lookup = vi.spyOn(eventStore, 'conversationForSession');
+    expect(
+      service.conversationStreamBinding({
+        threadId: child,
+        method: 'content.text-delta',
+      }),
+    ).toBeUndefined();
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
   test('public session metadata cannot mint a room execution binding', async () => {
     const threadId = 'public-metadata-binding';
     const result = await service.sessionCommands.execute(

@@ -901,7 +901,7 @@ describe('SessionsView', () => {
     const elided = renderView();
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
     expect(screen.getByTestId('session-history-elided').textContent).toBe(
-      '1 earlier item is shown without its content, and 1 tool result is shortened — too large to load in full here. The session still holds the complete content.',
+      '1 recorded event has omitted content, and 1 tool result is shortened in this view. The session record retains the full details.',
     );
     elided.unmount();
 
@@ -942,7 +942,7 @@ describe('SessionsView', () => {
 
     const notice = screen.getByTestId('session-history-elided');
     expect(notice.textContent).toContain(
-      '1 earlier item is shown without its content',
+      '1 recorded event has omitted content',
     );
     // It shares its row with the pagination button, which is what
     // `.session-history-controls`' wrap/gap exists for.

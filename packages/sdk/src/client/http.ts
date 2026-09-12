@@ -73,7 +73,7 @@ export interface ClientRequestOptions {
   requireCredential?: boolean;
   /** Identity probes must not follow a response to another listener. */
   redirect?: 'error';
-  /** Optional byte ceiling for a GET response body. */
+  /** Optional byte ceiling for a JSON response body. */
   maxResponseBytes?: number;
   /**
    * Per-call request deadline in milliseconds. `null` (or `0`) opts the call
@@ -1033,6 +1033,9 @@ export async function mutateJson(
   body?: unknown,
 ): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
+  const maximum = requestOptions?.maxResponseBytes;
+  if (maximum !== undefined && (!Number.isSafeInteger(maximum) || maximum < 1))
+    throw new Error('Invalid response byte limit');
   const hasBody = body !== undefined;
   const baseHeaders =
     hasBody || requestOptions?.headers
@@ -1089,9 +1092,13 @@ export async function mutateJson(
     requestOptions,
     assertAuthority,
   );
+  const result =
+    maximum === undefined
+      ? response
+      : boundResponse(response, maximum, assertAuthority);
   return needsAuthorityGuard(url, requestOptions, configured)
-    ? guardResponseAuthority(response, assertAuthority)
-    : response;
+    ? guardResponseAuthority(result, assertAuthority)
+    : result;
 }
 
 export interface FetchSseMessage {

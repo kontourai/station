@@ -33,6 +33,12 @@ distinguishes them, so keep them distinct.
 > Station" is what is actually happening. Bare Station is correct only for the
 > product itself — "Station tried to restart it", "Station's local service".
 
+For the distinct machine, instance, saved-entry, environment, Project, room,
+and offer concepts, see [Station topology](design/station-topology.md). The
+technical phrase **Station client role** may describe a connection initiator in
+architecture text, but it never shortens to **Client** and never replaces the
+user-facing **Device** noun.
+
 **Host** and **client** as a topology pair are accurate and dull, and they make
 the reader think about architecture at the moment they only want their phone
 connected. The station metaphor already does that work: a station is somewhere

@@ -1,5 +1,7 @@
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
+import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
 
 export {
   type BoundedBodyResult,
@@ -1870,6 +1872,18 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService,
     );
   };
+  // Mobile helpers belong to the personal operator host, never a shared tenant.
+  if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
+    context.app.route(
+      '/api/mobile-devices',
+      createMobileDeviceRoutes(
+        new LocalMobileDeviceHost({
+          endpoint: process.env.STATION_MOBILE_DEVICE_HUB_URL,
+        }),
+        { isRequestPrincipalCurrent },
+      ),
+    );
+  }
   context.app.route(
     '/api/search',
     createSearchRoutes(context.runtimeSearch, {
@@ -4278,6 +4292,9 @@ async function readPairingOfferJson(
 ): Promise<Record<string, unknown> | undefined> {
   const result = await readBoundedRequestBody(request, 2_048);
   if (result.status !== 'ok') return undefined;
+  // Node HTTP adapters can represent a bodyless POST as an empty stream.
+  // Only callers admitting an empty object may accept zero decoded bytes.
+  if (result.body === '' && allowedKeysets.has('')) return {};
   try {
     const value = JSON.parse(result.body);
     if (!value || typeof value !== 'object' || Array.isArray(value)) {

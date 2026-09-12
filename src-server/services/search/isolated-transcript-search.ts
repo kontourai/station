@@ -25,6 +25,7 @@ export interface IsolatedTranscriptReads
       matchedEventId: string;
       ownerUserId: string;
       legacyOwnerUserId?: string;
+      ownerUserIds?: readonly string[];
       tenantId?: string;
       continuation?: string;
     },
@@ -35,6 +36,7 @@ export interface IsolatedTranscriptReads
       query: string;
       ownerUserId: string;
       legacyOwnerUserId?: string;
+      ownerUserIds?: readonly string[];
       tenantId?: string;
       projectId?: string;
       limit: number;
@@ -47,6 +49,7 @@ export interface IsolatedTranscriptReads
       matchedEventId: string;
       ownerUserId: string;
       legacyOwnerUserId?: string;
+      ownerUserIds?: readonly string[];
       tenantId?: string;
     },
     signal?: AbortSignal,
@@ -56,6 +59,7 @@ export interface IsolatedTranscriptReads
       threadId: string;
       ownerUserId: string;
       legacyOwnerUserId?: string;
+      ownerUserIds?: readonly string[];
       tenantId?: string;
     },
     signal?: AbortSignal,

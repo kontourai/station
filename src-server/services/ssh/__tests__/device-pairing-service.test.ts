@@ -18,8 +18,10 @@ import {
   pairingScopeIncludes,
   pairingScopePresetString,
 } from '@kontourai/station-contracts';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
 import { skipIfCannotChmod } from '../../infra/__tests__/helpers/store-faults.js';
 import { TerminalWebSocketServer } from '../../terminal/terminal-ws-server.js';
 import {
@@ -207,6 +209,67 @@ afterEach(() => {
 });
 
 describe('DevicePairingService', () => {
+  test('approved personal devices share conversation owners without merging device identities', () => {
+    const { service } = harness();
+    const first = pair(service, 'Phone').result;
+    const second = pair(service, 'Desktop').result;
+    const phone = humanPrincipal('device', first.device.id, 'Phone').id;
+    const desktop = humanPrincipal('device', second.device.id, 'Desktop').id;
+    expect(phone).not.toBe(desktop);
+    expect(service.canSharePersonalConversation(phone, desktop)).toBe(true);
+    expect(service.canSharePersonalConversation(desktop, phone)).toBe(true);
+    expect(
+      service.canSharePersonalConversation(LOCAL_OPERATOR_PRINCIPAL_ID, phone),
+    ).toBe(true);
+    expect(
+      service.canSharePersonalConversation(
+        'human:device:unknown-device',
+        phone,
+      ),
+    ).toBe(false);
+    expect(
+      service.canSharePersonalConversation(
+        phone,
+        'human:device:foreign-device',
+      ),
+    ).toBe(false);
+    service.revokeDevice(first.device.id, 'operator-credential');
+    expect(service.canSharePersonalConversation(phone, desktop)).toBe(false);
+    expect(service.personalConversationOwnerIds(phone)).toBeUndefined();
+    // Revoking a device revokes its access, not the operator's historical conversation.
+    expect(service.canSharePersonalConversation(desktop, phone)).toBe(true);
+    expect(service.personalConversationOwnerIds(desktop)).toContain(phone);
+    expect(service.verifyCredential(first.credential)).toBe(false);
+  });
+
+  test('delegation credentials do not inherit the personal conversation account', () => {
+    const { service } = harness();
+    const phone = pair(service).result;
+    const offer = service.createOffer({
+      endpoint: 'https://station.example.test',
+      scope: pairingScopePresetString('delegation'),
+      kind: 'delegation',
+    });
+    const request = service.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Delegate',
+    });
+    service.confirmRequest(request.requestId, OPERATOR_APPROVAL);
+    const delegate = service.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: request.requestId,
+    });
+    expect(
+      service.canSharePersonalConversation(
+        humanPrincipal('device', delegate.device.id, 'Delegate').id,
+        humanPrincipal('device', phone.device.id, 'Phone').id,
+      ),
+    ).toBe(false);
+  });
+
   test('records durable usage shape and only a server-derived coarse peer class', () => {
     const { service, advance } = harness();
     const paired = pair(service).result;

@@ -1,6 +1,7 @@
 import { memo, useCallback } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
+import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import type { ChatMessage } from '../../types';
 import { modelIdentityLabel } from '../../utils/modelCapabilities';
@@ -206,9 +207,13 @@ function MessageBubbleComponent({
   // legacy one-to-one shape only, the active Session is an equivalent
   // fallback; once a conversation id is present, guessing would attach a
   // historical answer to the wrong replacement Session.
-  const answerSessionId =
-    msg.sessionId ??
-    (activeSession.conversationId === undefined ? activeSession.id : undefined);
+  const replaying = isReplayThread(activeSession.id);
+  const answerSessionId = replaying
+    ? undefined
+    : (msg.sessionId ??
+      (activeSession.conversationId === undefined
+        ? activeSession.id
+        : undefined));
   // An execution Session is immutable history once it has produced a turn.
   // A conversation can point at another current Session after a handoff, so
   // resolving this row through `activeSession.agentSlug` would relabel old
@@ -225,8 +230,9 @@ function MessageBubbleComponent({
     msg,
     exactCurrentSession ? { agentSlug: activeSession.agentSlug } : undefined,
   );
-  const feedbackConversationId =
-    activeSession.conversationId ?? activeSession.id;
+  const feedbackConversationId = replaying
+    ? undefined
+    : (activeSession.conversationId ?? activeSession.id);
   const registeredRowAgent = rowAgentSlug
     ? agents.find((candidate) => candidate.slug === rowAgentSlug)
     : undefined;
@@ -410,7 +416,8 @@ function MessageBubbleComponent({
       {/* Only a rehydrated, durable authored input has the exact identity
             needed for an explicit Task pin. Optimistic/content-reconciled rows
             deliberately carry no surrogate action. */}
-      {msg.role === 'user' &&
+      {!replaying &&
+        msg.role === 'user' &&
         msg.sourceEventId &&
         msg.sessionId &&
         msg.turnId && (

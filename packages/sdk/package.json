@@ -9,6 +9,7 @@
     "*.css"
   ],
   "exports": {
+    "./mobile-device": "./src/mobile-device.ts",
     ".": "./src/index.ts",
     "./core-update-restart-status": "./src/core-update-restart-status.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",
