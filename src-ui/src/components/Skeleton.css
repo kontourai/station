@@ -54,14 +54,7 @@
 }
 
 .skeleton-status-label {
-  display: none;
+  display: var(--loading-label-display, none);
   color: var(--text-secondary);
   font-size: 0.875rem;
-}
-
-/* Static placeholders still need to communicate that a read is in progress. */
-@media (prefers-reduced-motion: reduce) {
-  .skeleton-status-label {
-    display: block;
-  }
 }
