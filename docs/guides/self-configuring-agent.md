@@ -92,16 +92,21 @@ new identity. Use `get_job_logs` or the Runs surface to observe the result.
 ## Delegate from chat
 
 Open a project chat and choose **Delegate** in its task-context bar. Station
-prefills the current project, Agent app, and effective model. The compact sheet
-also lets you choose a Station agent or a saved SSH environment; remote
-environments are re-verified and connected when selected so the sheet can load
-that Station's actual Agent apps, Station agents, readiness, and model catalog
-before launch. Unavailable targets remain explained rather than silently
-falling back to a similarly named local runtime. Model changes stay under
-**Options** so switching to another target uses that target's default unless
-you explicitly override it. Station agents and Agent apps both launch through
-the persisted orchestration task contract, so either kind can be observed,
-interrupted, and resumed locally or through a verified SSH environment.
+loads the Project's execution default before discovering workers. **Change
+routing** lets you choose an Agent, a Station and a model override. A configured
+remote stays selected while its inventory loads or its connection fails; Station
+does not replace it with **This Station**. If the Project defaults cannot be
+loaded, retry that read or make an explicit Station choice.
+
+Remote environments are re-verified and connected to load their available Agents
+before launch. Discovery for a different environment cannot supply the selected
+worker list. A failed remote discovery keeps the task draft and offers retry;
+choosing **This Station** explicitly permits a local launch. An explicit choice
+survives later Project-default and inventory updates. Project settings likewise
+retain the selected remote while their saved-environment list loads.
+
+Delegation uses the persisted orchestration task contract. Its result can be
+observed, interrupted and resumed through the owning execution environment.
 
 Because **Delegate** is opened from a chat's task context, the sheet identifies
 the new task as a **Child worker of** that chat and sends its session ID as the

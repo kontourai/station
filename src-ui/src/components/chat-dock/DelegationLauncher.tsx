@@ -11,6 +11,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
+import { Button } from '../Button';
 import {
   ENVIRONMENTS_UNAVAILABLE_NOTICE,
   MISSING_ENVIRONMENT_NOTICE,
@@ -58,7 +59,6 @@ export function DelegationLauncher({
   const visualViewport = useMobileVisualViewport();
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const wasOpenRef = useRef(false);
-  const environmentSelectionExplicitRef = useRef(false);
   const {
     data: environments,
     isSuccess: environmentsLoaded,
@@ -66,7 +66,12 @@ export function DelegationLauncher({
   } = useSshEnvironmentsQuery({
     enabled: isOpen,
   });
-  const { data: project } = useProjectQuery(projectSlug ?? '', {
+  const {
+    data: project,
+    isSuccess: projectLoaded,
+    isError: projectFailed,
+    refetch: retryProject,
+  } = useProjectQuery(projectSlug ?? '', {
     enabled: isOpen && Boolean(projectSlug),
   });
   // #790 (#765 D4): Stations paired via `station environment peers add` are
@@ -103,20 +108,24 @@ export function DelegationLauncher({
     environments?.some(
       (environment) =>
         environment.profile.environmentId === configuredEnvironmentId,
-    );
+    ) ||
+    peerStations.some((peer) => peer.environmentId === configuredEnvironmentId);
   const danglingDefaultEnvironment = Boolean(
     environmentsLoaded &&
+      peerCredentialsQuery.isSuccess &&
       configuredEnvironmentId !== 'current' &&
       !defaultEnvironmentExists,
   );
-  const defaultEnvironmentId = danglingDefaultEnvironment
-    ? 'current'
-    : defaultEnvironmentExists || environmentsFailed
-      ? configuredEnvironmentId
-      : 'current';
   const mutation = useDelegateOrchestrationTaskMutation(apiBase);
 
-  const [environmentId, setEnvironmentId] = useState('current');
+  // Null follows the Project default; an explicit choice survives inventory
+  // refreshes. Missing inventory must never substitute the current machine.
+  const [chosenEnvironmentId, setEnvironmentId] = useState<string | null>(null);
+  const environmentId = chosenEnvironmentId ?? configuredEnvironmentId;
+  const projectDefaultsUnavailable =
+    Boolean(projectSlug) &&
+    (!projectLoaded || !project) &&
+    chosenEnvironmentId === null;
   const {
     data: delegationOptions,
     error: discoveryError,
@@ -127,10 +136,15 @@ export function DelegationLauncher({
       ? { ...(projectSlug ? { projectSlug } : {}) }
       : { environmentId },
     apiBase,
-    { enabled: isOpen },
+    { enabled: isOpen && !projectDefaultsUnavailable },
   );
 
+  const discoveryMatchesEnvironment =
+    environmentId === 'current'
+      ? delegationOptions?.environment.kind === 'current'
+      : delegationOptions?.environment.id === environmentId;
   const targets = useMemo<TargetOption[]>(() => {
+    if (projectDefaultsUnavailable || !discoveryMatchesEnvironment) return [];
     return (delegationOptions?.targets ?? []).map((option) => ({
       id: option.id,
       value: `agent:${option.id}`,
@@ -141,7 +155,11 @@ export function DelegationLauncher({
       defaultModel: option.defaultModel,
       models: option.models,
     }));
-  }, [delegationOptions]);
+  }, [
+    delegationOptions,
+    discoveryMatchesEnvironment,
+    projectDefaultsUnavailable,
+  ]);
 
   const currentTargetId = currentAgentId;
   const currentTarget = currentTargetId
@@ -166,28 +184,22 @@ export function DelegationLauncher({
     if (isOpen && !wasOpenRef.current) {
       setPrompt(initialPrompt);
       setTarget(defaultTarget);
-      environmentSelectionExplicitRef.current = false;
-      setEnvironmentId(defaultEnvironmentId);
+      setEnvironmentId(null);
       setModel(defaultTarget === currentTarget ? (currentModel ?? '') : '');
       setShowRouting(false);
       mutation.reset();
       requestAnimationFrame(() => promptRef.current?.focus());
     }
+    if (!isOpen) setEnvironmentId(null);
     wasOpenRef.current = isOpen;
   }, [
     currentModel,
     currentTarget,
     defaultTarget,
-    defaultEnvironmentId,
     initialPrompt,
     isOpen,
     mutation.reset,
   ]);
-
-  useEffect(() => {
-    if (!isOpen || environmentSelectionExplicitRef.current) return;
-    setEnvironmentId(defaultEnvironmentId);
-  }, [defaultEnvironmentId, isOpen]);
 
   useEffect(() => {
     if (!isOpen || target || !defaultTarget) return;
@@ -222,7 +234,9 @@ export function DelegationLauncher({
       : (selectedEnvironment?.profile.name ??
         selectedPeer?.label ??
         selectedPeer?.apiBase ??
-        delegationOptions?.environment.name ??
+        (discoveryMatchesEnvironment
+          ? delegationOptions?.environment.name
+          : undefined) ??
         'Selected Station');
   const resolvedModelId = model.trim() || selectedTarget?.defaultModel || '';
   const resolvedModelName = resolvedModelId
@@ -233,9 +247,10 @@ export function DelegationLauncher({
       )?.name ?? resolvedModelId)
     : null;
   const environmentUnavailable = Boolean(
-    selectedEnvironment &&
-      (!selectedEnvironment.profile.environmentId ||
-        !selectedEnvironment.profile.verifiedProjectPath),
+    projectDefaultsUnavailable ||
+      (selectedEnvironment &&
+        (!selectedEnvironment.profile.environmentId ||
+          !selectedEnvironment.profile.verifiedProjectPath)),
   );
 
   const submit = async (event: React.FormEvent) => {
@@ -403,6 +418,25 @@ export function DelegationLauncher({
               </button>
             </div>
           )}
+          {projectDefaultsUnavailable && (
+            <p
+              className="delegation-launcher__hint"
+              role={projectFailed ? 'alert' : 'status'}
+            >
+              {projectFailed
+                ? 'Project execution defaults could not be loaded.'
+                : 'Checking Project execution defaults before choosing a Station.'}
+              {projectFailed && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => void retryProject()}
+                >
+                  Retry Project
+                </Button>
+              )}
+            </p>
+          )}
           {danglingDefaultEnvironment && (
             <p className="delegation-launcher__hint" role="status">
               {MISSING_ENVIRONMENT_NOTICE}
@@ -457,17 +491,17 @@ export function DelegationLauncher({
                   <select
                     value={environmentId}
                     onChange={(event) => {
-                      environmentSelectionExplicitRef.current = true;
                       setEnvironmentId(event.target.value);
                       setTarget('');
                       setModel('');
                     }}
                   >
                     <option value="current">This Station</option>
-                    {environmentsFailed &&
-                      configuredEnvironmentId !== 'current' && (
-                        <option value={configuredEnvironmentId}>
-                          {configuredEnvironmentId} — saved environment
+                    {environmentId !== 'current' &&
+                      !selectedEnvironment &&
+                      !selectedPeer && (
+                        <option value={environmentId}>
+                          {environmentId} — saved environment
                         </option>
                       )}
                     {(environments ?? [])
