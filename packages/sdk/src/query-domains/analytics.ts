@@ -324,7 +324,7 @@ export function useClearFeedbackAnalysisMutation(
 export function useSaveFeedbackRatingMutation(
   options?: MutationOptions<void, FeedbackRatingInput>,
 ) {
-  return useApiMutation(async (input) => saveFeedbackRating(input), {
+  return useApiMutation(saveFeedbackRating, {
     invalidateKeys: [
       ['feedback', 'ratings'],
       ['feedback', 'guidelines'],
@@ -338,7 +338,7 @@ export function useSaveFeedbackRatingMutation(
 export function useDeleteFeedbackRatingMutation(
   options?: MutationOptions<void, FeedbackRatingDeleteInput>,
 ) {
-  return useApiMutation(async (input) => deleteFeedbackRating(input), {
+  return useApiMutation(deleteFeedbackRating, {
     invalidateKeys: [
       ['feedback', 'ratings'],
       ['feedback', 'guidelines'],
