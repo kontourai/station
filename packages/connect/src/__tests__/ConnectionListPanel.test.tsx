@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SavedConnection } from '../core/types';
 import { ConnectionListPanel } from '../react/connection-manager-modal/ConnectionListPanel';
+
+afterEach(() => vi.unstubAllGlobals());
 
 const connection: SavedConnection = {
   profileVersion: 4,
@@ -60,10 +62,14 @@ function renderPanel(
     connections = [connection],
     onRestartInjectedConnection,
     onMakeDefaultProfile,
+    canEditSharedProfiles,
+    onStartEdit = vi.fn(),
   }: {
     connections?: SavedConnection[];
     onRestartInjectedConnection?: (connection: SavedConnection) => void;
     onMakeDefaultProfile?: (connection: SavedConnection) => void;
+    canEditSharedProfiles?: boolean;
+    onStartEdit?: (connection: SavedConnection) => void;
   } = {},
 ) {
   render(
@@ -71,6 +77,7 @@ function renderPanel(
       connections={connections}
       activeConnectionId={connection.id}
       onRestartInjectedConnection={onRestartInjectedConnection}
+      canEditSharedProfiles={canEditSharedProfiles}
       editingId={null}
       editName=""
       editUrl=""
@@ -78,7 +85,7 @@ function renderPanel(
       getStatus={() => 'connected'}
       onSelect={onSelect}
       onCheck={() => {}}
-      onStartEdit={() => {}}
+      onStartEdit={onStartEdit}
       onRemove={() => {}}
       onEditNameChange={() => {}}
       onEditUrlChange={() => {}}
@@ -101,6 +108,48 @@ function renderPanel(
 }
 
 describe('ConnectionListPanel', () => {
+  it('copies the complete address and enables managed edits only with the owner capability', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const onStartEdit = vi.fn();
+    const profile = {
+      ...connection,
+      id: 'station-profile:remote',
+      url: 'https://a-very-long-saved-station-address.example.test:8443',
+    };
+    renderPanel(vi.fn(), {
+      connections: [profile],
+      canEditSharedProfiles: true,
+      onStartEdit,
+    });
+    const more = screen.getByRole('button', {
+      name: 'More actions for Station One',
+    });
+    fireEvent.click(more);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy address' }));
+    expect(writeText).toHaveBeenCalledWith(profile.url);
+    await screen.findByText('Address copied');
+    fireEvent.click(more);
+    const edit = screen.getByRole('menuitem', {
+      name: 'Edit Station',
+    }) as HTMLButtonElement;
+    expect(edit.disabled).toBe(false);
+    fireEvent.click(edit);
+    expect(onStartEdit).toHaveBeenCalledWith(profile);
+  });
+
+  it('does not claim success when the clipboard rejects copying', async () => {
+    vi.stubGlobal('navigator', {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
+    renderPanel();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'More actions for Station One' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy address' }));
+    await screen.findByText('Could not copy. The full address is shown above.');
+    expect(screen.queryByText('Address copied')).toBeNull();
+  });
   it('marks the exact saved target as pending without duplicating Request access', () => {
     const pending = { ...connection, credentialState: 'required' as const };
     render(
@@ -239,6 +288,10 @@ describe('ConnectionListPanel', () => {
     const check = screen.getByRole('menuitem', { name: 'Check reachability' });
     expect(document.activeElement).toBe(check);
     fireEvent.keyDown(check, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(
+      screen.getByRole('menuitem', { name: 'Copy address' }),
+    );
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(
       screen.getByRole('menuitem', { name: 'Edit Station' }),
     );

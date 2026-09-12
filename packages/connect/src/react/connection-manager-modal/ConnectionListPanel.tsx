@@ -21,6 +21,9 @@ interface ConnectionListPanelProps {
   connections: SavedConnection[];
   activeConnectionId?: string;
   editingId: string | null;
+  canEditSharedProfiles?: boolean;
+  editError?: string;
+  editPending?: boolean;
   editName: string;
   editUrl: string;
   credentialEntry: string;
@@ -91,8 +94,12 @@ function ConnectionRow({
   onMakeDefaultProfile,
   onRestartInjectedConnection,
   getStatus,
+  canEditSharedProfiles,
+  busy,
 }: {
   connection: SavedConnection;
+  canEditSharedProfiles?: boolean;
+  busy?: boolean;
   activeConnectionId?: string;
   pendingConnectionId?: string;
   onSelect: (connection: SavedConnection) => void;
@@ -115,6 +122,7 @@ function ConnectionRow({
   // honest home for a fact that was previously true of every row, all the
   // time, whether or not anyone was about to tap Forget.
   const [forgetArmed, setForgetArmed] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<string>();
   const [actionsOpen, setActionsOpen] = useState(false);
   const actionsMenuId = useId();
   const actionsTriggerRef = useRef<HTMLButtonElement>(null);
@@ -193,6 +201,7 @@ function ConnectionRow({
         <button
           type="button"
           className="station-connect-row__select"
+          disabled={busy}
           aria-label={`Select ${connectionDisplayLabel(connection)}`}
           aria-pressed={connection.id === activeConnectionId}
           onClick={() => onSelect(connection)}
@@ -212,7 +221,14 @@ function ConnectionRow({
             {localServerState}
           </div>
         ) : (
-          <div className="station-connect-row__url">{connection.url}</div>
+          <div className="station-connect-row__url" title={connection.url}>
+            {connection.url}
+          </div>
+        )}
+        {copyStatus && (
+          <div role="status" className="station-connect-row__meta">
+            {copyStatus}
+          </div>
         )}
         {!isInjected && connection.endpoints.length > 1 && (
           <div className="station-connect-row__meta">
@@ -363,6 +379,7 @@ function ConnectionRow({
               }}
               title="More Station actions"
               aria-label={`More actions for ${connectionDisplayLabel(connection)}`}
+              disabled={busy}
               aria-expanded={actionsOpen}
               aria-controls={actionsOpen ? actionsMenuId : undefined}
               aria-haspopup="menu"
@@ -392,13 +409,35 @@ function ConnectionRow({
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={isSharedStationProfile}
+                  onClick={() => {
+                    closeActions(true);
+                    void navigator.clipboard?.writeText(connection.url).then(
+                      () => setCopyStatus('Address copied'),
+                      () =>
+                        setCopyStatus(
+                          'Could not copy. The full address is shown above.',
+                        ),
+                    );
+                    if (!navigator.clipboard)
+                      setCopyStatus(
+                        'Copy is unavailable. The full address is shown above.',
+                      );
+                  }}
+                >
+                  Copy address
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={isSharedStationProfile && !canEditSharedProfiles}
                   onClick={() => {
                     closeActions();
                     onStartEdit(connection);
                   }}
                 >
-                  {isSharedStationProfile ? 'Edit in the CLI' : 'Edit Station'}
+                  {isSharedStationProfile && !canEditSharedProfiles
+                    ? 'Edit in the CLI'
+                    : 'Edit Station'}
                 </button>
                 <button
                   type="button"
@@ -427,6 +466,9 @@ export function ConnectionListPanel({
   connections,
   activeConnectionId,
   editingId,
+  canEditSharedProfiles,
+  editError,
+  editPending,
   editName,
   editUrl,
   credentialEntry,
@@ -458,6 +500,11 @@ export function ConnectionListPanel({
 }: ConnectionListPanelProps) {
   return (
     <>
+      {editError && (
+        <p role="alert" className="station-connect-edit__hint">
+          {editError}
+        </p>
+      )}
       <div className="station-connect-list">
         {connections.length === 0 && (
           <p className="station-connect-empty">No Stations saved yet.</p>
@@ -490,6 +537,8 @@ export function ConnectionListPanel({
               <input
                 type="text"
                 value={editName}
+                aria-label="Station name"
+                disabled={editPending}
                 onChange={(event) => onEditNameChange(event.target.value)}
                 placeholder="Name"
                 className="station-connect-input"
@@ -497,6 +546,8 @@ export function ConnectionListPanel({
               <input
                 type="text"
                 value={editUrl}
+                aria-label="Station address"
+                disabled={editPending}
                 onChange={(event) => onEditUrlChange(event.target.value)}
                 placeholder="http://192.168.1.x:3141"
                 className="station-connect-input"
@@ -543,17 +594,25 @@ export function ConnectionListPanel({
                   />
                 </label>
               )}
+              {connection.id.startsWith('station-profile:') &&
+                editUrl.trim() !== connection.url && (
+                  <p className="station-connect-edit__hint">
+                    Changing the address requires connecting this device again.
+                  </p>
+                )}
               <div className="station-connect-btn-row">
                 <button
                   type="button"
                   onClick={onSaveEdit}
+                  disabled={editPending}
                   className="station-connect-btn station-connect-btn--primary"
                 >
-                  Save
+                  {editPending ? 'Saving…' : 'Save'}
                 </button>
                 <button
                   type="button"
                   onClick={onCancelEdit}
+                  disabled={editPending}
                   className="station-connect-btn station-connect-btn--secondary"
                 >
                   Cancel
@@ -583,6 +642,8 @@ export function ConnectionListPanel({
               onConfirmEndpoint={onConfirmEndpoint}
               onRequestAccess={onRequestAccess}
               onMakeDefaultProfile={onMakeDefaultProfile}
+              canEditSharedProfiles={canEditSharedProfiles}
+              busy={editPending}
               onRestartInjectedConnection={onRestartInjectedConnection}
               getStatus={getStatus}
             />
