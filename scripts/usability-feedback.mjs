@@ -150,7 +150,7 @@ export function validateVisualReview(value, screenIds) {
 }
 
 /**
- * @param {Array<{id: string, bytes: Buffer}>} screens
+ * @param {Array<{id: string, bytes: Buffer, controls?: Array<{label: string, disabled: boolean}> | null}>} screens
  * @param {{apiKey?: string, model: string, fetchImpl?: typeof fetch, baseUrl?: string}} options
  */
 export async function reviewScreens(
