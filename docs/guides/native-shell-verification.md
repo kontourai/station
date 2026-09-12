@@ -111,6 +111,21 @@ Those gaps are [#2006](https://github.com/kontourai/station/issues/2006).
 
 ## Logs and diagnosis boundary
 
+For the Windows permission-helper regression, use an **unelevated** PowerShell
+in the repository and a new proof directory:
+
+```powershell
+./scripts/verify-windows-path-trust.ps1 -ProofRoot (Join-Path $env:TEMP ('station-acl-proof-' + [guid]::NewGuid()))
+```
+
+This executes the native ACL program against current-user-owned directories
+and files that initially grant Modify rather than FullControl. Their owner
+can harden the DACL without requesting an unnecessary ownership change.
+The check also verifies that unrelated access rules are rejected and file
+contents are preserved. It refuses elevated execution so administrator
+privileges cannot hide the regression. This is helper evidence; native GUI
+startup and in-app installation/relaunch remain separate checks.
+
 The desktop host writes its own log through `tauri-plugin-log`. The configured
 application identifier selects the shell log directory, so each release channel
 has a distinct path:

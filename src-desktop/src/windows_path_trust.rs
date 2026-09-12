@@ -107,7 +107,10 @@ function Set-Trust([string]$Path, [bool]$Directory) {
   $acl.SetAccessRuleProtection($true, $false); foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRuleAll($rule) }
   $inheritance = if ($Directory) { [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit' } else { [Security.AccessControl.InheritanceFlags]::None }
   $rule = New-Object Security.AccessControl.FileSystemAccessRule($sid, [Security.AccessControl.FileSystemRights]::FullControl, $inheritance, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow)
-  $acl.SetOwner($sid); $acl.AddAccessRule($rule); if ($Directory) { [IO.Directory]::SetAccessControl($Path, $acl) } else { [IO.File]::SetAccessControl($Path, $acl) }
+  # An owner can change its DACL without WRITE_OWNER. Marking an unchanged
+  # owner for persistence would unnecessarily require that additional right.
+  if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $sid.Value) { $acl.SetOwner($sid) }
+  $acl.AddAccessRule($rule); if ($Directory) { [IO.Directory]::SetAccessControl($Path, $acl) } else { [IO.File]::SetAccessControl($Path, $acl) }
 }
 function Assert-Trust([string]$Path, [bool]$Directory, [bool]$ExecutionSafe) {
   Assert-NoReparse $Path; $item = Get-Item -LiteralPath $Path -Force; if ($Directory -ne $item.PSIsContainer) { throw "Station trust path kind changed: $Path" }
