@@ -19,6 +19,7 @@ import {
 } from './governanceHandlers';
 import { handlePlanUpdatedEvent } from './planHandlers';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
+import { recordReplayRuntime } from './replay/capture-tap';
 import { isReplayThread } from './replay/replay-registry';
 import {
   handleSessionExitedEvent,
@@ -54,6 +55,7 @@ export function handleOrchestrationEvent(
    */
   provenance?: unknown,
 ) {
+  recordReplayRuntime(apiBase, event, provenance);
   // archive#1301: ingest BEFORE the `if (!chat) return` guard below —
   // a delegate session's events arrive on the delegate's own threadId, which
   // is never opened as a chat, so the guard would otherwise drop every event

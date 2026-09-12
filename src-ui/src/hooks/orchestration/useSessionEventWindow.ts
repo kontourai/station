@@ -14,6 +14,10 @@ import {
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS,
 } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  publishHistoryForCapture,
+  removeHistoryForCapture,
+} from './replay/capture-tap';
 
 function eventKey(item: OrchestrationSequencedEvent): string {
   return item.event.eventId || `sequence:${item.sequence}`;
@@ -323,6 +327,41 @@ export function useSessionEventWindow(
   // Effects reset the request after commit. Do not expose the prior reader's
   // authority or transcript during the first render of a different identity.
   const currentReader = Boolean(threadId) && readerKeyRef.current === readerKey;
+  useEffect(() => {
+    if (!threadId || !currentReader) return;
+    publishHistoryForCapture(apiBase, threadId, {
+      events,
+      currentSessionId,
+      sessionLineage,
+      handoffs,
+      contextBoundaries,
+      hasMore: Boolean(cursor),
+      loading,
+      settled,
+      upgradeRequired,
+      errorMessage: error?.message,
+    });
+  }, [
+    apiBase,
+    threadId,
+    currentReader,
+    events,
+    currentSessionId,
+    sessionLineage,
+    handoffs,
+    contextBoundaries,
+    cursor,
+    loading,
+    settled,
+    upgradeRequired,
+    error,
+  ]);
+  useEffect(
+    () => () => {
+      if (threadId) removeHistoryForCapture(apiBase, threadId);
+    },
+    [apiBase, threadId],
+  );
   return {
     events: currentReader ? events : [],
     ...(currentReader && currentSessionId ? { currentSessionId } : {}),

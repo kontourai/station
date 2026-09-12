@@ -583,6 +583,6 @@ test('a running call beside an awaiting grant keeps a single progress line on th
   );
   expect(await screen.findByText('still going')).toBeTruthy();
   expect(screen.getAllByText('still going')).toHaveLength(1);
-  expect(document.querySelector('.streaming-progress')).toBeTruthy();
+  expect(document.querySelector('.streaming-activity')).toBeTruthy();
   expect(document.querySelector('.tool-call-batch__progress')).toBeNull();
 });

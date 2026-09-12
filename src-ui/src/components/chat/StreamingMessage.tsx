@@ -3,6 +3,7 @@ import type {
   ChatActivityHint,
   ChatContentPart,
 } from '../../contexts/active-chats-state';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useStreamingContent } from '../../hooks/useStreamingContent';
 import { useStreamingHaptics } from '../../hooks/useStreamingHaptics';
 import { deriveToolProgressSummary } from '../../utils/chat-progress';
@@ -13,7 +14,6 @@ import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
 import { ToolCallBatchBoundary } from './ToolCallBatchBoundary';
-import { ToolProgressIndicator } from './ToolProgressIndicator';
 import { isToolCallBatchPending, toolCallPhase } from './tool-call-labels';
 import { splitToolCallRuns } from './tool-call-runs';
 import { UIBlockRenderer } from './UIBlockRenderer';
@@ -36,6 +36,8 @@ export type StreamingMessageProps = {
   ) => React.ReactNode;
   /** Transient provider activity signal (thinking/compacting/…). */
   activityHint?: ChatActivityHint;
+  elapsedMs?: number;
+  suppressActivity?: boolean;
   /**
    * Row attribution (archive#1424 fix): shown from the FIRST
    * frame of streaming, not just after the turn settles into a persisted
@@ -81,11 +83,12 @@ export function StreamingMessageView({
   renderToolCall,
   renderReasoning,
   activityHint,
+  elapsedMs,
+  suppressActivity,
   attributionAgent,
   owner,
   onContentChange,
   streamingText,
-  hasContent,
   contentParts,
   contentRevision,
 }: StreamingMessageProps & {
@@ -94,6 +97,7 @@ export function StreamingMessageView({
   contentParts: ChatContentPart[];
   contentRevision: number;
 }) {
+  const isMobile = useIsMobile();
   useStreamingHaptics(sessionId, streamingText.length);
   const progressSummary = deriveToolProgressSummary(contentParts);
   const hasReasoningPart = contentParts.some(
@@ -133,16 +137,22 @@ export function StreamingMessageView({
   }, [contentRevision, onContentChange]);
 
   return (
-    <div className="streaming-message">
-      <div className="streaming-message-icon" style={agentIconStyle}>
-        {agentIcon}
-      </div>
+    <div
+      className={`streaming-message${isMobile ? ' message-row--compact' : ''}`}
+    >
+      {!isMobile && (
+        <div className="streaming-message-icon" style={agentIconStyle}>
+          {agentIcon}
+        </div>
+      )}
       <div className="message assistant" style={{ fontSize: `${fontSize}px` }}>
-        <MessageAttribution
-          agent={attributionAgent ?? null}
-          engine={null}
-          owner={owner}
-        />
+        {!isMobile && (
+          <MessageAttribution
+            agent={attributionAgent ?? null}
+            engine={null}
+            owner={owner}
+          />
+        )}
 
         {/* Render completed content parts in order */}
         {blocks.map((block) => {
@@ -207,25 +217,18 @@ export function StreamingMessageView({
           </div>
         )}
 
-        {progressSummary && !collapsedInProgressBatch && (
-          <ToolProgressIndicator summary={progressSummary} />
-        )}
-
-        {/* Loading indicator. Before any content arrives (redacted thinking,
-            SDK spawn latency) a bare dots row reads as "stuck" — pair it
-            with a live activity label so the agent never looks idle while
-            working. Once content flows, the compact dots row suffices; tool
-            activity is the collapsed batch headline when 2+ calls are in
-            flight, otherwise ToolProgressIndicator above. */}
-        {hasContent ? (
-          <div className="streaming-loading">
-            <LoadingDots />
-          </div>
-        ) : (
+        {!suppressActivity && (
           <div className="streaming-activity" role="status">
             <LoadingDots />
-            <span className="streaming-activity__label">{activityLabel}</span>
-            <ElapsedWait label="Elapsed" />
+            <span
+              className="streaming-activity__label"
+              title={progressSummary?.toolName}
+            >
+              {progressSummary && !collapsedInProgressBatch
+                ? progressSummary.label
+                : activityLabel}
+            </span>
+            <ElapsedWait label="" elapsedMs={elapsedMs} />
           </div>
         )}
       </div>

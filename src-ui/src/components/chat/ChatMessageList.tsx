@@ -54,6 +54,11 @@ interface ChatMessageListProps {
   /** Override rendering for specific messages. Return a ReactNode to replace default, or null to use MessageBubble. */
   renderOverride?: (msg: ChatMessage, idx: number) => React.ReactNode | null;
   emptyState?: React.ReactNode;
+  historyNotice?: React.ReactNode;
+  hasOlderMessages?: boolean;
+  historyLoading?: boolean;
+  suppressActivity?: boolean;
+  onLoadOlder?: () => Promise<void>;
   /**
    * archive#1301: when provided, the background-tasks banner below
    * becomes a real tap target opening the Background tasks sheet instead of
@@ -115,6 +120,11 @@ function ChatMessageListComponent({
   showToolDetails,
   renderOverride,
   emptyState,
+  historyNotice,
+  hasOlderMessages,
+  historyLoading,
+  suppressActivity,
+  onLoadOlder,
   onOpenBackgroundTasks,
   owner,
   accountableHuman,
@@ -146,6 +156,7 @@ function ChatMessageListComponent({
   const [submittedBlockIds, setSubmittedBlockIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const loadingOlderRef = useRef(false);
   const previousTranscriptRows = useRef<readonly TranscriptRow[]>([]);
 
   // Dock snap changes are known synchronously by the parent. Handle that
@@ -328,6 +339,23 @@ function ChatMessageListComponent({
     return () => observer.disconnect();
   }, []);
 
+  const loadOlder = async () => {
+    if (!onLoadOlder || historyLoading || loadingOlderRef.current) return;
+    loadingOlderRef.current = true;
+    const element = messagesContainerRef.current;
+    if (element) {
+      visibleAnchorRef.current = captureChatScrollAnchor(element);
+      isUserScrolledUpRef.current = true;
+      setIsUserScrolledUp(true);
+      setScrollAnchorVersion((version) => version + 1);
+    }
+    try {
+      await onLoadOlder();
+    } finally {
+      loadingOlderRef.current = false;
+    }
+  };
+
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
     const previousClientHeight = lastClientHeightRef.current;
@@ -352,6 +380,7 @@ function ChatMessageListComponent({
     // reader intent. Only wheel/touch/pointer input arms the next scroll.
     if (!userScrollIntentRef.current) return;
     userScrollIntentRef.current = false;
+    if (hasOlderMessages && target.scrollTop <= 96) void loadOlder();
     setScrollAnchorVersion((version) => version + 1);
     // Resize animations can emit a scroll event between two ResizeObserver
     // frames. Treat a small transient gap as still pinned so a dock/keyboard
@@ -459,6 +488,9 @@ function ChatMessageListComponent({
       <div
         className="chat-message-anchor"
         data-chat-message-key={row.id}
+        data-chat-turn-id={row.message.turnId}
+        data-chat-role={row.message.role}
+        data-chat-text-length={row.message.content?.length ?? 0}
         {...(messageId
           ? { id: `transcript-message-${encodeURIComponent(messageId)}` }
           : {})}
@@ -517,7 +549,7 @@ function ChatMessageListComponent({
         toolCall={part}
         showDetails={expanded || showToolDetails}
         onApprove={
-          part.needsApproval && part.approvalId
+          !activeSession.replay && part.needsApproval && part.approvalId
             ? (action) =>
                 handleToolApproval(
                   activeSession.id,
@@ -535,6 +567,7 @@ function ChatMessageListComponent({
       handleToolApproval,
       activeSession.id,
       activeSession.agentSlug,
+      activeSession.replay,
     ],
   );
 
@@ -549,6 +582,7 @@ function ChatMessageListComponent({
         ref={messagesContainerRef}
         role="log"
         aria-label="Conversation transcript"
+        data-chat-session-id={activeSession.id}
         aria-live="polite"
         style={{ fontSize: `${fontSize}px` }}
         onScroll={handleScroll}
@@ -558,10 +592,32 @@ function ChatMessageListComponent({
         onTouchMove={() => {
           userScrollIntentRef.current = true;
         }}
-        onPointerDown={() => {
+        onPointerDown={(event) => {
+          // Activating a control can move focus and dispatch a programmatic
+          // scroll. It is not a request to replace the reader's anchor.
+          if (
+            event.target instanceof Element &&
+            event.target.closest('button, a, input, select, textarea, summary')
+          )
+            return;
           userScrollIntentRef.current = true;
         }}
       >
+        {hasOlderMessages && (
+          <div className="session-history-controls">
+            <button
+              type="button"
+              className="button button--secondary session-history-controls__more"
+              disabled={historyLoading}
+              onClick={() => void loadOlder()}
+            >
+              {historyLoading
+                ? 'Loading earlier messages…'
+                : 'Earlier messages'}
+            </button>
+          </div>
+        )}
+        {historyNotice}
         {messages.length === 0 && !isStreaming ? (
           (emptyState ?? (
             <ChatEmptyState
@@ -602,6 +658,8 @@ function ChatMessageListComponent({
                   renderReasoning={renderReasoning}
                   renderToolCall={renderToolCall}
                   activityHint={activeSession.activityHint}
+                  elapsedMs={activeSession.replay?.elapsedMs}
+                  suppressActivity={suppressActivity}
                   attributionAgent={streamingAttributionAgent}
                   owner={owner}
                   onContentChange={handleStreamingContentChange}

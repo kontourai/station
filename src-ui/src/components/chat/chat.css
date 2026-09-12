@@ -2369,3 +2369,14 @@
   position: static;
   opacity: 1;
 }
+
+.chat-stream-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  min-height: 44px;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}

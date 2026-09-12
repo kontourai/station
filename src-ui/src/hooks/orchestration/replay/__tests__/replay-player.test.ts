@@ -100,6 +100,39 @@ describe('session tape player', () => {
     expect(isDurableActiveChat(replayChat)).toBe(false);
   });
 
+  test('reports a completed turn with no text even when its user prompt remains', () => {
+    const replayId = registerReplayThread();
+    seedReplayChat(replayId);
+    const player = new SessionTapePlayer(
+      tapeFromSessionEvents({ threadId: SOURCE, agentSlug: 'dev-agent' }, [
+        event('turn.started', { turnId: 'missing-answer', prompt: 'Hello' }),
+        event('turn.completed', { turnId: 'missing-answer' }),
+      ]),
+      replayId,
+    );
+    player.step();
+    const done = player.step();
+    expect(done.transcript.some((row) => row.role === 'user')).toBe(true);
+    expect(done.issues.map((issue) => issue.code)).toContain(
+      'no-text-after-completed-turn',
+    );
+  });
+
+  test('normalizes fractional seek and rejects nonfinite positions without changing the cursor', () => {
+    const replayId = registerReplayThread();
+    seedReplayChat(replayId);
+    const player = new SessionTapePlayer(
+      tapeFromSessionEvents({ threadId: SOURCE, agentSlug: 'dev-agent' }, [
+        event('turn.started', { turnId: 't' }),
+        event('turn.completed', { turnId: 't', outputText: 'Done' }),
+      ]),
+      replayId,
+    );
+    expect(player.seek(0.9).cursor.index).toBe(0);
+    expect(() => player.seek(Number.NaN)).toThrow('finite');
+    expect(player.cursor).toBe(0);
+  });
+
   test('scrubbing backward refolds the prefix instead of inverting a delta', () => {
     const replayId = registerReplayThread();
     seedReplayChat(replayId);
