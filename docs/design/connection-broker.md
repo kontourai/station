@@ -231,6 +231,23 @@ tenant security boundary.
 
 ## Acceptance and decisions
 
+The [browser transport evaluation](../guides/local-collaboration-lab.md#browser-transport-evaluation)
+establishes a candidate mechanism for the browser boundary: WebRTC DataChannels
+carry application data over SCTP/DTLS, while TURN forwards traffic without the
+endpoint private keys. This uses the browser's authenticated transport rather
+than introducing an application cipher. See [RFC 8831](https://www.rfc-editor.org/rfc/rfc8831.html).
+
+The current evaluation is a **go for further protocol integration, defer for
+production transport selection**. Real Chromium/Node UDP relay delivery and
+certificate-substitution rejection pass; TURN/TCP interoperability does not.
+[#1995](https://github.com/kontourai/station/issues/1995) owns qualification of
+that path before production adapter selection.
+The fixture installs approved fingerprint trust out of band. It does not deliver
+the production enrollment, signed signaling, recovery or client-distribution
+contract above. Node TLS pinning in the original fixture likewise does not
+establish browser transport support. Keep these receipts distinct, and do not
+enable managed connectivity from a passing transport-only test.
+
 Contract checks cover wrong account/Station/audience, replay, stale allocation,
 key rotation, renewal, revocation, callback origin, redirects and endpoint
 substitution. The actual selected transport must prove reconnect, restart,
