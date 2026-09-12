@@ -6,8 +6,8 @@ import {
 } from './nightly-build-identity.mjs';
 import { createUpdaterManifestForPlatforms } from './tauri-updater-manifest.mjs';
 
-export const WINDOWS_NIGHTLY_PLATFORM = 'windows-x86_64';
-export const NIGHTLY_DESKTOP_ENDPOINT =
+const WINDOWS_NIGHTLY_PLATFORM = 'windows-x86_64';
+const NIGHTLY_DESKTOP_ENDPOINT =
   'https://github.com/kontourai/station/releases/download/nightly-desktop/latest.json';
 
 /**
