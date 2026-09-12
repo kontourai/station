@@ -15,7 +15,7 @@ const target = {
   repository: 'repo',
   ref: '17',
   project: 'my project',
-  workingDirectory: '/private/worktree',
+  repositoryRootHint: '/private/worktree',
 };
 const options = {
   requestScope: { apiBase: 'http://station.test', authorityKey: 'owner' },
