@@ -1058,29 +1058,21 @@ export function configureRuntimeRoutes(
           'Device person binding conflicts with the current identity or deployment',
         );
       }
-      const account = context.deploymentAuthentication?.service.current(
-        c.req.raw,
-      );
-      if (account && account.kind !== 'absent') {
-        if (account.kind !== 'authenticated')
-          throw new PrincipalUnresolvedError(
-            'Account authentication is no longer valid.',
-          );
-        const verifiedPerson = binding ?? ingressIdentity;
-        if (
-          verifiedPerson &&
-          deploymentHumanPrincipal(
-            verifiedPerson.provider,
-            verifiedPerson.subject,
-            verifiedPerson.subject,
-          ).id !== account.principal.id
-        ) {
-          throw new PrincipalUnresolvedError(
-            'Account authentication conflicts with the verified person.',
-          );
-        }
-        return account.principal;
-      }
+      const verifiedPerson = binding ?? ingressIdentity;
+      const account =
+        context.deploymentAuthentication?.service.resolvePrincipal(
+          c.req.raw,
+          verifiedPerson
+            ? [
+                deploymentHumanPrincipal(
+                  verifiedPerson.provider,
+                  verifiedPerson.subject,
+                  verifiedPerson.subject,
+                ),
+              ]
+            : [],
+        );
+      if (account) return account;
       return resolveStationPrincipal(
         (binding
           ? {
@@ -1226,16 +1218,19 @@ export function configureRuntimeRoutes(
       const people = [identifyIngress(c), binding].filter(
         (person) => person !== null && person !== undefined,
       );
-      if (
-        people.some(
-          (person) =>
+      try {
+        context.deploymentAuthentication!.service.resolvePrincipal(
+          c.req.raw,
+          people.map((person) =>
             deploymentHumanPrincipal(
               person.provider,
               person.subject,
               person.subject,
-            ).id !== account.principal.id,
-        )
-      ) {
+            ),
+          ),
+        );
+      } catch (error) {
+        if (!(error instanceof PrincipalUnresolvedError)) throw error;
         return c.json({ error: { code: 'account_identity_conflict' } }, 401);
       }
     }
