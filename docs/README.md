@@ -79,6 +79,8 @@ clearly mark the stale document.
 - **[Conformance](conformance/)** — external-contract conformance notes.
 - **[Security](security/)** — security design notes; disclosure policy lives
   in [../SECURITY.md](../SECURITY.md).
+- **[Local collaboration lab](guides/local-collaboration-lab.md)** — free, isolated
+  transport/enrollment checks and explicit remaining collaboration acceptance.
 - **[Testing](testing/)** — supplementary testing records; the canonical
   guide is [guides/testing.md](guides/testing.md).
 - **[Third-party](third-party/)** — vendored/external integration notes.
