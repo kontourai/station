@@ -424,6 +424,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       app,
       store,
       roomRuntime: result.projectTaskRoomRuntime!,
+      pairing,
       paired,
       referenceTask,
     };
@@ -612,6 +613,115 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       );
       expect(refused.status).toBe(413);
       expect(cancel).toHaveBeenCalledOnce();
+    }
+  });
+
+  test('explicit operator pairing binds two devices to one person through real HTTP authorization and refuses conflicting identity', async () => {
+    const { app, store, roomRuntime, pairing } = await setup();
+    const prepareSpy = vi.spyOn(AttachmentStagingService.prototype, 'prepare');
+    const credentials: string[] = [];
+    try {
+      for (const name of ['Laptop', 'Phone']) {
+        const offer = pairing.createOffer({
+          endpoint: 'https://station.example.test',
+          scope: pairingScopePresetString('standard'),
+        });
+        const pending = pairing.requestPairing({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          deviceName: name,
+          requesterPosition: 'off-box',
+          source: 'tailnet',
+          requester: {
+            provider: 'tailscale-serve',
+            login: 'collaborator@example.test',
+          },
+        });
+        const approval = await app.request(
+          `/api/pairing/requests/${pending.requestId}/confirm`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${OPERATOR_SECRET}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ bindVerifiedIdentity: true }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(approval.status, await approval.text()).toBe(200);
+        const paired = pairing.exchange({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          requestId: pending.requestId,
+        });
+        credentials.push(paired.credential);
+        const response = await app.request(
+          '/api/orchestration/attachment-staging/prepare',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${paired.credential}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...ATTACHMENT_DESCRIPTOR,
+              clientAttachmentId: `attachment-${name}`,
+            }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(response.status, await response.text()).toBe(200);
+      }
+      expect(prepareSpy.mock.calls.map(([owner]) => owner.principalId)).toEqual(
+        [
+          'human:tailscale-serve:collaborator@example.test',
+          'human:tailscale-serve:collaborator@example.test',
+        ],
+      );
+      prepareSpy.mockClear();
+      const conflict = await app.request(
+        '/api/orchestration/attachment-staging/prepare',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${credentials[0]}`,
+            'Content-Type': 'application/json',
+            [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+            [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+              JSON.stringify({
+                provider: 'tailscale-serve',
+                login: 'different@example.test',
+              }),
+            ).toString('base64url'),
+          },
+          body: JSON.stringify(ATTACHMENT_DESCRIPTOR),
+        },
+        LOOPBACK_SERVE_PROXY_ENV,
+      );
+      expect(conflict.status).toBe(400);
+      expect(prepareSpy).not.toHaveBeenCalled();
+      const device = pairing.identifyDevice(credentials[0]!)!;
+      pairing.revokeDevice(device.id, 'operator-credential');
+      const revoked = await app.request(
+        '/api/orchestration/attachment-staging/prepare',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${credentials[0]}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(ATTACHMENT_DESCRIPTOR),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(revoked.status).toBe(401);
+      expect(
+        pairing.identifyDevice(credentials[1]!)?.principalBinding?.subject,
+      ).toBe('collaborator@example.test');
+    } finally {
+      await roomRuntime.close();
+      store.close();
     }
   });
 

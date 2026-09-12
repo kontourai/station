@@ -2330,3 +2330,72 @@ test('pending approval counts down from its saved expiry without announcing ever
   view.unmount();
   vi.useRealTimers();
 });
+
+describe('explicit verified-person pairing consent', () => {
+  test.each([
+    [false, false],
+    [true, true],
+    [true, false],
+  ])(
+    'person binding is sent only after its checkbox is selected (%s)',
+    async (bindPerson, acknowledged) => {
+      const request = {
+        requestId: 'person-request',
+        offerId: 'person-offer',
+        deviceName: 'Collaborator phone',
+        status: 'pending',
+        source: 'tailnet',
+        requester: {
+          provider: 'tailscale-serve',
+          login: 'collaborator@example.test',
+        },
+        expiresAt: Date.now() + 60_000,
+      };
+      let approved = false;
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(async (input) => {
+          const path = new URL(String(input)).pathname;
+          if (path === '/api/pairing/requests')
+            return response({ requests: approved ? [] : [request] });
+          if (path === '/api/pairing/devices') return response({ devices: [] });
+          if (path === '/api/pairing/requests/person-request/confirm') {
+            approved = true;
+            return response({
+              ...request,
+              status: 'confirmed',
+              ...(acknowledged ? { personBindingApproved: true } : {}),
+            });
+          }
+          return response({ error: 'unexpected' }, 500);
+        });
+      render(
+        <HostDevicePairingPanel
+          apiBase="https://station.example.test"
+          publicEndpoint="https://station.example.test"
+          getCredential={() => 'operator-credential'}
+          onCancel={vi.fn()}
+        />,
+      );
+      const consent = await screen.findByRole('checkbox', {
+        name: /Recognize this device as collaborator@example.test/,
+      });
+      expect((consent as HTMLInputElement).checked).toBe(false);
+      if (bindPerson) fireEvent.click(consent);
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+      await waitFor(() => expect(approved).toBe(true));
+      if (bindPerson && !acknowledged)
+        expect(
+          await screen.findByText(/did not confirm person binding/),
+        ).toBeTruthy();
+      const call = fetchSpy.mock.calls.find(([input]) =>
+        new URL(String(input)).pathname.endsWith('/person-request/confirm'),
+      );
+      expect(call).toBeDefined();
+      expect(call![1]?.method).toBe('POST');
+      expect(call![1]?.body).toBe(
+        bindPerson ? JSON.stringify({ bindVerifiedIdentity: true }) : undefined,
+      );
+    },
+  );
+});
