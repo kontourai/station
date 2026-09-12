@@ -3473,6 +3473,68 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 });
 
 describe('explicit person-binding approval', () => {
+  test.each([undefined, ''])(
+    'bodyless approval accepts an absent or empty HTTP stream: %j',
+    async (body) => {
+      const h = createHarness();
+      const offer = h.pairing.createOffer({
+        endpoint: 'https://station.example.test',
+      });
+      const pending = h.pairing.requestPairing({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Simulator',
+        requesterPosition: 'off-box',
+        source: 'pairing-code',
+      });
+      const response = await h.request(
+        `/api/pairing/requests/${pending.requestId}/confirm`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${MASTER_CREDENTIAL}`,
+            'Content-Length': '0',
+          },
+          body,
+        },
+      );
+      expect(response.status, await response.text()).toBe(200);
+      const result = h.pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: pending.requestId,
+      });
+      expect(result.device.principalBinding).toBeUndefined();
+    },
+  );
+
+  test('an empty streamed approval still rechecks authority before committing', async () => {
+    const h = createHarness({ approvalStillCurrent: false });
+    const offer = h.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const pending = h.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Simulator',
+      requesterPosition: 'off-box',
+      source: 'pairing-code',
+    });
+    const response = await h.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${MASTER_CREDENTIAL}`,
+          'Content-Length': '0',
+        },
+        body: '',
+      },
+    );
+    expect(response.status).toBe(403);
+    expect(h.pairing.listRequests()[0]?.status).toBe('pending');
+  });
+
   test('accepts only the explicit boolean and derives the subject from verified request provenance', async () => {
     const h = createHarness();
     const offer = h.pairing.createOffer({

@@ -4292,6 +4292,9 @@ async function readPairingOfferJson(
 ): Promise<Record<string, unknown> | undefined> {
   const result = await readBoundedRequestBody(request, 2_048);
   if (result.status !== 'ok') return undefined;
+  // Node HTTP adapters can represent a bodyless POST as an empty stream.
+  // Only callers admitting an empty object may accept zero decoded bytes.
+  if (result.body === '' && allowedKeysets.has('')) return {};
   try {
     const value = JSON.parse(result.body);
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
