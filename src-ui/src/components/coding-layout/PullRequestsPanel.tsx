@@ -1,3 +1,4 @@
+import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import type {
   PullRequest,
   PullRequestMergeMethod,
@@ -10,10 +11,13 @@ import {
   usePullRequestsQuery,
 } from '@kontourai/station-sdk';
 import { useEffect, useRef, useState } from 'react';
+import { useNavigation } from '../../contexts/NavigationContext';
 import { Button } from '../Button';
 import { LazyBoundary } from '../LazyBoundary';
 import { ConfirmModal } from '../modals/ConfirmModal';
+import { ConversationPullRequestLinks } from '../pull-requests/ConversationPullRequestLinks';
 import { Empty, ErrorState, SkeletonBlock, SkeletonList } from '../state';
+import { PullRequestDependencyStacks } from './PullRequestDependencyStacks';
 import './PullRequestsPanel.css';
 
 const loadReview = () =>
@@ -34,7 +38,10 @@ export function PullRequestsPanel({
   projectSlug: string;
   activeRepoRoot?: string | null;
 }) {
-  const [selected, setSelected] = useState<PullRequest | null>(null);
+  const activeChat = useNavigation((state) => state.activeChat);
+  const [selected, setSelected] = useState<PullRequestLinkIdentity | null>(
+    null,
+  );
   const [filter, setFilter] = useState<StateFilter>('OPEN');
   const resolvingContext = {
     project: projectSlug,
@@ -141,9 +148,48 @@ export function PullRequestsPanel({
     (pullRequest) =>
       filter === 'ALL' || normalizedState(pullRequest.state) === filter,
   );
+  const observedAt = new Date(
+    pullRequests.dataUpdatedAt || Date.now(),
+  ).toISOString();
 
   return (
     <section className="pull-requests-panel" aria-label="Pull requests">
+      {activeChat && identity && (
+        <ConversationPullRequestLinks
+          conversationId={activeChat}
+          suggested={{
+            provider: identity.provider,
+            host: identity.host,
+            repository: identity.repository,
+          }}
+          derived={(result.data ?? [])
+            .filter(
+              (pullRequest) => pullRequest.sourceBranch === identity.branch,
+            )
+            .map((pullRequest) => ({
+              provider: pullRequest.provider,
+              host: pullRequest.host,
+              repository: pullRequest.repository,
+              ref: pullRequest.ref,
+              source: 'branch-derived' as const,
+              observedAt,
+              status: {
+                state: 'current' as const,
+                title: pullRequest.title,
+                pullRequestState: pullRequest.state,
+                ...(pullRequest.headSha ? { head: pullRequest.headSha } : {}),
+              },
+            }))}
+          onOpen={(link) => setSelected(link)}
+        />
+      )}
+      <PullRequestDependencyStacks
+        pullRequests={result.data ?? []}
+        observedAt={observedAt}
+        refreshing={pullRequests.isFetching}
+        onRefresh={() => void pullRequests.refetch()}
+        onOpen={setSelected}
+      />
       <header className="pull-requests-panel__header">
         <div>
           <h2>Pull requests</h2>
