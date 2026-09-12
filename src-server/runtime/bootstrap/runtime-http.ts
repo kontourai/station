@@ -499,11 +499,24 @@ function configureRuntimeSecurity(
       c.req.path === DEPLOYMENT_AUTHENTICATION_BASE_PATH ||
       c.req.path.startsWith(`${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/`);
     if (security.deploymentAuthentication && !accountOperation) {
+      const hasAccount = security.deploymentAuthentication.hasCredential(
+        c.req.raw,
+      );
+      if (hasAccount) {
+        const retryAfter = limiter.retryAfterSeconds(limiterKey);
+        if (retryAfter !== undefined) {
+          c.header('Retry-After', String(retryAfter));
+          return c.json({ error: { code: AUTH_RATE_LIMITED_ERROR_CODE } }, 429);
+        }
+        // Reserve before asynchronous verification; parallel attempts cannot
+        // all enter the adapter before the first failure has been counted.
+        limiter.recordFailure(limiterKey);
+      }
       const account = await security.deploymentAuthentication.authenticate(
         c.req.raw,
       );
+      if (account.kind === 'authenticated') limiter.clear(limiterKey);
       if (account.kind === 'invalid') {
-        limiter.recordFailure(limiterKey);
         return c.json(
           {
             error: {
