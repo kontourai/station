@@ -8024,6 +8024,11 @@ where
 {
     let station_home = service_state::admit_station_runtime_home(&station_home)
         .map_err(|error| format!("Desktop rejected its Station runtime home: {error}"))?;
+    // Admission follows existing ancestors and returns a canonical path. On
+    // Windows that can carry a verbatim prefix (\\?\), while Node's runtime
+    // home/root admission uses ordinary Win32 paths. Preserve the admitted
+    // location but normalize its spelling before crossing the Node bridge.
+    let station_home = dunce::simplified(&station_home).to_path_buf();
     ensure_schema(&station_home)
         .map_err(|error| format!("Desktop could not establish its Station home schema: {error}"))?;
     Ok(station_home)
@@ -11811,6 +11816,24 @@ mod tests {
             "STATION_HOME".to_string(),
             Some("/data/station".to_string())
         )));
+    }
+
+    #[cfg(all(not(mobile), windows))]
+    #[test]
+    fn prepared_windows_home_uses_node_compatible_path_spelling() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().join("runtime");
+        std::fs::create_dir_all(&home).unwrap();
+        let canonical = std::fs::canonicalize(&home).unwrap();
+        assert!(canonical.to_string_lossy().starts_with(r"\\?\"));
+        let expected = dunce::simplified(&canonical).to_path_buf();
+        let prepared = prepare_desktop_station_home(home, |bridge_home| {
+            assert_eq!(bridge_home, expected.as_path());
+            assert!(!bridge_home.to_string_lossy().starts_with(r"\\?\"));
+            Ok(())
+        }).unwrap();
+        assert_eq!(prepared, expected);
+        assert_eq!(std::fs::canonicalize(prepared).unwrap(), canonical);
     }
 
     #[cfg(not(mobile))]
