@@ -357,11 +357,45 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
     const uncovered: string[] = [];
     for (const base of new Set(bases)) {
       if (PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS.includes(base)) continue;
-      if (requiredPairingScope('GET', base) === undefined) {
+      if (
+        requiredExternalSurfaceCapability('http', 'GET', base) === undefined
+      ) {
         uncovered.push(base);
       }
     }
     expect(uncovered).toEqual([]);
+  });
+
+  test('account login has its own method-limited boundary and cannot expose the Project catalog', () => {
+    for (const method of ['GET', 'POST']) {
+      expect(
+        requiredExternalSurfaceCapability('http', method, '/api/account-auth'),
+      ).toMatchObject({ capability: 'public' });
+      expect(
+        requiredExternalSurfaceCapability(
+          'http',
+          method,
+          '/api/account-auth/login',
+        ),
+      ).toMatchObject({ capability: 'public' });
+    }
+    expect(
+      requiredExternalSurfaceCapability(
+        'http',
+        'PUT',
+        '/api/account-auth/login',
+      ),
+    ).toBeUndefined();
+    expect(
+      requiredExternalSurfaceCapability(
+        'http',
+        'GET',
+        '/api/account-authentication',
+      ),
+    ).toBeUndefined();
+    expect(
+      requiredExternalSurfaceCapability('http', 'GET', '/api/projects'),
+    ).toMatchObject({ capability: 'pairing-scope' });
   });
 
   test('the catch-all mount exceptions are exactly the two known absolute-leaf-path bases', () => {
