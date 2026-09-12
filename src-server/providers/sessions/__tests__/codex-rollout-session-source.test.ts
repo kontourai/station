@@ -2,6 +2,8 @@ import {
   appendFileSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -81,6 +83,55 @@ afterEach(() => {
 });
 
 describe('CodexRolloutSessionSource', () => {
+  test('binds descriptors to one opaque Codex home across restart and rejects foreign or replaced homes', async () => {
+    const root = fixtureRoot();
+    writeFileSync(rolloutPath(root), line(meta('affinity')));
+    const source = new CodexRolloutSessionSource({ homeDir: root });
+    const session = await discoverOne(source);
+
+    expect(session.affinity).toMatchObject({
+      kind: 'codex-config-home',
+      ref: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(JSON.stringify(session.affinity)).not.toContain(root);
+    expect(source.resolveSourceHome(session.affinity)).toBe(realpathSync(root));
+
+    const restarted = new CodexRolloutSessionSource({ homeDir: root });
+    const rediscovered = await discoverOne(restarted);
+    expect(rediscovered.affinity).toEqual(session.affinity);
+    expect(restarted.resolveSourceHome(session.affinity)).toBe(
+      realpathSync(root),
+    );
+
+    const otherRoot = fixtureRoot();
+    writeFileSync(rolloutPath(otherRoot), line(meta('other')));
+    const other = new CodexRolloutSessionSource({ homeDir: otherRoot });
+    const otherSession = await discoverOne(other);
+    expect(other.resolveSourceHome(session.affinity)).toBeNull();
+    expect(
+      await source.read({ ...session, affinity: otherSession.affinity }),
+    ).toMatchObject({ outcome: 'unknown_source', events: [] });
+    expect(
+      source.resolveSourceHome({
+        kind: 'claude-config-home',
+        ref: session.affinity!.ref,
+      }),
+    ).toBeNull();
+    expect(
+      source.resolveSourceHome({ kind: 'codex-config-home', ref: 'bad' }),
+    ).toBeNull();
+
+    const movedRoot = `${root}-original`;
+    roots.push(movedRoot);
+    renameSync(root, movedRoot);
+    writeFileSync(rolloutPath(root), line(meta('replacement')));
+    expect(source.resolveSourceHome(session.affinity)).toBeNull();
+    expect(await source.read(session)).toMatchObject({
+      outcome: 'rejected_candidate',
+      events: [],
+    });
+  });
+
   test('an isolated history root does not scan the authenticated CLI home', async () => {
     const authenticatedHome = fixtureRoot();
     const isolatedHistory = fixtureRoot();

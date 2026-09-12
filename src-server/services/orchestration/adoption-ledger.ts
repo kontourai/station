@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type { OrchestrationCommandReceipt } from '@kontourai/station-contracts/orchestration';
-import type { ProviderSession } from '@kontourai/station-contracts/provider';
+import type {
+  ProviderSession,
+  ProviderSessionContinuationBoundary,
+  ProviderSessionSourceAffinity,
+} from '@kontourai/station-contracts/provider';
+import {
+  isSessionContinuationBoundary,
+  isSessionSourceAffinity,
+} from '../../providers/sessions/session-source-affinity.js';
 
 /** A durable, recoverable reservation for one attached-session continuation. */
 export interface AdoptionReservation {
@@ -13,6 +21,8 @@ export interface AdoptionReservation {
   provider: ProviderSession['provider'];
   sourceSessionId: string;
   sourceKind: string;
+  sourceAffinity?: ProviderSessionSourceAffinity;
+  sourceBoundary?: ProviderSessionContinuationBoundary;
   cwd: string;
   projectRoot: string;
   idempotencyKey?: string;
@@ -373,6 +383,17 @@ export function createAdoptionLedger(options: {
   };
   return {
     reserve: (input) => {
+      if (
+        input.sourceAffinity !== undefined &&
+        !isSessionSourceAffinity(input.sourceAffinity)
+      )
+        throw new Error('Invalid adoption source affinity.');
+      if (
+        input.sourceBoundary !== undefined &&
+        (!input.sourceAffinity ||
+          !isSessionContinuationBoundary(input.sourceBoundary))
+      )
+        throw new Error('Invalid adoption source boundary.');
       const reservation: AdoptionReservation = {
         ...input,
         ownerToken: randomUUID(),

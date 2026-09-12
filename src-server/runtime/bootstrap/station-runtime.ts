@@ -1,3 +1,5 @@
+import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
+import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -628,8 +630,12 @@ export class StationRuntime {
   private port: number;
   private host?: string;
   private approvalRegistry: ApprovalRegistry;
+  private readonly claudeTranscriptSource = new ClaudeTranscriptSessionSource();
+  private readonly codexRolloutSource = new CodexRolloutSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
+    resolveSourceHome: (affinity) =>
+      this.claudeTranscriptSource.resolveSourceHome(affinity),
     resolvePreToolPolicy: (input) =>
       this.resolveExternalPreToolPolicy(input, 'authentic'),
     // Skills materialization opt-in (docs/design/connections-onboarding.md
@@ -718,6 +724,8 @@ export class StationRuntime {
     },
   });
   private codexAdapter = new CodexAdapter({
+    resolveSourceHome: (affinity) =>
+      this.codexRolloutSource.resolveSourceHome(affinity),
     // App-home profile opt-in (archive#896 wave 2, agent-engine-unification.md
     // §6.1's overlay model, channel 2) — mirrors claudeAdapter's
     // getAppHomeEnv closure above; codex has no `getProvideSkills` analog
@@ -3093,6 +3101,10 @@ export class StationRuntime {
       // revision-fenced agent-construction phase inside initializeRuntime.
       initialized = await initializeRuntime(
         createRuntimeInitializationDeps({
+          attachedSessionSources: [
+            this.claudeTranscriptSource,
+            this.codexRolloutSource,
+          ],
           port: this.port,
           host: this.host,
           logger: this.logger,
