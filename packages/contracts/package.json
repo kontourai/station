@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./mobile-device": "./src/mobile-device.ts",
     ".": "./src/index.ts",
     "./acp": "./src/acp.ts",
     "./agent-capability-profile": "./src/agent-capability-profile.ts",
