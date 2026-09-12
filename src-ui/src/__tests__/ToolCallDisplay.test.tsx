@@ -442,6 +442,7 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
           toolName: 'protected_write',
           args: { path: 'approved.txt' },
           needsApproval: true,
+          state: 'awaiting-approval',
           approvalId: 'a1',
         }}
         onApprove={onApprove}

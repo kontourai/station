@@ -22,6 +22,7 @@ describe('EngineCapabilitySummary derivations', () => {
     const chips = deriveCapabilityChips(ENGINE_CAPABILITY_MATRICES.acp);
     expect(chips).toContain('Tool servers');
     expect(chips).toContain('Model selection');
+    expect(chips).toContain('Mid-turn steering');
     expect(chips).not.toContain('System prompt');
     expect(chips).not.toContain('Skills');
     expect(chips).not.toContain('Commands');

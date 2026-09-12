@@ -1330,9 +1330,14 @@
   white-space: nowrap;
 }
 
-.chat-controls-row :is(.chat-input__drafts-button, .chat-input__clear) {
+.chat-controls-row
+  :is(.chat-input__drafts-button, .chat-input__clear, .chat-input__queue-btn) {
   font-size: var(--text-sm);
   font-weight: 500;
+}
+
+.chat-input__queue-btn {
+  padding: 0 var(--space-3);
 }
 
 .chat-input__meta

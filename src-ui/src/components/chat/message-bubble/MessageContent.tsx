@@ -11,11 +11,15 @@ import { UIBlockRenderer } from '../UIBlockRenderer';
 
 type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 
-/** Runs of up to this many consecutive tool calls render as individual
- * activity rows; longer runs collapse to the ToolCallBatch summary. Shared
- * with `StreamingMessage` so a run does not change shape when the turn
- * settles. */
-export const INLINE_RUN_LIMIT = 3;
+/** Consecutive tool-call runs longer than this collapse to the ToolCallBatch
+ * summary + sheet. 1 means a solo call stays an inline row and any 2+ run
+ * becomes one line that opens the existing overlay. Shared with
+ * `StreamingMessage` so a run does not change shape when the turn settles.
+ * The summary is transcript chrome, not "tool details"; opening the sheet
+ * is an explicit disclosure and shows each call even when details are off.
+ * A call that still needs a grant is rendered under the summary so Allow
+ * Once is not behind a tap and the rest of the run stays collapsed. */
+export const INLINE_RUN_LIMIT = 1;
 
 interface MessageContentProps {
   contentParts?: MessageContentPart[];
@@ -79,19 +83,24 @@ function MessageContentComponent({
       <>
         {blocks.map((block) => {
           if (block.type === 'tool-call-run') {
-            // Short runs render as individual quiet rows — cheaper to read
-            // than a summary-plus-sheet hop. Only a long run collapses to
-            // the batch summary (archive#2652 redesign).
+            // A solo call stays an inline row. Two or more consecutive
+            // calls collapse to one summary line that opens the sheet —
+            // live and settled share this threshold so a run does not
+            // change shape when the turn completes.
             if (block.calls.length <= INLINE_RUN_LIMIT) {
               return block.calls.map(({ part, index }) =>
                 renderToolCall(part, index),
               );
             }
+            const inlineRows = block.calls.map(({ part, index }) =>
+              renderToolCall(part, index),
+            );
             return (
               <ToolCallBatchBoundary
                 key={block.key}
                 run={block}
                 renderCall={renderToolCall}
+                pending={inlineRows}
               />
             );
           }

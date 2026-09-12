@@ -6,6 +6,7 @@ import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import { buildOutgoingUserMessage } from '../useActiveChatSessions.helpers';
+import { isReplayThread } from './replay/replay-registry';
 
 /**
  * Pending-queue drain for orchestration-driven sessions (Claude/Codex
@@ -88,6 +89,7 @@ export function drainQueuedMessageOnTurnCompleted(
   threadId: string,
   reviewed = false,
 ) {
+  if (isReplayThread(threadId)) return;
   const chat = activeChatsStore.getSnapshot()[threadId];
   if (
     !chat?.queuedMessages?.length ||

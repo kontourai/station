@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type {
+  PermissionMode,
   PermissionResult,
   PermissionUpdate,
   SDKMessage,
@@ -15,6 +16,7 @@ import type {
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderSession } from '../adapter-shape.js';
 import { reportedModelMetadata } from '../llm/effective-model-metadata.js';
+import { mapPermissionModeToApprovalMode } from './claude-approval-mode.js';
 import {
   classifyClaudeResultOutcome,
   claudeResultFailureText,
@@ -166,6 +168,9 @@ function claudeDeferredToolUse(
 
 export interface ClaudeMessageState {
   session: ProviderSession;
+  /** Live SDK permission mode; unset until Station sent one or init reported it. */
+  currentPermissionMode?: PermissionMode;
+  allowsBypassPermissions?: boolean;
   activeTurnId?: string;
   /**
    * The one local turn whose prompt has actually entered the SDK queue.
@@ -371,6 +376,15 @@ export function mapClaudeSdkMessage({
     record.session.model = message.model;
     record.session.status = 'ready';
     record.session.updatedAt = createdAt;
+    if (message.permissionMode) {
+      record.currentPermissionMode = message.permissionMode;
+      if (message.permissionMode === 'bypassPermissions') {
+        record.allowsBypassPermissions = true;
+      }
+    }
+    const appliedApprovalMode = mapPermissionModeToApprovalMode(
+      message.permissionMode,
+    );
     publish({
       eventId: crypto.randomUUID(),
       provider,
@@ -380,6 +394,12 @@ export function mapClaudeSdkMessage({
       sessionId: record.session.threadId,
       model: message.model,
       cwd: message.cwd,
+      metadata: {
+        ...(message.permissionMode
+          ? { permissionMode: message.permissionMode }
+          : {}),
+        ...(appliedApprovalMode ? { approvalMode: appliedApprovalMode } : {}),
+      },
     });
     return;
   }

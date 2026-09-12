@@ -17230,13 +17230,14 @@ describe('OrchestrationService', () => {
 
   test('enforces mid-turn steer capability and active-turn state before adapter dispatch', async () => {
     const codex = new FakeAdapter('codex');
+    const muse = new FakeAdapter('muse');
     const routingService = new OrchestrationService({
-      adapterRegistry: createRegistry([claude, codex]),
+      adapterRegistry: createRegistry([claude, codex, muse]),
       eventBus,
       eventStore,
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
-    for (const adapter of [claude, codex]) {
+    for (const adapter of [claude, codex, muse]) {
       adapter.sessions.set(`thread-${adapter.provider}`, {
         provider: adapter.provider,
         threadId: `thread-${adapter.provider}`,
@@ -17248,9 +17249,10 @@ describe('OrchestrationService', () => {
     const event = (
       threadId: string,
       turnId: string,
+      provider: 'claude' | 'codex' | 'muse' = 'claude',
     ): CanonicalRuntimeEvent => ({
       eventId: `event-${threadId}`,
-      provider: 'claude',
+      provider,
       threadId,
       createdAt: '2026-08-14T00:00:00.000Z',
       method: 'turn.started',
@@ -17258,6 +17260,7 @@ describe('OrchestrationService', () => {
       prompt: 'initial',
     });
     eventStore.appendEvent(event('thread-claude', 'turn-live'));
+    eventStore.appendEvent(event('thread-codex', 'turn-codex-live', 'codex'));
     claude.steerTurn.mockImplementation(async (threadId, input, turnId) => {
       eventStore.appendEvent({
         eventId: 'event-steer',
@@ -17314,12 +17317,29 @@ describe('OrchestrationService', () => {
         threadId: 'thread-codex',
         input: 'redirect',
       }),
+    ).resolves.toEqual({
+      outcome: 'steered',
+      threadId: 'thread-codex',
+      turnId: 'turn-codex-live',
+    });
+    expect(codex.steerTurn).toHaveBeenCalledWith(
+      'thread-codex',
+      'redirect',
+      'turn-codex-live',
+    );
+
+    await expect(
+      routingService.dispatch({
+        type: 'steerTurn',
+        threadId: 'thread-muse',
+        input: 'redirect',
+      }),
     ).resolves.toMatchObject({
       outcome: 'unsupported-engine',
-      engineId: 'codex',
-      engineName: 'Codex',
+      engineId: 'muse',
+      engineName: 'Muse Code',
     });
-    expect(codex.steerTurn).not.toHaveBeenCalled();
+    expect(muse.steerTurn).not.toHaveBeenCalled();
 
     await expect(
       routingService.dispatch({

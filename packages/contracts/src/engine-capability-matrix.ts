@@ -817,8 +817,8 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       channel: 'native-content',
       basis: 'declared',
     },
-    // codex app-server exposes turn/start and turn/interrupt, but no input/steer method for an active turn.
-    midTurnSteer: false,
+    // Codex app-server `turn/steer` appends input to the in-flight turn.
+    midTurnSteer: true,
     // Codex's core loop is command execution and patch application, and the
     // adapter's EVENT seam observes both identities: codex-adapter-events.ts
     // handles `item/commandExecution/requestApproval` and maps
@@ -998,8 +998,11 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       channel: 'native-content',
       basis: 'runtime_observation',
     },
-    // ACP permits session/prompt and session/cancel; it defines no concurrent steer operation.
-    midTurnSteer: false,
+    // ACP has no protocol-level steer. The adapter still implements
+    // steerTurn: Kiro `_session/steer` and Grok `_x.ai/interject` when
+    // those extension methods exist, else T3-style cancel + re-prompt on
+    // the same Station turn id.
+    midTurnSteer: true,
     // A custom engine's toolbox is whatever the connected CLI brings; ACP
     // advertises protocol capabilities at initialize, not a tool inventory.
     subagentObservability: {

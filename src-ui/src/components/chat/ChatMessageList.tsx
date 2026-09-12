@@ -437,7 +437,9 @@ function ChatMessageListComponent({
       showToolDetails={showToolDetails}
       onCopy={handleCopy}
       onForkFromTurn={onForkFromTurn}
-      onToolApproval={handleToolApproval as any}
+      onToolApproval={
+        activeSession.replay ? undefined : (handleToolApproval as any)
+      }
       anchorKey={messageAnchorKey(msg)}
       owner={owner}
       accountableHuman={accountableHuman}
