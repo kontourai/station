@@ -1389,6 +1389,16 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     // endpoints. Classify the exact registrations so the guard can enumerate
     // the real runtime without giving an unknown endpoint a wildcard pass.
     {
+      id: 'middleware:account-auth',
+      transport: 'http',
+      method: '*',
+      prefix: `${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/*`,
+      match: 'exact',
+      capability: 'middleware',
+      reason:
+        'Hono registration for account origin, body and attempt middleware; does not admit undeclared HTTP methods',
+    },
+    {
       id: 'middleware:runtime-global',
       transport: 'http',
       method: '*',
