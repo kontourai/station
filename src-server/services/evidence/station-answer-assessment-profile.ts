@@ -10,9 +10,7 @@ import type { TrustBundle } from '@kontourai/surface';
 
 const STATION_ANSWER_CONTENT_PROFILE = 'station.answer-content/v1';
 
-function stationAnswerAssessmentTarget(
-  binding: StationAnswerBinding,
-): string {
+function stationAnswerAssessmentTarget(binding: StationAnswerBinding): string {
   const tuple = JSON.stringify([
     STATION_ANSWER_CONTENT_PROFILE,
     binding.sessionId,
