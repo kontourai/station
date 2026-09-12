@@ -203,6 +203,28 @@ describe('#749 shared continuation control eligibility', () => {
     },
   );
 
+  test('a same-engine transcript continuation keeps the model without claiming a native cursor', async () => {
+    const current = detail({
+      ...stoppedUnloadedPatch(),
+      model: 'chosen-model',
+    });
+    const { lineage, reserveNextConversationSession } = lineageFor(current);
+    reserveNextConversationSession.mockReturnValue({
+      outcome: 'created',
+      lineage: { sessionId: 'new-child' },
+    });
+    const result = await lineage.resolveConversationContinuation(
+      'conversation-policy',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude' },
+    );
+    expect(result).toMatchObject({
+      resumeModel: 'chosen-model',
+      transcriptSeed: expect.any(String),
+    });
+    expect(result).not.toHaveProperty('resumeCursor');
+  });
+
   test('an active turn is read-only to reopen but remains on the current command session', async () => {
     const current = detail({ hasActiveTurn: true });
     const { lineage, reserveNextConversationSession } = lineageFor(current);
