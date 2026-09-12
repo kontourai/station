@@ -29,13 +29,9 @@ describe('mapApprovalModeToCodex', () => {
     });
   });
 
-  test('connection-default and undefined both fall back to the pre-existing hardcoded default', () => {
-    expect(mapApprovalModeToCodex('connection-default')).toEqual(
-      CODEX_DEFAULT_APPROVAL_KNOBS,
-    );
-    expect(mapApprovalModeToCodex(undefined)).toEqual(
-      CODEX_DEFAULT_APPROVAL_KNOBS,
-    );
+  test('connection-default and undefined omit knobs so Codex inherits its own config (station#1950)', () => {
+    expect(mapApprovalModeToCodex('connection-default')).toBeUndefined();
+    expect(mapApprovalModeToCodex(undefined)).toBeUndefined();
     expect(CODEX_DEFAULT_APPROVAL_KNOBS).toEqual({
       approvalPolicy: 'never',
       sandbox: 'danger-full-access',
@@ -51,20 +47,18 @@ describe('resolveCodexApprovalKnobs', () => {
     });
   });
 
-  test('ignores an unrecognized approvalMode value and falls back to the default', () => {
+  test('ignores an unrecognized approvalMode value rather than inventing knobs', () => {
     expect(
       resolveCodexApprovalKnobs({ approvalMode: 'not-a-real-mode' }),
-    ).toEqual(CODEX_DEFAULT_APPROVAL_KNOBS);
+    ).toBeUndefined();
   });
 
-  test('an absent modelOptions bag stays byte-identical to prior (pre-#727) behavior', () => {
-    expect(resolveCodexApprovalKnobs(undefined)).toEqual(
-      CODEX_DEFAULT_APPROVAL_KNOBS,
-    );
-    expect(resolveCodexApprovalKnobs({})).toEqual(CODEX_DEFAULT_APPROVAL_KNOBS);
+  test('an absent approvalMode omits knobs so Codex applies its own config (station#1950)', () => {
+    expect(resolveCodexApprovalKnobs(undefined)).toBeUndefined();
+    expect(resolveCodexApprovalKnobs({})).toBeUndefined();
     expect(
       resolveCodexApprovalKnobs({ reasoningEffort: 'high', fastMode: true }),
-    ).toEqual(CODEX_DEFAULT_APPROVAL_KNOBS);
+    ).toBeUndefined();
   });
 });
 
@@ -105,7 +99,7 @@ describe('mapCodexKnobsToApprovalMode', () => {
 
   test('round-trips through mapApprovalModeToCodex for every concrete mode', () => {
     for (const mode of ['ask', 'auto', 'never'] as const) {
-      expect(mapCodexKnobsToApprovalMode(mapApprovalModeToCodex(mode))).toBe(
+      expect(mapCodexKnobsToApprovalMode(mapApprovalModeToCodex(mode)!)).toBe(
         mode,
       );
     }

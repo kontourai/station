@@ -1,5 +1,185 @@
 [
   {
+    "timestampUtc": "2026-09-12T11:13:24Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2446.34688699784",
+    "sha": "e330d3ee74290a4c4649a6eecdb4be8a5d961f1c",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34688699784",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2446.34688699784 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "6ed78908e3992fabe492cf91178d4a27ac15680f",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 0
+    }
+  },
+  {
+    "timestampUtc": "2026-09-12T04:47:15Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2446.34672535343",
+    "sha": "6ed78908e3992fabe492cf91178d4a27ac15680f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34672535343",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2446.34672535343 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "71e0381f78e903cd81fc9d2d21266986103f6f39",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 0
+    }
+  },
+  {
+    "timestampUtc": "2026-09-12T00:02:24Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2445.8",
+    "sha": "71e0381f78e903cd81fc9d2d21266986103f6f39",
+    "artifactBuiltAt": "2026-09-11T23:23:28.092Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34657340502",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 34657340502)"
+    ],
+    "changelog": {
+      "previousSha": "4e7ccc76b9cab9335d600333ec4256e180611ba3",
+      "groups": {
+        "feat": [
+          "[#1953](https://github.com/kontourai/station/pull/1953) feat(chat): session tape replay in the live dock",
+          "[#1936](https://github.com/kontourai/station/pull/1936) feat(ui): collapse consecutive tool calls to one updating line",
+          "[#1858](https://github.com/kontourai/station/pull/1858) feat(chat): drop sidebar files into the destination draft"
+        ],
+        "fix": [
+          "[#1954](https://github.com/kontourai/station/pull/1954) fix(ui): guard unsaved engine connection edits",
+          "[#1951](https://github.com/kontourai/station/pull/1951) fix(engines): inherit Claude/Codex approval defaults (#1950)",
+          "[#1947](https://github.com/kontourai/station/pull/1947) fix(ui): make the connection page say what is actually wrong, and on which machine"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#1955](https://github.com/kontourai/station/pull/1955) test(ui): restore the full-regression lane on main",
+          "[#1948](https://github.com/kontourai/station/pull/1948) refactor(ui): one readiness notice for every kind of connection",
+          "[#1866](https://github.com/kontourai/station/pull/1866) build(deps): bump ai from 6.0.235 to 6.0.280",
+          "[#1922](https://github.com/kontourai/station/pull/1922) build(deps): bump dirs from 6.0.0 to 7.0.0 in /src-desktop",
+          "[#1926](https://github.com/kontourai/station/pull/1926) build(deps-dev): bump node-gyp from 11.5.0 to 13.0.2",
+          "[#1929](https://github.com/kontourai/station/pull/1929) build(deps): bump the desktop-crates group across 1 directory with 3 updates"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
+    "timestampUtc": "2026-09-12T00:02:22Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2445.8",
+    "sha": "71e0381f78e903cd81fc9d2d21266986103f6f39",
+    "artifactBuiltAt": "2026-09-11T23:23:18.976Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34657340502",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 34657340502)"
+    ],
+    "changelog": {
+      "previousSha": "4e7ccc76b9cab9335d600333ec4256e180611ba3",
+      "groups": {
+        "feat": [
+          "[#1953](https://github.com/kontourai/station/pull/1953) feat(chat): session tape replay in the live dock",
+          "[#1936](https://github.com/kontourai/station/pull/1936) feat(ui): collapse consecutive tool calls to one updating line",
+          "[#1858](https://github.com/kontourai/station/pull/1858) feat(chat): drop sidebar files into the destination draft"
+        ],
+        "fix": [
+          "[#1954](https://github.com/kontourai/station/pull/1954) fix(ui): guard unsaved engine connection edits",
+          "[#1951](https://github.com/kontourai/station/pull/1951) fix(engines): inherit Claude/Codex approval defaults (#1950)",
+          "[#1947](https://github.com/kontourai/station/pull/1947) fix(ui): make the connection page say what is actually wrong, and on which machine"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#1955](https://github.com/kontourai/station/pull/1955) test(ui): restore the full-regression lane on main",
+          "[#1948](https://github.com/kontourai/station/pull/1948) refactor(ui): one readiness notice for every kind of connection",
+          "[#1866](https://github.com/kontourai/station/pull/1866) build(deps): bump ai from 6.0.235 to 6.0.280",
+          "[#1922](https://github.com/kontourai/station/pull/1922) build(deps): bump dirs from 6.0.0 to 7.0.0 in /src-desktop",
+          "[#1926](https://github.com/kontourai/station/pull/1926) build(deps-dev): bump node-gyp from 11.5.0 to 13.0.2",
+          "[#1929](https://github.com/kontourai/station/pull/1929) build(deps): bump the desktop-crates group across 1 directory with 3 updates"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
+    "timestampUtc": "2026-09-11T23:55:13Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2445.34657340502",
+    "sha": "71e0381f78e903cd81fc9d2d21266986103f6f39",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34657340502",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2445.34657340502 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "4e7ccc76b9cab9335d600333ec4256e180611ba3",
+      "groups": {
+        "feat": [
+          "[#1953](https://github.com/kontourai/station/pull/1953) feat(chat): session tape replay in the live dock",
+          "[#1936](https://github.com/kontourai/station/pull/1936) feat(ui): collapse consecutive tool calls to one updating line",
+          "[#1858](https://github.com/kontourai/station/pull/1858) feat(chat): drop sidebar files into the destination draft"
+        ],
+        "fix": [
+          "[#1954](https://github.com/kontourai/station/pull/1954) fix(ui): guard unsaved engine connection edits",
+          "[#1951](https://github.com/kontourai/station/pull/1951) fix(engines): inherit Claude/Codex approval defaults (#1950)",
+          "[#1947](https://github.com/kontourai/station/pull/1947) fix(ui): make the connection page say what is actually wrong, and on which machine"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#1955](https://github.com/kontourai/station/pull/1955) test(ui): restore the full-regression lane on main",
+          "[#1948](https://github.com/kontourai/station/pull/1948) refactor(ui): one readiness notice for every kind of connection",
+          "[#1866](https://github.com/kontourai/station/pull/1866) build(deps): bump ai from 6.0.235 to 6.0.280",
+          "[#1922](https://github.com/kontourai/station/pull/1922) build(deps): bump dirs from 6.0.0 to 7.0.0 in /src-desktop",
+          "[#1926](https://github.com/kontourai/station/pull/1926) build(deps-dev): bump node-gyp from 11.5.0 to 13.0.2",
+          "[#1929](https://github.com/kontourai/station/pull/1929) build(deps): bump the desktop-crates group across 1 directory with 3 updates"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
     "timestampUtc": "2026-09-11T11:49:49Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2445.5",
