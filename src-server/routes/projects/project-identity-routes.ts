@@ -52,19 +52,40 @@ export function createProjectIdentityRoutes(
     } catch (error) {
       if (error instanceof ProjectIdentityValidationError)
         return c.json(
-          { success: false, error: error.message, code: error.code },
+          {
+            success: false,
+            error:
+              'Project identity is invalid or uses unsupported resource fields.',
+            code: error.code,
+          },
           400,
         );
       if (error instanceof InvalidPathSegmentError)
-        return c.json({ success: false, error: error.message }, 400);
+        return c.json(
+          {
+            success: false,
+            error: 'The local Project slug must be a single safe path segment.',
+          },
+          400,
+        );
       if (error instanceof FileStorageConflictError)
         return c.json(
-          { success: false, error: error.message, code: error.code },
+          {
+            success: false,
+            error:
+              'Project state changed or conflicts with this attachment. Inspect the current Project before retrying.',
+            code: error.code,
+          },
           409,
         );
       if (error instanceof FileStorageNotFoundError)
         return c.json(
-          { success: false, error: error.message, code: error.code },
+          {
+            success: false,
+            error:
+              'Project identity was not found. An existing Project may need explicit identity preparation.',
+            code: error.code,
+          },
           404,
         );
       logger.error('Portable Project identity operation failed', { error });

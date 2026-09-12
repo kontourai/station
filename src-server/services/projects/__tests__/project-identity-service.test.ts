@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import {
   FileStorageConflictError,
@@ -359,6 +359,32 @@ describe('portable Project attachment', () => {
       (await createProjectIdentityRoutes(undefined).request('/local/identity'))
         .status,
     ).toBe(501);
+  });
+
+  test('HTTP conflict responses do not reflect internal exception text', async () => {
+    const { service } = harness();
+    vi.spyOn(service, 'attach').mockRejectedValue(
+      new FileStorageConflictError('DO-NOT-EXPOSE-private-location'),
+    );
+    const response = await createProjectIdentityRoutes(service).request(
+      '/attach',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Local',
+          slug: 'local',
+          identity: identity(),
+        }),
+      },
+    );
+    expect(response.status).toBe(409);
+    const body = await response.text();
+    expect(body).not.toContain('DO-NOT-EXPOSE');
+    expect(JSON.parse(body)).toMatchObject({
+      success: false,
+      code: 'file_storage_conflict',
+    });
   });
 });
 
