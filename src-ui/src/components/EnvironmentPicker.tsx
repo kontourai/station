@@ -5,7 +5,7 @@ import {
 import { useSshEnvironmentsQuery } from '@kontourai/station-sdk';
 
 export const MISSING_ENVIRONMENT_NOTICE =
-  'This project names a saved environment that no longer exists. Execution will fall back to This Station until you choose another environment.';
+  "This project's saved environment is not available in the current list. Its selection is preserved; choose another environment or repair the connection.";
 export const ENVIRONMENTS_UNAVAILABLE_NOTICE =
   'Saved environments are unavailable right now. The configured environment is preserved until the inventory can be loaded.';
 
@@ -22,11 +22,10 @@ export function EnvironmentPicker({
 }) {
   const { data: environments, isSuccess, isError } = useSshEnvironmentsQuery();
   const savedId = value.kind === 'saved' ? value.id : null;
-  const dangling = Boolean(
-    isSuccess &&
-      savedId &&
-      !environments?.some((item) => item.profile.environmentId === savedId),
+  const listed = environments?.some(
+    (item) => item.profile.environmentId === savedId,
   );
+  const dangling = Boolean(isSuccess && savedId && !listed);
 
   return (
     <div className="editor-field environment-picker">
@@ -49,7 +48,7 @@ export function EnvironmentPicker({
         }
       >
         <option value="current">This Station</option>
-        {(dangling || isError) && savedId && (
+        {!listed && savedId && (
           <option value={savedId}>
             {savedId} —{' '}
             {dangling ? 'missing saved environment' : 'saved environment'}
