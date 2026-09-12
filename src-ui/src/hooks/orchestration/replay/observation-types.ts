@@ -1,6 +1,8 @@
 import type { ReplayRenderMeasurement } from './render-observation';
 
 export type ReplayIssueCode =
+  | 'incomplete-capture'
+  | 'render-not-observed'
   | 'duplicate-streaming-and-settled'
   | 'streaming-after-turn-completed'
   | 'lineage-leak'

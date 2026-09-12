@@ -83,8 +83,18 @@ export class SessionTapePlayer {
       coverage: this.tape.coverage ?? 'server-events',
       connection: this.connection,
     };
+    if (this.tape.stoppedReason)
+      observation.issues.push({
+        code: 'incomplete-capture',
+        detail: this.tape.stoppedReason,
+      });
     observation.playback = { playing: this.playing, speed: this.speed };
     observation.performance = { foldMs: this.foldMs, render: this.measurement };
+    if (this.measurement && this.measurement.phase !== 'observed')
+      observation.issues.push({
+        code: 'render-not-observed',
+        detail: `The transcript render was ${this.measurement.phase}; UI correctness is unverified for this frame.`,
+      });
     if (this.lastObservation?.cursor.index === this.cursor)
       observation.delta = this.lastObservation.delta;
     this.lastObservation = observation;
@@ -106,8 +116,7 @@ export class SessionTapePlayer {
   back(transcriptElement?: HTMLElement | null): ReplayObservation {
     if (this.cursor < 0) return this.observe(transcriptElement);
     const next = this.cursor - 1;
-    this.refoldTo(next);
-    return this.notify(transcriptElement);
+    return this.seek(next, transcriptElement);
   }
 
   seek(
@@ -120,7 +129,9 @@ export class SessionTapePlayer {
       -1,
       Math.min(Math.trunc(index), this.eventCount - 1),
     );
+    const started = performance.now();
     this.refoldTo(clamped);
+    this.foldMs = performance.now() - started;
     return this.notify(transcriptElement);
   }
 

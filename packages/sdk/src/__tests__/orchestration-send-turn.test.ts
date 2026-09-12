@@ -9,13 +9,11 @@ describe('orchestration lifecycle-control client', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   test('requests newest-first conversation hydration without decoding its opaque cursor', async () => {
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ success: true, data: { events: [] } }), {
-          headers: { 'content-type': 'application/json' },
-        }),
-      );
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ success: true, data: { events: [] } }), {
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
     vi.stubGlobal('fetch', fetchMock);
     await getOrchestrationConversationEventWindow(
       'http://station.test',

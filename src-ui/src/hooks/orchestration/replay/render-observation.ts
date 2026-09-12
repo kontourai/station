@@ -41,8 +41,19 @@ export async function waitForReplayRender(
       observe();
       await new Promise<void>((resolve) => setTimeout(resolve, 20));
       const now = performance.now();
+      const animating =
+        element()
+          ?.getAnimations?.({ subtree: true })
+          .some(
+            (animation) =>
+              animation.playState === 'running' &&
+              Number.isFinite(animation.effect?.getComputedTiming().endTime),
+          ) ?? false;
       quietFrames =
-        observedElement && now - start >= 120 && now - lastMutation >= 40
+        observedElement &&
+        !animating &&
+        now - start >= 120 &&
+        now - lastMutation >= 40
           ? quietFrames + 1
           : 0;
     }

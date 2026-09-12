@@ -1,4 +1,4 @@
-import { copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { expect, type Page } from '@playwright/test';
@@ -79,14 +79,27 @@ test('replay correlates each event with the real mobile transcript and a screens
     },
   ] satisfies CanonicalRuntimeEvent[];
   await page.route(
-    /\/api\/orchestration\/sessions\/(?:conv-running|chat-running)$/,
-    (route) =>
-      route.fulfill(
+    /\/api\/orchestration\/sessions\/(?:conv-running|chat-running)\/event-page(?:\?.*)?$/,
+    (route) => {
+      const url = new URL(route.request().url());
+      const after = Number(url.searchParams.get('afterSequence') ?? 0);
+      const threadId = decodeURIComponent(url.pathname.split('/').at(-2)!);
+      const delivered = events.slice(after, after + 2).map((event, index) => ({
+        sequence: after + index + 1,
+        event: { ...event, threadId },
+      }));
+      return route.fulfill(
         json({
           success: true,
-          data: { session: { model: 'model-selected' }, events },
+          data: {
+            session: { model: 'model-selected' },
+            events: delivered,
+            nextSequence: after + delivered.length,
+            hasMore: after + delivered.length < events.length,
+          },
         }),
-      ),
+      );
+    },
   );
   await page.goto('/?dock=open&maximize=true&chat=conv-running');
   await dismissSetupLauncher(page);
@@ -316,4 +329,113 @@ test.describe('replay state coverage', () => {
       await expect(page.locator('.elapsed-wait')).toContainText('0:28');
     });
   }
+});
+
+test('measures seeking a 20000-event tape in the mounted transcript', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  const base = {
+    provider: 'codex' as const,
+    threadId: 'large-replay',
+    turnId: 'large-turn',
+    itemId: 'tool',
+    createdAt: '2026-09-12T00:00:00Z',
+  };
+  const events: CanonicalRuntimeEvent[] = [
+    {
+      ...base,
+      eventId: 'large-start',
+      method: 'turn.started',
+      prompt: 'Inspect a large captured turn.',
+    },
+    {
+      ...base,
+      eventId: 'large-tool',
+      method: 'tool.started',
+      toolCallId: 'tool',
+      toolName: 'read_file',
+      arguments: { path: 'fixture.txt' },
+    },
+    ...Array.from(
+      { length: 19_996 },
+      (_, index): CanonicalRuntimeEvent => ({
+        ...base,
+        eventId: `large-progress-${index}`,
+        method: 'tool.progress',
+        toolCallId: 'tool',
+        message: `Reading fragment ${index}`,
+      }),
+    ),
+    {
+      ...base,
+      eventId: 'large-result',
+      method: 'tool.completed',
+      toolCallId: 'tool',
+      toolName: 'read_file',
+      status: 'success',
+      output: 'Read complete.',
+    },
+    {
+      ...base,
+      eventId: 'large-done',
+      method: 'turn.completed',
+      finishReason: 'stop',
+      outputText: 'Large replay completed.',
+    },
+  ];
+  await openReplayScenario(page, {
+    kind: 'station.session-tape',
+    schemaVersion: 1,
+    recordedAt: base.createdAt,
+    source: { threadId: base.threadId, agentSlug: 'codex' },
+    coverage: 'server-events',
+    events,
+  });
+  const observation = await page.evaluate(async () => {
+    const replay = (
+      window as unknown as {
+        __stationReplay: {
+          seek(
+            index: number,
+          ): Promise<
+            import('../src-ui/src/hooks/orchestration/replay/observation-types').ReplayObservation
+          >;
+        };
+      }
+    ).__stationReplay;
+    return replay.seek(19_999);
+  });
+  expect(observation.cursor.index).toBe(19_999);
+  expect(observation.issues).toEqual([]);
+  await expect(
+    page.getByRole('log', { name: 'Conversation transcript' }),
+  ).toContainText('Large replay completed.');
+  expect(observation.performance?.render?.mountedRows).toBeLessThan(80);
+  const evidenceDirectory = process.env.STATION_REPLAY_EVIDENCE_DIR;
+  if (evidenceDirectory) {
+    await mkdir(evidenceDirectory, { recursive: true });
+    await writeFile(
+      join(evidenceDirectory, 'large-replay-measurement.json'),
+      JSON.stringify(
+        { frames: events.length, performance: observation.performance },
+        null,
+        2,
+      ),
+    );
+  }
+  await testInfo.attach('large-replay-measurement', {
+    body: JSON.stringify(
+      {
+        frames: events.length,
+        performance: observation.performance,
+        build: await page
+          .locator('meta[name="station-build-commit"]')
+          .getAttribute('content'),
+      },
+      null,
+      2,
+    ),
+    contentType: 'application/json',
+  });
 });

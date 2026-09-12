@@ -293,6 +293,8 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
 export const PRODUCT_E2E_EXECUTION_PROFILE = {
   parallelWorkers: 2,
   parallelSafetyExceptions: {
+    'tests/chat-history-reopen.spec.ts':
+      'Owns a unique temporary SQLite directory; shell requests are page-scoped fixtures and the store is closed and removed in finally.',
     'tests/sidebar-geometry.spec.ts':
       'read-only layout measurements against the isolated temp-home instance',
     'tests/mobile-dock-clearance.spec.ts':
@@ -335,6 +337,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/default-agent-workflow.spec.ts',
     'tests/mobile-chat-composer.spec.ts',
     'tests/chat-replay.spec.ts',
+    'tests/chat-history-reopen.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
     'tests/accessibility-core.spec.ts',
     'tests/status-token-contrast.spec.ts',
@@ -850,6 +853,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted default agent workflow lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-history-reopen.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Cold mobile hydration uses the real bounded SQLite history reader and canonical projector before paging backward within a noisy turn.',
     exceptions: [],
   },
   {

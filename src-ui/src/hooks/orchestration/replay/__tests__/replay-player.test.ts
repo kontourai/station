@@ -114,6 +114,27 @@ describe('session tape player', () => {
     player.dispose();
   });
 
+  test('seek reports the work of rebuilding the prefix rather than the preceding step', () => {
+    let elapsed = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => elapsed);
+    const update = activeChatsStore.updateChat.bind(activeChatsStore);
+    vi.spyOn(activeChatsStore, 'updateChat').mockImplementation((...args) => {
+      elapsed += 10;
+      return update(...args);
+    });
+    const replayId = registerReplayThread();
+    seedReplayChat(replayId);
+    const tape = tapeFromSessionEvents(
+      { threadId: SOURCE, agentSlug: 'dev-agent' },
+      Array.from({ length: 10 }, (_, index) =>
+        event('turn.started', { turnId: `turn-${index}`, prompt: 'Question' }),
+      ),
+    );
+    const player = new SessionTapePlayer(tape, replayId);
+    const stepTime = player.step().performance!.foldMs;
+    expect(player.seek(9).performance!.foldMs).toBeGreaterThan(stepTime);
+  });
+
   test('folds under a synthetic id without touching a live chat or leaking lineage', () => {
     const replayId = registerReplayThread();
     seedReplayChat(replayId);

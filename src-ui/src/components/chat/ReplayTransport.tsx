@@ -62,6 +62,7 @@ export function ReplayTransport({ sessionId }: { sessionId: string }) {
         <summary>
           Replay controls · {observation.cursor.index + 1} /{' '}
           {observation.cursor.eventCount}
+          {player.tape.stoppedReason ? ' · Incomplete recording' : ''}
         </summary>
         <div className="replay-transport__bar">
           <button
@@ -143,12 +144,14 @@ export function ReplayTransport({ sessionId }: { sessionId: string }) {
           {observation.streaming.present ? ' · streaming' : ''}
           {observation.issues.length
             ? ` · ${observation.issues.length} issue(s)`
-            : ' · No issues detected in observed state.'}
+            : observation.performance?.render?.phase === 'observed'
+              ? ' · No issues detected in this frame.'
+              : ' · State only; render not observed.'}
         </p>
         <p className="replay-transport__status">
           {observation.frame?.coverage === 'client-capture'
             ? 'Client capture: runtime, committed history-reader state, and connection activity.'
-            : 'Server event archive: historical client history responses and connection timing were not recorded.'}
+            : 'Selected session archive: client history responses and connection timing were not recorded.'}
           {player.tape.redacted
             ? ' Content is redacted; text layout differs.'
             : ''}
@@ -239,7 +242,11 @@ export function ReplayTransport({ sessionId }: { sessionId: string }) {
           <button
             type="button"
             className="button button--secondary"
-            onClick={() => downloadSessionTape(player.tape, includeContent)}
+            onClick={() => {
+              void run(async () =>
+                downloadSessionTape(player.tape, includeContent),
+              );
+            }}
           >
             Download tape
           </button>

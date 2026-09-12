@@ -438,6 +438,79 @@ describe('EventStore', () => {
     }
   });
 
+  test('newest paging pins its watermark and lineage while rejecting malformed cursors', () => {
+    const base = {
+      provider: 'codex' as const,
+      threadId: 'pinned-parent',
+      turnId: 'turn',
+      createdAt: '2026-09-12T00:00:00Z',
+    };
+    store.appendEvent({
+      ...base,
+      eventId: 'pinned-start',
+      method: 'turn.started',
+      prompt: 'Pinned question',
+    });
+    for (let i = 0; i < 180; i++)
+      store.appendEvent({
+        ...base,
+        eventId: `pinned-${i}`,
+        method: 'content.text-delta',
+        delta: 'x',
+      });
+    const read = (ids: string[], cursor?: string) =>
+      store.listConversationEventWindowByTurn(ids, {
+        direction: 'newest',
+        turnLimit: 1,
+        cursor,
+      });
+    const first = read([base.threadId]);
+    expect(first.nextCursor).toBeDefined();
+    store.appendEvent({
+      ...base,
+      threadId: 'pinned-child',
+      eventId: 'child-start',
+      method: 'turn.started',
+      prompt: 'New question',
+    });
+    store.appendEvent({
+      ...base,
+      eventId: 'late-parent',
+      method: 'turn.completed',
+      outputText: 'Late completion',
+      finishReason: 'stop',
+    });
+    const second = read([base.threadId, 'pinned-child'], first.nextCursor);
+    expect(second.watermark).toBe(first.watermark);
+    expect(
+      second.events.every(
+        (event) =>
+          event.globalSequence <= first.watermark &&
+          event.threadId === base.threadId,
+      ),
+    ).toBe(true);
+    expect(() => read(['different-parent'], first.nextCursor)).toThrow();
+    const decoded = JSON.parse(
+      Buffer.from(first.nextCursor!, 'base64url').toString('utf8'),
+    );
+    for (const changed of [
+      { before: 0 },
+      { watermark: -1 },
+      { rangeStart: decoded.before },
+      { threadIds: [] },
+      { olderTurnsRemain: 'yes' },
+    ]) {
+      expect(() =>
+        read(
+          [base.threadId],
+          Buffer.from(JSON.stringify({ ...decoded, ...changed })).toString(
+            'base64url',
+          ),
+        ),
+      ).toThrow();
+    }
+  });
+
   test('appends canonical events with monotonically increasing per-thread sequence numbers', () => {
     const event1 = {
       eventId: 'evt-1',

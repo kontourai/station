@@ -22,8 +22,8 @@ only (`ChatSettingsPanel` → “Step through this conversation”).
   `isReplayThread(threadId)`. The spy test that folds a representative tape
   and asserts zero effects is the derivation; an allowlist comment is not.
 
-Backward seek is destroy-and-refold of prefix `0..N`. Never rewind a live
-thread.
+Backward seek is destroy-and-refold of prefix `0..N`; its fold measurement
+includes the entire prefix. Never rewind a live thread.
 
 ## Agent observation
 
@@ -51,6 +51,14 @@ initial visible state. Capture is opt-in and stops explicitly at 16 MiB or
 history responses or network timing; `coverage` distinguishes it from a
 client capture. Imported captures use the production history projector with
 recorded reader responses and cannot issue live history requests.
+
+Archive loading reads the selected execution session in 100-event pages,
+with the same 16 MiB / 20,000-event ceiling. It does not reconstruct an entire
+conversation lineage. A capped recording reports an incomplete-capture issue.
+Imports validate nested shapes, ordering, depth and size before replacing an
+open replay; invalid JSON errors never echo recording contents. Finite
+animations settle before a rendered observation; indefinite activity pulses
+do not block it.
 
 Export redacts content by default. Content-preserving export is explicit;
 redacted tapes preserve structure but cannot prove original text layout.
@@ -128,8 +136,8 @@ steer is the default whenever the engine can.
 ## Follow-ups
 
 - station-control `replay_session` open/step/observe.
-- Bounded archive loading and seeking checkpoints for exceptionally large
-  tapes; profiling must justify checkpoint retention and cadence.
+- Seeking checkpoints only if measured prefix folding warrants their retained
+  memory cost. The browser suite measures a mounted 20,000-event seek.
 - User-facing read-only “view as of turn N”, return to latest, and explicit
   fork/continue can reuse this foundation. Workspace rollback is a separate
   action. These controls remain future work under #563.

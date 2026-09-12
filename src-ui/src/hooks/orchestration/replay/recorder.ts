@@ -11,6 +11,11 @@ import type {
   OrchestrationSnapshotPayload,
 } from '../types';
 import type { ReplayHistoryState } from './history';
+import {
+  MAX_TAPE_BYTES as MAX_CAPTURE_BYTES,
+  MAX_TAPE_FRAMES as MAX_CAPTURE_FRAMES,
+  TAPE_METADATA_RESERVE,
+} from './limits';
 import { isReplayThread } from './replay-registry';
 import {
   type ReplayFrame,
@@ -19,8 +24,6 @@ import {
   type SessionTapeSource,
 } from './tape';
 
-const MAX_CAPTURE_BYTES = 16 * 1024 * 1024;
-const MAX_CAPTURE_FRAMES = 20_000;
 const listeners = new Set<() => void>();
 let recording: {
   apiBase: string;
@@ -89,7 +92,7 @@ export function startReplayCapture(
     ),
   });
   const bytes = new TextEncoder().encode(JSON.stringify(tape)).length;
-  if (bytes > MAX_CAPTURE_BYTES)
+  if (bytes > MAX_CAPTURE_BYTES - TAPE_METADATA_RESERVE)
     throw new Error(
       'The initial conversation exceeds the 16 MiB capture limit.',
     );
@@ -134,9 +137,9 @@ function append(frame: ReplayFrameInput): void {
   if (!capture) return;
   const value = { ...frame, atMs: performance.now() - capture.startedAt };
   const encoded = JSON.stringify(value);
-  const bytes = new TextEncoder().encode(encoded).length;
+  const bytes = new TextEncoder().encode(encoded).length + 1;
   if (
-    capture.bytes + bytes > MAX_CAPTURE_BYTES ||
+    capture.bytes + bytes > MAX_CAPTURE_BYTES - TAPE_METADATA_RESERVE ||
     capture.tape.frames!.length >= MAX_CAPTURE_FRAMES
   ) {
     stopReplayCapture(

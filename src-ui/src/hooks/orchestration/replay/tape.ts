@@ -5,6 +5,7 @@ import type {
   OrchestrationSnapshotPayload,
 } from '../types';
 import type { ReplayHistoryState } from './history';
+import { validateTapeContents } from './tape-validation';
 
 export const SESSION_TAPE_KIND = 'station.session-tape' as const;
 
@@ -57,42 +58,7 @@ export function replayFrames(tape: SessionTape): ReplayFrame[] {
 }
 
 export function isSessionTape(value: unknown): value is SessionTape {
-  if (!value || typeof value !== 'object') return false;
-  const record = value as SessionTape;
-  return (
-    record.schemaVersion === 1 &&
-    record.kind === SESSION_TAPE_KIND &&
-    typeof record.recordedAt === 'string' &&
-    Boolean(record.source?.threadId) &&
-    typeof record.source?.agentSlug === 'string' &&
-    Array.isArray(record.events) &&
-    record.events.every(
-      (event) =>
-        typeof event?.method === 'string' &&
-        typeof event?.threadId === 'string',
-    ) &&
-    (record.frames === undefined ||
-      (Array.isArray(record.frames) &&
-        record.frames.every(
-          (frame) =>
-            Number.isFinite(frame?.atMs) &&
-            frame.atMs >= 0 &&
-            (frame.kind === 'clock' ||
-              (frame.kind === 'runtime'
-                ? typeof frame.event?.method === 'string'
-                : frame.kind === 'history'
-                  ? Array.isArray(frame.state?.events)
-                  : frame.kind === 'snapshot'
-                    ? Array.isArray(frame.payload?.sessions)
-                    : frame.kind === 'connection' &&
-                      [
-                        'receiving',
-                        'interrupted',
-                        'closed',
-                        'caught-up',
-                      ].includes(frame.status))),
-        )))
-  );
+  return validateTapeContents(value, SESSION_TAPE_KIND);
 }
 
 export function tapeFromSessionEvents(
