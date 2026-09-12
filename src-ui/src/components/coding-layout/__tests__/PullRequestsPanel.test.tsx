@@ -19,6 +19,11 @@ vi.mock('@kontourai/station-sdk', () => ({
   useMergePullRequestMutation: () => ({ mutateAsync, error: null }),
 }));
 
+vi.mock('../../../contexts/NavigationContext', () => ({
+  useNavigation: (select: (state: { activeChat: null }) => unknown) =>
+    select({ activeChat: null }),
+}));
+
 vi.mock('../PullRequestReviewPanel', () => ({
   PullRequestReviewPanel: ({
     target,

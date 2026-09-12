@@ -141,6 +141,10 @@ export function normalizeGitLabMergeRequest(
     },
     sourceBranch: value.source_branch,
     targetBranch: value.target_branch,
+    ...(typeof value.sha === 'string' ? { headSha: value.sha } : {}),
+    ...(typeof value.diff_refs?.base_sha === 'string'
+      ? { baseSha: value.diff_refs.base_sha }
+      : {}),
     commits: Number(value.commits_count ?? value.commits?.length ?? 0),
     reviewStatus: value.detailed_merge_status ?? 'NONE',
     comments: Number(value.user_notes_count ?? value.notes?.length ?? 0),
