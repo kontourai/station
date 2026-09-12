@@ -10,6 +10,7 @@ import {
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inventoryCodeHealthFiles } from './code-health-inventory.mjs';
+import { createFallowReview } from './fallow-review-status.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
@@ -213,6 +214,7 @@ export async function runFallowAudit(root, scope = 'changed') {
       relative(root, join(rawDirectory, `${command}.json`)),
     ),
     limitations: [
+      'completed describes analyzer execution, never finding review or remediation.',
       'Static candidates require caller review.',
       'Complexity coverage may be estimated, not executed.',
       'Configured language, entrypoint, public-API, and ignore rules still apply.',
@@ -224,6 +226,18 @@ export async function runFallowAudit(root, scope = 'changed') {
       paths: [finding.path],
     })),
   };
+  if (scope === 'whole-tree') {
+    const reviewPath = join(rawDirectory, 'review.json');
+    writeFileSync(
+      reviewPath,
+      JSON.stringify(
+        createFallowReview(artifact.source_revision, reports),
+        null,
+        2,
+      ) + '\n',
+    );
+    artifact.review = relative(root, reviewPath);
+  }
   writeFileSync(artifactPath, JSON.stringify(artifact, null, 2) + '\n');
   return { artifactPath: relative(root, artifactPath), ...artifact };
 }

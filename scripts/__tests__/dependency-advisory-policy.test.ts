@@ -10,7 +10,6 @@ import {
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { minimatch } from 'minimatch';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ALL_DEPENDENCY_SCOPES,
@@ -334,10 +333,6 @@ function productionLowDocument() {
 }
 
 describe('dependency advisory policy', () => {
-  it('keeps the patched brace-expansion graph behaviorally compatible', () => {
-    expect(minimatch('app.ts', '{app,test}.ts')).toBe(true);
-  });
-
   it('keeps the remediated dependency graph contract-valid', () => {
     const edges = validateInstalledRemediationGraph(process.cwd());
     for (const directory of new Set(

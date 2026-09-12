@@ -669,16 +669,6 @@ export class LiveWorkSession {
     return true;
   }
 
-  async withdrawAnnouncementAsync(
-    input: { readonly actorId: string; readonly requestId: string },
-    authorization: LiveWorkAuthorization,
-    now: number,
-  ): Promise<LiveWorkMutationOutcome> {
-    return this.#settleActor(
-      this.withdrawAnnouncement(input, authorization, now),
-    );
-  }
-
   async departAsync(
     input: { readonly actorId: string; readonly requestId: string },
     authorization: LiveWorkAuthorization,

@@ -55,6 +55,22 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'empty-dock-new-chat-action',
+    test: 'src-ui/src/__tests__/ChatDockContentArea.test.tsx',
+    failure: 'starts a chat through the empty dock action',
+    files: [
+      {
+        path: 'src-ui/src/components/chat-dock/ChatDockContentArea.tsx',
+        change: (source) =>
+          exactReplace(
+            source,
+            'onClick={() => onNewChat()}',
+            'onClick={() => {}}',
+          ),
+      },
+    ],
+  },
+  {
     id: 'latest-event-seek-order',
     test: 'src-server/services/orchestration/__tests__/event-store.test.ts',
     failure:

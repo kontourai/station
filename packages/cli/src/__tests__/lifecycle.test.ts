@@ -294,6 +294,7 @@ async function loadLifecycleModule(
   } = {},
 ): Promise<{
   lifecycle: LifecycleModule;
+  doctor: typeof import('../commands/lifecycle-doctor.js');
   platform: PlatformModule;
 }> {
   vi.resetModules();
@@ -436,8 +437,9 @@ async function loadLifecycleModule(
   });
 
   const lifecycle = await import('../commands/lifecycle.js');
+  const doctor = await import('../commands/lifecycle-doctor.js');
   const platform = await import('../commands/platform.js');
-  return { lifecycle, platform };
+  return { lifecycle, doctor, platform };
 }
 
 function ensureDir(path: string): void {
@@ -3147,30 +3149,30 @@ describe('named stop home-registry reconciliation (station#3980)', () => {
 
 describe('parseTsxVersion', () => {
   it('collapses two-line tsx --version output into a single labeled line', async () => {
-    const { lifecycle } = await loadLifecycleModule();
+    const { doctor } = await loadLifecycleModule();
 
-    expect(lifecycle.parseTsxVersion('tsx v4.0.0\nnode v20.11.0')).toBe(
+    expect(doctor.parseTsxVersion('tsx v4.0.0\nnode v20.11.0')).toBe(
       'tsx v4.0.0 (node v20.11.0)',
     );
-    expect(lifecycle.parseTsxVersion('tsx v4.21.0\r\nnode v24.18.0')).toBe(
+    expect(doctor.parseTsxVersion('tsx v4.21.0\r\nnode v24.18.0')).toBe(
       'tsx v4.21.0 (node v24.18.0)',
     );
   });
 
   it('passes through single-line output and handles missing output', async () => {
-    const { lifecycle } = await loadLifecycleModule();
+    const { doctor } = await loadLifecycleModule();
 
-    expect(lifecycle.parseTsxVersion('tsx v4.0.0')).toBe('tsx v4.0.0');
-    expect(lifecycle.parseTsxVersion(null)).toBeNull();
-    expect(lifecycle.parseTsxVersion('')).toBeNull();
+    expect(doctor.parseTsxVersion('tsx v4.0.0')).toBe('tsx v4.0.0');
+    expect(doctor.parseTsxVersion(null)).toBeNull();
+    expect(doctor.parseTsxVersion('')).toBeNull();
   });
 });
 
 describe('collectDoctorReport', () => {
   it('reports a named read-only supervisor probe wedge with its kickstart remedy', async () => {
-    const { lifecycle } = await loadLifecycleModule();
+    const { doctor } = await loadLifecycleModule();
 
-    const report = await lifecycle.collectDoctorReport({
+    const report = await doctor.collectDoctorReport({
       // #1244: pin the probe so these reports do not depend on whether THIS
       // machine's node-pty compiled.
       probeTerminalPty: () => ({ state: 'available' as const }),
@@ -3192,9 +3194,9 @@ describe('collectDoctorReport', () => {
   });
 
   it('fails unsupported Node majors with an actionable Node 24 fix', async () => {
-    const { lifecycle } = await loadLifecycleModule();
+    const { doctor } = await loadLifecycleModule();
 
-    const report = await lifecycle.collectDoctorReport({
+    const report = await doctor.collectDoctorReport({
       // #1244: pin the probe so these reports do not depend on whether THIS
       // machine's node-pty compiled.
       probeTerminalPty: () => ({ state: 'available' as const }),
@@ -3228,9 +3230,9 @@ describe('collectDoctorReport', () => {
   });
 
   it('reports a first-run-ready path when Ollama is reachable locally', async () => {
-    const { lifecycle } = await loadLifecycleModule();
+    const { doctor } = await loadLifecycleModule();
 
-    const report = await lifecycle.collectDoctorReport({
+    const report = await doctor.collectDoctorReport({
       // #1244: pin the probe so these reports do not depend on whether THIS
       // machine's node-pty compiled.
       probeTerminalPty: () => ({ state: 'available' as const }),
@@ -3292,9 +3294,9 @@ describe('collectDoctorReport', () => {
   });
 
   it('prefers configured chat providers over hard-coded defaults', async () => {
-    const { lifecycle } = await loadLifecycleModule();
+    const { doctor } = await loadLifecycleModule();
 
-    const report = await lifecycle.collectDoctorReport({
+    const report = await doctor.collectDoctorReport({
       // #1244: pin the probe so these reports do not depend on whether THIS
       // machine's node-pty compiled.
       probeTerminalPty: () => ({ state: 'available' as const }),
@@ -3355,9 +3357,9 @@ describe('collectDoctorReport', () => {
   });
 
   it('reports missing provider and runtime states with actionable fixes', async () => {
-    const { lifecycle } = await loadLifecycleModule();
+    const { doctor } = await loadLifecycleModule();
 
-    const report = await lifecycle.collectDoctorReport({
+    const report = await doctor.collectDoctorReport({
       // #1244: pin the probe so these reports do not depend on whether THIS
       // machine's node-pty compiled.
       probeTerminalPty: () => ({ state: 'available' as const }),
@@ -3407,9 +3409,9 @@ describe('collectDoctorReport', () => {
   });
 
   it('reports configured runtime state separately from missing chat setup', async () => {
-    const { lifecycle } = await loadLifecycleModule();
+    const { doctor } = await loadLifecycleModule();
 
-    const report = await lifecycle.collectDoctorReport({
+    const report = await doctor.collectDoctorReport({
       // #1244: pin the probe so these reports do not depend on whether THIS
       // machine's node-pty compiled.
       probeTerminalPty: () => ({ state: 'available' as const }),
@@ -3456,9 +3458,9 @@ describe('collectDoctorReport', () => {
   });
 
   it('reports installed-vs-pinned Kontour drift as a fail-level check', async () => {
-    const { lifecycle } = await loadLifecycleModule();
+    const { doctor } = await loadLifecycleModule();
 
-    const report = await lifecycle.collectDoctorReport({
+    const report = await doctor.collectDoctorReport({
       // #1244: pin the probe so these reports do not depend on whether THIS
       // machine's node-pty compiled.
       probeTerminalPty: () => ({ state: 'available' as const }),

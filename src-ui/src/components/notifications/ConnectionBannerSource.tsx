@@ -51,7 +51,6 @@ const REMOVE_CONFIRM_TIMEOUT_MS = 5_000;
 const ARM_DEBOUNCE_MS = 300;
 
 // Guardrailed by proof:repo-governance.
-// fallow-ignore-next-line unused-export
 function isLoopbackEndpoint(url: string): boolean {
   try {
     const hostname = new URL(url).hostname;
@@ -67,7 +66,6 @@ function isLoopbackEndpoint(url: string): boolean {
 }
 
 // Guardrailed by proof:repo-governance.
-// fallow-ignore-next-line unused-export
 export function ConnectionBannerSource() {
   const { activeConnection, apiBase, removeConnection } = useConnections();
   const { isDesktop } = usePlatformProfile();
