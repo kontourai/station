@@ -702,9 +702,16 @@ describe('executeForegroundMessage', () => {
     });
   });
 
-  test.each([undefined, 'explicit-new-model'])(
-    'resuming preserves the observed model unless the caller overrides it (%s)',
-    async (override) => {
+  test.each(
+    [undefined, 'native-cursor'].flatMap((resumeCursor) =>
+      [undefined, 'explicit-new-model'].map((override) => ({
+        resumeCursor,
+        override,
+      })),
+    ),
+  )(
+    'continuation preserves the observed model unless overridden (%j)',
+    async ({ resumeCursor, override }) => {
       const deps = dependencies();
       deps.getAgent = async () => ({
         slug: 'station',
@@ -718,7 +725,9 @@ describe('executeForegroundMessage', () => {
       deps.resolveConversationSession = vi.fn(async () => ({
         sessionId: 'conversation:cursor:child',
         startRequired: true,
-        resumeCursor: 'native-cursor',
+        ...(resumeCursor
+          ? { resumeCursor }
+          : { transcriptSeed: 'Earlier context' }),
         resumeModel: 'observed-opus',
       }));
       await executeForegroundMessage(
@@ -737,7 +746,7 @@ describe('executeForegroundMessage', () => {
         expect.anything(),
         expect.objectContaining({
           modelId: override ?? 'observed-opus',
-          resumeCursor: 'native-cursor',
+          ...(resumeCursor ? { resumeCursor } : {}),
         }),
       );
     },

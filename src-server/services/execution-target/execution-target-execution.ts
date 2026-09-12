@@ -546,16 +546,18 @@ export async function executeForegroundMessage(
     continuation && 'resumeModel' in continuation
       ? continuation.resumeModel
       : undefined;
-  // A resumed conversation must not silently adopt a newly resolved Agent
-  // default. Caller overrides still win; Station-resolved model connections
-  // and adapters without resume overrides keep their existing authority path.
+  // Continuing through a native cursor or a transcript-seeded fresh process
+  // must retain the model. Check the capability for the actual launch path;
+  // cursorless engines such as Muse support start overrides, not resume.
+  const modelLaunch = deps.getProviderAdapter(resolved.provider)?.metadata
+    .modelLaunch;
   const inheritResumeModel =
-    continuation?.resumeCursor !== undefined &&
     resumeModel &&
     !input.target.model?.override?.trim() &&
     resolved.modelLaunchPlan.kind === 'engine-selected' &&
-    deps.getProviderAdapter(resolved.provider)?.metadata.modelLaunch
-      ?.overrideAtResume === true;
+    (continuation?.resumeCursor !== undefined
+      ? modelLaunch?.overrideAtResume
+      : modelLaunch?.overrideAtStart) === true;
   const startModelId = inheritResumeModel ? resumeModel : resolved.modelId;
   const conversationProjectSlug =
     binding?.projectSlug ??
