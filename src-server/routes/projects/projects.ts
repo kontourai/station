@@ -822,72 +822,77 @@ export function createProjectRoutes(
     }
     try {
       const slug = param(c, 'slug');
-      // Probe the project FIRST. Without this, an unknown slug reaches the
-      // binder, finds no manifest (there is no project either), and is refused
-      // with 409 "declares no resources" — a truthful-sounding sentence about
-      // a project that does not exist. `bindProjectResource` never reads the
-      // project record itself, so nothing downstream would ever notice.
-      storageAdapter.getProject(slug);
-      const { path, resourceId } = getBody(c) as {
-        path: string;
-        resourceId?: string;
-      };
-      const result = await bindProjectResource(
-        slug,
-        path,
-        {
-          manifests: resolution.manifests,
-          bindings: resolution.bindings,
-          readRemotes: resolution.readRemotes,
-        },
-        resourceId,
-      );
-      if (!result.ok) {
-        projectBindingOperations.add(1, { op: 'bind', outcome: result.code });
-        return c.json(
-          { success: false, error: result.reason },
-          BIND_REFUSAL_STATUS[result.code],
+      const revision = storageAdapter.projectRevision(slug);
+      if (!revision.withCurrentRead) {
+        throw new FileStorageUnavailableError(
+          'Project binding requires current Project revision admission.',
         );
       }
-      projectBindingOperations.add(1, { op: 'bind', outcome: 'bound' });
-      // ── PHASE BOUNDARY. The row is written and durable from here on. ──
-      //
-      // Answer with the freshly re-derived view rather than the row that was
-      // written: the row is what this Station recorded, the view is what it can
-      // now truthfully say, and the surface renders the second.
-      //
-      // The re-derivation is a SEPARATE try on purpose. Sharing the outer one
-      // answered a re-read failure with `success: false`, which the surface
-      // titles "That checkout was not recorded" — a false negative about a
-      // completed, durable write, telling the operator to retry a repair that
-      // already succeeded. The write's outcome and the re-read's outcome are
-      // two facts, and the response now carries both.
-      try {
-        return c.json({
-          success: true,
-          data: {
-            recorded: true,
-            view: await describeProjectResolution(slug, {
-              resolver: resolution.resolver,
-              manifests: resolution.manifests,
-              bindings: resolution.bindings,
-              source: storageAdapter,
-            }),
-          } satisfies ProjectResourceBindOutcome,
-        });
-      } catch (error: unknown) {
-        projectBindingOperations.add(1, {
-          op: 'bind',
-          outcome: 're-derive-failed',
-        });
-        return c.json({
-          success: true,
-          data: {
-            recorded: true,
-            gap: `The binding was recorded. This Station could not then re-read what it can now say about this project: ${errorMessage(error)}`,
-          } satisfies ProjectResourceBindOutcome,
-        });
-      }
+      // Hold the owning Project revision across checkout verification, binding
+      // publication and its response view. A rename/delete/replacement must not
+      // retarget an operation while asynchronous Git verification is running.
+      return await revision.withCurrentRead(async () => {
+        const { path, resourceId } = getBody(c) as {
+          path: string;
+          resourceId?: string;
+        };
+        const result = await bindProjectResource(
+          slug,
+          path,
+          {
+            manifests: resolution.manifests,
+            bindings: resolution.bindings,
+            readRemotes: resolution.readRemotes,
+          },
+          resourceId,
+        );
+        if (!result.ok) {
+          projectBindingOperations.add(1, { op: 'bind', outcome: result.code });
+          return c.json(
+            { success: false, error: result.reason },
+            BIND_REFUSAL_STATUS[result.code],
+          );
+        }
+        projectBindingOperations.add(1, { op: 'bind', outcome: 'bound' });
+        // ── PHASE BOUNDARY. The row is written and durable from here on. ──
+        //
+        // Answer with the freshly re-derived view rather than the row that was
+        // written: the row is what this Station recorded, the view is what it can
+        // now truthfully say, and the surface renders the second.
+        //
+        // The re-derivation is a SEPARATE try on purpose. Sharing the outer one
+        // answered a re-read failure with `success: false`, which the surface
+        // titles "That checkout was not recorded" — a false negative about a
+        // completed, durable write, telling the operator to retry a repair that
+        // already succeeded. The write's outcome and the re-read's outcome are
+        // two facts, and the response now carries both.
+        try {
+          return c.json({
+            success: true,
+            data: {
+              recorded: true,
+              view: await describeProjectResolution(slug, {
+                resolver: resolution.resolver,
+                manifests: resolution.manifests,
+                bindings: resolution.bindings,
+                source: storageAdapter,
+              }),
+            } satisfies ProjectResourceBindOutcome,
+          });
+        } catch (error: unknown) {
+          projectBindingOperations.add(1, {
+            op: 'bind',
+            outcome: 're-derive-failed',
+          });
+          return c.json({
+            success: true,
+            data: {
+              recorded: true,
+              gap: `The binding was recorded. This Station could not then re-read what it can now say about this project: ${errorMessage(error)}`,
+            } satisfies ProjectResourceBindOutcome,
+          });
+        }
+      });
     } catch (error: unknown) {
       const notFound = isProjectNotFound(error);
       projectBindingOperations.add(1, {
@@ -896,7 +901,13 @@ export function createProjectRoutes(
       });
       return c.json(
         { success: false, error: errorMessage(error) },
-        notFound ? 404 : 500,
+        error instanceof FileStorageConflictError
+          ? 409
+          : error instanceof FileStorageUnavailableError
+            ? 503
+            : notFound
+              ? 404
+              : 500,
       );
     }
   });

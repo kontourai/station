@@ -765,6 +765,15 @@ execution roots, home location, membership and the integrated target picker
 retain their separate implementation and acceptance boundaries. See the
 [SDK identity API](../reference/sdk.md#portable-project-identity).
 
+`POST /api/projects/:slug/bind` holds the selected Project revision while it
+verifies the checkout, publishes the binding and derives the response view.
+A Project changed before admission returns 409 without recording a binding;
+an adapter without current-revision admission returns 503. The Project's
+mutation owner serializes rename, replacement and deletion with this operation.
+An error reading the view after publication still reports the recorded binding
+and a separate view gap. This protects the Project association; it is not an
+execution lease or a guarantee against external filesystem changes.
+
 Per Station, per member. In today's single-tenant Station the member is
 implicit; the shape reserves the slot so #1392 does not have to reshape it.
 
