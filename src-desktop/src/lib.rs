@@ -1703,9 +1703,38 @@ fn ensure_mobile_profile_store_genesis(path: &std::path::Path) -> Result<(), Str
 /// can require explicit recovery, but can never silently relabel a used root
 /// as virgin and publish a credentialless replacement over its profile set.
 #[cfg(not(mobile))]
-fn ensure_station_profile_store_genesis(app: &AppHandle, root: &std::path::Path) -> Result<(), String> {
+fn ensure_station_profile_store_genesis(
+    app: &AppHandle,
+    root: &std::path::Path,
+) -> Result<(), String> {
+    // Genesis is initialization, not a mutation protocol for every read/write.
+    // Revalidate the durable marker and current file on each call, but avoid
+    // re-hardening the root and acquiring a second lock once both exist.
+    if station_profile_store_is_initialized(root)? {
+        return Ok(());
+    }
     ensure_station_profile_store_genesis_after_schema(app, root, false)
 }
+
+#[cfg(not(mobile))]
+fn station_profile_store_is_initialized(root: &std::path::Path) -> Result<bool, String> {
+    match std::fs::symlink_metadata(root) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("inspect saved Station root: {error}")),
+        Ok(_) => {}
+    }
+    if !validate_profile_store_genesis_marker(root)? {
+        return Ok(false);
+    }
+    match read_station_profile_store(&root.join("config").join("profiles.json")) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(
+            "saved Station metadata is missing from an initialized or in-progress shared root; restore profiles.json before launching Station".to_string(),
+        ),
+        Err(error) => Err(format!("read saved Station metadata: {error}")),
+    }
+}
+
 #[cfg(not(mobile))]
 fn ensure_station_profile_store_genesis_after_schema(app: &AppHandle, root: &std::path::Path, fresh_schema: bool) -> Result<(), String> {
     let path = root.join("config").join("profiles.json");
@@ -3658,19 +3687,49 @@ enum ProfileLockOwnerLiveness {
 }
 
 #[cfg(not(mobile))]
-fn native_profile_lock_birth(app: &AppHandle, pid: u32) -> Result<Option<String>, String> {
-    let resource_dir = simplified_sidecar_resource_dir(
-        &app.path()
-            .resource_dir()
-            .map_err(|error| format!("locate packaged process identity authority: {error}"))?,
-    );
-    match profile_lock_birth_bridge(&resource_dir, pid) {
-        Ok(birth) => Ok(Some(birth)),
-        // An unavailable identity remains a fence during reclamation, but a
-        // fresh writer must not publish a v2 record without one.
-        Err(RegistryBridgeFailure::Invocation | RegistryBridgeFailure::Protocol) => Ok(None),
-        Err(RegistryBridgeFailure::Untrusted | RegistryBridgeFailure::HomeSchema) => Ok(None),
+fn profile_lock_birth_with_current_process_cache(
+    pid: u32,
+    cache: &std::sync::OnceLock<(u32, String)>,
+    resolve: impl FnOnce() -> Result<Option<String>, String>,
+) -> Result<Option<String>, String> {
+    let own_pid = std::process::id();
+    if pid == own_pid {
+        if let Some((cached_pid, birth)) = cache.get() {
+            if *cached_pid == own_pid {
+                return Ok(Some(birth.clone()));
+            }
+        }
     }
+    let result = resolve()?;
+    if pid == own_pid {
+        if let Some(birth) = &result {
+            if !birth.is_empty() && birth.len() <= 512 {
+                // A process cannot change its own birth identity while alive.
+                // Keep the PID too so a fork cannot reuse its parent's value.
+                // Foreign PIDs and failed lookups are always probed afresh.
+                let _ = cache.set((own_pid, birth.clone()));
+            }
+        }
+    }
+    Ok(result)
+}
+
+#[cfg(not(mobile))]
+fn native_profile_lock_birth(app: &AppHandle, pid: u32) -> Result<Option<String>, String> {
+    static CURRENT_BIRTH: std::sync::OnceLock<(u32, String)> = std::sync::OnceLock::new();
+    profile_lock_birth_with_current_process_cache(pid, &CURRENT_BIRTH, || {
+        let resource_dir = simplified_sidecar_resource_dir(
+            &app.path()
+                .resource_dir()
+                .map_err(|error| format!("locate packaged process identity authority: {error}"))?,
+        );
+        match profile_lock_birth_bridge(&resource_dir, pid) {
+            Ok(birth) => Ok(Some(birth)),
+            // Missing identity still fences reclamation and fresh lock writes.
+            Err(RegistryBridgeFailure::Invocation | RegistryBridgeFailure::Protocol) => Ok(None),
+            Err(RegistryBridgeFailure::Untrusted | RegistryBridgeFailure::HomeSchema) => Ok(None),
+        }
+    })
 }
 
 impl Drop for StationProfileLock {
@@ -13780,6 +13839,112 @@ mod tests {
         std::fs::remove_file(root.join("config")).unwrap();
         symlink(&external, root.join("installs")).unwrap();
         assert!(!station_profile_store_genesis_admissible(&root).unwrap());
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn initialized_profile_store_revalidates_marker_and_missing_file_without_recreating() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".station");
+        assert!(!station_profile_store_is_initialized(&root).unwrap());
+        ensure_station_profile_store_root(&root).unwrap();
+        assert!(!station_profile_store_is_initialized(&root).unwrap());
+        write_profile_store_genesis_marker(&root).unwrap();
+        let path = root.join("config/profiles.json");
+        crate::windows_path_trust::ensure(&[(
+            crate::windows_path_trust::TrustKind::Directory,
+            path.parent().unwrap(),
+        )])
+        .unwrap();
+        write_empty_station_profile_store(&path).unwrap();
+        assert!(station_profile_store_is_initialized(&root).unwrap());
+        std::fs::remove_file(&path).unwrap();
+        assert!(station_profile_store_is_initialized(&root)
+            .unwrap_err()
+            .contains("restore profiles.json"));
+        assert!(!path.exists());
+        write_empty_station_profile_store(&path).unwrap();
+        std::fs::write(profile_store_genesis_marker_path(&root), b"invalid marker").unwrap();
+        assert!(station_profile_store_is_initialized(&root)
+            .unwrap_err()
+            .contains("marker is invalid"));
+    }
+
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn initialized_profile_store_refuses_redirected_or_loose_metadata() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".station");
+        ensure_station_profile_store_root(&root).unwrap();
+        write_profile_store_genesis_marker(&root).unwrap();
+        let path = root.join("config/profiles.json");
+        write_empty_station_profile_store(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(station_profile_store_is_initialized(&root).is_err());
+        std::fs::remove_file(&path).unwrap();
+        let target = temp.path().join("unrelated");
+        std::fs::write(&target, EMPTY_STATION_PROFILE_STORE).unwrap();
+        symlink(&target, &path).unwrap();
+        assert!(station_profile_store_is_initialized(&root).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            EMPTY_STATION_PROFILE_STORE
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_lock_birth_caches_only_this_process_successful_identity() {
+        let cache = std::sync::OnceLock::new();
+        let own = std::process::id();
+        let foreign = own.checked_add(1).unwrap_or(1);
+        assert_eq!(
+            profile_lock_birth_with_current_process_cache(own, &cache, || Ok(None)).unwrap(),
+            None
+        );
+        assert!(
+            profile_lock_birth_with_current_process_cache(own, &cache, || Err(
+                "temporary failure".into()
+            ))
+            .is_err()
+        );
+        assert!(cache.get().is_none());
+        assert_eq!(
+            profile_lock_birth_with_current_process_cache(own, &cache, || Ok(Some(
+                "own-birth".into()
+            )))
+            .unwrap()
+            .as_deref(),
+            Some("own-birth")
+        );
+        assert_eq!(
+            profile_lock_birth_with_current_process_cache(own, &cache, || panic!(
+                "own birth must be reused"
+            ))
+            .unwrap()
+            .as_deref(),
+            Some("own-birth")
+        );
+        for birth in ["foreign-1", "foreign-2"] {
+            assert_eq!(
+                profile_lock_birth_with_current_process_cache(foreign, &cache, || Ok(Some(
+                    birth.into()
+                )))
+                .unwrap()
+                .as_deref(),
+                Some(birth)
+            );
+        }
+        let inherited = std::sync::OnceLock::from((foreign, "parent-birth".to_string()));
+        assert_eq!(
+            profile_lock_birth_with_current_process_cache(own, &inherited, || Ok(Some(
+                "child-birth".into()
+            )))
+            .unwrap()
+            .as_deref(),
+            Some("child-birth")
+        );
     }
 
     #[cfg(not(mobile))]
