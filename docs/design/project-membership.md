@@ -140,6 +140,22 @@ Project does not publish every file in its working directory. Store a trusted
 resource-to-Project/visibility binding rather than accepting public metadata as
 ownership. Keep author identity separate from read access policy.
 
+## Shared access must not inherit personal-device breadth
+
+Existing personal device presets can reach host-wide API surfaces; they are
+not safe guest credentials merely because the request now has a person id.
+Before enabling the first collaborator, either provide a bounded Project-only
+access surface and credential breadth, or finish member-aware authorization for
+every reachable surface. Keep Project actions separate from wire scope tokens
+and do not widen an existing default preset.
+
+The first member journey must refuse unrelated Project/configuration/plugin
+listings before their data is read, not hide them only in the UI. A reduced
+shared-Project interface may expose only the operations already qualified;
+ordinary Station UI bootstrap must not be made to work by handing the member
+an operator or broad personal credential. #488 owns that admission and #490
+owns the wider store inventory.
+
 ## One composed authorization decision
 
 An action is allowed only when all applicable conditions hold:

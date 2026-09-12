@@ -148,6 +148,10 @@ test('public binding projections cannot mutate authoritative identity', () => {
   });
   const listed = service.listDevices()[0]!;
   Object.assign(listed.principalBinding!, { subject: 'another@example.test' });
+  Object.assign(listed.requester!, { login: 'changed@example.test' });
+  expect(service.identifyDevice(result.credential)?.requester?.login).toBe(
+    'collaborator@example.test',
+  );
   expect(
     service.identifyDevice(result.credential)?.principalBinding?.subject,
   ).toBe('collaborator@example.test');

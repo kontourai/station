@@ -426,6 +426,8 @@ function publicDevice(device: StoredDevice): PairedDevice {
   } = device;
   return {
     ...safe,
+    ...(safe.requester ? { requester: { ...safe.requester } } : {}),
+    revocation: { ...safe.revocation },
     ...(safe.principalBinding
       ? { principalBinding: { ...safe.principalBinding } }
       : {}),

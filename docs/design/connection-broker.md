@@ -97,6 +97,46 @@ grant. An online-only revocation promise is not enforceable during a partition.
 Bounded credential lifetimes and refresh policy make this tradeoff explicit;
 local independent access remains a separate authority.
 
+## Recommended confidentiality requirement
+
+Recommendation after the owner requested the stronger long-term design:
+application content remains encrypted through broker and tunnel intermediaries.
+Record explicit owner acceptance in #45/#46 before implementing that policy.
+The plaintext endpoints are the authorized Device and selected Station; this
+is not a claim that a managed Station operator, authorized runner or chosen
+model provider cannot see the content it must process.
+
+Encryption alone is insufficient. The broker must not silently replace the
+Station key or authorize its own client key. Bind endpoint keys through an
+operator-approved enrollment or a separately delegated, authenticated admission
+policy. A connection ticket is not permission to add a decryption endpoint.
+New-device admission, key rotation/recovery and membership revocation require
+explicit failure and compromise cases. Never accept a new trusted key merely
+because the same broker that routes traffic supplied it.
+
+Reuse a maintained authenticated transport implementation, with protocol review
+and test vectors; do not design bespoke encryption. The initial pilot can keep
+using [Tailscale's encrypted device transport](https://tailscale.com/security),
+including encrypted DERP forwarding. Its
+[Tailnet Lock design](https://tailscale.com/docs/features/tailnet-lock) illustrates
+why key admission is separate from data encryption; this recommendation does
+not configure or change a user's tailnet. The
+[Noise framework](https://noiseprotocol.org/noise.html) likewise leaves key
+acceptance to the application, so choosing a library alone is not the protocol.
+
+Treat browser/app distribution and plugin code as endpoint trust. An
+intermediary that can replace the client code or an unrestricted plugin at the
+endpoint can defeat a content-confidentiality claim without breaking the
+cipher. State what code/signing origins are trusted, preserve isolated plugin
+boundaries, and test the actual browser/native delivery shape.
+
+Broker logs and push notifications omit transcripts, code and tool output.
+Operational metadata such as timing, traffic size and necessary endpoint/account
+relationships remains disclosed. Storage encryption and recovery under #46 are
+separate from this transport guarantee. A provider-terminated HTTPS connection
+alone does not satisfy the recommendation; an approved transport must preserve
+end-to-end content protection through that provider.
+
 ## Confidentiality and deployment alternatives
 
 A managed HTTPS tunnel can simplify reachability, but its TLS termination and

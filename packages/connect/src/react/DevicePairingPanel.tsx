@@ -1388,8 +1388,8 @@ export function HostDevicePairingPanel({
                         });
                       }}
                     />
-                    Recognize this device as {request.requester.login} on other
-                    connections (Station operator only)
+                    Recognize this device as {request.requester.login} at this
+                    Station (operator approval required)
                   </label>
                 )}
               {request.status === 'pending' ? (

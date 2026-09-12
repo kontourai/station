@@ -43,6 +43,7 @@ import { configureRuntimeHttp } from '../bootstrap/runtime-http.js';
 import {
   configureDevicePairingHostRoutes,
   configureDevicePairingPublicRoutes,
+  isRuntimeRequestPrincipalCurrent,
   type PairingApprovalAuditRecord,
   type PairingAuthFailureAuditRecord,
 } from '../routes/runtime-routes.js';
@@ -63,6 +64,7 @@ function createHarness(
     maxActiveOffers?: number;
     maxActiveCredentialsWithoutVerifiedIdentity?: number;
     localGrant?: boolean;
+    approvalStillCurrent?: boolean;
     startupIdentity?: { instanceId: string; bootId: string } | null;
     uiBootstrapToken?: string;
     now?: () => number;
@@ -155,6 +157,17 @@ function createHarness(
   configureDevicePairingHostRoutes(app as never, pairing, {
     audit: (record) => auditRecords.push(record),
     verifyOperatorCredential: (credential) => credential === MASTER_CREDENTIAL,
+    isApprovalCurrent: (request) =>
+      options.approvalStillCurrent !== false &&
+      isRuntimeRequestPrincipalCurrent(request, {
+        authorizeCredential: (credential) =>
+          credential === MASTER_CREDENTIAL ||
+          pairing.credentialMayApprovePairing(credential),
+        resolveGrantedScope: (credential) =>
+          credential === MASTER_CREDENTIAL
+            ? DEFAULT_GRANT_PAIRING_SCOPE
+            : pairing.identifyDevice(credential)?.scope,
+      }),
     connectedClientPresence: options.connectedClientPresence,
     clientPresenceAvailable: options.clientPresenceAvailable,
   });
@@ -3557,3 +3570,37 @@ describe('explicit person-binding approval', () => {
     ).toBeUndefined();
   });
 });
+
+test.each([{}, { bindVerifiedIdentity: true }])(
+  'approval rechecks live authority after reading its body: %j',
+  async (body) => {
+    const h = createHarness({ approvalStillCurrent: false });
+    const offer = h.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const pending = h.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Collaborator device',
+      requesterPosition: 'off-box',
+      source: 'tailnet',
+      requester: {
+        provider: 'tailscale-serve',
+        login: 'collaborator@example.test',
+      },
+    });
+    const response = await h.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      h.json(body, MASTER_CREDENTIAL),
+    );
+    expect(response.status).toBe(403);
+    expect(h.pairing.listRequests()[0]?.status).toBe('pending');
+    expect(() =>
+      h.pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: pending.requestId,
+      }),
+    ).toThrow('request_not_confirmed');
+  },
+);

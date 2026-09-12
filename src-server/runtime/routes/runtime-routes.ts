@@ -1456,6 +1456,11 @@ export function configureRuntimeRoutes(
       audit: pairingApprovalAudit,
       verifyOperatorCredential: (credential) =>
         context.environmentSecurityService.verifyOperatorCredential(credential),
+      isApprovalCurrent: (request) =>
+        isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ),
       connectedClientPresence,
       clientPresenceAvailable: hostedTenantRegistry === undefined,
     },
@@ -5531,6 +5536,7 @@ export function configureDevicePairingHostRoutes(
   options: {
     audit?: (record: PairingApprovalAuditRecord) => void;
     verifyOperatorCredential?: (credential: string) => boolean;
+    isApprovalCurrent?: (request: Request) => boolean;
     connectedClientPresence?: ClientConnectionPresence;
     /** Hosted tenants cannot safely share this process-local aggregate. */
     clientPresenceAvailable?: boolean;
@@ -5613,6 +5619,11 @@ export function configureDevicePairingHostRoutes(
             typeof body.bindVerifiedIdentity !== 'boolean')
         ) {
           return c.json({ error: 'invalid_request' }, 400);
+        }
+        // Reading the body yielded. Reapply the existing credential and scope
+        // predicate before either ordinary approval or person binding commits.
+        if (options.isApprovalCurrent?.(c.req.raw) !== true) {
+          return c.json({ error: 'approval_requires_operator' }, 403);
         }
         if (body.bindVerifiedIdentity === true) {
           const actor = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);

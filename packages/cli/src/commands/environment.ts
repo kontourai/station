@@ -1678,7 +1678,7 @@ async function runLocalAccessCommand(
     }
     const confirmed = await dependencies.confirm(
       `${action === 'approve' ? 'Approve' : 'Deny'} device access for ${accessRequestLabel(selected)} ` +
-        `on ${describeResolvedTargetForHuman(resolved)}${bindPerson ? ` and recognize this device as ${terminalSafeText(selected.requester!.login)} on other connections` : ''}?`,
+        `on ${describeResolvedTargetForHuman(resolved)}${bindPerson ? ` and recognize this device as ${terminalSafeText(selected.requester!.login)} when it reconnects` : ''}?`,
     );
     if (!confirmed) {
       (dependencies.stdout ?? console.log)('Cancelled.');
