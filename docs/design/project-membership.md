@@ -75,15 +75,21 @@ wire scope string and Project membership. Its semantic fields are:
 
 - exact Station identity and device-grant identity;
 - the existing provider-qualified human PrincipalRef;
-- a binding revision and state: active, revoked or expired;
+- a unique approval identity, with active/revoked state derived from the device grant;
 - issuer/source evidence, the approving actor and operation identity;
-- creation and expiry, bounded by the associated device grant.
+- approval time and revocation through the associated device grant.
+
+The initial binding lasts until that grant is revoked or replaced; pairing
+offers expire after their existing bounded window. This is not a promise to
+observe identity-provider account revocation while the device connects directly.
+A finite binding/reauthentication policy is a later explicit contract change.
 
 This is a proposed persisted contract, not a new public PrincipalRef grammar.
 Clients cannot supply a trusted binding object. Establish the binding only
-while the device proves its grant, its current verified ingress identity
-matches the proposed human, and an authorized Station operator approves the
-link. Use a one-time, short-lived challenge tied to that Station, device,
+when the pairing request captured verified ingress identity, the device proves
+the one-time offer exchange, and an authorized Station operator explicitly
+approves the link. The operator approves the captured verified subject, not a
+subject supplied in the confirmation request. Use a one-time, short-lived challenge tied to that Station, device,
 subject and action. Verification, replay consumption and publication must have
 one durable completion boundary; an uncertain result is inspected, not replayed
 as a second grant.
@@ -194,6 +200,28 @@ The tests must exercise route/service/store/background callers, not just role
 helpers. Device and provider evidence remain distinct from fixture checks.
 The pilot requires an actual second human identity; two tabs sharing one
 credential do not meet acceptance.
+
+## Initial implementation boundary
+
+The pairing approval route accepts an optional `bindVerifiedIdentity: true`.
+An operator credential or a freshly verified local-grant operator may select it
+for a device request carrying verified tailnet provenance. The server derives
+the subject and approving principal; neither is accepted from JSON. The ordinary
+bodyless approval remains device-only. The request id, proof and existing offer
+expiry bind the one-time exchange; binding and device credential are persisted
+atomically in the paired-device registry.
+
+Host pairing UI exposes a default-off checkbox for verified tailnet requests.
+Bound credentials resolve the same person over direct connections; conflicting
+ingress identity is refused. Revoke the device or explicitly re-pair to change
+its binding. Legacy grants and historical attribution remain unchanged. Hosted
+binding is refused until tenant-safe device custody is implemented. Project
+membership, invitations and shared-resource permissions above remain separate
+work under #488; this initial slice does not enable shared Projects.
+
+The optional stored field is additive for current unbound registries. Older
+strict registry readers reject bound records; do not downgrade an active home
+containing bindings to a server that does not understand them.
 
 ## Owner decision
 

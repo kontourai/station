@@ -23,6 +23,7 @@ import {
   DEVICE_PAIRING_SCOPE,
   type DevicePairingOffer,
   type DevicePairingRequest,
+  type DevicePrincipalBinding,
   isPairingScopeSubset,
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_GRANT_PATHS,
@@ -34,6 +35,8 @@ import {
   type TailscaleServeRequester,
   type WebPushSubscription,
 } from '@kontourai/station-contracts';
+
+import { isPrincipalRef } from '@kontourai/station-contracts/principal';
 
 import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 
@@ -116,6 +119,7 @@ const DEVICE_RECORD_KEYS = new Set([
   // field the writer persists but this set omits makes the registry
   // UNREADABLE at the next boot — the review caught exactly that.
   'mintKind',
+  'principalBinding',
 ]);
 const PRE_ACTIVITY_DEVICE_RECORD_KEYS = new Set([
   'id',
@@ -168,6 +172,7 @@ interface DeviceRegistry {
 }
 
 interface PairingOfferState extends DevicePairingOffer {
+  principalBinding?: DevicePrincipalBinding;
   status: 'open' | 'requested' | 'confirmed' | 'used' | 'cancelled';
   request?: DevicePairingRequest;
   /** PRIVATE — binds display-name reuse to the requesting app instance. */
@@ -419,7 +424,42 @@ function publicDevice(device: StoredDevice): PairedDevice {
     mintKind: _mintKind,
     ...safe
   } = device;
-  return safe;
+  return {
+    ...safe,
+    ...(safe.principalBinding
+      ? { principalBinding: { ...safe.principalBinding } }
+      : {}),
+  };
+}
+
+function isValidPrincipalBinding(value: unknown, requester: unknown): boolean {
+  if (!value || typeof value !== 'object' || !isValidStoredRequester(requester))
+    return false;
+  const binding = value as Record<string, unknown>;
+  return (
+    hasOnlyKnownKeys(
+      binding,
+      new Set([
+        'provider',
+        'subject',
+        'approvedAt',
+        'approvalId',
+        'approvedBy',
+      ]),
+    ) &&
+    binding.provider === 'tailscale-serve' &&
+    binding.subject === (requester as TailscaleServeRequester).login &&
+    typeof binding.approvedAt === 'number' &&
+    Number.isSafeInteger(binding.approvedAt) &&
+    binding.approvedAt >= 0 &&
+    typeof binding.approvalId === 'string' &&
+    CLIENT_INSTANCE_ID_PATTERN.test(binding.approvalId) &&
+    isPrincipalRef({
+      id: binding.approvedBy,
+      kind: 'human',
+      display: 'approver',
+    })
+  );
 }
 
 function isValidPushSubscription(value: unknown): value is WebPushSubscription {
@@ -637,6 +677,13 @@ function validateRegistry(
       (device.requester !== undefined && device.source !== 'tailnet') ||
       (device.source === 'tailnet' &&
         !isValidStoredRequester(device.requester)) ||
+      (device.principalBinding !== undefined &&
+        (device.source !== 'tailnet' ||
+          device.kind !== 'device' ||
+          !isValidPrincipalBinding(
+            device.principalBinding,
+            device.requester,
+          ))) ||
       // Additive (D6 round 3): mint-time home-possession only. Absent on
       // every historical record and on every pairing/access-request mint.
       // A present value that is not the one token is corruption.
@@ -712,6 +759,9 @@ function cloneRegistry(registry: DeviceRegistry): DeviceRegistry {
     devices: registry.devices.map((device) => ({
       ...device,
       ...(device.requester ? { requester: { ...device.requester } } : {}),
+      ...(device.principalBinding
+        ? { principalBinding: { ...device.principalBinding } }
+        : {}),
       pushSubscription: device.pushSubscription
         ? {
             ...device.pushSubscription,
@@ -984,6 +1034,7 @@ export class DevicePairingService {
   confirmRequest(
     requestId: string,
     approval: PairingApproval,
+    personBindingApproval?: { readonly principalId: string },
   ): DevicePairingRequest {
     const offer = [...this.#offers.values()].find(
       (candidate) => candidate.request?.requestId === requestId,
@@ -1004,6 +1055,28 @@ export class DevicePairingService {
       !unauthenticatedApprovalAllowed(offer)
     ) {
       throw new DevicePairingError('approval_requires_operator');
+    }
+    if (personBindingApproval) {
+      if (
+        approval.kind !== 'presented-credential' ||
+        offer.kind !== 'device' ||
+        offer.request.source !== 'tailnet' ||
+        !isValidStoredRequester(offer.request.requester) ||
+        !isPrincipalRef({
+          id: personBindingApproval.principalId,
+          kind: 'human',
+          display: 'approver',
+        })
+      ) {
+        throw new DevicePairingError('invalid_request');
+      }
+      offer.principalBinding = {
+        provider: 'tailscale-serve',
+        subject: offer.request.requester.login,
+        approvedAt: this.#now(),
+        approvalId: randomUUID(),
+        approvedBy: personBindingApproval.principalId,
+      };
     }
     offer.status = 'confirmed';
     offer.request.status = 'confirmed';
@@ -1168,6 +1241,9 @@ export class DevicePairingService {
       revocation: { state: 'not-revoked' },
       credentialHash: digest(credential).toString('base64url'),
       issuedAt,
+      ...(offer.principalBinding
+        ? { principalBinding: { ...offer.principalBinding } }
+        : {}),
       ...(input.clientInstanceId
         ? { clientInstanceId: input.clientInstanceId }
         : {}),

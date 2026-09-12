@@ -521,6 +521,53 @@ describe('environment CLI commands', () => {
     );
   });
 
+  test.each([true, false])(
+    'explicit person binding requires a server acknowledgment (%s)',
+    async (acknowledged) => {
+      const pending = {
+        requestId: 'person-request',
+        deviceName: 'Collaborator phone',
+        source: 'tailnet' as const,
+        requester: {
+          provider: 'tailscale-serve' as const,
+          login: 'collaborator@example.test',
+        },
+        createdAt: 10,
+        expiresAt: 30,
+        status: 'pending' as const,
+      };
+      const request = makeAccessApi([pending], {
+        ...pending,
+        status: 'confirmed',
+        ...(acknowledged ? { personBindingApproved: true } : {}),
+      });
+      const operation = runEnvironmentCommand(
+        ['access', 'approve', '--bind-person', '--force'],
+        {
+          createService: () => makeService(),
+          projectHome: '/tmp/station-home',
+          request,
+          stdout,
+          stderr,
+          isInteractive: false,
+        },
+      );
+      if (acknowledged) await expect(operation).resolves.toBeUndefined();
+      else
+        await expect(operation).rejects.toThrow(
+          'did not confirm person binding',
+        );
+      expect(request).toHaveBeenLastCalledWith(
+        DEFAULT_LOOPBACK_API_BASE,
+        '/api/pairing/requests/person-request/confirm',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ bindVerifiedIdentity: true }),
+        }),
+      );
+    },
+  );
+
   test('refuses to load or send the local credential to a non-loopback API base', async () => {
     const createService = vi.fn(() => makeService());
     const request = vi.fn<OperatorJsonRequest>();
@@ -1987,6 +2034,7 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
           'list:station',
           'approve:latest',
           'approve:force',
+          'approve:bind-person',
           'approve:api-base',
           'approve:station',
           'deny:latest',
