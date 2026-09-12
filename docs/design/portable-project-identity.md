@@ -46,6 +46,10 @@ to understand or implement this design.
 a knowledge root, an agent, an MCP integration, a layout. It does **not** mean
 a generalized resource graph; #1425 rules that out of scope and so does §8.
 
+The complementary [Station topology](station-topology.md) decision distinguishes
+this portable identity/reference document from local bindings, room authority,
+and execution offers.
+
 ## 1. Problem: three concerns fused into one optional string
 
 `ProjectConfig.workingDirectory` (`packages/contracts/src/project.ts:9`) is one
@@ -586,9 +590,13 @@ by convention:
   have; the manifest has it explicitly.
 - **No secret values.** Auth is by reference only (§3.4), with the validator
   rejecting key-looking literals.
-- **No machine or member identity.** A manifest describes a project, never who
-  has it or who offers it. That is §4's contribution layer, computed per
-  Station and attributed by the reader (§4.2).
+- **No machine, Station-instance, room-authority, execution-offer, or member
+  identity.** A manifest describes a Project, never who has it, who may
+  sequence a room, or who offers it. Those are separately authored operational
+  facts: bindings and offers are local/per-Station; current personal rooms have
+  no lease service, while future witnessed authority uses its own verified
+  operational record. That is §4's contribution layer, computed per Station
+  and attributed by the reader (§4.2).
 - **Base URLs are allowed** and are not treated as secrets — a self-hosted
   forge or MCP endpoint is topology, and refusing it would make self-hosted
   setups unrepresentable. They are, however, the field most likely to be

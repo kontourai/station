@@ -2321,3 +2321,14 @@ the orchestration owner checks the same open event again before adapter input.
 Opaque `attachmentRefs` use the existing current-host staging path; retries
 retain the same `clientTurnId` and payload after an uncertain response. Pass the
 captured host `requestScope` to each read, staging operation and send.
+
+## Mobile device inspection
+
+The opt-in `@kontourai/station-sdk/mobile-device` subpath exports
+`fetchMobileDeviceInventory(apiBase, options?)` and
+`captureMobileDevice(apiBase, target, options?)`, the shared inventory/target/capture
+types, and `MobileDeviceRequestError` with an HTTP status. Both use the existing
+`ClientRequestOptions` credential and origin boundary. Responses are validated;
+capture refuses mismatched targets and returns a timestamped PNG, not stream
+readiness or foreground-app provenance. See [Mobile device inspection](../guides/mobile-device-workspace.md)
+for host setup, access scopes, limits, and the web/desktop integration boundary.
