@@ -68,11 +68,12 @@ describe('feedback-analysis', () => {
       maxAvoid: 1,
     });
 
-    expect(summary).toMatchObject({
+    expect(summary?.summary).toMatchObject({
       reinforce: ['be concise'],
       avoid: ['ramble'],
       analyzedCount: 2,
     });
-    expect(summary?.updatedAt).toBeTruthy();
+    expect(summary?.summary?.updatedAt).toBeTruthy();
+    expect(summary?.summaryBasis).toMatch(/^[a-f0-9]{64}$/);
   });
 });
