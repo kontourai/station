@@ -106,7 +106,7 @@ export function PullRequestsPanel({
             repository: selected.repository.name,
             ref: selected.ref,
             project: projectSlug,
-            workingDirectory: activeRepoRoot ?? undefined,
+            repositoryRootHint: activeRepoRoot ?? undefined,
           },
           onBack: () => setSelected(null),
         }}

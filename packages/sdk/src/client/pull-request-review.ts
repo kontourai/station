@@ -16,7 +16,8 @@ export interface PullRequestReviewTarget {
   ref: string;
   project: string;
   thread?: string;
-  workingDirectory?: string;
+  /** Forwarded as a server-side repository-selection hint; never read locally. */
+  repositoryRootHint?: string;
 }
 function path(apiBase: string, target: PullRequestReviewTarget) {
   const identity = [
@@ -30,8 +31,8 @@ function path(apiBase: string, target: PullRequestReviewTarget) {
     throw Error('An exact pull request and project are required.');
   const query = new URLSearchParams({ project: target.project });
   if (target.thread) query.set('thread', target.thread);
-  if (target.workingDirectory)
-    query.set('workingDirectory', target.workingDirectory);
+  if (target.repositoryRootHint)
+    query.set('workingDirectory', target.repositoryRootHint);
   return `${apiBase}/api/pull-requests/${identity.map(encodeURIComponent).join('/')}/review?${query}`;
 }
 async function read<T>(response: Response): Promise<PullRequestResult<T>> {
