@@ -3,6 +3,7 @@
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { environmentId } from '@kontourai/station-contracts/execution-target';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -21,6 +22,7 @@ const sdkMocks = vi.hoisted(() => ({
     profile: { id: string; name: string; environmentId?: string };
   }>,
   environmentsError: false,
+  environmentsLoading: false,
 }));
 
 const navigationMocks = vi.hoisted(() => ({
@@ -114,9 +116,12 @@ vi.mock('../views/project-settings/ResourcesSection', () => ({
 
 vi.mock('@kontourai/station-sdk', () => ({
   useSshEnvironmentsQuery: () => ({
-    data: sdkMocks.environmentsError ? undefined : sdkMocks.environments,
-    isLoading: false,
-    isSuccess: !sdkMocks.environmentsError,
+    data:
+      sdkMocks.environmentsError || sdkMocks.environmentsLoading
+        ? undefined
+        : sdkMocks.environments,
+    isLoading: sdkMocks.environmentsLoading,
+    isSuccess: !sdkMocks.environmentsError && !sdkMocks.environmentsLoading,
     isError: sdkMocks.environmentsError,
   }),
   useProjectQuery: vi.fn(() => ({
@@ -191,6 +196,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     sdkMocks.refetch.mockClear();
     sdkMocks.environments = [];
     sdkMocks.environmentsError = false;
+    sdkMocks.environmentsLoading = false;
     navigationMocks.navigate.mockClear();
     navigationMocks.showSurface.mockClear();
   });
@@ -234,7 +240,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       (screen.getByLabelText('Default environment') as HTMLSelectElement).value,
     ).toBe('deleted-environment');
     expect(screen.getByRole('status').textContent).toContain(
-      'names a saved environment that no longer exists',
+      'Its selection is preserved',
     );
   });
 
@@ -253,6 +259,33 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(
       (screen.getByLabelText('Default environment') as HTMLSelectElement).value,
     ).toBe('env-unchecked');
+  });
+
+  test('shows the configured environment while the saved inventory is loading', () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      defaultEnvironment: { kind: 'saved', id: environmentId('env-media') },
+    };
+    sdkMocks.environmentsLoading = true;
+    const { rerender } = renderProjectSettings();
+    expect(screen.getByLabelText('Default environment')).toHaveProperty(
+      'value',
+      'env-media',
+    );
+    expect(screen.queryByText(/not available in the current list/)).toBeNull();
+    sdkMocks.environmentsLoading = false;
+    sdkMocks.environments = [
+      { profile: { id: 'media', name: 'Media', environmentId: 'env-media' } },
+    ];
+    rerender(<ProjectSettingsView slug="demo" />);
+    expect(screen.getByLabelText('Default environment')).toHaveProperty(
+      'value',
+      'env-media',
+    );
+    expect(screen.getByRole('option', { name: 'Media' })).toHaveProperty(
+      'selected',
+      true,
+    );
   });
 
   test('clears a dangling saved default through a real selection change', async () => {
