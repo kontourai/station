@@ -1,7 +1,24 @@
 fn main() {
     println!("cargo:rustc-env=STATION_NODE_ENGINE={}", read_node_engine());
     stage_client_build_provenance();
-    tauri_build::build()
+    let mut attributes = tauri_build::Attributes::new();
+    if matches!(std::env::var("CARGO_CFG_TARGET_OS").as_deref(), Ok("windows"))
+        && matches!(std::env::var("CARGO_CFG_TARGET_ENV").as_deref(), Ok("msvc"))
+    {
+        // The resource-based default manifest does not reach cargo's library
+        // test executable. Like Tauri's API example, embed the same Common
+        // Controls v6 manifest through the linker for apps AND test harnesses.
+        // Otherwise tests import TaskDialogIndirect from v5 and fail to load.
+        // https://github.com/tauri-apps/tauri/blob/dev/examples/api/src-tauri/build.rs
+        let manifest = std::env::current_dir().unwrap().join("windows-app-manifest.xml");
+        println!("cargo:rerun-if-changed={}", manifest.display());
+        println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+        println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+        attributes = attributes.windows_attributes(
+            tauri_build::WindowsAttributes::new_without_app_manifest(),
+        );
+    }
+    tauri_build::try_build(attributes).expect("build Tauri resources");
 }
 
 /// Native targets cannot trust a backend (a phone can be unpaired or attached
