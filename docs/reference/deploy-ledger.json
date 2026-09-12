@@ -1,5 +1,119 @@
 [
   {
+    "timestampUtc": "2026-09-12T16:03:48Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2446.34702144379",
+    "sha": "eb93cd47213c8c6eebb54621aee911ae4a220a68",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34702144379",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2446.34702144379 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "f4ee278e2b47462e4f4969326f00a95f82f58530",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 0
+    }
+  },
+  {
+    "timestampUtc": "2026-09-12T15:12:53Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2446",
+    "sha": "f4ee278e2b47462e4f4969326f00a95f82f58530",
+    "artifactBuiltAt": "2026-09-12T14:33:40.077Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34699081987",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 34699081987)"
+    ],
+    "changelog": {
+      "previousSha": "71e0381f78e903cd81fc9d2d21266986103f6f39",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#1859](https://github.com/kontourai/station/pull/1859) fix: close residual dependency, lifecycle, and test gaps"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-09-12T15:12:50Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2446",
+    "sha": "f4ee278e2b47462e4f4969326f00a95f82f58530",
+    "artifactBuiltAt": "2026-09-12T14:35:23.777Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34699081987",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 34699081987)"
+    ],
+    "changelog": {
+      "previousSha": "71e0381f78e903cd81fc9d2d21266986103f6f39",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#1859](https://github.com/kontourai/station/pull/1859) fix: close residual dependency, lifecycle, and test gaps"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-09-12T15:05:54Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2446.34699081987",
+    "sha": "f4ee278e2b47462e4f4969326f00a95f82f58530",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34699081987",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2446.34699081987 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e330d3ee74290a4c4649a6eecdb4be8a5d961f1c",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#1859](https://github.com/kontourai/station/pull/1859) fix: close residual dependency, lifecycle, and test gaps"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-09-12T11:13:24Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2446.34688699784",

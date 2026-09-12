@@ -625,17 +625,28 @@ function MessageBubbleComponent({
         className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}`}
       >
         {!isMobile && metadataBefore}
-        <MessageContent
-          contentParts={msg.contentParts}
-          textContent={textContent}
-          chatFontSize={chatFontSize}
-          showReasoning={showReasoning}
-          showToolDetails={showToolDetails}
-          isStreamingMessage={isStreamingMessage}
-          onToolApproval={
-            onToolApproval ? handleContentToolApproval : undefined
+        <div
+          data-quote-source-message={
+            msg.role === 'assistant' &&
+            msg.answerEligible &&
+            msg.sessionId &&
+            msg.turnId
+              ? msg.id
+              : undefined
           }
-        />
+        >
+          <MessageContent
+            contentParts={msg.contentParts}
+            textContent={textContent}
+            chatFontSize={chatFontSize}
+            showReasoning={showReasoning}
+            showToolDetails={showToolDetails}
+            isStreamingMessage={isStreamingMessage}
+            onToolApproval={
+              onToolApproval ? handleContentToolApproval : undefined
+            }
+          />
+        </div>
 
         {!isMobile && metadataAfter}
         {msg.role === 'assistant' && isLastMessage && (

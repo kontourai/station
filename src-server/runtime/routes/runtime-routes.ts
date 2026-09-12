@@ -182,6 +182,7 @@ import {
   type ProjectResolutionRouteDeps,
 } from '../../routes/projects/projects.js';
 import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
+import { createConversationPullRequestLinkRoutes } from '../../routes/pull-requests/conversation-pull-request-links.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
 import { createSearchRoutes } from '../../routes/search.js';
 import { createSecretBindingRoutes } from '../../routes/secret-bindings.js';
@@ -351,6 +352,7 @@ import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js'
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import { createTaskGateEvaluationReferenceReadAdapter } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import { WorkItemProviderService } from '../../services/projects/work-item-provider-service.js';
+import { ConversationPullRequestLinkStore } from '../../services/pull-requests/conversation-pull-request-link-store.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
 import { PullRequestRepositoryContextResolver } from '../../services/pull-requests/pull-request-repository-context-resolver.js';
@@ -2870,6 +2872,56 @@ export function configureRuntimeRoutes(
   registerPullRequestProvider(new GitHubPullRequestProvider());
   registerPullRequestProvider(new GitLabPullRequestProvider());
   const pullRequestContextResolver = new PullRequestRepositoryContextResolver();
+  const conversationPullRequestLinks = new ConversationPullRequestLinkStore(
+    context.configLoader.getProjectHomeDir(),
+  );
+  context.app.route(
+    '/api/conversation-pull-requests',
+    createConversationPullRequestLinkRoutes(
+      conversationPullRequestLinks,
+      () => listProviders('pullRequest').map((entry) => entry.provider),
+      {
+        current: isRequestPrincipalCurrent,
+        operator: (request) => {
+          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+          return principal?.authority === 'operator-credential'
+            ? getCachedUser().alias
+            : undefined;
+        },
+        canRead: (request, conversationId) =>
+          context.orchestrationService.canUserReadSession(
+            conversationId,
+            readAuthorityForRequest(request),
+          ),
+        declared: async (request, conversationId) => {
+          if (
+            !context.orchestrationService.canUserReadSession(
+              conversationId,
+              readAuthorityForRequest(request),
+            )
+          )
+            return [];
+          return context.taskGraphService
+            .listTasks()
+            .flatMap((task) =>
+              context.taskGraphService.listKeptDeclaredPullRequestsForSession(
+                task.id,
+                conversationId,
+              ),
+            )
+            .map((reference) => ({
+              provider: reference.provider,
+              host: reference.host,
+              repository: reference.repository,
+              ref: reference.ref,
+              source: 'task-declared' as const,
+              linkedAt: reference.keptAt,
+              linkedBy: 'station.task-graph',
+            }));
+        },
+      },
+    ),
+  );
   context.app.route(
     '/api/pull-requests',
     createPullRequestRoutes(
@@ -2907,6 +2959,7 @@ export function configureRuntimeRoutes(
         });
       },
       {
+        isRequestPrincipalCurrent,
         operatorIdentityForRequest: (routeContext) => {
           const authority = (
             routeContext as unknown as { get: (key: string) => unknown }

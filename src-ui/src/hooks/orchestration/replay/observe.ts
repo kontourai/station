@@ -12,7 +12,7 @@ import type {
 export type * from './observation-types';
 
 /** Methods `handleOrchestrationEvent` actually folds. Keep in lockstep with its switch. */
-export const UI_FOLDED_ORCHESTRATION_METHODS = [
+const UI_FOLDED_ORCHESTRATION_METHODS = [
   'session.started',
   'session.configured',
   'session.state-changed',
@@ -193,7 +193,7 @@ export function detectReplayIssues(
   return issues;
 }
 
-export function collectReplayScroll(
+function collectReplayScroll(
   container: HTMLElement | null,
 ): ReplayScrollObservation | undefined {
   if (!container) return undefined;

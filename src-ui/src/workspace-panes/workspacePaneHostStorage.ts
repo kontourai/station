@@ -9,9 +9,8 @@ import {
   workspacePaneHostScopeMatches,
 } from '@kontourai/station-contracts/workspace-pane-host';
 
-export const WORKSPACE_PANE_HOST_STORAGE_PREFIX =
-  'station:workspace-pane-host:v2';
-export const MAX_WORKSPACE_PANE_HOST_STORAGE_BYTES = 64 * 1024;
+const WORKSPACE_PANE_HOST_STORAGE_PREFIX = 'station:workspace-pane-host:v2';
+const MAX_WORKSPACE_PANE_HOST_STORAGE_BYTES = 64 * 1024;
 const utf8 = new TextEncoder();
 
 export interface WorkspacePaneHostStorage {

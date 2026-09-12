@@ -21,6 +21,7 @@ import {
   classifyClaudeResultOutcome,
   claudeResultFailureText,
 } from './claude-result-outcome.js';
+import { claudeSourceResumeCursor } from './claude-resume-cursor.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /** A token figure is only usable when it is a finite, non-negative count. */
@@ -371,7 +372,10 @@ export function mapClaudeSdkMessage({
   const createdAt = new Date().toISOString();
 
   if (message.type === 'system' && message.subtype === 'init') {
-    record.session.resumeCursor = message.session_id;
+    const sourceCursor = claudeSourceResumeCursor(record.session.resumeCursor);
+    record.session.resumeCursor = sourceCursor
+      ? { ...sourceCursor, claudeSessionId: message.session_id }
+      : message.session_id;
     record.session.cwd = message.cwd;
     record.session.model = message.model;
     record.session.status = 'ready';

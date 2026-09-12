@@ -469,10 +469,7 @@ function stationSessionPointer(sessionId: string): string {
 
 const DISCORD_MESSAGE_MAX_CHARS = 2_000;
 
-export function renderDiscordTranscript(
-  output: string,
-  sessionId: string,
-): string {
+function renderDiscordTranscript(output: string, sessionId: string): string {
   if (output.length <= DISCORD_MESSAGE_MAX_CHARS)
     return output || 'Station completed the turn.';
   const disclosure = `\n\n[Truncated — view the full response in Station: ${stationSessionPointer(sessionId)}]`;

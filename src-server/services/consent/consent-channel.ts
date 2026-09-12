@@ -31,7 +31,7 @@ type ConsentChannelState =
   | { readonly status: 'unavailable'; readonly reason: string };
 
 /** The path the consent listener serves a review at, for URL construction. */
-export function consentReviewPath(transactionId: string): string {
+function consentReviewPath(transactionId: string): string {
   return `/consent/${encodeURIComponent(transactionId)}`;
 }
 

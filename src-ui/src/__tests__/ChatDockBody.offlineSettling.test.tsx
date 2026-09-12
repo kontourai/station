@@ -107,6 +107,9 @@ import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
 import type { ChatSession } from '../types';
 
 const chatInput = {
+  quotes: [],
+  quotedDraftText: '',
+  removeQuote: vi.fn(),
   input: '',
   attachments: [],
   textareaRef: { current: null },

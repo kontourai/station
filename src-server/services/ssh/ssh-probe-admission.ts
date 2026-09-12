@@ -28,9 +28,9 @@
  */
 
 /** Slots held across the whole server, however many principals are calling. */
-export const SSH_PROBE_GLOBAL_LIMIT = 3;
+const SSH_PROBE_GLOBAL_LIMIT = 3;
 /** Slots held by any one credential. One human tests one connection. */
-export const SSH_PROBE_PER_PRINCIPAL_LIMIT = 1;
+const SSH_PROBE_PER_PRINCIPAL_LIMIT = 1;
 
 interface SshProbeAdmissionRefusal {
   /**

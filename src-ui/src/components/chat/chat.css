@@ -2380,3 +2380,37 @@
   font-size: 0.875rem;
   color: var(--text-secondary);
 }
+
+.source-quote-selection {
+  position: fixed;
+  z-index: var(--layer-surface-popover);
+  max-width: min(280px, calc(100vw - 16px));
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 4px;
+}
+.source-quote-selection .button,
+.source-quote-draft .button {
+  min-height: 44px;
+}
+.source-quote-drafts {
+  max-height: 180px;
+  overflow: auto;
+  flex-shrink: 0;
+}
+.source-quote-draft {
+  border: 1px solid var(--border-primary);
+  padding: 8px;
+}
+.source-quote-draft blockquote {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+  max-height: 70px;
+  overflow: auto;
+}
+.source-quote-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

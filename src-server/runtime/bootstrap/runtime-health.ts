@@ -2,7 +2,7 @@ import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { runtimeEventLoopLag } from '../../telemetry/metrics.js';
 
-export const EVENT_LOOP_LAG_SAMPLE_INTERVAL_MS = 10_000;
+const EVENT_LOOP_LAG_SAMPLE_INTERVAL_MS = 10_000;
 
 interface RuntimeHealthContext {
   activeAgents: Map<string, any>;

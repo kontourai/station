@@ -144,11 +144,10 @@ describe('bundled client admission', () => {
 });
 
 async function loadCliWithLifecycleMocks() {
+  const doctor = { doctor: vi.fn(), doctorJson: vi.fn() };
   const lifecycle = {
     buildApplication: vi.fn(),
     clean: vi.fn(),
-    doctor: vi.fn(),
-    doctorJson: vi.fn(),
     homeBackup: vi.fn(() => ({
       backupDir: '/backup',
       manifest: {
@@ -216,13 +215,14 @@ async function loadCliWithLifecycleMocks() {
     update: vi.fn(),
   }));
   vi.doMock('../commands/lifecycle.js', () => lifecycle);
+  vi.doMock('../commands/lifecycle-doctor.js', () => doctor);
   vi.doMock('../commands/service.js', () => service);
   vi.doMock('../dev/server.js', () => ({
     startDevServer: vi.fn(),
   }));
 
   const { runCli } = await import('../cli.js');
-  return { lifecycle, runCli, service };
+  return { lifecycle, doctor, runCli, service };
 }
 
 describe('runCli', () => {
@@ -390,12 +390,12 @@ describe('runCli', () => {
   });
 
   test('dispatches doctor --json without invoking human output', async () => {
-    const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
+    const { doctor, runCli } = await loadCliWithLifecycleMocks();
 
     await runCli(['doctor', '--json']);
 
-    expect(lifecycle.doctorJson).toHaveBeenCalledOnce();
-    expect(lifecycle.doctor).not.toHaveBeenCalled();
+    expect(doctor.doctorJson).toHaveBeenCalledOnce();
+    expect(doctor.doctor).not.toHaveBeenCalled();
   });
 
   test('the direct `service install` dispatch signposts setup local; other actions do not', async () => {
@@ -718,8 +718,6 @@ describe('runCli', () => {
     vi.doMock('../commands/lifecycle.js', () => ({
       buildApplication: vi.fn(),
       clean: vi.fn(),
-      doctor: vi.fn(),
-      doctorJson: vi.fn(),
       link: vi.fn(),
       shortcut: vi.fn(),
       start: vi.fn(),
@@ -771,8 +769,6 @@ describe('runCli', () => {
     vi.doMock('../commands/lifecycle.js', () => ({
       buildApplication: vi.fn(),
       clean: vi.fn(),
-      doctor: vi.fn(),
-      doctorJson: vi.fn(),
       link: vi.fn(),
       shortcut: vi.fn(),
       start: vi.fn(),
@@ -850,8 +846,6 @@ describe('runCli', () => {
     vi.doMock('../commands/lifecycle.js', () => ({
       buildApplication: vi.fn(),
       clean: vi.fn(),
-      doctor: vi.fn(),
-      doctorJson: vi.fn(),
       link: vi.fn(),
       shortcut: vi.fn(),
       start: vi.fn(),
@@ -1123,8 +1117,6 @@ describe('runCli', () => {
     vi.doMock('../commands/lifecycle.js', () => ({
       buildApplication: vi.fn(),
       clean: vi.fn(),
-      doctor: vi.fn(),
-      doctorJson: vi.fn(),
       link: vi.fn(),
       shortcut: vi.fn(),
       start: vi.fn(),
@@ -1348,8 +1340,6 @@ describe('runCli', () => {
       vi.doMock('../commands/lifecycle.js', () => ({
         buildApplication: vi.fn(),
         clean: vi.fn(),
-        doctor: vi.fn(),
-        doctorJson: vi.fn(),
         link: vi.fn(),
         shortcut: vi.fn(),
         start: vi.fn(),
@@ -1400,8 +1390,6 @@ describe('runCli', () => {
       vi.doMock('../commands/lifecycle.js', () => ({
         buildApplication: vi.fn(),
         clean: vi.fn(),
-        doctor: vi.fn(),
-        doctorJson: vi.fn(),
         link: vi.fn(),
         shortcut: vi.fn(),
         start: vi.fn(),

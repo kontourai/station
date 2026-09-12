@@ -8,7 +8,6 @@ import {
   createSystemOpenSshRunner,
   type OpenSshCommandRunner,
   type ResolvedOpenSshHost,
-  redactOpenSshArgs,
   requireOpenSshAlias,
   resolveOpenSshHost,
 } from './openssh-config.js';
@@ -763,9 +762,5 @@ export class OpenSshEnvironmentAdapter {
     requireOpenSshAlias(options.alias);
     safeRemotePort(options.remotePort);
     return new OpenSshTunnel(options, this.dependencies);
-  }
-
-  describeCommand(args: readonly string[]): string[] {
-    return redactOpenSshArgs(args);
   }
 }

@@ -75,6 +75,15 @@ test('imports real rollout pages through durable follower cursors and resumes ap
       },
     });
     const threadId = attached!.threadId;
+    expect(attached?.attachedSource?.affinity).toMatchObject({
+      kind: 'codex-config-home',
+      ref: expect.any(String),
+    });
+    expect(attached?.attachedSource?.completedBoundary).toMatchObject({
+      kind: 'completed-turn',
+      providerTurnId: 't1',
+      observedEventId: expect.any(String),
+    });
     const before = store.listEvents(threadId);
     expect(
       before
@@ -100,6 +109,10 @@ test('imports real rollout pages through durable follower cursors and resumes ap
     const restarted = follow();
     for (let index = 0; index < 8; index++) await restarted.pollNow();
     const after = store.listEvents(threadId);
+    expect(
+      store.readSessions().find((item) => item.threadId === threadId)
+        ?.attachedSource?.completedBoundary,
+    ).toMatchObject({ providerTurnId: 't2' });
     expect(after.filter((entry) => beforeIds.includes(entry.id))).toHaveLength(
       beforeIds.length,
     );

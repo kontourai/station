@@ -152,7 +152,7 @@ export function createAnswerShareRoutes(
 }
 
 /** Maximum bytes of a share-view request body. A token and nothing else. */
-export const ANSWER_SHARE_VIEW_MAX_BODY_BYTES = 512;
+const ANSWER_SHARE_VIEW_MAX_BODY_BYTES = 512;
 
 type AnswerShareViewResponse =
   | { kind: 'rate-limited' }

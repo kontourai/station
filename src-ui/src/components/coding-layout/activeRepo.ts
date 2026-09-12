@@ -25,7 +25,7 @@ function isPathPrefix(repoRoot: string, filePath: string): boolean {
  * the longest path-prefix of the file path. Returns null when no repo contains
  * the file (or no file is provided).
  */
-export function repoForFile(
+function repoForFile(
   repos: DiscoveredRepo[],
   filePath: string | null | undefined,
 ): DiscoveredRepo | null {

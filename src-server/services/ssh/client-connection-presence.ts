@@ -1,7 +1,7 @@
 /** Process-local, non-durable paired-device SSE liveness. */
 export const CLIENT_SESSION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-export const CLIENT_CONNECTION_LEASE_MS = 90_000;
+const CLIENT_CONNECTION_LEASE_MS = 90_000;
 export const CLIENT_CONNECTION_CAPACITY = 256;
 export const CLIENT_CONNECTIONS_PER_DEVICE_CAPACITY = 32;
 

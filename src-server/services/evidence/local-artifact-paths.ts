@@ -23,7 +23,7 @@ export function legacyFlowAgentsRoot(cwd: string): string {
   return resolve(cwd, LEGACY_FLOW_AGENTS_DIR);
 }
 
-export const STATION_KONTOURAI_ROOT = KONTOURAI_DIR;
+const STATION_KONTOURAI_ROOT = KONTOURAI_DIR;
 
 export const STATION_ARTIFACT_ROOTS = {
   console: join(STATION_KONTOURAI_ROOT, 'console'),
@@ -71,7 +71,7 @@ const VERITAS_GENERATED_KINDS = new Set<VeritasGeneratedKind>([
   'standards-feedback-drafts',
 ]);
 
-export function stationArtifactPath(
+function stationArtifactPath(
   cwd: string,
   relativeArtifactPath: string,
 ): string {
@@ -142,10 +142,7 @@ export function workflowSidecarTaskReference(taskSlug: string): string {
   return `${STATION_ARTIFACT_ROOTS.flowAgents}/${taskSlug}`;
 }
 
-export function legacyWorkflowSidecarTaskDir(
-  cwd: string,
-  taskSlug: string,
-): string {
+function legacyWorkflowSidecarTaskDir(cwd: string, taskSlug: string): string {
   return join(legacyFlowAgentsRoot(cwd), taskSlug);
 }
 
@@ -221,7 +218,7 @@ export function workflowSidecarTaskPaths(
   };
 }
 
-export function veritasGeneratedRoot(cwd: string): string {
+function veritasGeneratedRoot(cwd: string): string {
   return stationArtifactPath(cwd, STATION_ARTIFACT_ROOTS.veritas);
 }
 

@@ -6,7 +6,7 @@ import type {
 } from '../types';
 import type { ReplayHistoryState } from './history';
 
-export const SESSION_TAPE_KIND = 'station.session-tape' as const;
+const SESSION_TAPE_KIND = 'station.session-tape' as const;
 
 export interface SessionTapeSource {
   threadId: string;

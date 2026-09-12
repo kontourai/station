@@ -53,11 +53,7 @@ const EMPTY_DRAFT: ACPConnectionDraft = {
   cwd: '',
 };
 
-export function getACPConnectionDraftId(
-  id: string,
-  command: string,
-  name: string,
-) {
+function getACPConnectionDraftId(id: string, command: string, name: string) {
   const candidate = id || command.split('/').at(-1) || name;
   return candidate
     .trim()
@@ -66,7 +62,7 @@ export function getACPConnectionDraftId(
     .replace(/^-|-$/g, '');
 }
 
-export function reduceACPConnectionSetup(
+function reduceACPConnectionSetup(
   state: ACPConnectionSetupState,
   action: SetupAction,
 ): ACPConnectionSetupState {

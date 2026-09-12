@@ -92,7 +92,7 @@ interface BedrockRegionInputs {
  * miss, so it lives here — the module that decides which region is used is the
  * module that has to know what a region is.
  */
-export const BEDROCK_REGION_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+){2,4}$/;
+const BEDROCK_REGION_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+){2,4}$/;
 const BEDROCK_REGION_MAX_LENGTH = 64;
 
 export function isBedrockRegionId(value: string): boolean {

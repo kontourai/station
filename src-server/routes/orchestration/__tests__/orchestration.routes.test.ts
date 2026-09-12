@@ -743,6 +743,89 @@ describe('Orchestration Routes', () => {
     });
   });
 
+  test('quote source is exact, revision-bound and rechecks access after owner I/O', async () => {
+    let allowed = true;
+    let current = true;
+    const found = {
+      status: 'found' as const,
+      sessionId: 'thread-1',
+      turnId: 'turn-1',
+      message: {
+        id: 'answer-1',
+        role: 'assistant' as const,
+        parts: [{ type: 'text', text: 'Exact answer' }],
+      },
+    };
+    const readAssistantTurn = vi.fn().mockResolvedValue(found);
+    const service = {
+      canUserReadSession: vi.fn(() => allowed),
+      sessionQueries: { read: vi.fn(), readAssistantTurn },
+    };
+    const app = createOrchestrationRoutes(
+      service as unknown as Parameters<typeof createOrchestrationRoutes>[0],
+      {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+        getUserId: () => ROUTE_TEST_USER_ID,
+        isRequestPrincipalCurrent: () => current,
+      },
+    );
+    const response = await app.request(
+      '/sessions/thread-1/turns/turn-1/quote-source',
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    const body = await readJson(response);
+    expect(body).toMatchObject({
+      success: true,
+      data: {
+        version: 1,
+        sessionId: 'thread-1',
+        turnId: 'turn-1',
+        messageId: 'answer-1',
+        text: 'Exact answer',
+        revision: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+    });
+    readAssistantTurn.mockImplementationOnce(async () => {
+      allowed = false;
+      return found;
+    });
+    expect(
+      (await app.request('/sessions/thread-1/turns/turn-1/quote-source'))
+        .status,
+    ).toBe(404);
+    allowed = true;
+    readAssistantTurn.mockImplementationOnce(async () => {
+      current = false;
+      return found;
+    });
+    expect(
+      (await app.request('/sessions/thread-1/turns/turn-1/quote-source'))
+        .status,
+    ).toBe(404);
+    current = true;
+    readAssistantTurn.mockResolvedValueOnce({
+      ...found,
+      sessionId: 'another-session',
+    });
+    expect(
+      (await app.request('/sessions/thread-1/turns/turn-1/quote-source'))
+        .status,
+    ).toBe(404);
+    readAssistantTurn.mockResolvedValueOnce({
+      ...found,
+      message: {
+        ...found.message,
+        parts: [{ type: 'text', text: 'x'.repeat(128 * 1024 + 1) }],
+      },
+    });
+    expect(
+      (await app.request('/sessions/thread-1/turns/turn-1/quote-source'))
+        .status,
+    ).toBe(413);
+  });
+
   test('GET /sessions/:threadId/turns/:turnId resolves one authorized completed assistant answer', async () => {
     const readAssistantTurn = vi.fn().mockResolvedValue({
       status: 'found' as const,
