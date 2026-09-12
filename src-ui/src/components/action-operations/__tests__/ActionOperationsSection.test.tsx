@@ -136,6 +136,15 @@ describe('ActionOperationsSection', () => {
    * any existing test (the reconnecting case below only exercises the
    * HEADER's "Reconnecting…" chip, which requires cached `data`) — this
    * pins the fix.
+   *
+   * #1960 later gave SkeletonList an aria-hidden `.skeleton-status-label`
+   * span so reduced-motion users see a status when shimmer is clamped away,
+   * which broke this test's original `queryByText(...)` null assertion —
+   * text queries ignore aria-hidden, so they cannot distinguish the
+   * skeleton's own status label from a bespoke sentence. The contract is
+   * restated as what it always meant: placeholder rows plus status
+   * semantics, with the sentence allowed ONLY as the skeleton's own
+   * aria-hidden label (never as visible bespoke content).
    */
   test('renders a skeleton, not a bespoke sentence, for the initial read', () => {
     useActionOperationsQuery.mockReturnValue({
@@ -150,12 +159,18 @@ describe('ActionOperationsSection', () => {
       error: null,
     });
     render(<ActionOperationsSection />);
-    expect(screen.queryByText(/Connecting to operation status/)).toBeNull();
     const status = screen.getByRole('status');
     expect(status.getAttribute('aria-busy')).toBe('true');
     expect(status.getAttribute('aria-label')).toBe(
       'Connecting to operation status',
     );
+    expect(status.querySelectorAll('.skeleton-list__item')).toHaveLength(2);
+    for (const node of screen.queryAllByText(
+      /Connecting to operation status/,
+    )) {
+      expect(status.contains(node)).toBe(true);
+      expect(node.getAttribute('aria-hidden')).toBe('true');
+    }
   });
 
   /**
