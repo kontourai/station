@@ -22,7 +22,12 @@ export function setStreamConnectionState(
   apiBase: string,
   phase: StreamConnectionPhase,
 ) {
-  if (getStreamConnectionState(apiBase).phase === phase) return;
+  const previous = getStreamConnectionState(apiBase).phase;
+  // A known authorization failure outranks late errors from an open stream.
+  // Only a newly authenticated delivery can establish recovery.
+  if (previous === phase || (previous === 'closed' && phase === 'interrupted'))
+    return false;
   states.set(apiBase, { phase, since: Date.now() });
   for (const listener of listeners) listener();
+  return true;
 }

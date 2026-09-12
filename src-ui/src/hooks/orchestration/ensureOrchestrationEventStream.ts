@@ -169,8 +169,8 @@ export function ensureOrchestrationEventStream(
     // orchestration events.
     onError: () => {
       receiving = false;
-      recordReplayConnection(apiBase, 'interrupted');
-      setStreamConnectionState(apiBase, 'interrupted');
+      if (setStreamConnectionState(apiBase, 'interrupted'))
+        recordReplayConnection(apiBase, 'interrupted');
     },
     // archive#1094: a TERMINAL (401/403) failure now parks
     // this stream indefinitely waiting for an explicit wake instead of

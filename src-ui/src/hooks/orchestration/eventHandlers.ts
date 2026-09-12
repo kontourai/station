@@ -66,10 +66,16 @@ export function handleOrchestrationEvent(
     const key = activeChatsStore.getChatKeyForExecutionSession(
       conversation.conversationId,
     );
-    if (key && !isReplayThread(key))
+    if (
+      key &&
+      !isReplayThread(key) &&
+      activeChatsStore.getSnapshot()[key]?.currentSessionId !== event.threadId
+    )
       activeChatsStore.updateChat(key, {
         currentSessionId: event.threadId,
         conversationId: conversation.conversationId,
+        conversationOpenPending: true,
+        conversationOpenFailed: false,
       });
   }
   recordReplayRuntime(apiBase, event, provenance);

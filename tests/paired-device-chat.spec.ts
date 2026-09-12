@@ -333,7 +333,9 @@ test.describe('Paired-device chat round trip', () => {
           // reasoning as first-run-live.spec.ts) once the shell has mounted, and
           // select the seeded agent by its stable slug.
           await expect(
-            peer.getByRole('link', { name: 'Station home' }),
+            peer.getByRole(broadcast ? 'link' : 'button', {
+              name: 'Station home',
+            }),
           ).toBeVisible({ timeout: 20_000 });
           await peer.evaluate(() =>
             window.dispatchEvent(new Event('station:open-new-chat')),
@@ -530,6 +532,12 @@ test.describe('Paired-device chat round trip', () => {
             );
             await expect(
               hostTranscript.locator('.streaming-message'),
+            ).toHaveCount(0);
+            await expect(
+              peer.getByPlaceholder('Type a message...'),
+            ).toBeEnabled();
+            await expect(
+              peer.getByText('Session record missing.', { exact: true }),
             ).toHaveCount(0);
             await peer.screenshot({
               path: testInfo.outputPath('paired-phone-two-turns.png'),

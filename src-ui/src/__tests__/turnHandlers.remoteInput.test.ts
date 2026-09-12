@@ -45,6 +45,7 @@ test('server routing follows a successor before its first prompt and ignores a s
     prompt: 'From the desktop',
   });
   expect(activeChatsStore.getSnapshot()[id].currentSessionId).toBe('child');
+  expect(activeChatsStore.getSnapshot()[id].conversationOpenPending).toBe(true);
   expect(activeChatsStore.getSnapshot()[id].messages).toMatchObject([
     { content: 'From the desktop', turnId: 'next' },
   ]);
