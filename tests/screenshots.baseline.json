@@ -98,6 +98,12 @@
       "sha256": "c5aae0bc87a148681e86599e55bc986d65b23cf6fbdfaf205e3ea0798b8908de"
     },
     {
+      "name": "mobile-agent-editor-project-control",
+      "width": 390,
+      "height": 844,
+      "sha256": "3ab49a133ddde59ab024a7eb2130c10f624eb76dbd9db5531e8dbe2c4be0fb3d"
+    },
+    {
       "name": "mobile-agent-editor-save-footer",
       "width": 390,
       "height": 844,
@@ -173,19 +179,19 @@
       "name": "motion-reduced-schedule-loading",
       "width": 1440,
       "height": 900,
-      "sha256": "e9ffb75f3d01388e987a8bea95a7a717c2b586420f87857c5ec85de17ff46cd8"
+      "sha256": "299c1e4a75b168150642e3464d7efaed4a821f46aeb65c4bdbe272517cf03cbc"
     },
     {
       "name": "motion-reduced-schedule-modal",
       "width": 1440,
       "height": 900,
-      "sha256": "9a0442a40fd4271e04868d5220e9ebbed7dbc8e0e30c6cf0937d609f7c94f9d5"
+      "sha256": "25b1264a2fb781aa4456a6938af1d04e208ddba6876fb0a13f4066e3fd3e3890"
     },
     {
       "name": "overlay-add-job-modal",
       "width": 1440,
       "height": 900,
-      "sha256": "9a0442a40fd4271e04868d5220e9ebbed7dbc8e0e30c6cf0937d609f7c94f9d5"
+      "sha256": "25b1264a2fb781aa4456a6938af1d04e208ddba6876fb0a13f4066e3fd3e3890"
     },
     {
       "name": "overlay-agent-actions-menu",
@@ -234,6 +240,12 @@
       "width": 390,
       "height": 844,
       "sha256": "ced3fce3634ac4b10eac2528fd2fcdf9cf96e59f56866185ac3f4d68a16fd863"
+    },
+    {
+      "name": "overlay-new-project-layout-control",
+      "width": 1440,
+      "height": 900,
+      "sha256": "63eb8ea2603b0fe9a1b7459e593de4714367da1c915503ceeac8af41dca80540"
     },
     {
       "name": "overlay-new-project-modal",
