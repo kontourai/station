@@ -28,7 +28,13 @@ const context = async () => ({
     baseRef: 'main',
   },
 });
-function app(operator?: string) {
+function app(
+  operator?: string,
+  authority: { current: boolean; operator?: string } = {
+    current: true,
+    operator,
+  },
+) {
   const providerResult = {
     available: true,
     effectiveCapabilities: caps,
@@ -59,7 +65,8 @@ function app(operator?: string) {
   return {
     provider,
     app: createPullRequestRoutes(() => [provider], context, {
-      operatorIdentityForRequest: () => operator,
+      operatorIdentityForRequest: () => authority.operator ?? operator,
+      isRequestPrincipalCurrent: () => authority.current,
     }),
   };
 }
@@ -465,5 +472,84 @@ describe('revision-bound review routes', () => {
       input,
       { isCurrent: expect.any(Function) },
     );
+  });
+
+  test('does not publish a review read after Station authority changes', async () => {
+    const authority = { current: true, operator: 'operator' };
+    const fixture = app('operator', authority);
+    fixture.provider.getReviewSnapshot.mockImplementationOnce(async () => {
+      authority.current = false;
+      return { available: true, data: { secret: 'provider response' } };
+    });
+    const response = await fixture.app.request(
+      '/github/github.com/o/r/17/review',
+    );
+    expect(response.status).toBe(403);
+    expect(await response.text()).not.toContain('provider response');
+  });
+
+  test('rechecks operator and principal immediately before review and merge effects', async () => {
+    const authority = { current: true, operator: 'operator' };
+    const fixture = app('operator', authority);
+    const input = { action: 'approve', expectedHeadSha: 'a'.repeat(40) };
+    fixture.provider.submitReview.mockImplementationOnce(
+      async (
+        _context: unknown,
+        _ref: string,
+        _input: unknown,
+        admission: { isCurrent: () => boolean },
+      ) => {
+        authority.current = false;
+        expect(admission.isCurrent()).toBe(false);
+        return {
+          available: false,
+          reason: 'stale authority',
+          effectiveCapabilities: caps,
+          effectiveMergeMethods: ['squash'],
+          mergeMethodsSource: 'provider-default',
+        };
+      },
+    );
+    expect(
+      (
+        await fixture.app.request('/github/github.com/o/r/17/review', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(input),
+        })
+      ).status,
+    ).toBe(200);
+
+    authority.current = true;
+    fixture.provider.mergePullRequest.mockImplementationOnce(
+      async (
+        _context: unknown,
+        _ref: string,
+        _input: unknown,
+        admission: { isCurrent: () => boolean },
+      ) => {
+        authority.operator = 'different';
+        expect(admission.isCurrent()).toBe(false);
+        return {
+          available: false,
+          reason: 'stale operator',
+          effectiveCapabilities: caps,
+          effectiveMergeMethods: ['squash'],
+          mergeMethodsSource: 'provider-default',
+        };
+      },
+    );
+    expect(
+      (
+        await fixture.app.request('/github/github.com/o/r/17/merge', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            method: 'squash',
+            expectedHeadSha: 'a'.repeat(40),
+          }),
+        })
+      ).status,
+    ).toBe(200);
   });
 });

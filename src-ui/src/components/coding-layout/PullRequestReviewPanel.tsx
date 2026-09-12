@@ -12,7 +12,12 @@ import {
 } from '@kontourai/station-sdk/pull-request-review';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import {
+  activeChatsStore,
+  useActiveChatActions,
+} from '../../contexts/ActiveChatsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useNavigation } from '../../contexts/NavigationContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { Button } from '../Button';
 import { LazyBoundary } from '../LazyBoundary';
@@ -70,6 +75,8 @@ function ReviewOwner({
   scope: ReturnType<typeof useHostRequestAuthorityScope>;
   identity: string;
 }) {
+  const activeChat = useNavigation((state) => state.activeChat);
+  const { getDraft, setDraft, updateChat } = useActiveChatActions();
   const [body, setBody] = useState('');
   const outcomeRef = useRef<HTMLParagraphElement>(null);
   const [intent, setIntent] = useState<Intent | null>(null);
@@ -83,6 +90,7 @@ function ReviewOwner({
   }, [outcome]);
   const [uncertain, setUncertain] = useState(false);
   const [uncertainReadAt, setUncertainReadAt] = useState(0);
+  const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
   const [method, setMethod] = useState<PullRequestMergeMethod>('merge');
   const { guard, DiscardModal } = useUnsavedGuard(Boolean(body) || pending);
   const review = useQuery({
@@ -167,6 +175,29 @@ function ReviewOwner({
       setIntent(null);
     }
   };
+  const addReviewContextToChat = () => {
+    if (!activeChat || !data) {
+      setHandoffStatus(
+        'Open the destination chat before adding review context.',
+      );
+      return;
+    }
+    const exact = activeChatsStore.getSnapshot()[activeChat];
+    if (!exact) {
+      setHandoffStatus('The selected destination chat is no longer available.');
+      return;
+    }
+    const context = [
+      `Review ${target.host}/${target.owner}/${target.repository} #${target.ref}`,
+      `Head: ${data.headSha}`,
+      `Source: ${data.pullRequest.url}`,
+    ].join('\n');
+    const existing = exact.input ?? getDraft(activeChat);
+    const next = existing ? `${existing}\n\n${context}` : context;
+    setDraft(activeChat, next);
+    updateChat(activeChat, { input: getDraft(activeChat) });
+    setHandoffStatus(`Added review context to the open chat without sending.`);
+  };
   return (
     <section className="pull-request-review" aria-label="Pull request review">
       <ResponsiveSurfaceActions className="pull-request-review__actions">
@@ -222,6 +253,12 @@ function ReviewOwner({
               Open on forge
             </a>
           </p>
+          <ResponsiveSurfaceActions className="pull-request-review__actions">
+            <Button onClick={addReviewContextToChat} disabled={!activeChat}>
+              Add review context to open chat
+            </Button>
+          </ResponsiveSurfaceActions>
+          {handoffStatus && <p role="status">{handoffStatus}</p>}
           <div className="pull-request-review__body">
             {data.pullRequest.body}
           </div>

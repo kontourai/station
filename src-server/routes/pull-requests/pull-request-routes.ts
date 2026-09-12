@@ -305,7 +305,8 @@ export function createPullRequestRoutes(
     '/:provider/:host/:owner/:repo/:ref/merge',
     validate(mergeInputSchema),
     async (c) => {
-      if (!operator(c))
+      const actor = operator(c);
+      if (!actor)
         return c.json(
           { success: false, error: 'Operator authentication required' },
           403,
@@ -341,7 +342,7 @@ export function createPullRequestRoutes(
                 x.context,
                 param(c, 'ref'),
                 input,
-                { isCurrent: () => current(c) && !!operator(c) },
+                { isCurrent: () => current(c) && operator(c) === actor },
               )
             : await x.provider.mergePullRequest(
                 x.context,

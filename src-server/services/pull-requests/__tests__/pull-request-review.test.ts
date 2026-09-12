@@ -237,3 +237,27 @@ test('a lost revision-bound merge acknowledgement is not reported as refusal or 
     );
   }
 });
+
+test.each(['github', 'gitlab'] as const)(
+  '%s rechecks Station authority before crossing the review effect boundary',
+  async (forge) => {
+    const run = vi.fn(async (args: string[]) => {
+      if (args[1] === 'user')
+        return json({ id: 7, login: 'operator', username: 'operator' });
+      if (args[1] === 'view') return json(raw(forge));
+      throw new Error('review effect must not run');
+    });
+    await expect(
+      writePullRequestReview(
+        forge,
+        'forge.test',
+        context,
+        '17',
+        { action: 'approve', expectedHeadSha: head },
+        run,
+        { isCurrent: () => false },
+      ),
+    ).resolves.toMatchObject({ status: 'refused' });
+    expect(run.mock.calls.some(([args]) => args.includes('POST'))).toBe(false);
+  },
+);

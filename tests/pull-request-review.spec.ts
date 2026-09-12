@@ -19,6 +19,7 @@ test.beforeAll(async () => {
  import {PullRequestReviewPanel} from './src-ui/src/components/coding-layout/PullRequestReviewPanel';
  import {setClientCredentialResolver} from '@kontourai/station-sdk/client';
  window.scope={apiBase:'http://station.test',authorityKey:'review-owner',isCurrent:()=>true};
+ window.chatDraft='Existing chat draft';
  setClientCredentialResolver(()=>({origin:window.scope.apiBase,requestAuthority:window.scope}));
  const target={provider:new URL(location.href).searchParams.get('forge'),host:'forge.test',owner:'team',repository:'repo',ref:'17',project:'project'};
  createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><PullRequestReviewPanel target={target} onBack={()=>{document.title='Back to list';}}/></QueryClientProvider>);
@@ -42,15 +43,26 @@ test.beforeAll(async () => {
         name: 'host-and-view-settings',
         setup(b) {
           b.onResolve(
-            { filter: /(ApiBaseContext|DeviceSettingsContext)$/ },
+            {
+              filter:
+                /(ApiBaseContext|DeviceSettingsContext|ActiveChatsContext|NavigationContext)$/,
+            },
             (a) => ({ path: a.path.split('/').at(-1), namespace: 'fixture' }),
           );
           b.onLoad({ filter: /.*/, namespace: 'fixture' }, (a) => ({
             loader: 'js',
-            contents:
-              a.path === 'ApiBaseContext'
-                ? 'export const useHostRequestAuthorityScope=()=>window.scope;export const useApiBase=()=>({apiBase:window.scope.apiBase});'
-                : "export const useDeviceSettings=()=>({diffStyle:'unified',diffWrap:true});export const useDeviceSettingsActions=()=>({setDeviceSetting:()=>{}});",
+            contents: (
+              {
+                ApiBaseContext:
+                  'export const useHostRequestAuthorityScope=()=>window.scope;export const useApiBase=()=>({apiBase:window.scope.apiBase});',
+                DeviceSettingsContext:
+                  "export const useDeviceSettings=()=>({diffStyle:'unified',diffWrap:true});export const useDeviceSettingsActions=()=>({setDeviceSetting:()=>{}});",
+                NavigationContext:
+                  "export const useNavigation=selector=>selector({activeChat:'chat-1'});",
+                ActiveChatsContext:
+                  "const state={input:'Existing chat draft'};export const activeChatsStore={getSnapshot:()=>({'chat-1':state})};export const useActiveChatActions=()=>({getDraft:()=>window.chatDraft,setDraft:(_id,value)=>{window.chatDraft=value;state.input=value;},updateChat:(_id,value)=>Object.assign(state,value)});",
+              } as Record<string, string>
+            )[a.path],
           }));
         },
       },
@@ -217,7 +229,7 @@ async function mount(page: Page, forge: 'github' | 'gitlab', lost = false) {
       });
     },
   );
-  await page.goto('http://station.test/?forge=' + forge);
+  await page.goto(`http://station.test/?forge=${forge}`);
   await page.addStyleTag({ content: stylesheet });
   await page.addScriptTag({ content: script });
   await expect(
@@ -240,6 +252,15 @@ test('review diff, comment, approve and merge the exact displayed head', async (
   await expect(
     page.getByText('const answer = 2;', { exact: false }).first(),
   ).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Add review context to open chat' })
+    .click();
+  await expect(page.getByRole('status')).toContainText(
+    'Added review context to the open chat without sending',
+  );
+  expect(await page.evaluate(() => Reflect.get(window, 'chatDraft'))).toBe(
+    `Existing chat draft\n\nReview forge.test/team/repo #17\nHead: ${HEAD}\nSource: https://forge.test/team/repo/pull/17`,
+  );
   await page
     .getByRole('textbox', { name: 'Comment', exact: true })
     .fill('Reviewed the empty selection.');
