@@ -1,5 +1,8 @@
+import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
+import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 
 export {
   type BoundedBodyResult,
@@ -494,6 +497,7 @@ export function pullRequestThreadForProject<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  deploymentAuthentication?: LoadedDeploymentAuthentication;
   runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
   app: HonoApp;
   logger: Logger;
@@ -796,6 +800,7 @@ export function configureRuntimeRoutes(
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
   const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
   const runtimeSecurity = {
+    deploymentAuthentication: context.deploymentAuthentication?.service,
     verifyCredential: (
       credential: string,
       request?: { method: string; path: string },
@@ -1051,6 +1056,29 @@ export function configureRuntimeRoutes(
           'Device person binding conflicts with the current identity or deployment',
         );
       }
+      const account = context.deploymentAuthentication?.service.current(
+        c.req.raw,
+      );
+      if (account && account.kind !== 'absent') {
+        if (account.kind !== 'authenticated')
+          throw new PrincipalUnresolvedError(
+            'Account authentication is no longer valid.',
+          );
+        const verifiedPerson = binding ?? ingressIdentity;
+        if (
+          verifiedPerson &&
+          deploymentHumanPrincipal(
+            verifiedPerson.provider,
+            verifiedPerson.subject,
+            verifiedPerson.subject,
+          ).id !== account.principal.id
+        ) {
+          throw new PrincipalUnresolvedError(
+            'Account authentication conflicts with the verified person.',
+          );
+        }
+        return account.principal;
+      }
       return resolveStationPrincipal(
         (binding
           ? {
@@ -1174,6 +1202,47 @@ export function configureRuntimeRoutes(
     eventBus: context.eventBus,
     security: runtimeSecurity,
   });
+  context.app.use('*', async (c, next) => {
+    const account = context.deploymentAuthentication?.service.current(
+      c.req.raw,
+    );
+    if (account && account.kind !== 'absent') {
+      if (account.kind !== 'authenticated')
+        return c.json(
+          { error: { code: 'account_authentication_invalid' } },
+          401,
+        );
+      const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(
+        c.req.raw,
+      );
+      const binding =
+        runtimePrincipal?.authority === 'device-credential'
+          ? context.environmentSecurityService.identifyDevice(
+              runtimePrincipal.credential,
+            )?.principalBinding
+          : undefined;
+      const people = [identifyIngress(c), binding].filter(
+        (person) => person !== null && person !== undefined,
+      );
+      if (
+        people.some(
+          (person) =>
+            deploymentHumanPrincipal(
+              person.provider,
+              person.subject,
+              person.subject,
+            ).id !== account.principal.id,
+        )
+      ) {
+        return c.json({ error: { code: 'account_identity_conflict' } }, 401);
+      }
+    }
+    await next();
+  });
+  context.app.route(
+    '/api/account-auth',
+    createDeploymentAuthenticationRoutes(context.deploymentAuthentication),
+  );
   context.app.route(
     '/api/home-authority',
     createHomeAuthorityRoutes(

@@ -66,6 +66,7 @@ import {
   pairingScopeIncludes,
 } from '@kontourai/station-contracts';
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
+import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
 import {
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
@@ -1181,6 +1182,26 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     // These routes are unauthenticated at the pairing boundary, but each has
     // its own narrow proof, rate limit, loopback-secret, or share-token
     // contract. Keep every exception method-specific and exact.
+    {
+      id: 'public:account-auth-get',
+      transport: 'http',
+      method: 'GET',
+      prefix: DEPLOYMENT_AUTHENTICATION_BASE_PATH,
+      match: 'prefix',
+      capability: 'public',
+      reason:
+        'operator authentication module routes; exact endpoint dispatch and account self-authentication owned by account-auth router',
+    },
+    {
+      id: 'public:account-auth-post',
+      transport: 'http',
+      method: 'POST',
+      prefix: DEPLOYMENT_AUTHENTICATION_BASE_PATH,
+      match: 'prefix',
+      capability: 'public',
+      reason:
+        'origin-bound operator authentication module endpoints; no Project membership or host API scope',
+    },
     {
       id: 'public:station-handshake',
       transport: 'http',

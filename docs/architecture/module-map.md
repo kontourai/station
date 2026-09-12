@@ -19,6 +19,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 | Module | Intent | Primary source |
 | --- | --- | --- |
+| [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
 | [WorkspacePaneHostContributions](#workspacepanehostcontributions) | Bind package-level Pane-host actions and explicit Agent selection without treating Pane requirements as routing authority. | `src-server/services/plugins/workspace-pane-host-contributions.ts` |
@@ -68,6 +69,31 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [SchedulerLedger and BuiltinScheduler](#schedulerledger-and-builtinscheduler) | Own scheduled-job state, occurrence receipts, and safe unattended execution. | `src-server/services/scheduling/scheduler-ledger.ts` |
 | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) | Dispatch a task while keeping graph state and orchestration detail local. | `src-server/services/projects/task-dispatcher.ts` |
 | [StationInstanceReconciler](#stationinstancereconciler) | Observe and converge one installed Station instance safely. | `packages/cli/src/commands/station-instance-reconciler.ts` |
+
+## DeploymentAuthentication
+
+**Intent and Interface.** The public `deployment-authentication` contract lets an
+operator supply a versioned authentication module at startup. Its factory receives
+the selected Station identity, public origin, fixed authentication base path and
+private state directory. It declares exact account cookies and operation paths;
+Project plugins and requests cannot install an authority. Verified issuer/subject
+pairs produce bounded stable principals; contact and display fields grant no access.
+
+**Implementation and callers.** `deployment-authentication-loader.ts` validates
+explicit startup configuration and storage custody. `DeploymentAuthenticationService`
+validates provider results, bounds waits, rejects expired/malformed credentials and
+keeps request identity through bounded-body replacement. `runtime-http.ts` composes
+this before personal-device admission, while `runtime-routes.ts` refuses conflicting
+verified people and supplies the actual account principal to existing execution and
+room authority. `deployment-authentication-routes.ts` owns the narrow login/self
+surface, its origin/body/attempt bounds and declared-operation dispatch. Account
+authentication does not bypass device scope or implement Project membership.
+
+**Evidence and limits.** External-module HTTP fixtures and the real runtime
+principal-composition suite exercise refusal and identity propagation. They do not
+prove a production identity provider, email delivery, the member/admin UI or physical
+two-human acceptance. See [deployment authentication](../guides/deployment-authentication.md)
+for the operator contract and the remaining account/member delivery boundaries.
 
 ## AgentPluginLoader
 
