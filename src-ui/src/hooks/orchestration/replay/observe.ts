@@ -220,6 +220,7 @@ export function collectReplayScroll(
     scrollTop: container.scrollTop,
     scrollHeight: container.scrollHeight,
     clientHeight: container.clientHeight,
+    clientWidth: container.clientWidth,
     isUserScrolledUp: !atBottom,
     atBottom,
     visibleMessageKeys: visibleAnchors.map((anchor) => anchor.key),

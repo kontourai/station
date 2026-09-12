@@ -5,7 +5,13 @@ export function replayScrollIssue(
   before: ReplayScrollObservation | undefined,
   after: ReplayScrollObservation | undefined,
 ): ReplayIssue | undefined {
-  if (!before || !after || before.clientHeight !== after.clientHeight) return;
+  if (
+    !before ||
+    !after ||
+    before.clientHeight !== after.clientHeight ||
+    before.clientWidth !== after.clientWidth
+  )
+    return;
   if (before.atBottom && after.atBottom) return;
   const anchor = before.visibleAnchors?.find((item) =>
     after.visibleAnchors?.some((next) => next.key === item.key),

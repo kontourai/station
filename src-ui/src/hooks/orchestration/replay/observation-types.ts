@@ -34,6 +34,7 @@ export interface ReplayScrollObservation {
   scrollTop: number;
   scrollHeight: number;
   clientHeight: number;
+  clientWidth?: number;
   isUserScrolledUp: boolean;
   atBottom: boolean;
   visibleMessageKeys: string[];

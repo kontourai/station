@@ -2,6 +2,8 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { activeChatsStore } from '../../../../contexts/active-chats-store';
 import { closeActiveReplay, openReplayFromTape } from '../controller';
+import { collectReplayScroll } from '../observe';
+import { replayScrollIssue } from '../scroll-observation';
 import { tapeFromSessionEvents } from '../tape';
 
 const source = { threadId: 'render-source', agentSlug: 'codex' };
@@ -90,6 +92,14 @@ test('a frozen virtual range outside the viewport is reported', async () => {
   expect(observation.issues.map((issue) => issue.code)).toContain(
     'empty-transcript-viewport',
   );
+});
+
+test('width-only reflow does not report a scroll jump', () => {
+  const { container, move } = transcript();
+  const before = collectReplayScroll(container);
+  move(100);
+  const after = { ...collectReplayScroll(container)!, clientWidth: 400 };
+  expect(replayScrollIssue(before, after)).toBeUndefined();
 });
 
 test.each([false, true])(
