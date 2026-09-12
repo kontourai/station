@@ -77,8 +77,6 @@ import { type LazyStartOptions, runLazyStart } from './commands/lazy-start.js';
 import {
   buildApplication,
   clean,
-  doctor,
-  doctorJson,
   homeBackup,
   homeRecoveryPlan,
   homeReset,
@@ -91,6 +89,7 @@ import {
   upgrade,
   validateLifecyclePorts,
 } from './commands/lifecycle.js';
+import { doctor, doctorJson } from './commands/lifecycle-doctor.js';
 import { runStationsCommand } from './commands/profile-command.js';
 import {
   parseAllowedOriginFlag,

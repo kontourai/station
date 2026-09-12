@@ -38,6 +38,18 @@ false positives with caller evidence, fixes, measurements, and unverified areas.
 An exhaustive inventory must never be reported as exhaustive manual review or
 as proof that no improvements remain.
 
+Whole-tree analyses create a separate `review.json` beside the raw reports.
+Every finding starts `pending`; the analyzer's `completed` field describes only
+execution. Record each disposition as `retained`, `fixed`, or `action_required`
+with a rationale and evidence references. Run
+`node scripts/fallow-review-status.mjs .kontourai/veritas/external/fallow-audit.json`
+to check coverage. Missing or duplicate findings, changed reports, dirty source,
+and a different source revision prevent a completion result. Exit 1 means review
+or remediation remains open; exit 2 means invalid or stale evidence. A new scan
+creates a fresh ledger rather than silently carrying old dispositions forward.
+The checker validates coverage and identity, not the truth of written judgments;
+even complete disposition coverage does not prove that no other defects exist.
+
 ## Fixture fidelity and test effectiveness
 
 Blocking checks must name the failure they prevent. Documentation gates should

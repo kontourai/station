@@ -1062,12 +1062,6 @@ export class NativeStationProfileStorage
     });
   }
 
-  credentialReferences(): StationProfile['credentialRef'][] {
-    return this.profileStore.profiles.flatMap((profile) =>
-      profile.credentialRef ? [profile.credentialRef] : [],
-    );
-  }
-
   credentialEntries(): Array<{
     key: string;
     profileName: string;
