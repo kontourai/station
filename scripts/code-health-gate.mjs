@@ -22,6 +22,7 @@ export function evaluateCodeHealthAudit(report, base, head) {
       'Code-health report lacks the requested base/head attribution',
     );
   const introduced = {};
+  const attributionCorrections = [];
   for (const [kind, total] of [
     ['dead_code', summary.dead_code_issues],
     ['complexity', summary.complexity_findings],
@@ -33,10 +34,53 @@ export function evaluateCodeHealthAudit(report, base, head) {
       !Number.isSafeInteger(added) ||
       added < 0 ||
       !Number.isSafeInteger(inherited) ||
-      inherited < 0 ||
-      added + inherited !== total
+      inherited < 0
     )
       throw new Error(`Code-health report has incomplete ${kind} attribution`);
+    if (added + inherited !== total) {
+      // Fallow 3.22 can undercount inherited complexity in its aggregate while
+      // emitting every attributed finding. Reconcile only that proven shape;
+      // missing rows, ambiguous identities, or understated NEW debt still fail.
+      const findings =
+        kind === 'complexity' ? report.complexity?.findings : undefined;
+      if (!Array.isArray(findings) || findings.length !== total)
+        throw new Error(
+          `Code-health report has incomplete ${kind} attribution`,
+        );
+      const identities = new Set();
+      let actualAdded = 0;
+      for (const finding of findings) {
+        if (
+          typeof finding?.introduced !== 'boolean' ||
+          typeof finding.path !== 'string' ||
+          !finding.path ||
+          typeof finding.name !== 'string' ||
+          !finding.name ||
+          !Number.isSafeInteger(finding.line) ||
+          finding.line < 1
+        )
+          throw new Error('Complexity finding lacks exact attribution');
+        const identity = JSON.stringify([
+          finding.path,
+          finding.line,
+          finding.name,
+        ]);
+        if (identities.has(identity))
+          throw new Error('Duplicate complexity finding');
+        identities.add(identity);
+        if (finding.introduced) actualAdded++;
+      }
+      const actualInherited = total - actualAdded;
+      if (actualAdded !== added || inherited >= actualInherited)
+        throw new Error(
+          'Complexity aggregate disagrees with introduced findings',
+        );
+      attributionCorrections.push({
+        kind,
+        reportedInherited: inherited,
+        observedInherited: actualInherited,
+      });
+    }
     introduced[kind] = added;
   }
   const blockers = [];
@@ -49,7 +93,13 @@ export function evaluateCodeHealthAudit(report, base, head) {
       if (finding.introduced) blockers.push({ kind, ...finding });
     }
   }
-  return { passed: blockers.length === 0, introduced, blockers, summary };
+  return {
+    passed: blockers.length === 0,
+    introduced,
+    blockers,
+    summary,
+    attributionCorrections,
+  };
 }
 
 async function runCodeHealthGate(root, baseRef) {

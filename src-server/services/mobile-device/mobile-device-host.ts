@@ -36,7 +36,7 @@ export function parseMobileDeviceHubOrigin(value: string): string | undefined {
   return `http://127.0.0.1:${port}`;
 }
 
-export function isMobileDeviceTarget(value: MobileDeviceTarget): boolean {
+function isMobileDeviceTarget(value: MobileDeviceTarget): boolean {
   return (
     value.hostId === 'local' &&
     typeof value.deviceId === 'string' &&

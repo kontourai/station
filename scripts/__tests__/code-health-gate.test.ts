@@ -183,3 +183,45 @@ test.each(['base', 'head', 'attribution', 'metrics', 'findings'])(
     expect(() => evaluateCodeHealthAudit(value, base, head)).toThrow();
   },
 );
+
+function completeInheritedMismatch() {
+  const value = report();
+  value.summary.complexity_findings = 3;
+  value.attribution.complexity_inherited = 1;
+  return {
+    ...value,
+    complexity: {
+      findings: [
+        { path: 'one.ts', name: 'newFn', line: 1, introduced: true },
+        { path: 'two.ts', name: '<arrow>', line: 2, introduced: false },
+        { path: 'two.ts', name: '<arrow>', line: 3, introduced: false },
+      ],
+    },
+  };
+}
+
+test('reconciles an inherited aggregate undercount only from complete attributed findings', () => {
+  const result = evaluateCodeHealthAudit(
+    completeInheritedMismatch(),
+    base,
+    head,
+  );
+  expect(result.passed).toBe(true);
+  expect(result.attributionCorrections).toEqual([
+    { kind: 'complexity', reportedInherited: 1, observedInherited: 2 },
+  ]);
+});
+
+test.each(['missing', 'duplicate', 'unattributed', 'new-debt'])(
+  'does not reconcile %s complexity evidence',
+  (kind) => {
+    const value = completeInheritedMismatch();
+    if (kind === 'missing') value.complexity.findings.pop();
+    if (kind === 'duplicate')
+      value.complexity.findings[2] = value.complexity.findings[1];
+    if (kind === 'unattributed')
+      delete (value.complexity.findings[2] as any).introduced;
+    if (kind === 'new-debt') value.complexity.findings[2].introduced = true;
+    expect(() => evaluateCodeHealthAudit(value, base, head)).toThrow();
+  },
+);
