@@ -1,5 +1,32 @@
 [
   {
+    "timestampUtc": "2026-09-12T04:47:15Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2446.34672535343",
+    "sha": "6ed78908e3992fabe492cf91178d4a27ac15680f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34672535343",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2446.34672535343 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "71e0381f78e903cd81fc9d2d21266986103f6f39",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 0
+    }
+  },
+  {
     "timestampUtc": "2026-09-12T00:02:24Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2445.8",
