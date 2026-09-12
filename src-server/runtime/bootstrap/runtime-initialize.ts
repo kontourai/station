@@ -161,7 +161,10 @@ export interface InitializeRuntimeDeps {
   approvalRegistry: ApprovalRegistry;
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
-    'verifyCredential' | 'resolveGrantedScope'
+    | 'verifyCredential'
+    | 'resolveGrantedScope'
+    | 'canSharePersonalConversation'
+    | 'personalConversationOwnerIds'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -570,6 +573,17 @@ export async function initializeRuntime(
     // process's former OS alias. SessionAuthorization admits it only for the
     // request-derived home-possession local-operator principal.
     legacyPersonalOwner: getCachedUser().alias,
+    personalConversationAccess: {
+      canRead: (requesterId, ownerId) =>
+        deps.environmentSecurityService.canSharePersonalConversation(
+          requesterId,
+          ownerId,
+        ),
+      ownerIds: (requesterId) =>
+        deps.environmentSecurityService.personalConversationOwnerIds(
+          requesterId,
+        ),
+    },
     flowRunService,
     resourcePosture,
     listProjects: () => storageAdapter.listProjects(),

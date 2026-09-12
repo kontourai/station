@@ -10,6 +10,7 @@ export type TranscriptReadRequest =
       matchedEventId: string;
       ownerUserId: string;
       legacyOwnerUserId?: string;
+      ownerUserIds?: readonly string[];
       tenantId?: string;
       continuation?: string;
     }
@@ -19,6 +20,7 @@ export type TranscriptReadRequest =
       query: string;
       ownerUserId: string;
       legacyOwnerUserId?: string;
+      ownerUserIds?: readonly string[];
       tenantId?: string;
       projectId?: string;
       limit: number;
@@ -30,6 +32,7 @@ export type TranscriptReadRequest =
       matchedEventId: string;
       ownerUserId: string;
       legacyOwnerUserId?: string;
+      ownerUserIds?: readonly string[];
       tenantId?: string;
     }
   | {
@@ -38,6 +41,7 @@ export type TranscriptReadRequest =
       threadId: string;
       ownerUserId: string;
       legacyOwnerUserId?: string;
+      ownerUserIds?: readonly string[];
       tenantId?: string;
     }
   | { type: 'session-owner'; id: number; threadId: string };
@@ -111,6 +115,7 @@ export function transcriptMessageRequest(
       'query',
       'ownerUserId',
       'legacyOwnerUserId',
+      'ownerUserIds',
       'tenantId',
       'projectId',
       'limit',
@@ -133,6 +138,7 @@ export function transcriptMessageOpenRequest(
       'matchedEventId',
       'ownerUserId',
       'legacyOwnerUserId',
+      'ownerUserIds',
       'tenantId',
     ],
     ['threadId', 'matchedEventId', 'ownerUserId'],
@@ -147,7 +153,13 @@ export function transcriptSessionOpenRequest(
 ): TranscriptReadRequest | null {
   const fields = exact(
     input,
-    ['threadId', 'ownerUserId', 'legacyOwnerUserId', 'tenantId'],
+    [
+      'threadId',
+      'ownerUserId',
+      'legacyOwnerUserId',
+      'ownerUserIds',
+      'tenantId',
+    ],
     ['threadId', 'ownerUserId'],
   );
   return fields
@@ -166,6 +178,7 @@ export function parseTranscriptReadRequest(
       'query',
       'ownerUserId',
       'legacyOwnerUserId',
+      'ownerUserIds',
       'tenantId',
       'projectId',
       'limit',
@@ -189,6 +202,22 @@ export function parseTranscriptReadRequest(
       request.tenantId !== undefined)
   )
     return null;
+  if (request.ownerUserIds !== undefined) {
+    const owners = request.ownerUserIds;
+    if (
+      request.tenantId !== undefined ||
+      !Array.isArray(owners) ||
+      types.isProxy(owners) ||
+      owners.length === 0 ||
+      owners.length > 256
+    )
+      return null;
+    for (let index = 0; index < owners.length; index++) {
+      const entry = Object.getOwnPropertyDescriptor(owners, String(index));
+      if (!entry || !('value' in entry) || !boundedTaskText(entry.value, 256))
+        return null;
+    }
+  }
   if (request.type === 'session-owner') {
     if (
       Object.keys(request).length !== 3 ||

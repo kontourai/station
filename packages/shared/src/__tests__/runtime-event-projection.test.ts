@@ -14,6 +14,48 @@ const ev = (
   ({ eventId: `e${n++}`, ...base, ...e }) as unknown as CanonicalRuntimeEvent;
 
 describe('projectRuntimeEventsToMessages', () => {
+  it('restores a terminal answer from a newest-window text suffix while preserving earlier tool commentary', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'tail', prompt: 'Read it' }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'tail',
+        delta: 'I will inspect the file.',
+      }),
+      ev({
+        method: 'tool.started',
+        turnId: 'tail',
+        toolCallId: 'read',
+        toolName: 'read_file',
+        arguments: {},
+      }),
+      ev({
+        method: 'tool.completed',
+        turnId: 'tail',
+        toolCallId: 'read',
+        toolName: 'read_file',
+        output: 'File content',
+      }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'tail',
+        delta: 'complete answer.',
+      }),
+      ev({
+        method: 'turn.completed',
+        turnId: 'tail',
+        outputText: 'Here is the complete answer.',
+      }),
+    ]);
+    const text = messages
+      .at(-1)
+      ?.parts.filter((part) => part.type === 'text')
+      .map((part) => part.text);
+    expect(text).toEqual([
+      'I will inspect the file.',
+      'Here is the complete answer.',
+    ]);
+  });
   it('preserves simultaneous terminal results sharing one toolCallId by event identity', () => {
     const messages = projectRuntimeEventsToMessages([
       ev({

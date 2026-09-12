@@ -26,6 +26,24 @@ out of the overview; they remain available only where setup or diagnosis needs t
 
 ---
 
+## Saved Station addresses
+
+Open **Manage Stations** in the header to inspect the computers this client
+connects to. Each address wraps on narrow screens so its port stays visible.
+The row's **More actions** menu provides **Copy address** and **Edit Station**.
+
+Native clients save edits through the shared profile store. A name change
+preserves pairing and updates references to that profile, including its default
+and project selections. Changing the address requires connecting the device
+again: the previous credential is never sent to the new origin. Concurrent
+changes to the same name or address are rejected for review rather than
+overwritten. The app-managed local Station is not editable through this form.
+
+Clients without the profile owner's editing capability keep shared profiles
+read-only; they can still display and copy the complete address. Ordinary
+browser-local saved Stations retain their existing edit and endpoint-verification
+flow.
+
 ## Local first: Ollama (no credentials)
 
 This is the easiest path and needs no cloud account, API key, or AWS setup.

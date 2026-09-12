@@ -22,12 +22,15 @@ import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { drainQueuedMessageOnTurnCompleted } from '../../hooks/orchestration/queueDrain';
+import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
 import { useActiveChatTranscript } from '../../hooks/orchestration/useActiveChatTranscript';
+import { useChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import type { useChatInput } from '../../hooks/useChatInput';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
 import { useShareReceiver } from '../../hooks/useShareReceiver';
 import { useSTT } from '../../hooks/useSTT';
 import { useTTS } from '../../hooks/useTTS';
+import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
@@ -284,6 +287,7 @@ export function ChatDockBody({
   const busyOpen = openPhase === 'busy';
   const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
+  const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
   /*
    * One transitional state for the whole conversation, from the two things
    * that are actually still in flight after a reload: the conversation-open
@@ -310,7 +314,7 @@ export function ChatDockBody({
    * unconditional stayed green — a guard nothing can reach reads as a
    * guarantee and is not one.
    */
-  const forkFromTurn = onForkFromTurn;
+  const forkFromTurn = activeSession.replay ? undefined : onForkFromTurn;
   const renderedSession = useMemo(
     () =>
       transcript.enabled
@@ -357,7 +361,8 @@ export function ChatDockBody({
   // not in it) may claim that; the read's own pending and failed states are
   // rendered as themselves below.
   const claimsServerSession =
-    activeSession.orchestrationSessionStarted === true;
+    activeSession.orchestrationSessionStarted === true &&
+    !isReplayThread(activeSession.id);
   // The inventory can omit an unloaded child. An authorized point-read of
   // this exact child is stronger evidence than absence from that list.
   const openResolution = activeSession.conversationOpenState;
@@ -413,26 +418,35 @@ export function ChatDockBody({
    * indistinguishable from a turn that never carried them — and from a blob
    * retention had reclaimed. `elided` is the read's own report of which
    * budget fired, so this counts events the read actually withheld rather
-   * than inferring anything from what is missing, and keeps the two reasons
-   * apart in the copy.
+   * than inferring anything from what is missing. Tool-detail reductions stay
+   * in session diagnostics; they must not add a banner above an otherwise
+   * complete conversation.
    */
   const elidedHistoryText = useMemo(
     () =>
       elidedHistoryNoticeText(
         summarizeElidedReasons(
-          transcript.events.map((sequenced) => sequenced.elided),
+          transcript.events
+            .filter(
+              (item) =>
+                item.event.method !== 'tool.progress' &&
+                item.event.method !== 'tool.started' &&
+                item.event.method !== 'tool.completed' &&
+                item.event.method !== 'token-usage.updated',
+            )
+            .map((sequenced) => sequenced.elided),
         ),
       ),
     [transcript.events],
   );
   const historyElisionNotice = elidedHistoryText ? (
-    <div
+    <details
       className="history-elided chat-dock__history-elided"
-      role="status"
       data-testid="chat-dock-history-elided"
     >
+      <summary>Some recorded details are omitted</summary>
       {elidedHistoryText}
-    </div>
+    </details>
   ) : undefined;
   const historyFailureNotice = historyFailure ? (
     <div className="session-history-error" role="alert">
@@ -727,20 +741,25 @@ export function ChatDockBody({
             messageKey={`${activeSession.id}-msg-${idx}`}
             content={displayContent}
             action={
-              translation?.terminalSession && onNewChat && retryTurn
-                ? {
-                    label: 'New chat',
-                    onClick: () => void runRecoveredTurn(retryTurn, onNewChat),
-                  }
-                : canRetry && retryTurn
+              activeSession.replay
+                ? undefined
+                : translation?.terminalSession && onNewChat && retryTurn
                   ? {
-                      label: 'Send again',
+                      label: 'New chat',
                       onClick: () =>
-                        void runRecoveredTurn(retryTurn, (text, attachments) =>
-                          sendRef.current(text, attachments),
-                        ),
+                        void runRecoveredTurn(retryTurn, onNewChat),
                     }
-                  : undefined
+                  : canRetry && retryTurn
+                    ? {
+                        label: 'Send again',
+                        onClick: () =>
+                          void runRecoveredTurn(
+                            retryTurn,
+                            (text, attachments) =>
+                              sendRef.current(text, attachments),
+                          ),
+                      }
+                    : undefined
             }
           />
         );
@@ -752,6 +771,7 @@ export function ChatDockBody({
       chatFontSize,
       removingMessages,
       activeSession.id,
+      activeSession.replay,
       activeSession.messages,
       chatInput.input,
       clearEphemeralMessages,
@@ -776,7 +796,6 @@ export function ChatDockBody({
         />
       )}
       {historyFailure && transcript.messages.length > 0 && historyFailureNotice}
-      {historyElisionNotice}
       {sessionRecordPending && (
         <SkeletonList count={1} label="Reading this session's record" />
       )}
@@ -831,6 +850,7 @@ export function ChatDockBody({
          * the reason nothing can be sent.
          */
         <div className="chat-messages chat-messages--empty" role="status">
+          {historyElisionNotice}
           {historyFailureNotice ??
             (conversationLoading ? (
               /*
@@ -861,6 +881,11 @@ export function ChatDockBody({
             showToolDetails,
             renderOverride,
             emptyState: historyFailureNotice,
+            historyNotice: historyElisionNotice,
+            hasOlderMessages: transcript.enabled && transcript.hasMore,
+            historyLoading: transcript.loading,
+            suppressActivity: Boolean(streamStatus),
+            onLoadOlder: transcript.loadOlder,
             onOpenBackgroundTasks,
             owner,
             accountableHuman,
@@ -871,15 +896,24 @@ export function ChatDockBody({
           }}
         />
       )}
-      {transcript.enabled && transcript.hasMore && (
-        <div className="session-history-controls">
-          <button
-            type="button"
-            className="button button--secondary session-history-controls__more"
-            onClick={() => void transcript.loadOlder()}
-          >
-            Load earlier events
-          </button>
+      {streamStatus && (
+        <div
+          className="chat-stream-status"
+          role="status"
+          data-chat-stream-status={activeSession.id}
+          title="Live updates are paused; the remote request may still be running."
+        >
+          <span>{streamStatus.label}</span>
+          {streamStatus.blocked && (
+            <button
+              type="button"
+              className="button button--secondary"
+              disabled={Boolean(activeSession.replay)}
+              onClick={() => openConnectionsModal({ mode: 'request-access' })}
+            >
+              Repair connection
+            </button>
+          )}
         </div>
       )}
       {activeSession.unsentMessages?.length ? (

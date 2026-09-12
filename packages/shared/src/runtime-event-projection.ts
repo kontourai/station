@@ -812,7 +812,14 @@ export function projectRuntimeEventsToMessages(
         // Fall back to the authoritative outputText only if no text was streamed.
         const hasText =
           Boolean(textBuf) || parts.some((p) => p.type === 'text');
-        if (!hasText && ev.outputText) textBuf = ev.outputText;
+        if (
+          ev.outputText &&
+          (!hasText ||
+            (textBuf &&
+              (ev.outputText.startsWith(textBuf) ||
+                ev.outputText.endsWith(textBuf))))
+        )
+          textBuf = ev.outputText;
         emitAssistantTurn();
         break;
       }

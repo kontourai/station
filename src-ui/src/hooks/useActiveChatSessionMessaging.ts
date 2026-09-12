@@ -31,6 +31,7 @@ import {
 } from '../utils/chatErrorTranslation';
 import { sessionAdapterSupportsSteering } from '../utils/execution';
 import { steerRefusalMessage } from '../utils/steerTurn';
+import { isReplayThread } from './orchestration/replay/replay-registry';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
 import { useStreamingMessage } from './useStreamingMessage';
 
@@ -183,6 +184,8 @@ export function useSendMessage(
         };
       },
     ) => {
+      if (isReplayThread(sessionId))
+        throw new Error('Replay conversations are read-only.');
       const allChats = activeChatsStore.getSnapshot();
       const currentState = allChats[sessionId];
       const submittedDraft = content;
