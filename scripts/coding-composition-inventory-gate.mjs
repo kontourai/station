@@ -97,6 +97,10 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/FileTreePanel.css': 'presentation',
     'src-ui/src/components/coding-layout/PullRequestsPanel.css': 'presentation',
     'src-ui/src/components/coding-layout/PullRequestsPanel.tsx': 'git-review',
+    'src-ui/src/components/coding-layout/PullRequestReviewPanel.css':
+      'presentation',
+    'src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx':
+      'git-review',
     'src-ui/src/components/coding-layout/TerminalPanel.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/activeRepo.ts': 'git-review',
