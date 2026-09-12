@@ -134,13 +134,6 @@ export class SessionExecutionCoordinator {
     return true;
   }
 
-  forgetAcceptedTurn(threadId: string, turnId: string): void {
-    const state = this.states.get(threadId);
-    if (!state) return;
-    state.activeTurnIds.delete(turnId);
-    this.deleteEmptyState(threadId, state);
-  }
-
   observe(event: CanonicalRuntimeEvent): void {
     this.boundaries.observe(event);
     if (event.method === 'turn.started' && event.turnId) {
