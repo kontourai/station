@@ -1710,7 +1710,9 @@ fn ensure_station_profile_store_genesis(
     // Genesis is initialization, not a mutation protocol for every read/write.
     // Revalidate the durable marker and current file on each call, but avoid
     // re-hardening the root and acquiring a second lock once both exist.
-    if station_profile_store_is_initialized(root)? {
+    // A concurrent initializer can have published only part of the marker/file
+    // pair. Fall back to its lock and re-read before classifying that state.
+    if let Ok(true) = station_profile_store_is_initialized(root) {
         return Ok(());
     }
     ensure_station_profile_store_genesis_after_schema(app, root, false)
@@ -1727,7 +1729,7 @@ fn station_profile_store_is_initialized(root: &std::path::Path) -> Result<bool, 
         return Ok(false);
     }
     match read_station_profile_store(&root.join("config").join("profiles.json")) {
-        Ok(_) => Ok(true),
+        Ok(contents) => parse_station_profile_store(&contents).map(|_| true),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(
             "saved Station metadata is missing from an initialized or in-progress shared root; restore profiles.json before launching Station".to_string(),
         ),
@@ -13857,6 +13859,10 @@ mod tests {
         )])
         .unwrap();
         write_empty_station_profile_store(&path).unwrap();
+        assert!(station_profile_store_is_initialized(&root).unwrap());
+        std::fs::write(&path, b"").unwrap();
+        assert!(station_profile_store_is_initialized(&root).is_err());
+        std::fs::write(&path, EMPTY_STATION_PROFILE_STORE).unwrap();
         assert!(station_profile_store_is_initialized(&root).unwrap());
         std::fs::remove_file(&path).unwrap();
         assert!(station_profile_store_is_initialized(&root)
