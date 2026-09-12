@@ -32,12 +32,12 @@ function dayLabel(date: string): string {
  * an empty one. Zero stays zero: a measured $0.00 day is a baseline stub
  * whose label — not its height — distinguishes it from an unrecorded day.
  */
-export function trendBarFraction(value: number, peak: number): number {
+function trendBarFraction(value: number, peak: number): number {
   if (value <= 0) return 0;
   return Math.max(0.18, value / Math.max(peak, Number.EPSILON));
 }
 
-export function trendDayTitle(day: TrendDay): string {
+function trendDayTitle(day: TrendDay): string {
   if (!day.recorded) return `${dayLabel(day.date)} — No activity recorded`;
   return `${dayLabel(day.date)} — $${day.cost.toFixed(4)} · ${day.messages} message${
     day.messages === 1 ? '' : 's'

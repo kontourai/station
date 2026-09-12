@@ -117,7 +117,7 @@ import { errorMessage } from '../../utils/error-message.js';
 import { JsonFileStore } from '../infra/json-store.js';
 
 /** File name under the Station home. */
-export const SHADOW_RECORD_FILENAME = 'project-resource-shadow.json';
+const SHADOW_RECORD_FILENAME = 'project-resource-shadow.json';
 
 /**
  * Bumped when the on-disk shape changes. A reader that meets a version it

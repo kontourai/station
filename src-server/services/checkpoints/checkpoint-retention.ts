@@ -16,7 +16,7 @@ import type {
   CheckpointRefStore,
 } from './checkpoint-ref-store.js';
 
-export const CHECKPOINT_RETENTION_MAX_REFS_PER_THREAD = 400;
+const CHECKPOINT_RETENTION_MAX_REFS_PER_THREAD = 400;
 export const CHECKPOINT_MUTATION_LOCK = 'checkpoint-mutations.lock';
 
 type CheckpointRetentionResult = CheckpointRetentionAuditEvent;

@@ -8,7 +8,7 @@
 
 export const UNPAIRED_SAMPLE_PROJECT = 'Getting started';
 
-export const UNPAIRED_SAMPLE_SURFACES = {
+const UNPAIRED_SAMPLE_SURFACES = {
   'review-queue': {
     title: 'Sample Task',
     eyebrow: 'Waiting for a decision',

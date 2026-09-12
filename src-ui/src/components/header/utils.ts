@@ -113,7 +113,7 @@ function sectionLabel(view: NavigationView): string | null {
 }
 
 /** The root view a section crumb links "up" to (sub-views climb to their family). */
-export function sectionRootView(view: NavigationView): NavigationView {
+function sectionRootView(view: NavigationView): NavigationView {
   const t = view.type;
   if (t.startsWith('agent')) return { type: 'agents' };
   if (t.startsWith('connections')) return { type: 'connections' };

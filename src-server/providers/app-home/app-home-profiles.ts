@@ -73,7 +73,7 @@ export interface AppHomeImportProfile {
   credentialsFilename: string;
 }
 
-export const CLAUDE_APP_HOME_IMPORT_PROFILE: AppHomeImportProfile = {
+const CLAUDE_APP_HOME_IMPORT_PROFILE: AppHomeImportProfile = {
   allowlistFiles: new Set(['settings.json', 'CLAUDE.md']),
   allowlistDirs: new Set(['skills', 'agents', 'commands']),
   credentialsFilename: '.credentials.json',
@@ -96,7 +96,7 @@ export const CLAUDE_APP_HOME_IMPORT_PROFILE: AppHomeImportProfile = {
  * `[projects]` trust entries — accepted under the same explicit-user-action
  * reasoning as claude's `settings.json` (§1.1 import rules).
  */
-export const CODEX_APP_HOME_IMPORT_PROFILE: AppHomeImportProfile = {
+const CODEX_APP_HOME_IMPORT_PROFILE: AppHomeImportProfile = {
   allowlistFiles: new Set(['config.toml', 'AGENTS.md']),
   allowlistDirs: new Set(['prompts', 'skills']),
   credentialsFilename: 'auth.json',

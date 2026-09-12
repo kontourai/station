@@ -199,7 +199,7 @@ async function materializeTree(
   });
 }
 
-export class CheckpointRestoreError extends Error {
+class CheckpointRestoreError extends Error {
   constructor(
     readonly reason:
       | 'confirmation_required'
