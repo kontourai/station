@@ -51,6 +51,12 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'dependencies:verify'])]),
   Object.freeze(['npm', Object.freeze(['run', 'lockfile-sync:gate'])]),
   CHANGESET_STATUS_FAST_COMMAND,
+  // Attribute new code-health debt while its author still owns the change.
+  // Only unused exports/types block; statistical scores remain review evidence.
+  Object.freeze([
+    process.execPath,
+    Object.freeze(['scripts/code-health-gate.mjs']),
+  ]),
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   CONTENT_INTEGRITY_FAST_COMMAND,

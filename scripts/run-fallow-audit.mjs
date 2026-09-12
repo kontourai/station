@@ -74,10 +74,11 @@ export function fallowCommands(scope) {
   throw new Error(`Unknown Fallow scope: ${scope}`);
 }
 
-async function runAnalysis(root, command, outputFile) {
+export async function runFallowAnalysis(root, command, outputFile, args = []) {
   const execution = executeOwnedCommand(
-    'fallow',
+    process.execPath,
     [
+      fileURLToPath(import.meta.resolve('fallow/bin/fallow')),
       command,
       '--threads',
       '2',
@@ -86,6 +87,7 @@ async function runAnalysis(root, command, outputFile) {
       '--quiet',
       '--output-file',
       outputFile,
+      ...args,
     ],
     undefined,
     `fallow ${command}`,
@@ -124,7 +126,7 @@ async function runAnalysis(root, command, outputFile) {
       output.truncated
     )
       throw new Error(
-        `Fallow ${command} did not complete: ${output.stderr.text}`,
+        `Fallow ${command} did not complete: ${result.error?.message ?? output.stderr.text}`,
       );
     if (statSync(outputFile).size > 32 * 1024 * 1024)
       throw new Error('Fallow report exceeds the 32 MiB read budget');
@@ -177,7 +179,11 @@ export async function runFallowAudit(root, scope = 'changed') {
   const reports = [];
   for (const command of commands)
     reports.push(
-      await runAnalysis(root, command, join(rawDirectory, `${command}.json`)),
+      await runFallowAnalysis(
+        root,
+        command,
+        join(rawDirectory, `${command}.json`),
+      ),
     );
   const summary = summarizeFallowReports(scope, reports);
   const findings =

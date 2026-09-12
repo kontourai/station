@@ -201,6 +201,7 @@ jobs:
             .kontourai/verification-receipts/
             .kontourai/verification-output/
             .kontourai/veritas/external/test-contract-review.json
+            .kontourai/code-health/
             .kontourai/browser-evidence/
             playwright-report/
             test-results/

@@ -8,6 +8,11 @@ of the tracked and unignored tree, including extensionless launchers and native
 entrypoints. Unrecognized files remain visible instead of being silently excluded. The normal
 `npm run fallow:audit` command is a changed-file review, not a full-tree audit.
 
+For ongoing implementation, `ci:fast` runs the [code-health prevention gate](code-quality.md#code-health-prevention)
+with an explicit base and reports introduced versus inherited candidates. It
+blocks new unused exports/types, retains advisory design findings for PR review,
+and uses upstream baselines so local rebaselining cannot hide new debt.
+
 `npm run test:full:audit` is the coordinated full-corpus diagnostic that continues
 after independent assertion failures. It has a 60-minute aggregate execution
 budget and retains the existing cataloged per-group budgets; individual test
