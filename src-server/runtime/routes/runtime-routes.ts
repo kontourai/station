@@ -300,7 +300,10 @@ import {
   TailscaleServeIdentitySource,
   type VerifiedIdentity,
 } from '../../services/identity/identity-source.js';
-import { resolvePrincipal as resolveStationPrincipal } from '../../services/identity/principal-resolver.js';
+import {
+  PrincipalUnresolvedError,
+  resolvePrincipal as resolveStationPrincipal,
+} from '../../services/identity/principal-resolver.js';
 import { FleetInferenceService } from '../../services/inference/fleet-inference-service.js';
 import { FleetServeReceiptLog } from '../../services/inference/fleet-serve-receipt-log.js';
 import { DiagnosticsService } from '../../services/infra/diagnostics-service.js';
@@ -1030,8 +1033,32 @@ export function configureRuntimeRoutes(
       // device-credential authority are mutually exclusive per credential
       // (`resolveCredentialAuthority` returns exactly one), so this is
       // choosing between disjoint cases, not silently dropping one.
+      const ingressIdentity = identifyIngress(c);
+      const binding =
+        runtimePrincipal?.authority === 'device-credential'
+          ? context.environmentSecurityService.identifyDevice(
+              runtimePrincipal.credential,
+            )?.principalBinding
+          : undefined;
+      if (
+        binding &&
+        (hostedTenantRegistry !== undefined ||
+          (ingressIdentity &&
+            (ingressIdentity.provider !== binding.provider ||
+              ingressIdentity.subject !== binding.subject)))
+      ) {
+        throw new PrincipalUnresolvedError(
+          'Device person binding conflicts with the current identity or deployment',
+        );
+      }
       return resolveStationPrincipal(
-        identifyIngress(c) ??
+        (binding
+          ? {
+              provider: binding.provider,
+              subject: binding.subject,
+              displayName: binding.subject,
+            }
+          : ingressIdentity) ??
           (operatorAuthority ? null : deviceSessionIdentity(runtimePrincipal)),
         hostedTenantRegistry !== undefined ? 'hosted' : 'personal',
         operatorAuthority,
@@ -1427,6 +1454,13 @@ export function configureRuntimeRoutes(
       // residue being exercised — warn volume, same as a denied remote
       // authentication, so it is readable in the same place.
       audit: pairingApprovalAudit,
+      verifyOperatorCredential: (credential) =>
+        context.environmentSecurityService.verifyOperatorCredential(credential),
+      isApprovalCurrent: (request) =>
+        isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ),
       connectedClientPresence,
       clientPresenceAvailable: hostedTenantRegistry === undefined,
     },
@@ -4240,6 +4274,7 @@ const PAIRING_OFFER_BODY_KEYSETS = new Set([
 
 async function readPairingOfferJson(
   request: Request,
+  allowedKeysets: ReadonlySet<string> = PAIRING_OFFER_BODY_KEYSETS,
 ): Promise<Record<string, unknown> | undefined> {
   const result = await readBoundedRequestBody(request, 2_048);
   if (result.status !== 'ok') return undefined;
@@ -4249,7 +4284,7 @@ async function readPairingOfferJson(
       return undefined;
     }
     const keys = Object.keys(value).sort().join(',');
-    if (!PAIRING_OFFER_BODY_KEYSETS.has(keys)) return undefined;
+    if (!allowedKeysets.has(keys)) return undefined;
     return value as Record<string, unknown>;
   } catch {
     return undefined;
@@ -5500,6 +5535,8 @@ export function configureDevicePairingHostRoutes(
   pairing: DevicePairingService,
   options: {
     audit?: (record: PairingApprovalAuditRecord) => void;
+    verifyOperatorCredential?: (credential: string) => boolean;
+    isApprovalCurrent?: (request: Request) => boolean;
     connectedClientPresence?: ClientConnectionPresence;
     /** Hosted tenants cannot safely share this process-local aggregate. */
     clientPresenceAvailable?: boolean;
@@ -5551,7 +5588,7 @@ export function configureDevicePairingHostRoutes(
   app.get('/api/pairing/requests', (c) =>
     c.json({ requests: pairing.listRequests() }),
   );
-  app.post('/api/pairing/requests/:requestId/confirm', (c) => {
+  app.post('/api/pairing/requests/:requestId/confirm', async (c) => {
     const requestId = c.req.param('requestId');
     // station#1490: the ONLY caller-identity signal this handler has. The
     // granted-scope var is published by `runtime-http.ts` exclusively on the
@@ -5567,7 +5604,62 @@ export function configureDevicePairingHostRoutes(
         ? { kind: 'unauthenticated' }
         : { kind: 'presented-credential' };
     try {
-      const request = pairing.confirmRequest(requestId, approval);
+      // Existing bodyless approvals remain device-only. Identity binding is an
+      // explicit operator action, never inferred from requester provenance.
+      let bindingApproval: { principalId: string } | undefined;
+      if (c.req.raw.body !== null) {
+        const body = await readPairingOfferJson(
+          c.req.raw,
+          new Set(['', 'bindVerifiedIdentity']),
+        );
+        if (
+          !body ||
+          Object.keys(body).some((key) => key !== 'bindVerifiedIdentity') ||
+          (body.bindVerifiedIdentity !== undefined &&
+            typeof body.bindVerifiedIdentity !== 'boolean')
+        ) {
+          return c.json({ error: 'invalid_request' }, 400);
+        }
+        // Reading the body yielded. Reapply the existing credential and scope
+        // predicate before either ordinary approval or person binding commits.
+        if (options.isApprovalCurrent?.(c.req.raw) !== true) {
+          return c.json({ error: 'approval_requires_operator' }, 403);
+        }
+        if (body.bindVerifiedIdentity === true) {
+          const actor = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+          const operatorCredential =
+            actor?.authority === 'operator-credential' &&
+            options.verifyOperatorCredential?.(actor.credential) === true;
+          const localGrant =
+            actor?.authority === 'device-credential' &&
+            actor.locality === 'home-possession' &&
+            actor.mintKind === 'local-grant' &&
+            pairing.credentialLocality(actor.credential) ===
+              'home-possession' &&
+            pairing.credentialMintKind(actor.credential) === 'local-grant';
+          if (isHostedTenantExecutionRequired()) {
+            return c.json({ error: 'person_binding_unavailable' }, 409);
+          }
+          if (!operatorCredential && !localGrant) {
+            return c.json({ error: 'approval_requires_operator' }, 403);
+          }
+          bindingApproval = {
+            principalId: resolveStationPrincipal(
+              identifyIngress(c),
+              'personal',
+              localGrant
+                ? { locality: 'home-possession' }
+                : { verifiedOperatorCredential: true },
+              undefined,
+            ).id,
+          };
+        }
+      }
+      const request = pairing.confirmRequest(
+        requestId,
+        approval,
+        bindingApproval,
+      );
       devicePairingRequests.add(1, {
         source: request.source,
         outcome: 'approved',
@@ -5588,7 +5680,10 @@ export function configureDevicePairingHostRoutes(
           timestamp: Date.now(),
         });
       }
-      return c.json(request);
+      return c.json({
+        ...request,
+        ...(bindingApproval ? { personBindingApproved: true } : {}),
+      });
     } catch (error) {
       if (
         error instanceof DevicePairingError &&
