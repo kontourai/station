@@ -828,7 +828,7 @@ Fetches live ACP slash-command autocomplete options.
 
 ## Portable Project identity
 
-The React-free `@kontourai/station-sdk/client` entry point exports
+The React-free `@kontourai/station-sdk/project-identity` entry point exports
 `getProjectIdentity`, `prepareProjectIdentity`, and `attachProject`. Each takes
 an explicit Station API base and `ClientRequestOptions`; pass the authenticated
 request scope and credential options for that particular Station. Identity reads
@@ -845,8 +845,8 @@ repository references and timestamps; it contains no checkout path or grant.
 import {
   attachProject,
   prepareProjectIdentity,
-  type ClientRequestOptions,
-} from '@kontourai/station-sdk/client';
+} from '@kontourai/station-sdk/project-identity';
+import type { ClientRequestOptions } from '@kontourai/station-sdk/client';
 
 async function attachProjectOnStation(
   source: { apiBase: string; slug: string; options: ClientRequestOptions },

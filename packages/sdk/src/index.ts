@@ -167,12 +167,9 @@ export {
 } from './client/http';
 export {
   applyProjectLayout,
-  attachProject,
   bindProjectResource,
   closeProjectTerminal,
-  getProjectIdentity,
   getProjectResolution,
-  prepareProjectIdentity,
 } from './client/projects';
 export {
   getReviewReceipt,

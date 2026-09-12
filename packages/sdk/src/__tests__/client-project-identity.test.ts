@@ -1,10 +1,10 @@
 import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   attachProject,
   getProjectIdentity,
   prepareProjectIdentity,
-} from '../client/index';
+} from '@kontourai/station-sdk/project-identity';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 function view(): ProjectIdentityView {
   return {

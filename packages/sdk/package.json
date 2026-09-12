@@ -38,6 +38,7 @@
     "./error-state": "./src/components/ErrorState.tsx",
     "./app-config": "./src/app-config.ts",
     "./developer-runtime": "./src/query-domains/developerRuntime.ts",
+    "./project-identity": "./src/client/project-identity.ts",
     "./project-task-rooms": "./src/query-domains/projectTaskRooms.ts",
     "./live-activity": "./src/live-activity.ts",
     "./action-operations": "./src/action-operations.ts",
