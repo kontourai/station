@@ -1,6 +1,7 @@
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -9,6 +10,10 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  deriveConfigHomeAffinity,
+  resolveConfigHomeAffinity,
+} from '../sessions/transcript-file-io.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 
 // The genuine built-in station-control server as it appears in a resolved
@@ -229,6 +234,222 @@ describe('ClaudeAdapter', () => {
     ).rejects.toThrow('distinct child session');
     expect(mockQuery).not.toHaveBeenCalled();
     await expect(adapter.hasSession('station-child')).resolves.toBe(false);
+  });
+
+  test('leaves a reported child to ledger cleanup when SDK initialization fails', async () => {
+    mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+    mockQuery.mockImplementation(() => {
+      throw new Error('initialization failed');
+    });
+    mockDeleteSession.mockResolvedValue(undefined);
+    const adapter = new ClaudeAdapter();
+    const onProviderChildCreated = vi.fn();
+    await expect(
+      adapter.adoptSession(
+        {
+          provider: 'claude',
+          threadId: 'station-child',
+          sourceSessionId: 'vendor-source',
+          sourceKind: 'claude-transcript',
+          cwd: '/workspace/project',
+        },
+        { onProviderChildCreationStarted: () => {}, onProviderChildCreated },
+      ),
+    ).rejects.toThrow('initialization failed');
+    expect(onProviderChildCreated).toHaveBeenCalledWith('vendor-child');
+    expect(mockDeleteSession).not.toHaveBeenCalled();
+    await adapter.discardSession('station-child', {
+      adoptionKey: 'station-child',
+      resumeCursor: 'vendor-child',
+      sourceSessionId: 'vendor-source',
+      cwd: '/workspace/project',
+    });
+    expect(mockDeleteSession).toHaveBeenCalledExactlyOnceWith('vendor-child', {
+      dir: '/workspace/project',
+    });
+  });
+
+  test('cold resume retains the adopted Claude source home through SDK init and refuses a changed home', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'station-claude-cold-source-'));
+    vi.stubEnv('CLAUDE_CONFIG_DIR', home);
+    try {
+      const identity = deriveConfigHomeAffinity('claude-config-home', home)!;
+      const getAppHomeEnv = vi.fn(async () => ({
+        CLAUDE_CONFIG_DIR: '/unused-profile-home',
+      }));
+      const options = {
+        getAppHomeEnv,
+        resolveSourceHome: (affinity: typeof identity.affinity) =>
+          resolveConfigHomeAffinity('claude-config-home', home, affinity),
+      };
+      mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter(options);
+      const child = await adapter.adoptSession(
+        {
+          provider: 'claude',
+          threadId: 'station-child',
+          sourceSessionId: 'vendor-source',
+          sourceKind: 'claude-transcript',
+          sourceAffinity: identity.affinity,
+          cwd: '/workspace/project',
+        },
+        {
+          onProviderChildCreationStarted: () => {},
+          onProviderChildCreated: () => {},
+        },
+      );
+      expect(child.resumeCursor).toEqual({
+        claudeSessionId: 'vendor-child',
+        sourceAffinity: identity.affinity,
+      });
+      await adapter.stopSession('station-child');
+      const restarted = new ClaudeAdapter(options);
+      mockQuery.mockReturnValue(
+        createMockQuery([
+          {
+            type: 'system',
+            subtype: 'init',
+            session_id: 'vendor-child',
+            cwd: '/workspace/project',
+            model: 'claude-sonnet-4-6',
+            tools: [],
+            mcp_servers: [],
+          },
+        ]),
+      );
+      const resumed = await restarted.startSession({
+        provider: 'claude',
+        threadId: 'station-child',
+        resumeCursor: child.resumeCursor,
+        cwd: '/workspace/project',
+        persistSession: true,
+      });
+      await vi.waitFor(() => expect(resumed.status).toBe('ready'));
+      expect(resumed.resumeCursor).toEqual(child.resumeCursor);
+      expect(getAppHomeEnv).not.toHaveBeenCalled();
+      expect(mockQuery).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({ resume: 'vendor-child' }),
+        }),
+      );
+      await restarted.stopSession('station-child');
+      const calls = mockQuery.mock.calls.length;
+      vi.stubEnv('CLAUDE_CONFIG_DIR', join(home, 'changed'));
+      await expect(
+        new ClaudeAdapter(options).startSession({
+          provider: 'claude',
+          threadId: 'station-child',
+          resumeCursor: child.resumeCursor,
+          cwd: '/workspace/project',
+        }),
+      ).rejects.toThrow('affinity');
+      expect(mockQuery).toHaveBeenCalledTimes(calls);
+      expect(getAppHomeEnv).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('reports creation only after source-home validation and before the SDK fork', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'station-claude-adoption-home-'));
+    vi.stubEnv('CLAUDE_CONFIG_DIR', home);
+    try {
+      const identity = deriveConfigHomeAffinity('claude-config-home', home)!;
+      const adapter = new ClaudeAdapter({
+        resolveSourceHome: (affinity) =>
+          resolveConfigHomeAffinity('claude-config-home', home, affinity),
+      });
+      const order: string[] = [];
+      mockForkSession.mockImplementation(async () => {
+        order.push('fork');
+        return { sessionId: 'vendor-child' };
+      });
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const base = {
+        provider: 'claude' as const,
+        threadId: 'station-child',
+        sourceSessionId: 'vendor-source',
+        sourceKind: 'claude-transcript',
+        cwd: '/workspace/project',
+      };
+      const hooks = {
+        onProviderChildCreationStarted: vi.fn(() => {
+          order.push('start');
+        }),
+        onProviderChildCreated: vi.fn(() => {
+          order.push('child');
+        }),
+      };
+      await expect(
+        adapter.adoptSession(
+          {
+            ...base,
+            sourceAffinity: { ...identity.affinity, ref: '0'.repeat(64) },
+          },
+          hooks,
+        ),
+      ).rejects.toThrow('affinity');
+      expect(mockForkSession).not.toHaveBeenCalled();
+      expect(hooks.onProviderChildCreationStarted).not.toHaveBeenCalled();
+      await adapter.adoptSession(
+        { ...base, sourceAffinity: identity.affinity },
+        hooks,
+      );
+      expect(order).toEqual(['start', 'fork', 'child']);
+      mockDeleteSession.mockResolvedValue(undefined);
+      await adapter.discardSession('station-child', {
+        adoptionKey: 'station-child',
+        sourceAffinity: identity.affinity,
+        sourceSessionId: 'vendor-source',
+        sourceKind: 'claude-transcript',
+        cwd: base.cwd,
+        resumeCursor: 'vendor-child',
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('does not report successful adopted-child cleanup when SDK deletion fails', async () => {
+    const adapter = new ClaudeAdapter();
+    mockDeleteSession.mockRejectedValue(new Error('delete failed'));
+    await expect(
+      adapter.discardSession('station-child', {
+        adoptionKey: 'station-child',
+        sourceSessionId: 'vendor-source',
+        cwd: '/workspace/project',
+        resumeCursor: 'vendor-child',
+      }),
+    ).rejects.toThrow('delete failed');
+    expect(mockDeleteSession).toHaveBeenCalledTimes(1);
+  });
+
+  test('keeps zero-match or ambiguous adopted-child recovery unresolved', async () => {
+    const adapter = new ClaudeAdapter();
+    const recovery = {
+      adoptionKey: 'station-child',
+      sourceSessionId: 'vendor-source',
+      cwd: '/workspace/project',
+      createdAt: '2026-09-06T00:00:00Z',
+    };
+    mockListSessions.mockResolvedValue([]);
+    await expect(
+      adapter.discardSession('station-child', recovery),
+    ).rejects.toThrow('unique continuation');
+    mockListSessions.mockResolvedValue(
+      ['one', 'two'].map((sessionId) => ({
+        sessionId,
+        customTitle: 'Station continuation station-child',
+        lastModified: Date.parse(recovery.createdAt),
+      })),
+    );
+    await expect(
+      adapter.discardSession('station-child', recovery),
+    ).rejects.toThrow('unique continuation');
+    expect(mockDeleteSession).not.toHaveBeenCalled();
   });
 
   test('deletes the provider transcript when an adopted session is discarded', async () => {

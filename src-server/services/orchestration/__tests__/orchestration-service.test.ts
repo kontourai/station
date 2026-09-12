@@ -43,6 +43,7 @@ import type {
   ProviderAdapterShape,
   ProviderAdoptionHooks,
   ProviderInterruptTurnResult,
+  ProviderNativeSessionIdentity,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
@@ -230,6 +231,23 @@ class FakeAdapter implements ProviderAdapterShape {
         maxEntries?: number;
       }) => Promise<Array<{ id: string; name: string; originalId: string }>>
     >();
+  readonly nativeSessionIdentity = vi.fn<
+    (cursor: unknown) => ProviderNativeSessionIdentity | undefined
+  >((cursor) => {
+    if (typeof cursor === 'string') return { sessionId: cursor };
+    if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) {
+      return undefined;
+    }
+    const value = cursor as Record<string, unknown>;
+    const sessionId = value.claudeSessionId ?? value.codexThreadId;
+    return typeof sessionId === 'string'
+      ? {
+          sessionId,
+          affinity:
+            value.sourceAffinity as ProviderNativeSessionIdentity['affinity'],
+        }
+      : undefined;
+  });
 
   constructor(
     readonly provider:
@@ -12685,6 +12703,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'session-1',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -12770,6 +12789,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-ambiguous',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
@@ -12797,6 +12817,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-source',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -12895,6 +12916,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'source-session',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
@@ -12987,6 +13009,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-source-1165',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-28T00:00:00.000Z',
       updatedAt: '2026-07-28T00:00:00.000Z',
@@ -13098,7 +13121,9 @@ describe('OrchestrationService', () => {
 
     await expect(
       service.dispatch({ type: 'adoptSession', sourceThreadId }),
-    ).rejects.toThrow('independent continuation support');
+    ).rejects.toThrow(
+      'Station has not established independent continuation support for this engine.',
+    );
     expect(readiness).not.toHaveBeenCalled();
     expect(bedrock.adoptSession).not.toHaveBeenCalled();
     expect(bedrock.startSession).not.toHaveBeenCalled();
@@ -13119,6 +13144,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-flow-source',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -13151,6 +13177,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-concurrent',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -13207,6 +13234,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-distinct-intents',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -13260,6 +13288,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-restart',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -13312,6 +13341,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-cross-process-winner',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -13379,6 +13409,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-cross-process-pending',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -13418,6 +13449,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-terminal-continuation',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -13463,6 +13495,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-child',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -13493,6 +13526,100 @@ describe('OrchestrationService', () => {
       service.dispatch({ type: 'adoptSession', sourceThreadId: aliasThreadId }),
     ).rejects.toThrow('Attached session not found');
     expect(claude.adoptSession).not.toHaveBeenCalled();
+  });
+
+  test('evicts a source-bound attached alias through the adapter cursor identity', async () => {
+    const projectRoot = join(tmp, 'source-bound-recovered-collision');
+    const affinity = { kind: 'claude-config-home', ref: 'a'.repeat(64) };
+    mkdirSync(projectRoot, { recursive: true });
+    configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
+    const aliasThreadId = 'external:claude:source-bound-child';
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: aliasThreadId,
+      status: 'ready',
+      cwd: projectRoot,
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'claude-transcript',
+        externalSessionId: 'source-bound-child',
+        affinity,
+      },
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: 'station-source-bound-child',
+      status: 'ready',
+      cwd: projectRoot,
+      resumeCursor: {
+        claudeSessionId: 'source-bound-child',
+        sourceAffinity: affinity,
+      },
+      continuationSourceThreadId: 'external:claude:original-source',
+      persistSession: true,
+      createdAt: '2026-07-22T00:00:01.000Z',
+      updatedAt: '2026-07-22T00:00:01.000Z',
+    });
+
+    service.initialize();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(
+      (await service.listSessionReadModel()).map((item) => item.threadId),
+    ).not.toContain(aliasThreadId);
+    expect(
+      eventStore.readSessions().map((item) => item.threadId),
+    ).not.toContain(aliasThreadId);
+  });
+
+  test('keeps a same-id attached alias when the owned cursor proves another home', async () => {
+    const projectRoot = join(tmp, 'other-home-no-collision');
+    mkdirSync(projectRoot, { recursive: true });
+    configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
+    const aliasThreadId = 'external:claude:other-home-child';
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: aliasThreadId,
+      status: 'ready',
+      cwd: projectRoot,
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'claude-transcript',
+        externalSessionId: 'same-native-id',
+        affinity: { kind: 'claude-config-home', ref: 'a'.repeat(64) },
+      },
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: 'station-other-home-child',
+      status: 'ready',
+      cwd: projectRoot,
+      resumeCursor: {
+        claudeSessionId: 'same-native-id',
+        sourceAffinity: {
+          kind: 'claude-config-home',
+          ref: 'b'.repeat(64),
+        },
+      },
+      continuationSourceThreadId: 'external:claude:original-source',
+      persistSession: true,
+      createdAt: '2026-07-22T00:00:01.000Z',
+      updatedAt: '2026-07-22T00:00:01.000Z',
+    });
+
+    service.initialize();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(
+      (await service.listSessionReadModel()).map((item) => item.threadId),
+    ).toContain(aliasThreadId);
+    expect(eventStore.readSessions().map((item) => item.threadId)).toContain(
+      aliasThreadId,
+    );
   });
 
   // archive#1867: `listSessionReadModel` feeds the SSE `/events` snapshot and
@@ -13666,6 +13793,9 @@ describe('OrchestrationService', () => {
       createdAt: now,
       cwd: projectRoot,
       resumeCursor: undefined,
+      sourceAffinity: undefined,
+      sourceKind: 'claude-transcript',
+      sourceSessionId: 'vendor-ambiguous',
     });
     expect(claude.adoptSession).not.toHaveBeenCalled();
   });
@@ -13685,6 +13815,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-rollback-retry',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -14390,6 +14521,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-tenant-adoption',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       tenantExecutionContext: alpha,
       createdAt: '2026-08-01T00:00:00.000Z',
@@ -14443,6 +14575,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-tenant-idempotent',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       tenantExecutionContext: alpha,
       createdAt: '2026-08-01T00:00:00.000Z',
@@ -19298,6 +19431,7 @@ describe('OrchestrationService', () => {
         attachedSource: {
           kind: 'claude-transcript',
           externalSessionId: 'vendor-flow-adopt',
+          affinity: { kind: 'test', ref: 'fixture' },
         },
         createdAt: '2026-07-22T00:00:00.000Z',
         updatedAt: '2026-07-22T00:00:00.000Z',
@@ -19336,6 +19470,7 @@ describe('OrchestrationService', () => {
         attachedSource: {
           kind: 'claude-transcript',
           externalSessionId: 'vendor-no-station-delivery',
+          affinity: { kind: 'test', ref: 'fixture' },
         },
         createdAt: '2026-07-22T00:00:00.000Z',
         updatedAt: '2026-07-22T00:00:00.000Z',
@@ -19362,6 +19497,7 @@ describe('OrchestrationService', () => {
         attachedSource: {
           kind: 'claude-transcript',
           externalSessionId: 'vendor-persist-failure',
+          affinity: { kind: 'test', ref: 'fixture' },
         },
         createdAt: '2026-07-22T00:00:00.000Z',
         updatedAt: '2026-07-22T00:00:00.000Z',

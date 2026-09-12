@@ -1,9 +1,11 @@
 import crypto from 'node:crypto';
+import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type {
   RequestOpenedEvent,
   RequestResolvedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderSession } from '../adapter-shape.js';
+import { isSessionSourceAffinity } from '../sessions/session-source-affinity.js';
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -50,10 +52,77 @@ export function extractTokenFigure(value: unknown): number | null {
     : null;
 }
 
-export function isResumeCursor(
-  value: unknown,
-): value is { codexThreadId: string } {
-  return isRecord(value) && typeof value.codexThreadId === 'string';
+export function isResumeCursor(value: unknown): value is {
+  codexThreadId: string;
+  sourceAffinity?: ProviderSessionSourceAffinity;
+} {
+  return (
+    isRecord(value) &&
+    typeof value.codexThreadId === 'string' &&
+    value.codexThreadId.length > 0 &&
+    Buffer.byteLength(value.codexThreadId) <= 512 &&
+    (value.sourceAffinity === undefined ||
+      isSessionSourceAffinity(value.sourceAffinity))
+  );
+}
+
+export function codexResumeCursor(
+  codexThreadId: string,
+  previous: unknown,
+  turnId?: string,
+): {
+  codexThreadId: string;
+  turnId?: string;
+  sourceAffinity?: ProviderSessionSourceAffinity;
+} {
+  const prior = isResumeCursor(previous) ? previous : undefined;
+  return {
+    codexThreadId,
+    ...(turnId ? { turnId } : {}),
+    ...(prior?.sourceAffinity
+      ? { sourceAffinity: { ...prior.sourceAffinity } }
+      : {}),
+  };
+}
+
+export interface CodexForkedThread {
+  id: string;
+  forkedFromId: string;
+  threadSource: string;
+  turns: unknown[];
+}
+
+export function extractForkedThread(result: unknown): CodexForkedThread {
+  if (!isRecord(result) || !isRecord(result.thread)) {
+    throw new Error('Codex fork response did not include a thread.');
+  }
+  const thread = result.thread;
+  if (
+    typeof thread.id !== 'string' ||
+    typeof thread.forkedFromId !== 'string' ||
+    typeof thread.threadSource !== 'string' ||
+    !Array.isArray(thread.turns)
+  ) {
+    throw new Error('Codex fork response did not include child lineage.');
+  }
+  return {
+    id: thread.id,
+    forkedFromId: thread.forkedFromId,
+    threadSource: thread.threadSource,
+    turns: thread.turns,
+  };
+}
+
+export function endsAtCompletedCodexTurn(
+  turns: readonly unknown[],
+  turnId: string,
+): boolean {
+  const finalTurn = turns.at(-1);
+  return (
+    isRecord(finalTurn) &&
+    finalTurn.id === turnId &&
+    finalTurn.status === 'completed'
+  );
 }
 
 export function extractThread(result: unknown): { id: string } {
