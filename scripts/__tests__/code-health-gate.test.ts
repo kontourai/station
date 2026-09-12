@@ -163,6 +163,16 @@ function report() {
       duplication_introduced: 0,
       duplication_inherited: 0,
     },
+    complexity: {
+      findings: [
+        {
+          path: 'index.ts',
+          name: 'read',
+          exceeded: 'cognitive',
+          introduced: true,
+        },
+      ],
+    },
     dead_code: { unused_exports: [], unused_types: [] },
   };
 }
@@ -183,3 +193,51 @@ test.each(['base', 'head', 'attribution', 'metrics', 'findings'])(
     expect(() => evaluateCodeHealthAudit(value, base, head)).toThrow();
   },
 );
+
+test('complexity summaries count rows while attribution counts distinct path/name/metric keys', () => {
+  const value = report();
+  const inherited = {
+    path: 'index.ts',
+    name: '<arrow>',
+    exceeded: 'all',
+    introduced: false,
+  };
+  value.complexity.findings = [
+    inherited,
+    { ...inherited },
+    { ...inherited, exceeded: 'cognitive' },
+  ];
+  value.summary.complexity_findings = 3;
+  value.attribution.complexity_introduced = 0;
+  value.attribution.complexity_inherited = 2;
+  expect(evaluateCodeHealthAudit(value, base, head)).toMatchObject({
+    passed: true,
+    introduced: { complexity: 0 },
+    summary: { complexity_findings: 3 },
+  });
+});
+
+test.each([
+  'missing-row-attribution',
+  'conflicting-key-attribution',
+  'wrong-row-count',
+  'wrong-unique-count',
+  'missing-key',
+])('deduplicating complexity keys still refuses %s', (kind) => {
+  const value: any = report();
+  if (kind === 'missing-row-attribution')
+    delete value.complexity.findings[0].introduced;
+  if (kind === 'conflicting-key-attribution') {
+    value.complexity.findings.push({
+      ...value.complexity.findings[0],
+      introduced: false,
+    });
+    value.summary.complexity_findings = 2;
+    value.attribution.complexity_inherited = 1;
+  }
+  if (kind === 'wrong-row-count') value.summary.complexity_findings = 2;
+  if (kind === 'wrong-unique-count')
+    value.attribution.complexity_introduced = 0;
+  if (kind === 'missing-key') delete value.complexity.findings[0].exceeded;
+  expect(() => evaluateCodeHealthAudit(value, base, head)).toThrow();
+});
