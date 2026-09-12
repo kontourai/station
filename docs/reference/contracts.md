@@ -122,6 +122,12 @@ promotion verdict, or effect result. Generic record `active` is not learning
 activation. All restricted/unavailable/refused outcomes omit source identity.
 The full `LearningReviewProjection` lifecycle contract is unchanged.
 
+`OrchestrationQuoteSource` on the orchestration subpath is the versioned,
+bounded exact-answer quotation read: Session, turn, message, text and SHA-256
+text revision. It conveys no authorization grant or evidence verdict. The
+quote-source HTTP route checks current read authority before and after owner
+I/O and refuses oversized text instead of returning an incomplete source.
+
 `PullRequestReviewSnapshot` on `pull-request-provider` binds provider-supplied
 review content to an observed head/base pair and timestamp. Diff availability
 and discussion completeness are explicit; a provider diff is not a claim that

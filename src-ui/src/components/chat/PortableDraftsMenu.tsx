@@ -4,12 +4,14 @@ import {
   type PortableDraft,
 } from '../../contexts/chat-drafts-store';
 import type { FileAttachment } from '../../types';
+import type { SavedAnswerQuote } from '../../utils/answer-quotes';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 
 interface PortableDraftsMenuProps {
+  quotes?: readonly SavedAnswerQuote[];
   input: string;
   attachments: FileAttachment[];
   open: boolean;
@@ -19,6 +21,7 @@ interface PortableDraftsMenuProps {
 
 export function PortableDraftsMenu({
   input,
+  quotes = [],
   attachments,
   open,
   onOpenChange,
@@ -61,10 +64,15 @@ export function PortableDraftsMenu({
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              if (!input.trim() && attachments.length === 0) return;
+              if (
+                !input.trim() &&
+                attachments.length === 0 &&
+                quotes.length === 0
+              )
+                return;
               setSaving(true);
               void chatDraftsStore
-                .stash(name, input, attachments)
+                .stash(name, input, attachments, undefined, quotes)
                 .then(() => setName(''))
                 .finally(() => setSaving(false));
             }}
@@ -79,7 +87,12 @@ export function PortableDraftsMenu({
             </label>
             <button
               type="submit"
-              disabled={saving || (!input.trim() && attachments.length === 0)}
+              disabled={
+                saving ||
+                (!input.trim() &&
+                  attachments.length === 0 &&
+                  quotes.length === 0)
+              }
             >
               {saving ? 'Stashing…' : 'Stash current prompt'}
             </button>
@@ -95,7 +108,12 @@ export function PortableDraftsMenu({
                   }}
                 >
                   <strong>{draft.name}</strong>
-                  <span>{draft.text || 'Image-only prompt'}</span>
+                  <span>
+                    {draft.text ||
+                      (draft.quotes?.length
+                        ? 'Quoted context'
+                        : 'Image-only prompt')}
+                  </span>
                   {draft.droppedImageNames.length > 0 && (
                     <small>Dropped: {draft.droppedImageNames.join(', ')}</small>
                   )}

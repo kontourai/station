@@ -1,4 +1,9 @@
 import type { FileAttachment } from '../types';
+import {
+  MAX_DRAFT_QUOTES,
+  parseSavedAnswerQuote,
+  type SavedAnswerQuote,
+} from '../utils/answer-quotes';
 
 const CHAT_DRAFTS_STORAGE_KEY = 'station:chat-drafts:v1';
 const MAX_DRAFTS = 20;
@@ -6,6 +11,7 @@ const MAX_DRAFT_LENGTH = 20_000;
 const MAX_STASHED_IMAGES = 5;
 
 interface StoredDraft {
+  quotes?: SavedAnswerQuote[];
   text: string;
   updatedAt: number;
 }
@@ -14,6 +20,7 @@ type StoredDrafts = Record<string, StoredDraft>;
 
 /** Deliberately has no model, engine, provider, or connection field. */
 export interface PortableDraft {
+  quotes?: SavedAnswerQuote[];
   id: string;
   name: string;
   text: string;
@@ -44,6 +51,14 @@ function readSessionDrafts(value: unknown): StoredDrafts {
       continue;
     result[sessionId] = {
       text: candidateValue.text.slice(0, MAX_DRAFT_LENGTH),
+      ...(Array.isArray(candidateValue.quotes)
+        ? {
+            quotes: candidateValue.quotes
+              .map(parseSavedAnswerQuote)
+              .filter((quote): quote is SavedAnswerQuote => quote !== null)
+              .slice(0, MAX_DRAFT_QUOTES),
+          }
+        : {}),
       updatedAt: candidateValue.updatedAt,
     };
   }
@@ -80,6 +95,17 @@ function readState(): StoredState {
     return {
       sessions: readSessionDrafts(parsed.sessions),
       portable: portable
+        .map((draft) => ({
+          ...draft,
+          ...(Array.isArray(draft.quotes)
+            ? {
+                quotes: draft.quotes
+                  .map(parseSavedAnswerQuote)
+                  .filter((quote): quote is SavedAnswerQuote => quote !== null)
+                  .slice(0, MAX_DRAFT_QUOTES),
+              }
+            : {}),
+        }))
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, MAX_DRAFTS),
     };
@@ -96,6 +122,7 @@ function writeState(state: StoredState): void {
   }
 }
 
+const EMPTY_QUOTES: readonly SavedAnswerQuote[] = [];
 let state = readState();
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((listener) => listener());
@@ -118,11 +145,81 @@ export const chatDraftsStore = {
   get(sessionId: string): string {
     return state.sessions[sessionId]?.text ?? '';
   },
+  getQuotes(sessionId: string): readonly SavedAnswerQuote[] {
+    return state.sessions[sessionId]?.quotes ?? EMPTY_QUOTES;
+  },
+  addQuote(sessionId: string, quote: SavedAnswerQuote): void {
+    const current = state.sessions[sessionId];
+    const quotes = current?.quotes ?? [];
+    if (!parseSavedAnswerQuote(quote)) throw new Error('Invalid quote');
+    if (quotes.length >= MAX_DRAFT_QUOTES)
+      throw new Error(
+        'Remove a quote before adding another. A draft can hold three quotes.',
+      );
+    state = {
+      ...state,
+      sessions: {
+        ...state.sessions,
+        [sessionId]: {
+          text: current?.text ?? '',
+          updatedAt: Date.now(),
+          quotes: [...quotes, quote],
+        },
+      },
+    };
+    state = {
+      ...state,
+      sessions: Object.fromEntries(
+        Object.entries(state.sessions)
+          .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
+          .slice(0, MAX_DRAFTS),
+      ),
+    };
+    writeState(state);
+    notify();
+  },
+  consumeQuotes(sessionId: string, sent: readonly SavedAnswerQuote[]): void {
+    const current = state.sessions[sessionId];
+    if (!current) return;
+    state = {
+      ...state,
+      sessions: {
+        ...state.sessions,
+        [sessionId]: {
+          ...current,
+          quotes: (current.quotes ?? []).filter(
+            (quote) => !sent.includes(quote),
+          ),
+        },
+      },
+    };
+    writeState(state);
+    notify();
+  },
+  removeQuote(sessionId: string, index: number): void {
+    const current = state.sessions[sessionId];
+    if (!current) return;
+    state = {
+      ...state,
+      sessions: {
+        ...state.sessions,
+        [sessionId]: {
+          ...current,
+          quotes: (current.quotes ?? []).filter((_, i) => i !== index),
+        },
+      },
+    };
+    writeState(state);
+    notify();
+  },
   hasDraft(sessionId: string): boolean {
-    return Boolean(state.sessions[sessionId]?.text.trim());
+    return Boolean(
+      state.sessions[sessionId]?.text.trim() ||
+        state.sessions[sessionId]?.quotes?.length,
+    );
   },
   set(sessionId: string, text: string): void {
-    if (!text) {
+    if (!text && !state.sessions[sessionId]?.quotes?.length) {
       if (!(sessionId in state.sessions)) return;
       const { [sessionId]: _removed, ...sessions } = state.sessions;
       state = { ...state, sessions };
@@ -136,6 +233,7 @@ export const chatDraftsStore = {
         Object.entries({
           ...state.sessions,
           [sessionId]: {
+            quotes: state.sessions[sessionId]?.quotes,
             text: text.slice(0, MAX_DRAFT_LENGTH),
             updatedAt: Date.now(),
           },
@@ -159,6 +257,7 @@ export const chatDraftsStore = {
     text: string,
     attachments: readonly FileAttachment[],
     encode: DraftAttachmentEncoder = async (attachment) => attachment,
+    quotes: readonly SavedAnswerQuote[] = [],
   ): Promise<PortableDraft> {
     const createdAt = Date.now();
     const id = `draft-${createdAt}`;
@@ -171,6 +270,14 @@ export const chatDraftsStore = {
       text: text.slice(0, MAX_DRAFT_LENGTH),
       createdAt,
       attachments: [...files],
+      ...(quotes.length
+        ? {
+            quotes: quotes
+              .map(parseSavedAnswerQuote)
+              .filter((quote): quote is SavedAnswerQuote => quote !== null)
+              .slice(0, MAX_DRAFT_QUOTES),
+          }
+        : {}),
       droppedImageNames: images
         .slice(MAX_STASHED_IMAGES)
         .map((item) => item.name),

@@ -15,6 +15,7 @@ import type {
   ComposerAttachmentStageSnapshot,
   FileAttachment,
 } from '../../types';
+import type { SavedAnswerQuote } from '../../utils/answer-quotes';
 import type { ApprovalMode } from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import {
@@ -73,6 +74,9 @@ interface ChatInputAreaProps {
    */
   sessionId?: string;
   // Input state
+  hasQuotedContext?: boolean;
+  draftText?: string;
+  quoteContext?: readonly SavedAnswerQuote[];
   input: string;
   attachments: FileAttachment[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -164,6 +168,7 @@ interface ChatInputAreaProps {
   onRestorePortableDraft?: (
     text: string,
     attachments: FileAttachment[],
+    quotes?: readonly SavedAnswerQuote[],
   ) => void;
   updateFromInput: (value: string) => void;
   closeAll: () => void;
@@ -197,6 +202,9 @@ interface ChatInputAreaProps {
 export function ChatInputArea({
   sessionId,
   input,
+  hasQuotedContext = false,
+  draftText,
+  quoteContext,
   attachments,
   textareaRef,
   disabled,
@@ -348,7 +356,7 @@ export function ChatInputArea({
   // seam this composer actually posts to). A courtesy check only — the
   // server is the authority — but it lets the composer say exactly how
   // much to remove instead of letting the turn fail as a provider error.
-  const overLimitBy = input.length - CHAT_INPUT_MAX_CHARS;
+  const overLimitBy = (draftText ?? input).length - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
 
   useLayoutEffect(() => {
@@ -603,7 +611,11 @@ export function ChatInputArea({
                 e.preventDefault();
                 if (workspaceRefused && !isOverLimit) {
                   await onStartNewChat?.(input, attachments);
-                } else if (input.trim() && !isOverLimit && !sendBlockedReason)
+                } else if (
+                  (input.trim() || hasQuotedContext) &&
+                  !isOverLimit &&
+                  !sendBlockedReason
+                )
                   await onSend();
               }
             }}
@@ -674,11 +686,16 @@ export function ChatInputArea({
           <React.Suspense fallback={null}>
             <PortableDraftsMenu
               input={input}
+              quotes={quoteContext}
               attachments={attachments}
               open={portableDraftsOpen}
               onOpenChange={setPortableDraftsOpen}
               onRestore={(draft) => {
-                onRestorePortableDraft?.(draft.text, draft.attachments);
+                onRestorePortableDraft?.(
+                  draft.text,
+                  draft.attachments,
+                  draft.quotes,
+                );
               }}
             />
           </React.Suspense>
@@ -745,7 +762,9 @@ export function ChatInputArea({
                 if (workspaceRefused && !isOverLimit) {
                   await onStartNewChat?.(input, attachments);
                 } else if (
-                  (input.trim() || attachments.length > 0) &&
+                  (input.trim() ||
+                    hasQuotedContext ||
+                    attachments.length > 0) &&
                   !isOverLimit
                 ) {
                   await onSend();
@@ -755,7 +774,10 @@ export function ChatInputArea({
                 if (
                   e.key === 'Enter' &&
                   !isOverLimit &&
-                  (workspaceRefused || input.trim() || attachments.length > 0)
+                  (workspaceRefused ||
+                    input.trim() ||
+                    hasQuotedContext ||
+                    attachments.length > 0)
                 ) {
                   e.preventDefault();
                   if (workspaceRefused) {
@@ -770,7 +792,9 @@ export function ChatInputArea({
                 !!sendBlockedReason ||
                 (workspaceRefused
                   ? !onStartNewChat
-                  : !input.trim() && attachments.length === 0)
+                  : !input.trim() &&
+                    !hasQuotedContext &&
+                    attachments.length === 0)
               }
               tabIndex={0}
               aria-label={workspaceRefused ? 'Start new chat' : 'Send'}
@@ -786,7 +810,12 @@ export function ChatInputArea({
               }
               className={`send-button chat-input__send-btn ${
                 !isOverLimit &&
-                (workspaceRefused || input.trim() || attachments.length > 0)
+                (
+                  workspaceRefused ||
+                    input.trim() ||
+                    hasQuotedContext ||
+                    attachments.length > 0
+                )
                   ? 'chat-input__send-btn--active'
                   : 'chat-input__send-btn--inactive'
               }`}
