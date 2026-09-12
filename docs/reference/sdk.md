@@ -2203,7 +2203,6 @@ unsupported, or unavailable state. Clients should mark an old cached
 observation stale and require refresh before review or other actions. Explicit
 unlink changes only the Conversation association; it never changes the pull
 request or deletes Task-kept provenance.
-
 ## Files in answers to input requests
 
 `getInputReplyContext(apiBase, reference, options)` from

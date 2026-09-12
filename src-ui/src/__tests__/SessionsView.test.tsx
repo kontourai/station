@@ -2,6 +2,8 @@
  * @vitest-environment jsdom
  */
 
+import type { AttachedSessionSourceMetadata } from '@kontourai/station-contracts/provider';
+
 import {
   isSessionLifecycleStateTerminal,
   SESSION_LIFECYCLE_STATES,
@@ -19,6 +21,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { NavigationProvider } from '../contexts/NavigationContext';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ATTACHED_SESSION_CONTINUATION_STORAGE_KEY } from '../lib/attached-session-continuation-store';
+
+// The native transport is mocked; positive continuation fixtures explicitly
+// carry the source context that the server now requires before adoption.
+const VERIFIED_ATTACHED_SOURCE: AttachedSessionSourceMetadata = {
+  kind: 'claude-transcript',
+  externalSessionId: 'fixture-native-source',
+  affinity: { kind: 'fixture-home', ref: 'sessions-view-fixture' },
+};
 
 const sendTurn = vi.fn().mockResolvedValue(undefined);
 const resolveRequest = vi.fn().mockResolvedValue(undefined);
@@ -918,6 +928,7 @@ describe('SessionsView', () => {
     sessions[0] = {
       ...sessions[0],
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
     };
     historyState = {
       hasMore: true,
@@ -2179,6 +2190,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:ambiguous-1',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
       projectSlug: undefined,
       projectAttribution: { state: 'ambiguous', candidates: ['alpha', 'beta'] },
@@ -2220,6 +2232,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:terminal-1',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     feedEvents = [
@@ -2274,6 +2287,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:terminal-1',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     adoptSession.mockImplementation(async () => {
@@ -2320,6 +2334,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:response-loss',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     const child = {
@@ -2354,6 +2369,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:later-continuation',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     getStarterWork.mockResolvedValueOnce({ state: 'bound', binding: {} });
@@ -2379,6 +2395,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:corrupt-continuation',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     window.localStorage.setItem(
@@ -2406,6 +2423,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:unsafe-retry',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     launchContinueSessionStarter.mockResolvedValueOnce({
@@ -2447,6 +2465,7 @@ describe('SessionsView', () => {
       threadId: 'external:claude:unsafe-first',
       displayTitle: 'Attached A',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     const second = {
@@ -2454,6 +2473,7 @@ describe('SessionsView', () => {
       threadId: 'external:claude:safe-second',
       displayTitle: 'Attached B',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     sessions = [first, second];
@@ -2501,6 +2521,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:cleanup-failure',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     let lockRequests = 0;
@@ -2550,6 +2571,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:status-loss',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     const child = {
@@ -2610,6 +2632,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:terminal-mobile',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     const pendingRefetch = deferred<void>();
@@ -2650,6 +2673,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:terminal-pending',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     const child = {
@@ -2689,6 +2713,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:terminal-mobile',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     const sibling = {
@@ -2740,6 +2765,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:terminal-mobile',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     const sibling = {
@@ -3248,6 +3274,7 @@ describe('SessionsView', () => {
         status: 'idle',
         lifecycleState: 'completed',
         controlMode: 'read-only-attached',
+        attachedSource: VERIFIED_ATTACHED_SOURCE,
         answerability: { answerable: false },
         isLoaded: true,
         isPersisted: true,
@@ -4026,6 +4053,7 @@ describe('SessionsView', () => {
           threadId: 'attached-done',
           displayTitle: 'Attached transcript',
           controlMode: 'read-only-attached',
+          attachedSource: VERIFIED_ATTACHED_SOURCE,
           answerability: { answerable: false },
         }),
       ];
@@ -4328,6 +4356,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
       status: 'idle',
       lifecycleState: 'completed',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       answerability: { answerable: false },
       isLoaded: true,
       isPersisted: true,

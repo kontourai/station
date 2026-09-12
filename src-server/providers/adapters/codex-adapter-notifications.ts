@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { adapterTurnDuration, providerOps } from '../../telemetry/metrics.js';
 import {
+  codexResumeCursor,
   deriveToolArguments,
   deriveToolName,
   deriveToolOutput,
@@ -164,6 +165,23 @@ export function handleCodexNotification(
       return;
     }
     case 'thread/tokenUsage/updated': {
+      if (record.withholdCumulativeUsage) {
+        if (!record.cumulativeUsageWithheldWarningPublished) {
+          record.cumulativeUsageWithheldWarningPublished = true;
+          publish({
+            eventId: crypto.randomUUID(),
+            provider: 'codex',
+            threadId: record.externalThreadId,
+            createdAt: nowIso(),
+            method: 'runtime.warning',
+            severity: 'warning',
+            code: 'codex-inherited-usage-withheld',
+            message:
+              'Codex usage is unavailable for this continuation because the provider counter includes inherited source history.',
+          });
+        }
+        return;
+      }
       if (
         !isRecord(notification.params) ||
         !isRecord(notification.params.tokenUsage)
@@ -275,7 +293,11 @@ export function handleCodexNotification(
         ...record.session,
         status: 'ready',
         updatedAt: nowIso(),
-        resumeCursor: { codexThreadId: record.codexThreadId, turnId },
+        resumeCursor: codexResumeCursor(
+          record.codexThreadId,
+          record.session.resumeCursor,
+          turnId,
+        ),
       };
       // archive#3442: Codex reports a genuinely failed turn (e.g. a
       // usage-limit or context-window exhaustion mid-turn) through the SAME
