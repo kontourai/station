@@ -39,7 +39,7 @@ import type { ConsoleEventRecord } from '@kontourai/console-server';
 
 const require = createRequire(import.meta.url);
 
-export interface CurrentOperatingStateOptions {
+interface CurrentOperatingStateOptions {
   generatedAt?: string | null;
   /** Epoch millis or ISO string; defaults to `Date.now()` when absent. */
   now?: number | string;

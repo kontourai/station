@@ -17,7 +17,7 @@ export interface OpenSshWorkerProbeResult {
   bootId: string;
 }
 
-export interface OpenSshWorkerProbeInput {
+interface OpenSshWorkerProbeInput {
   alias: string;
   controlPath: string;
   remoteProjectPath: string;

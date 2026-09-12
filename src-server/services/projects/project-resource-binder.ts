@@ -91,7 +91,7 @@ export type BindProjectResourceRefusalCode =
    */
   | 'remotes-do-not-intersect';
 
-export type BindProjectResourceResult =
+type BindProjectResourceResult =
   | { ok: true; binding: ProjectBinding }
   | { ok: false; code: BindProjectResourceRefusalCode; reason: string };
 
@@ -114,7 +114,7 @@ export interface ProjectManifestReader {
   readProjectManifest(slug: string): ProjectManifest | undefined;
 }
 
-export interface BindProjectResourceDeps {
+interface BindProjectResourceDeps {
   manifests: ProjectManifestReader;
   bindings: ProjectBindingWriter;
   readRemotes: CheckoutRemoteReader;

@@ -12,7 +12,7 @@ import { hasLifecycleChip, LifecycleStatusChip } from './LifecycleStatusChip';
 const loadProgressSilenceObservation = () =>
   import('./ProgressSilenceObservation');
 
-export interface HomeWorkRowProps {
+interface HomeWorkRowProps {
   task: HomeLaneItem;
   isWoken: boolean;
   /**

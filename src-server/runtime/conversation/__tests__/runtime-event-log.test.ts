@@ -1,4 +1,12 @@
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import {
+  appendFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -19,6 +27,18 @@ vi.mock('node:fs/promises', async () => {
       return readdirOrder.reverse
         ? ([...entries].reverse() as typeof entries)
         : entries;
+    },
+  };
+});
+
+const reads = vi.hoisted(() => [] as string[]);
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
+  return {
+    ...actual,
+    createReadStream: (...args: Parameters<typeof actual.createReadStream>) => {
+      reads.push(String(args[0]));
+      return actual.createReadStream(...args);
     },
   };
 });
@@ -293,5 +313,69 @@ describe('RuntimeEventLog startup discovery', () => {
 
     expect(await readdir(events)).toEqual([]);
     expect(logger.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('RuntimeEventLog query cost and freshness', () => {
+  const logger = {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  };
+  const row = (timestamp: string, userId = 'one') =>
+    `${JSON.stringify({ timestamp, userId })}\n`;
+  const start = Date.parse('2026-09-06T00:00:00Z');
+  const end = Date.parse('2026-09-07T00:00:00Z');
+
+  it('skips unchanged disjoint files, but re-reads appended backfill and replaced files for each principal', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'station-log-index-'));
+    roots.push(root);
+    const old = join(root, 'events-2026-09-01.ndjson');
+    const recent = join(root, 'events-2026-09-06.ndjson');
+    await writeFile(old, row('2026-09-01T12:00:00Z').repeat(20000));
+    await writeFile(recent, row('2026-09-06T12:00:00Z'));
+    const log = new RuntimeEventLog(root, logger);
+    expect(await log.queryEvents(start, end, 'one')).toHaveLength(1);
+    reads.length = 0;
+    expect(await log.queryEvents(start, end, 'one')).toHaveLength(1);
+    expect(reads).toEqual([recent]);
+    // A filename cannot establish timestamp bounds. Even old files can grow
+    // an in-window event, and the same index must not cache principal results.
+    await appendFile(old, row('2026-09-06T13:00:00Z', 'two'));
+    expect(await log.queryEvents(start, end, 'two')).toEqual([
+      { timestamp: '2026-09-06T13:00:00Z', userId: 'two' },
+    ]);
+    expect(await log.queryEvents(start, end, 'one')).toHaveLength(1);
+    const replacement = join(root, 'replacement');
+    await writeFile(replacement, row('2026-09-06T14:00:00Z'));
+    await rename(replacement, old);
+    expect(await log.queryEvents(start, end, 'one')).toHaveLength(2);
+    await rm(old);
+    expect(await log.queryEvents(start, end, 'one')).toHaveLength(1);
+  });
+
+  it('finds backdated events in a newer file, including on repeated reads', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'station-log-backfill-'));
+    roots.push(root);
+    await writeFile(
+      join(root, 'events-2026-09-09.ndjson'),
+      row('2026-09-06T12:00:00Z'),
+    );
+    const log = new RuntimeEventLog(root, logger);
+    expect(await log.queryEvents(start, end, 'one')).toHaveLength(1);
+    expect(await log.queryEvents(start, end, 'one')).toHaveLength(1);
+  });
+
+  it('distinguishes missing history from an unreadable log directory', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'station-log-error-'));
+    roots.push(root);
+    const path = join(root, 'history');
+    const log = new RuntimeEventLog(path, logger);
+    expect(await log.queryEvents(start, end, 'one')).toEqual([]);
+    await writeFile(path, 'not a directory');
+    await expect(log.queryEvents(start, end, 'one')).rejects.toMatchObject({
+      code: 'ENOTDIR',
+    });
   });
 });

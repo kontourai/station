@@ -39,7 +39,7 @@ export const PROJECT_LIVE_LANE_IDS: readonly SessionLaneId[] = [
   'activeNow',
 ];
 
-export interface ProjectLiveWorkInputs {
+interface ProjectLiveWorkInputs {
   sessions: readonly OrchestrationSessionSummary[];
   agents: AgentSummary[];
   now: number;

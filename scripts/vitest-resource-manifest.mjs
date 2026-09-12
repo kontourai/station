@@ -24,6 +24,8 @@ import ts from 'typescript';
 export const ORDINARY_MAX_WORKERS = 4;
 
 export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
+  // Builds the real CLI before checking its shim freshness; owns packages/cli/dist.
+  'scripts/__tests__/station-dev.test.ts',
   // Packs the CLI once, then verifies both the symlinked offline layout and an
   // independently resolved npm-tarball consumer. It owns packages/cli/dist.
   'packages/cli/src/__tests__/bundle.test.ts',
@@ -115,6 +117,10 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real HTTP requests in isolated children exercise fatal socket-option faults.
+  'packages/shared/src/__tests__/node-http-compat.test.ts',
+  // Launches Chromium to reject prompt-only evidence in the composer helper.
+  'src-ui/src/__tests__/agent-composer-reply-evidence.test.ts',
   // Launches one owned, short-lived native-companion fixture and waits for its exit.
   'packages/cli/src/__tests__/desktop-companion.test.ts',
   // The shared observer fixture also creates real POSIX FIFOs and runs two
@@ -463,11 +469,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/run-e2e-suite-ports.test.ts',
   'scripts/__tests__/server-build-portability.test.ts',
   'scripts/__tests__/station-agent-smoke.test.ts',
-  // station#4536: proves the station-dev shim's checkout resolution and
-  // freshness gate as real process exit codes/stderr from both inside and
-  // outside a checkout, plus a real install-to-tempdir-and-run round trip —
-  // same bounded, single-shot shape as the other entry-point gates above.
-  'scripts/__tests__/station-dev.test.ts',
   // Drives the deploy-ledger commit-back's
   // bounded re-derive-and-retry against real local git repositories — the
   // two-writer convergence proof, the off-main ancestry refusal, retry

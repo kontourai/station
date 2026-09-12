@@ -6,6 +6,7 @@ import {
 } from '@kontourai/station-shared/tool-request-preview';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
+import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationEvent } from './types';
 
 async function resolveApproval(
@@ -60,6 +61,8 @@ export function handleRequestOpenedEvent(
   const grantLabel = displayName
     ? `Allow ${displayName} for this session`
     : 'Allow this tool for this session';
+  if (isReplayThread(event.threadId)) return;
+
   const toastId = toastStore.showToolApproval({
     sessionId: event.threadId,
     toolName,

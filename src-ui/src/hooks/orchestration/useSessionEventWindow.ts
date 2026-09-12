@@ -30,7 +30,7 @@ function mergePages(
   );
 }
 
-export interface SessionEventWindowReader {
+interface SessionEventWindowReader {
   events: OrchestrationSequencedEvent[];
   /** Present for conversation reads when the newest lineage child is known. */
   currentSessionId?: string;
@@ -107,6 +107,9 @@ export function useSessionEventWindow(
   reconcileRevision = 0,
   legacySessionId?: string,
 ): SessionEventWindowReader {
+  const readerKey = threadId
+    ? JSON.stringify([apiBase, threadId, legacySessionId])
+    : undefined;
   const [events, setEvents] = useState<OrchestrationSequencedEvent[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>();
   const [sessionLineage, setSessionLineage] =
@@ -278,7 +281,6 @@ export function useSessionEventWindow(
   }, [apiBase, legacySessionId, reload, threadId]);
 
   useEffect(() => {
-    const readerKey = threadId ? `${apiBase}\u0000${threadId}` : undefined;
     if (readerKeyRef.current === readerKey) return;
     readerKeyRef.current = readerKey;
     generation.current += 1;
@@ -309,7 +311,7 @@ export function useSessionEventWindow(
       }
       readerKeyRef.current = undefined;
     };
-  }, [apiBase, reload, threadId]);
+  }, [readerKey, reload, threadId]);
 
   const previousRevision = useRef(reconcileRevision);
   useEffect(() => {
@@ -318,18 +320,21 @@ export function useSessionEventWindow(
     if (threadId) void reload();
   }, [reconcileRevision, reload, threadId]);
 
+  // Effects reset the request after commit. Do not expose the prior reader's
+  // authority or transcript during the first render of a different identity.
+  const currentReader = Boolean(threadId) && readerKeyRef.current === readerKey;
   return {
-    events,
-    ...(currentSessionId ? { currentSessionId } : {}),
-    ...(sessionLineage ? { sessionLineage } : {}),
-    handoffs,
-    contextBoundaries,
-    hasMore: Boolean(cursor),
+    events: currentReader ? events : [],
+    ...(currentReader && currentSessionId ? { currentSessionId } : {}),
+    ...(currentReader && sessionLineage ? { sessionLineage } : {}),
+    handoffs: currentReader ? handoffs : [],
+    contextBoundaries: currentReader ? contextBoundaries : [],
+    hasMore: currentReader && Boolean(cursor),
     loadOlder,
     reload,
-    upgradeRequired,
-    loading,
-    settled,
-    error,
+    upgradeRequired: currentReader && upgradeRequired,
+    loading: currentReader ? loading : Boolean(threadId),
+    settled: currentReader && settled,
+    error: currentReader ? error : undefined,
   };
 }

@@ -6,6 +6,8 @@ import { apiRequest, unwrapApiData } from '../../lib/apiClient';
 import type { ChatMessage, ChatSession } from '../../types';
 import { isSessionExecutionActive } from '../../utils/execution';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../utils/sessionFailure';
+import { extractUIBlocks } from '../../utils/uiBlocks';
+import { upsertToolResultBlocks } from './messageParts';
 import { useSessionEventWindow } from './useSessionEventWindow';
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
@@ -224,30 +226,44 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           .filter((part) => part.type === 'text')
           .map((part) => part.text ?? '')
           .join(''),
-        contentParts: message.parts.map((part) => ({
-          type: part.type,
-          content: part.text,
-          url: part.url,
-          blobRef: part.blobRef,
-          mediaType: part.mediaType,
-          name: part.name,
-          toolCallId: part.toolCallId,
-          sourceEventId: part.sourceEventId,
-          toolName: part.toolName,
-          args: part.args,
-          result: part.result,
-          output: part.output,
-          error: part.error,
-          cancelled: part.cancelled,
-          state: part.state,
-          isError: part.isError,
-          progressMessage: part.progressMessage,
-          runtimeError: part.runtimeError,
-          runtimeErrorCode: part.runtimeErrorCode,
-          needsApproval: part.needsApproval,
-          approvalId: part.approvalId,
-          approvalStatus: part.approvalStatus,
-        })),
+        contentParts: message.parts.flatMap((part) => {
+          const mapped = {
+            type: part.type,
+            content: part.text,
+            url: part.url,
+            blobRef: part.blobRef,
+            mediaType: part.mediaType,
+            name: part.name,
+            toolCallId: part.toolCallId,
+            sourceEventId: part.sourceEventId,
+            toolName: part.toolName,
+            args: part.args,
+            result: part.result,
+            output: part.output,
+            error: part.error,
+            cancelled: part.cancelled,
+            state: part.state,
+            isError: part.isError,
+            progressMessage: part.progressMessage,
+            runtimeError: part.runtimeError,
+            runtimeErrorCode: part.runtimeErrorCode,
+            needsApproval: part.needsApproval,
+            approvalId: part.approvalId,
+            approvalStatus: part.approvalStatus,
+          };
+          // Preserve the same tool-result identity and sanitized blocks as
+          // the live renderer when the completed turn enters durable replay.
+          return part.type === 'tool-invocation' &&
+            part.sourceEventId &&
+            part.toolCallId
+            ? upsertToolResultBlocks(
+                [mapped],
+                part.toolCallId,
+                part.sourceEventId,
+                extractUIBlocks(part.output),
+              )
+            : [mapped];
+        }),
         timestamp: message.metadata?.timestamp,
         model: message.metadata?.model ?? undefined,
         modelOptions: message.metadata?.modelOptions,

@@ -978,6 +978,38 @@ describe('projectRuntimeEventsToMessages', () => {
       });
     });
 
+    it('keeps a steer inside the open turn instead of closing the assistant early', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'r1', prompt: 'write the tests' }),
+        ev({ method: 'content.text-delta', itemId: 'i1', delta: 'partial ' }),
+        ev({
+          method: 'turn.started',
+          turnId: 'r1',
+          prompt: 'only the failing ones',
+          inputKind: 'steer',
+        }),
+        ev({ method: 'content.text-delta', itemId: 'i1', delta: 'answer' }),
+        ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
+      ]);
+
+      expect(messages.map((message) => message.role)).toEqual([
+        'user',
+        'user',
+        'assistant',
+      ]);
+      expect(messages[1]?.metadata).toMatchObject({
+        inputKind: 'steer',
+        turnId: 'r1',
+      });
+      expect(
+        messages[2]?.parts
+          .filter((part) => part.type === 'text')
+          .map((part) => part.text)
+          .join(''),
+      ).toBe('partial answer');
+      expect(messages[2]?.metadata?.provenance?.turnId).toBe('r1');
+    });
+
     it('correlates each assistant message to its own turn across turns', () => {
       const messages = projectRuntimeEventsToMessages([
         ev({ method: 'turn.started', turnId: 'r1', prompt: 'one' }),

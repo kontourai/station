@@ -198,6 +198,19 @@ export type ChatBackgroundTask = {
   description?: string;
   subagentType?: string;
   backgrounded?: boolean;
+  /**
+   * Nesting depth reported by the provider: 1 for a top-level spawn, N+1 for
+   * one spawned inside a depth-N agent. Absent when the provider reports no
+   * depth, which is not the same claim as depth 1.
+   */
+  spawnDepth?: number;
+  /**
+   * station#1877: the EXECUTION SESSION thread that reported this subagent,
+   * which is what the engine adapter keys its sessions by. The store groups
+   * tasks under the owning chat's thread, and the two are not the same id —
+   * addressing a task-scoped stop needs this one.
+   */
+  sessionThreadId?: string;
 };
 
 /**
@@ -431,9 +444,19 @@ export type ChatUIState = {
   activityHint?: ChatActivityHint;
   backgroundTasks?: ChatBackgroundTask[];
   liveUsage?: ChatLiveUsage;
+  /**
+   * Synthetic event-replay occupant of this store key. Lineage ids stay
+   * unset so live SSE cannot fuzzy-match the source thread into it.
+   */
+  replay?: ChatReplayState;
 };
 
 export type ActiveChatsMap = Record<string, ChatUIState>;
+
+export type ChatReplayState = {
+  sourceThreadId: string;
+  tapeEventCount: number;
+};
 
 export type ActiveChatMetadata = {
   agentSlug: string;
@@ -441,6 +464,9 @@ export type ActiveChatMetadata = {
   title: string;
   conversationId?: string;
   currentSessionId?: string;
+  /** Present only on a synthetic event-replay chat. Never persisted. */
+  replay?: ChatReplayState;
+  conversationOpenPending?: boolean;
   projectSlug?: string;
   projectName?: string;
   executionMode?: ExecutionMode;
@@ -737,7 +763,9 @@ export function activeChatDurableId(
 export function isDurableActiveChat(chat: {
   conversationId?: string;
   unsentMessages?: unknown[];
+  replay?: unknown;
 }): boolean {
+  if (chat.replay) return false;
   return Boolean(chat.conversationId || chat.unsentMessages?.length);
 }
 

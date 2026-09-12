@@ -26,12 +26,12 @@ export interface ShareIntakeCapabilitySource {
   capability(id: 'share-intake'): NativeCapabilityStatus;
 }
 
-export type ShareIntakeOutcome =
+type ShareIntakeOutcome =
   | { status: 'disabled'; reason: string }
   | { status: 'rejected'; reason: string }
   | { status: 'opened'; fileCount: number };
 
-export interface ReceiveSharedImagesParams {
+interface ReceiveSharedImagesParams {
   /** Reports whether the `share-intake` capability is enabled on this host. */
   adapter: ShareIntakeCapabilitySource;
   /** The untrusted payload delivered by the native receiver. */

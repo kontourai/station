@@ -58,7 +58,7 @@ import {
 import { syncRootToNeo4j } from '../../knowledge-store/neo4j-graph-sync.js';
 import { errorMessage } from '../schemas/schemas.js';
 
-export interface Neo4jGraphRouteDeps {
+interface Neo4jGraphRouteDeps {
   store: KnowledgeStoreProvider;
   /** Re-checked per request — never captured once at route-construction time —
    * same "connection may change after startup" discipline

@@ -11,7 +11,7 @@ const MAX_CONTROL_BYTES = 32 * 1024;
 const CONTROL_READ_TIMEOUT_MS = 10_000;
 const PERFORMANCE_COMMAND_TIMEOUT_MS = 600_000;
 
-export interface TaskRoomAcceptanceAgentEdit {
+interface TaskRoomAcceptanceAgentEdit {
   readonly taskId: string;
   readonly agentId: string;
   readonly desiredText: string;
@@ -27,14 +27,14 @@ export interface TaskRoomAcceptanceAgentEditReceipt {
   readonly text: string;
 }
 
-export interface TaskRoomAcceptancePerformanceCorpus {
+interface TaskRoomAcceptancePerformanceCorpus {
   readonly command: 'prepare-performance-corpus';
   readonly taskId: string;
   readonly phase: 'warm' | 'cold';
   readonly iteration: number;
 }
 
-export interface TaskRoomAcceptancePerformanceCorpusReceipt {
+interface TaskRoomAcceptancePerformanceCorpusReceipt {
   readonly kind: 'prepared';
   readonly path: string;
   readonly corpusId: 'plain-text-100k-lines-v1';
@@ -43,13 +43,13 @@ export interface TaskRoomAcceptancePerformanceCorpusReceipt {
   readonly rebuilt: boolean;
 }
 
-export interface TaskRoomAcceptancePerformanceOperations {
+interface TaskRoomAcceptancePerformanceOperations {
   readonly command: 'seed-performance-operations';
   readonly taskId: string;
   readonly count: 1 | 10 | 10_000;
 }
 
-export interface TaskRoomAcceptancePerformanceOperationsReceipt {
+interface TaskRoomAcceptancePerformanceOperationsReceipt {
   readonly kind: 'seeded';
   readonly taskId: string;
   readonly operationCount: number;
@@ -183,21 +183,9 @@ function receiveOneCommand(
     settled = true;
     socket.end(`${JSON.stringify(payload)}\n`);
   };
-  socket.setTimeout(CONTROL_READ_TIMEOUT_MS, () => socket.destroy());
-  socket.on('data', (chunk: Buffer) => {
-    if (settled) return;
-    total += chunk.length;
-    if (total > MAX_CONTROL_BYTES) return socket.destroy();
-    chunks.push(chunk);
-  });
-  socket.on('end', () => {
-    if (settled) return;
-    const body = Buffer.concat(chunks).toString('utf8');
-    const newline = body.indexOf('\n');
-    if (newline < 0 || newline !== body.length - 1)
-      return finish({ kind: 'refused' });
-    const command = parseCommand(body.slice(0, -1));
-    if (!command) return finish({ kind: 'refused' });
+  let executing = false;
+  const dispatch = (command: TaskRoomAcceptanceCommand) => {
+    executing = true;
     socket.setTimeout(controlCommandTimeoutMs(command));
     void execute(command)
       .then((receipt) => finish(receipt))
@@ -210,6 +198,45 @@ function receiveOneCommand(
               : 'unknown control failure',
         }),
       );
+  };
+  socket.setTimeout(CONTROL_READ_TIMEOUT_MS, () => socket.destroy());
+  socket.on('data', (chunk: Buffer) => {
+    if (settled || executing) return;
+    total += chunk.length;
+    if (total > MAX_CONTROL_BYTES) return socket.destroy();
+    chunks.push(chunk);
+    const body = Buffer.concat(chunks).toString('utf8');
+    const newline = body.indexOf('\n');
+    if (newline < 0) return;
+    if (newline !== body.length - 1) return finish({ kind: 'refused' });
+    let frame: unknown;
+    try {
+      frame = JSON.parse(body.slice(0, -1));
+    } catch {
+      return finish({ kind: 'refused' });
+    }
+    // Legacy requests commit at EOF. Versioned frames commit at the newline:
+    // Windows named pipes cannot preserve the reply side after a half-close.
+    if (!frame || typeof frame !== 'object' || !('protocol' in frame)) return;
+    if (
+      !plainOwn(frame, ['protocol', 'request']) ||
+      !('request' in frame) ||
+      frame.protocol !== 'station.task-room-control/v1'
+    )
+      return finish({ kind: 'refused' });
+    const command = parseCommand(JSON.stringify(frame.request));
+    if (!command) return finish({ kind: 'refused' });
+    dispatch(command);
+  });
+  socket.on('end', () => {
+    if (settled || executing) return;
+    const body = Buffer.concat(chunks).toString('utf8');
+    const newline = body.indexOf('\n');
+    if (newline < 0 || newline !== body.length - 1)
+      return finish({ kind: 'refused' });
+    const command = parseCommand(body.slice(0, -1));
+    if (!command) return finish({ kind: 'refused' });
+    dispatch(command);
   });
   socket.on('error', () => {});
 }

@@ -158,7 +158,7 @@ export function computeWorkspaceHomeRoleInstallDigest(
   return `sha256:${hash.digest('hex')}`;
 }
 
-export interface StoredWorkspaceHomeRoleRecord {
+interface StoredWorkspaceHomeRoleRecord {
   grant: WorkspaceHomeRoleGrant;
   installDigest: string;
 }
@@ -205,7 +205,7 @@ export async function clearWorkspaceHomeRole(
   });
 }
 
-export interface WorkspaceHomeRoleStatusDeps {
+interface WorkspaceHomeRoleStatusDeps {
   projectHomeDir: string;
   pluginsDir: string;
   listContributions: () => InstalledPluginWorkspacePaneContribution[];

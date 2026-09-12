@@ -26,7 +26,7 @@
  * that reaches one gets an error rather than a plausible-looking success.
  */
 
-export const RESERVED_OBJECT_KEYS: ReadonlySet<string> = new Set([
+const RESERVED_OBJECT_KEYS: ReadonlySet<string> = new Set([
   '__proto__',
   'constructor',
   'prototype',

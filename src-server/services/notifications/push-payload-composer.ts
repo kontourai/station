@@ -37,7 +37,7 @@ import type { WebPushPayload } from './web-push-service.js';
 
 const NOTIFICATIONS_DEEP_LINK = '/notifications';
 
-export interface ComposedWebPush {
+interface ComposedWebPush {
   payload: WebPushPayload;
   ttlSeconds: number;
 }

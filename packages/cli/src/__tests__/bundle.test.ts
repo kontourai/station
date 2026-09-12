@@ -359,7 +359,15 @@ describe('published CLI bundle', () => {
     expect(result.stdout).toContain(
       'station triage [--context-only] [--agent=codex|claude] [--problem=<text>] [--search-issues]',
     );
-    expect(result.stdout).toContain('does not inspect local files');
+    // #1795 reworded this guarantee rather than dropping it: the phrase
+    // 'does not inspect local files' was replaced by the sentence below,
+    // which states the same fact about the packed client in the terms the
+    // help now uses. The assertion is repointed at the successor rather than
+    // deleted, so the suite still proves the packaged client's triage help
+    // tells a user it works remotely.
+    expect(result.stdout).toContain(
+      'The packaged client uses remote diagnostics',
+    );
   });
 
   it('runs a client verb that needs no checkout', () => {

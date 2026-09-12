@@ -837,6 +837,74 @@ describe('Orchestration Routes', () => {
     });
   });
 
+  test('input reply preflight binds the request to one current Agent and Conversation', async () => {
+    const reference = {
+      threadId: 'session-a',
+      requestId: 'input-a',
+      requestEventId: 'opened-a',
+    };
+    const inspectInputReplyContext = vi.fn(() => ({
+      state: 'open' as const,
+      reference,
+      agentId: 'agent-a',
+      conversationId: 'conversation-a',
+      provider: 'claude',
+      engineId: 'claude',
+      capabilities: ['file-input'],
+    }));
+    const execute = vi.fn().mockResolvedValue({
+      conversationId: 'conversation-a',
+      sessionId: 'session-a',
+      providerTurnId: 'turn-a',
+      target: { kind: 'agent', id: 'agent-a' },
+    });
+    const app = createOrchestrationRoutes(
+      { inspectInputReplyContext } as unknown as Parameters<
+        typeof createOrchestrationRoutes
+      >[0],
+      {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+        getUserId: () => 'owner',
+        isRequestPrincipalCurrent: () => true,
+        executeForegroundMessage: execute,
+      },
+    );
+    const input = {
+      message: 'My answer',
+      conversationId: 'conversation-a',
+      target: { environment: { kind: 'current' }, agent: 'agent-a' },
+      expectedInputRequest: reference,
+    };
+    const send = (body: unknown) =>
+      app.request('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    expect((await send(input)).status).toBe(200);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedInputRequest: reference,
+        conversationId: 'conversation-a',
+        target: expect.objectContaining({ agent: 'agent-a' }),
+      }),
+    );
+    execute.mockClear();
+    expect(
+      (await send({ ...input, conversationId: 'another-conversation' })).status,
+    ).toBe(409);
+    expect(
+      (
+        await send({
+          ...input,
+          target: { ...input.target, agent: 'another-agent' },
+        })
+      ).status,
+    ).toBe(409);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   test('POST /chat surfaces an unavailable-Agent refusal as a clean 400 carrying the reason (#3027)', async () => {
     // archive#3027 clean break: a turn sent into a conversation bound to a
     // spec-less engine-default alias refuses at target resolution. The

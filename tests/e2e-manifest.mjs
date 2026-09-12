@@ -249,6 +249,16 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   })),
   journeys: [
     {
+      path: 'tests/connect-modal.spec.ts',
+      journey:
+        'manual connection consent, keyboard access, and saved host management',
+    },
+    {
+      path: 'tests/connect-remote-auth-recovery.spec.ts',
+      journey:
+        'phone connection access and authenticated recovery before protected bootstrap',
+    },
+    {
       path: 'tests/csp-shell.spec.ts',
       journey: 'built shell startup and connection recovery navigation',
     },
@@ -303,6 +313,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
   parallelSafe: [
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
+    'tests/sidebar-file-intake.spec.ts',
+    'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
@@ -310,6 +322,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/model-visibility.spec.ts',
     'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
+    'tests/monitoring-and-chrome.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
     'tests/sidebar-geometry.spec.ts',
     'tests/project-lifecycle.spec.ts',
@@ -649,6 +662,26 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/sidebar-file-intake.spec.ts',
+    bucket: 'product',
+    surface: 'Sidebar file intake',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production sidebar rows, composer receiver and upload staging with exact HTTP fixtures. CDP supplies an external file drag from a test-owned output file; draft preservation and no-send behavior are asserted.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/attention-file-replies.spec.ts',
+    bucket: 'product',
+    surface: 'Attention input replies',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real input-reply, file normalization, staging and SDK clients with exact browser-local HTTP and model-observation fixtures; covers upload failure, immutable send retry, separate drafts and request/authority changes, with no live service writes.',
+    exceptions: [],
+  },
+  {
     path: 'tests/diagnostics-bundle.spec.ts',
     bucket: 'product',
     surface: 'Settings',
@@ -656,6 +689,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Diagnostics bundle download, dated filename, canonical failure state, and retry behavior.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/monitoring-and-chrome.spec.ts',
+    bucket: 'product',
+    surface: 'Monitoring',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Mounted payload work and real responsive chrome geometry; replaces source-string layout claims.',
     exceptions: [],
   },
   {
@@ -1604,7 +1647,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'station#3805: one unmocked browser journey from a newly created, runner-owned home through explicit model setup, first-run completion, real direct-chat Work, a real scheduled-check Starter, reload, and exact Scheduler receipt/output inspection. It proves no Project or Task is silently seeded, inherits no telemetry configuration, and uses an explicit healthy resource observation so unrelated host load cannot substitute an honest deferral for this product-path proof.',
+      'station#3805: one unmocked browser journey from a newly created, runner-owned home through explicit model setup, first-run completion, real direct-chat Work, explicit opt-in to developer tools for the scheduled-check Starter, reload, and exact Scheduler receipt/output inspection. It proves no Project or Task is silently seeded, inherits no telemetry configuration, and uses an explicit healthy resource observation so unrelated host load cannot substitute an honest deferral for this product-path proof.',
     exceptions: [],
   },
   {

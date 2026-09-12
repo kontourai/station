@@ -3,8 +3,13 @@ import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import {
+  seedE2EFirstRunDecision,
+  seedE2EUsageTelemetryDisclosure,
+} from '../scripts/run-e2e-suite.mjs';
 import { expectNoBlockingAccessibilityViolations } from './helpers/accessibility';
 import { waitForVisibleAnswerThroughCapacityRetry } from './helpers/capacity-retry';
+import { readE2EOperatorCredential } from './helpers/e2e-operator-credential';
 import {
   allocateLiveStation,
   apiJson,
@@ -20,6 +25,7 @@ import {
   closeFixtureServer,
   startOllamaFixture,
 } from './helpers/ollama-fixture';
+import { pairBrowser } from './live/helpers/station-instance.mjs';
 
 test.describe
   .serial('Durable Task experience live acceptance (#496, #495)', () => {
@@ -27,7 +33,6 @@ test.describe
 
     let live: LiveStation;
     let fixtureRoot: string;
-    let uiBootstrapToken: string;
     let ollamaServer: Server | null = null;
 
     // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
@@ -40,7 +45,16 @@ test.describe
       testInfo.setTimeout(240_000);
       fixtureRoot = mkdtempSync(join(tmpdir(), 'station-task-workspace-'));
       live = await allocateLiveStation('station-task-home-', 'task-workspace');
-      uiBootstrapToken = await startStation(live, true);
+      await startStation(live, true, {
+        logFile: join(testInfo.project.outputDir, `${live.instance}.log`),
+      });
+      writeFileSync(
+        join(testInfo.project.outputDir, 'task-workspace-fixture.json'),
+        JSON.stringify({ ...live, fixtureRoot }, null, 2),
+      );
+      const credential = readE2EOperatorCredential(live.home);
+      await seedE2EFirstRunDecision(live.api, credential);
+      await seedE2EUsageTelemetryDisclosure(live.api, credential);
     });
 
     // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
@@ -55,10 +69,12 @@ test.describe
           stopError = error;
         }
       }
-      if (fixtureRoot) rmSync(fixtureRoot, { recursive: true, force: true });
+      const passed = testInfo.status === testInfo.expectedStatus;
+      if (fixtureRoot && passed && !stopError)
+        rmSync(fixtureRoot, { recursive: true, force: true });
       await closeFixtureServer(ollamaServer);
       ollamaServer = null;
-      if (live?.home && !stopError) {
+      if (live?.home && !stopError && passed) {
         rmSync(live.home, { recursive: true, force: true });
       }
       if (stopError) {
@@ -73,7 +89,12 @@ test.describe
       page,
     }, testInfo) => {
       testInfo.setTimeout(180_000);
-      await page.goto(`${live.ui}/#station-ui-bootstrap=${uiBootstrapToken}`);
+      await pairBrowser(page, {
+        root: process.cwd(),
+        instance: live.instance,
+        serverPort: live.serverPort,
+        uiOrigin: live.ui,
+      });
       await expect(
         page.getByRole('region', { name: 'Station access required' }),
       ).toHaveCount(0);
@@ -328,7 +349,12 @@ test.describe
       const modelConnectionId = `answer-basis-ollama-${Date.now()}`;
       const repo = join(fixtureRoot, 'answer-basis-project');
 
-      await page.goto(`${live.ui}/#station-ui-bootstrap=${uiBootstrapToken}`);
+      await pairBrowser(page, {
+        root: process.cwd(),
+        instance: live.instance,
+        serverPort: live.serverPort,
+        uiOrigin: live.ui,
+      });
       await createRepository(repo, 'answer-basis');
       await createProject(page, projectSlug, repo);
       const taskId = await createTaskFromProject(
@@ -396,9 +422,8 @@ test.describe
         )
         .toBe(true);
 
-      // Starting from the project keeps the real generated Session scoped to
-      // the same Project as the Task. This is the browser path that exercises
-      // the server-side project/session matching guard.
+      // Visiting a Project does not bind a new chat to it. Select the Project
+      // explicitly for both the attachment and its cross-project refusal control.
       await page.goto(`${live.ui}/projects/${projectSlug}?dock=open`);
       await expect(
         page
@@ -415,6 +440,11 @@ test.describe
         '.new-chat-modal[role="dialog"][aria-label="New Chat"]',
       );
       await expect(picker).toBeVisible();
+      await picker.locator('.new-chat-modal__context-button').click();
+      await picker.locator(`[data-context-value="${projectSlug}"]`).click();
+      await expect(
+        picker.locator('.new-chat-modal__context-button'),
+      ).toContainText(projectSlug);
       await picker.getByRole('button', { name: new RegExp(agentName) }).click();
       const composer = page.getByPlaceholder('Type a message...');
       await expect(composer).toBeVisible({ timeout: 20_000 });
@@ -422,11 +452,20 @@ test.describe
       await composer.press('Enter');
       await waitForVisibleAnswerThroughCapacityRetry(page, answer);
 
-      const addToTask = page.getByRole('button', {
+      const moreAnswerActions = page.getByRole('button', {
+        name: 'More answer actions',
+      });
+      await page
+        .locator('.turn-footer')
+        .filter({ has: moreAnswerActions })
+        .hover();
+      await moreAnswerActions.click();
+      const addToTask = page.getByRole('menuitem', {
         name: /Add this answer to a Task/,
       });
       await expect(addToTask).toBeVisible();
       const addLabel = await addToTask.getAttribute('aria-label');
+      await addToTask.press('Escape');
       const turnId = addLabel?.match(/\(turn (.+)\)$/)?.[1];
       expect(turnId).toBeTruthy();
       const sessions = await apiJson<{
@@ -507,6 +546,14 @@ test.describe
           () => document.documentElement.scrollWidth <= window.innerWidth,
         ),
       ).resolves.toBe(true);
+      await page
+        .getByRole('button', {
+          name: 'Answer details and actions',
+          exact: true,
+        })
+        .click();
+      await moreAnswerActions.focus();
+      await moreAnswerActions.press('Enter');
       await addToTask.click();
       const attachDialog = page.getByRole('dialog', {
         name: 'Add answer to Task',
@@ -528,8 +575,9 @@ test.describe
       );
       await search.press('Escape');
       await expect(attachDialog).toHaveCount(0);
-      await expect(addToTask).toBeFocused();
+      await expect(moreAnswerActions).toBeFocused();
 
+      await moreAnswerActions.press('Enter');
       await addToTask.press('Enter');
       await expect(attachDialog).toBeVisible();
       await search.focus();
@@ -542,7 +590,7 @@ test.describe
       await exactTask.press('Enter');
       await expect(exactTask).toHaveAttribute('aria-pressed', 'true');
       const confirm = attachDialog.getByRole('button', {
-        name: 'Add answer',
+        name: 'Add to Task',
         exact: true,
       });
       await confirm.focus();
@@ -551,11 +599,13 @@ test.describe
 
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
       await expect(
-        page.getByRole('heading', { name: 'Answer basis', exact: true }),
+        page.getByRole('heading', { name: 'Kept answers', exact: true }),
       ).toBeVisible();
       await expect(page.getByText(answer, { exact: true })).toBeVisible();
       await expect(
-        page.getByText(/Semantic support was not assessed/),
+        page.getByText(
+          /semantic support is separate and has not been assessed/i,
+        ),
       ).toBeVisible();
       await expect(page.getByText(/reasoning/i)).toHaveCount(0);
       await expectNoBlockingAccessibilityViolations(
@@ -565,15 +615,20 @@ test.describe
       );
 
       await stopStation(live);
-      uiBootstrapToken = await startStation(live, false);
-      await page.goto(`${live.ui}/#station-ui-bootstrap=${uiBootstrapToken}`);
+      await startStation(live, false);
+      await pairBrowser(page, {
+        root: process.cwd(),
+        instance: live.instance,
+        serverPort: live.serverPort,
+        uiOrigin: live.ui,
+      });
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
       await expect(page.getByText(answer, { exact: true })).toBeVisible({
         timeout: 30_000,
       });
 
       await expect(
-        page.getByRole('heading', { name: 'Answer basis', exact: true }),
+        page.getByRole('heading', { name: 'Kept answers', exact: true }),
       ).toBeVisible();
       await expect(
         page.evaluate(

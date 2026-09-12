@@ -28,7 +28,7 @@ const MAX_ENDPOINT_LENGTH = 2048;
 const PUSH_ENDPOINT_PATTERN = /^https:\/\/.{1,2000}$/;
 const PUSH_KEY_PATTERN = /^[A-Za-z0-9_-]{1,256}$/;
 
-export interface PushRouteDeps {
+interface PushRouteDeps {
   /** Hosted mode keeps unbound paired-device subscriptions unavailable. */
   enabled?: boolean;
   getVapidPublicKey: () => string;

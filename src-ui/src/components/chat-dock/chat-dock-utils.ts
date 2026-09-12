@@ -3,7 +3,7 @@ import {
   type SelectableModel,
 } from '../../utils/modelCapabilities';
 
-export interface WorkingDirectoryParts {
+interface WorkingDirectoryParts {
   parentPath: string;
   leafName: string;
   hasWorkingDirectory: boolean;
@@ -168,18 +168,8 @@ export function chatModelLabel(
   return modelIdentityLabel(modelId, models);
 }
 
-/**
- * Whether the mobile task-switcher sheet can mount in this chrome — the other
- * half of the same question `inboxPanelMounts` answers for desktop. Named so
- * the routing guarantee can be DERIVED for both surfaces instead of one being
- * asserted in a test comment.
- */
-export function mobileTaskSwitcherMounts({ isMobile }: DockChrome): boolean {
-  return isMobile;
-}
-
 /** The minimal shape every project-name lookup below needs. */
-export interface ProjectNameLookup {
+interface ProjectNameLookup {
   slug: string;
   name: string;
 }
@@ -370,7 +360,7 @@ export function resolveNewChatModalDefaultProjectSlug(input: {
   return input.dockChromeProjectSlug ?? undefined;
 }
 
-export type OpenChatsCollectionRoute =
+type OpenChatsCollectionRoute =
   | { surface: 'task-switcher-sheet' }
   | {
       surface: 'inbox-panel';

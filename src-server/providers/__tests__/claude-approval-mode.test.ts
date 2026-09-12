@@ -33,7 +33,7 @@ describe('resolveClaudePermissionMode', () => {
     );
   });
 
-  test('an absent or unrecognized approvalMode resolves to undefined (adapter keeps its own default)', () => {
+  test('an absent or unrecognized approvalMode resolves to undefined (inherit engine config)', () => {
     expect(resolveClaudePermissionMode(undefined)).toBeUndefined();
     expect(resolveClaudePermissionMode({})).toBeUndefined();
     expect(
@@ -51,5 +51,9 @@ describe('mapPermissionModeToApprovalMode', () => {
 
   test('plan has no ApprovalMode analog and is left unmapped', () => {
     expect(mapPermissionModeToApprovalMode('plan')).toBeUndefined();
+  });
+
+  test('Claude classifier auto reports as Station auto for the applied-default chip', () => {
+    expect(mapPermissionModeToApprovalMode('auto')).toBe('auto');
   });
 });

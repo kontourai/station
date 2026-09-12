@@ -1716,6 +1716,24 @@ knowledgeQueries.namespaces(projectSlug)             // GET /api/projects/:slug/
 
 ---
 
+## Monitoring event windows
+
+`fetchMonitoringEventWindow(start, end, signal, { limit: 1000 })` returns
+`{ events, truncated }` from the historical monitoring route. Bounded viewers
+must disclose truncation and that local filters apply only to loaded rows.
+Narrow the time interval to inspect older activity. For older peers that omit
+the flag, a full limited window is conservatively marked truncated.
+
+`fetchMonitoringEvents(start, end, signal, filters)` retains its array return
+shape and no default limit for existing export callers. Both functions reject
+failed or malformed reads instead of reporting an empty history.
+
+API-base initialization wakes pending callers when configuration is published,
+with the existing 500 ms failure bound; later reads observe the latest configured
+base. Best-effort SDK telemetry retains at most 1,000 events per flush interval
+and drops additional events in that interval. Flushes are single-flight with a
+five-second request timeout. It is not an accounting ledger.
+
 ## Telemetry
 
 ### `telemetry`
@@ -2151,3 +2169,17 @@ execution authority or proves a witnessed channel transfer. Do not reuse a
 cached recovery notice across API-base changes; refresh the selected Station
 before projecting it as current. The record exposes no filesystem path or
 backup manifest contents.
+
+## Files in answers to input requests
+
+`getInputReplyContext(apiBase, reference, options)` from
+`@kontourai/station-sdk/input-reply` resolves the exact open input event to its
+Agent, Conversation and declared attachment transport capabilities. It does not
+turn an approval or permission request into a text-answer operation.
+
+Use `sendExecutionMessage` with that exact current-Station target and
+`expectedInputRequest: reference`. The foreground route checks the binding, and
+the orchestration owner checks the same open event again before adapter input.
+Opaque `attachmentRefs` use the existing current-host staging path; retries
+retain the same `clientTurnId` and payload after an uncertain response. Pass the
+captured host `requestScope` to each read, staging operation and send.

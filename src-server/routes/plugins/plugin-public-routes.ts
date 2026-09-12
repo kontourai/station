@@ -9,16 +9,18 @@ import {
   type PluginGrantReconciliationService,
   pluginPermissionsNeedRuntimeReconciliation,
 } from '../../services/plugins/plugin-grant-reconciliation.js';
-import { assertPluginNameSegment } from '../../services/plugins/plugin-install-transaction.js';
+import { assertPluginNameSegment } from '../../services/plugins/plugin-name.js';
 import {
   assertGrantablePermissions,
+  describePluginGrantState,
   getPermissionTier,
   getPluginGrants,
   grantPermissions,
   hasGrantOrThrow,
   PluginContentUnavailableError,
   PluginGrantsUnavailableError,
-  readPluginGrantState,
+  readPluginGrantRecord,
+  readPluginGrantStateAsync,
   requiredPermissionsForManifest,
   revokeGrants,
 } from '../../services/plugins/plugin-permissions.js';
@@ -31,7 +33,7 @@ import {
   readPluginServerSettings,
 } from '../../services/plugins/plugin-public-server.js';
 import {
-  capturePluginRuntimeArtifact,
+  capturePluginRuntimeArtifactAsync,
   type PluginRuntimeArtifact,
 } from '../../services/plugins/plugin-runtime-artifact.js';
 import {
@@ -129,7 +131,7 @@ export function registerPluginPublicRoutes(
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
     try {
-      const artifact = capturePluginRuntimeArtifact(
+      const artifact = await capturePluginRuntimeArtifactAsync(
         pluginsDir,
         name,
         deps.packageMcpJournal,
@@ -142,7 +144,11 @@ export function registerPluginPublicRoutes(
       // no longer matches the one consent was given against, the withheld
       // names and the binding state travel with it, so the panel can say what
       // was taken away and why instead of a permission just disappearing.
-      const state = readPluginGrantState(projectHomeDir, name, artifact);
+      const state = await readPluginGrantStateAsync(
+        projectHomeDir,
+        name,
+        artifact,
+      );
       return c.json({
         declared,
         granted: state.granted,
@@ -184,7 +190,7 @@ export function registerPluginPublicRoutes(
       );
     }
     try {
-      const artifact = capturePluginRuntimeArtifact(
+      const artifact = await capturePluginRuntimeArtifactAsync(
         pluginsDir,
         name,
         deps.packageMcpJournal,
@@ -417,7 +423,7 @@ export function registerPluginPublicRoutes(
     let manifest: PluginManifest | null;
     let artifact: PluginRuntimeArtifact | null;
     try {
-      artifact = capturePluginRuntimeArtifact(
+      artifact = await capturePluginRuntimeArtifactAsync(
         pluginsDir,
         name,
         deps.packageMcpJournal,
@@ -448,12 +454,15 @@ export function registerPluginPublicRoutes(
     if (!manifest?.serverModule) {
       return c.json({ success: false, error: 'Plugin route not found' }, 404);
     }
+    // This preflight explains a missing grant. Module acquisition below owns
+    // the fresh content/grant authorization before any plugin code executes.
     try {
       if (
         !artifact ||
-        !readPluginGrantState(projectHomeDir, name, artifact).granted.includes(
-          'plugin.server',
-        )
+        !describePluginGrantState(
+          readPluginGrantRecord(projectHomeDir, name),
+          artifact.digest,
+        ).granted.includes('plugin.server')
       ) {
         return c.json(
           {
@@ -492,13 +501,7 @@ export function registerPluginPublicRoutes(
         {
           journal: deps.packageMcpJournal,
           artifact: artifact ?? undefined,
-          authorize: () =>
-            !!artifact &&
-            readPluginGrantState(
-              projectHomeDir,
-              name,
-              artifact,
-            ).granted.includes('plugin.server'),
+          projectHomeDir,
         },
       );
       loaded = acquired?.loaded ?? null;
@@ -527,39 +530,36 @@ export function registerPluginPublicRoutes(
         },
       };
 
-      const assertCurrent = () => {
-        if (
-          !acquired?.isCurrent() ||
-          !artifact ||
-          !readPluginGrantState(
-            projectHomeDir,
-            name,
-            artifact,
-          ).granted.includes('plugin.server')
-        ) {
+      const assertCurrent = async () => {
+        // The acquired witness includes the exact artifact and current grants.
+        if (!(await acquired?.isCurrentAsync()))
           throw new Error('Plugin execution is unavailable.');
-        }
       };
       routeApp.onError((error) => {
         throw error;
       });
 
       routeApp.use('*', async (subc, next) => {
-        assertCurrent();
-        await loaded?.hooks?.onRequest?.(requestContext);
-        assertCurrent();
+        await assertCurrent();
+        if (loaded?.hooks?.onRequest) {
+          await loaded.hooks.onRequest(requestContext);
+          await assertCurrent();
+        }
         await next();
-        assertCurrent();
-        await loaded?.hooks?.onResponse?.({
-          ...requestContext,
-          status: subc.res.status,
-        });
+        if (loaded?.hooks?.onResponse) {
+          await assertCurrent();
+          await loaded.hooks.onResponse({
+            ...requestContext,
+            status: subc.res.status,
+          });
+        }
       });
 
-      assertCurrent();
+      await assertCurrent();
       await loaded.register(routeApp, moduleContext);
-      assertCurrent();
       const routed = await routeApp.fetch(createScopedPluginRequest(c, name));
+      // The final owner hook can revoke its own grant or change its bytes.
+      await assertCurrent();
       const headers = new Headers(routed.headers);
       headers.set('x-station-correlation-id', requestContext.correlationId);
       pluginServerRequests.add(1, {
@@ -581,7 +581,7 @@ export function registerPluginPublicRoutes(
       });
     } catch (error: unknown) {
       try {
-        if (acquired?.isCurrent())
+        if (await acquired?.isCurrentAsync())
           await loaded?.hooks?.onError?.({ ...requestContext, error });
       } catch (hookError) {
         logger.error('Plugin server error hook failed', {

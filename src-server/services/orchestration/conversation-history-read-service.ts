@@ -13,7 +13,7 @@ export interface ConversationHistoryPage {
   nextCursor?: string;
 }
 
-export interface ConversationHistoryRecordPage {
+interface ConversationHistoryRecordPage {
   records: ReturnType<EventStore['listConversationHistoryPage']>['records'];
   hasMore: boolean;
   nextCursor?: string;

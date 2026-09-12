@@ -314,7 +314,7 @@ export interface NativeShareEvent {
 export interface NativePairingDeepLinkEvent {
   url: string;
 }
-export type NativeTrayNavigationDestination =
+type NativeTrayNavigationDestination =
   | 'connections'
   | 'pairedDevices'
   | 'coreUpdates';

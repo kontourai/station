@@ -475,20 +475,9 @@ test.describe('First-run engines chapter (station#3027)', () => {
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
 
-    // WHERE it is (SHELL-12). Inside Home's own route content, on the shared
-    // dialog surface — not a fixed corner card on the notice layer, and not
-    // an app-level overlay that outlives this route.
-    const overlay = page.locator('.responsive-surface-overlay');
-    await expect(overlay).toBeVisible();
-    // archive#3656 moved the `main` landmark to the SHELL (`App.tsx`'s
-    // `#station-main`), so Home renders a `section.home-view` inside it and
-    // this assertion matched nothing for months. It is still the same claim —
-    // the chapter is a descendant of Home's own route content, not a fixed
-    // corner card and not an app-level overlay — expressed against the shell
-    // that exists (archive#3877).
     await expect(
-      page.locator('main.main-content .home-view .first-run-engines'),
-    ).toHaveCount(1);
+      page.getByRole('dialog').filter({ has: chapter }),
+    ).toBeVisible();
     await expect(page.getByText('Which agents do you use?')).toBeVisible();
 
     // available — pre-ticked and the user's to change.
@@ -501,13 +490,13 @@ test.describe('First-run engines chapter (station#3027)', () => {
       await expect(row.locator('.first-run-engines__note')).toHaveCount(0);
     }
 
-    // enabled — visibly idempotent: named as ready, carrying the Agent that
+    // enabled — visibly idempotent: named as set up, carrying the Agent that
     // already exists, and with NO control at all. A disabled checkbox would
     // drop that sentence out of the tab order.
     const enabled = engineRow(page, 'gemini-cli');
     await expect(enabled).toHaveAttribute('data-state', 'enabled');
     await expect(enabled.locator('input')).toHaveCount(0);
-    await expect(enabled).toContainText('Ready — Gemini CLI');
+    await expect(enabled).toContainText('Set up — Gemini CLI');
     await expect(enabled).toContainText(
       'Already set up as “Gemini CLI Agent”.',
     );

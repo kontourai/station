@@ -309,11 +309,7 @@ export function configureRuntimeHttp({
   app.use('*', async (c, next) => {
     await next();
 
-    if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(c.req.method)) {
-      return;
-    }
-
-    const keys = getInvalidationKeysForPath(c.req.path);
+    const keys = getInvalidationKeysForRequest(c.req.method, c.req.path);
     if (keys.length > 0) {
       eventBus.emit(SERVER_EVENTS.DATA_CHANGED, { keys });
     }
@@ -987,7 +983,23 @@ export function resolveRuntimeCorsOrigin(
   return allowedOrigins.includes(origin) ? origin : null;
 }
 
-function getInvalidationKeysForPath(path: string): string[] {
+// These handlers use POST to carry query input, not to change resource data.
+// Broadcasting their own cache key makes an active query refetch itself until
+// it exhausts the request quota. Keep exact read leaves separate from writes;
+// authentication and request budgets still apply unchanged.
+const READ_ONLY_DATA_POST_ROUTES = [
+  /^\/api\/projects\/[^/]+\/file-preview(?:\/download)?\/?$/,
+  /^\/api\/projects\/[^/]+\/knowledge\/(?:ns\/[^/]+\/)?search\/?$/,
+  /^\/api\/knowledge\/(?:search|index\/search|roots\/validate)\/?$/,
+];
+
+function getInvalidationKeysForRequest(method: string, path: string): string[] {
+  if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) return [];
+  if (
+    method === 'POST' &&
+    READ_ONLY_DATA_POST_ROUTES.some((route) => route.test(path))
+  )
+    return [];
   const keys: string[] = [];
 
   if (path.startsWith('/agents')) keys.push('agents');

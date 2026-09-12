@@ -23,7 +23,7 @@ import {
   createManualSessionTransitionEvent,
 } from './session-lifecycle-service.js';
 
-export type SessionLifecycleTransitionInput = {
+type SessionLifecycleTransitionInput = {
   threadId: string;
   authority: SessionReadScope;
   to: SessionLifecycleState;

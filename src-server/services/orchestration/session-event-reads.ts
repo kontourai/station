@@ -29,7 +29,7 @@ function eventWindowSessionSummary(
   return publicSummary;
 }
 
-export interface SessionEventReadsDeps {
+interface SessionEventReadsDeps {
   eventStore?: EventStore;
   logger: { warn(message: string, meta?: Record<string, unknown>): void };
 

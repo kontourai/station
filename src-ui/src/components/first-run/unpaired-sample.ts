@@ -31,7 +31,7 @@ export const UNPAIRED_SAMPLE_SURFACES = {
   },
 } as const;
 
-export type UnpairedSampleSurfaceId = keyof typeof UNPAIRED_SAMPLE_SURFACES;
+type UnpairedSampleSurfaceId = keyof typeof UNPAIRED_SAMPLE_SURFACES;
 
 export function sampleSurfaceForAnchor(anchor: string) {
   if (Object.hasOwn(UNPAIRED_SAMPLE_SURFACES, anchor)) {

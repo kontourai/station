@@ -112,12 +112,12 @@ export interface ResponsiveDialogSurfaceProps {
   anchorRef?: RefObject<HTMLElement | null>;
 }
 
-export interface ResponsiveSurfaceActionsProps {
+interface ResponsiveSurfaceActionsProps {
   children: ReactNode;
   className?: string;
 }
 
-export interface ResponsiveDialogHeaderProps {
+interface ResponsiveDialogHeaderProps {
   /** Rendered in a `<strong>` — the sheet/dialog's own title. */
   title: ReactNode;
   /** Optional second line, rendered muted and small (e.g. "For this chat"). */
@@ -158,7 +158,7 @@ export function ResponsiveDialogHeader({
   );
 }
 
-export interface ResponsiveDialogCloseButtonProps
+interface ResponsiveDialogCloseButtonProps
   extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'children'> {
   label: string;
 }

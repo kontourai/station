@@ -4,7 +4,6 @@ import { K } from '../../../../src-shared/monitoring-keys.js';
 import { MonitoringEmitter } from '../../../monitoring/emitter.js';
 import { MetadataHandler } from '../handlers/MetadataHandler.js';
 import { ReasoningHandler } from '../handlers/ReasoningHandler.js';
-import { TextDeltaHandler } from '../handlers/TextDeltaHandler.js';
 import { ToolCallHandler } from '../handlers/ToolCallHandler.js';
 import { StreamPipeline } from '../StreamPipeline.js';
 import type { StreamChunk } from '../types.js';
@@ -18,7 +17,6 @@ describe('StreamPipeline Integration', () => {
     metadataHandler = new MetadataHandler();
     pipeline = new StreamPipeline()
       .use(new ReasoningHandler({ enableThinking: true }))
-      .use(new TextDeltaHandler())
       .use(new ToolCallHandler())
       .use(metadataHandler);
   });

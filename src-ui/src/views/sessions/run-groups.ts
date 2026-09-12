@@ -1,6 +1,6 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 
-export interface DelegatedRunGroup {
+interface DelegatedRunGroup {
   id: string;
   parent: OrchestrationSessionSummary;
   members: readonly OrchestrationSessionSummary[];

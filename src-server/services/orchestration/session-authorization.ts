@@ -22,7 +22,7 @@ import {
 // LRU — generous relative to realistic concurrently-relevant thread counts.
 const SESSION_OWNER_CACHE_MAX_ENTRIES = 2_048;
 
-export interface SessionAuthorizationDeps {
+interface SessionAuthorizationDeps {
   // Every dep is a raw option VALUE from OrchestrationServiceOptions —
   // this cluster calls no service method at all, which is what makes the
   // seam one-way. Pass the options raw (two different call forms exist for

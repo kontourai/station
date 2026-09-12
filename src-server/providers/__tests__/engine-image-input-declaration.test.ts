@@ -126,6 +126,11 @@ describe('engine imageInput declaration', () => {
       'acp',
       'claude',
       'codex',
+      // `muse` declares `image-input` (muse-adapter.ts) and its matrix cell
+      // is `{ state: 'session', channel: 'native-content' }`. Both sides of
+      // the join already agree; only this list was stale, so the per-engine
+      // cross-check above passed while this one failed.
+      'muse',
       'station',
     ]);
   });

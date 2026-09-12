@@ -1,0 +1,25 @@
+.sidebar-chat-drop {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.sidebar-chat-drop__hint {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 2px solid var(--accent-primary);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+.sidebar-chat-drop > [role="alert"] {
+  display: block;
+  color: var(--error-text);
+  font-size: var(--text-sm);
+}

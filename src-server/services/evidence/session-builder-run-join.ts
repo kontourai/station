@@ -185,7 +185,7 @@ export function readBoundTaskState(
   }
 }
 
-export interface ResolveSessionBuilderRunInput {
+interface ResolveSessionBuilderRunInput {
   /**
    * The session's Station-issued thread id. This is the ONLY value ever
    * compared against `runtime_session.value`; Station never compares two

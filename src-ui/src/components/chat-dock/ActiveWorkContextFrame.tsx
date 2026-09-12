@@ -49,7 +49,7 @@ interface ActiveWorkContextFrameProps {
   onOpenProjectContext: () => void;
 }
 
-export interface ChangedFileEntry {
+interface ChangedFileEntry {
   displayPath: string;
   editorPath: string | null;
   status: string;

@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { isNonEmptyString } from '../../utils/non-empty-string.js';
 
-export interface DiscordTurnRelay {
+interface DiscordTurnRelay {
   turnId: string;
   sessionId: string;
   discordUserId: string;

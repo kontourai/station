@@ -49,7 +49,7 @@ describe('ACPAddConnectionModal', () => {
     );
     expect(
       screen.getByText(
-        'Found on this computer — not yet connected to this Station.',
+        'Found on the computer Station runs on — not yet connected.',
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/\bACP\b/i)).toBeNull();
@@ -156,7 +156,9 @@ describe('ACPAddConnectionModal', () => {
     const status = screen.getByRole('status');
     expect(status.textContent).toContain('spawn kiro ENOENT');
     expect(status.textContent).toContain('spawn:');
-    expect(status.textContent).toContain('make it runnable on this computer');
+    expect(status.textContent).toContain(
+      'make it runnable on the computer Station runs on',
+    );
   });
 
   // The action is derived from the phase: after `initialize` the command IS

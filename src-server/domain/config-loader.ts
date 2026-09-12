@@ -49,6 +49,7 @@ import {
   listAgentWorkflowMetadata,
   loadAgentConfig,
   mutateAgentConfig,
+  readAgentCatalog,
   readAgentWorkflow,
   resolveAgentConfigSlug,
   saveAgentConfig,
@@ -615,6 +616,19 @@ export class ConfigLoader {
   /**
    * List all agents
    */
+  async readAgentCatalog(composition?: PluginActivationComposition) {
+    await this.ensureHomeSchema();
+    const entries = await readAgentCatalog(this.projectHomeDir, async (slug) =>
+      this.admittedPluginAgentBinding(slug, composition) === null
+        ? null
+        : this.loadAgent(slug, composition),
+    );
+    return entries.filter(
+      ({ metadata }) =>
+        this.admittedPluginAgentBinding(metadata.slug, composition) !== null,
+    );
+  }
+
   async listAgents(composition?: PluginActivationComposition) {
     await this.ensureHomeSchema();
     const agents = await listAgentConfigs(this.projectHomeDir);
@@ -807,6 +821,8 @@ export class ConfigLoader {
           return (slug: string) => owner.loadAgent(slug, composition);
         if (property === 'listAgents')
           return () => owner.listAgents(composition);
+        if (property === 'readAgentCatalog')
+          return () => owner.readAgentCatalog(composition);
         if (property === 'loadIntegration')
           return (id: string) => owner.loadIntegration(id, composition);
         if (property === 'loadIntegrationWithOwnership')

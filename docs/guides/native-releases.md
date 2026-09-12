@@ -251,10 +251,10 @@ and `NOT_VERIFIED`. No staged portable artifact proves availability, an
 install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
 and `NOT_UPDATED` in the admitted inventory.
 
-Normal operation is the scheduled Nightly build, which builds the current
-workflow event SHA once and no-ops when the rolling `nightly` tag already names
-that commit. To request that normal behavior manually, leave the optional field
-empty:
+Normal operation is the scheduled Nightly build, which fires every six hours,
+builds the current workflow event SHA once, and no-ops when the rolling
+`nightly` tag already names that commit. To request that normal behavior
+manually, leave the optional field empty:
 
 ```sh
 gh workflow run nightly.yml --repo kontourai/station --ref main

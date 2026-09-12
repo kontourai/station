@@ -17,7 +17,7 @@ type ApiEnvelope<T> = { success: boolean; data: T };
 
 test.use({ actionTimeout: 20_000 });
 
-test('fresh Station completes real Work and reopens its exact Scheduler receipt', async ({
+test('fresh Station completes real Work and opts into the developer Scheduler check', async ({
   authenticatedRequest,
   baseURL,
   page,
@@ -62,11 +62,8 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
     await page.getByRole('button', { name: 'Continue Without Setup' }).click();
     const disclosure = page.getByTestId('first-run-disclosure');
     await expect(disclosure).toBeVisible({ timeout: 20_000 });
-    // #1582 A3 renamed this action to the decision it makes; this spec still
-    // clicked the acknowledgement that named neither choice, so it could not
-    // reach the engine chapter at all.
     await disclosure
-      .getByRole('button', { name: 'Keep usage telemetry on' })
+      .getByRole('button', { name: /^(Turn it off|Keep usage telemetry off)$/ })
       .click();
     const engineChapter = page.getByTestId('first-run-engines');
     await expect(engineChapter).toBeVisible({ timeout: 20_000 });
@@ -109,8 +106,12 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
     await expect(resumedEngines).toBeVisible({ timeout: 20_000 });
     await resumedEngines.getByRole('button', { name: 'Continue' }).click();
     await page
+      .getByTestId('engine-picker')
+      .getByRole('button', { name: 'Use this engine', exact: true })
+      .click();
+    await page
       .getByTestId('first-run-about-you')
-      .getByRole('button', { name: 'Take the tour' })
+      .getByRole('button', { name: 'Start your first chat' })
       .click();
     await expect
       .poll(async () => {
@@ -124,17 +125,32 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
       '/config/app',
     );
     expect(completedConfig.telemetryEnabled).not.toBe(true);
-    await page.getByRole('button', { name: 'Skip the tour' }).click();
-    await page.getByRole('button', { name: 'Home', exact: true }).click();
-
     await expect(
-      page.getByRole('button', { name: /Start direct chat/i }),
+      page.getByRole('dialog', { name: 'New Chat', exact: true }),
     ).toBeVisible();
-    await page.getByRole('button', { name: /Start direct chat/i }).click();
     const stationAgent = page.locator(
       '.new-chat-modal__agent[data-agent-slug="station"]',
     );
     await expect(stationAgent).toBeVisible({ timeout: 20_000 });
+    // Engine selection saves configuration before deferred activation settles.
+    // Prove its authoritative readiness before exercising the first dispatch.
+    await expect
+      .poll(
+        async () => {
+          const response = await authenticatedRequest.get('/api/agents');
+          expect(response.ok()).toBe(true);
+          const catalog = await response.json();
+          return (
+            catalog.catalogState !== 'reconciling' &&
+            catalog.data?.some(
+              (agent: { slug: string; available?: boolean }) =>
+                agent.slug === 'station' && agent.available !== false,
+            )
+          );
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
     await stationAgent.click();
     const composer = page.locator('textarea[placeholder*="Type a message"]');
     await expect(composer).toBeVisible();
@@ -176,6 +192,10 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
     const starter = page.getByRole('region', {
       name: 'Run a scheduled readiness check',
     });
+    await expect(starter).toHaveCount(0);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('switch', { name: 'Enable developer tools' }).check();
+    await page.getByRole('button', { name: 'Home', exact: true }).click();
     await expect(starter).toBeVisible();
     await starter.getByRole('button', { name: 'Run check' }).click();
     await expect

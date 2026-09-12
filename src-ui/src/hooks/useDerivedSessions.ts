@@ -300,6 +300,7 @@ function deriveSession(
     activityHint: chatState.activityHint,
     backgroundTasks: chatState.backgroundTasks,
     liveUsage: chatState.liveUsage,
+    replay: chatState.replay,
   };
 }
 

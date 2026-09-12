@@ -39,21 +39,21 @@ export const SCHEDULER_ENGINE_AGENT_REASON =
   "Runs on an external engine, which the scheduler cannot invoke — scheduled jobs run on Station's own engine.";
 
 /** Said when a job names an Agent the catalog does not have. */
-export function schedulerMissingAgentReason(slug: string): string {
+function schedulerMissingAgentReason(slug: string): string {
   return `No Agent named '${slug}'.`;
 }
 
-export type SchedulerEligibleAgent = Pick<AgentData, 'execution'>;
+type SchedulerEligibleAgent = Pick<AgentData, 'execution'>;
 
 /**
  * The runner's resolvability rule: no external engine binding. An ABSENT
  * binding is Station's own engine, not "unbound" — see `agent-runnability.ts`.
  */
-export function isSchedulerEligibleAgent(agent: SchedulerEligibleAgent) {
+function isSchedulerEligibleAgent(agent: SchedulerEligibleAgent) {
   return !agent.execution?.agentConnectionId;
 }
 
-export type SchedulerAgentOptions = {
+type SchedulerAgentOptions = {
   /** Every Agent the runner can resolve, whether or not it can run now. */
   eligible: AgentData[];
   /** Agents withheld because they run on an external engine. */

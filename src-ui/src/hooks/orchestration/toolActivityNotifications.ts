@@ -1,6 +1,7 @@
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { navigationStore } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
+import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationEvent } from './types';
 
 type ToolCompletedEvent = Extract<
@@ -70,6 +71,7 @@ export function notifyToolCompletion(
   event: ToolCompletedEvent,
   chat: ChatUIState,
 ): void {
+  if (isReplayThread(event.threadId)) return;
   if (!shouldNotifyForToolCompletion(event, chat)) {
     return;
   }

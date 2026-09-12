@@ -1,10 +1,4 @@
-/**
- * archive#3354 — shared chrome for a code block: language header + copy
- * button, then highlighted HTML or a plain <pre>. Lives in its own module so
- * its one consumer — the async markdown renderer's code component
- * (`HighlightedCodeBlock`) — can use it WITHOUT pulling it into the entry
- * chunk.
- */
+/** Code-block chrome, imported by the asynchronous markdown renderer. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { copyToClipboard } from '../../lib/clipboard';
 import { triggerHaptic } from '../../platform/native/haptics';

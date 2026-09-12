@@ -95,7 +95,7 @@ export interface AcpToolServerSkip {
   detail?: string;
 }
 
-export interface ResolveAcpPassthroughMcpServersInput {
+interface ResolveAcpPassthroughMcpServersInput {
   /** `ACPConnectionConfig.provideToolServers` — absent/empty ⇒ no lookups, no servers. */
   toolServerIds: string[] | undefined;
   /** Resolve one tool-server id to its configured `ToolDef`; `null` when unknown. */
@@ -151,7 +151,7 @@ const STATION_CONTROL_UNEXPLAINED_SKIP = {
   detail: 'no station-control MCP auth was supplied for this session',
 } as const satisfies { reason: AcpToolServerSkipReason; detail: string };
 
-export interface ResolveAcpPassthroughMcpServersResult {
+interface ResolveAcpPassthroughMcpServersResult {
   servers: McpServer[];
   skipped: AcpToolServerSkip[];
   /**

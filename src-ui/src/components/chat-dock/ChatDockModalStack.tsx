@@ -75,6 +75,7 @@ interface ChatDockModalStackProps {
   forkSource?: { id: string; agentSlug: string } | null;
   forkMode?: Omit<NewChatModalMode, 'disclosure'>;
   onForkAgentSelect?: ChatDockModalStackProps['onSelectNewChat'];
+  onReplayConversation?: () => void;
 }
 
 export function ChatDockModalStack({
@@ -105,6 +106,7 @@ export function ChatDockModalStack({
   forkSource,
   forkMode,
   onForkAgentSelect,
+  onReplayConversation,
 }: ChatDockModalStackProps) {
   const handleNewChatSelect: ChatDockModalStackProps['onSelectNewChat'] = (
     agent,
@@ -154,6 +156,7 @@ export function ChatDockModalStack({
             autoHideEnabled,
             setAutoHideEnabled: onAutoHideChange,
             sessionSummary,
+            onReplayConversation,
           }}
           pending={null}
         />

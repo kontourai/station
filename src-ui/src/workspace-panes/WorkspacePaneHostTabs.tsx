@@ -25,7 +25,7 @@ import type { WorkspacePaneHostRuntime } from './workspacePaneHostRuntime';
 /** @deprecated import `nextTabIndex` from `../utils/tab-navigation` instead. Kept so this file's existing test import keeps working unchanged. */
 export const workspacePaneHostTabNextIndex = nextTabIndex;
 
-export interface WorkspacePaneHostTabsProps {
+interface WorkspacePaneHostTabsProps {
   group: WorkspacePaneHostTabGroup;
   paneById: ReadonlyMap<WorkspacePaneInstanceId, WorkspacePaneInstance>;
   controller: WorkspacePaneHostController;

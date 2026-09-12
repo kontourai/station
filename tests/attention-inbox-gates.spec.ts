@@ -105,10 +105,18 @@ test.describe('Attention inbox — gate items (station#612)', () => {
     // Copy separation: the three gate kinds render distinct badge copy, and
     // none of it uses "approval" — a gate verdict evaluates evidence, it
     // does not allow an action (root CONTEXT.md ~624).
-    await expect(page.getByText('Route back', { exact: true })).toBeVisible();
-    await expect(page.getByText('Gate blocked', { exact: true })).toBeVisible();
     await expect(
-      page.getByText('Exception pending', { exact: true }),
+      page.locator('.attention-item__type').filter({ hasText: /^Route back$/ }),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('.attention-item__type')
+        .filter({ hasText: /^Gate blocked$/ }),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('.attention-item__type')
+        .filter({ hasText: /^Exception pending$/ }),
     ).toBeVisible();
     const bodyText = await page
       .locator('.notifications-page__list')
@@ -270,6 +278,14 @@ test.describe('Attention inbox — gate items (station#612)', () => {
           success: true,
           data: [
             {
+              run_id: 'run-1',
+              definition_id: 'different-flow',
+              subject: 'dev',
+              status: 'running',
+              current_step: 'build',
+              updated_at: NOW,
+            },
+            {
               run_id: 'run-2',
               definition_id: 'station-delivery',
               subject: 'dev',
@@ -327,7 +343,14 @@ test.describe('Attention inbox — gate items (station#612)', () => {
     await expect(page.getByText('Blocked: test')).toBeVisible({
       timeout: 10000,
     });
+    const exactConsole = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        new URL(response.url()).pathname ===
+          '/api/projects/dev/flow/runs/run-2/console',
+    );
     await page.getByRole('link', { name: 'Open flow console' }).click();
+    expect((await exactConsole).ok()).toBe(true);
 
     await page.waitForURL(
       (url) => url.pathname === '/projects/dev/flow-console',
@@ -336,8 +359,8 @@ test.describe('Attention inbox — gate items (station#612)', () => {
 
     // The console preselects the run from ?run= rather than defaulting to
     // whatever run happens to sort first.
-    await expect(page.getByText('run-2').first()).toBeVisible({
-      timeout: 10000,
-    });
+    await expect(
+      page.getByRole('region', { name: 'Gate test-gate', exact: true }),
+    ).toContainText('Missing evidence');
   });
 });

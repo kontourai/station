@@ -4,6 +4,8 @@ import { createSessionCommandModule } from '../session-command-module.js';
 
 function moduleUnderTest(
   options: {
+    assertStartAllowed?: () => void | Promise<void>;
+    isQuarantined?: () => boolean;
     claimStart?: () => boolean;
     releaseStart?: () => void;
     requireAdapter?: () => never;
@@ -40,7 +42,7 @@ function moduleUnderTest(
     sessionState: {
       boundTenant: () => undefined,
       recordTenantMismatch: vi.fn(),
-      isQuarantined: () => false,
+      isQuarantined: options.isQuarantined ?? (() => false),
       isReadOnlyAttached: () => false,
       recordAttachedMutationRejection: vi.fn(),
       canRead: () => true,
@@ -50,7 +52,7 @@ function moduleUnderTest(
       attachStarted: vi.fn(options.attachStarted),
     },
     launchPolicy: {
-      assertStartAllowed: vi.fn(),
+      assertStartAllowed: vi.fn(options.assertStartAllowed),
       validateReattach: vi.fn(),
       requireAdapter:
         options.requireAdapter ??
@@ -79,6 +81,42 @@ function moduleUnderTest(
 }
 
 describe('SessionCommandModule', () => {
+  test.each(['accepted', 'failed', 'rejected'] as const)(
+    'waits for asynchronous admission and rechecks access (%s)',
+    async (status) => {
+      let resolve!: () => void;
+      let reject!: (error: Error) => void;
+      const admission = new Promise<void>((yes, no) => {
+        resolve = yes;
+        reject = no;
+      });
+      let quarantined = false;
+      const assertStartAllowed = vi.fn(() => admission);
+      const claimStart = vi.fn(() => true);
+      const { command, start } = moduleUnderTest({
+        assertStartAllowed,
+        claimStart,
+        isQuarantined: () => quarantined,
+      });
+      const outcome = command.execute(
+        {
+          type: 'start-session',
+          input: { threadId: 'thread-1', provider: 'claude' },
+        },
+        {},
+      );
+      await vi.waitFor(() => expect(assertStartAllowed).toHaveBeenCalledOnce());
+      expect(claimStart).not.toHaveBeenCalled();
+      expect(start).not.toHaveBeenCalled();
+      quarantined = status === 'rejected';
+      if (status === 'failed') reject(new Error('Admission refused'));
+      else resolve();
+      expect((await outcome).status).toBe(status);
+      expect(start).toHaveBeenCalledTimes(status === 'accepted' ? 1 : 0);
+      expect(claimStart).toHaveBeenCalledTimes(status === 'accepted' ? 1 : 0);
+    },
+  );
+
   test('executes the closed start intent and returns its durable receipt', async () => {
     const { command, persist, start } = moduleUnderTest();
 

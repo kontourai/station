@@ -5,12 +5,12 @@ import type {
 import type { NavigationView } from '../types';
 
 /** The subset of a project record `resolveHomeSurface` needs. */
-export interface HomeSurfaceProjectSummary {
+interface HomeSurfaceProjectSummary {
   slug: string;
 }
 
 /** The subset of a layout record `resolveHomeSurface` needs. */
-export interface HomeSurfaceLayoutSummary {
+interface HomeSurfaceLayoutSummary {
   slug: string;
 }
 
@@ -46,12 +46,12 @@ export interface ResolveHomeSurfaceInput {
 }
 
 /** The best safe project continuation that Home may offer without navigating. */
-export type HomeSurfaceTarget = Extract<
+type HomeSurfaceTarget = Extract<
   NavigationView,
   { type: 'layout' } | { type: 'project' }
 >;
 
-export type HomeSurfaceResult =
+type HomeSurfaceResult =
   | { status: 'pending' }
   | { status: 'resolved'; target: HomeSurfaceTarget }
   | { status: 'empty' }

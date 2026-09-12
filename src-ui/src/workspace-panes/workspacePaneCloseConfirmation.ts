@@ -9,9 +9,9 @@
  *
  * `danger` is the load-bearing field. Everything else is wording.
  */
-export type PaneCloseReason = 'dirty' | (string & {});
+type PaneCloseReason = 'dirty' | (string & {});
 
-export interface PaneCloseConfirmationProps {
+interface PaneCloseConfirmationProps {
   title: string;
   message: string;
   confirmLabel: string;
