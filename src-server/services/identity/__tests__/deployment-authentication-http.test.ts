@@ -94,6 +94,28 @@ export async function createStationAuthenticationProvider(host) {
 }
 
 describe('operator authentication module through production HTTP composition', () => {
+  test('bounds invalid account attempts before provider verification on protected routes', async () => {
+    const { app, authentication } = await harness();
+    const responses = await Promise.all(
+      Array.from({ length: 11 }, () =>
+        app.request(`${origin}/api/projects`, {
+          headers: { Cookie: 'fixture_account=invalid' },
+        }),
+      ),
+    );
+    expect(
+      responses.filter((response) => response.status === 401),
+    ).toHaveLength(10);
+    const limited = responses.filter((response) => response.status === 429);
+    expect(limited).toHaveLength(1);
+    expect(limited[0]!.headers.get('Retry-After')).toBeTruthy();
+    expect(
+      authentication?.service.hasCredential(
+        new Request(origin, { headers: { Cookie: 'station-device=personal' } }),
+      ),
+    ).toBe(false);
+  });
+
   test('logs in and resolves its own principal without issuing personal/operator access', async () => {
     const { app } = await harness();
     const login = await app.request(`${origin}/api/account-auth/login`, {

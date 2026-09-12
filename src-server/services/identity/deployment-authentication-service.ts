@@ -48,6 +48,20 @@ export class DeploymentAuthenticationService {
     return structuredClone(this.description);
   }
 
+  hasCredential(request: Request): boolean {
+    return this.presentedCookies(request).length > 0;
+  }
+
+  private presentedCookies(request: Request): string[] {
+    return (request.headers.get('cookie') ?? '')
+      .split(';')
+      .filter((entry) =>
+        this.description.sessionCookies.includes(
+          entry.trim().split('=')[0]!.trim(),
+        ),
+      );
+  }
+
   current(request: Request): ResolvedDeploymentAuthentication | undefined {
     if (this.closing || request.signal.aborted) return { kind: 'unavailable' };
     const result = this.requests.get(request);
@@ -165,13 +179,7 @@ export class DeploymentAuthenticationService {
   ): Promise<ResolvedDeploymentAuthentication> {
     try {
       if (request.signal.aborted) return { kind: 'unavailable' };
-      const presented = (request.headers.get('cookie') ?? '')
-        .split(';')
-        .filter((entry) =>
-          this.description.sessionCookies.includes(
-            entry.trim().split('=')[0]!.trim(),
-          ),
-        );
+      const presented = this.presentedCookies(request);
       if (!presented.length) return { kind: 'absent' };
       if (
         presented.length !== 1 ||
