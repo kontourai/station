@@ -40,6 +40,7 @@
     "./attention": "./src/attention.ts",
     "./action-operation": "./src/action-operation.ts",
     "./auth": "./src/auth.ts",
+    "./deployment-authentication": "./src/deployment-authentication.ts",
     "./board": "./src/board.ts",
     "./catalog": "./src/catalog.ts",
     "./channel-assurance": "./src/channel-assurance.ts",
