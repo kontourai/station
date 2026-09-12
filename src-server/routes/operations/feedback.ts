@@ -5,15 +5,15 @@
 import { Hono } from 'hono';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import { feedbackOps } from '../../telemetry/metrics.js';
-import { createLogger } from '../../utils/logger.js';
 import {
+  feedbackAnalyzeSchema,
   feedbackDeleteSchema,
   getBody,
+  RequestBodyTooLargeError,
   rateSchema,
+  readRequestText,
   validate,
 } from '../schemas/schemas.js';
-
-const logger = createLogger({ name: 'feedback-routes' });
 
 export function createFeedbackRoutes(feedbackService: FeedbackService) {
   const app = new Hono();
@@ -75,20 +75,32 @@ export function createFeedbackRoutes(feedbackService: FeedbackService) {
 
   // Manually trigger analysis (with optional configurable counts)
   app.post('/analyze', async (c) => {
+    let raw: unknown = {};
     try {
-      const body = await c.req.json();
-      if (body.maxReinforce || body.maxAvoid) {
-        feedbackService.setMaxBehaviors(
-          body.maxReinforce || 25,
-          body.maxAvoid || 25,
-        );
-      }
-    } catch (e) {
-      logger.debug('Failed to parse feedback analyze request body', {
-        error: e,
-      });
-      /* no body is fine */
+      const text = await readRequestText(c.req.raw, 4096);
+      if (text.trim()) raw = JSON.parse(text);
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError)
+        return c.json({ success: false, error: 'Request body too large' }, 413);
+      return c.json({ success: false, error: 'Invalid JSON body' }, 400);
     }
+    const parsed = feedbackAnalyzeSchema.safeParse(raw);
+    if (!parsed.success)
+      return c.json(
+        {
+          success: false,
+          error: 'Feedback counts must be integers from 1 to 50.',
+        },
+        400,
+      );
+    if (!feedbackService.hasAnalyzeCallback())
+      return c.json(
+        { success: false, error: 'Feedback analysis is not configured.' },
+        503,
+      );
+    const { maxReinforce, maxAvoid } = parsed.data;
+    if (maxReinforce !== undefined || maxAvoid !== undefined)
+      feedbackService.setMaxBehaviors(maxReinforce ?? 25, maxAvoid ?? 25);
     const summary = await feedbackService.runAnalysisPipeline();
     return c.json({ success: true, data: summary });
   });
@@ -104,45 +116,16 @@ export function createFeedbackRoutes(feedbackService: FeedbackService) {
     return c.json({ success: true, data: feedbackService.getStatus() });
   });
 
-  // Diagnostic test — exercises the full pipeline and returns results
+  // Exercise model analysis with transient data; never alter saved ratings
+  // or the profile that is injected into real conversations.
   app.post('/test', async (c) => {
     const start = Date.now();
-    const agentAvailable = feedbackService.hasAnalyzeCallback();
-
-    // Create synthetic rating
-    const synthetic = feedbackService.rateMessage({
-      agentSlug: '_test',
-      conversationId: '_test_pipeline',
-      messageIndex: 0,
-      messagePreview:
-        'Test message for pipeline verification — the assistant provided a clear, concise answer with code examples.',
-      rating: 'thumbs_up',
-    });
-
-    let analysisRan = false;
-    let guidelinesGenerated = false;
-    let guidelinesPreview = '';
-
-    if (agentAvailable) {
-      await feedbackService.runAnalysisPipeline();
-      analysisRan = true;
-      const guidelines = feedbackService.getBehaviorGuidelines();
-      guidelinesGenerated = guidelines.length > 0;
-      guidelinesPreview = guidelines.slice(0, 300);
-    }
-
-    // Clean up synthetic rating
-    feedbackService.removeRating('_test_pipeline', 0);
-
+    const report = await feedbackService.diagnoseAnalysis();
     const status = feedbackService.getStatus();
     return c.json({
       success: true,
       data: {
-        agentAvailable,
-        syntheticRatingCreated: !!synthetic,
-        analysisRan,
-        guidelinesGenerated,
-        guidelinesPreview,
+        ...report,
         totalRatings: status.totalRatings,
         pendingAnalysis: status.pendingAnalysis,
         pipelineDurationMs: Date.now() - start,

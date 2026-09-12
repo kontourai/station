@@ -642,6 +642,9 @@ const { data } = useApiQuery(['my-key'], () => fetch('/api/custom').then(r => r.
 
 Mutation hook with optional cache invalidation on success.
 
+If the success callback throws after the request completes, the caller receives
+that error and the configured caches are still invalidated.
+
 ```tsx
 const mutation = useApiMutation(
   (vars) => fetch('/api/save', { method: 'POST', body: JSON.stringify(vars) }).then(r => r.json()),
@@ -1715,6 +1718,31 @@ knowledgeQueries.namespaces(projectSlug)             // GET /api/projects/:slug/
 ```
 
 ---
+
+## Feedback analysis
+
+Use `useFeedbackRatingsQuery`, `useFeedbackGuidelinesQuery`, and
+`useFeedbackStatusQuery` to read the selected Station's feedback. Saving or
+removing a rating through the SDK invalidates all three views. Use
+`useAnalyzeFeedbackMutation` to request analysis and
+`useClearFeedbackAnalysisMutation` to clear derived results while keeping ratings.
+
+Analysis requests share one active job. Re-rating, removing feedback, clearing
+analysis, or stopping the service prevents older model results from being
+published. Existing model calls settle before queued work starts. Unchanged
+summary prompts reuse their cached result; changed inputs are not identified by
+rating count alone. Invalid model output remains an error rather than being
+saved as analyzed feedback.
+
+`POST /api/feedback/analyze` accepts an omitted body or an optional JSON object
+with `maxReinforce` and `maxAvoid`, each an integer from 1 to 50. It returns 400
+for invalid options or JSON, 413 for a body over 4 KiB, and 503 when analysis is
+not configured. The SDK's analysis mutation uses the omitted-body form.
+
+`POST /api/feedback/test` runs an isolated sample through the analyzer and
+guideline formatter. Its response includes `isolated: true`; it does not edit
+saved ratings or the profile used in conversations. It does not establish the
+integrity of the saved feedback file.
 
 ## Monitoring event windows
 

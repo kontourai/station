@@ -2,6 +2,8 @@
 
 Executable policy is the source of truth. Keep a gate deterministic, fail-closed, and independently testable; do not widen an allowlist or bypass a guard to make it pass. New child-process tests must be classified in `scripts/vitest-resource-manifest.mjs`.
 
+Before delivery, review the new-versus-inherited code-health report from `ci:fast` (or `node scripts/code-health-gate.mjs --base=<upstream-sha>`). Fix introduced unused exports/types or identify their real entrypoint/public contract. Give newly introduced advisory findings an evidence-backed disposition in the PR. Keep confirmed defects and remaining review separate; a scan count is neither a defect count nor a completion percentage. See [code-health prevention](../docs/guides/code-quality.md#code-health-prevention).
+
 Every new `spawn`, `spawnSync`, or `execFile` call must pass `windowsHide: true`.
 
 The generated verification schedule and detailed reuse/failure policy have one owner: [docs/guides/testing.md](../docs/guides/testing.md). Regenerate from `scripts/verification-lanes.mjs`; do not copy generated blocks into an instruction file. Use the focused policy tests, not a broad verification lane, while iterating.

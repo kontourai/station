@@ -466,6 +466,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // tracked NUL/clean fixture repositories. The child is single-shot and has
   // no wall-clock assertion, but still belongs in the bounded spawn pool.
   'scripts/__tests__/run-ci-fast.test.ts',
+  // Runs the installed analyzer against committed Git fixtures to prove
+  // new-versus-inherited attribution and resistance to candidate rebaselining.
+  'scripts/__tests__/code-health-gate.test.ts',
   'scripts/__tests__/run-e2e-suite-ports.test.ts',
   'scripts/__tests__/server-build-portability.test.ts',
   'scripts/__tests__/station-agent-smoke.test.ts',
