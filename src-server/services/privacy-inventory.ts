@@ -31,7 +31,7 @@ export type PrivacyInventoryEntry = {
  * policy text. Conditional entries are still declared because configuration
  * can enable their network delivery in a shipped build.
  */
-export const PRIVACY_INVENTORY: readonly PrivacyInventoryEntry[] = [
+const PRIVACY_INVENTORY: readonly PrivacyInventoryEntry[] = [
   {
     id: 'product-usage-telemetry',
     storeDataType: 'Other Usage Data',
@@ -128,7 +128,7 @@ function bool(value: boolean): string {
   return value ? 'true' : 'false';
 }
 
-export const APPLE_DATA_TYPE: Record<StoreDataType, string> = {
+const APPLE_DATA_TYPE: Record<StoreDataType, string> = {
   'Audio Data': 'NSPrivacyCollectedDataTypeAudioData',
   'Device ID': 'NSPrivacyCollectedDataTypeDeviceID',
   'Other User Content': 'NSPrivacyCollectedDataTypeOtherUserContent',

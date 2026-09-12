@@ -144,7 +144,7 @@ export function toModelConnection(
 }
 
 /** Drops malformed persisted recovery state before it reaches a runtime view. */
-export function sanitizeCredentialRecoverySettings(
+function sanitizeCredentialRecoverySettings(
   value: unknown,
 ): CredentialProfileRegistryState {
   return normalizeCredentialProfileRegistry(value);

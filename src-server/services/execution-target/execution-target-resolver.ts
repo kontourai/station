@@ -158,7 +158,7 @@ function assertModelOptionsSupported(
   }
 }
 
-export const REMOTE_HOME_UNVERIFIED_REASON =
+const REMOTE_HOME_UNVERIFIED_REASON =
   'remote home unverified — re-verify the environment';
 
 type RemoteProjectPathMatch =

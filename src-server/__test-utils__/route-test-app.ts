@@ -42,7 +42,7 @@ import { EventBus } from '../services/orchestration/event-bus.js';
 import type { Logger } from '../utils/logger.js';
 
 /** Writes nothing: a route test asserts on responses, not on log noise. */
-export function createSilentTestLogger(): Logger {
+function createSilentTestLogger(): Logger {
   const logger = {
     trace() {},
     debug() {},

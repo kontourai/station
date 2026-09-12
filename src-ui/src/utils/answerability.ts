@@ -43,7 +43,7 @@ export const NOT_APPLICABLE: AnswerabilityView = { status: 'not-applicable' };
  * the `provider_absent` arm can name the provider it has no adapter for
  * rather than gesturing at one.
  */
-export function answerabilityViewFor(
+function answerabilityViewFor(
   answerability: RequestAnswerability,
   provider?: string,
 ): AnswerabilityView {

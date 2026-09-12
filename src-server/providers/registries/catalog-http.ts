@@ -19,9 +19,7 @@ export function catalogLimit(options?: ModelCatalogRequest): number {
   );
 }
 
-export function catalogResponseByteLimit(
-  options?: ModelCatalogRequest,
-): number {
+function catalogResponseByteLimit(options?: ModelCatalogRequest): number {
   return Math.max(
     1,
     Math.min(

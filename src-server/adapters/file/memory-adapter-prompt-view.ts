@@ -31,7 +31,7 @@ import type { UIMessage } from 'ai';
 import { currentNativeMemoryHistory } from '../../runtime/conversation/authorized-turn-correlation.js';
 
 /** Must match the literal prefix `chat-lifecycle.ts` persists. */
-export const CHAT_ERROR_MARKER = '[SYSTEM_EVENT] [CHAT_ERROR]';
+const CHAT_ERROR_MARKER = '[SYSTEM_EVENT] [CHAT_ERROR]';
 
 function messageTextParts(message: UIMessage): string[] {
   const parts = (message as { parts?: unknown }).parts;

@@ -38,7 +38,7 @@ import { isBoundRuntimeLocalOperator } from '../../security/runtime-request-secu
  * and are never consulted. The first label is used because the trailing
  * `.local` / search-domain suffix is noise in a sentence.
  */
-export function resolveHostName(): string {
+function resolveHostName(): string {
   const name = hostname().trim().split('.')[0] ?? '';
   // A host that reports no name at all still has to be nameable in a
   // sentence; "the host" is the honest fallback, not a fabricated identity.

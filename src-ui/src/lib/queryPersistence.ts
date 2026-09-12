@@ -182,7 +182,7 @@ export function applyPersistedQueryGcTimeDefaults(
  * (very old WebViews, some SSR/test contexts) so app boot never depends on
  * it — persistence is a progressive enhancement, not a requirement.
  */
-export function createIdbQueryStorage(): AsyncStorage<string> {
+function createIdbQueryStorage(): AsyncStorage<string> {
   if (typeof indexedDB === 'undefined') {
     return {
       getItem: async () => undefined,
