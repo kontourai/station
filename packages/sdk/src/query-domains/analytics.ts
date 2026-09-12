@@ -324,8 +324,12 @@ export function useClearFeedbackAnalysisMutation(
 export function useSaveFeedbackRatingMutation(
   options?: MutationOptions<void, FeedbackRatingInput>,
 ) {
-  return useApiMutation(async (input) => saveFeedbackRating(input), {
-    invalidateKeys: [['feedback', 'ratings']],
+  return useApiMutation(saveFeedbackRating, {
+    invalidateKeys: [
+      ['feedback', 'ratings'],
+      ['feedback', 'guidelines'],
+      ['feedback', 'status'],
+    ],
     onSuccess: options?.onSuccess,
     onError: options?.onError,
   });
@@ -334,8 +338,12 @@ export function useSaveFeedbackRatingMutation(
 export function useDeleteFeedbackRatingMutation(
   options?: MutationOptions<void, FeedbackRatingDeleteInput>,
 ) {
-  return useApiMutation(async (input) => deleteFeedbackRating(input), {
-    invalidateKeys: [['feedback', 'ratings']],
+  return useApiMutation(deleteFeedbackRating, {
+    invalidateKeys: [
+      ['feedback', 'ratings'],
+      ['feedback', 'guidelines'],
+      ['feedback', 'status'],
+    ],
     onSuccess: options?.onSuccess,
     onError: options?.onError,
   });
