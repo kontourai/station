@@ -2907,6 +2907,7 @@ export function configureRuntimeRoutes(
         });
       },
       {
+        isRequestPrincipalCurrent,
         operatorIdentityForRequest: (routeContext) => {
           const authority = (
             routeContext as unknown as { get: (key: string) => unknown }

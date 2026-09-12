@@ -127,6 +127,7 @@ export interface PullRequestApproveInput {
 export interface PullRequestMergeInput {
   method: PullRequestMergeMethod;
   autoMerge?: boolean;
+  expectedHeadSha?: string;
 }
 export type PullRequestMergeResult =
   | { status: 'merged' }
@@ -141,9 +142,51 @@ export interface PullRequestResult<T> {
   effectiveMergeMethods: PullRequestMergeMethod[];
   mergeMethodsSource: PullRequestMergeMethodsSource;
 }
+/** A bounded provider observation, not a local checkout diff or gate verdict. */
+export interface PullRequestReviewSnapshot {
+  pullRequest: PullRequest;
+  headSha: string;
+  baseSha: string;
+  observedAt: string;
+  diff:
+    | { state: 'available'; patch: string; completeness: 'provider-output' }
+    | { state: 'unavailable'; reason: string };
+  discussion: Array<{
+    id: string;
+    author: string;
+    body: string;
+    createdAt: string;
+    kind: 'comment' | 'review';
+    state?: string;
+    headSha?: string;
+  }>;
+  discussionPartial: boolean;
+}
+export interface PullRequestReviewInput {
+  action: 'comment' | 'approve';
+  expectedHeadSha: string;
+  body?: string;
+}
+export type PullRequestReviewOutcome =
+  | { status: 'confirmed'; nativeId: string; actor: string; headSha?: string }
+  | { status: 'refused' | 'indeterminate'; reason: string };
+/** Server-owned current authority check; never supplied in an HTTP input. */
+export interface PullRequestWriteAdmission {
+  isCurrent: () => boolean;
+}
 export interface IPullRequestProvider {
   readonly id: string;
   readonly displayName: string;
+  getReviewSnapshot?(
+    context: PullRequestRepositoryContext,
+    ref: string,
+  ): Promise<PullRequestResult<PullRequestReviewSnapshot>>;
+  submitReview?(
+    context: PullRequestRepositoryContext,
+    ref: string,
+    input: PullRequestReviewInput,
+    admission?: PullRequestWriteAdmission,
+  ): Promise<PullRequestResult<PullRequestReviewOutcome>>;
   readonly offeredCapabilities: PullRequestCapabilities;
   readonly offeredMergeMethods: PullRequestMergeMethod[];
   canServeHost(host: string): boolean;
@@ -182,5 +225,6 @@ export interface IPullRequestProvider {
     context: PullRequestRepositoryContext,
     ref: string,
     input: PullRequestMergeInput,
+    admission?: PullRequestWriteAdmission,
   ): Promise<PullRequestResult<PullRequestMergeResult>>;
 }

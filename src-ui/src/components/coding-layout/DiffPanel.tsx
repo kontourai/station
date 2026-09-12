@@ -245,14 +245,38 @@ export function DiffPanel({
   workingDir: string;
   projectSlug?: string;
 }) {
-  const performanceSurfaceRef = useRef<HTMLDivElement | null>(null);
   const { apiBase } = useApiBase();
   const {
     data: diff = '',
     isLoading: loading,
     error: queryError,
   } = useCodingDiffQuery(workingDir, apiBase);
-  const error = queryError?.message || null;
+  return (
+    <ObservedDiffPanel
+      diff={diff}
+      loading={loading}
+      error={queryError?.message || null}
+      observationKey={workingDir}
+      projectSlug={projectSlug}
+    />
+  );
+}
+
+/** Render supplied, already observed diff bytes without reading the checkout. */
+export function ObservedDiffPanel({
+  diff,
+  loading = false,
+  error = null,
+  observationKey,
+  projectSlug,
+}: {
+  diff: string;
+  loading?: boolean;
+  error?: string | null;
+  observationKey: string;
+  projectSlug?: string;
+}) {
+  const performanceSurfaceRef = useRef<HTMLDivElement | null>(null);
 
   // Inline review comments are only available when a project owns the diff.
   const commentsEnabled = !!projectSlug;
@@ -348,12 +372,12 @@ export function DiffPanel({
     if (loading || error || !performanceSurfaceRef.current) return;
     performanceSurfaceRef.current.getBoundingClientRect();
     emitDiffCommitPerformanceMark({
-      workingDir,
+      workingDir: observationKey,
       patchBytes: new TextEncoder().encode(diff).byteLength,
       fileCount: files.length,
       committedEpochMs: browserEpochMs(),
     });
-  }, [collapseOverrides, diff, error, files.length, loading, workingDir]);
+  }, [collapseOverrides, diff, error, files.length, loading, observationKey]);
   // A freshly loaded diff starts from the size-based default, not whatever
   // per-file choices were made on the previous diff. `diff` is the
   // intentional reset trigger even though the effect body doesn't read it.
