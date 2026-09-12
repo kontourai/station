@@ -418,8 +418,9 @@ export function ChatDockBody({
    * indistinguishable from a turn that never carried them — and from a blob
    * retention had reclaimed. `elided` is the read's own report of which
    * budget fired, so this counts events the read actually withheld rather
-   * than inferring anything from what is missing, and keeps the two reasons
-   * apart in the copy.
+   * than inferring anything from what is missing. Tool-detail reductions stay
+   * in session diagnostics; they must not add a banner above an otherwise
+   * complete conversation.
    */
   const elidedHistoryText = useMemo(
     () =>
@@ -429,6 +430,8 @@ export function ChatDockBody({
             .filter(
               (item) =>
                 item.event.method !== 'tool.progress' &&
+                item.event.method !== 'tool.started' &&
+                item.event.method !== 'tool.completed' &&
                 item.event.method !== 'token-usage.updated',
             )
             .map((sequenced) => sequenced.elided),
