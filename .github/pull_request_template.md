@@ -30,6 +30,14 @@ List every command run and its result or receipt location.
 
 Describe what you personally inspected or exercised, including the environment.
 
+### New code-health findings
+
+Use the `ci:fast` code-health report to separate newly introduced findings from
+inherited debt. For new complexity, duplication, or dependency candidates, state
+what was fixed or why the existing structure/contract is intentional, with caller
+or behavior evidence. Estimated coverage is not executed coverage. Do not claim
+an exhaustive audit from a completed scan or remove real entrypoints to quiet it.
+
 ## Risk and rollback
 
 - Risks:

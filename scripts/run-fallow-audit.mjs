@@ -74,7 +74,7 @@ export function fallowCommands(scope) {
   throw new Error(`Unknown Fallow scope: ${scope}`);
 }
 
-async function runAnalysis(root, command, outputFile) {
+export async function runFallowAnalysis(root, command, outputFile, args = []) {
   const execution = executeOwnedCommand(
     'fallow',
     [
@@ -86,6 +86,7 @@ async function runAnalysis(root, command, outputFile) {
       '--quiet',
       '--output-file',
       outputFile,
+      ...args,
     ],
     undefined,
     `fallow ${command}`,
@@ -177,7 +178,11 @@ export async function runFallowAudit(root, scope = 'changed') {
   const reports = [];
   for (const command of commands)
     reports.push(
-      await runAnalysis(root, command, join(rawDirectory, `${command}.json`)),
+      await runFallowAnalysis(
+        root,
+        command,
+        join(rawDirectory, `${command}.json`),
+      ),
     );
   const summary = summarizeFallowReports(scope, reports);
   const findings =
