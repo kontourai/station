@@ -7,6 +7,39 @@ import {
   summarizeFallowReports,
 } from './run-fallow-audit.mjs';
 
+/** Fallow 3.22 health_finding_key excludes line numbers. Summary counts rows,
+ * but AuditDomainLedger attribution counts distinct path/name/metric keys.
+ * Validate both populations; a matching aggregate alone cannot prove every
+ * finding was attributed. See fallow-rs/fallow crates/api/src/audit_keys.rs. */
+function complexityKeyCounts(report, totalRows) {
+  if (report.complexity == null && totalRows === 0)
+    return { introduced: 0, inherited: 0 };
+  const findings = report.complexity?.findings;
+  if (!Array.isArray(findings) || findings.length !== totalRows)
+    throw new Error('Code-health report has incomplete complexity rows');
+  const keys = new Map();
+  for (const finding of findings) {
+    if (
+      !finding ||
+      typeof finding.introduced !== 'boolean' ||
+      ['path', 'name', 'exceeded'].some(
+        (field) => typeof finding[field] !== 'string' || !finding[field].trim(),
+      )
+    )
+      throw new Error(
+        'Code-health report has incomplete complexity finding attribution',
+      );
+    const key = JSON.stringify([finding.path, finding.name, finding.exceeded]);
+    if (keys.has(key) && keys.get(key) !== finding.introduced)
+      throw new Error(
+        'Code-health report has conflicting complexity key attribution',
+      );
+    keys.set(key, finding.introduced);
+  }
+  const introduced = [...keys.values()].filter(Boolean).length;
+  return { introduced, inherited: keys.size - introduced };
+}
+
 /** Scores and estimated coverage require judgment; new unused API needs a caller. */
 export function evaluateCodeHealthAudit(report, base, head) {
   const summary = summarizeFallowReports('changed', [report]);
@@ -22,7 +55,6 @@ export function evaluateCodeHealthAudit(report, base, head) {
       'Code-health report lacks the requested base/head attribution',
     );
   const introduced = {};
-  const attributionCorrections = [];
   for (const [kind, total] of [
     ['dead_code', summary.dead_code_issues],
     ['complexity', summary.complexity_findings],
@@ -30,57 +62,18 @@ export function evaluateCodeHealthAudit(report, base, head) {
   ]) {
     const added = report.attribution[`${kind}_introduced`];
     const inherited = report.attribution[`${kind}_inherited`];
+    const complexity =
+      kind === 'complexity' ? complexityKeyCounts(report, total) : null;
     if (
       !Number.isSafeInteger(added) ||
       added < 0 ||
       !Number.isSafeInteger(inherited) ||
-      inherited < 0
+      inherited < 0 ||
+      (complexity
+        ? added !== complexity.introduced || inherited !== complexity.inherited
+        : added + inherited !== total)
     )
       throw new Error(`Code-health report has incomplete ${kind} attribution`);
-    if (added + inherited !== total) {
-      // Fallow 3.22 can undercount inherited complexity in its aggregate while
-      // emitting every attributed finding. Reconcile only that proven shape;
-      // missing rows, ambiguous identities, or understated NEW debt still fail.
-      const findings =
-        kind === 'complexity' ? report.complexity?.findings : undefined;
-      if (!Array.isArray(findings) || findings.length !== total)
-        throw new Error(
-          `Code-health report has incomplete ${kind} attribution`,
-        );
-      const identities = new Set();
-      let actualAdded = 0;
-      for (const finding of findings) {
-        if (
-          typeof finding?.introduced !== 'boolean' ||
-          typeof finding.path !== 'string' ||
-          !finding.path ||
-          typeof finding.name !== 'string' ||
-          !finding.name ||
-          !Number.isSafeInteger(finding.line) ||
-          finding.line < 1
-        )
-          throw new Error('Complexity finding lacks exact attribution');
-        const identity = JSON.stringify([
-          finding.path,
-          finding.line,
-          finding.name,
-        ]);
-        if (identities.has(identity))
-          throw new Error('Duplicate complexity finding');
-        identities.add(identity);
-        if (finding.introduced) actualAdded++;
-      }
-      const actualInherited = total - actualAdded;
-      if (actualAdded !== added || inherited >= actualInherited)
-        throw new Error(
-          'Complexity aggregate disagrees with introduced findings',
-        );
-      attributionCorrections.push({
-        kind,
-        reportedInherited: inherited,
-        observedInherited: actualInherited,
-      });
-    }
     introduced[kind] = added;
   }
   const blockers = [];
@@ -93,13 +86,7 @@ export function evaluateCodeHealthAudit(report, base, head) {
       if (finding.introduced) blockers.push({ kind, ...finding });
     }
   }
-  return {
-    passed: blockers.length === 0,
-    introduced,
-    blockers,
-    summary,
-    attributionCorrections,
-  };
+  return { passed: blockers.length === 0, introduced, blockers, summary };
 }
 
 async function runCodeHealthGate(root, baseRef) {
