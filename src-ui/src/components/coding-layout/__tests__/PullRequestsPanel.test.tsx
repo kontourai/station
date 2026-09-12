@@ -19,6 +19,18 @@ vi.mock('@kontourai/station-sdk', () => ({
   useMergePullRequestMutation: () => ({ mutateAsync, error: null }),
 }));
 
+vi.mock('../PullRequestReviewPanel', () => ({
+  PullRequestReviewPanel: ({
+    target,
+  }: {
+    target: { host: string; ref: string };
+  }) => (
+    <div>
+      Reviewing {target.host} #{target.ref}
+    </div>
+  ),
+}));
+
 const pullRequest = (overrides: Partial<PullRequest> = {}): PullRequest => ({
   provider: 'github',
   host: 'github.com',
@@ -83,6 +95,19 @@ beforeEach(() => {
 });
 
 describe('PullRequestsPanel', () => {
+  test('opens the exact listed pull request in the stable review pane', async () => {
+    render(
+      <PullRequestsPanel
+        projectSlug="station"
+        activeRepoRoot="/repos/station"
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Ship repository PR actions' }),
+    );
+    expect(await screen.findByText('Reviewing github.com #17')).toBeTruthy();
+  });
+
   test('uses normalized filter vocabulary and renders LOCKED as a chip', () => {
     listQuery.data = result([
       pullRequest(),

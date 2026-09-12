@@ -2170,7 +2170,6 @@ cached recovery notice across API-base changes; refresh the selected Station
 before projecting it as current. The record exposes no filesystem path or
 backup manifest contents.
 
-
 ## Saved answer quotations
 
 `getAssistantQuoteSource(apiBase, sessionId, turnId, options)` from
@@ -2189,6 +2188,26 @@ Inspecting a saved reference reads its original answer under current access
 on the selected Station. No network request is made to an origin supplied by
 an untrusted quote link. The saved quotation and a changed current source
 remain visibly distinct.
+
+## In-app pull-request review
+
+`@kontourai/station-sdk/pull-request-review` exports `getPullRequestReview`,
+`submitPullRequestReview`, and `mergeReviewedPullRequest`. Pass an explicit
+Station API base, a `PullRequestReviewTarget` (provider, host, repository owner
+and name, native ref, and resolving Project context), and the host-captured
+`requestScope`. Repository identity never comes from a display URL.
+
+Review reads validate the returned exact target and revision. Approvals and
+review-origin merges carry the inspected head SHA to the provider. The provider
+CLI owns forge authentication; Station does not store forge credentials.
+Confirmed review acknowledgements include the observed actor. GitLab ordinary
+comments are not commit-bound; their acknowledgements omit `headSha`.
+
+Retain a draft after an indeterminate response and inspect current provider
+state before another submission. A missing or unverifiable acknowledgement is
+not a safe automatic-retry signal. Unsupported review adapters return an
+explicit unavailable result. Diff bytes and discussion are bounded and may be
+partial; the response says which content could not be supplied.
 
 ## Files in answers to input requests
 
