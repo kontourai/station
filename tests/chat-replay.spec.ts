@@ -118,6 +118,7 @@ test('replay correlates each event with the real mobile transcript and a screens
     expect(observation.cursor.eventId).toBe(events[index].eventId);
     expect(observation.issues).toEqual([]);
     expect(observation.performance?.render?.mountedRows).toBeGreaterThan(0);
+    expect(observation.renderedControls).toBeDefined();
   }
   const transcript = page.getByRole('log', { name: 'Conversation transcript' });
   await expect(transcript).toContainText('Show the replayed question.');
@@ -296,6 +297,65 @@ test.describe('replay state coverage', () => {
     await expect(
       page.getByRole('button', { name: 'Scroll to bottom' }),
     ).toBeVisible();
+  });
+
+  test('stepping while reading earlier turns preserves the visible anchor', async ({
+    page,
+  }, testInfo) => {
+    const tape = multiTurnReplayTape(25);
+    await openReplayScenario(page, tape);
+    await page.evaluate(async () => {
+      await (
+        window as unknown as {
+          __stationReplay: { seek(index: number): Promise<unknown> };
+        }
+      ).__stationReplay.seek(70);
+    });
+    const transcript = page.getByRole('log', {
+      name: 'Conversation transcript',
+    });
+    await transcript.hover();
+    await page.mouse.wheel(0, -400);
+    await testInfo.attach('scroll-geometry', {
+      contentType: 'application/json',
+      body: JSON.stringify(
+        await transcript.evaluate((container) => ({
+          top: container.scrollTop,
+          viewport: container.getBoundingClientRect().toJSON(),
+          spacer: container
+            .querySelector('[data-transcript-row-count]')
+            ?.getBoundingClientRect()
+            .toJSON(),
+          rows: [
+            ...container.querySelectorAll<HTMLElement>('[data-transcript-row]'),
+          ].map((node) => ({
+            index: node.dataset.index,
+            transform: node.style.transform,
+            rect: node.getBoundingClientRect().toJSON(),
+          })),
+        })),
+      ),
+    });
+    await expect(
+      page.getByRole('button', { name: 'Scroll to bottom' }),
+    ).toBeVisible();
+    await expect
+      .poll(() =>
+        transcript.evaluate((container) => {
+          const bounds = container.getBoundingClientRect();
+          return [
+            ...container.querySelectorAll('[data-chat-message-key]'),
+          ].filter((node) => {
+            const rect = node.getBoundingClientRect();
+            return rect.bottom > bounds.top && rect.top < bounds.bottom;
+          }).length;
+        }),
+      )
+      .toBeGreaterThan(0);
+    const observation = await inspectReplayStep(page, testInfo);
+    expect(observation.scroll?.atBottom).toBe(false);
+    expect(observation.issues).toEqual([]);
+    expect(observation.scroll?.visibleAnchors?.length).toBeGreaterThan(0);
   });
 
   for (const theme of ['light', 'dark']) {

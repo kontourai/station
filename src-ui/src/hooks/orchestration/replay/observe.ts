@@ -193,7 +193,7 @@ export function detectReplayIssues(
   return issues;
 }
 
-function collectReplayScroll(
+export function collectReplayScroll(
   container: HTMLElement | null,
 ): ReplayScrollObservation | undefined {
   if (!container) return undefined;
@@ -201,7 +201,7 @@ function collectReplayScroll(
     container.scrollHeight - container.scrollTop - container.clientHeight;
   const atBottom = gap <= 32;
   const containerBounds = container.getBoundingClientRect();
-  const visibleMessageKeys = [
+  const visibleAnchors = [
     ...container.querySelectorAll<HTMLElement>('[data-chat-message-key]'),
   ]
     .filter((node) => {
@@ -211,15 +211,19 @@ function collectReplayScroll(
         bounds.top < containerBounds.bottom
       );
     })
-    .map((node) => node.dataset.chatMessageKey ?? '')
-    .filter(Boolean);
+    .map((node) => ({
+      key: node.dataset.chatMessageKey ?? '',
+      top: node.getBoundingClientRect().top - containerBounds.top,
+    }))
+    .filter((anchor) => Boolean(anchor.key));
   return {
     scrollTop: container.scrollTop,
     scrollHeight: container.scrollHeight,
     clientHeight: container.clientHeight,
     isUserScrolledUp: !atBottom,
     atBottom,
-    visibleMessageKeys,
+    visibleMessageKeys: visibleAnchors.map((anchor) => anchor.key),
+    visibleAnchors,
     accessibleText: (container.innerText ?? '').slice(0, 4_000),
   };
 }
@@ -283,6 +287,22 @@ export function collectReplayObservation(input: {
     issues,
   };
   if (input.transcriptElement) {
+    const controls = [
+      ...input.transcriptElement.ownerDocument.querySelectorAll<HTMLElement>(
+        '[data-replay-session-id]',
+      ),
+    ].find((element) => element.dataset.replaySessionId === input.replayId);
+    observation.renderedControls = controls
+      ? [...controls.querySelectorAll<HTMLButtonElement>('button')].map(
+          (button) => ({
+            label:
+              button.getAttribute('aria-label') ??
+              button.textContent?.trim() ??
+              '',
+            disabled: button.disabled,
+          }),
+        )
+      : undefined;
     observation.renderedConnection =
       [
         ...input.transcriptElement.ownerDocument.querySelectorAll<HTMLElement>(
@@ -301,6 +321,17 @@ export function collectReplayObservation(input: {
       textLength: Number(node.dataset.chatTextLength ?? 0),
       textPreview: preview(node.innerText ?? node.textContent ?? ''),
     }));
+    if (
+      observation.renderedRows.length > 0 &&
+      observation.scroll &&
+      observation.scroll.clientHeight > 0 &&
+      observation.scroll.visibleMessageKeys.length === 0
+    )
+      issues.push({
+        code: 'empty-transcript-viewport',
+        detail:
+          'Message rows are mounted but none intersects the transcript viewport.',
+      });
     const latest = [...(input.chat.messages ?? [])]
       .reverse()
       .find(
@@ -311,7 +342,7 @@ export function collectReplayObservation(input: {
         (row) => row.role === 'assistant' && row.turnId === latest.turnId,
       );
       if (
-        rendered.length > 0 &&
+        rendered.length === 0 ||
         Math.max(...rendered.map((row) => row.textLength)) <
           (latest.content?.length ?? 0)
       ) {

@@ -3,6 +3,8 @@ import type { ReplayRenderMeasurement } from './render-observation';
 export type ReplayIssueCode =
   | 'incomplete-capture'
   | 'render-not-observed'
+  | 'unexpected-scroll-jump'
+  | 'empty-transcript-viewport'
   | 'duplicate-streaming-and-settled'
   | 'streaming-after-turn-completed'
   | 'lineage-leak'
@@ -35,6 +37,7 @@ export interface ReplayScrollObservation {
   isUserScrolledUp: boolean;
   atBottom: boolean;
   visibleMessageKeys: string[];
+  visibleAnchors?: Array<{ key: string; top: number }>;
   /** Visible transcript text, so an agent can read what the dock actually shows. */
   accessibleText: string;
 }
@@ -69,6 +72,8 @@ export interface ReplayObservation {
     shellSuperseded: boolean;
   };
   renderedConnection?: string;
+  /** Replay replaces the live composer; these are the actual mounted controls. */
+  renderedControls?: Array<{ label: string; disabled: boolean }>;
   renderedRows?: Array<{
     key: string;
     turnId?: string;

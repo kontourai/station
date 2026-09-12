@@ -57,7 +57,11 @@ export function ReplayTransport({ sessionId }: { sessionId: string }) {
   const running = observation.playback?.playing ?? false;
   const frame = player.frames[observation.cursor.index];
   return (
-    <div className="replay-transport" data-testid="replay-transport">
+    <div
+      className="replay-transport"
+      data-testid="replay-transport"
+      data-replay-session-id={sessionId}
+    >
       <details className="replay-transport__controls">
         <summary>
           Replay controls · {observation.cursor.index + 1} /{' '}

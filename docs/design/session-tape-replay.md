@@ -44,6 +44,21 @@ report mounted rows, visible row bounds, scroll position, mutations, and
 observation wait time. Wait time is not React render CPU time, and a timeout
 or unmounted transcript is explicitly reported.
 
+Forward rendered steps compare a retained visible row's offset before and
+after the event. A shift greater than eight pixels reports
+`unexpected-scroll-jump`, except when the reader supplied pointer, touch,
+wheel or keyboard input during that step, the viewport resized, both views
+followed the bottom, or the row was replaced. Back/seek establish a new
+baseline. This detects movement of retained anchors, not every possible
+scroll defect. Missing completed-answer rows at the bottom are failures,
+including when no assistant row is mounted at all. Observations include
+visible anchors and the actual replay controls; replay replaces the live
+composer, so these are not historical send/stop controls.
+Mounted messages that all fall outside the viewport report
+`empty-transcript-viewport`; a bounded DOM count alone cannot prove a usable
+virtualized transcript. The virtualizer attaches its parent scroll ref after
+the commit, when that ref is available.
+
 Record a live conversation from chat developer settings to include committed
 history reads, runtime events, transport transitions, snapshots, and the
 initial visible state. Capture is opt-in and stops explicitly at 16 MiB or
