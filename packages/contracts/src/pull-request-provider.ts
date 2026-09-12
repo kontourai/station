@@ -102,6 +102,9 @@ export interface PullRequest {
   author: { login: string; url?: string };
   sourceBranch: string;
   targetBranch: string;
+  /** Exact provider-observed revisions when the forge reports them. */
+  headSha?: string;
+  baseSha?: string;
   commits: number;
   reviewStatus: string;
   comments: number;

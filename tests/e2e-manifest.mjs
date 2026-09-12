@@ -321,6 +321,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/code-block-actions.spec.ts',
     'tests/model-visibility.spec.ts',
     'tests/pull-request-review.spec.ts',
+    'tests/conversation-pull-request-links.spec.ts',
     'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
     'tests/monitoring-and-chrome.spec.ts',
@@ -1469,6 +1470,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Production review panel, shared diff renderer, SDK and confirmation dialog; exact provider HTTP fixtures verify revision-bound writes, uncertainty and retained drafts in desktop dark and phone light presentations. No live forge or shared writes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/conversation-pull-request-links.spec.ts',
+    bucket: 'product',
+    surface: 'Conversation pull request links and dependency stacks',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production link and stack surfaces with exact current-Station HTTP fixtures; verifies same-number cross-host identity, explicit/derived/Task provenance, partial failure, unlink, provider-branch order and narrow-pane overflow. No live forge writes.',
     exceptions: [],
   },
   {

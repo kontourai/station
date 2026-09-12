@@ -90,6 +90,14 @@ built-in scheduler now emits.
 
 ## Compatibility
 
+`conversation-pull-request-links` defines exact provider, host, repository, and
+native-ref identities for Conversation links. Explicit links, branch-derived
+associations, and Task-kept declarations retain distinct `source` values.
+Provider refresh results carry an observation time and either current state or
+an explicit unsupported/unavailable reason. `PullRequest.headSha` and
+`baseSha` are optional because a provider that omits exact revisions must not
+be presented as current by inference.
+
 `@kontourai/station-shared` still re-exports many of these types so older code can compile during convergence. That is a compatibility layer, not the canonical ownership model. New code should import the owning `@kontourai/station-contracts/*` module directly.
 
 Server-only provider interfaces now live directly in `src-server/providers/provider-interfaces.ts`, `src-server/providers/provider-contracts.ts`, and `src-server/providers/llm/model-provider-types.ts`. The old `src-server/providers/types.ts` barrel was removed during convergence.

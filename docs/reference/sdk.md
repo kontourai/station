@@ -2190,6 +2190,20 @@ not a safe automatic-retry signal. Unsupported review adapters return an
 explicit unavailable result. Diff bytes and discussion are bounded and may be
 partial; the response says which content could not be supplied.
 
+## Conversation pull-request links
+
+`@kontourai/station-sdk/conversation-pull-request-links` reads, links, and
+unlinks exact pull-request identities for one Conversation. Each call requires
+the selected Station API base and captured `requestScope`. A link is persisted
+only after the provider resolves the exact provider, host, repository owner,
+repository name, and native ref under current authorization.
+
+Reads refresh every identity and return `observedAt` plus current,
+unsupported, or unavailable state. Clients should mark an old cached
+observation stale and require refresh before review or other actions. Explicit
+unlink changes only the Conversation association; it never changes the pull
+request or deletes Task-kept provenance.
+
 ## Files in answers to input requests
 
 `getInputReplyContext(apiBase, reference, options)` from

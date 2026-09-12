@@ -22,10 +22,17 @@ import { latestTurnOutputText } from '../../utils/sessionFinalOutput';
 import { Button } from '../Button';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
 import { WorkflowStatusLineList } from '../flow/WorkflowStatusLine';
+import { LazyBoundary } from '../LazyBoundary';
+import { SkeletonBlock } from '../state';
 import { SessionDetailAttention } from './SessionDetailAttention';
 import { SessionDetailDiagnostics } from './SessionDetailDiagnostics';
 import { SessionDetailErrors } from './SessionDetailErrors';
 import { SessionDetailHeader } from './SessionDetailHeader';
+
+const loadConversationPullRequestLinks = () =>
+  import('../pull-requests/ConversationPullRequestLinks').then((module) => ({
+    default: module.ConversationPullRequestLinks,
+  }));
 
 /**
  * One-shot route intent: land the reader on this session's evidence.
@@ -187,6 +194,13 @@ export function MutableSessionDetail({
           section that grew (error stacks, multiple attention cards, the
           context grid) was clipped with no way to reach it. */}
       <div className="sessions-detail__scroll">
+        <LazyBoundary
+          load={loadConversationPullRequestLinks}
+          componentProps={{ conversationId: threadId }}
+          pending={
+            <SkeletonBlock label="Reading linked pull requests" count={1} />
+          }
+        />
         <SessionDetailErrors
           failureText={failureText}
           stopTaskError={stopTask.error}
