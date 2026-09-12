@@ -265,6 +265,12 @@ _Avoid_: error if the session can resume
 A scoped workspace where Station associates files, layouts, agents, knowledge, runs, and receipts.
 _Avoid_: repo when the workspace may not be only a Git repository
 
+**Project home**:
+The descriptive authority/location role for a shared Project control record or
+room. It is distinct from the Home screen, plugin roles, `STATION_HOME`, and a
+local project directory or binding. See [Station topology](docs/design/station-topology.md).
+_Avoid_: `projectHomeDir` when referring to authority rather than a path
+
 **Working directory**:
 The filesystem location a project uses for file-backed work. It is project state, not necessarily the whole Station home.
 _Avoid_: project if referring only to a path
@@ -676,6 +682,8 @@ An MCP integration exposes tools or resources; an MCP-UI panel is rendered conte
 
 - Station consumes Kontour primitives through published contracts only.
 - A Project has zero or more Layouts and can scope which Agents are available.
+- A Project's portable identity, local binding, room authority, and execution
+  offer are separate facts; no role label grants the others.
 - A Project has zero or more durable Tasks; a Task may correlate exact Sessions, runs, artifacts, and receipts without becoming any of them.
 - A Task workspace binding is revalidated when opened. `ambiguous` and `unavailable` bindings remain visible as identity history but cannot authorize local inspection.
 - A Layout contains Layout tabs; each tab hosts a plugin component, built-in layout surface, or MCP-UI panel.
