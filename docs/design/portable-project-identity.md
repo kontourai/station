@@ -738,6 +738,33 @@ layer carries the value.
 
 ### 3.5 The binding store
 
+**Explicit identity attachment (#483).** The initial identity API separates
+`ProjectConfig.id` from the portable sidecar ID. `GET /api/projects/:slug/identity`
+returns a closed `ProjectPortableIdentity` snapshot and an explicit local
+association without writing. `POST /api/projects/:slug/identity/prepare` derives
+a missing identity under the current Project revision; it never reassigns an
+existing identity. `POST /api/projects/attach` creates a new local Project with
+the supplied portable identity and an optional verified local working directory.
+The local slug is explicit. An unchanged existing attachment is returned on
+retry; a different identity or configuration at that slug is a conflict.
+
+The filesystem adapter stages `project.json` and `manifest.json` outside the
+visible Project catalog and publishes their directory under the existing Project
+mutation lock. A failure before publication exposes neither record; a known
+post-publication failure does not turn the applied creation into a new create.
+Adapters without this atomic creation capability refuse attachment before
+creating an ordinary Project. An occupied directory is preserved.
+
+The snapshot has a closed field set and uses the existing manifest/resource
+validator. It carries no local path, account, membership, credential or home
+authority. The SDK also validates the receiving association and retains the
+original request through asynchronous work. The API does not merge same-remote
+Projects, import private history, select among multiple local realizations,
+clone files or authorize execution. Receiver admission, resource-relative
+execution roots, home location, membership and the integrated target picker
+retain their separate implementation and acceptance boundaries. See the
+[SDK identity API](../reference/sdk.md#portable-project-identity).
+
 Per Station, per member. In today's single-tenant Station the member is
 implicit; the shape reserves the slot so #1392 does not have to reshape it.
 

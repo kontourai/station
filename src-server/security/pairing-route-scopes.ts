@@ -2251,6 +2251,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/orchestration/sessions/read-model' },
     { method: 'GET', path: '/api/projects' },
     { method: 'POST', path: '/api/projects' },
+    // Portable identity reads do not mutate; preparation and attachment retain
+    // the Project family's operate scope and grant no peer/member authority.
+    { method: 'GET', path: '/api/projects/:slug/identity' },
+    { method: 'POST', path: '/api/projects/:slug/identity/prepare' },
+    { method: 'POST', path: '/api/projects/attach' },
     // Reorders this Station's own project list and returns it. A mutation
     // within its family and no more sensitive than the rest of it: it reads
     // and writes nothing beyond the local ordering, and discloses no peer or

@@ -117,6 +117,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Creates and observes real Git checkouts through the portable identity owner.
+  'src-server/services/projects/__tests__/project-identity-service.test.ts',
   // Real HTTP requests in isolated children exercise fatal socket-option faults.
   'packages/shared/src/__tests__/node-http-compat.test.ts',
   // Launches Chromium to reject prompt-only evidence in the composer helper.

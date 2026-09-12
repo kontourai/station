@@ -75,6 +75,8 @@ export interface ProjectFileTransactionFaults {
   afterLockAcquired?: (projectSlug: string) => Promise<void> | void;
   afterPublish?: (path: string) => void;
   afterRemoveCommit?: (path: string) => void;
+  afterProjectCreatePrepared?: (projectSlug: string) => Promise<void> | void;
+  afterProjectCreateCommit?: (path: string) => void;
 }
 
 type Parser<T> = (value: unknown) => T;
@@ -183,6 +185,65 @@ export class ProjectFileTransactions {
         );
       }
       await this.#publish(path, value);
+    });
+  }
+
+  /** Publish the complete initial Project outside the catalog, then rename once. */
+  async createProjectWithManifest(
+    projectSlug: string,
+    value: unknown,
+    manifest: unknown,
+  ): Promise<void> {
+    const projectValue = structuredClone(value);
+    const manifestValue = structuredClone(manifest);
+    const destination = this.projectDirectory(projectSlug);
+    await this.#withProjectLock(projectSlug, async () => {
+      if (existsSync(destination)) {
+        throw new FileStorageAlreadyExistsError(
+          `Project '${projectSlug}' already exists`,
+          projectSlug,
+        );
+      }
+      const staging = join(
+        this.#coordinationRoot,
+        `initial-project-${randomUUID()}`,
+      );
+      await mkdir(staging, { mode: 0o700 });
+      let published = false;
+      try {
+        await this.#publish(join(staging, 'project.json'), projectValue);
+        await this.#publish(join(staging, 'manifest.json'), manifestValue);
+        fsyncDirectorySync(staging);
+        await this.faults.afterProjectCreatePrepared?.(projectSlug);
+        await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
+        await rename(staging, destination);
+        published = true;
+        fsyncDirectorySync(dirname(destination));
+        fsyncDirectorySync(this.#coordinationRoot);
+        this.faults.afterProjectCreateCommit?.(destination);
+      } catch (error) {
+        // A post-rename error cannot make a committed create look safe to replay.
+        const projectBytes = JSON.stringify(projectValue, null, 2);
+        const manifestBytes = JSON.stringify(manifestValue, null, 2);
+        try {
+          if (
+            readFileSync(join(destination, 'project.json'), 'utf8') ===
+              projectBytes &&
+            readFileSync(join(destination, 'manifest.json'), 'utf8') ===
+              manifestBytes
+          ) {
+            published = true;
+            return;
+          }
+        } catch {}
+        if (isStorageOutcomeError(error)) throw error;
+        throw new FileStorageUnavailableError(
+          'Project identity publication is unavailable',
+          error,
+        );
+      } finally {
+        if (!published) await rm(staging, { recursive: true, force: true });
+      }
     });
   }
 

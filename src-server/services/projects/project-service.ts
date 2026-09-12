@@ -5,6 +5,9 @@ import type {
   ProjectConfig,
   ProjectMetadata,
 } from '@kontourai/station-contracts/project';
+import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
+import { FileStorageUnavailableError } from '../../domain/project-file-transactions.js';
+import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import {
   projectManifestBackfills,
@@ -213,7 +216,18 @@ export class ProjectService {
 
   async createProject(
     config: Omit<ProjectConfig, 'id' | 'createdAt' | 'updatedAt'>,
+    options?: { identity: ProjectPortableIdentity },
   ): Promise<ProjectConfig> {
+    const identity = options
+      ? parseProjectPortableIdentity(options.identity)
+      : undefined;
+    const createWithIdentity =
+      this.storageAdapter.createProjectWithIdentity?.bind(this.storageAdapter);
+    if (identity && !createWithIdentity) {
+      throw new FileStorageUnavailableError(
+        'This storage adapter cannot atomically attach a portable Project.',
+      );
+    }
     // Derive name from working directory basename if not provided
     let name = config.name;
     if ((!name || name === 'Untitled') && config.workingDirectory) {
@@ -256,7 +270,9 @@ export class ProjectService {
     if (project.defaultEnvironment?.kind === 'current') {
       delete project.defaultEnvironment;
     }
-    await this.storageAdapter.createProject(project);
+    if (identity && createWithIdentity)
+      await createWithIdentity(project, identity);
+    else await this.storageAdapter.createProject(project);
     // The manifest is derived from the project record that was just written,
     // so it is created AFTER the project exists on disk. `ensureProjectManifest`
     // is an exclusive create: if something else got there first, the winner's
@@ -273,7 +289,7 @@ export class ProjectService {
     // the same. The binding store's `onCorruption: 'throw'` is right and stays:
     // a silently-empty read there would turn every bound resource into
     // `unbound`.
-    if (this.manifests) {
+    if (this.manifests && !identity) {
       try {
         await this.manifests.ensureProjectManifest(project);
       } catch (error) {
