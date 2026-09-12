@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, expect, test } from 'vitest';
 import { evaluateCodeHealthAudit } from '../code-health-gate.mjs';
@@ -76,7 +76,19 @@ function fixture() {
         encoding: 'utf8',
         windowsHide: true,
         timeout: 30_000,
-        env: { ...sanitizedGitEnvironment(), GITHUB_STEP_SUMMARY: '' },
+        env: {
+          ...sanitizedGitEnvironment(),
+          GITHUB_STEP_SUMMARY: '',
+          // Direct CLI use must resolve the pinned analyzer, even outside
+          // npm's injected PATH and without a globally installed fallow.
+          PATH: (process.env.PATH ?? '')
+            .split(delimiter)
+            .filter(
+              (path) =>
+                !path.replaceAll('\\', '/').endsWith('/node_modules/.bin'),
+            )
+            .join(delimiter),
+        },
       },
     );
     expect(result.error).toBeUndefined();

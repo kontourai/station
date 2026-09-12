@@ -76,8 +76,9 @@ export function fallowCommands(scope) {
 
 export async function runFallowAnalysis(root, command, outputFile, args = []) {
   const execution = executeOwnedCommand(
-    'fallow',
+    process.execPath,
     [
+      fileURLToPath(import.meta.resolve('fallow/bin/fallow')),
       command,
       '--threads',
       '2',
@@ -125,7 +126,7 @@ export async function runFallowAnalysis(root, command, outputFile, args = []) {
       output.truncated
     )
       throw new Error(
-        `Fallow ${command} did not complete: ${output.stderr.text}`,
+        `Fallow ${command} did not complete: ${result.error?.message ?? output.stderr.text}`,
       );
     if (statSync(outputFile).size > 32 * 1024 * 1024)
       throw new Error('Fallow report exceeds the 32 MiB read budget');
