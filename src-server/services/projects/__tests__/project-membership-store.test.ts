@@ -13,6 +13,7 @@ const outsider = humanPrincipal('deployment', 'outsider-subject', 'Outsider');
 const scope: ProjectMembershipScope = {
   stationId: 'station-one',
   localProjectId: 'local-one',
+  localProjectSlug: 'example',
   portableProjectId: 'prj_shared',
 };
 const databases: DatabaseSync[] = [];

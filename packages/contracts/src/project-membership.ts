@@ -27,6 +27,7 @@ export type ProjectMemberRole = keyof typeof PROJECT_MEMBER_ROLES;
 export interface ProjectMembershipScope {
   stationId: string;
   localProjectId: string;
+  localProjectSlug: string;
   portableProjectId: string;
 }
 

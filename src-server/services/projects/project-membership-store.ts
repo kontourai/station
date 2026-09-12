@@ -86,7 +86,7 @@ export class ProjectMembershipStore {
         return;
       }
       db.exec(`CREATE TABLE project_access_authority (singleton INTEGER PRIMARY KEY CHECK(singleton=1), station_id TEXT NOT NULL, version TEXT NOT NULL) STRICT;
-        CREATE TABLE shared_projects (local_id TEXT PRIMARY KEY, portable_id TEXT NOT NULL) STRICT;
+        CREATE TABLE shared_projects (local_id TEXT PRIMARY KEY, portable_id TEXT NOT NULL, local_slug TEXT NOT NULL UNIQUE) STRICT;
         CREATE TABLE project_members (project_id TEXT NOT NULL REFERENCES shared_projects(local_id), principal_id TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(project_id, principal_id)) STRICT;
         CREATE TABLE project_invitations (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES shared_projects(local_id), token_hash TEXT NOT NULL UNIQUE, record TEXT NOT NULL) STRICT;`);
       db.prepare('INSERT INTO project_access_authority VALUES (1, ?, ?)').run(
@@ -103,7 +103,9 @@ export class ProjectMembershipStore {
       throw new ProjectMembershipRefusal('forbidden');
     this.transaction(() => {
       const existing = this.db
-        .prepare('SELECT portable_id FROM shared_projects WHERE local_id=?')
+        .prepare(
+          'SELECT portable_id, local_slug FROM shared_projects WHERE local_id=?',
+        )
         .get(scope.localProjectId);
       if (existing) {
         this.assertScope(scope);
@@ -111,8 +113,12 @@ export class ProjectMembershipStore {
         return;
       }
       this.db
-        .prepare('INSERT INTO shared_projects VALUES (?, ?)')
-        .run(scope.localProjectId, scope.portableProjectId);
+        .prepare('INSERT INTO shared_projects VALUES (?, ?, ?)')
+        .run(
+          scope.localProjectId,
+          scope.portableProjectId,
+          scope.localProjectSlug,
+        );
       this.putMember(scope, owner, 'owner', 'active', owner);
     });
   }
@@ -212,6 +218,38 @@ export class ProjectMembershipStore {
         );
       return { invitation: this.invitationView(invitation), token };
     });
+  }
+
+  scopeForMember(
+    slug: string,
+    actor: PrincipalRef,
+    action: ProjectMemberAction,
+  ): ProjectMembershipScope {
+    const row = this.db
+      .prepare(
+        'SELECT local_id, portable_id FROM shared_projects WHERE local_slug=?',
+      )
+      .get(slug);
+    if (
+      !row ||
+      typeof row.local_id !== 'string' ||
+      typeof row.portable_id !== 'string'
+    )
+      throw new ProjectMembershipRefusal('forbidden');
+    const scope = {
+      stationId: this.stationId,
+      localProjectId: row.local_id,
+      portableProjectId: row.portable_id,
+      localProjectSlug: slug,
+    };
+    this.require(scope, actor, action);
+    return scope;
+  }
+
+  invitationScope(token: string): ProjectMembershipScope {
+    const { scope, invitation } = this.pendingInvitation(token);
+    this.requireGrant(scope, invitation.invitedBy, invitation.role);
+    return scope;
   }
 
   /** Eligibility for account enrollment; does not consume the invitation or grant membership. */
@@ -361,13 +399,14 @@ export class ProjectMembershipStore {
       throw new ProjectMembershipRefusal('invitation_invalid');
     const row = this.db
       .prepare(
-        'SELECT i.record, p.local_id, p.portable_id FROM project_invitations i JOIN shared_projects p ON p.local_id=i.project_id WHERE token_hash=?',
+        'SELECT i.record, p.local_id, p.portable_id, p.local_slug FROM project_invitations i JOIN shared_projects p ON p.local_id=i.project_id WHERE token_hash=?',
       )
       .get(digest(token));
     if (
       !row ||
       typeof row.local_id !== 'string' ||
-      typeof row.portable_id !== 'string'
+      typeof row.portable_id !== 'string' ||
+      typeof row.local_slug !== 'string'
     )
       throw new ProjectMembershipRefusal('invitation_invalid');
     const invitation = this.parseInvitation(row.record);
@@ -380,6 +419,7 @@ export class ProjectMembershipStore {
       scope: {
         stationId: this.stationId,
         localProjectId: row.local_id,
+        localProjectSlug: row.local_slug,
         portableProjectId: row.portable_id,
       },
       invitation,
@@ -463,6 +503,7 @@ export class ProjectMembershipStore {
     if (
       scope.stationId !== this.stationId ||
       !scope.localProjectId.trim() ||
+      !scope.localProjectSlug.trim() ||
       !scope.portableProjectId.trim()
     )
       throw new ProjectMembershipRefusal('forbidden');
@@ -470,9 +511,14 @@ export class ProjectMembershipStore {
   private assertScope(scope: ProjectMembershipScope): void {
     this.assertScopeStation(scope);
     const row = this.db
-      .prepare('SELECT portable_id FROM shared_projects WHERE local_id=?')
+      .prepare(
+        'SELECT portable_id, local_slug FROM shared_projects WHERE local_id=?',
+      )
       .get(scope.localProjectId);
-    if (row?.portable_id !== scope.portableProjectId)
+    if (
+      row?.portable_id !== scope.portableProjectId ||
+      row?.local_slug !== scope.localProjectSlug
+    )
       throw new ProjectMembershipRefusal('forbidden');
   }
   private transaction<T>(operation: () => T): T {
