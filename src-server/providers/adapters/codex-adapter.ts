@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import {
   engineConnectionId,
@@ -13,6 +15,7 @@ import { mergeQuotaSnapshot } from '@kontourai/station-contracts/connection-quot
 import type {
   CapabilityDeliveryChannelReport,
   CapabilityUndelivered,
+  ProviderSessionSourceAffinity,
 } from '@kontourai/station-contracts/provider';
 import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -44,6 +47,7 @@ import {
   type ProviderAdapterShape,
   type ProviderAdoptionHooks,
   type ProviderDiscardSessionRecovery,
+  type ProviderNativeSessionIdentity,
   type ProviderSendTurnInput,
   type ProviderSession,
   type ProviderSessionAdoptInput,
@@ -60,8 +64,16 @@ import {
   decodeChatAttachments,
   rejectFileAttachments,
 } from '../sessions/chat-attachments.js';
+import {
+  isSessionSourceAffinity,
+  snapshotSessionSourceAffinity,
+} from '../sessions/session-source-affinity.js';
+import { readLeadingLine } from '../sessions/transcript-file-io.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
 import {
+  codexResumeCursor,
+  endsAtCompletedCodexTurn,
+  extractForkedThread,
   extractStringField,
   extractThread,
   extractTurn,
@@ -87,6 +99,9 @@ import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 
 type CodexAdapterLogger = Pick<Logger, 'warn'>;
+type CodexExecutionKnobs = NonNullable<
+  ReturnType<typeof resolveCodexExecutionKnobs>
+>;
 
 interface CodexAdapterOptions {
   processFactory?: (
@@ -105,6 +120,10 @@ interface CodexAdapterOptions {
   getAppHomeEnv?: (
     credentialProfileRef?: string,
   ) => Promise<Record<string, string> | undefined>;
+  /** Resolve only a source-owned affinity registered by runtime composition. */
+  resolveSourceHome?: (
+    affinity: ProviderSessionSourceAffinity,
+  ) => string | null;
   /**
    * archive#1195: mints a per-session, short-lived, station-control-scoped
    * bearer token and returns the full station-control HTTP/SSE MCP endpoint
@@ -130,6 +149,12 @@ interface CodexAdapterOptions {
   /** Test-only cache controls; production cache is 30 seconds and 64 entries. */
   quotaCacheTtlMs?: number;
   quotaCacheMaxEntries?: number;
+}
+
+interface CodexNativeAdoption {
+  input: ProviderSessionAdoptInput;
+  hooks: ProviderAdoptionHooks;
+  marker: string;
 }
 
 function mapReasoningEffort(options?: CodexModelOptions): string | null {
@@ -229,6 +254,26 @@ const CODEX_QUOTA_TIMEOUT_MS = 5_000;
 /** Pull reads are short-lived so logout/profile changes cannot be masked. */
 const CODEX_QUOTA_CACHE_TTL_MS = 30 * 1000;
 const CODEX_QUOTA_CACHE_MAX_ENTRIES = 64;
+const CODEX_ADOPTION_REQUEST_TIMEOUT_MS = 15_000;
+const CODEX_ADOPTION_LIST_PAGE_LIMIT = 100;
+const CODEX_ADOPTION_LIST_MAX_PAGES = 8;
+const CODEX_ADOPTION_READ_MAX_CANDIDATES = 32;
+const CODEX_ADOPTION_RECONCILIATION_TIMEOUT_MS = 30_000;
+const CODEX_ADOPTION_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const CODEX_ADOPTION_MAX_FORK_TURNS = 10_000;
+const CODEX_ADOPTION_ROLLOUT_HEADER_BYTES = 128 * 1024;
+const CODEX_THREAD_SOURCE_KINDS = [
+  'cli',
+  'vscode',
+  'exec',
+  'appServer',
+  'subAgent',
+  'subAgentReview',
+  'subAgentCompact',
+  'subAgentThreadSpawn',
+  'subAgentOther',
+  'unknown',
+] as const;
 
 function quotaCacheIdentity(options: {
   connectionId: string;
@@ -262,6 +307,135 @@ function record(value: unknown): Record<string, unknown> | null {
 
 function string(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function boundedIdentifier(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value === value.trim() &&
+    Buffer.byteLength(value) <= 512 &&
+    !Array.from(value).some((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+    })
+  );
+}
+
+function nativeUuid(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      value,
+    )
+  );
+}
+
+function boundedFilesystemPath(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    Buffer.byteLength(value) <= 4096 &&
+    !Array.from(value).some((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code === 0 || (code >= 0x7f && code <= 0x9f);
+    })
+  );
+}
+
+function boundedRemainingTime(deadline: number): number {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) {
+    throw new Error('Codex cleanup reconciliation exceeded its deadline.');
+  }
+  return Math.min(5_000, remaining);
+}
+
+function timestampMillis(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return value * 1_000;
+  }
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function readCodexAdoptionRolloutHeader(
+  sourceHome: string,
+  candidatePath: string,
+): { id: string; forkedFromId: string; threadSource: string } | null {
+  try {
+    if (!isAbsolute(candidatePath) || !candidatePath.endsWith('.jsonl')) {
+      return null;
+    }
+    const sessionsPath = join(sourceHome, 'sessions');
+    if (!existsSync(sessionsPath)) return null;
+    const sessionsStat = lstatSync(sessionsPath);
+    if (!sessionsStat.isDirectory() || sessionsStat.isSymbolicLink()) {
+      return null;
+    }
+    const sessionsRoot = realpathSync(sessionsPath);
+    const candidateStat = lstatSync(candidatePath);
+    if (!candidateStat.isFile() || candidateStat.isSymbolicLink()) return null;
+    const canonicalCandidate = realpathSync(candidatePath);
+    const relativePath = relative(sessionsRoot, canonicalCandidate);
+    if (
+      !relativePath ||
+      relativePath === '..' ||
+      relativePath.startsWith(`..${sep}`) ||
+      isAbsolute(relativePath)
+    ) {
+      return null;
+    }
+    const first = readLeadingLine(
+      canonicalCandidate,
+      CODEX_ADOPTION_ROLLOUT_HEADER_BYTES,
+    );
+    if (!first) return null;
+    const envelope = record(JSON.parse(first));
+    const payload = record(envelope?.payload);
+    if (envelope?.type !== 'session_meta') return null;
+    const id = string(payload?.id);
+    const forkedFromId = string(payload?.forked_from_id);
+    const threadSource = string(payload?.thread_source);
+    return id && forkedFromId && threadSource
+      ? { id, forkedFromId, threadSource }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function validateCodexForkExecution(
+  result: unknown,
+  expectedCwd: string | undefined,
+  expectedKnobs?: CodexExecutionKnobs,
+): void {
+  const response = record(result);
+  const sandbox = record(response?.sandbox);
+  const expectedSandboxType = expectedKnobs
+    ? {
+        'danger-full-access': 'dangerFullAccess',
+        'read-only': 'readOnly',
+        'workspace-write': 'workspaceWrite',
+      }[expectedKnobs.sandbox]
+    : undefined;
+  if (
+    !response ||
+    typeof expectedCwd !== 'string' ||
+    response.cwd !== expectedCwd ||
+    !boundedIdentifier(response.approvalPolicy) ||
+    !boundedIdentifier(sandbox?.type) ||
+    (expectedKnobs !== undefined &&
+      (response.approvalPolicy !== expectedKnobs.approvalPolicy ||
+        sandbox.type !== expectedSandboxType))
+  ) {
+    throw new Error(
+      'Codex fork response did not confirm the requested workspace and execution policy.',
+    );
+  }
 }
 
 function number(value: unknown): number | undefined {
@@ -443,6 +617,7 @@ export function projectCodexQuotaSnapshot(
 }
 
 export class CodexAdapter implements ProviderAdapterShape {
+  readonly adoptionLifecycle = 'reported' as const;
   readonly provider = 'codex' as const;
   readonly metadata = {
     displayName: 'Codex',
@@ -478,6 +653,22 @@ export class CodexAdapter implements ProviderAdapterShape {
       overridePerTurn: true,
     },
   } as const;
+
+  nativeSessionIdentity(
+    resumeCursor: unknown,
+  ): ProviderNativeSessionIdentity | undefined {
+    if (!isResumeCursor(resumeCursor)) return undefined;
+    return {
+      sessionId: resumeCursor.codexThreadId,
+      ...(resumeCursor.sourceAffinity
+        ? {
+            affinity: snapshotSessionSourceAffinity(
+              resumeCursor.sourceAffinity,
+            ),
+          }
+        : {}),
+    };
+  }
 
   private readonly transport: CodexAdapterTransport;
   private readonly processFactory: (
@@ -1060,19 +1251,16 @@ export class CodexAdapter implements ProviderAdapterShape {
     input: ProviderSessionAdoptInput,
     hooks?: ProviderAdoptionHooks,
   ): Promise<ProviderSession> {
-    if (input.sourceKind !== 'codex-rollout')
-      throw new Error('Codex can only continue a discovered Codex rollout.');
-    // Discovered rollouts belong to the global Codex configuration. Do not
-    // silently point their thread IDs at an unrelated credential profile.
+    const adoption = this.validateNativeAdoption(input, hooks);
     return this.startWithReservation(
-      { ...input, credentialProfileRef: undefined },
-      { sourceId: input.sourceSessionId, hooks },
+      { ...input, credentialProfileRef: undefined, resumeCursor: undefined },
+      adoption,
     );
   }
 
   private async startWithReservation(
     input: ProviderSessionStartInput,
-    adoption?: { sourceId: string; hooks?: ProviderAdoptionHooks },
+    adoption?: CodexNativeAdoption,
   ): Promise<ProviderSession> {
     if (
       this.transport.hasSession(input.threadId) ||
@@ -1088,15 +1276,363 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
   }
 
+  async discardSession(
+    threadId: string,
+    recovery?: ProviderDiscardSessionRecovery,
+  ): Promise<void> {
+    const source = this.validateDiscardRecovery(threadId, recovery);
+    const cursor = isResumeCursor(recovery?.resumeCursor)
+      ? recovery.resumeCursor
+      : undefined;
+    if (
+      record(recovery?.resumeCursor)?.codexThreadId !== undefined &&
+      !cursor
+    ) {
+      throw new Error('Codex cleanup cursor is invalid.');
+    }
+    const live = this.transport.getSession(threadId);
+    const liveCursor = isResumeCursor(live?.session.resumeCursor)
+      ? live.session.resumeCursor
+      : undefined;
+    for (const cursorAffinity of [
+      cursor?.sourceAffinity,
+      liveCursor?.sourceAffinity,
+    ]) {
+      if (
+        cursorAffinity &&
+        (cursorAffinity.kind !== source.affinity.kind ||
+          cursorAffinity.ref !== source.affinity.ref)
+      ) {
+        throw new Error('Codex cleanup cursor belongs to another source home.');
+      }
+    }
+    if (
+      cursor &&
+      liveCursor &&
+      cursor.codexThreadId !== liveCursor.codexThreadId
+    ) {
+      throw new Error('Codex cleanup cursors identify different children.');
+    }
+    const nativeChildId = cursor?.codexThreadId ?? liveCursor?.codexThreadId;
+    if (nativeChildId) {
+      if (
+        !nativeUuid(nativeChildId) ||
+        nativeChildId === source.sourceSessionId
+      ) {
+        throw new Error('Codex cleanup refused to delete the source thread.');
+      }
+      if (live) {
+        if (live.codexThreadId && live.codexThreadId !== nativeChildId) {
+          throw new Error(
+            'Codex cleanup cursor does not match the live child.',
+          );
+        }
+        try {
+          await this.boundedProviderRequest(
+            this.transport,
+            live,
+            'thread/delete',
+            { threadId: nativeChildId },
+          );
+        } finally {
+          await this.transport.stopSession(threadId, () =>
+            this.now().toISOString(),
+          );
+        }
+        return;
+      }
+      await this.withSourceHomeMaintenance(source.affinity, async (client) => {
+        await this.boundedProviderRequest(
+          client.transport,
+          client.record,
+          'thread/delete',
+          { threadId: nativeChildId },
+        );
+      });
+      return;
+    }
+
+    // A timed-out fork can still finish in its old process. Terminate that
+    // process before observing the durable home; never send a second fork.
+    if (live) {
+      await this.transport.stopSession(threadId, () =>
+        this.now().toISOString(),
+      );
+    }
+    await this.withSourceHomeMaintenance(source.affinity, async (client) => {
+      const childId = await this.findAdoptionChildForCleanup(
+        client.transport,
+        client.record,
+        source.sourceSessionId,
+        source.marker,
+        source.cwd,
+        source.createdAtMs,
+        client.sourceHome,
+      );
+      await this.boundedProviderRequest(
+        client.transport,
+        client.record,
+        'thread/delete',
+        { threadId: childId },
+      );
+    });
+  }
+
+  private validateDiscardRecovery(
+    threadId: string,
+    recovery: ProviderDiscardSessionRecovery | undefined,
+  ): {
+    affinity: ProviderSessionSourceAffinity;
+    sourceSessionId: string;
+    marker: string;
+    cwd: string;
+    createdAtMs: number;
+  } {
+    if (
+      recovery?.sourceKind !== 'codex-rollout' ||
+      !recovery.sourceAffinity ||
+      recovery.sourceAffinity.kind !== 'codex-config-home' ||
+      !isSessionSourceAffinity(recovery.sourceAffinity) ||
+      !nativeUuid(recovery.sourceSessionId) ||
+      !boundedIdentifier(recovery.adoptionKey) ||
+      !boundedFilesystemPath(recovery.cwd) ||
+      !Number.isFinite(Date.parse(recovery.createdAt ?? '')) ||
+      recovery.adoptionKey !== threadId ||
+      !this.options.resolveSourceHome
+    ) {
+      throw new Error('Codex cleanup source binding is unavailable.');
+    }
+    return {
+      affinity: snapshotSessionSourceAffinity(recovery.sourceAffinity),
+      sourceSessionId: recovery.sourceSessionId,
+      marker: `station-adoption:${threadId}`,
+      cwd: recovery.cwd,
+      createdAtMs: Date.parse(recovery.createdAt!),
+    };
+  }
+
+  private async withSourceHomeMaintenance<T>(
+    affinity: ProviderSessionSourceAffinity,
+    operation: (client: {
+      transport: CodexAdapterTransport;
+      record: CodexSessionRecord;
+      sourceHome: string;
+    }) => Promise<T>,
+  ): Promise<T> {
+    const sourceHome = this.options.resolveSourceHome?.(affinity);
+    if (!boundedFilesystemPath(sourceHome) || !isAbsolute(sourceHome)) {
+      throw new Error('Codex source-home affinity is no longer available.');
+    }
+    const transport = new CodexAdapterTransport(this.now);
+    const externalThreadId = `codex-maintenance:${crypto.randomUUID()}`;
+    const record = createCodexSessionRecord({
+      externalThreadId,
+      process: this.processFactory({ CODEX_HOME: sourceHome }),
+      provider: this.provider,
+      threadId: externalThreadId,
+      model: '',
+      nowIso: () => this.now().toISOString(),
+    });
+    transport.setStdoutIngressLimit(record, CODEX_ADOPTION_MAX_RESPONSE_BYTES);
+    transport.registerSession(record);
+    transport.handleProcess(record);
+    try {
+      await this.boundedProviderRequest(transport, record, 'initialize', {
+        clientInfo: {
+          name: 'station',
+          title: 'Station',
+          version: '0.1.0',
+        },
+        capabilities: { experimentalApi: false },
+      });
+      transport.sendNotification(record, 'initialized');
+      return await operation({ transport, record, sourceHome });
+    } finally {
+      await transport.stopSession(externalThreadId, () =>
+        this.now().toISOString(),
+      );
+    }
+  }
+
+  private async findAdoptionChildForCleanup(
+    transport: CodexAdapterTransport,
+    sessionRecord: CodexSessionRecord,
+    sourceSessionId: string,
+    marker: string,
+    cwd: string,
+    createdAtMs: number,
+    sourceHome: string,
+  ): Promise<string> {
+    const deadline = Date.now() + CODEX_ADOPTION_RECONCILIATION_TIMEOUT_MS;
+    const candidates: Array<{ id: string; path: string }> = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | null = null;
+    let exhausted = false;
+    for (let page = 0; page < CODEX_ADOPTION_LIST_MAX_PAGES; page += 1) {
+      const result: { data?: unknown; nextCursor?: unknown } =
+        await this.boundedProviderRequest(
+          transport,
+          sessionRecord,
+          'thread/list',
+          {
+            cursor,
+            limit: CODEX_ADOPTION_LIST_PAGE_LIMIT,
+            sourceKinds: CODEX_THREAD_SOURCE_KINDS,
+          },
+          boundedRemainingTime(deadline),
+        );
+      if (!Array.isArray(result?.data)) {
+        throw new Error('Codex cleanup inventory response is invalid.');
+      }
+      for (const candidate of result.data) {
+        const candidateRecord = record(candidate);
+        const id = string(candidateRecord?.id);
+        const path = string(candidateRecord?.path);
+        const candidateCreatedAt = timestampMillis(candidateRecord?.createdAt);
+        if (
+          !nativeUuid(id) ||
+          !boundedFilesystemPath(path) ||
+          id === sourceSessionId ||
+          candidates.some((existing) => existing.id === id) ||
+          candidateRecord?.cwd !== cwd ||
+          candidateCreatedAt === undefined ||
+          candidateCreatedAt < createdAtMs - 1_000
+        ) {
+          continue;
+        }
+        candidates.push({ id, path });
+        if (candidates.length > CODEX_ADOPTION_READ_MAX_CANDIDATES) {
+          throw new Error(
+            'Codex cleanup inventory exceeded its candidate limit.',
+          );
+        }
+      }
+      const nextCursor: unknown = result.nextCursor;
+      if (nextCursor === null || nextCursor === undefined) {
+        exhausted = true;
+        break;
+      }
+      if (
+        typeof nextCursor !== 'string' ||
+        !nextCursor ||
+        Buffer.byteLength(nextCursor) > 4096 ||
+        seenCursors.has(nextCursor)
+      ) {
+        throw new Error('Codex cleanup inventory cursor is invalid.');
+      }
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    }
+    if (!exhausted) {
+      throw new Error('Codex cleanup inventory was truncated.');
+    }
+
+    const matches: string[] = [];
+    for (const [index, candidate] of candidates.entries()) {
+      if (index > 0 && index % 8 === 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      boundedRemainingTime(deadline);
+      const thread = readCodexAdoptionRolloutHeader(sourceHome, candidate.path);
+      if (
+        thread?.id === candidate.id &&
+        thread.threadSource === marker &&
+        thread.forkedFromId === sourceSessionId
+      ) {
+        matches.push(candidate.id);
+        if (matches.length > 1) break;
+      }
+    }
+    if (matches.length !== 1) {
+      throw new Error(
+        matches.length === 0
+          ? 'Codex cleanup could not prove whether the fork created a child.'
+          : 'Codex cleanup found more than one matching child.',
+      );
+    }
+    return matches[0]!;
+  }
+
+  private validateNativeAdoption(
+    input: ProviderSessionAdoptInput,
+    hooks: ProviderAdoptionHooks | undefined,
+  ): CodexNativeAdoption {
+    if (input.sourceKind !== 'codex-rollout') {
+      throw new Error('Codex can only continue a discovered Codex rollout.');
+    }
+    if (
+      !input.sourceAffinity ||
+      !isSessionSourceAffinity(input.sourceAffinity) ||
+      input.sourceAffinity.kind !== 'codex-config-home' ||
+      !this.options.resolveSourceHome
+    ) {
+      throw new Error('Codex source-home affinity is unavailable.');
+    }
+    if (
+      input.sourceBoundary?.kind !== 'completed-turn' ||
+      !boundedIdentifier(input.sourceBoundary.providerTurnId) ||
+      !boundedIdentifier(input.sourceBoundary.observedEventId)
+    ) {
+      throw new Error('Codex continuation requires a completed native turn.');
+    }
+    if (
+      !nativeUuid(input.sourceSessionId) ||
+      !boundedIdentifier(input.threadId) ||
+      !boundedFilesystemPath(input.cwd) ||
+      input.sourceSessionId === input.threadId
+    ) {
+      throw new Error('Codex continuation source identity is invalid.');
+    }
+    if (!hooks?.onProviderChildCreationStarted) {
+      throw new Error('Codex adoption lifecycle reporting is unavailable.');
+    }
+    return {
+      input: {
+        ...input,
+        sourceAffinity: snapshotSessionSourceAffinity(input.sourceAffinity),
+        sourceBoundary: Object.freeze({ ...input.sourceBoundary }),
+      },
+      hooks,
+      marker: `station-adoption:${input.threadId}`,
+    };
+  }
+
   private async startReservedSession(
     input: ProviderSessionStartInput,
-    adoption?: { sourceId: string; hooks?: ProviderAdoptionHooks },
+    adoption?: CodexNativeAdoption,
   ): Promise<ProviderSession> {
     const startedAt = Date.now();
-    const appHomeEnv = adoption
-      ? undefined
-      : await this.resolveAppHomeEnv(input.credentialProfileRef);
-    const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
+    const resumeRecord =
+      input.resumeCursor &&
+      typeof input.resumeCursor === 'object' &&
+      !Array.isArray(input.resumeCursor)
+        ? (input.resumeCursor as Record<string, unknown>)
+        : null;
+    if (
+      resumeRecord &&
+      'codexThreadId' in resumeRecord &&
+      !isResumeCursor(input.resumeCursor)
+    ) {
+      throw new Error('Codex resume cursor is invalid.');
+    }
+    const resumeCursor = isResumeCursor(input.resumeCursor)
+      ? input.resumeCursor
+      : undefined;
+    const sourceAffinity =
+      adoption?.input.sourceAffinity ?? resumeCursor?.sourceAffinity;
+    let appHomeEnv: Record<string, string> | undefined;
+    let appHome: 'profile' | 'global' | 'source';
+    if (sourceAffinity) {
+      const sourceHome = this.options.resolveSourceHome?.(sourceAffinity);
+      if (!boundedFilesystemPath(sourceHome) || !isAbsolute(sourceHome)) {
+        throw new Error('Codex source-home affinity is no longer available.');
+      }
+      appHomeEnv = { CODEX_HOME: sourceHome };
+      appHome = 'source';
+    } else {
+      appHomeEnv = await this.resolveAppHomeEnv(input.credentialProfileRef);
+      appHome = appHomeEnv ? 'profile' : 'global';
+    }
     const quotaConnectionId = string(input.metadata?.connectionId);
     const toolServers = this.resolveAgentToolServers(input);
     const processHandle = this.processFactory(
@@ -1112,7 +1648,14 @@ export class CodexAdapter implements ProviderAdapterShape {
       resumeCursor: input.resumeCursor,
       nowIso: () => this.now().toISOString(),
     });
-    if (quotaConnectionId) {
+    if (sourceAffinity) {
+      this.transport.setStdoutIngressLimit(
+        record,
+        CODEX_ADOPTION_MAX_RESPONSE_BYTES,
+      );
+      record.withholdCumulativeUsage = true;
+    }
+    if (quotaConnectionId && appHome !== 'source') {
       record.quotaConnectionId = quotaConnectionId;
       const quotaIdentity = quotaCacheIdentity({
         connectionId: quotaConnectionId,
@@ -1158,17 +1701,13 @@ export class CodexAdapter implements ProviderAdapterShape {
           }
         : {};
       const result = adoption
-        ? await this.transport.sendRequest(record, 'thread/fork', {
-            threadId: adoption.sourceId,
-            cwd: input.cwd,
-            model: input.modelId,
-            ...approvalWire,
+        ? await this.forkNativeAdoption(record, adoption, {
+            approvalKnobs,
             serviceTier: modelOptions.fastMode ? 'fast' : null,
-            ephemeral: false,
           })
-        : isResumeCursor(input.resumeCursor)
+        : resumeCursor
           ? await this.transport.sendRequest(record, 'thread/resume', {
-              threadId: input.resumeCursor.codexThreadId,
+              threadId: resumeCursor.codexThreadId,
               cwd: input.cwd,
               model: input.modelId,
               ...approvalWire,
@@ -1183,17 +1722,22 @@ export class CodexAdapter implements ProviderAdapterShape {
               persistExtendedHistory: false,
               serviceTier: modelOptions.fastMode ? 'fast' : null,
             });
-
-      const codexThread = extractThread(result);
-      if (adoption && codexThread.id === adoption.sourceId)
-        throw new Error('Codex did not return an independent continuation.');
-      this.transport.setCodexThreadId(record, codexThread.id);
-      if (adoption) {
-        record.session.resumeCursor = { codexThreadId: codexThread.id };
-        await adoption.hooks?.onProviderChildCreated(
-          record.session.resumeCursor,
+      if (record.stdoutIngressLimit?.exceeded) {
+        throw new Error(
+          'Codex bounded stdout ingress exceeded its byte limit.',
         );
       }
+
+      const codexThread = extractThread(result);
+      this.transport.setCodexThreadId(record, codexThread.id);
+      const nativeResumeCursor = {
+        codexThreadId: codexThread.id,
+        ...(sourceAffinity
+          ? {
+              sourceAffinity: snapshotSessionSourceAffinity(sourceAffinity),
+            }
+          : {}),
+      };
       // archive#1182: the app-server's own `thread/start`/`thread/resume`
       // response — genuinely reported by Codex, not merely Station's
       // request echoed back. Proof this can diverge from what was
@@ -1208,7 +1752,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         status: 'ready',
         model: reportedModelFromInit ?? input.modelId,
         updatedAt: this.now().toISOString(),
-        resumeCursor: { codexThreadId: codexThread.id },
+        resumeCursor: nativeResumeCursor,
       };
 
       this.transport.publish({
@@ -1222,6 +1766,22 @@ export class CodexAdapter implements ProviderAdapterShape {
         metadata: {
           ...input.metadata,
           codexThreadId: codexThread.id,
+          ...(adoption
+            ? {
+                continuation: 'native-fork',
+                continuationBoundaryTurnId:
+                  adoption.input.sourceBoundary!.providerTurnId,
+                continuationBoundaryObservedEventId:
+                  adoption.input.sourceBoundary!.observedEventId,
+              }
+            : {}),
+          ...(sourceAffinity
+            ? {
+                usageAvailability: 'unavailable',
+                usageUnavailableReason:
+                  'inherited-cumulative-counter-without-durable-baseline',
+              }
+            : {}),
         },
       });
       const baseConfiguredMetadata: Record<string, unknown> = {
@@ -1251,10 +1811,16 @@ export class CodexAdapter implements ProviderAdapterShape {
             }
           : {}),
         codexThreadId: codexThread.id,
-        // archive#896 wave 2: whether this session's app-server spawn env was
-        // layered with the codex app-home profile, or left at the
-        // global CODEX_HOME (opted out or a degraded lookup).
+        // Source-home continuations remain distinct from connection profiles
+        // and the process-global Codex home.
         appHome,
+        ...(sourceAffinity
+          ? {
+              usageAvailability: 'unavailable',
+              usageUnavailableReason:
+                'inherited-cumulative-counter-without-durable-baseline',
+            }
+          : {}),
         [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
           input.modelId,
           record.session.model,
@@ -1296,7 +1862,11 @@ export class CodexAdapter implements ProviderAdapterShape {
       adapterSessionStartDuration.record(Date.now() - startedAt, {
         provider: this.provider,
       });
-      appHomeSessions.add(1, { provider: this.provider, applied: appHome });
+      if (appHome !== 'source') {
+        appHomeSessions.add(1, { provider: this.provider, applied: appHome });
+      }
+
+      this.transport.clearStdoutIngressLimit(record);
 
       return record.session;
     } catch (error) {
@@ -1315,6 +1885,106 @@ export class CodexAdapter implements ProviderAdapterShape {
         );
       }
       throw error;
+    }
+  }
+
+  private async forkNativeAdoption(
+    record: CodexSessionRecord,
+    adoption: CodexNativeAdoption,
+    execution: {
+      approvalKnobs?: CodexExecutionKnobs;
+      serviceTier: string | null;
+    },
+  ): Promise<unknown> {
+    const boundary = adoption.input.sourceBoundary!;
+    await adoption.hooks.onProviderChildCreationStarted!();
+    const result = await this.boundedProviderRequest(
+      this.transport,
+      record,
+      'thread/fork',
+      {
+        threadId: adoption.input.sourceSessionId,
+        lastTurnId: boundary.providerTurnId,
+        cwd: adoption.input.cwd,
+        threadSource: adoption.marker,
+        ...(execution.approvalKnobs
+          ? {
+              approvalPolicy: execution.approvalKnobs.approvalPolicy,
+              sandbox: execution.approvalKnobs.sandbox,
+            }
+          : {}),
+        serviceTier: execution.serviceTier,
+        ephemeral: false,
+        ...(adoption.input.modelId !== undefined
+          ? { model: adoption.input.modelId }
+          : {}),
+      },
+    );
+    const child = extractForkedThread(result);
+    if (
+      !nativeUuid(child.id) ||
+      child.id === adoption.input.sourceSessionId ||
+      child.forkedFromId !== adoption.input.sourceSessionId ||
+      child.threadSource !== adoption.marker ||
+      child.turns.length > CODEX_ADOPTION_MAX_FORK_TURNS
+    ) {
+      throw new Error(
+        'Codex fork response did not confirm an independent child.',
+      );
+    }
+    const cursor = {
+      codexThreadId: child.id,
+      sourceAffinity: snapshotSessionSourceAffinity(
+        adoption.input.sourceAffinity!,
+      ),
+    };
+    await adoption.hooks.onProviderChildCreated(cursor);
+    validateCodexForkExecution(
+      result,
+      adoption.input.cwd,
+      execution.approvalKnobs,
+    );
+    if (!endsAtCompletedCodexTurn(child.turns, boundary.providerTurnId)) {
+      throw new Error(
+        'Codex fork response did not confirm the completed cutoff turn.',
+      );
+    }
+    return result;
+  }
+
+  private async boundedProviderRequest<T = unknown>(
+    transport: CodexAdapterTransport,
+    record: CodexSessionRecord,
+    method: string,
+    params: unknown,
+    timeoutMs = CODEX_ADOPTION_REQUEST_TIMEOUT_MS,
+  ): Promise<T> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([
+        transport.sendRequest<T>(record, method, params),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `Codex ${method} did not settle within ${timeoutMs}ms.`,
+                ),
+              ),
+            timeoutMs,
+          );
+        }),
+      ]);
+      const encoded = JSON.stringify(result);
+      if (
+        encoded !== undefined &&
+        Buffer.byteLength(encoded) > CODEX_ADOPTION_MAX_RESPONSE_BYTES
+      ) {
+        throw new Error(`Codex ${method} response exceeded its byte limit.`);
+      }
+      return result;
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
   }
 
@@ -1569,7 +2239,11 @@ export class CodexAdapter implements ProviderAdapterShape {
     return {
       threadId: input.threadId,
       turnId,
-      resumeCursor: { codexThreadId: record.codexThreadId, turnId },
+      resumeCursor: codexResumeCursor(
+        record.codexThreadId,
+        record.session.resumeCursor,
+        turnId,
+      ),
     };
   }
 
@@ -1700,56 +2374,6 @@ export class CodexAdapter implements ProviderAdapterShape {
       method: 'request.resolved',
       status: mapApprovalResolutionStatus(outcome.decision),
     });
-  }
-
-  async discardSession(
-    threadId: string,
-    recovery?: ProviderDiscardSessionRecovery,
-  ): Promise<void> {
-    const current = this.transport.hasSession(threadId)
-      ? this.transport.requireSession(threadId)
-      : undefined;
-    const cursor = current?.session.resumeCursor ?? recovery?.resumeCursor;
-    if (!isResumeCursor(cursor))
-      throw new Error(
-        'Codex continuation cleanup requires the confirmed child identity.',
-      );
-    if (current) {
-      try {
-        await this.transport.sendRequest(current, 'thread/archive', {
-          threadId: cursor.codexThreadId,
-        });
-      } finally {
-        await this.stopSession(threadId);
-      }
-      return;
-    }
-    const processHandle = this.processFactory(undefined, []);
-    const temporaryId = `cleanup:${threadId}`;
-    const record = createCodexSessionRecord({
-      externalThreadId: temporaryId,
-      process: processHandle,
-      provider: this.provider,
-      threadId: temporaryId,
-      model: '',
-      nowIso: () => this.now().toISOString(),
-    });
-    this.transport.registerSession(record);
-    this.transport.handleProcess(record);
-    try {
-      await this.transport.sendRequest(record, 'initialize', {
-        clientInfo: { name: 'station', title: 'Station', version: '0.1.0' },
-        capabilities: { experimentalApi: false },
-      });
-      this.transport.sendNotification(record, 'initialized');
-      await this.transport.sendRequest(record, 'thread/archive', {
-        threadId: cursor.codexThreadId,
-      });
-    } finally {
-      await this.transport.stopSession(temporaryId, () =>
-        this.now().toISOString(),
-      );
-    }
   }
 
   async stopSession(threadId: string): Promise<void> {

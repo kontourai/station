@@ -145,6 +145,21 @@ export class CodexAdapterTransport {
   }
 
   handleProcess(record: CodexSessionRecord): void {
+    record.process.stdout.on('data', (chunk: Buffer | string) => {
+      const limit = record.stdoutIngressLimit;
+      if (!limit || limit.exceeded) return;
+      limit.observedBytes += Buffer.byteLength(chunk);
+      if (limit.observedBytes <= limit.maxBytes) return;
+      limit.exceeded = true;
+      record.stopped = true;
+      this.rejectPendingRpcRequests(
+        record,
+        () =>
+          new Error('Codex bounded stdout ingress exceeded its byte limit.'),
+      );
+      record.process.stdout.pause();
+      void this.terminateRecord(record).catch(() => {});
+    });
     const stdout = createInterface({ input: record.process.stdout });
     stdout.on('line', (line) => this.handleStdoutLine(record, line));
 
@@ -297,6 +312,7 @@ export class CodexAdapterTransport {
   }
 
   handleStdoutLine(record: CodexSessionRecord, line: string): void {
+    if (record.stdoutIngressLimit?.exceeded) return;
     const trimmed = line.trim();
     if (!trimmed) return;
 
@@ -421,6 +437,27 @@ export class CodexAdapterTransport {
 
   hasSession(threadId: string): boolean {
     return this.sessions.has(threadId);
+  }
+
+  setStdoutIngressLimit(record: CodexSessionRecord, maxBytes: number): void {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+      throw new RangeError('Codex stdout ingress limit must be positive.');
+    }
+    record.stdoutIngressLimit = {
+      maxBytes,
+      observedBytes: 0,
+      exceeded: false,
+    };
+  }
+
+  clearStdoutIngressLimit(record: CodexSessionRecord): void {
+    if (!record.stdoutIngressLimit?.exceeded) {
+      delete record.stdoutIngressLimit;
+    }
+  }
+
+  getSession(threadId: string): CodexSessionRecord | undefined {
+    return this.sessions.get(threadId);
   }
 
   async stopSession(threadId: string, nowIso: () => string): Promise<void> {
