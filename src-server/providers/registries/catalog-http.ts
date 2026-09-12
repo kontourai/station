@@ -20,10 +20,13 @@ export function catalogLimit(options?: ModelCatalogRequest): number {
 }
 
 function catalogResponseByteLimit(options?: ModelCatalogRequest): number {
+  const requested = options?.maxResponseBytes;
   return Math.max(
     1,
     Math.min(
-      options?.maxResponseBytes ?? DEFAULT_MODEL_CATALOG_MAX_RESPONSE_BYTES,
+      typeof requested === 'number' && !Number.isNaN(requested)
+        ? requested
+        : DEFAULT_MODEL_CATALOG_MAX_RESPONSE_BYTES,
       DEFAULT_MODEL_CATALOG_MAX_RESPONSE_BYTES,
     ),
   );
@@ -112,10 +115,13 @@ export async function readBoundedJson(
     throw new ModelCatalogHttpError(response.status);
   }
 
-  const maxBytes = Math.min(
-    catalogResponseByteLimit(options),
-    budget?.remainingBytes ?? Number.POSITIVE_INFINITY,
-  );
+  const maxBytes =
+    budget && !Number.isFinite(budget.remainingBytes)
+      ? 0
+      : Math.min(
+          catalogResponseByteLimit(options),
+          budget?.remainingBytes ?? Number.POSITIVE_INFINITY,
+        );
   if (maxBytes < 1) {
     await response.body?.cancel();
     throw new ModelCatalogShapeError(
