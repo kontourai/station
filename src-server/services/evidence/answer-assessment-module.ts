@@ -50,10 +50,8 @@ import { readBoundedRegularFile } from './task-answer-support-module.js';
 
 export {
   qualifiesStationAnswerContent,
-  STATION_ANSWER_CONTENT_PROFILE,
   stationAnswerAssessmentClaimProfile,
   stationAnswerAssessmentProfileTarget,
-  stationAnswerAssessmentTarget,
 } from './station-answer-assessment-profile.js';
 
 const MAX_BUNDLE_BYTES = 1_048_576;

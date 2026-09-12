@@ -24,7 +24,7 @@
 export type TrustClaimStatus = 'assumed' | 'verified' | 'proposed';
 
 /** The status Station asserts for command/quality/mcp-ui evidence. */
-export const QUALITY_CLAIM_STATUS: TrustClaimStatus = 'assumed';
+const QUALITY_CLAIM_STATUS: TrustClaimStatus = 'assumed';
 
 export interface SyntheticBundleOptions {
   claimType: string;
@@ -48,10 +48,10 @@ export interface SyntheticBundleOptions {
  * unknown property ("/claims/0 must NOT have additional properties"). The
  * replacement for `surface` is `facet`.
  */
-export const STATION_TRUST_BUNDLE_SCHEMA_VERSION = 5;
+const STATION_TRUST_BUNDLE_SCHEMA_VERSION = 5;
 
 /** The Hachure facet Station's asserted claims belong to. */
-export const STATION_TRUST_BUNDLE_FACET = 'station';
+const STATION_TRUST_BUNDLE_FACET = 'station';
 
 /** A minimal schema-valid Hachure TrustBundle (schema v5). */
 export interface SyntheticTrustBundle {
