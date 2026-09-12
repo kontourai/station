@@ -92,6 +92,7 @@
     "./plugin": "./src/plugin.ts",
     "./plugin-foreground-work": "./src/plugin-foreground-work.ts",
     "./project": "./src/project.ts",
+    "./project-membership": "./src/project-membership.ts",
     "./project-identity": "./src/project-identity.ts",
     "./project-task-room": "./src/project-task-room.ts",
     "./project-task-room-browser": "./src/project-task-room-browser.ts",
