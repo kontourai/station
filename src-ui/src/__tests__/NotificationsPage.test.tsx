@@ -78,6 +78,7 @@ vi.mock('../contexts/NavigationContext', () => ({
 }));
 
 import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
+import { toastStore } from '../contexts/ToastContext';
 import { NotificationsPage } from '../pages/NotificationsPage';
 
 function renderPage() {
@@ -102,6 +103,34 @@ function renderPage() {
       ),
   };
 }
+
+test('a dismissed app error remains readable in Notifications without replaying its action', () => {
+  const retry = vi.fn();
+  const id = toastStore.show(
+    'Could not connect to this Station.',
+    undefined,
+    0,
+    [{ label: 'Retry expired request', onClick: retry }],
+    undefined,
+    'error',
+  );
+  toastStore.dismiss(id);
+  const view = renderPage();
+  try {
+    const history = screen.getByRole('region', { name: 'Recent app messages' });
+    expect(
+      within(history).getByText('Could not connect to this Station.'),
+    ).toBeTruthy();
+    expect(within(history).getByText('Error')).toBeTruthy();
+    expect(
+      within(history).queryByRole('button', { name: 'Retry expired request' }),
+    ).toBeNull();
+    expect(retry).not.toHaveBeenCalled();
+  } finally {
+    view.unmount();
+    toastStore.clearHistory();
+  }
+});
 
 /**
  * The number the header bell renders, derived exactly as `HeaderActions` does
@@ -380,7 +409,7 @@ describe('NotificationsPage', () => {
     expect(screen.getByText('All caught up')).toBeTruthy();
     expect(
       screen.getByText(
-        'Nothing needs you right now, and there is no activity yet.',
+        'Nothing needs your attention right now.',
       ),
     ).toBeTruthy();
     expect(
