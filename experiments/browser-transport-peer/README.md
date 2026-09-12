@@ -5,13 +5,14 @@ It echoes bounded fixture messages over Pion WebRTC. It does not expose a Statio
 API, identify a person, authorize Project access or implement a connection broker.
 
 The standalone Go module pins Pion WebRTC v4.2.20 and its transitive module
-checksums. Go 1.26.5 or newer is required by this fixture's module directive.
+checksums. Go 1.26.7 or newer is required by this fixture's module directive.
 With Go installed, build once from this directory:
 
 ```bash
 go mod download
 go mod verify
 go vet ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 go build -mod=readonly -trimpath -o ../../.kontourai/browser-transport/pion-peer .
 ```
 
@@ -48,3 +49,10 @@ Go modules, the pinned coturn image and Chromium. Dependencies remain replaceabl
 evaluation inputs; this fixture is not a production connector distribution.
 Native desktop/mobile integration, production signaling, key rotation, session
 revocation and membership integration retain their own acceptance.
+
+The evaluated module uses patched `golang.org/x/net` v0.56.0 and the Go 1.26.7
+minimum. The earlier Go 1.26.5/networking combination failed vulnerability
+reachability checks and is not a qualified build. Rescan whenever the module or
+toolchain changes; a successful transport journey does not establish dependency
+security. Report unreachable module-level advisories separately from reachable
+code findings.
