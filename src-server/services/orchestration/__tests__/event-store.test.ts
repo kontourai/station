@@ -442,6 +442,7 @@ describe('EventStore', () => {
     const base = {
       provider: 'codex' as const,
       threadId: 'pinned-parent',
+      itemId: 'pinned-item',
       turnId: 'turn',
       createdAt: '2026-09-12T00:00:00Z',
     };
