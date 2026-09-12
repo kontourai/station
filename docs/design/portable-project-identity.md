@@ -603,6 +603,26 @@ by convention:
 
 ### 3.3 Decision: remote canonicalization and the alias problem
 
+**Checkout-comparison compatibility (#1965).** The persisted canonicalization
+algorithm also supplies verification-receipt repository identity, so its bytes
+remain unchanged. `src-server/services/projects/project-git-remote-comparison.ts`
+owns an ephemeral comparison key used by both the bind action and live resolver.
+It equates the historical `host:team/repo` spelling from non-`git` SSH users
+with `host/team/repo`, and recognizes the historical bracketed IPv6 spelling
+whose first colon was replaced by a slash. Neither resource IDs, stored remote
+observations nor receipt IDs are rewritten. New manifests retain the existing
+identity convention; matching a checkout does not merge Projects or grant access.
+
+Explicit numeric ports remain distinct from a default-port identity. A
+non-`git` SCP path beginning with a numeric component can resemble that stored
+port notation; use an explicit SSH URL for that checkout instead of guessing.
+Unsupported URL forms, malformed ports, local sources and query/fragment-bearing
+URLs cannot supply comparison evidence. Without another supported matching
+remote, binding refuses as `unverifiable` and live resolution reports `stale`.
+Host aliases still apply only to checkout observations. The existing lowercase
+and ambiguous single-label-host conventions below remain limitations of the
+persisted identity format, not new equivalence guarantees.
+
 Canonicalization must be **pure and deterministic — no filesystem, no
 `~/.ssh/config`, no network** — because every member must compute the same id
 from the same string. Anything machine-dependent is by definition a binding
