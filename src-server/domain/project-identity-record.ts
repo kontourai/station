@@ -38,40 +38,6 @@ export function parseProjectPortableIdentity(
       'Project identity must contain only the portable identity fields.',
     );
   }
-  if (!Array.isArray(value.repos)) {
-    throw new ProjectIdentityValidationError(
-      'Project identity repos must be an array.',
-    );
-  }
-  for (const repo of value.repos) {
-    const fields =
-      isRecord(repo) && repo.kind === 'git'
-        ? PROJECT_GIT_RESOURCE_FIELDS
-        : PROJECT_LOCAL_RESOURCE_FIELDS;
-    if (
-      !isRecord(repo) ||
-      Object.keys(repo).some((key) => !Object.hasOwn(fields, key))
-    ) {
-      throw new ProjectIdentityValidationError(
-        'A Project resource contains unsupported fields.',
-      );
-    }
-    if (repo.kind === 'git') {
-      const remotes = [
-        repo.canonicalRemote,
-        ...(Array.isArray(repo.aliases) ? repo.aliases : []),
-      ];
-      if (
-        remotes.some(
-          (remote) => typeof remote !== 'string' || /[?#@\s\\]/.test(remote),
-        )
-      ) {
-        throw new ProjectIdentityValidationError(
-          'Repository identity cannot contain credentials, query parameters, fragments or whitespace.',
-        );
-      }
-    }
-  }
   const validation = validateProjectManifest({
     ...value,
     name: 'Portable Project',
@@ -83,8 +49,29 @@ export function parseProjectPortableIdentity(
   });
   if (!validation.ok) {
     throw new ProjectIdentityValidationError(
-      `Project identity is invalid: ${validation.errors.join('; ')}`,
+      'Project identity does not satisfy the manifest resource contract.',
     );
+  }
+  for (const repo of validation.manifest.repos) {
+    const fields =
+      repo.kind === 'git'
+        ? PROJECT_GIT_RESOURCE_FIELDS
+        : PROJECT_LOCAL_RESOURCE_FIELDS;
+    if (Object.keys(repo).some((key) => !Object.hasOwn(fields, key))) {
+      throw new ProjectIdentityValidationError(
+        'A Project resource contains unsupported fields.',
+      );
+    }
+    if (
+      repo.kind === 'git' &&
+      [repo.canonicalRemote, ...(repo.aliases ?? [])].some((remote) =>
+        /[?#@\s\\]/.test(remote),
+      )
+    ) {
+      throw new ProjectIdentityValidationError(
+        'Repository identity cannot contain credentials, query parameters, fragments or whitespace.',
+      );
+    }
   }
   const { schemaVersion, id, repos, createdAt, updatedAt } =
     validation.manifest;

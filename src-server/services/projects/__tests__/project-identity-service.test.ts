@@ -333,6 +333,19 @@ describe('portable Project attachment', () => {
       });
     expect((await request()).status).toBe(201);
     expect((await request()).status).toBe(200);
+    const invalid = await app.request('/attach', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ...body,
+        identity: { ...identity(), schemaVersion: 2 },
+      }),
+    });
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toMatchObject({
+      success: false,
+      code: 'project_identity_invalid',
+    });
     expect(
       (
         await app.request('/attach', {

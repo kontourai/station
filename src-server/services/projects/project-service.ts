@@ -216,18 +216,67 @@ export class ProjectService {
 
   async createProject(
     config: Omit<ProjectConfig, 'id' | 'createdAt' | 'updatedAt'>,
-    options?: { identity: ProjectPortableIdentity },
   ): Promise<ProjectConfig> {
-    const identity = options
-      ? parseProjectPortableIdentity(options.identity)
-      : undefined;
-    const createWithIdentity =
-      this.storageAdapter.createProjectWithIdentity?.bind(this.storageAdapter);
-    if (identity && !createWithIdentity) {
+    const project = await this.prepareProjectConfig(config);
+    await this.storageAdapter.createProject(project);
+    // The manifest is derived from the project record that was just written,
+    // so it is created AFTER the project exists on disk. `ensureProjectManifest`
+    // is an exclusive create: if something else got there first, the winner's
+    // portable id stands.
+    //
+    // BEST-EFFORT, deliberately: the project IS created at this point, and the
+    // absence of a manifest is the defined compat state (§5 point 1), so a
+    // failure here loses nothing. Letting it propagate turned a successful
+    // creation into a 400 from the route's catch (and swallowed the create
+    // telemetry below) for causes that have nothing to do with the request —
+    // one corrupt `<home>/config/project-bindings.json` is read via
+    // `hostAliases()` for every git-backed project and would break creating
+    // them all; an unreadable sidecar, EACCES, ENOSPC, or a read-only home do
+    // the same. The binding store's `onCorruption: 'throw'` is right and stays:
+    // a silently-empty read there would turn every bound resource into
+    // `unbound`.
+    if (this.manifests) {
+      try {
+        await this.manifests.ensureProjectManifest(project);
+      } catch (error) {
+        projectManifestBackfills.add(1, { outcome: 'failed' });
+        logger.warn(
+          'Project was created, but writing its manifest sidecar failed; it stays on the working-directory compat path',
+          { project: project.slug, error },
+        );
+      }
+    }
+    projectOps.add(1, {
+      operation: 'create',
+      project: project.slug || project.id,
+    });
+    return project;
+  }
+
+  async createAttachedProject(
+    config: Omit<ProjectConfig, 'id' | 'createdAt' | 'updatedAt'>,
+    portableIdentity: ProjectPortableIdentity,
+  ): Promise<ProjectConfig> {
+    const identity = parseProjectPortableIdentity(portableIdentity);
+    const create = this.storageAdapter.createProjectWithIdentity?.bind(
+      this.storageAdapter,
+    );
+    if (!create)
       throw new FileStorageUnavailableError(
         'This storage adapter cannot atomically attach a portable Project.',
       );
-    }
+    const project = await this.prepareProjectConfig(config);
+    await create(project, identity);
+    projectOps.add(1, {
+      operation: 'create',
+      project: project.slug || project.id,
+    });
+    return project;
+  }
+
+  private async prepareProjectConfig(
+    config: Omit<ProjectConfig, 'id' | 'createdAt' | 'updatedAt'>,
+  ): Promise<ProjectConfig> {
     // Derive name from working directory basename if not provided
     let name = config.name;
     if ((!name || name === 'Untitled') && config.workingDirectory) {
@@ -270,40 +319,6 @@ export class ProjectService {
     if (project.defaultEnvironment?.kind === 'current') {
       delete project.defaultEnvironment;
     }
-    if (identity && createWithIdentity)
-      await createWithIdentity(project, identity);
-    else await this.storageAdapter.createProject(project);
-    // The manifest is derived from the project record that was just written,
-    // so it is created AFTER the project exists on disk. `ensureProjectManifest`
-    // is an exclusive create: if something else got there first, the winner's
-    // portable id stands.
-    //
-    // BEST-EFFORT, deliberately: the project IS created at this point, and the
-    // absence of a manifest is the defined compat state (§5 point 1), so a
-    // failure here loses nothing. Letting it propagate turned a successful
-    // creation into a 400 from the route's catch (and swallowed the create
-    // telemetry below) for causes that have nothing to do with the request —
-    // one corrupt `<home>/config/project-bindings.json` is read via
-    // `hostAliases()` for every git-backed project and would break creating
-    // them all; an unreadable sidecar, EACCES, ENOSPC, or a read-only home do
-    // the same. The binding store's `onCorruption: 'throw'` is right and stays:
-    // a silently-empty read there would turn every bound resource into
-    // `unbound`.
-    if (this.manifests && !identity) {
-      try {
-        await this.manifests.ensureProjectManifest(project);
-      } catch (error) {
-        projectManifestBackfills.add(1, { outcome: 'failed' });
-        logger.warn(
-          'Project was created, but writing its manifest sidecar failed; it stays on the working-directory compat path',
-          { project: project.slug, error },
-        );
-      }
-    }
-    projectOps.add(1, {
-      operation: 'create',
-      project: project.slug || project.id,
-    });
     return project;
   }
 

@@ -79,7 +79,10 @@ export class ProjectIdentityService {
     };
     await this.verifyDirectory(config.workingDirectory, identity);
     try {
-      const project = await this.projects.createProject(config, { identity });
+      const project = await this.projects.createAttachedProject(
+        config,
+        identity,
+      );
       return { ...identityView(project, identity), outcome: 'created' };
     } catch (error) {
       if (!(error instanceof FileStorageAlreadyExistsError)) throw error;

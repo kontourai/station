@@ -368,7 +368,7 @@ function readProjectIdentityView(
   const association = value.association;
   if (
     Object.keys(record).some(
-      (key) => !Object.hasOwn(PROJECT_PORTABLE_IDENTITY_FIELDS, key),
+      (key) => !Object.keys(PROJECT_PORTABLE_IDENTITY_FIELDS).includes(key),
     ) ||
     association.localProjectSlug !== slug ||
     typeof association.localProjectId !== 'string' ||
@@ -391,7 +391,7 @@ function readProjectIdentityView(
       repo.kind === 'git'
         ? PROJECT_GIT_RESOURCE_FIELDS
         : PROJECT_LOCAL_RESOURCE_FIELDS;
-    if (Object.keys(repo).some((key) => !Object.hasOwn(fields, key)))
+    if (Object.keys(repo).some((key) => !Object.keys(fields).includes(key)))
       throw new Error(message);
     if (
       repo.kind === 'git' &&

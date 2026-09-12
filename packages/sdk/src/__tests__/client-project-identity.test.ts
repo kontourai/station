@@ -70,6 +70,21 @@ describe('Project identity client', () => {
     ).toEqual(input);
   });
 
+  test('reads a local-only organizational resource without inventing a checkout', async () => {
+    const data: ProjectIdentityView = {
+      ...view(),
+      identity: {
+        ...view().identity,
+        repos: [{ kind: 'local-only', id: 'local:scratch' }],
+      },
+    };
+    vi.mocked(fetch).mockResolvedValue(reply(data));
+    expect(
+      await getProjectIdentity('https://station.example', 'local'),
+    ).toEqual(data);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   test.each([
     { ...view(), identity: { ...view().identity, schemaVersion: 2 } },
     {

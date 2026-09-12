@@ -50,10 +50,12 @@ export function createProjectIdentityRoutes(
         'outcome' in data && data.outcome === 'created' ? 201 : 200,
       );
     } catch (error) {
-      if (
-        error instanceof ProjectIdentityValidationError ||
-        error instanceof InvalidPathSegmentError
-      )
+      if (error instanceof ProjectIdentityValidationError)
+        return c.json(
+          { success: false, error: error.message, code: error.code },
+          400,
+        );
+      if (error instanceof InvalidPathSegmentError)
         return c.json({ success: false, error: error.message }, 400);
       if (error instanceof FileStorageConflictError)
         return c.json(
