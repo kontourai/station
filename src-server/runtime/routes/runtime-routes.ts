@@ -1,5 +1,6 @@
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
 
 export {
   type BoundedBodyResult,
@@ -12,18 +13,7 @@ import {
   randomUUID,
   timingSafeEqual,
 } from 'node:crypto';
-import {
-  closeSync,
-  fchmodSync,
-  constants as fsConstants,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   type DevicePairingRequest,
   parseTaskTurnReference,
@@ -4422,48 +4412,6 @@ function isSameMachineBrowserCaller(c: {
     classifyRuntimePeer(attestedClient).peerClass === 'loopback' &&
     isLoopbackAuthority(attestedBrowserVisibleHost(request))
   );
-}
-
-const LOCAL_GRANT_DIRECTORY_MODE = 0o700;
-const LOCAL_GRANT_FILE_MODE = 0o600;
-
-/**
- * Mints a fresh per-boot local-grant secret (station#1715) and durably writes
- * it to `secretPath` (parent directory 0700, file 0600), atomically replacing
- * any previous boot's value. The file exists only so the desktop shell —
- * running as the same OS user — can read it directly off disk
- * (`src-desktop/src/lib.rs`'s `station_local_grant_secret`); the route
- * created below never re-reads it, it compares every presented candidate
- * against the value returned here, held in a closure for the life of the
- * process.
- */
-function writeLocalGrantSecretFile(secretPath: string): string {
-  const secret = randomBytes(32).toString('base64url');
-  mkdirSync(dirname(secretPath), {
-    recursive: true,
-    mode: LOCAL_GRANT_DIRECTORY_MODE,
-  });
-  const temporaryPath = `${secretPath}.${process.pid}.${randomUUID()}.tmp`;
-  let descriptor: number | undefined;
-  try {
-    descriptor = openSync(
-      temporaryPath,
-      fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY,
-      LOCAL_GRANT_FILE_MODE,
-    );
-    if (process.platform !== 'win32') {
-      fchmodSync(descriptor, LOCAL_GRANT_FILE_MODE);
-    }
-    writeFileSync(descriptor, secret, 'utf8');
-    fsyncSync(descriptor);
-    closeSync(descriptor);
-    descriptor = undefined;
-    renameSync(temporaryPath, secretPath);
-  } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
-    rmSync(temporaryPath, { force: true });
-  }
-  return secret;
 }
 
 /** Timing-safe compare over digests, so a length mismatch never short-circuits. */

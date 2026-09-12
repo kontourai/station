@@ -50,6 +50,7 @@
     "./return-focus": "./src/return-focus.ts",
     "./temp-dir": "./src/temp-dir.ts",
     "./fs-windows-compat": "./src/fs-windows-compat.ts",
+    "./windows-path-trust": "./src/windows-path-trust.ts",
     "./runtime-events": "./src/runtime-events.ts",
     "./runtime-path-resolver": "./src/runtime-path-resolver.ts",
     "./conversation-message": "./src/conversation-message.ts",
