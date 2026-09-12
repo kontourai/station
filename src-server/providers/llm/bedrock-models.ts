@@ -634,11 +634,6 @@ export class BedrockModelCatalog {
     }
   }
 
-  async getModelInfo(modelId: string): Promise<BedrockModel | undefined> {
-    const models = await this.listModels();
-    return models.find((m) => m.modelId === modelId);
-  }
-
   async resolveModelId(modelId: string): Promise<string> {
     try {
       const [models, profiles] = await Promise.all([

@@ -280,13 +280,6 @@ export class TerminalService {
     return result;
   }
 
-  async closeByProject(projectSlug: string): Promise<void> {
-    const ids = [...this.sessions.entries()]
-      .filter(([, e]) => e.projectSlug === projectSlug)
-      .map(([id]) => id);
-    await Promise.all(ids.map((id) => this.close(id)));
-  }
-
   async restart(sessionId: string): Promise<TerminalSessionSnapshot> {
     const entry = this.sessions.get(sessionId);
     if (!entry) throw new Error(`Session not found: ${sessionId}`);
