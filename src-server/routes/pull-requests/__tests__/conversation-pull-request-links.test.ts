@@ -184,3 +184,45 @@ test('keeps Task-declared provenance distinct from the same explicit identity', 
   ).toEqual(['explicit', 'task-declared']);
   expect(x.provider.getPullRequestByIdentity).toHaveBeenCalledTimes(3);
 });
+
+test('refreshes at most four exact links concurrently', async () => {
+  const x = fixture();
+  for (let ref = 1; ref <= 5; ref += 1) {
+    x.provider.getPullRequestByIdentity.mockResolvedValueOnce({
+      available: true,
+      data: { ...identity, ref: String(ref) },
+    });
+    expect(
+      (
+        await x.app.request('/conversation-1', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ...identity, ref: String(ref) }),
+        })
+      ).status,
+    ).toBe(201);
+  }
+  x.provider.getPullRequestByIdentity.mockReset();
+  const releases: Array<() => void> = [];
+  x.provider.getPullRequestByIdentity.mockImplementation(
+    (_target: unknown, ref: string) =>
+      new Promise((resolve) => {
+        releases.push(() =>
+          resolve({
+            available: true,
+            data: { ...identity, ref, title: ref, state: 'OPEN' },
+          }),
+        );
+      }),
+  );
+  const read = x.app.request('/conversation-1');
+  await vi.waitFor(() =>
+    expect(x.provider.getPullRequestByIdentity).toHaveBeenCalledTimes(4),
+  );
+  releases.splice(0).forEach((release) => release());
+  await vi.waitFor(() =>
+    expect(x.provider.getPullRequestByIdentity).toHaveBeenCalledTimes(5),
+  );
+  releases.splice(0).forEach((release) => release());
+  expect((await read).status).toBe(200);
+});

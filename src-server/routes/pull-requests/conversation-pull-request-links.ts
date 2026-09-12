@@ -3,7 +3,11 @@ import type {
   ConversationPullRequestLinkObservation,
   PullRequestLinkIdentity,
 } from '@kontourai/station-contracts/conversation-pull-request-links';
-import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
+import type {
+  IPullRequestProvider,
+  PullRequest,
+  PullRequestResult,
+} from '@kontourai/station-contracts/pull-request-provider';
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
 import type { ConversationPullRequestLinkStore } from '../../services/pull-requests/conversation-pull-request-link-store.js';
@@ -55,13 +59,15 @@ export function createConversationPullRequestLinkRoutes(
     ];
     const observedAt = new Date().toISOString();
     const observations: ConversationPullRequestLinkObservation[] = [];
-    for (const link of links) {
+    const observe = async (
+      link: (typeof links)[number],
+    ): Promise<ConversationPullRequestLinkObservation> => {
       const provider = providers().find(
         (candidate) =>
           candidate.id === link.provider && candidate.canServeHost(link.host),
       );
-      if (!provider?.getPullRequestByIdentity) {
-        observations.push({
+      if (!provider?.getPullRequestByIdentity)
+        return {
           ...link,
           observedAt,
           status: {
@@ -69,23 +75,25 @@ export function createConversationPullRequestLinkRoutes(
             reason:
               'This provider cannot refresh an explicitly linked pull request.',
           },
-        });
-        continue;
-      }
-      const result = await provider.getPullRequestByIdentity(
-        {
-          host: link.host,
-          repository: link.repository,
-        },
-        link.ref,
-      );
-      if (!allowed(c, conversationId))
-        return c.json(
-          { success: false, error: 'Conversation unavailable' },
-          404,
+        };
+      let result: PullRequestResult<PullRequest>;
+      try {
+        result = await provider.getPullRequestByIdentity(
+          { host: link.host, repository: link.repository },
+          link.ref,
         );
+      } catch {
+        return {
+          ...link,
+          observedAt,
+          status: {
+            state: 'unavailable',
+            reason: 'The provider refresh failed for this pull request.',
+          },
+        };
+      }
       const pullRequest = result.available ? result.data : undefined;
-      observations.push({
+      return {
         ...link,
         observedAt,
         status: pullRequest
@@ -101,7 +109,19 @@ export function createConversationPullRequestLinkRoutes(
                 result.reason ??
                 'The provider did not return this pull request.',
             },
-      });
+      };
+    };
+    // Bound provider subprocess pressure while avoiding one 10-second timeout
+    // per link in series. Four fully-qualified reads run at a time.
+    for (let offset = 0; offset < links.length; offset += 4) {
+      observations.push(
+        ...(await Promise.all(links.slice(offset, offset + 4).map(observe))),
+      );
+      if (!allowed(c, conversationId))
+        return c.json(
+          { success: false, error: 'Conversation unavailable' },
+          404,
+        );
     }
     return c.json({
       success: true,
