@@ -92,7 +92,7 @@ describe('AttachedSessionAdoption', () => {
       cwd: '/fixture/project',
       controlMode: 'read-only-attached',
       attachedSource: {
-        kind: 'codex-rollout',
+        kind: 'fixture-source',
         externalSessionId: 'native-source',
       },
       createdAt: '2026-09-06T00:00:00Z',
@@ -112,7 +112,7 @@ describe('AttachedSessionAdoption', () => {
     await expect(
       new AttachedSessionAdoption(deps).adopt(source.threadId, receipt()),
     ).rejects.toThrow(
-      'Station has not established independent continuation support',
+      'Station has not established independent continuation support for this engine.',
     );
     expect(adapterRequests).toBe(0);
   });

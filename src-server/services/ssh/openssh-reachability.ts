@@ -197,7 +197,7 @@ const REMOTE_COMMAND = [
 ] as const;
 
 /** OpenSSH's own default when configuration names no trust store. */
-export function defaultUserKnownHostsFiles(): string[] {
+function defaultUserKnownHostsFiles(): string[] {
   return [join(homedir(), '.ssh', 'known_hosts')];
 }
 
@@ -206,7 +206,7 @@ export function defaultUserKnownHostsFiles(): string[] {
  * OpenSSH splits that value on whitespace, so a path containing spaces has
  * to arrive quoted — the same rule `ssh_config` itself uses.
  */
-export function formatUserKnownHostsFiles(files: readonly string[]): string {
+function formatUserKnownHostsFiles(files: readonly string[]): string {
   return files.map((file) => (/\s/.test(file) ? `"${file}"` : file)).join(' ');
 }
 
@@ -291,7 +291,7 @@ const ESCAPE = '\u001b';
  * the string is split on ESC and each following segment loses its sequence
  * head, then a code-point filter drops the rest.
  */
-export function stripTerminalControls(value: string): string {
+function stripTerminalControls(value: string): string {
   const withoutEscapes = value
     .split(ESCAPE)
     .map((segment, index) =>
@@ -327,7 +327,7 @@ export function redactSshDiagnostic(value: string): string {
  * base64-encoded without padding — computed here rather than shelling out to
  * `ssh-keygen -lf` so the value is derived from the bytes we actually read.
  */
-export function parseSshKeyscanFingerprint(
+function parseSshKeyscanFingerprint(
   output: string,
 ): { fingerprint: string; keyType: string; knownHostsLine: string } | null {
   for (const candidate of output.split(/\r?\n/)) {
@@ -366,7 +366,7 @@ export function parseSshKeyscanFingerprint(
  * quotes suppress every expansion; the only character that cannot appear
  * inside them is `'`, which is closed, escaped and reopened.
  */
-export function shellSingleQuote(value: string): string {
+function shellSingleQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
@@ -377,7 +377,7 @@ export function shellSingleQuote(value: string): string {
  * timeout) and its output is capped, because the host on the other end is by
  * definition one this computer has never trusted.
  */
-export function createSystemSshHostKeyScanner(
+function createSystemSshHostKeyScanner(
   timeoutMs = SSH_HOST_KEY_SCAN_MAX_SECONDS * 1000,
 ): SshHostKeyScanner {
   return ({ host, port, keyTypes }) =>
@@ -452,7 +452,7 @@ async function readUnknownHostKey(input: {
  * `printf` appends the exact bytes that produced the displayed fingerprint,
  * shell-quoted, with no network access at all.
  */
-export function buildTrustCommand(
+function buildTrustCommand(
   knownHostsLine: string,
   /**
    * The file `ssh` will actually consult FIRST for this host — the same
@@ -471,7 +471,7 @@ export function buildTrustCommand(
  * their account name; anything else, or anything with a character that would
  * mean something inside double quotes, is single-quoted absolute.
  */
-export function shellQuotePath(path: string): string {
+function shellQuotePath(path: string): string {
   const home = homedir();
   const prefix = home ? `${home}/` : '';
   const relative =
@@ -481,7 +481,7 @@ export function shellQuotePath(path: string): string {
     : shellSingleQuote(path);
 }
 
-export function unknownHostAction(unknownHost: SshUnknownHostKey): string {
+function unknownHostAction(unknownHost: SshUnknownHostKey): string {
   return (
     'Station does not accept new host keys. Verify this fingerprint with the ' +
     `computer's owner, then run: ${unknownHost.trustCommand}, and test again.`

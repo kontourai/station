@@ -163,7 +163,7 @@ export type NewChatModelChoice = {
   providerOptions: Record<string, unknown>;
 };
 
-export const MODEL_CONTROL_KEYS = [
+const MODEL_CONTROL_KEYS = [
   'effort',
   'reasoningEffort',
   'fastMode',

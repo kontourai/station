@@ -4375,17 +4375,27 @@ test('external adoption forks the native thread and records its distinct child b
   const adapter = new CodexAdapter({
     processFactory: () => process,
     getAppHomeEnv,
+    resolveSourceHome: () => '/fixture/codex-home',
   });
+  const affinity = { kind: 'codex-config-home', ref: 'a'.repeat(64) };
+  const sourceId = '0199a001-0000-7000-8000-000000000001';
+  const childId = '0199a001-0000-7000-8000-000000000002';
   const onProviderChildCreated = vi.fn();
   const pending = adapter.adoptSession(
     {
       provider: 'codex',
       threadId: 'adopted-thread',
-      sourceSessionId: 'source-thread',
+      sourceSessionId: sourceId,
+      sourceAffinity: affinity,
+      sourceBoundary: {
+        kind: 'completed-turn',
+        providerTurnId: 'completed-one',
+        observedEventId: 'observed-one',
+      },
       sourceKind: 'codex-rollout',
       cwd: '/fixture/project',
     },
-    { onProviderChildCreated },
+    { onProviderChildCreated, onProviderChildCreationStarted: () => {} },
   );
   await flushIo();
   process.stdout.write(`${JSON.stringify({ id: '1', result: {} })}\n`);
@@ -4394,25 +4404,34 @@ test('external adoption forks the native thread and records its distinct child b
     .map(parseLine)
     .find((line) => line.method === 'thread/fork');
   expect(call.params).toMatchObject({
-    threadId: 'source-thread',
+    threadId: sourceId,
+    lastTurnId: 'completed-one',
     cwd: '/fixture/project',
     ephemeral: false,
   });
   expect(getAppHomeEnv).not.toHaveBeenCalled();
   process.stdout.write(
-    `${JSON.stringify({ id: '2', result: { thread: { id: 'forked-thread' }, model: 'gpt-test' } })}\n`,
+    `${JSON.stringify({ id: '2', result: { thread: { id: childId, forkedFromId: sourceId, threadSource: 'station-adoption:adopted-thread', turns: [{ id: 'completed-one', status: 'completed', items: [] }] }, model: 'gpt-test', cwd: '/fixture/project', approvalPolicy: 'on-request', sandbox: { type: 'workspaceWrite' } } })}\n`,
   );
   expect(await pending).toMatchObject({
-    resumeCursor: { codexThreadId: 'forked-thread' },
+    resumeCursor: { codexThreadId: childId, sourceAffinity: affinity },
   });
   expect(onProviderChildCreated).toHaveBeenCalledWith({
-    codexThreadId: 'forked-thread',
+    codexThreadId: childId,
+    sourceAffinity: affinity,
   });
-  const cleanup = adapter.discardSession('adopted-thread');
+  const cleanup = adapter.discardSession('adopted-thread', {
+    adoptionKey: 'adopted-thread',
+    sourceKind: 'codex-rollout',
+    sourceSessionId: sourceId,
+    sourceAffinity: affinity,
+    cwd: '/fixture/project',
+    createdAt: new Date().toISOString(),
+  });
   await flushIo();
   expect(process.stdin.lines.map(parseLine).at(-1)).toMatchObject({
-    method: 'thread/archive',
-    params: { threadId: 'forked-thread' },
+    method: 'thread/delete',
+    params: { threadId: childId },
   });
   process.stdout.write(`${JSON.stringify({ id: '3', result: {} })}\n`);
   await cleanup;

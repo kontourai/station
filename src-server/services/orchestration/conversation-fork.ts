@@ -1,6 +1,6 @@
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 
-export const FORK_TRANSCRIPT_MAX_CHARS = 12_000;
+const FORK_TRANSCRIPT_MAX_CHARS = 12_000;
 export const FORK_OMITTED_MARKER = '…earlier turns omitted…';
 export const FORK_REPLAY_DISCLOSURE =
   'Station replay carries the selected transcript only. Engine cursor, tool state, and approval state do not carry.';

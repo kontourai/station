@@ -12,7 +12,7 @@ import {
  * package: re-dispatching a recorded turn is a server concern, and this module
  * is already where the other attachment decode/refuse helpers live.
  */
-export function persistedChatAttachmentBytes(
+function persistedChatAttachmentBytes(
   attachment: PersistedChatAttachment,
 ): ChatAttachmentInput | undefined {
   return attachment.dataUrl === undefined

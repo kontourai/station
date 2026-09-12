@@ -90,6 +90,14 @@ built-in scheduler now emits.
 
 ## Compatibility
 
+`conversation-pull-request-links` defines exact provider, host, repository, and
+native-ref identities for Conversation links. Explicit links, branch-derived
+associations, and Task-kept declarations retain distinct `source` values.
+Provider refresh results carry an observation time and either current state or
+an explicit unsupported/unavailable reason. `PullRequest.headSha` and
+`baseSha` are optional because a provider that omits exact revisions must not
+be presented as current by inference.
+
 `@kontourai/station-shared` still re-exports many of these types so older code can compile during convergence. That is a compatibility layer, not the canonical ownership model. New code should import the owning `@kontourai/station-contracts/*` module directly.
 
 Server-only provider interfaces now live directly in `src-server/providers/provider-interfaces.ts`, `src-server/providers/provider-contracts.ts`, and `src-server/providers/llm/model-provider-types.ts`. The old `src-server/providers/types.ts` barrel was removed during convergence.
@@ -114,8 +122,34 @@ promotion verdict, or effect result. Generic record `active` is not learning
 activation. All restricted/unavailable/refused outcomes omit source identity.
 The full `LearningReviewProjection` lifecycle contract is unchanged.
 
+`OrchestrationQuoteSource` on the orchestration subpath is the versioned,
+bounded exact-answer quotation read: Session, turn, message, text and SHA-256
+text revision. It conveys no authorization grant or evidence verdict. The
+quote-source HTTP route checks current read authority before and after owner
+I/O and refuses oversized text instead of returning an incomplete source.
+
+`PullRequestReviewSnapshot` on `pull-request-provider` binds provider-supplied
+review content to an observed head/base pair and timestamp. Diff availability
+and discussion completeness are explicit; a provider diff is not a claim that
+all binary or oversized content was returned. Optional provider methods preserve
+compatibility with adapters that do not implement in-app review.
+`PullRequestReviewInput.expectedHeadSha` binds approvals to the inspected head.
+`PullRequestReviewOutcome` distinguishes confirmed acknowledgements from refused
+and indeterminate attempts. A forge review is not a Station gate verdict.
+`PullRequestMergeInput.expectedHeadSha` optionally constrains merge admission to
+the inspected revision; review-origin merges observe the resulting provider state.
+
 `AttentionInputReplyContext` on the attention subpath projects one exact open
 input request's reply binding and declared file/image transport. `needs_input`
 items may carry `inputReference`; approval/permission references keep their
 separate meaning. `OrchestrationSendTurnInput.expectedInputRequest` is a
-constraint, not a grant, and is removed before the adapter receives input.
+ constraint, not a grant, and is removed before the adapter receives input.
+
+## Mobile device inspection
+
+`@kontourai/station-contracts/mobile-device` owns `MobileDeviceTarget`,
+`MobileDeviceSummary`, `MobileDeviceInventory`, and `MobileDeviceCapture`.
+Host/device IDs are descriptive and carry no credentials, paths, or execution
+authority. A capture is one observed frame, not stream health or app/build
+identity. Runtime validation belongs to the helper, route, and SDK boundaries;
+see [Mobile device inspection](../guides/mobile-device-workspace.md).

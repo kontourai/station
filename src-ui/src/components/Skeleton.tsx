@@ -42,6 +42,9 @@ export function SkeletonBlock({
       aria-busy="true"
       aria-label={label}
     >
+      <span className="skeleton-status-label" aria-hidden="true">
+        {label}
+      </span>
       {Array.from({ length: count }, (_, i) => (
         // Static placeholder blocks: index keys are correct (order never changes).
         <Skeleton variant="block" key={i} />
@@ -67,6 +70,9 @@ export function SkeletonList({
       aria-busy="true"
       aria-label={label}
     >
+      <span className="skeleton-status-label" aria-hidden="true">
+        {label}
+      </span>
       {Array.from({ length: count }, (_, i) => (
         // Static placeholder rows: index keys are correct (order never changes).
         <div className="skeleton-list__item" key={i}>

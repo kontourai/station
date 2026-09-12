@@ -117,6 +117,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Owns bounded TLS endpoints, OpenSSL children and TCP relay processes.
+  'scripts/__tests__/local-collaboration-lab.test.ts',
   // Real HTTP requests in isolated children exercise fatal socket-option faults.
   'packages/shared/src/__tests__/node-http-compat.test.ts',
   // Launches Chromium to reject prompt-only evidence in the composer helper.
@@ -466,6 +468,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // tracked NUL/clean fixture repositories. The child is single-shot and has
   // no wall-clock assertion, but still belongs in the bounded spawn pool.
   'scripts/__tests__/run-ci-fast.test.ts',
+  // Runs the installed analyzer against committed Git fixtures to prove
+  // new-versus-inherited attribution and resistance to candidate rebaselining.
+  'scripts/__tests__/code-health-gate.test.ts',
   'scripts/__tests__/run-e2e-suite-ports.test.ts',
   'scripts/__tests__/server-build-portability.test.ts',
   'scripts/__tests__/station-agent-smoke.test.ts',

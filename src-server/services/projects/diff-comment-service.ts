@@ -38,7 +38,7 @@ interface DiffCommentServiceOptions {
   storeFactory?: DiffCommentStoreFactory;
 }
 
-export class DiffCommentStoreValidationError extends Error {
+class DiffCommentStoreValidationError extends Error {
   constructor() {
     super('Diff comment store is invalid');
     this.name = 'DiffCommentStoreValidationError';

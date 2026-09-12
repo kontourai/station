@@ -26,7 +26,7 @@ export const CODEX_DEFAULT_APPROVAL_KNOBS: CodexApprovalKnobs = {
   sandbox: 'danger-full-access',
 };
 
-export const CODEX_READ_ONLY_REVIEW_KNOBS: CodexApprovalKnobs = {
+const CODEX_READ_ONLY_REVIEW_KNOBS: CodexApprovalKnobs = {
   approvalPolicy: 'never',
   sandbox: 'read-only',
 };

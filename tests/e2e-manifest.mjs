@@ -318,8 +318,11 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
+    'tests/answer-quoting.spec.ts',
     'tests/code-block-actions.spec.ts',
     'tests/model-visibility.spec.ts',
+    'tests/pull-request-review.spec.ts',
+    'tests/conversation-pull-request-links.spec.ts',
     'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
     'tests/monitoring-and-chrome.spec.ts',
@@ -549,6 +552,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'UX audit E5 (DESIGN §3): a CLI-engine agent\'s editor renders §3.4 Model options and none of §3.3 — no Model heading, no model-connection picker, no "Add model connection" repair (Y2: nothing contradicts the chosen engine); a description edit round-trips through the PUT, the cleared pending state, a reload and a fresh API read; and at 390 the shared DetailHeader sticky footer keeps Save reachable and clickable at the bottom of a long form.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/answer-quoting.spec.ts',
+    bucket: 'product',
+    surface: 'Answer quotation and source inspection',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production selection toolbar, draft store, Markdown renderer and source-inspection UI with captured authority and exact HTTP source fixtures; ordinary pointer selection and keyboard activation, no live server or shared writes.',
     exceptions: [],
   },
   {
@@ -1458,6 +1471,26 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'ACP project context is primary but needs promotion review after agent ACP lane hardening.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/pull-request-review.spec.ts',
+    bucket: 'product',
+    surface: 'In-app pull request review',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production review panel, shared diff renderer, SDK and confirmation dialog; exact provider HTTP fixtures verify revision-bound writes, uncertainty and retained drafts in desktop dark and phone light presentations. No live forge or shared writes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/conversation-pull-request-links.spec.ts',
+    bucket: 'product',
+    surface: 'Conversation pull request links and dependency stacks',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production link and stack surfaces with exact current-Station HTTP fixtures; verifies same-number cross-host identity, explicit/derived/Task provenance, partial failure, unlink, provider-branch order and narrow-pane overflow. No live forge writes.',
     exceptions: [],
   },
   {

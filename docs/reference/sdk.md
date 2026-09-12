@@ -642,6 +642,9 @@ const { data } = useApiQuery(['my-key'], () => fetch('/api/custom').then(r => r.
 
 Mutation hook with optional cache invalidation on success.
 
+If the success callback throws after the request completes, the caller receives
+that error and the configured caches are still invalidated.
+
 ```tsx
 const mutation = useApiMutation(
   (vars) => fetch('/api/save', { method: 'POST', body: JSON.stringify(vars) }).then(r => r.json()),
@@ -1716,6 +1719,31 @@ knowledgeQueries.namespaces(projectSlug)             // GET /api/projects/:slug/
 
 ---
 
+## Feedback analysis
+
+Use `useFeedbackRatingsQuery`, `useFeedbackGuidelinesQuery`, and
+`useFeedbackStatusQuery` to read the selected Station's feedback. Saving or
+removing a rating through the SDK invalidates all three views. Use
+`useAnalyzeFeedbackMutation` to request analysis and
+`useClearFeedbackAnalysisMutation` to clear derived results while keeping ratings.
+
+Analysis requests share one active job. Re-rating, removing feedback, clearing
+analysis, or stopping the service prevents older model results from being
+published. Existing model calls settle before queued work starts. Unchanged
+summary prompts reuse their cached result; changed inputs are not identified by
+rating count alone. Invalid model output remains an error rather than being
+saved as analyzed feedback.
+
+`POST /api/feedback/analyze` accepts an omitted body or an optional JSON object
+with `maxReinforce` and `maxAvoid`, each an integer from 1 to 50. It returns 400
+for invalid options or JSON, 413 for a body over 4 KiB, and 503 when analysis is
+not configured. The SDK's analysis mutation uses the omitted-body form.
+
+`POST /api/feedback/test` runs an isolated sample through the analyzer and
+guideline formatter. Its response includes `isolated: true`; it does not edit
+saved ratings or the profile used in conversations. It does not establish the
+integrity of the saved feedback file.
+
 ## Monitoring event windows
 
 `fetchMonitoringEventWindow(start, end, signal, { limit: 1000 })` returns
@@ -2170,6 +2198,58 @@ cached recovery notice across API-base changes; refresh the selected Station
 before projecting it as current. The record exposes no filesystem path or
 backup manifest contents.
 
+## Saved answer quotations
+
+`getAssistantQuoteSource(apiBase, sessionId, turnId, options)` from
+`@kontourai/station-sdk/quote-source` reads a bounded completed answer through
+`GET /api/orchestration/sessions/:sessionId/turns/:turnId/quote-source`.
+Pass the host-captured `requestScope` and an abort signal. The result is
+`OrchestrationQuoteSource`: exact Session/turn/message identifiers, source text,
+and a SHA-256 text revision. Reads recheck current access and do not load the
+whole Session. Missing and denied answers are indistinguishable; an oversized
+answer is refused. A text revision detects changes, not evidence standing.
+
+The Station composer retains up to three selected excerpts with its existing
+local draft. Sending serializes the user's copied text and source references
+into the ordinary user message; it creates no capability or trust grant.
+Inspecting a saved reference reads its original answer under current access
+on the selected Station. No network request is made to an origin supplied by
+an untrusted quote link. The saved quotation and a changed current source
+remain visibly distinct.
+
+## In-app pull-request review
+
+`@kontourai/station-sdk/pull-request-review` exports `getPullRequestReview`,
+`submitPullRequestReview`, and `mergeReviewedPullRequest`. Pass an explicit
+Station API base, a `PullRequestReviewTarget` (provider, host, repository owner
+and name, native ref, and resolving Project context), and the host-captured
+`requestScope`. Repository identity never comes from a display URL.
+
+Review reads validate the returned exact target and revision. Approvals and
+review-origin merges carry the inspected head SHA to the provider. The provider
+CLI owns forge authentication; Station does not store forge credentials.
+Confirmed review acknowledgements include the observed actor. GitLab ordinary
+comments are not commit-bound; their acknowledgements omit `headSha`.
+
+Retain a draft after an indeterminate response and inspect current provider
+state before another submission. A missing or unverifiable acknowledgement is
+not a safe automatic-retry signal. Unsupported review adapters return an
+explicit unavailable result. Diff bytes and discussion are bounded and may be
+partial; the response says which content could not be supplied.
+
+## Conversation pull-request links
+
+`@kontourai/station-sdk/conversation-pull-request-links` reads, links, and
+unlinks exact pull-request identities for one Conversation. Each call requires
+the selected Station API base and captured `requestScope`. A link is persisted
+only after the provider resolves the exact provider, host, repository owner,
+repository name, and native ref under current authorization.
+
+Reads refresh every identity and return `observedAt` plus current,
+unsupported, or unavailable state. Clients should mark an old cached
+observation stale and require refresh before review or other actions. Explicit
+unlink changes only the Conversation association; it never changes the pull
+request or deletes Task-kept provenance.
 ## Files in answers to input requests
 
 `getInputReplyContext(apiBase, reference, options)` from
@@ -2183,3 +2263,14 @@ the orchestration owner checks the same open event again before adapter input.
 Opaque `attachmentRefs` use the existing current-host staging path; retries
 retain the same `clientTurnId` and payload after an uncertain response. Pass the
 captured host `requestScope` to each read, staging operation and send.
+
+## Mobile device inspection
+
+The opt-in `@kontourai/station-sdk/mobile-device` subpath exports
+`fetchMobileDeviceInventory(apiBase, options?)` and
+`captureMobileDevice(apiBase, target, options?)`, the shared inventory/target/capture
+types, and `MobileDeviceRequestError` with an HTTP status. Both use the existing
+`ClientRequestOptions` credential and origin boundary. Responses are validated;
+capture refuses mismatched targets and returns a timestamped PNG, not stream
+readiness or foreground-app provenance. See [Mobile device inspection](../guides/mobile-device-workspace.md)
+for host setup, access scopes, limits, and the web/desktop integration boundary.

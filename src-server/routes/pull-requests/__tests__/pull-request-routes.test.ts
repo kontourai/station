@@ -28,7 +28,13 @@ const context = async () => ({
     baseRef: 'main',
   },
 });
-function app(operator?: string) {
+function app(
+  operator?: string,
+  authority: { current: boolean; operator?: string } = {
+    current: true,
+    operator,
+  },
+) {
   const providerResult = {
     available: true,
     effectiveCapabilities: caps,
@@ -47,6 +53,8 @@ function app(operator?: string) {
       effectiveMergeMethods: ['merge', 'squash', 'rebase'],
       mergeMethodsSource: 'provider-default',
     }),
+    getReviewSnapshot: vi.fn().mockResolvedValue(providerResult),
+    submitReview: vi.fn().mockResolvedValue(providerResult),
     mergePullRequest: vi.fn().mockResolvedValue(providerResult),
     createComment: vi.fn().mockResolvedValue(providerResult),
     approvePullRequest: vi.fn().mockResolvedValue(providerResult),
@@ -57,7 +65,8 @@ function app(operator?: string) {
   return {
     provider,
     app: createPullRequestRoutes(() => [provider], context, {
-      operatorIdentityForRequest: () => operator,
+      operatorIdentityForRequest: () => authority.operator ?? operator,
+      isRequestPrincipalCurrent: () => authority.current,
     }),
   };
 }
@@ -388,5 +397,159 @@ describe('mounted pull request authority boundary', () => {
     // A read-only credential remains denied at the outer scope boundary.
     expect((await post('/1/comments', 'read-only')).status).toBe(403);
     expect(provider.createComment).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('revision-bound review routes', () => {
+  test('reads a snapshot at the exact repository route and disables caching', async () => {
+    const fixture = app('operator');
+    const response = await fixture.app.request(
+      '/github/github.com/o/r/17/review',
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(fixture.provider.getReviewSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repository: expect.objectContaining({ owner: 'o', name: 'r' }),
+      }),
+      '17',
+    );
+  });
+  test('validates input and denies missing operators before invoking a review write', async () => {
+    const unauth = app();
+    const input = { action: 'approve', expectedHeadSha: 'a'.repeat(40) };
+    expect(
+      (
+        await unauth.app.request('/github/github.com/o/r/17/review', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(input),
+        })
+      ).status,
+    ).toBe(403);
+    expect(unauth.provider.submitReview).not.toHaveBeenCalled();
+    const fixture = app('operator');
+    for (const body of [
+      { ...input, expectedHeadSha: 'branch' },
+      { ...input, action: 'merge' },
+      { ...input, extra: true },
+    ]) {
+      expect(
+        (
+          await fixture.app.request('/github/github.com/o/r/17/review', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          })
+        ).status,
+      ).toBe(400);
+    }
+    expect(fixture.provider.submitReview).not.toHaveBeenCalled();
+  });
+  test('capability refusal and repository mismatch cannot submit; approved input reaches provider exactly', async () => {
+    const fixture = app('operator');
+    const input = { action: 'approve', expectedHeadSha: 'a'.repeat(40) };
+    const send = (owner = 'o') =>
+      fixture.app.request(`/github/github.com/${owner}/r/17/review`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+    expect((await send('different')).status).toBe(404);
+    expect(fixture.provider.submitReview).not.toHaveBeenCalled();
+    fixture.provider.getAvailability.mockResolvedValueOnce({
+      available: true,
+      effectiveCapabilities: { ...caps, approve: false },
+      effectiveMergeMethods: [],
+      mergeMethodsSource: 'provider-default',
+    });
+    expect((await send()).status).toBe(409);
+    expect(fixture.provider.submitReview).not.toHaveBeenCalled();
+    expect((await send()).status).toBe(200);
+    expect(fixture.provider.submitReview).toHaveBeenCalledWith(
+      expect.anything(),
+      '17',
+      input,
+      { isCurrent: expect.any(Function) },
+    );
+  });
+
+  test('does not publish a review read after Station authority changes', async () => {
+    const authority = { current: true, operator: 'operator' };
+    const fixture = app('operator', authority);
+    fixture.provider.getReviewSnapshot.mockImplementationOnce(async () => {
+      authority.current = false;
+      return { available: true, data: { secret: 'provider response' } };
+    });
+    const response = await fixture.app.request(
+      '/github/github.com/o/r/17/review',
+    );
+    expect(response.status).toBe(403);
+    expect(await response.text()).not.toContain('provider response');
+  });
+
+  test('rechecks operator and principal immediately before review and merge effects', async () => {
+    const authority = { current: true, operator: 'operator' };
+    const fixture = app('operator', authority);
+    const input = { action: 'approve', expectedHeadSha: 'a'.repeat(40) };
+    fixture.provider.submitReview.mockImplementationOnce(
+      async (
+        _context: unknown,
+        _ref: string,
+        _input: unknown,
+        admission: { isCurrent: () => boolean },
+      ) => {
+        authority.current = false;
+        expect(admission.isCurrent()).toBe(false);
+        return {
+          available: false,
+          reason: 'stale authority',
+          effectiveCapabilities: caps,
+          effectiveMergeMethods: ['squash'],
+          mergeMethodsSource: 'provider-default',
+        };
+      },
+    );
+    expect(
+      (
+        await fixture.app.request('/github/github.com/o/r/17/review', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(input),
+        })
+      ).status,
+    ).toBe(200);
+
+    authority.current = true;
+    fixture.provider.mergePullRequest.mockImplementationOnce(
+      async (
+        _context: unknown,
+        _ref: string,
+        _input: unknown,
+        admission: { isCurrent: () => boolean },
+      ) => {
+        authority.operator = 'different';
+        expect(admission.isCurrent()).toBe(false);
+        return {
+          available: false,
+          reason: 'stale operator',
+          effectiveCapabilities: caps,
+          effectiveMergeMethods: ['squash'],
+          mergeMethodsSource: 'provider-default',
+        };
+      },
+    );
+    expect(
+      (
+        await fixture.app.request('/github/github.com/o/r/17/merge', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            method: 'squash',
+            expectedHeadSha: 'a'.repeat(40),
+          }),
+        })
+      ).status,
+    ).toBe(200);
   });
 });

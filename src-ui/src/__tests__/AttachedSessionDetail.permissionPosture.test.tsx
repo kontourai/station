@@ -109,6 +109,14 @@ function renderAttached({
               threadId: 'external:claude:raw-thread-id',
               provider: 'claude',
               controlMode: 'read-only-attached',
+              attachedSource: {
+                kind: 'claude-transcript',
+                externalSessionId: 'fixture-native-source',
+                affinity: {
+                  kind: 'fixture-home',
+                  ref: 'verified-fixture-home',
+                },
+              },
               createdAt: '2026-06-27T00:00:00.000Z',
               updatedAt: '2026-06-27T00:00:00.000Z',
               ...sessionOverrides,
@@ -194,7 +202,26 @@ test('Enter confirms the exact draft only after consent; Shift+Enter and IME do 
 });
 
 describe('AttachedSessionDetail permission-posture row badge (station#1424)', () => {
-  test.each(['acp', 'future-engine'])(
+  test('keeps continuation disabled until source affinity is observed', () => {
+    adoptOrchestrationSession.mockClear();
+    renderAttached({
+      session: {
+        attachedSource: {
+          kind: 'claude-transcript',
+          externalSessionId: 'unverified-source',
+        },
+      },
+    });
+    const button = screen.getByRole('button', { name: 'Continue in Station' });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      screen.getByText('Waiting for the source configuration to be verified.'),
+    ).toBeTruthy();
+    fireEvent.click(button);
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+  });
+
+  test.each(['bedrock', 'future-engine'])(
     'keeps unsupported or unknown %s continuation visible and disabled',
     (provider) => {
       adoptOrchestrationSession.mockClear();
@@ -205,13 +232,49 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
       expect((button as HTMLButtonElement).disabled).toBe(true);
       expect(
         screen.getByText(
-          provider === 'codex'
-            ? 'Station can read this Codex transcript, but independent continuation is not available yet.'
-            : 'Station has not established independent continuation support for this engine.',
+          'Station has not established independent continuation support for this engine.',
         ),
       ).toBeTruthy();
       fireEvent.click(button);
       expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([false, true])(
+    'Codex continuation requires an observed completed boundary: %s',
+    (completed) => {
+      renderAttached({
+        session: {
+          provider: 'codex',
+          attachedSource: {
+            kind: 'codex-rollout',
+            externalSessionId: 'fixture-native-source',
+            affinity: {
+              kind: 'codex-config-home',
+              ref: 'verified-fixture-home',
+            },
+            ...(completed
+              ? {
+                  completedBoundary: {
+                    kind: 'completed-turn',
+                    providerTurnId: 't1',
+                    observedEventId: 'e1',
+                  },
+                }
+              : {}),
+          },
+        },
+      });
+      const button = screen.getByRole('button', {
+        name: 'Continue in Station',
+      });
+      expect((button as HTMLButtonElement).disabled).toBe(!completed);
+      if (!completed)
+        expect(
+          screen.getByText(
+            'No completed source turn is available for continuation.',
+          ),
+        ).toBeTruthy();
     },
   );
 

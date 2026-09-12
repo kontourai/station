@@ -207,7 +207,7 @@ class TaskDispatchAdmissionError extends Error {
  * shape to repair: it is an unreadable graph and must remain untouched for
  * inspection.
  */
-export class TaskGraphStoreShapeError extends Error {
+class TaskGraphStoreShapeError extends Error {
   constructor(
     readonly filePath: string,
     readonly problems: readonly string[],

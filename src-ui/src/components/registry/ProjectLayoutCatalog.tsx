@@ -31,7 +31,7 @@ function tabCountLabel(tabCount: number): string {
   return `${tabCount} ${tabCount === 1 ? 'tab' : 'tabs'}`;
 }
 
-export function isProjectLayoutCatalogItemApplied(
+function isProjectLayoutCatalogItemApplied(
   item: LayoutCatalogItem,
   layouts: LayoutMetadata[],
 ): boolean {

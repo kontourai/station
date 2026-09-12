@@ -168,6 +168,9 @@ const LONG_UNBREAKABLE_REASON =
 
 function buildChatInput() {
   return {
+    quotes: [],
+    quotedDraftText: '',
+    removeQuote: vi.fn(),
     input: '',
     attachments: [],
     textareaRef: { current: null },

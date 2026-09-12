@@ -14,7 +14,7 @@ export type DestinationSection = 'primary' | 'customize' | 'system';
  * alphabetical accident — adding `primary` under that rule would have sorted
  * the top-level band into the MIDDLE ('customize' < 'primary' < 'system').
  */
-export const DESTINATION_SECTION_ORDER: readonly DestinationSection[] = [
+const DESTINATION_SECTION_ORDER: readonly DestinationSection[] = [
   'primary',
   'customize',
   'system',

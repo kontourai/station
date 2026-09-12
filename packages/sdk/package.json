@@ -9,6 +9,7 @@
     "*.css"
   ],
   "exports": {
+    "./mobile-device": "./src/mobile-device.ts",
     ".": "./src/index.ts",
     "./core-update-restart-status": "./src/core-update-restart-status.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",
@@ -45,6 +46,9 @@
     "./spatial-board": "./src/spatial-board.ts",
     "./testing": "./src/voice/testing.ts",
     "./voice": "./src/voice/session.ts",
+    "./quote-source": "./src/client/quote-source.ts",
+    "./pull-request-review": "./src/client/pull-request-review.ts",
+    "./conversation-pull-request-links": "./src/client/conversation-pull-request-links.ts",
     "./input-reply": "./src/client/input-reply.ts"
   },
   "scripts": {

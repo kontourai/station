@@ -1,3 +1,4 @@
+import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 
 /**
@@ -12,6 +13,7 @@ export interface AttachedSessionDescriptor {
   cwd: string;
   createdAt: string;
   sourceHandle: string;
+  affinity?: ProviderSessionSourceAffinity;
 }
 
 export type AttachedSessionSourceOutcome =
@@ -73,6 +75,8 @@ export interface AttachedSessionSource {
    * provider name.
    */
   readonly kind: string;
+  /** Declared only when completed canonical turn IDs are native fork positions. */
+  readonly continuationBoundary?: 'completed-turn';
   discover(): Promise<AttachedSessionDiscoveryResult>;
   read(
     session: AttachedSessionDescriptor,

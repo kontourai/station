@@ -13,7 +13,7 @@ interface RuntimeLogger {
 const EVENT_FILE_PATTERN = /^events-(\d{4}-\d{2}-\d{2})\.ndjson$/;
 const MIB = 1024 * 1024;
 
-export const DEFAULT_EVENT_LOG_RETENTION = {
+const DEFAULT_EVENT_LOG_RETENTION = {
   maxAgeDays: 30,
   maxBytes: 256 * MIB,
 } as const;

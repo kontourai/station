@@ -5,7 +5,7 @@ import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js
 import type { ConversationHistoryCursor, EventStore } from './event-store.js';
 import { buildOrchestrationSessionSummary } from './orchestration-session-state.js';
 
-export const CONVERSATION_HISTORY_PAGE_MAX = 100;
+const CONVERSATION_HISTORY_PAGE_MAX = 100;
 
 export interface ConversationHistoryPage {
   items: ConversationListItem[];

@@ -40,11 +40,13 @@ category.
 - [cloud-move.md](cloud-move.md) — Move a Station setup to the cloud
 - [collaborative-editor-pane.md](collaborative-editor-pane.md) — Collaborative editor pane
 - [conduit-runtime-integration.md](conduit-runtime-integration.md) — Conduit runtime integration
+- [connection-broker.md](connection-broker.md) — Optional Station connection broker
 - [connections-onboarding.md](connections-onboarding.md) — Design: Connections onboarding & capability passthrough
 - [conversation-state.md](conversation-state.md) — Design: conversation state — channel-home logs, signed proposals, per-noun consistency
 - [developer-surface.md](developer-surface.md) — Developer surface
 - [entity-hierarchy.md](entity-hierarchy.md) — Design: Entity Hierarchy & Navigation Restructure
 - [event-store-ledger-migration.md](event-store-ledger-migration.md) — EventStore ledger migration order
+- [hosted-execution-isolation.md](hosted-execution-isolation.md) — Hosted execution and plugin isolation
 - [identity.md](identity.md) — Design: Identity (pluggable sources, local-first invariant)
 - [inference-fleet.md](inference-fleet.md) — Design: the inference fleet — receipted model routing across your Stations
 - [instance-registry.md](instance-registry.md) — Design: Instance Registry (`<STATION_HOME>/instances.json`)
@@ -72,6 +74,7 @@ category.
 - [portable-project-identity.md](portable-project-identity.md) — Design: portable Project identity — remote-keyed resources, per-Station bindings
 - [principals.md](principals.md) — Design: Principals — what "people" means in Station, and when it changes
 - [private-cloud-environment.md](private-cloud-environment.md) — Private cloud Station environment
+- [project-membership.md](project-membership.md) — Project membership and device enrollment
 - [project-task-room-history.md](project-task-room-history.md) — Project/Task room history
 - [revision-bound-evidence.md](revision-bound-evidence.md) — Design: revision-bound evidence
 - [session-tape-replay.md](session-tape-replay.md) — Session tape replay
@@ -81,6 +84,7 @@ category.
 - [ssh-launched-environments.md](ssh-launched-environments.md) — Design: SSH-launched Environments
 - [station-instance-reconciler.md](station-instance-reconciler.md) — Station instance reconciliation
 - [station-peer-pairing.md](station-peer-pairing.md) — Design: Station-to-Station peer pairing (spike, station#1123)
+- [station-topology.md](station-topology.md) — Design: Station topology and role vocabulary
 - [survey-flow-review.md](survey-flow-review.md) — Survey-backed Flow review
 - [task-dispatcher.md](task-dispatcher.md) — Task Dispatcher
 - [work-plane-composition.md](work-plane-composition.md) — Work-Plane Composition: Station as the Native Host of the Kontour Work Plane

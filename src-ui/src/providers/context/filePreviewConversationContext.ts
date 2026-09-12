@@ -4,7 +4,7 @@ import type {
 } from '@kontourai/station-contracts/workspace-file-preview';
 import { parseWorkspaceOpenFilePreviewIntent } from '@kontourai/station-contracts/workspace-file-preview';
 
-export const MAX_FILE_PREVIEW_CONVERSATION_CONTEXT_BYTES = 64 * 1024;
+const MAX_FILE_PREVIEW_CONVERSATION_CONTEXT_BYTES = 64 * 1024;
 
 export interface FilePreviewConversationContext
   extends WorkspaceOpenFilePreviewIntent {

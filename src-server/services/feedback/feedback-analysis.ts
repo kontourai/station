@@ -1,9 +1,63 @@
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
 import type {
   AnalyzeCallback,
   FeedbackStore,
   FeedbackSummary,
   MessageRating,
 } from './feedback-service.js';
+
+const analysisText = z.string().trim().min(1);
+const miniResponse = z.array(
+  z.object({
+    index: z.number().int().positive(),
+    analysis: analysisText,
+  }),
+);
+const summaryResponse = z.object({
+  reinforce: z.array(analysisText),
+  avoid: z.array(analysisText),
+});
+const storedSummary = summaryResponse.extend({
+  analyzedCount: z.number().int().nonnegative(),
+  updatedAt: z.string().min(1),
+});
+
+export function parseFeedbackSummary(value: unknown): FeedbackSummary | null {
+  const parsed = storedSummary.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+export function hasFeedbackAnalysis(
+  rating: MessageRating,
+): rating is MessageRating & { analysis: string } {
+  return (
+    typeof rating.analysis === 'string' && rating.analysis.trim().length > 0
+  );
+}
+
+export function needsFeedbackAnalysis(rating: MessageRating): boolean {
+  return (
+    !hasFeedbackAnalysis(rating) ||
+    typeof rating.analyzedAt !== 'string' ||
+    !rating.analyzedAt
+  );
+}
+
+function parseAnalysisResponse<T>(text: string, schema: z.ZodType<T>): T {
+  const payload = extractJson(text);
+  if (!payload) throw new Error('Feedback analysis did not return JSON.');
+  let value: unknown;
+  try {
+    value = JSON.parse(payload);
+  } catch {
+    throw new Error('Feedback analysis returned invalid JSON.');
+  }
+  const result = schema.safeParse(value);
+  if (!result.success)
+    throw new Error('Feedback analysis returned an invalid result shape.');
+  return result.data;
+}
 
 function escapeXml(text: string): string {
   return text
@@ -59,7 +113,7 @@ export async function runMiniFeedbackAnalysis(
   analyze: AnalyzeCallback,
   data: FeedbackStore,
 ): Promise<FeedbackStore> {
-  const pending = data.ratings.filter((rating) => !rating.analyzedAt);
+  const pending = data.ratings.filter(needsFeedbackAnalysis);
   if (pending.length === 0) return data;
 
   const ratingsXml = pending
@@ -82,16 +136,20 @@ For each rated response, provide a 1-2 sentence summary explaining WHY the user 
 Respond with ONLY a JSON array: [{"index": 1, "analysis": "..."}, ...]`;
 
   const raw = await analyze(prompt);
-  const analyses = JSON.parse(extractJson(raw) || '[]') as Array<{
-    index: number;
-    analysis: string;
-  }>;
+  const analyses = parseAnalysisResponse(raw, miniResponse);
+  if (!analyses.length)
+    throw new Error('Feedback analysis produced no rating analyses.');
+  const seen = new Set<number>();
 
   const analyzedAt = new Date().toISOString();
   const nextRatings = [...data.ratings];
   for (const analysis of analyses) {
     const rating = pending[analysis.index - 1];
-    if (!rating || !analysis.analysis) continue;
+    if (!rating || seen.has(analysis.index))
+      throw new Error(
+        'Feedback analysis returned an invalid or repeated rating index.',
+      );
+    seen.add(analysis.index);
     const index = nextRatings.findIndex((entry) => entry.id === rating.id);
     if (index >= 0) {
       nextRatings[index] = {
@@ -110,19 +168,12 @@ export async function runFullFeedbackAnalysis(params: {
   data: FeedbackStore;
   maxReinforce: number;
   maxAvoid: number;
-}): Promise<FeedbackSummary | null> {
-  const analyzed = params.data.ratings.filter(
-    (rating): rating is MessageRating & { analysis: string } =>
-      typeof rating.analysis === 'string' && rating.analysis.length > 0,
-  );
-  if (analyzed.length === 0) return null;
-
-  if (
-    params.data.summary &&
-    params.data.summary.analyzedCount === analyzed.length
-  ) {
-    return params.data.summary;
-  }
+}): Promise<{ summary: FeedbackSummary | null; summaryBasis?: string } | null> {
+  const analyzed = params.data.ratings.filter(hasFeedbackAnalysis);
+  if (analyzed.length === 0)
+    return params.data.summary
+      ? { summary: null, summaryBasis: undefined }
+      : null;
 
   const liked = analyzed
     .filter((rating) => rating.rating === 'thumbs_up')
@@ -147,16 +198,22 @@ Each behavior should be a concise, actionable phrase. Rank by frequency.
 
 Respond with ONLY JSON: {"reinforce": ["behavior 1", ...], "avoid": ["behavior 1", ...]}`;
 
+  const summaryBasis = createHash('sha256').update(prompt).digest('hex');
+  if (
+    params.data.summaryBasis === summaryBasis &&
+    parseFeedbackSummary(params.data.summary)?.analyzedCount === analyzed.length
+  )
+    return null;
   const raw = await params.analyze(prompt);
-  const result = JSON.parse(extractJson(raw) || '{}') as {
-    reinforce?: string[];
-    avoid?: string[];
-  };
+  const result = parseAnalysisResponse(raw, summaryResponse);
 
   return {
-    reinforce: (result.reinforce || []).slice(0, params.maxReinforce),
-    avoid: (result.avoid || []).slice(0, params.maxAvoid),
-    analyzedCount: analyzed.length,
-    updatedAt: new Date().toISOString(),
+    summary: {
+      reinforce: result.reinforce.slice(0, params.maxReinforce),
+      avoid: result.avoid.slice(0, params.maxAvoid),
+      analyzedCount: analyzed.length,
+      updatedAt: new Date().toISOString(),
+    },
+    summaryBasis,
   };
 }
