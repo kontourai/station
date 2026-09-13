@@ -4,6 +4,10 @@
 //! fail-closed parser. Paths are separate process arguments, never inserted
 //! into the PowerShell source.
 
+#[cfg(windows)]
+#[path = "windows_private_acl.rs"]
+mod private_acl;
+
 use std::path::Path;
 #[cfg(windows)]
 use std::path::PathBuf;
@@ -107,7 +111,10 @@ function Set-Trust([string]$Path, [bool]$Directory) {
   $acl.SetAccessRuleProtection($true, $false); foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRuleAll($rule) }
   $inheritance = if ($Directory) { [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit' } else { [Security.AccessControl.InheritanceFlags]::None }
   $rule = New-Object Security.AccessControl.FileSystemAccessRule($sid, [Security.AccessControl.FileSystemRights]::FullControl, $inheritance, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow)
-  $acl.SetOwner($sid); $acl.AddAccessRule($rule); if ($Directory) { [IO.Directory]::SetAccessControl($Path, $acl) } else { [IO.File]::SetAccessControl($Path, $acl) }
+  # An owner can change its DACL without WRITE_OWNER. Marking an unchanged
+  # owner for persistence would unnecessarily require that additional right.
+  if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $sid.Value) { $acl.SetOwner($sid) }
+  $acl.AddAccessRule($rule); if ($Directory) { [IO.Directory]::SetAccessControl($Path, $acl) } else { [IO.File]::SetAccessControl($Path, $acl) }
 }
 function Assert-Trust([string]$Path, [bool]$Directory, [bool]$ExecutionSafe) {
   Assert-NoReparse $Path; $item = Get-Item -LiteralPath $Path -Force; if ($Directory -ne $item.PSIsContainer) { throw "Station trust path kind changed: $Path" }
@@ -116,6 +123,13 @@ function Assert-Trust([string]$Path, [bool]$Directory, [bool]$ExecutionSafe) {
   if ($rule.IdentityReference.Value -ne $sid.Value -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or (($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::FullControl) -ne [Security.AccessControl.FileSystemRights]::FullControl)) { throw "Station trust ACL permits an unrelated principal: $Path" }
 }
 $operation = [string]$request.operation; foreach ($target in @($request.targets)) { $directory = [string]$target.kind -eq 'directory'; $executionSafe = [string]$target.policy -eq 'execution-safe'; $path = [string]$target.path; if ($operation -eq 'ensure') { if (-not (Test-Path -LiteralPath $path)) { if (-not $directory) { throw "Station trust file does not exist: $path" }; [void][IO.Directory]::CreateDirectory($path) }; Set-Trust $path $directory } elseif ($operation -eq 'verify') { if (-not (Test-Path -LiteralPath $path)) { throw "Station trust path does not exist: $path" }; Assert-Trust $path $directory $executionSafe } else { throw 'invalid Station trust operation' } }
+# Complete the same verification pass before returning from an ensure request.
+# Keeping both phases in this process avoids a second PowerShell startup.
+if ($operation -eq 'ensure') {
+  foreach ($target in @($request.targets)) {
+    Assert-Trust ([string]$target.path) ([string]$target.kind -eq 'directory') $false
+  }
+}
 [Console]::Out.Write('{"trusted":true}')
 "#;
 
@@ -167,16 +181,19 @@ pub fn ensure(paths: &[(TrustKind, &Path)]) -> Result<(), String> {
         .iter()
         .map(|(kind, path)| (*kind, TrustPolicy::CurrentUserOnly, *path))
         .collect::<Vec<_>>();
-    invoke("ensure", &paths)?;
-    invoke("verify", &paths)
+    invoke("ensure", &paths)
 }
 
 pub fn verify(paths: &[(TrustKind, &Path)]) -> Result<(), String> {
-    let paths = paths
-        .iter()
-        .map(|(kind, path)| (*kind, TrustPolicy::CurrentUserOnly, *path))
-        .collect::<Vec<_>>();
-    invoke("verify", &paths)
+    #[cfg(windows)]
+    {
+        private_acl::verify(paths)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = paths;
+        Ok(())
+    }
 }
 
 pub fn verify_execution_paths(paths: &[(TrustKind, &Path)]) -> Result<(), String> {
@@ -190,6 +207,77 @@ pub fn verify_execution_paths(paths: &[(TrustKind, &Path)]) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::{encoded_powershell_command, result_is_trusted, TRUST_SCRIPT};
+
+    #[cfg(windows)]
+    #[test]
+    fn native_private_acl_matches_powershell_and_rechecks_changed_permissions() {
+        use super::{ensure, invoke, verify, TrustKind, TrustPolicy};
+        use std::os::windows::process::CommandExt;
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("private");
+        let file = directory.join("secret.txt");
+        ensure(&[(TrustKind::Directory, &directory)]).unwrap();
+        std::fs::write(&file, b"preserved").unwrap();
+        ensure(&[(TrustKind::File, &file)]).unwrap();
+        let expected = |valid: bool| {
+            let paths = [
+                (TrustKind::Directory, directory.as_path()),
+                (TrustKind::File, file.as_path()),
+            ];
+            assert_eq!(verify(&paths).is_ok(), valid);
+            let targets = paths
+                .iter()
+                .map(|(kind, path)| (*kind, TrustPolicy::CurrentUserOnly, *path))
+                .collect::<Vec<_>>();
+            assert_eq!(invoke("verify", &targets).is_ok(), valid);
+        };
+        expected(true);
+        let start = std::time::Instant::now();
+        for _ in 0..100 {
+            verify(&[(TrustKind::Directory, &directory), (TrustKind::File, &file)]).unwrap();
+        }
+        println!("100 fresh native ACL checks: {:?}", start.elapsed());
+        let encoded = super::base64_utf8(&file.to_string_lossy());
+        for mutation in [
+            "$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new('S-1-1-0'),[Security.AccessControl.FileSystemRights]::Read,[Security.AccessControl.AccessControlType]::Allow))",
+            "$acl.SetAccessRuleProtection($false,$false)",
+            "foreach($r in @($acl.Access)){[void]$acl.RemoveAccessRuleAll($r)}; $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,[Security.AccessControl.FileSystemRights]::Modify,[Security.AccessControl.AccessControlType]::Allow))",
+            "$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,[Security.AccessControl.FileSystemRights]::Read,[Security.AccessControl.AccessControlType]::Deny))",
+        ] {
+            let program = format!("$ErrorActionPreference='Stop'; $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User; $p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{encoded}')); $acl=[IO.File]::GetAccessControl($p); {mutation}; [IO.File]::SetAccessControl($p,$acl)");
+            let output = std::process::Command::new(super::powershell_path().unwrap())
+                .args(super::encoded_powershell_command(&program)).creation_flags(0x08000000).output().unwrap();
+            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+            expected(false);
+            ensure(&[(TrustKind::File, &file)]).unwrap();
+            expected(true);
+        }
+        assert_eq!(std::fs::read(&file).unwrap(), b"preserved");
+        assert!(verify(&[(TrustKind::File, &directory)]).is_err());
+        assert!(verify(&[(TrustKind::Directory, &file)]).is_err());
+        assert!(verify(&[(TrustKind::File, &directory.join("missing"))]).is_err());
+        assert!(verify(&[]).is_err());
+        // Junction creation needs no symlink privilege. The real underlying
+        // target is trusted; its redirected spelling must still be rejected.
+        let junction = temp.path().join("junction");
+        let output = std::process::Command::new(super::powershell_path().unwrap())
+            .args(["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path $env:STATION_TEST_JUNCTION -Target $env:STATION_TEST_TARGET | Out-Null"])
+            .env("STATION_TEST_JUNCTION", &junction).env("STATION_TEST_TARGET", &directory)
+            .creation_flags(0x08000000).output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(verify(&[(TrustKind::File, &junction.join("secret.txt"))]).is_err());
+        let targets = [(
+            TrustKind::File,
+            TrustPolicy::CurrentUserOnly,
+            junction.join("secret.txt"),
+        )];
+        assert!(invoke("verify", &[(targets[0].0, targets[0].1, &targets[0].2)]).is_err());
+        std::fs::remove_dir(&junction).unwrap();
+    }
 
     #[test]
     fn only_accepts_the_structured_acl_verification_result() {

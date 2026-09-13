@@ -231,6 +231,60 @@ tenant security boundary.
 
 ## Acceptance and decisions
 
+### Connection proof contract
+
+[#2000](https://github.com/kontourai/station/issues/2000) owns the independently
+admitted signing key and connection-proof lifecycle. The initial
+[contract](../../packages/contracts/src/connection-proof.ts),
+[shared JOSE verifier](../../packages/shared/src/connection-proof.ts) and
+[Station issuer](../../src-server/services/ssh/connection-proof-issuer.ts)
+are exercised by the browser transport fixture. Production key enrollment,
+storage, rotation/recovery and bootstrap issuance are not enabled by this slice.
+
+Use a separately admitted P-256 signing key with compact JWS/JWT `ES256` from
+the maintained `jose` implementation. Do not negotiate an algorithm from broker
+input or fetch signing keys from token headers. The protected header contains
+only `alg`, `typ` (`station-connection-proof+jwt`) and `kid` (the approved public
+JWK's SHA-256 thumbprint). The exact audience is
+`urn:station:connection-proof:v1`; the issuer is `urn:station:<stationId>`.
+This is transport proof, not a general login token.
+
+The closed version-1 binding names the Station, enrollment, positive generation,
+connection ID, client nonce, client and Station certificate fingerprints, and
+SHA-256 digests of the exact offer and answer bytes. The nonce and connection
+ID originate in the Device. Binding expectations and signing-key trust come
+from their local owners, never from decoded broker claims. Full gathering
+precedes signing; extra unsigned candidate updates are refused. A future
+trickle-ICE protocol needs its own authenticated update contract.
+
+Proofs use integer-second `iat`, `nbf` and `exp`, with `nbf = iat` and an exact
+30-second lifetime. Clock tolerance is zero in this initial contract. Expired,
+future-dated, wider-lifetime, wrong-audience, cross-Station, stale-generation,
+wrong-client, changed-SDP and changed-key proofs fail. Clock skew is an explicit
+connection refusal, not permission to extend a grant. The Station's trusted
+admission callback must permit issuance both before and after asynchronous
+signing. The verifier rechecks current local trust and expiry after asynchronous
+verification, then permits exactly one successful consumption per handshake;
+concurrent verification cannot consume the same handshake twice.
+
+An invalid attempt does not consume the challenge. After successful proof
+consumption, failed connection setup requires a fresh challenge/connection;
+reloading must not restore an already-consumed handshake. This in-memory
+verifier is not a durable Station bootstrap replay ledger. Production issuance
+and exchange still require the owning authorization transaction and replay
+record, separate from this cryptographic proof.
+
+The browser fixture supplies signing-key trust through its private controller
+to model independent admission. It checks the proof in real browser WebCrypto
+before accepting the SDP, refuses an altered proof and replay, and still
+requires actual DTLS certificate verification. It retains its explicit
+certificate pin as an additional test boundary; the fixture does not implement
+production signing-key or certificate rotation. Its Station admission callback
+is test-owned and does not verify an external account. No remotely selectable
+trust header, Project membership or operator credential is introduced.
+
+### Transport qualification
+
 The [browser transport evaluation](../guides/local-collaboration-lab.md#browser-transport-evaluation)
 establishes a candidate mechanism for the browser boundary: WebRTC DataChannels
 carry application data over SCTP/DTLS, while TURN forwards traffic without the
@@ -239,7 +293,10 @@ than introducing an application cipher. See [RFC 8831](https://www.rfc-editor.or
 
 The current evaluation is a **go for further protocol integration, defer for
 production transport selection**. Real Chromium/Node UDP relay delivery and
-certificate-substitution rejection pass; TURN/TCP interoperability does not.
+certificate-substitution rejection pass; that packaged Node backend's TURN/TCP
+interoperability does not. The independent Pion profile uses a maintained Go
+implementation with TURN/TCP and the same browser DTLS rejection checks;
+qualification of that profile does not silently qualify the Node backend.
 [#1995](https://github.com/kontourai/station/issues/1995) owns qualification of
 that path before production adapter selection.
 The fixture installs approved fingerprint trust out of band. It does not deliver
