@@ -43,12 +43,38 @@ export async function browserOffer({
   return { sdp: peer.localDescription.sdp, type: peer.localDescription.type };
 }
 
-export function browserSetConnectionTrust(trust) {
+export async function browserSetConnectionTrust({ trust, approvedKeyId }) {
   // Called only by the owned fixture controller, not a signaling message.
-  window.stationConnectionTrust = Object.freeze({
-    ...trust,
-    signingKey: Object.freeze({ ...trust.signingKey }),
-  });
+  const store =
+    await window.stationConnectionProof.openDeviceConnectionTrustStore();
+  const existing = await store.read(trust.stationId);
+  const record = existing ?? (await store.approve(trust, null, approvedKeyId));
+  if (
+    record.status !== 'approved' ||
+    JSON.stringify(record.trust) !== JSON.stringify(trust)
+  )
+    throw new Error(
+      'Stored Device signing trust does not match independent approval',
+    );
+  window.stationConnectionTrustStore = store;
+  window.stationConnectionTrustRecord = record;
+  window.stationConnectionTrust = record.trust;
+}
+
+export async function browserRevokeConnectionTrust(stationId) {
+  const store =
+    await window.stationConnectionProof.openDeviceConnectionTrustStore();
+  try {
+    const record = await store.read(stationId);
+    if (!record) throw new Error('Missing Device trust to revoke');
+    await store.revoke(stationId, record.revision);
+  } finally {
+    store.close();
+  }
+}
+
+export function browserHasNoRemoteDescription() {
+  return window.stationTransportLab.peer.remoteDescription === null;
 }
 
 export function browserConnectionContext() {
@@ -61,6 +87,7 @@ export async function browserAccept({ sdp, pin, candidates, proof }) {
   if (lab.proofConsumed || lab.proofInFlight)
     throw new Error('Connection proof already consumed or pending');
   const trust = window.stationConnectionTrust;
+  const trustRecord = window.stationConnectionTrustRecord;
   const api = window.stationConnectionProof;
   lab.proofInFlight = true;
   try {
@@ -90,6 +117,10 @@ export async function browserAccept({ sdp, pin, candidates, proof }) {
         !lab.proofConsumed,
     });
     await verifier.verifyAndConsume(proof);
+    if (!(await window.stationConnectionTrustStore.isCurrent(trustRecord)))
+      throw new Error(
+        'Device signing trust changed before accepting the connection',
+      );
     lab.proofConsumed = true;
   } finally {
     lab.proofInFlight = false;

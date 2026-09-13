@@ -177,6 +177,69 @@ a tenant sandbox, an OS keychain, or protection from another process running as
 the same OS user. No network listener or telemetry is needed for this local
 operation; the bounded public result is its receipt.
 
+### Device-side signing trust
+
+The browser fixture consumes `@kontourai/station-connect/connection-trust`.
+Its `openDeviceConnectionTrustStore()` stores only public signing trust in the
+current browser origin/storage partition. The trusted caller supplies a descriptor
+and key ID from independently authenticated operator approval; neither broker
+discovery nor account login is that approval ceremony. Production approval UI and
+account/session transport are not enabled by this module.
+
+The store exposes `read`, `approve`, `revoke`, `isCurrent`, and `close`.
+`approve(descriptor, expectedRevision, approvedKeyId)` requires `null` for first
+approval or the exact current revision for a change. The key ID is a SHA-256
+JWK thumbprint, matching the local operator command above. A rotation within the
+same enrollment must advance the generation and replace the key; stale revisions,
+lower generations and changed enrollments are refused. Repeating the current
+approved descriptor at its current revision is a no-op. A changed enrollment
+requires a separate authenticated recovery design; there is no automatic reset.
+
+`revoke(stationId, expectedRevision)` retains the last generation as a revoked
+record. It cannot be overwritten as a new first approval or reactivated with the
+same key. A later independently approved higher-generation key can restore trust.
+The store contains at most 256 Station records, including revoked ones; reaching
+the limit refuses additions while retaining the ability to revoke existing trust.
+It stores no private keys, provider cookies, application continuations or Device
+credentials and does not change direct connection profiles or Project membership.
+
+Changes use a single IndexedDB transaction to compare and publish the revision
+across tabs. Writes request `strict` durability, refuse a downgraded durability
+mode, and resolve only after transaction completion. This follows the
+[IndexedDB transaction contract](https://www.w3.org/TR/IndexedDB/#transaction-durability-hint);
+it is not a verified power-loss or storage-backup guarantee. Missing/denied storage,
+corrupt records, unsupported database versions and failed writes are explicit
+failures, with no memory-only approval fallback. Call `close()` when the Device
+connection owner is disposed.
+
+The fixture verifies the signed proof, then awaits `isCurrent(snapshot)` before
+accepting the peer description. An independent tab that revokes trust before
+that check causes refusal before SDP acceptance or application content. This
+check is not a synchronous replacement for the cryptographic verifier's
+`isCurrent` predicate: both checks retain their respective owners. It does not
+promise continuous revocation of an already established channel; application
+requests still require the account lane's current session/Device authorization.
+
+Run the actual Chromium persistence and concurrency tests locally without TURN,
+accounts or model calls:
+
+```sh
+npm run test:focused -- scripts/__tests__/device-connection-trust.test.ts
+npm run test:mutation:smoke -- --case=device-trust-before-peer-acceptance
+```
+
+Those tests reopen a real persistent browser profile, race two tabs, check
+rotation/revocation, and exercise denied storage, corruption and capacity. The
+mutation command requires a clean linked worktree; it removes the caller's
+post-crypto trust check, requires the named browser refusal test to catch that
+defect, and restores the exact source before checking again. The
+full browser transport command additionally proves cross-tab revocation against
+an otherwise valid signed answer. Clearing browser data, restoring old browser
+backups, same-origin malicious code and untrusted client-code distribution remain
+outside this store's protection. Losing the store requires fresh independent
+approval; discovery must not reconstruct trust automatically. Native shells and
+other browser implementations require their own qualification.
+
 ### Browser security checks
 
 The checks require:

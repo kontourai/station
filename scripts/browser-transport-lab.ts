@@ -13,7 +13,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
 import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
-import { connectionDescriptionDigest } from '@kontourai/station-shared/connection-proof';
+import {
+  connectionDescriptionDigest,
+  stationConnectionSigningKeyId,
+} from '@kontourai/station-shared/connection-proof';
 import { chromium, type Page } from '@playwright/test';
 import { build, stop as stopBundler } from 'esbuild';
 import datachannel from 'node-datachannel';
@@ -25,8 +28,10 @@ import {
   browserChannelOpen,
   browserConnectionContext,
   browserFailed,
+  browserHasNoRemoteDescription,
   browserOffer,
   browserReceived,
+  browserRevokeConnectionTrust,
   browserSend,
   browserSetConnectionTrust,
   browserStats as readBrowserStats,
@@ -165,7 +170,10 @@ async function cleanupContainer() {
 
 async function offer(page: Page, port: number) {
   const transport = browserTransport;
-  await page.evaluate(browserSetConnectionTrust, connectionTrust);
+  await page.evaluate(browserSetConnectionTrust, {
+    trust: connectionTrust,
+    approvedKeyId: await stationConnectionSigningKeyId(connectionTrust),
+  });
   return page.evaluate(browserOffer, {
     port: transport === 'udp' ? (turnUdpPort ?? port) : (turnTcpPort ?? port),
     username,
@@ -180,6 +188,7 @@ async function acceptSignedAnswer(
   sdp: string,
   pin: string,
   candidates: { candidate: string; sdpMid: string }[],
+  revokeTrust = false,
 ) {
   const context = await page.evaluate(browserConnectionContext);
   const clientFingerprint = offer
@@ -212,6 +221,24 @@ async function acceptSignedAnswer(
     page.evaluate(browserAccept, { sdp, pin, candidates, proof: invalid }),
     /Station connection proof refused/,
   );
+  if (revokeTrust) {
+    const revoker = await page.context().newPage();
+    try {
+      await revoker.goto(page.url());
+      await revoker.evaluate(
+        browserRevokeConnectionTrust,
+        connectionTrust.stationId,
+      );
+      await assert.rejects(
+        page.evaluate(browserAccept, { sdp, pin, candidates, proof }),
+        /Device signing trust changed before accepting the connection/,
+      );
+      assert.equal(await page.evaluate(browserHasNoRemoteDescription), true);
+    } finally {
+      await revoker.close();
+    }
+    return;
+  }
   await page.evaluate(browserAccept, { sdp, pin, candidates, proof });
   await assert.rejects(
     page.evaluate(browserAccept, { sdp, pin, candidates, proof }),
@@ -279,6 +306,7 @@ async function exchange(
   key: Awaited<ReturnType<typeof identity>>,
   pin: string,
   substitute = false,
+  revokeTrust = false,
 ) {
   assert(relay);
   assert(turnUdpPort);
@@ -314,7 +342,7 @@ async function exchange(
     const sdp = substitute
       ? fixture.answer.sdp.replace(key.fingerprint, pin)
       : fixture.answer.sdp;
-    await acceptSignedAnswer(page, remote.sdp, sdp, pin, []);
+    await acceptSignedAnswer(page, remote.sdp, sdp, pin, [], revokeTrust);
     return {
       peer: fixture.peer,
       get messages() {
@@ -376,7 +404,7 @@ async function exchange(
     : answer.sdp;
   // Gathering is complete. The signed SDP is the complete candidate set;
   // do not append separate unsigned candidate callback events afterward.
-  await acceptSignedAnswer(page, remote.sdp, sdp, pin, []);
+  await acceptSignedAnswer(page, remote.sdp, sdp, pin, [], revokeTrust);
   return { peer, messages };
 }
 
@@ -400,7 +428,8 @@ try {
       contents: `
     import {createStationConnectionProofVerifier, connectionDescriptionDigest} from '@kontourai/station-shared/connection-proof';
     import {createStationProofNonce} from './packages/connect/src/core/environmentProof.ts';
-    window.stationConnectionProof = {createStationConnectionProofVerifier, connectionDescriptionDigest, newNonce: createStationProofNonce};
+    import {openDeviceConnectionTrustStore} from '@kontourai/station-connect/connection-trust';
+    window.stationConnectionProof = {createStationConnectionProofVerifier, connectionDescriptionDigest, newNonce: createStationProofNonce, openDeviceConnectionTrustStore};
   `,
       resolveDir: process.cwd(),
     },
@@ -552,6 +581,21 @@ try {
   await reconnectContext.close();
   await reconnected.peer.close();
 
+  const revokedContext = await browser.newContext();
+  const revokedPage = await revokedContext.newPage();
+  await revokedPage.goto(`http://127.0.0.1:${address.port}`);
+  const revokedPeer = await exchange(
+    revokedPage,
+    approved,
+    approved.fingerprint,
+    false,
+    true,
+  );
+  assert.equal(await revokedPage.evaluate(browserChannelOpen), false);
+  assert.deepEqual(revokedPeer.messages, []);
+  await revokedPeer.peer.close();
+  await revokedContext.close();
+
   const replacementContext = await browser.newContext();
   const replacementPage = await replacementContext.newPage();
   await replacementPage.goto(`http://127.0.0.1:${address.port}`);
@@ -606,6 +650,7 @@ try {
       'Station-signed exact client, generation and SDP proof verified and consumed in the browser',
       'Station signing identity restored from its private home before proof issuance',
       'tampered proof refused before accepting the connection description',
+      'Device trust persisted and rechecked after crypto; cross-tab revocation refused before SDP acceptance',
       'browser-native DTLS connected',
       'application content echoed through encrypted data channel',
       'fresh browser and peer reconnect using the same approved Station certificate',

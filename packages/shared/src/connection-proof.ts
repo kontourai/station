@@ -74,7 +74,7 @@ export function copyConnectionProofBinding(
   return Object.freeze({ ...raw }) as unknown as StationConnectionProofBinding;
 }
 
-function copyTrust(
+export function copyStationConnectionTrust(
   value: ApprovedStationConnectionTrust,
 ): ApprovedStationConnectionTrust {
   const raw = {
@@ -109,6 +109,19 @@ function copyTrust(
   });
 }
 
+/** Public-key identifier, not an assertion that its source is trusted. */
+export async function stationConnectionSigningKeyId(
+  value: ApprovedStationConnectionTrust,
+): Promise<string> {
+  const trust = copyStationConnectionTrust(value);
+  try {
+    await importJWK(trust.signingKey, 'ES256');
+    return await calculateJwkThumbprint(trust.signingKey);
+  } catch {
+    return refuse();
+  }
+}
+
 function sameEnrollment(
   binding: StationConnectionProofBinding,
   trust: ApprovedStationConnectionTrust,
@@ -140,7 +153,7 @@ export async function signStationConnectionProof(input: {
   signingKey: Parameters<SignJWT['sign']>[0];
   now: number;
 }): Promise<string> {
-  const trust = copyTrust(input.trust);
+  const trust = copyStationConnectionTrust(input.trust);
   const binding = copyConnectionProofBinding(input.binding);
   const now = input.now;
   const signingKey = input.signingKey;
@@ -178,7 +191,7 @@ export function createStationConnectionProofVerifier(input: {
   now?: () => number;
   isCurrent: () => boolean;
 }) {
-  const trust = copyTrust(input.trust);
+  const trust = copyStationConnectionTrust(input.trust);
   const expected = copyConnectionProofBinding(input.expected);
   if (!sameEnrollment(expected, trust)) return refuse();
   const now = input.now ?? (() => Math.floor(Date.now() / 1000));

@@ -17,8 +17,10 @@ import {
 import { describe, expect, test } from 'vitest';
 import {
   connectionDescriptionDigest,
+  copyStationConnectionTrust,
   createStationConnectionProofVerifier,
   signStationConnectionProof,
+  stationConnectionSigningKeyId,
 } from '../connection-proof.js';
 
 async function fixture() {
@@ -66,6 +68,33 @@ async function fixture() {
 }
 
 describe('Station connection proof', () => {
+  test('public trust helpers snapshot approved input and refuse invalid curve points and extra fields', async () => {
+    const { trust } = await fixture();
+    const expected = await calculateJwkThumbprint(trust.signingKey);
+    const input = structuredClone(trust);
+    const snapshot = copyStationConnectionTrust(input);
+    const pending = stationConnectionSigningKeyId(input);
+    (input.signingKey as { x: string }).x = 'A'.repeat(43);
+    expect(snapshot).toEqual(trust);
+    expect(Object.isFrozen(snapshot.signingKey)).toBe(true);
+    expect(await pending).toBe(expected);
+    await expect(
+      stationConnectionSigningKeyId({
+        ...trust,
+        signingKey: {
+          ...trust.signingKey,
+          x: 'A'.repeat(43),
+          y: 'A'.repeat(43),
+        },
+      }),
+    ).rejects.toThrow('Station connection proof refused');
+    expect(() =>
+      copyStationConnectionTrust({
+        ...trust,
+        privateKey: 'private-fixture-marker',
+      } as ApprovedStationConnectionTrust),
+    ).toThrow('Station connection proof refused');
+  });
   test('binds the exact Station, client, generation and SDP once', async () => {
     const { token, binding, verifier } = await fixture();
     const gate = verifier();
