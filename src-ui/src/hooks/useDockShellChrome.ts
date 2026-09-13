@@ -154,8 +154,9 @@ export interface DockShellChrome {
 /**
  * The single owner of dock CHROME — geometry, snap state, placement,
  * drag/resize wiring and the dock.maximize shortcut. Every
- * occupant of the legacy ambient dock (Chat or Home) and every region shell
- * (`ActivityRegionShell`) reads the SAME instance through `DockShell`; a
+ * occupant of the legacy ambient dock (Chat or Home) and every region pane
+ * (Chat and Activity, through `RegionPaneHost`, #2045) reads the SAME
+ * instance through `DockShell`; a
  * full-screen Chat placement (`ChatWorkspacePane`
  * outside the ambient dock) gets its own independent instance so cmd+D /
  * cmd+M keep working there too.
@@ -691,9 +692,10 @@ export function useDockShellChrome({
     // is what this branches on) and an empty region. The third, an occupant
     // the registry does not hold, takes the occupant's own id: a non-Chat
     // shell reading "Hide Chat" would be #1386's defect relocated. That third
-    // case is unreachable today — `RegionShells` mounts a shell only for an
-    // occupant in `REGION_SURFACE_SHELLS`, whose keys
-    // `region-surface-boundary.test.ts` pins equal to the registry's.
+    // case is unreachable today — `RegionShells` mounts a host only for an
+    // occupant in `REGION_SURFACE_PANES`, whose keys
+    // `region-surface-panes.test.ts` pins to the registry's dock-capable
+    // surfaces.
     surfaceTitle:
       regionModel && shellOccupant
         ? (regionModel.surfaces.get(shellOccupant)?.title ?? shellOccupant)

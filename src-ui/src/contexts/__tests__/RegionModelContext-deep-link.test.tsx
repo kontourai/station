@@ -3,8 +3,9 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { ActivityRegionShell } from '../../app-shell/ActivityRegionShell';
+import { ActivityDockPane } from '../../app-shell/ActivityRegionShell';
 import { RegionShells } from '../../app-shell/RegionShells';
+import { DockShell } from '../../components/chat-dock/DockShell';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
@@ -24,10 +25,13 @@ vi.mock('../../views/SessionsView', () => ({
     return <div data-testid="sessions-view" />;
   },
 }));
-// The Chat shell would mount the whole chat data stack; `RegionShells` is
-// here as the region surface HOST, not for what it renders inside.
+// Chat's pane would mount the whole chat data stack; `RegionShells` is here
+// as the region surface HOST, not for what it renders inside. Since #2045
+// the host renders Chat through `renderAmbientChatPane`, so that is the
+// seam stubbed; `ChatDock` is the model-less mount this harness never takes.
 vi.mock('../../components/chat-dock/ChatDock', () => ({
   ChatDock: () => <div data-testid="chat-shell" />,
+  renderAmbientChatPane: () => <div data-testid="chat-shell" />,
 }));
 vi.mock('../ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
@@ -76,7 +80,13 @@ function Harness({
         <RegionModelProvider>
           <Probe />
           <CommandProbe />
-          {shell ? <ActivityRegionShell regionId="right" /> : null}
+          {shell ? (
+            // Activity as a dock pane, in the shell the region host would
+            // mount around it (#2045): the pane takes the intent.
+            <DockShell regionId="right">
+              {(chrome) => <ActivityDockPane chrome={chrome} />}
+            </DockShell>
+          ) : null}
           {host ? <RegionShells /> : null}
         </RegionModelProvider>
       </NavigationProvider>
@@ -596,7 +606,9 @@ describe('a delivered surface intent is never delivered a second time', () => {
     act(() => revealSurface?.('chat'));
     await waitFor(() => expect(activityShellLandmark()).toBeNull());
     expect(screen.queryByTestId('sessions-view')).toBeNull();
-    expect(screen.getByTestId('chat-shell')).toBeTruthy();
+    // `findBy`: since #2045 Chat's pane renders through the region host's
+    // lazy boundary rather than an eagerly stubbed shell.
+    expect(await screen.findByTestId('chat-shell')).toBeTruthy();
 
     sessionsProps.mockReset();
 

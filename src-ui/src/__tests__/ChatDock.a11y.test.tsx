@@ -6,7 +6,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { ChatPaneFileDropBoundary } from '../components/chat-dock/ChatPaneFileDropBoundary';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../contexts/NavigationContext';
-import { AmbientChatDockPaneHost } from '../workspace-panes/AmbientChatDockPaneHost';
+import { RegionPaneHost } from '../workspace-panes/RegionPaneHost';
 
 // archive#4525: `DockShell` (via `useDockShellChrome`) now reads
 // `useProjects` for its project-binding deletion cleanup — mocked here the
@@ -40,7 +40,7 @@ describe('ChatDock activity region', () => {
       // its own.
       <KeyboardShortcutsProvider>
         <NavigationProvider>
-          <AmbientChatDockPaneHost
+          <RegionPaneHost
             renderChatPane={() => (
               <ChatPaneFileDropBoundary
                 enabled

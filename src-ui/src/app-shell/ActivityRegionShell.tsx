@@ -4,7 +4,6 @@ import {
 } from '@kontourai/station-contracts/workspace-activity-pane';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
-import { DockShell } from '../components/chat-dock/DockShell';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { PageFrame, type PageFrameSpec } from '../components/page-frame';
 import { SkeletonBlock } from '../components/Skeleton';
@@ -13,12 +12,12 @@ import {
   type SurfaceIntentRecord,
   useRegionModel,
 } from '../contexts/RegionModelContext';
-import { reportRegionClearance } from '../regions/region-clearance';
+import type { DockShellChrome } from '../hooks/useDockShellChrome';
+import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
 import {
-  REGION_SURFACE_REGISTRY,
-  type RegionId,
-} from '../regions/region-model';
-import { ActivityWorkspacePaneBindingProvider } from '../views/activity/ActivityWorkspacePaneBinding';
+  type ActivityWorkspacePaneBinding,
+  ActivityWorkspacePaneBindingProvider,
+} from '../views/activity/ActivityWorkspacePaneBinding';
 
 const loadActivityWorkspacePane = () =>
   import('../views/activity/ActivityWorkspacePane').then(
@@ -38,31 +37,36 @@ const ACTIVITY_MAIN_FRAME: PageFrameSpec = {
   flush: true,
 };
 
-export function ActivityRegionShell({ regionId }: { regionId: RegionId }) {
+/**
+ * Takes delivery of Activity's surface intent and hands it to the pane as its
+ * binding. Shared by both Activity placements — `main`'s page and a dock
+ * region's pane — because the intent outbox does not care which one is
+ * mounted, only that exactly one placement takes each record.
+ *
+ * A surface intent is a one-shot instruction, so the record proving it was
+ * delivered has to outlive whoever acted on it. The placement unmounts
+ * whenever another surface folds in front of it (bottom-only devices) or the
+ * host itself goes away (a Chat workspace layout owns the whole view), and
+ * every consumption record downstream of here — including `SessionsView`'s
+ * `routedIntentTokenRef` — dies with that unmount. The model's record does
+ * not, so the next mount used to read the SAME instruction as new and reopen
+ * a session nobody asked for (#928).
+ *
+ * So the mount TAKES the record out of the model and keeps its own copy: the
+ * model's slot is an outbox, and the take is the consumption record that
+ * survives. The local copy is what keeps this mount's delivery standing after
+ * the take — deleting the record without it would yank `sessionId` back out
+ * from under the pane and deselect the session that was just routed to. It
+ * is deliberately NOT a remembered selection: it dies with the placement, so
+ * a later generic reveal opens Activity as Activity. Within one mount the
+ * selection is remembered where it always was, in the sessions surface's own
+ * state.
+ */
+function useActivitySurfaceIntent(): ActivityWorkspacePaneBinding {
   const { apiBase } = useApiBase();
   const model = useRegionModel();
   const { consumeSurfaceIntent } = model;
   const offered = model.surfaceIntents.activity;
-  /**
-   * A surface intent is a one-shot instruction, so the record proving it was
-   * delivered has to outlive whoever acted on it. `RegionShells` unmounts
-   * this shell whenever another surface folds in front of it (bottom-only
-   * devices) or the host itself goes away (a Chat workspace layout owns the
-   * whole view), and every consumption record downstream of here — including
-   * `SessionsView`'s `routedIntentTokenRef` — dies with that unmount. The
-   * model's record does not, so the next mount used to read the SAME
-   * instruction as new and reopen a session nobody asked for (#928).
-   *
-   * So the mount TAKES the record out of the model and keeps its own copy:
-   * the model's slot is an outbox, and the take is the consumption record
-   * that survives. The local copy is what keeps this mount's delivery
-   * standing after the take — deleting the record without it would yank
-   * `sessionId` back out from under the pane and deselect the session that
-   * was just routed to. It is deliberately NOT a remembered selection: it
-   * dies with the shell, so a later generic reveal opens Activity as
-   * Activity. Within one mount the selection is remembered where it always
-   * was, in the sessions surface's own state.
-   */
   const [intent, setIntent] = useState<SurfaceIntentRecord | undefined>(
     undefined,
   );
@@ -80,7 +84,7 @@ export function ActivityRegionShell({ regionId }: { regionId: RegionId }) {
       current?.focus ? { ...current, focus: undefined } : current,
     );
   }, []);
-  const binding = useMemo(
+  return useMemo(
     () => ({
       apiBase,
       sessionId: intent?.session,
@@ -90,7 +94,12 @@ export function ActivityRegionShell({ regionId }: { regionId: RegionId }) {
     }),
     [apiBase, intent, clearIntentFocus],
   );
-  const pane = (
+}
+
+/** The Activity pane with its intent binding: what both placements render. */
+function ActivityPane() {
+  const binding = useActivitySurfaceIntent();
+  return (
     <ActivityWorkspacePaneBindingProvider binding={binding}>
       <LazyBoundary
         load={loadActivityWorkspacePane}
@@ -102,42 +111,52 @@ export function ActivityRegionShell({ regionId }: { regionId: RegionId }) {
       />
     </ActivityWorkspacePaneBindingProvider>
   );
-  if (regionId === 'main') {
-    return (
-      <PageFrame
-        spec={ACTIVITY_MAIN_FRAME}
-        routeIdentity="region:main:activity"
-      >
-        {pane}
-      </PageFrame>
-    );
-  }
+}
+
+/**
+ * Activity as the `main` region's occupant: the route outlet's renderer for
+ * it (`MainRegionSurface`). Dock regions do not come here — since #2045 they
+ * render Activity as a pane of the region's host (`ActivityDockPane`, below,
+ * through `RegionPaneHost`), so this shell is the primary area's alone and
+ * mounts no dock chrome.
+ */
+export function ActivityRegionShell(_props: { regionId: 'main' }) {
   return (
-    <DockShell
-      regionId={regionId}
-      onRenderedRegionGeometryChange={reportRegionClearance}
-    >
-      {(chrome) => (
-        <>
-          <ChatDockHeader
-            regionVisible={chrome.isDockOpen}
-            shellMaximized={chrome.isDockMaximized}
-            canMaximize={chrome.canMaximize}
-            showMaximizeShortcut={chrome.ownsMaximizeShortcut}
-            restoreSnap={chrome.dockSnap}
-            surfaceShortcutId={chrome.surfaceShortcutId}
-            // From the chrome, which derives it from the region's occupant —
-            // one derivation for every shell's visibility name (#1386).
-            surfaceTitle={chrome.surfaceTitle}
-            isDragging={chrome.isDragging}
-            onDockSnap={chrome.applyDockSnap}
-            availableDockSlotPlacements={chrome.availableDockSlotPlacements}
-            effectiveDockSlotPlacement={chrome.effectiveDockSlotPlacement}
-            onDockPlacementChange={chrome.commitDockPlacement}
-          />
-          <div className="dock-slot__body">{pane}</div>
-        </>
-      )}
-    </DockShell>
+    <PageFrame spec={ACTIVITY_MAIN_FRAME} routeIdentity="region:main:activity">
+      <ActivityPane />
+    </PageFrame>
+  );
+}
+
+/**
+ * Activity as a pane of a dock region's host (#2045): the shared dock header
+ * — the SAME `ChatDockHeader` Chat's pane renders, driven by the chrome the
+ * region's `DockShell` hands down — over the pane inside `.dock-slot__body`,
+ * the one scroll container every non-Chat dock occupant renders in
+ * (archive#4460, pinned by `ActivityRegionShell.dock-body.test.tsx`).
+ */
+export function ActivityDockPane({ chrome }: { chrome: DockShellChrome }) {
+  return (
+    <>
+      <ChatDockHeader
+        regionVisible={chrome.isDockOpen}
+        shellMaximized={chrome.isDockMaximized}
+        canMaximize={chrome.canMaximize}
+        showMaximizeShortcut={chrome.ownsMaximizeShortcut}
+        restoreSnap={chrome.dockSnap}
+        surfaceShortcutId={chrome.surfaceShortcutId}
+        // From the chrome, which derives it from the region's occupant —
+        // one derivation for every shell's visibility name (#1386).
+        surfaceTitle={chrome.surfaceTitle}
+        isDragging={chrome.isDragging}
+        onDockSnap={chrome.applyDockSnap}
+        availableDockSlotPlacements={chrome.availableDockSlotPlacements}
+        effectiveDockSlotPlacement={chrome.effectiveDockSlotPlacement}
+        onDockPlacementChange={chrome.commitDockPlacement}
+      />
+      <div className="dock-slot__body">
+        <ActivityPane />
+      </div>
+    </>
   );
 }

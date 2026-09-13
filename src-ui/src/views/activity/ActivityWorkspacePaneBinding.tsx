@@ -10,8 +10,8 @@ import { createContext, type ReactNode, useContext } from 'react';
  * are addressed to, and the deep-linked intent. Since #928 retired the
  * standalone `/activity` route, the region placement is the only one that
  * carries that intent — it receives it as a region-model surface intent
- * (`ActivityRegionShell`), which is also why the repeat-activation fields
- * below are its alone. The Developer archive embed (`ArchiveTab`) supplies
+ * (`ActivityRegionShell.tsx`, for the `main` page and the dock pane alike),
+ * which is also why the repeat-activation fields below are its alone. The Developer archive embed (`ArchiveTab`) supplies
  * the API base and nothing else. A routed selection is presentation state of
  * a placement, never pane identity, which is why it lives here and not on
  * the occurrence.

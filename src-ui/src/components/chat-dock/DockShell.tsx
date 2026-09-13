@@ -9,10 +9,11 @@ import type { DockMode } from '../../types';
 import { ChatDockResizeHandle } from './ChatDockResizeHandle';
 
 /**
- * The dock chrome shell, mounted once per occupied region by the ambient host
- * (`RegionShells`, #928) and shared by every occupant it docks: the legacy
- * ambient occupants (Chat and Home — station#4460) and region surfaces such
- * as Activity (`ActivityRegionShell`). It owns:
+ * The dock chrome shell, mounted once per occupied region by the region host
+ * (`RegionShells` → `RegionPaneHost`, #928, #2045) and shared by every
+ * occupant it docks: Chat and Activity, each a pane of the region's document
+ * since #2045 (the legacy ambient occupants, Chat and Home, were the
+ * station#4460 shape). It owns:
  *
  * - the root `.chat-dock` element and its placement/state classes, so the
  *   large existing CSS surface (`:is(.chat-dock, .dock-slot)` and friends)

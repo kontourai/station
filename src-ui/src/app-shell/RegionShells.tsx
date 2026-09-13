@@ -1,3 +1,4 @@
+import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
   type ComponentType,
   createContext,
@@ -5,32 +6,27 @@ import {
   useContext,
   useEffect,
 } from 'react';
-import { ChatDock } from '../components/chat-dock/ChatDock';
+import {
+  ChatDock,
+  renderAmbientChatPane,
+} from '../components/chat-dock/ChatDock';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
+import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { availablePlacements, useDockSlotDevice } from '../hooks/useIsMobile';
 import {
   DOCK_REGION_IDS,
+  type DockRegionId,
   foldedDockRegion,
-  isDockRegion,
-  type RegionId,
 } from '../regions/region-model';
-
-function ChatSurfaceShell({ regionId }: { regionId: RegionId }) {
-  // Chat declares no `main` placement (`REGION_SURFACE_REGISTRY`), so
-  // `placeSurface` never puts it there; the guard narrows the type for the
-  // dock, it is not a branch anything reaches.
-  if (!isDockRegion(regionId)) return null;
-  return <ChatDock regionId={regionId} />;
-}
 
 const loadActivityRegionShell = () =>
   import('./ActivityRegionShell').then(({ ActivityRegionShell }) => ({
     default: ActivityRegionShell,
   }));
 
-function ActivitySurfaceShell({ regionId }: { regionId: RegionId }) {
+function ActivitySurfaceShell({ regionId }: { regionId: 'main' }) {
   return (
     <LazyBoundary
       load={loadActivityRegionShell}
@@ -51,16 +47,23 @@ function ActivitySurfaceShell({ regionId }: { regionId: RegionId }) {
  */
 const HomeShellContext = createContext<(() => ReactNode) | null>(null);
 
-function HomeSurfaceShell(_props: { regionId: RegionId }) {
+function HomeSurfaceShell(_props: { regionId: 'main' }) {
   const renderHome = useContext(HomeShellContext);
   return renderHome ? renderHome() : null;
 }
 
+/**
+ * The `main` region's renderers, one per surface that declares `main`
+ * (`region-surface-boundary.test.ts` pins the keys to exactly those). Dock
+ * regions are not rendered from here since #2045: a dock region renders its
+ * occupant as a pane of the region's host (`RegionPaneHost`), and which
+ * surfaces have such a pane is `REGION_SURFACE_PANES`. Chat declares no
+ * `main` placement, so it has no entry.
+ */
 export const REGION_SURFACE_SHELLS: ReadonlyMap<
   string,
-  ComponentType<{ regionId: RegionId }>
-> = new Map<string, ComponentType<{ regionId: RegionId }>>([
-  ['chat', ChatSurfaceShell],
+  ComponentType<{ regionId: 'main' }>
+> = new Map<string, ComponentType<{ regionId: 'main' }>>([
   ['activity', ActivitySurfaceShell],
   ['home', HomeSurfaceShell],
 ]);
@@ -92,12 +95,70 @@ export function MainRegionSurface({
 }
 
 /**
- * One `DockShell` per occupied dock region (#928). A surface occupies at most
- * one region (`placeSurface`, region-model.ts), which is what keeps
- * `#chat-dock` unique and `dock.maximize` singly registered, and is why the
- * shell is keyed by its OCCUPANT: moving a surface re-props the same
- * instance instead of tearing the pane down, exactly as the single ambient
- * `ChatDock` behaved before this file existed. A source scan in
+ * Every call returns a NEW promise; the module registry makes the repeat
+ * `import()` free. Memoizing it froze the tab on the dock's second mount
+ * (kontourai/station#1301: React's `lazy` livelocks on a promise it has
+ * already settled), and App.tsx's `showAmbientChatDock` remounts the host on
+ * ordinary navigation. `ChatDock.tsx` pre-warms the same chunk at module
+ * load, so the boundary here resolves without a visible gap.
+ */
+const loadRegionPaneHost = () =>
+  import('../workspace-panes/RegionPaneHost').then((module) => ({
+    default: module.RegionPaneHost,
+  }));
+
+const loadActivityDockPane = () =>
+  import('./ActivityRegionShell').then(({ ActivityDockPane }) => ({
+    default: ActivityDockPane,
+  }));
+
+/**
+ * Activity as a region pane: the host hands down the region's chrome, and
+ * the pane (header, body, sessions surface) stays behind its own lazy
+ * boundary so the sessions import graph is not in the host's chunk.
+ */
+function renderActivityDockPane(
+  _instance: WorkspacePaneInstance,
+  chrome: DockShellChrome,
+) {
+  return (
+    <LazyBoundary
+      load={loadActivityDockPane}
+      componentProps={{ chrome }}
+      pending={<SkeletonBlock count={3} label="Loading Activity" />}
+    />
+  );
+}
+
+/**
+ * One region's host (#2045): `RegionPaneHost` in its own chunk, given Chat's
+ * renderer (from `ChatDock.tsx`, where the chat stack lives) and Activity's.
+ * `pending={null}`: the dock is a persistent shell affordance and the chunk
+ * is pre-warmed, so the boundary resolves without blinking a placeholder in
+ * and out.
+ */
+function DockRegionHost({ regionId }: { regionId: DockRegionId }) {
+  return (
+    <LazyBoundary
+      load={loadRegionPaneHost}
+      componentProps={{
+        regionId,
+        renderChatPane: renderAmbientChatPane,
+        renderActivityPane: renderActivityDockPane,
+      }}
+      pending={null}
+    />
+  );
+}
+
+/**
+ * One `RegionPaneHost` — a `DockShell` around the region's pane-host
+ * document — per occupied dock region (#928, #2045). The host is keyed by
+ * its REGION: the document is the region's (`ambient:<region>`), so a
+ * surface moving between regions leaves one host and joins another rather
+ * than carrying a host with it. A surface occupies at most one region
+ * (`placeSurface`, region-model.ts), which is what keeps `#chat-dock` unique
+ * and `dock.maximize` singly registered. A source scan in
  * `main-provider-order.test.ts` pins the provider's tag order, and the
  * no-provider branch keeps App-level tests on the legacy mount.
  */
@@ -121,11 +182,16 @@ export function RegionShells() {
         return id === foldedDockRegion(model.regions, model.lastShownRegion);
       }).map((id) => {
         const occupant = model.regions[id].occupant;
-        const SurfaceShell = occupant
-          ? REGION_SURFACE_SHELLS.get(occupant)
-          : undefined;
-        return SurfaceShell ? (
-          <SurfaceShell key={occupant} regionId={id} />
+        // A registered occupant gets a host; an unregistered id (a fixture,
+        // a surface a later slice places at runtime) mounts nothing — the
+        // rule the per-occupant shell table applied before #2045. Decided
+        // from the registry the shell already holds rather than the pane
+        // inventory, so the pane contracts stay in the host's chunk;
+        // `region-surface-panes.test.ts` pins that every registered surface
+        // declaring a dock region HAS a pane, which is what makes "registered"
+        // sufficient here.
+        return occupant && model.surfaces.has(occupant) ? (
+          <DockRegionHost key={id} regionId={id} />
         ) : null;
       })}
     </>

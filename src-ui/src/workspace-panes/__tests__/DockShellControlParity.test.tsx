@@ -3,7 +3,7 @@
 /**
  * archive#4460: before the fix, only Chat's dock chrome had a resize handle,
  * maximize/collapse and a placement control. These tests drive the REAL
- * `NavigationProvider` (unlike `AmbientChatDockPaneHost.test.tsx`'s static
+ * `NavigationProvider` (unlike `RegionPaneHost.test.tsx`'s static
  * navigation mock) so maximize/collapse genuinely round-trip through the
  * shared navigation store.
  */
@@ -31,7 +31,7 @@ import {
   useRegionModel,
 } from '../../contexts/RegionModelContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
-import { AmbientChatDockPaneHost } from '../AmbientChatDockPaneHost';
+import { RegionPaneHost } from '../RegionPaneHost';
 
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
@@ -115,7 +115,7 @@ function renderHost() {
           />
           <RegionModelProbe />
           <RegionToolbarControls />
-          <AmbientChatDockPaneHost
+          <RegionPaneHost
             renderChatPane={(instance) => (
               <p data-testid="ambient-chat-occupant">
                 Chat pane {instance.instanceId}

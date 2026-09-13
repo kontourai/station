@@ -6,9 +6,10 @@
  * only surface this must be behaviour-neutral, so the oracle is a capture of
  * the pre-refactor tree (`c58ddf284`) rendered through the same harness as
  * `DockShellControlParity.test.tsx` — nine placement × state literals below.
- * Only `ChatDock` is mocked (it would mount the whole chat data stack); the
- * mock renders the real `AmbientChatDockPaneHost`, so RegionShells → host →
- * `DockShell` → `useDockShellChrome` is the shipped path.
+ * Only Chat's pane renderer is mocked (it would mount the whole chat data
+ * stack), so RegionShells → `RegionPaneHost` → `DockShell` →
+ * `useDockShellChrome` is the shipped path (#2045: the host is the REGION's,
+ * one per occupied dock region, and Chat is a pane of it).
  */
 
 import {
@@ -40,23 +41,15 @@ import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { DOCK_REGION_IDS, foldedDockRegion } from '../../regions/region-model';
 import type { DockMode } from '../../types';
-import { AmbientChatDockPaneHost } from '../AmbientChatDockPaneHost';
+import { RegionPaneHost } from '../RegionPaneHost';
 
-vi.mock('../../components/chat-dock/ChatDock', async () => {
-  const { AmbientChatDockPaneHost } = await import(
-    '../AmbientChatDockPaneHost'
-  );
-  return {
-    ChatDock: ({ regionId }: { regionId?: DockMode }) => (
-      <AmbientChatDockPaneHost
-        regionId={regionId}
-        renderChatPane={() => (
-          <p data-testid="ambient-chat-occupant">Chat pane</p>
-        )}
-      />
-    ),
-  };
-});
+vi.mock('../../components/chat-dock/ChatDock', () => ({
+  // The model-less mount; never taken under `RegionModelProvider`.
+  ChatDock: () => null,
+  renderAmbientChatPane: () => (
+    <p data-testid="ambient-chat-occupant">Chat pane</p>
+  ),
+}));
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
 }));
@@ -381,9 +374,13 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
         expect(shells()[0]?.dataset.region).toBe(destination),
       );
       expect(shells()).toHaveLength(1);
-      // The same node moved: the shell is keyed by occupant (RegionShells.tsx),
-      // so a move re-props the pane instead of remounting it.
-      expect(shells()[0]).toBe(shell);
+      // #2045: the host is the REGION's (`ambient:<region>` document), so a
+      // move is a leave-and-join — the vacated region's shell is gone and
+      // the destination's is a new node. Before #2045 the shell was keyed by
+      // occupant and this asserted the same node; that pin is retired with
+      // the per-occupant shell it described.
+      expect(shells()[0]).not.toBe(shell);
+      expect(shell.isConnected).toBe(false);
       expect(document.querySelectorAll('#chat-dock')).toHaveLength(1);
       expect(shells()[0]?.classList.contains(`chat-dock--${destination}`)).toBe(
         true,
@@ -489,7 +486,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       seedPlacement(placement, state);
       render(
         <Providers>
-          <AmbientChatDockPaneHost renderChatPane={() => <p>Chat pane</p>} />
+          <RegionPaneHost renderChatPane={() => <p>Chat pane</p>} />
         </Providers>,
       );
       await waitFor(() => expect(shells()).toHaveLength(1));
@@ -581,8 +578,14 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     await waitFor(() =>
       expect(document.querySelector('#chat-dock')).not.toBeNull(),
     );
+    // #2045: hosts are the regions'. The node that was Chat's shell is
+    // `bottom`'s and now holds Activity; Chat's shell is `right`'s, a new one.
     expect(chatShell.isConnected).toBe(true);
-    expect(chatShell.dataset.region).toBe('right');
+    expect(chatShell.dataset.region).toBe('bottom');
+    expect(chatShell.getAttribute('aria-label')).toBe('Activity');
+    expect(
+      document.querySelector<HTMLElement>('#chat-dock')?.dataset.region,
+    ).toBe('right');
     await waitFor(() =>
       expect(navigationStore.getSnapshot().dockMode).toBe('right'),
     );
@@ -713,8 +716,18 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     // incoming surface was Bottom's. Choosing it swaps the pair: Activity takes
     // `bottom`, and `placeSurface` returns Chat to the region Activity vacated.
     chooseLayoutSegment('Activity', 'Bottom');
-    await waitFor(() => expect(chatShell?.dataset.region).toBe('right'));
-    expect(activityShell?.dataset.region).toBe('bottom');
+    // #2045: the two shells are `bottom`'s and `right`'s, not Chat's and
+    // Activity's — the swap changes what each region's host holds, so the
+    // shells are re-queried by occupant rather than held across the swap.
+    await waitFor(() =>
+      expect(
+        document.querySelector<HTMLElement>('#chat-dock')?.dataset.region,
+      ).toBe('right'),
+    );
+    expect(
+      document.querySelector<HTMLElement>('section[aria-label="Activity"]')
+        ?.dataset.region,
+    ).toBe('bottom');
     expect(currentRegionModel().regions.right.visible).toBe(true);
     expect(currentRegionModel().regions.bottom.visible).toBe(true);
     await waitFor(() =>
@@ -726,9 +739,12 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     expect(deviceSettingsStore.get('chatDockWidth')).toBe(600);
     expect(currentRegionModel().regions.right.size).toBe(600);
     expect(shells()).toHaveLength(2);
-    expect(document.querySelector('#chat-dock')).toBe(chatShell);
+    // Both region hosts survived the swap; each now holds the other pane.
+    expect(chatShell?.isConnected).toBe(true);
+    expect(activityShell.isConnected).toBe(true);
+    expect(document.querySelector('#chat-dock')).toBe(activityShell);
     expect(document.querySelector('section[aria-label="Activity"]')).toBe(
-      activityShell,
+      chatShell,
     );
   });
 
@@ -749,12 +765,21 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
 
     act(() => currentRegionModel().placeSurface('activity', 'bottom'));
 
-    await waitFor(() => expect(chatShell.dataset.region).toBe('right'));
+    // #2045: hosts are the regions'; Chat's shell after the swap is `right`'s
+    // node, re-queried rather than the `bottom` node held above.
+    await waitFor(() =>
+      expect(
+        document.querySelector<HTMLElement>('#chat-dock')?.dataset.region,
+      ).toBe('right'),
+    );
+    const chatShellAfter = document.querySelector<HTMLElement>('#chat-dock');
+    if (!chatShellAfter) throw new Error('Chat shell never rendered');
     const activityShell = document.querySelector<HTMLElement>(
       'section[aria-label="Activity"]',
     );
     if (!activityShell) throw new Error('Activity shell never rendered');
     expect(activityShell.dataset.region).toBe('bottom');
+    expect(activityShell).toBe(chatShell);
     expect(currentRegionModel().regions.right).toMatchObject({
       occupant: 'chat',
       visible: true,
@@ -765,10 +790,10 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       maximized: false,
     });
     await waitFor(() =>
-      expect(chatShell.classList.contains('is-maximized')).toBe(false),
+      expect(chatShellAfter.classList.contains('is-maximized')).toBe(false),
     );
     // The fixed side panel is not full-width over the Activity shell.
-    expect(chatShell.style.width).not.toBe('100%');
+    expect(chatShellAfter.style.width).not.toBe('100%');
     expect(activityShell.classList.contains('is-maximized')).toBe(false);
     expect(document.querySelectorAll('.chat-dock.is-maximized')).toHaveLength(
       0,

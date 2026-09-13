@@ -270,22 +270,39 @@ function ChatLayoutController() {
   return <div data-testid="fullscreen-chat-controller" />;
 }
 
+function AmbientChatControllerStub() {
+  useEffect(() => {
+    const unregister = openChatsStore.registerNavigation({
+      focus: () => chatControllerAction('dock:focus'),
+      openCollection: vi.fn(),
+    });
+    const onNewChat = () => chatControllerAction('dock:new');
+    window.addEventListener('station:open-new-chat', onNewChat);
+    return () => {
+      unregister();
+      window.removeEventListener('station:open-new-chat', onNewChat);
+    };
+  }, []);
+  return <div data-testid="ambient-chat-controller" />;
+}
+
+// Chat reaches the dock two ways and both are stubbed to the same controller:
+// the model-less `ChatDock` mount, and — since #2045 — as a pane of the
+// region's host, which `RegionShells` renders through `renderAmbientChatPane`.
 vi.mock('../components/chat-dock/ChatDock', () => ({
-  ChatDock: () => {
-    useEffect(() => {
-      const unregister = openChatsStore.registerNavigation({
-        focus: () => chatControllerAction('dock:focus'),
-        openCollection: vi.fn(),
-      });
-      const onNewChat = () => chatControllerAction('dock:new');
-      window.addEventListener('station:open-new-chat', onNewChat);
-      return () => {
-        unregister();
-        window.removeEventListener('station:open-new-chat', onNewChat);
-      };
-    }, []);
-    return <div data-testid="ambient-chat-controller" />;
-  },
+  ChatDock: () => <AmbientChatControllerStub />,
+  renderAmbientChatPane: () => <AmbientChatControllerStub />,
+}));
+// The region host itself is not this route's subject, and its dock chrome
+// reads the registry off a real region model (`surfaces`), which this file's
+// stub does not carry. Reduced to its one contract this file relies on:
+// the host renders Chat's pane through the renderer it is handed.
+vi.mock('../workspace-panes/RegionPaneHost', () => ({
+  RegionPaneHost: ({
+    renderChatPane,
+  }: {
+    renderChatPane: (...args: never[]) => ReactNode;
+  }) => <>{renderChatPane()}</>,
 }));
 vi.mock('../components/CommandPalette', () => ({
   CommandPalette: () => null,
@@ -350,9 +367,19 @@ vi.mock('../contexts/NavigationContext', () => {
 vi.mock('../contexts/ProjectsContext', () => ({
   ProjectsProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
-vi.mock('../contexts/RegionModelContext', () => ({
-  useRegionModelOptional: () => hooks.regionModel,
-}));
+// The stubs below describe an ARRANGEMENT; the registry is the real one,
+// supplied here the way the provider supplies it, because `RegionShells`
+// reads `surfaces` to decide which dock occupants get a host (#2045).
+vi.mock('../contexts/RegionModelContext', async () => {
+  const { REGION_SURFACE_REGISTRY } = await import('../regions/region-model');
+  return {
+    useRegionModelOptional: () =>
+      hooks.regionModel && {
+        surfaces: REGION_SURFACE_REGISTRY,
+        ...hooks.regionModel,
+      },
+  };
+});
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
 }));
@@ -1066,7 +1093,8 @@ describe('App home route resolution', () => {
     await act(async () => undefined);
 
     expect(registerRegionSurfaceHost).toHaveBeenCalled();
-    expect(screen.getByTestId('ambient-chat-controller')).toBeTruthy();
+    // `findBy`: the region host is behind `RegionShells`' lazy boundary.
+    expect(await screen.findByTestId('ambient-chat-controller')).toBeTruthy();
   });
 });
 

@@ -4,12 +4,41 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { REGION_SURFACE_SHELLS } from '../app-shell/RegionShells';
-import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
+import {
+  DOCK_REGION_IDS,
+  REGION_SURFACE_REGISTRY,
+} from '../regions/region-model';
+import { REGION_SURFACE_PANES } from '../regions/region-surface-panes';
 
 describe('registered surface region boundary', () => {
-  test('every registered surface has exactly one region shell', () => {
-    expect([...REGION_SURFACE_REGISTRY.keys()].sort()).toEqual(
-      [...REGION_SURFACE_SHELLS.keys()].sort(),
+  /**
+   * Two renderer families since #2045, each derived from the regions a
+   * surface declares: `main` renders its occupant through a shell
+   * (`REGION_SURFACE_SHELLS`), a dock region renders its occupant as a pane
+   * of the region's host (`REGION_SURFACE_PANES`). A surface must have the
+   * renderer for every family it declares and none for a family it does
+   * not, or a placement the toolbar offers renders nothing.
+   */
+  test('every registered surface has a renderer for exactly the region families it declares', () => {
+    const surfaces = [...REGION_SURFACE_REGISTRY.values()];
+    const declaringMain = surfaces
+      .filter((surface) => surface.regions.includes('main'))
+      .map((surface) => surface.id)
+      .sort();
+    const declaringDock = surfaces
+      .filter((surface) =>
+        surface.regions.some((region) =>
+          (DOCK_REGION_IDS as readonly string[]).includes(region),
+        ),
+      )
+      .map((surface) => surface.id)
+      .sort();
+    expect(declaringMain).toEqual(['activity', 'home']);
+    expect(declaringDock).toEqual(['activity', 'chat']);
+    expect([...REGION_SURFACE_SHELLS.keys()].sort()).toEqual(declaringMain);
+    expect([...REGION_SURFACE_PANES.keys()].sort()).toEqual(declaringDock);
+    expect([...new Set([...declaringMain, ...declaringDock])].sort()).toEqual(
+      [...REGION_SURFACE_REGISTRY.keys()].sort(),
     );
   });
   test('registered surface renderers never read region state directly', () => {
