@@ -159,7 +159,7 @@ export class ApprovalGuardianService {
  * behavior, so the composition is fixed to match the promise (archive#1831
  * delivery review).
  */
-export function composeGuardianInstructions(
+function composeGuardianInstructions(
   userInstructions: string | undefined,
 ): string {
   const trimmed = userInstructions?.trim();

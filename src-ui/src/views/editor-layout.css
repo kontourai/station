@@ -161,6 +161,42 @@
 }
 
 /* ── Layout Utilities ── */
+/*
+ * The connection detail body (`AgentConnectionView`). Both classes below were
+ * referenced by that view and defined nowhere in the repo, so the browser
+ * dropped them: `.agent-editor__section` sets padding and a border and no
+ * flow, and the four blocks it holds -- the progress rail, the summary trio,
+ * the readiness notice and the Advanced disclosure -- each carry `margin: 0`.
+ * The result rendered flush, with no vertical rhythm at all. The sibling
+ * model-provider form supplies the identical 16px stack inline
+ * (`provider-settings/ProviderConnectionForm.tsx`); this is that rhythm, as a
+ * rule, for the page that assumed it already had one.
+ */
+.editor-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.editor-layout > .agent-editor__section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/*
+ * An action row. Distinct from `.editor__row` above, which adds a trailing
+ * margin that would double the parent stack's gap -- and which does not wrap.
+ * Wrapping is load-bearing here: these rows hold the page's buttons, and at a
+ * phone width a non-wrapping row pushes the last control off-screen.
+ */
+.editor-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .editor__row {
   display: flex;
   align-items: center;

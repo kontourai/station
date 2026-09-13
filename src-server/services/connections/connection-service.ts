@@ -2654,18 +2654,6 @@ export class ConnectionService {
     }
   }
 
-  async rollbackCredentialProfileApplication(
-    connectionId: string,
-    attemptId: string,
-  ): Promise<CredentialProfileApplicationProjection> {
-    await this.settleCredentialProfileApplication(
-      connectionId,
-      attemptId,
-      'rollback',
-    );
-    return (await this.getCredentialRecovery(connectionId)).application;
-  }
-
   /** Returns false for a stale/superseded rollback without disturbing it. */
   async confirmCredentialProfileRollback(
     connectionId: string,

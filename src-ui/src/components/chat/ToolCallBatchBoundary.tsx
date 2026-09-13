@@ -16,9 +16,13 @@ const loadToolCallBatch = () =>
 export function ToolCallBatchBoundary<P extends ToolCallLike>({
   run,
   renderCall,
+  pending,
 }: {
   run: ToolCallRun<P>;
   renderCall: (part: P, index: number, expanded?: boolean) => ReactNode;
+  /** Inline rows shown until the batch chunk mounts — without this the
+   * 2nd consecutive call flashes an empty gap (`pending={null}`). */
+  pending: ReactNode;
 }) {
   const load = loadToolCallBatch as unknown as () => Promise<{
     default: ComponentType<ToolCallBatchProps<P>>;
@@ -28,7 +32,7 @@ export function ToolCallBatchBoundary<P extends ToolCallLike>({
     <LazyBoundary
       load={load}
       componentProps={{ run, renderCall }}
-      pending={null}
+      pending={pending}
     />
   );
 }

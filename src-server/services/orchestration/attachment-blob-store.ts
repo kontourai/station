@@ -26,7 +26,7 @@ interface BlobStoreLogger {
 const MIB = 1024 * 1024;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export const DEFAULT_ATTACHMENT_BLOB_RETENTION = {
+const DEFAULT_ATTACHMENT_BLOB_RETENTION = {
   maxAgeDays: 90,
   maxBytes: 512 * MIB,
 } as const;

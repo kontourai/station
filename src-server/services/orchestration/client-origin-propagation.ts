@@ -20,7 +20,7 @@ export function withClientOrigin<T extends { clientOrigin?: ClientOrigin }>(
  * (still the common case for `clientOrigin` alone) is not forced to reason
  * about the other.
  */
-export function withPrincipal<T extends { principal?: PrincipalRef }>(
+function withPrincipal<T extends { principal?: PrincipalRef }>(
   record: T,
   principal: PrincipalRef | undefined,
 ): T {

@@ -45,11 +45,28 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   revealRowId,
 }: TranscriptVirtualizerProps<Row>) {
   const [scrollReady, setScrollReady] = useState(false);
+  const spacerRef = useRef<HTMLDivElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+  // The transcript can contain history controls before the virtual rows.
+  // TanStack offsets include that prefix; row transforms remain spacer-relative.
+  useLayoutEffect(() => {
+    void rows;
+    void scrollReady;
+    const container = scrollElement.current;
+    const spacer = spacerRef.current;
+    if (!container || !spacer) return;
+    setScrollMargin(
+      spacer.getBoundingClientRect().top -
+        container.getBoundingClientRect().top +
+        container.scrollTop,
+    );
+  }, [rows, scrollReady, scrollElement]);
   const virtualAnchorRef = useRef<
     { id: string; index: number; offset: number } | undefined
   >(undefined);
   const virtualizerOptions = {
     count: rows.length,
+    scrollMargin,
     getScrollElement: () => (scrollReady ? scrollElement.current : null),
     estimateSize: (index: number) =>
       ESTIMATED_ROW_HEIGHT[rows[index]?.kind] ?? 96,
@@ -281,6 +298,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
 
   return (
     <div
+      ref={spacerRef}
       data-testid="virtualized-transcript-spacer"
       data-transcript-row-count={rows.length}
       style={{
@@ -303,7 +321,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
               top: 0,
               left: 0,
               width: '100%',
-              transform: `translateY(${item.start}px)`,
+              transform: `translateY(${item.start - scrollMargin}px)`,
             }}
           >
             {renderRow(row)}

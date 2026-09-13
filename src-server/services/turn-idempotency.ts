@@ -53,7 +53,7 @@ type TurnIdempotencyClaim =
  * unresolved turn is therefore never discarded for being old -- it is never
  * a pruning candidate at all.
  */
-export function ownerIsProvablyDead(
+function ownerIsProvablyDead(
   owner: TurnClaimOwner | undefined,
   probe: ProcessIdentityProbe = probeExactProcessIdentity,
 ): boolean {

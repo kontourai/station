@@ -24,10 +24,6 @@ const DAYS = [
 
 const ALL_DAYS = DAYS.map((day) => day.value);
 
-function modulo(value: number, divisor: number): number {
-  return ((value % divisor) + divisor) % divisor;
-}
-
 function expandDays(value: string): number[] | null {
   if (value === '*') return [...ALL_DAYS];
   const result = new Set<number>();
@@ -48,27 +44,9 @@ function expandDays(value: string): number[] | null {
   return result.size > 0 ? [...result] : null;
 }
 
-function localTimeFromUtc(
-  utcHour: number,
-  utcMinute: number,
-  utcDays: number[],
-  timezoneOffsetMinutes: number,
-): { time: string; days: number[] } {
-  const localTotal = utcHour * 60 + utcMinute - timezoneOffsetMinutes;
-  const dayShift = Math.floor(localTotal / (24 * 60));
-  const minuteOfDay = modulo(localTotal, 24 * 60);
-  return {
-    time: `${String(Math.floor(minuteOfDay / 60)).padStart(2, '0')}:${String(
-      minuteOfDay % 60,
-    ).padStart(2, '0')}`,
-    days: utcDays.map((day) => modulo(day + dayShift, 7)),
-  };
-}
-
-export function parseFriendlySchedule(
-  cron: string,
-  timezoneOffsetMinutes = new Date().getTimezoneOffset(),
-): ParsedSchedule {
+// Calendar fields are wall time in the schedule's zone. The server evaluates
+// that zone, including daylight saving; a browser offset would convert twice.
+export function parseFriendlySchedule(cron: string): ParsedSchedule {
   const trimmed = cron.trim();
   let match = trimmed.match(/^\*\/(\d+) \* \* \* \*$/);
   if (match) {
@@ -105,20 +83,14 @@ export function parseFriendlySchedule(
   if (match) {
     const minute = Number(match[1]);
     const hour = Number(match[2]);
-    const utcDays = expandDays(match[3]);
-    if (minute < 60 && hour < 24 && utcDays) {
-      const local = localTimeFromUtc(
-        hour,
-        minute,
-        utcDays,
-        timezoneOffsetMinutes,
-      );
+    const days = expandDays(match[3]);
+    if (minute < 60 && hour < 24 && days) {
       return {
         mode: 'weekly',
         intervalValue: 1,
         intervalUnit: 'hours',
-        weeklyDays: local.days,
-        localTime: local.time,
+        weeklyDays: days,
+        localTime: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
       };
     }
   }
@@ -146,7 +118,6 @@ export function compileIntervalSchedule(
 export function compileWeeklySchedule(
   localTime: string,
   localDays: number[],
-  timezoneOffsetMinutes = new Date().getTimezoneOffset(),
 ): string | null {
   const match = localTime.match(/^(\d{2}):(\d{2})$/);
   if (!match || localDays.length === 0) return null;
@@ -154,22 +125,19 @@ export function compileWeeklySchedule(
   const localMinute = Number(match[2]);
   if (localHour > 23 || localMinute > 59) return null;
 
-  const utcTotal = localHour * 60 + localMinute + timezoneOffsetMinutes;
-  const dayShift = Math.floor(utcTotal / (24 * 60));
-  const minuteOfDay = modulo(utcTotal, 24 * 60);
-  const utcDays = [
-    ...new Set(localDays.map((day) => modulo(day + dayShift, 7))),
-  ].sort((a, b) => a - b);
-  const dayExpression = utcDays.length === 7 ? '*' : utcDays.join(',');
-  return `${minuteOfDay % 60} ${Math.floor(minuteOfDay / 60)} * * ${dayExpression}`;
+  const days = [...new Set(localDays)].sort((a, b) => a - b);
+  const dayExpression = days.length === 7 ? '*' : days.join(',');
+  return `${localMinute} ${localHour} * * ${dayExpression}`;
 }
 
 export function ScheduleModeEditor({
   value,
   onChange,
+  timezone,
 }: {
   value: string;
   onChange: (cron: string) => void;
+  timezone: string;
 }) {
   const [initial] = useState(() => parseFriendlySchedule(value));
   const [mode, setMode] = useState<ScheduleMode>(initial.mode);
@@ -184,14 +152,14 @@ export function ScheduleModeEditor({
     setIntervalValue(nextValue);
     setIntervalUnit(nextUnit);
     const cron = compileIntervalSchedule(nextValue, nextUnit);
-    if (cron) onChange(cron);
+    onChange(cron ?? '');
   };
 
   const updateWeekly = (nextTime: string, nextDays: number[]) => {
     setLocalTime(nextTime);
     setWeeklyDays(nextDays);
     const cron = compileWeeklySchedule(nextTime, nextDays);
-    if (cron) onChange(cron);
+    onChange(cron ?? '');
   };
 
   const selectMode = (nextMode: ScheduleMode) => {
@@ -312,13 +280,13 @@ export function ScheduleModeEditor({
           <label className="schedule-mode-editor__time-row">
             <span>At</span>
             <input
-              aria-label="Local time"
+              aria-label={`Time in ${timezone}`}
               type="time"
               value={localTime}
               onChange={(event) => updateWeekly(event.target.value, weeklyDays)}
             />
             <span className="schedule-mode-editor__local-label">
-              local time
+              {timezone}
             </span>
           </label>
           {weeklyDays.length === 0 && (
@@ -326,10 +294,6 @@ export function ScheduleModeEditor({
               Choose at least one day.
             </span>
           )}
-          <span className="schedule-mode-editor__note">
-            Station currently stores UTC schedules. Daylight-saving changes may
-            shift the local run time.
-          </span>
         </div>
       )}
 

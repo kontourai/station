@@ -137,6 +137,9 @@ const NOT_SET_UP_LEAD_IN = "This agent isn't set up yet.";
 
 function buildChatInput() {
   return {
+    quotes: [],
+    quotedDraftText: '',
+    removeQuote: vi.fn(),
     input: '',
     attachments: [],
     textareaRef: { current: null },

@@ -55,13 +55,13 @@ const MAX_RATE_KEYS = 1024;
  * re-rendering forever. The budget bounds that to a small, human-plausible
  * number per transaction; a transaction that exhausts it must be re-opened.
  */
-export const MAX_REVIEW_RENDERS = 30;
+const MAX_REVIEW_RENDERS = 30;
 /**
  * Review MED 3: the audit trail is bounded. When full, the oldest entry
  * AFTER the initial `created` event is dropped, so creation provenance and
  * the most recent history are both retained.
  */
-export const MAX_AUDIT_EVENTS = 100;
+const MAX_AUDIT_EVENTS = 100;
 
 type ConsentTransactionStatus = 'pending' | 'approved' | 'denied' | 'expired';
 export type ConsentDecision = 'approved' | 'denied';

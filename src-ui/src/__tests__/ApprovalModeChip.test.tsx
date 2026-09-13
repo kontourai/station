@@ -154,7 +154,28 @@ describe('ApprovalModeChip', () => {
     ).toBe('true');
   });
 
-  test('an untouched Codex connection (#727 review item 2) resolves to the never/full-access default, not the connection-default placeholder', async () => {
+  test('an engine-reported applied mode labels the chip without selecting a Station override (station#1950)', async () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        sessionOverride={undefined}
+        connectionDefault={undefined}
+        lastAppliedApprovalMode="auto"
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: /^Approval mode: Auto\./ }),
+    ).toBeTruthy();
+    await openSheet();
+    expect(option(/^Auto/).getAttribute('aria-checked')).toBe('true');
+    expect(option(/^Connection default/).getAttribute('aria-checked')).toBe(
+      'false',
+    );
+  });
+
+  test('an untouched Codex connection inherits the engine default rather than Station Never (station#1950)', async () => {
     render(
       <ApprovalModeChip
         engineConnectionId="codex"
@@ -166,13 +187,13 @@ describe('ApprovalModeChip', () => {
 
     expect(
       screen.getByRole('button', {
-        name: /^Approval mode: Never ask \(full access\) — default\./,
+        name: /^Approval mode: Connection default\./,
       }),
     ).toBeTruthy();
     await openSheet();
-    expect(
-      option(/Never ask \(full access\)/).getAttribute('aria-checked'),
-    ).toBe('true');
+    expect(option(/^Connection default/).getAttribute('aria-checked')).toBe(
+      'true',
+    );
   });
 
   test('selecting a non-escalating value emits the override immediately, with no confirm step', async () => {
@@ -586,11 +607,11 @@ describe('ApprovalModeChip', () => {
 
     const chip = screen.getByRole('button', { name: /^Approval mode:/ });
     expect(chip.getAttribute('aria-label')).toContain(
-      'Approval mode: Ask first — default. Engine approval control.',
+      'Approval mode: Connection default. Engine approval control.',
     );
     expect(
       chip.querySelector('.chat-input__approval-chip-label')?.textContent,
-    ).toBe('Ask');
+    ).toBe('Default');
   });
 
   // WCAG 2.5.3 Label in Name: a speech-input user says what they see, so the

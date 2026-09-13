@@ -149,6 +149,7 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'src-server/tools/__tests__/station-docs-mcp-server.test.ts',
   'src-ui/src/__tests__/activity-rename-sweep.test.ts',
   'src-ui/src/__tests__/chat-input-model-loading-surface.test.tsx',
+  'src-ui/src/__tests__/connection-host-copy.test.ts',
   'src-ui/src/__tests__/copy-affordance-cascade.test.ts',
   'src-ui/src/__tests__/dev-build-identity.test.ts',
   'src-ui/src/__tests__/keepPreviousDataConsumers.test.ts',

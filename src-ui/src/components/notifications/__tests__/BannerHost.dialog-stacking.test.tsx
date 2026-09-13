@@ -510,6 +510,75 @@ describe.skipIf(!chromiumAvailable)(
       act(() => bannerStore.reset());
     });
 
+    test.each([false, true])(
+      'short landscape chat yields only to blocking notices (critical=%s)',
+      async (critical) => {
+        const page = await browser.newPage({
+          viewport: { width: 915, height: 412 },
+          isMobile: true,
+          hasTouch: true,
+        });
+        try {
+          await page.setContent(
+            buildFixtureHtml({
+              name: 'short landscape input',
+              viewport: { width: 915, height: 412 },
+              critical,
+              docks: [{ className: BOTTOM_DOCK, surface: 'none' }],
+              expectsDialogReachable: false,
+              expectsNoticeOverlap: false,
+              expectsChromeReachable: false,
+              expectsCriticalBannerCoveredByPopover: false,
+              renderChrome: false,
+            }),
+          );
+          const measured = await page.evaluate(() => {
+            const root = document.documentElement;
+            root.style.setProperty('--safe-top', '28px');
+            root.style.setProperty('--app-toolbar-total-height', '84px');
+            const dock = document.querySelector<HTMLElement>('.chat-dock')!;
+            dock.style.setProperty('--chat-visual-viewport-height', '150px');
+            dock.style.setProperty('--chat-visual-viewport-bottom', '262px');
+            const dismiss = document.querySelector<HTMLButtonElement>(
+              '.banner-host__dismiss',
+            )!;
+            const rect = dismiss.getBoundingClientRect();
+            // Deliberately overlap an enabled input action with the real
+            // notice's control. Geometry alone cannot prove which receives it.
+            const send = document.createElement('button');
+            send.textContent = 'Send';
+            Object.assign(send.style, {
+              position: 'fixed',
+              left: `${rect.left}px`,
+              top: `${rect.top}px`,
+              width: `${rect.width}px`,
+              height: `${rect.height}px`,
+            });
+            dock.append(send);
+            const hit = document.elementFromPoint(
+              rect.left + rect.width / 2,
+              rect.top + rect.height / 2,
+            );
+            return {
+              width: rect.width,
+              height: rect.height,
+              dockTop: dock.getBoundingClientRect().top,
+              send: hit === send || (hit !== null && send.contains(hit)),
+              dismiss:
+                hit === dismiss || (hit !== null && dismiss.contains(hit)),
+            };
+          });
+          expect(measured.width).toBeGreaterThanOrEqual(44);
+          expect(measured.height).toBeGreaterThanOrEqual(44);
+          expect(measured.dockTop).toBeCloseTo(28, 0);
+          expect(measured.send).toBe(!critical);
+          expect(measured.dismiss).toBe(critical);
+        } finally {
+          await page.close();
+        }
+      },
+    );
+
     async function measure(shape: Shape): Promise<Measured> {
       const page = await browser.newPage({ viewport: shape.viewport });
       try {

@@ -5,6 +5,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+import { hostActionCopy } from '../components/host-action/host-action-copy';
+
 const save = vi.fn();
 const clearMutate = vi.fn();
 const applyMutate = vi.fn();
@@ -12,8 +14,71 @@ const enrollmentMutate = vi.fn();
 const policyMutate = vi.fn();
 const upsertMutate = vi.fn();
 const deleteProfileMutate = vi.fn();
+const resetMutate = vi.fn();
 const importProfileMutate = vi.fn();
 let saveFailure: Error | null = null;
+/**
+ * The device projection this page reads. `undefined` is the honest default --
+ * it is what a server that has not answered yet returns, and `HostAction`
+ * takes its host branch there, claiming nothing about a second machine. Each
+ * test that cares sets it.
+ */
+let devicePresentation:
+  | { deviceClass: 'host' | 'paired'; hostName: string }
+  | undefined;
+vi.mock('../hooks/useDevicePresentation', () => ({
+  useDevicePresentation: () => devicePresentation,
+}));
+
+/**
+ * What `buildCliRuntimePrerequisites` ACTUALLY writes when the binary is
+ * absent: TWO required prerequisites, the second named `<Engine> login` --
+ * whose own description says the CLI must be installed BEFORE authentication
+ * can be verified.
+ *
+ * Hand-written single-prerequisite fixtures are what let the missing-binary
+ * case ship untested: no producer emits that shape, so the assertion could
+ * not reach the branch it named.
+ */
+function museMissingBinaryConnection() {
+  return {
+    id: 'muse',
+    kind: 'agent',
+    type: 'muse',
+    name: 'Muse Code',
+    enabled: true,
+    status: 'missing_prerequisites',
+    capabilities: ['agent-runtime'],
+    config: { executionClass: 'connected', providerLabel: 'Muse' },
+    prerequisites: [
+      {
+        id: 'muse-cli',
+        name: 'Muse Code CLI',
+        description: 'Required to launch the Muse Code runtime.',
+        status: 'missing',
+        category: 'required',
+        installGuide: {
+          steps: ['Install the Muse Code CLI and ensure `muse` is on PATH.'],
+        },
+      },
+      {
+        id: 'muse-auth',
+        name: 'Muse Code login',
+        description:
+          'Muse Code CLI must be installed before authentication can be verified.',
+        status: 'missing',
+        category: 'required',
+        installGuide: {
+          steps: [
+            'Install the Muse Code CLI and ensure `muse` is on PATH.',
+            'Run `muse auth set --api-key-stdin` before starting Station.',
+          ],
+        },
+      },
+    ],
+    setup: { state: 'available', detected: false, configured: false },
+  };
+}
 let connectionQueryData: unknown = null;
 let appHomeProfileQueryData: unknown = null;
 let credentialRecoveryQueryData: unknown = null;
@@ -113,7 +178,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     variables: undefined,
   }),
   useDeleteAgentConnectionMutation: () => ({
-    mutate: vi.fn(),
+    mutate: resetMutate,
     isPending: false,
   }),
   useTestAgentConnectionMutation: () => ({ mutate: vi.fn(), isPending: false }),
@@ -215,6 +280,8 @@ import { AgentConnectionView } from '../views/AgentConnectionView';
 
 describe('AgentConnectionView', () => {
   beforeEach(() => {
+    devicePresentation = undefined;
+    resetMutate.mockClear();
     save.mockReset();
     clearMutate.mockReset();
     applyMutate.mockReset();
@@ -604,7 +671,7 @@ describe('AgentConnectionView', () => {
         },
       ],
       'Sign in required',
-      'Sign in to finish connecting.',
+      'Sign in to Codex.',
     ],
     [
       'available',
@@ -620,7 +687,7 @@ describe('AgentConnectionView', () => {
         },
       ],
       'Setup required',
-      'Finish setup before using it.',
+      'Claude executable required on PATH.',
     ],
   ] as const)(
     'projects the backend %s setup tuple into the provider detail',
@@ -652,6 +719,241 @@ describe('AgentConnectionView', () => {
       }
     },
   );
+
+  /*
+   * The shape `buildCliRuntimePrerequisites` ACTUALLY emits when the binary is
+   * absent, byte for byte: TWO required prerequisites, the second of them
+   * named `<Engine> login`.
+   *
+   * The table above only ever fed the one-prerequisite shape, which no
+   * producer writes for this state -- so the missing-binary case was never
+   * exercised, and the page shipped telling a user whose engine was not
+   * installed to sign in. The negative assertion is the point of the test: a
+   * remedy the user cannot perform must not be named, and it must not crowd
+   * out the one they can.
+   */
+  test('a missing engine binary reports setup, never sign-in, even though the server also reports an unmet login prerequisite', () => {
+    connectionQueryData = museMissingBinaryConnection();
+    render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    expect(screen.getAllByText('Setup required')).not.toHaveLength(0);
+    expect(
+      screen.getAllByText('Required to launch the Muse Code runtime.'),
+    ).not.toHaveLength(0);
+    expect(screen.queryByText('Sign in required')).toBeNull();
+    expect(screen.queryByText('Sign in to finish connecting.')).toBeNull();
+  });
+
+  /*
+   * The page is a REMOTE ADMINISTRATION surface: every prerequisite on it is a
+   * fact about the machine Station runs on, while the person reading may be
+   * holding a phone. Before this, nothing here named that machine -- so a
+   * correct observation ("Muse is not installed on desktop-win") was read as a
+   * broken screen, and the remedy was a POSIX shell command for a Windows box
+   * the reader was not sitting at.
+   *
+   * Compared against `hostActionCopy` rather than a transcribed sentence: the
+   * map is the single source, so this asserts ADOPTION. Re-wording the map
+   * must not fail this test; failing to go through the map must.
+   */
+  test('a paired device is told which machine the engine is missing from', () => {
+    devicePresentation = { deviceClass: 'paired', hostName: 'desktop-win' };
+    connectionQueryData = museMissingBinaryConnection();
+
+    render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    const expected = hostActionCopy('engine-missing', devicePresentation);
+    expect(expected).toContain('desktop-win');
+    expect(screen.getAllByText(expected)).not.toHaveLength(0);
+  });
+
+  test('on the host the same state names no second machine', () => {
+    devicePresentation = { deviceClass: 'host', hostName: 'desktop-win' };
+    connectionQueryData = museMissingBinaryConnection();
+
+    render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    // Branch 1: there is no second machine to name, so the page must not
+    // start talking about one.
+    expect(screen.queryByText(/desktop-win/)).toBeNull();
+    expect(screen.getAllByText('Setup required')).not.toHaveLength(0);
+  });
+
+  /*
+   * The rail used to be three static spans with the first hardcoded complete,
+   * so it rendered identically for a working engine and a broken one. These
+   * two cases differ ONLY in the engine's state, so they fail if the rail goes
+   * back to being decoration.
+   */
+  test('the setup rail stops at Connect while a prerequisite blocks the engine', () => {
+    connectionQueryData = museMissingBinaryConnection();
+
+    const { container } = render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    const steps = [
+      ...container.querySelectorAll('.provider-detail__progress-step'),
+    ];
+    expect(steps.map((step) => step.textContent)).toEqual([
+      'Choose',
+      'Connect',
+      'Ready',
+    ]);
+    const complete = steps.map((step) =>
+      step.classList.contains('provider-detail__progress-step--complete'),
+    );
+    expect(complete).toEqual([true, false, false]);
+    // Exactly one step is announced as current, and it is the first incomplete.
+    const current = steps.filter(
+      (step) => step.getAttribute('aria-current') === 'step',
+    );
+    expect(current).toHaveLength(1);
+    expect(current[0]?.textContent).toBe('Connect');
+  });
+
+  test('a ready engine completes every step and announces none as current', () => {
+    connectionQueryData = {
+      ...museMissingBinaryConnection(),
+      status: 'ready',
+      prerequisites: [
+        {
+          id: 'muse-cli',
+          name: 'Muse Code CLI',
+          description: 'Required to launch the Muse Code runtime.',
+          status: 'installed',
+          category: 'required',
+        },
+      ],
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+
+    const { container } = render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    const steps = [
+      ...container.querySelectorAll('.provider-detail__progress-step'),
+    ];
+    expect(
+      steps.map((step) =>
+        step.classList.contains('provider-detail__progress-step--complete'),
+      ),
+    ).toEqual([true, true, true]);
+    expect(
+      steps.filter((step) => step.getAttribute('aria-current') === 'step'),
+    ).toHaveLength(0);
+  });
+
+  /*
+   * "Reset to defaults" is a DELETE that also unregisters the engine. It ran on
+   * a single tap with no confirmation, while the less destructive "Clear this
+   * app home" five fields away confirmed.
+   */
+  test('resetting an engine asks before it deletes', () => {
+    connectionQueryData = museMissingBinaryConnection();
+
+    render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset to defaults' }));
+    expect(resetMutate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    expect(resetMutate).toHaveBeenCalledTimes(1);
+  });
+
+  /*
+   * A refetch overwrote the form unconditionally, so pressing the re-check
+   * button -- or any background invalidation -- silently discarded whatever the
+   * user had typed. Re-rendering with a NEW query object is exactly what the
+   * effect keyed on.
+   */
+  test('a refetch of the same engine does not discard an unsaved edit', () => {
+    connectionQueryData = museMissingBinaryConnection();
+
+    const { rerender } = render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByText('Advanced'));
+    const nameInput = screen.getByLabelText('Name') as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: 'My Muse' } });
+    expect(nameInput.value).toBe('My Muse');
+
+    // A fresh object from the server, same connection: what an invalidation
+    // produces.
+    connectionQueryData = museMissingBinaryConnection();
+    rerender(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe(
+      'My Muse',
+    );
+  });
+
+  test('selecting another engine while dirty asks before navigating', () => {
+    const muse = {
+      ...museMissingBinaryConnection(),
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+    agentConnections = [...DEFAULT_AGENT_CONNECTIONS, muse];
+    connectionQueryData = muse;
+    const onNavigate = vi.fn();
+
+    render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={onNavigate} />,
+    );
+
+    fireEvent.click(screen.getByText('Advanced'));
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'My Muse' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Codex/ }));
+
+    expect(screen.getByText('Unsaved Changes')).toBeTruthy();
+    expect(onNavigate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(onNavigate).toHaveBeenCalledWith({
+      type: 'connections-engine-edit',
+      id: 'codex',
+    });
+  });
+
+  test('selecting a different engine re-seeds the form even after an edit', () => {
+    connectionQueryData = museMissingBinaryConnection();
+
+    const { rerender } = render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByText('Advanced'));
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'My Muse' },
+    });
+
+    connectionQueryData = {
+      ...museMissingBinaryConnection(),
+      id: 'codex',
+      name: 'Codex',
+    };
+    rerender(
+      <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
+    );
+
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe(
+      'Codex',
+    );
+  });
 
   test('claude shows an accessible skills-materialization multiselect, off by default, that saves the selected ids', () => {
     connectionQueryData = {

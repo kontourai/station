@@ -28,6 +28,7 @@ import { createIsolatedSessionTranscriptSearch } from './isolated-session-transc
 // durable fix is exporting the union from contracts/tenancy beside its two
 // constituents, tracked on the epic).
 import type { SessionReadScope } from './orchestration-service.js';
+import type { SessionAuthorization } from './session-authorization.js';
 import { messageSearchExcerpt } from './transcript-search-queries.js';
 
 /** The documented freshness allowance relative to the requested window end. */
@@ -52,6 +53,7 @@ interface SessionTranscriptReadsDeps {
   listUsageCoverageEvents: EventStore['listUsageCoverageEvents'];
   // Derived from the store's own method type — no re-declared row shape.
   searchConversationMessages: EventStore['searchConversationMessages'];
+  transcriptOwnerConstraint?: SessionAuthorization['transcriptOwnerConstraint'];
   readSessionThreadIds: (authority: SessionReadScope) => string[];
   requireTenantExecutionContext: () => boolean;
   /**
@@ -118,7 +120,9 @@ export class SessionTranscriptReads {
     if (!isSessionReadAuthority(authority)) return [];
     const rows = this.deps.searchConversationMessages({
       query,
-      ownerUserId: authority.userId,
+      ...(this.deps.transcriptOwnerConstraint?.(authority) ?? {
+        ownerUserId: authority.userId,
+      }),
       ...(authority.mode === 'hosted' && authority.tenantExecutionContext
         ? { tenantId: authority.tenantExecutionContext.tenantId }
         : {}),

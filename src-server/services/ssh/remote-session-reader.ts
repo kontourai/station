@@ -36,13 +36,13 @@ export const MAX_CONCURRENT_REMOTE_ENVIRONMENTS = 16;
 export const MAX_REMOTE_MESSAGE_SEARCH_ENVIRONMENTS = 16;
 
 /** A palette query may never ask one peer for enough rows to exhaust its cap. */
-export const MAX_REMOTE_MESSAGE_SEARCH_RESULTS_PER_ENVIRONMENT = 5;
+const MAX_REMOTE_MESSAGE_SEARCH_RESULTS_PER_ENVIRONMENT = 5;
 
 /** The aggregate retains no more transcript excerpts than the palette can show. */
-export const MAX_FEDERATED_MESSAGE_SEARCH_RESULTS = 20;
+const MAX_FEDERATED_MESSAGE_SEARCH_RESULTS = 20;
 
 /** The remote deadline remains short enough for a superseding palette query. */
-export const REMOTE_MESSAGE_SEARCH_TIMEOUT_MS = 2_000;
+const REMOTE_MESSAGE_SEARCH_TIMEOUT_MS = 2_000;
 
 export interface RemoteEnvironmentSessions {
   environmentId: string;

@@ -442,6 +442,7 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
           toolName: 'protected_write',
           args: { path: 'approved.txt' },
           needsApproval: true,
+          state: 'awaiting-approval',
           approvalId: 'a1',
         }}
         onApprove={onApprove}
@@ -454,4 +455,25 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
     fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
     expect(onApprove).toHaveBeenCalledWith('once');
   });
+});
+
+test('disabling tool details preserves the compact running row without a payload disclosure', () => {
+  const view = render(
+    <ToolCallDisplay
+      showDetails={false}
+      toolCall={{
+        type: 'tool-invocation',
+        toolCallId: 'running-file',
+        toolName: 'read_file',
+        args: { path: 'notes.txt' },
+        state: 'running',
+        progressMessage: 'Reading the selected file',
+      }}
+    />,
+  );
+  expect(view.container.querySelector('.tool-call')).not.toBeNull();
+  expect(view.container.querySelector('.tool-call__pulse')).not.toBeNull();
+  expect(screen.getByText('Reading the selected file')).toBeTruthy();
+  expect(view.container.querySelector('.tool-call__details')).toBeNull();
+  expect(screen.queryByRole('button')).toBeNull();
 });

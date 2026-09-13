@@ -17,6 +17,10 @@ import type {
   ProviderAdapterShape,
   ProviderSessionAdoptInput,
 } from '../../providers/adapter-shape.js';
+import {
+  isSessionSourceAffinity,
+  snapshotSessionSourceAffinity,
+} from '../../providers/sessions/session-source-affinity.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type {
@@ -28,6 +32,7 @@ import type {
 } from './adoption-ledger.js';
 import { resolveAttachedProjectRoot } from './attached-session-follow-service.js';
 import type { EventStore } from './event-store.js';
+import { readCompletedSourceBoundary } from './external-session-continuation-context.js';
 
 // Attached-session adoption (epic archive#4024, archive#4143): the C14 cluster
 // from the seam map — 25 of its 27 methods, its reservation/intent state,
@@ -240,7 +245,6 @@ export class AttachedSessionAdoption {
     // idempotent. A receipt is continuation metadata, so hosted callers must
     // not receive one unless their request binding matches every server-held
     // binding involved in this adoption.
-    const context = this.resolveAdoptionContext(sourceThreadId);
     if (
       !this.deps.canReadSessionForCommand(
         sourceThreadId,
@@ -251,6 +255,7 @@ export class AttachedSessionAdoption {
       // Do not distinguish an unauthorized source from an absent attachment.
       throw new Error('Attached session not found.');
     }
+    const context = this.resolveAdoptionContext(sourceThreadId);
     const sourceTenantExecutionContext =
       this.deps.tenantContextFor(sourceThreadId) ??
       context.source.tenantExecutionContext;
@@ -529,6 +534,34 @@ export class AttachedSessionAdoption {
     adapter: ProviderAdapterShape;
   }): AdoptionContext {
     const now = new Date().toISOString();
+    const affinity = input.source.attachedSource?.affinity;
+    if (affinity !== undefined && !isSessionSourceAffinity(affinity)) {
+      throw new Error('The attached source configuration identity is invalid.');
+    }
+    const support = externalSessionContinuationSupport(input.source.provider);
+    if (
+      support.state === 'native' &&
+      support.requiresSourceAffinity &&
+      !affinity
+    )
+      throw new Error('Waiting for the source configuration to be verified.');
+    const sourceBoundary =
+      support.state === 'native' && support.boundary === 'completed-turn'
+        ? readCompletedSourceBoundary(
+            this.deps.eventStore!,
+            input.source.provider,
+            input.source.threadId,
+          )
+        : undefined;
+    if (
+      support.state === 'native' &&
+      support.boundary === 'completed-turn' &&
+      (!affinity || !sourceBoundary)
+    ) {
+      throw new Error(
+        'A verified source configuration and completed turn are required for this continuation.',
+      );
+    }
     return {
       source: input.source,
       sourceSessionId: input.sourceSessionId,
@@ -543,6 +576,10 @@ export class AttachedSessionAdoption {
         provider: input.source.provider,
         sourceSessionId: input.sourceSessionId,
         sourceKind: input.source.attachedSource!.kind,
+        ...(affinity
+          ? { sourceAffinity: snapshotSessionSourceAffinity(affinity) }
+          : {}),
+        ...(sourceBoundary ? { sourceBoundary } : {}),
         cwd: input.project.cwd,
         projectRoot: input.project.workingDirectory,
         createdAt: now,
@@ -609,18 +646,36 @@ export class AttachedSessionAdoption {
       ...launchInput,
       sourceSessionId: context.sourceSessionId,
       sourceKind: context.sourceKind,
+      ...(context.reservation.sourceAffinity
+        ? { sourceAffinity: context.reservation.sourceAffinity }
+        : {}),
+      ...(context.reservation.sourceBoundary
+        ? { sourceBoundary: context.reservation.sourceBoundary }
+        : {}),
     };
     await this.deps.assertAdapterReady(adapter);
     this.deps.assertAdapterCurrent(adapter);
-    this.requireAdoptionTransition(
-      this.requireOwnedAdoption(context).markForking(),
-    );
-    context.providerAdoptionStarted = true;
+    const startCreation = () => {
+      if (context.providerAdoptionStarted)
+        throw new Error('Provider reported child creation more than once.');
+      this.requireAdoptionTransition(
+        this.requireOwnedAdoption(context).markForking(),
+      );
+      context.providerAdoptionStarted = true;
+    };
+    if (adapter.adoptionLifecycle !== 'reported') startCreation();
     const adopted = await adapter.adoptSession!(adoptionInput, {
+      onProviderChildCreationStarted: startCreation,
       onProviderChildCreated: (cursor) => {
+        const missingStart = !context.providerAdoptionStarted;
+        if (missingStart) startCreation();
         this.requireAdoptionTransition(
           this.requireOwnedAdoption(context).recordProviderCursor(cursor),
         );
+        if (missingStart)
+          throw new Error(
+            'Provider created a child without reporting its creation boundary.',
+          );
       },
     });
     this.deps.recordAcceptedModelLaunchPlan(
@@ -810,6 +865,9 @@ export class AttachedSessionAdoption {
         createdAt: reservation.createdAt,
         cwd: reservation.cwd,
         resumeCursor: reservation.providerResumeCursor,
+        sourceAffinity: reservation.sourceAffinity,
+        sourceSessionId: reservation.sourceSessionId,
+        sourceKind: reservation.sourceKind,
       });
       this.requireAdoptionTransition(adoption.markProviderCleanupComplete());
     } catch (error) {

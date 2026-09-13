@@ -3629,3 +3629,35 @@ app.use('*', cors({
 ```
 
 ---
+
+
+## Bind a paired device to its verified person
+
+`POST /api/pairing/requests/:requestId/confirm` accepts an optional JSON body:
+
+```json
+{ "bindVerifiedIdentity": true }
+```
+
+The operator must deliberately select this option. The pending device request
+must carry server-verified Tailscale identity; the server derives its subject.
+Only a current operator credential or a verified local-grant operator may bind
+it. Ordinary paired-device approval authority, an internal proxy token or a
+self-declared subject is insufficient. Hosted binding is unavailable until the
+device store is tenant-bound (`409 person_binding_unavailable`). Invalid fields/types return `400`; insufficient
+operator authority returns `403`. Bodyless approval preserves device-only access. A binding approval returns
+`personBindingApproved: true`; clients must require that acknowledgment because
+older servers can accept an ordinary approval without understanding the option.
+
+The existing one-time exchange persists `device.principalBinding` together with
+the credential. Its provider, subject, approval time, approval id and approving
+principal record explicit consent; they grant no Project membership or added
+wire scope. The binding lasts with the device grant and is removed from active
+authority by revoking that device. Two approved devices for the same verified
+subject resolve to the same person over direct connections. A conflicting live
+identity is refused. Existing grants/history are not relabeled automatically.
+
+Use the host pairing panel's **Recognize this device as …** checkbox or
+`station environment access approve <request-id> --bind-person` on the Station
+computer for this flow. See [Project membership and enrollment](../design/project-membership.md)
+for the accepted pilot contract and the remaining shared-Project work.

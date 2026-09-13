@@ -180,9 +180,9 @@ export function SshComputerCreatorDialog({
             onChange={(event) => editHost(event.target.value)}
           />
           <span className="editor-hint">
-            A host from this computer's SSH config, or an address Station can
-            reach. The user, port and key come from that SSH config — the test
-            below reports which ones it used.
+            A host from the SSH config on the computer Station runs on, or an
+            address Station can reach. The user, port and key come from that SSH
+            config — the test below reports which ones it used.
           </span>
         </label>
         <datalist id={`${fieldId}-hosts`}>

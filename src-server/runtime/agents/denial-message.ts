@@ -60,7 +60,7 @@ export const DENIAL_TOOL_NAME_MAX_LENGTH = 64;
 export const DENIAL_QUOTED_TEXT_MAX_LENGTH = 240;
 
 /** Appended when either cap truncates. */
-export const DENIAL_TRUNCATION_MARK = '…';
+const DENIAL_TRUNCATION_MARK = '…';
 
 /**
  * The typographic quotes that delimit an attributed foreign fragment. They are

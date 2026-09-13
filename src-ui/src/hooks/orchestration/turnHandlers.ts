@@ -25,6 +25,7 @@ import {
 import { finalizeAssistantTurn } from './assistantTurn';
 import { createAssistantStreamingMessage } from './messageParts';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
+import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationEvent } from './types';
 
 function repeatedErrorText(message: string, count: number) {
@@ -90,23 +91,89 @@ export function handleTurnStartedEvent(
     currentChat?.agentSlug &&
     currentChat.executionMode !== 'station'
   ) {
-    void import('../lastChosenModel')
-      .then(
-        ({
-          buildLastChosenModelBindingKeyFromIdentity,
-          trackLastChosenModel,
-        }) =>
-          trackLastChosenModel(
-            buildLastChosenModelBindingKeyFromIdentity(
-              currentChat.agentSlug as string,
-              currentChat.providerId ?? currentChat.agentConnectionId,
+    if (!isReplayThread(event.threadId)) {
+      void import('../lastChosenModel')
+        .then(
+          ({
+            buildLastChosenModelBindingKeyFromIdentity,
+            trackLastChosenModel,
+          }) =>
+            trackLastChosenModel(
+              buildLastChosenModelBindingKeyFromIdentity(
+                currentChat.agentSlug as string,
+                currentChat.providerId ?? currentChat.agentConnectionId,
+              ),
+              effectiveModel,
             ),
-            effectiveModel,
-          ),
-      )
-      .catch(() => undefined);
+        )
+        .catch(() => undefined);
+    }
+  }
+  if (event.inputKind === 'steer') {
+    // A steer is more user input on the OPEN turn. It must not reset
+    // `streamingMessage` the way a fresh `turn.started` does — that wipe is
+    // how a Claude course-correction used to blank the in-flight answer.
+    const prompt = event.prompt?.trim();
+    const messages = [...(currentChat?.messages ?? [])];
+    if (prompt) {
+      messages.push({
+        role: 'user',
+        content: prompt,
+        timestamp: Date.parse(event.createdAt) || undefined,
+        turnId: event.turnId,
+        sessionId: event.threadId,
+      });
+    }
+    store.updateChat(event.threadId, {
+      pendingClientTurnId: undefined,
+      status: 'sending',
+      orchestrationTurnOpen: true,
+      openTurnId: event.turnId ?? currentChat?.openTurnId,
+      orchestrationStatus: 'running',
+      ...(prompt ? { messages } : {}),
+    });
+    return;
+  }
+
+  let userMessages = currentChat?.messages;
+  if (
+    event.prompt &&
+    !userMessages?.some(
+      (message) => message.role === 'user' && message.turnId === event.turnId,
+    )
+  ) {
+    userMessages = [...(userMessages ?? [])];
+    const pending = currentChat?.pendingClientTurnId
+      ? [...userMessages]
+          .reverse()
+          .find((message) => message.role === 'user' && message.clientId)
+      : undefined;
+    if (pending) {
+      const index = userMessages.indexOf(pending);
+      userMessages[index] = {
+        ...pending,
+        turnId: event.turnId,
+        sourceEventId: event.eventId,
+      };
+    } else {
+      // Other clients (and replay) have no optimistic composer row. Restore
+      // the recorded input at the same canonical seam as the turn state.
+      userMessages.push({
+        id: `event-input:${event.eventId ?? event.turnId}`,
+        clientId: `event-input:${event.eventId ?? event.turnId}`,
+        sourceEventId: event.eventId,
+        role: 'user',
+        content: event.prompt,
+        timestamp: Date.parse(event.createdAt),
+        turnId: event.turnId,
+        sessionId: event.threadId,
+      });
+    }
   }
   store.updateChat(event.threadId, {
+    ...(userMessages !== currentChat?.messages
+      ? { messages: userMessages }
+      : {}),
     // The dispatch this turn came from has started; the pre-start cancel
     // window it named is over
     pendingClientTurnId: undefined,
@@ -222,7 +289,9 @@ export function handleTurnCompletedEvent(
     activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
     event.threadId;
   reconcileDurableTurn(chatKey, event.turnId);
-  drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
+  if (!isReplayThread(event.threadId)) {
+    drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
+  }
 }
 
 export function handleTurnAbortedEvent(
@@ -375,10 +444,31 @@ export function handleRuntimeErrorEvent(
   const failedTurnId = event.turnId ?? chat?.openTurnId ?? latestMarkerTurnId;
   // Markers for EARLIER turns are no longer about this conversation's latest
   // failure: a second failure must replace the first card, not sit beside it.
-  const priorMessages = pruneStaleFailureMarkers(
-    chat?.messages || [],
-    failedTurnId,
-  );
+  const priorMessages = [
+    ...pruneStaleFailureMarkers(chat?.messages || [], failedTurnId),
+  ];
+  // Keep content that was already visible when the turn failed. The error
+  // card owns the explanation; it must not replace the partial answer/tools.
+  if (
+    !repeatsCurrentTurn &&
+    (streamingMessage.content?.trim() ||
+      streamingMessage.contentParts?.some(
+        (part) =>
+          (part.type === 'text' && part.content?.trim()) ||
+          part.type === 'tool-invocation',
+      ))
+  ) {
+    priorMessages.push({
+      id: `interrupted:${event.threadId}:${failedTurnId ?? event.eventId}`,
+      role: 'assistant',
+      content: streamingMessage.content ?? '',
+      contentParts: streamingMessage.contentParts,
+      timestamp: Date.now(),
+      sessionId: event.threadId,
+      turnId: failedTurnId,
+      answerEligible: false,
+    });
+  }
   const previousMarker = priorMessages.at(-1);
   const previousMarkerCount =
     repeatsCurrentTurn && previousMarker?.role === 'user'
@@ -446,7 +536,9 @@ export function handleRuntimeErrorEvent(
 export function handleRuntimeWarningEvent(
   event: Extract<OrchestrationEvent, { method: 'runtime.warning' }>,
 ) {
-  toastStore.show(event.message, event.threadId, 5000);
+  if (!isReplayThread(event.threadId)) {
+    toastStore.show(event.message, event.threadId, 5000);
+  }
 
   // archive#727 item 1b (CRITICAL): a mid-session escalation to 'never'
   // that the adapter rejected (no allowDangerouslySkipPermissions granted

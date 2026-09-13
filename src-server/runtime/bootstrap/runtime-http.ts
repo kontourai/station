@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import {
+  ACCOUNT_AUTHENTICATION_FAILURE_HEADER,
+  APPLICATION_SESSION_HEADER,
+  APPLICATION_SESSION_PROOF_HEADER,
+} from '@kontourai/station-contracts/application-session';
 import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin';
+import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
 import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
 import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
@@ -42,6 +48,7 @@ import {
   setBudgetPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../security/runtime-request-security.js';
+import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import {
   deviceSessionAuthorizations,
@@ -201,6 +208,21 @@ export function configureRuntimeHttp({
   eventBus,
   security,
 }: RuntimeHttpContext): void {
+  app.use('*', async (c, next) => {
+    await next();
+    const authentication = security?.deploymentAuthentication;
+    const initial = authentication?.admittedPrincipalSnapshot(c.req.raw);
+    if (authentication && initial && c.res.status < 400) {
+      c.res = await guardAccountResponse(c.res, async () => {
+        const latest = await authentication.authenticate(c.req.raw);
+        if (latest.kind === 'unavailable') return 'unavailable';
+        return latest.kind === 'authenticated' &&
+          latest.principal.id === initial.id
+          ? 'current'
+          : 'invalid';
+      });
+    }
+  });
   app.onError((err, c) => {
     // Before the auth allow-list, deliberately. The allow-list matches on
     // message text (`isAuthError` substring-matches "unauthorized", "401",
@@ -441,6 +463,10 @@ function configureRuntimeSecurity(
 
     if (origin) {
       c.header('Access-Control-Allow-Origin', origin);
+      c.header(
+        'Access-Control-Expose-Headers',
+        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After`,
+      );
       c.header('Vary', 'Origin');
       c.header('Access-Control-Allow-Credentials', 'true');
     }
@@ -453,7 +479,7 @@ function configureRuntimeSecurity(
         // Last-Event-ID: set by the SDK's fetchSSE reconnect loop and consumed
         // by the orchestration resume cursor — omitting it preflight-blocks
         // every cross-origin SSE reconnect (#169).
-        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}${
+        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
           process.env.STATION_PERFORMANCE_REFERENCE === '1'
             ? `, ${INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER}`
             : ''
@@ -493,6 +519,54 @@ function configureRuntimeSecurity(
         timestamp: security.now?.() ?? Date.now(),
       });
       return c.json({ error: { code: 'insufficient_scope' } }, 403);
+    }
+    const accountOperation =
+      c.req.path === DEPLOYMENT_AUTHENTICATION_BASE_PATH ||
+      c.req.path.startsWith(`${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/`);
+    if (
+      !security.deploymentAuthentication &&
+      !accountOperation &&
+      (c.req.raw.headers.has(APPLICATION_SESSION_HEADER) ||
+        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER))
+    ) {
+      c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
+      return c.json(
+        { error: { code: 'application_sessions_unsupported' } },
+        401,
+      );
+    }
+    if (security.deploymentAuthentication && !accountOperation) {
+      const hasAccount = security.deploymentAuthentication.hasCredential(
+        c.req.raw,
+      );
+      if (hasAccount) {
+        const retryAfter = limiter.retryAfterSeconds(limiterKey);
+        if (retryAfter !== undefined) {
+          c.header('Retry-After', String(retryAfter));
+          return c.json({ error: { code: AUTH_RATE_LIMITED_ERROR_CODE } }, 429);
+        }
+        // Reserve before asynchronous verification; parallel attempts cannot
+        // all enter the adapter before the first failure has been counted.
+        limiter.recordFailure(limiterKey);
+      }
+      const account = await security.deploymentAuthentication.authenticate(
+        c.req.raw,
+      );
+      if (account.kind === 'authenticated') limiter.clear(limiterKey);
+      if (account.kind === 'invalid') {
+        c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
+        return c.json(
+          {
+            error: {
+              code: 'account_authentication_invalid',
+              reason: account.reason,
+            },
+          },
+          401,
+        );
+      }
+      if (account.kind === 'unavailable')
+        return c.json({ error: { code: 'authentication_unavailable' } }, 503);
     }
     if (
       requiredCapability.capability === 'public' ||
@@ -827,6 +901,7 @@ function configureRuntimeSecurity(
         body: bodyResult,
         duplex: 'half',
       });
+      security.deploymentAuthentication?.transferRequest(raw, c.req.raw);
       // The request was deliberately rewrapped after bounded body buffering.
       // Carry the already middleware-verified principal to that replacement;
       // route handlers must never fall back to reparsing bearer/cookie input.
@@ -894,7 +969,10 @@ async function readBoundedBody(
 export function parseDeviceSessionCookie(
   value: string | undefined,
 ): string | undefined {
-  if (!value || value.length > 4_096) return undefined;
+  // Cookie jars are shared across ports. Other localhost applications can
+  // legitimately contribute several KiB; bound the header at the Node HTTP
+  // default while still validating only one exact Station credential below.
+  if (!value || value.length > 16 * 1024) return undefined;
   const matches: string[] = [];
   for (const segment of value.split(';')) {
     const separator = segment.indexOf('=');

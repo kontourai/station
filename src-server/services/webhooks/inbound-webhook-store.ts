@@ -13,16 +13,16 @@ const REPLAY_FILE = 'inbound-webhook-replays.json';
 const AUDIT_FILE = 'inbound-webhook-audit.json';
 
 /** Enough recent failures for operator diagnosis without creating an attacker-owned log. */
-export const INBOUND_WEBHOOK_AUDIT_MAX_ENTRIES = 256;
+const INBOUND_WEBHOOK_AUDIT_MAX_ENTRIES = 256;
 /** Bounded durable replay keys; at five minutes this accommodates 2,000 requests/minute. */
-export const INBOUND_WEBHOOK_REPLAY_MAX_ENTRIES = 10_000;
+const INBOUND_WEBHOOK_REPLAY_MAX_ENTRIES = 10_000;
 /**
  * Review L2: an HMAC secret shorter than this is brute-forceable within the
  * cost of the requests it's meant to gate. Enforced at both `read()` and
  * `write()` so a hand-authored config with a weak secret fails closed rather
  * than being silently accepted the first time it's read.
  */
-export const INBOUND_WEBHOOK_MIN_SECRET_LENGTH = 32;
+const INBOUND_WEBHOOK_MIN_SECRET_LENGTH = 32;
 
 export class InboundWebhookConfigurationError extends Error {
   constructor(message = 'Inbound webhook configuration is unavailable.') {

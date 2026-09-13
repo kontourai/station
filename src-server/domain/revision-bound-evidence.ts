@@ -80,27 +80,6 @@ export interface RevisionAttributionBinding {
   readonly canonicalPayload: RevisionIdentityPayload;
 }
 
-type RevisionEvidenceState =
-  | {
-      readonly state: 'live_buffer';
-      readonly scope: WorkingStateScope;
-      readonly sharedRevision: SharedWorkingStateRevisionId;
-    }
-  | {
-      readonly state: 'locally_pending';
-      readonly scope: WorkingStateScope;
-      readonly sharedRevision: SharedWorkingStateRevisionId;
-    }
-  | {
-      readonly state: 'committed_revision';
-      readonly revision: CommittedRevision;
-    }
-  | {
-      readonly state: 'proposed_change';
-      readonly proposedChangeId: string;
-      readonly status: ProposedChange['status'];
-    };
-
 /** Station-local immutable reference, not a Surface/Flow/Veritas shape. */
 export interface ImmutableRevisionReference {
   readonly revisionId: EvidenceRevisionId;
@@ -1021,34 +1000,6 @@ export class RevisionEvidenceModule {
   initializePersistence(): boolean {
     const generation = this.#lifecycleGeneration;
     return this.#active(generation) && this.#restorePersisted(generation);
-  }
-
-  liveBuffer(
-    scope: WorkingStateScope,
-    sharedRevision: SharedWorkingStateRevisionId,
-  ): RevisionEvidenceState {
-    const canonical = canonicalScope(scope);
-    if (!canonical || !boundedText(sharedRevision))
-      throw new Error('live buffer state is malformed');
-    return {
-      state: 'live_buffer',
-      scope: canonical,
-      sharedRevision,
-    };
-  }
-
-  locallyPending(
-    scope: WorkingStateScope,
-    sharedRevision: SharedWorkingStateRevisionId,
-  ): RevisionEvidenceState {
-    const canonical = canonicalScope(scope);
-    if (!canonical || !boundedText(sharedRevision))
-      throw new Error('locally pending state is malformed');
-    return {
-      state: 'locally_pending',
-      scope: canonical,
-      sharedRevision,
-    };
   }
 
   freeze(input: unknown): FreezeOutcome {

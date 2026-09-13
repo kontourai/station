@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 const SHA1 = /^[a-f0-9]{40}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
-const PLATFORMS = Object.freeze(['android', 'macos']);
+const PLATFORMS = Object.freeze(['android', 'macos', 'windows']);
+const LEGACY_PLATFORMS = Object.freeze(['android', 'macos']);
 /**
  * Nightly publishes per platform (#1774): each required platform carries its
  * own provider claim, a provider-side failure on one never withholds the
@@ -77,8 +78,13 @@ function facts(input = {}) {
   if (!/^[1-9][0-9]{0,18}$/.test(workflowRunId))
     fail('workflowRunId must be a positive GitHub run identifier');
   const requiredPlatforms = [...(input.requiredPlatforms ?? [])].sort();
-  if (canonicalJson(requiredPlatforms) !== canonicalJson(PLATFORMS))
-    fail('requiredPlatforms must exactly be android and macos');
+  if (
+    canonicalJson(requiredPlatforms) !== canonicalJson(PLATFORMS) &&
+    canonicalJson(requiredPlatforms) !== canonicalJson(LEGACY_PLATFORMS)
+  )
+    fail(
+      'requiredPlatforms must exactly be android, macos and windows (or the legacy two-platform cohort)',
+    );
   if (
     !plain(input.versionIdentities) ||
     canonicalJson(Object.keys(input.versionIdentities).sort()) !==
@@ -273,7 +279,7 @@ function stage(p, value) {
   return exact(value, stageFor(p, value), 'stage receipt');
 }
 function stages(p, values) {
-  if (!Array.isArray(values) || values.length !== 2)
+  if (!Array.isArray(values) || values.length !== p.requiredPlatforms.length)
     fail('stage receipts must contain both platforms');
   const map = new Map(
     values.map((v) => {
@@ -286,7 +292,8 @@ function stages(p, values) {
       return [r.platform, r];
     }),
   );
-  if (map.size !== 2) fail('stage receipts must be unique');
+  if (map.size !== p.requiredPlatforms.length)
+    fail('stage receipts must be unique');
   return p.requiredPlatforms.map(
     (x) => map.get(x) ?? fail(`missing stage receipt for ${x}`),
   );
@@ -294,7 +301,8 @@ function stages(p, values) {
 function downloads(receipts, value) {
   if (
     !plain(value) ||
-    canonicalJson(Object.keys(value).sort()) !== canonicalJson(PLATFORMS)
+    canonicalJson(Object.keys(value).sort()) !==
+      canonicalJson(receipts.map((receipt) => receipt.platform).sort())
   )
     fail('downloadedArtifacts must exactly match admitted platforms');
   for (const receipt of receipts) {
@@ -537,8 +545,29 @@ export function unshippedState(claimOutcome, jobResult) {
     return 'NOT_PUBLISHED';
   return 'NOT_VERIFIED';
 }
+/** Persist the two claims for one desktop publication in one atomic file. */
+export function groupDesktopPromotionStates(inputs) {
+  const states = inputs.map((value) => state(value));
+  const claims = states.map((value) => value.promotionReceipts[0]);
+  if (
+    states.length !== 2 ||
+    states.some((value) => value.promotionReceipts.length !== 1) ||
+    canonicalJson(claims.map((claim) => claim.platform).sort()) !==
+      canonicalJson(['macos', 'windows']) ||
+    states[0].admissionContentDigest !== states[1].admissionContentDigest ||
+    claims[0].outcome !== claims[1].outcome
+  ) {
+    fail('desktop promotion states must bind one admission and shared outcome');
+  }
+  return states.sort((a, b) =>
+    a.promotionReceipts[0].platform.localeCompare(
+      b.promotionReceipts[0].platform,
+    ),
+  );
+}
+
 export function finalizeCohort(inputs) {
-  const values = Array.isArray(inputs) ? inputs : [inputs];
+  const values = (Array.isArray(inputs) ? inputs : [inputs]).flat();
   if (!values.length)
     fail('finalize requires one promotion state per required platform');
   const states = values.map((value) => state(value));
@@ -643,11 +672,13 @@ export function main(argv = process.argv.slice(2)) {
     result = beginPromotion(json(paths[0]));
   else if (cmd === 'promotion-receipt' && paths.length === 2)
     result = recordProviderPromotion(json(paths[0]), json(paths[1]));
+  else if (cmd === 'group-desktop-states' && paths.length === 2)
+    result = groupDesktopPromotionStates(paths.map(json));
   else if (cmd === 'finalize' && paths.length >= 1)
     result = finalizeCohort(paths.map(json));
   else
     fail(
-      'usage: release-cohort.mjs <plan|stage-receipt|admit|begin-promotion|promotion-receipt|finalize> ...',
+      'usage: release-cohort.mjs <plan|stage-receipt|admit|begin-promotion|promotion-receipt|group-desktop-states|finalize> ...',
     );
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   return result;

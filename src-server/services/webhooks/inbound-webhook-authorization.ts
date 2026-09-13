@@ -16,7 +16,7 @@ import {
  * Five minutes absorbs ordinary CI/tunnel delivery delay while keeping a
  * captured request useful for only one short, named interval.
  */
-export const INBOUND_WEBHOOK_REPLAY_WINDOW_MS = 5 * 60_000;
+const INBOUND_WEBHOOK_REPLAY_WINDOW_MS = 5 * 60_000;
 
 /**
  * Review L1: everything needed for the checks that never touch the request
@@ -89,7 +89,7 @@ function canonicalSignatureInput(
 }
 
 /** The only signature comparison. It checks equal lengths before Node's constant-time primitive. */
-export function signatureMatches(
+function signatureMatches(
   secret: string,
   timestamp: string,
   nonce: string,

@@ -22,7 +22,7 @@ function mount() {
     </QueryClientProvider>,
   );
   fireEvent.click(
-    screen.getByRole('button', { name: 'Check for Desktop Updates' }),
+    screen.getByRole('button', { name: 'Check for desktop app updates' }),
   );
   return view;
 }
@@ -42,11 +42,11 @@ test('releases replaced native update handles and the final handle on unmount', 
       close: closeSecond,
     });
   const view = mount();
-  await screen.findByText('Station first is available.');
+  await screen.findByText('Desktop app version first is available.');
   fireEvent.click(
-    screen.getByRole('button', { name: 'Check for Desktop Updates' }),
+    screen.getByRole('button', { name: 'Check for desktop app updates' }),
   );
-  await screen.findByText('Station second is available.');
+  await screen.findByText('Desktop app version second is available.');
   await waitFor(() => expect(closeFirst).toHaveBeenCalledOnce());
   expect(closeSecond).not.toHaveBeenCalled();
   view.unmount();
@@ -79,7 +79,9 @@ test('unmount does not close a native handle while installation is pending', asy
   check.mockResolvedValue({ version: 'next', downloadAndInstall, close });
   const view = mount();
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Install and restart' }),
+    await screen.findByRole('button', {
+      name: 'Install desktop app update and restart',
+    }),
   );
   await waitFor(() => expect(downloadAndInstall).toHaveBeenCalledOnce());
   view.unmount();
@@ -97,7 +99,9 @@ test('checks the native channel and installs before relaunching', async () => {
   });
   mount();
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Install and restart' }),
+    await screen.findByRole('button', {
+      name: 'Install desktop app update and restart',
+    }),
   );
   await waitFor(() => expect(relaunch).toHaveBeenCalledOnce());
   expect(check).toHaveBeenCalledWith({ timeout: 15_000 });
@@ -114,12 +118,41 @@ test('reports a failed channel check and allows a successful retry', async () =>
     'Could not check',
   );
   fireEvent.click(
-    screen.getByRole('button', { name: 'Check for Desktop Updates' }),
+    screen.getByRole('button', { name: 'Check for desktop app updates' }),
   );
   expect((await screen.findByRole('status')).textContent).toContain(
-    'up to date',
+    'No desktop app update',
   );
   expect(screen.queryByRole('alert')).toBeNull();
+});
+
+test('a check failure discloses its real diagnostic text without classifying it', async () => {
+  check.mockRejectedValue(new Error('updater stream broken: TLS cert expired'));
+  mount();
+  expect((await screen.findByRole('alert')).textContent).toBe(
+    'Could not check for desktop app updates. Try again or view technical details.',
+  );
+  // The UI cannot tell offline from no-channel from a bad signature, so it
+  // must not claim any of them (D6 replaces the old classified copy).
+  expect(
+    screen.queryByText(/may not have an update channel configured/),
+  ).toBeNull();
+  expect(screen.queryByText(/Check your connection/)).toBeNull();
+  // The caught message survives verbatim inside the disclosure.
+  fireEvent.click(screen.getByText('Technical details'));
+  expect(
+    screen.getByText('updater stream broken: TLS cert expired'),
+  ).toBeTruthy();
+});
+
+test('a non-Error check failure is captured verbatim, not classified', async () => {
+  check.mockRejectedValue('updater plugin missing');
+  mount();
+  await screen.findByRole('alert');
+  // The adapter stringifies whatever it caught; the UI discloses it without
+  // inventing a classification the adapter never made.
+  fireEvent.click(screen.getByText('Technical details'));
+  expect(screen.getByText('updater plugin missing')).toBeTruthy();
 });
 
 test('failed installation never relaunches and can be retried', async () => {
@@ -133,10 +166,25 @@ test('failed installation never relaunches and can be retried', async () => {
     .mockResolvedValueOnce(undefined);
   mount();
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Install and restart' }),
+    await screen.findByRole('button', {
+      name: 'Install desktop app update and restart',
+    }),
   );
   await screen.findByRole('alert');
+  // D7: a failed install claims neither success nor restart, and it shows the
+  // real error instead of a generic retry line.
+  expect(screen.getByRole('alert').textContent).toBe(
+    'The desktop update did not complete. View technical details before retrying.',
+  );
+  expect(screen.queryByText(/restarted successfully/i)).toBeNull();
+  expect(screen.queryByText(/installed successfully/i)).toBeNull();
   expect(relaunch).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Install and restart' }));
+  fireEvent.click(screen.getByText('Technical details'));
+  expect(screen.getByText('signature invalid')).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Install desktop app update and restart',
+    }),
+  );
   await waitFor(() => expect(relaunch).toHaveBeenCalledOnce());
 });

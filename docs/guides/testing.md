@@ -8,6 +8,11 @@ of the tracked and unignored tree, including extensionless launchers and native
 entrypoints. Unrecognized files remain visible instead of being silently excluded. The normal
 `npm run fallow:audit` command is a changed-file review, not a full-tree audit.
 
+For ongoing implementation, `ci:fast` runs the [code-health prevention gate](code-quality.md#code-health-prevention)
+with an explicit base and reports introduced versus inherited candidates. It
+blocks new unused exports/types, retains advisory design findings for PR review,
+and uses upstream baselines so local rebaselining cannot hide new debt.
+
 `npm run test:full:audit` is the coordinated full-corpus diagnostic that continues
 after independent assertion failures. It has a 60-minute aggregate execution
 budget and retains the existing cataloged per-group budgets; individual test
@@ -37,6 +42,18 @@ wrappers or splitting a cohesive validator. Keep a ledger of confirmed findings,
 false positives with caller evidence, fixes, measurements, and unverified areas.
 An exhaustive inventory must never be reported as exhaustive manual review or
 as proof that no improvements remain.
+
+Whole-tree analyses create a separate `review.json` beside the raw reports.
+Every finding starts `pending`; the analyzer's `completed` field describes only
+execution. Record each disposition as `retained`, `fixed`, or `action_required`
+with a rationale and evidence references. Run
+`node scripts/fallow-review-status.mjs .kontourai/veritas/external/fallow-audit.json`
+to check coverage. Missing or duplicate findings, changed reports, dirty source,
+and a different source revision prevent a completion result. Exit 1 means review
+or remediation remains open; exit 2 means invalid or stale evidence. A new scan
+creates a fresh ledger rather than silently carrying old dispositions forward.
+The checker validates coverage and identity, not the truth of written judgments;
+even complete disposition coverage does not prove that no other defects exist.
 
 ## Fixture fidelity and test effectiveness
 

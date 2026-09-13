@@ -149,7 +149,7 @@ function httpStatus(error: unknown): number | undefined {
 }
 
 /** Whether this failure is the catalogue call being denied specifically. */
-export function isBedrockCatalogAuthorizationDenial(error: unknown): boolean {
+function isBedrockCatalogAuthorizationDenial(error: unknown): boolean {
   return CATALOG_DENIED_ERROR_NAMES.has(errorName(error));
 }
 

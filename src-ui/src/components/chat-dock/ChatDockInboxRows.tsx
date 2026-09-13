@@ -91,7 +91,7 @@ export function inboxRowIconAgent(
   return agents.find((agent) => agent.slug === item.agentSlug) ?? null;
 }
 
-export function SnoozeActions({
+function SnoozeActions({
   item,
   isSnoozed,
   now,

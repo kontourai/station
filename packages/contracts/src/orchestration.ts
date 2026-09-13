@@ -717,6 +717,12 @@ export interface OrchestrationSessionEventPage {
   nextSequence: number;
 }
 
+/** Derived SSE envelope routing, resolved from Station's lineage at delivery time. */
+export interface OrchestrationConversationStreamBinding {
+  conversationId: string;
+  currentSessionId: string;
+}
+
 /** Versioned bounded hydration contract for one orchestration session. */
 export interface OrchestrationSessionEventWindow {
   protocolVersion: 1;
@@ -1041,3 +1047,14 @@ export interface ConversationForkProvenance {
   targetAgent: string;
   forkedAt: string;
 }
+
+/** Bounded exact-answer text for user-selected quotation, never evidence standing. */
+export interface OrchestrationQuoteSource {
+  version: 1;
+  sessionId: string;
+  turnId: string;
+  messageId: string;
+  text: string;
+  revision: string;
+}
+export const QUOTE_SOURCE_MAX_BYTES = 128 * 1024;

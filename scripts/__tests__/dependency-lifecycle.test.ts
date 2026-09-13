@@ -359,6 +359,85 @@ describe('dependency lifecycle policy', () => {
     ).toThrow('AttachConsole failed');
   });
 
+  // The hosted Windows failure reached the catch with a present-but-empty
+  // stderr, which under `stderr ?? message` suppressed every fallback and
+  // logged only the bare prefix. These cases pin the failure message's
+  // observable content: a narrative plus the termination facts that keep a
+  // timeout distinguishable from a native crash.
+  function handshakeFailureDetail(error: unknown): string {
+    try {
+      verifyNodePtyHandshake('/fixture/node-pty', {
+        exec: () => {
+          throw error;
+        },
+      });
+    } catch (failure) {
+      return failure instanceof Error ? failure.message : String(failure);
+    }
+    throw new Error('expected verifyNodePtyHandshake to stay fail-closed');
+  }
+
+  it('reports the message and exit status when stderr is empty', () => {
+    const detail = handshakeFailureDetail(
+      Object.assign(new Error('Command failed: node -e pty-handshake'), {
+        stderr: '',
+        status: 3221225477,
+        code: 3221225477,
+        signal: null,
+        killed: false,
+      }),
+    );
+    expect(detail).toContain('Command failed: node -e pty-handshake');
+    expect(detail).toContain('status=3221225477');
+  });
+
+  it('reports timeout termination facts when stderr is whitespace', () => {
+    const detail = handshakeFailureDetail(
+      Object.assign(new Error('Command failed: node -e pty-handshake'), {
+        stderr: '   \n\t',
+        signal: 'SIGTERM',
+        killed: true,
+        code: null,
+        status: null,
+      }),
+    );
+    expect(detail).toContain('signal=SIGTERM');
+    expect(detail).toContain('killed=true');
+  });
+
+  it('does not let an empty stderr Buffer erase the diagnostics', () => {
+    const detail = handshakeFailureDetail(
+      Object.assign(new Error('Command failed: node -e pty-handshake'), {
+        stderr: Buffer.from(''),
+        status: 1,
+      }),
+    );
+    expect(detail).toContain('Command failed: node -e pty-handshake');
+    expect(detail).toContain('status=1');
+  });
+
+  it('keeps nonempty stderr ahead of the error message', () => {
+    const detail = handshakeFailureDetail(
+      Object.assign(new Error('Command failed: node -e pty-handshake'), {
+        stderr: 'native stack trace',
+        status: 1,
+      }),
+    );
+    expect(detail).toContain('native stack trace');
+    expect(detail).toContain('status=1');
+  });
+
+  it('stays informative when neither stderr nor message exists', () => {
+    const detail = handshakeFailureDetail({
+      stderr: '',
+      status: 1,
+      signal: null,
+      killed: false,
+    });
+    expect(detail).toContain('status=1');
+    expect(detail).not.toContain('[object Object]');
+  });
+
   it('requires the marker/ack/natural-exit protocol instead of immediate PTY teardown', () => {
     let childSource = '';
     verifyNodePtyHandshake('/fixture/node-pty', {

@@ -427,7 +427,7 @@ export function groupAgentToolsByServer(agentTools: Tool[]) {
  * about come from that inventory, so asking it again was a second derivation
  * of a question already answered upstream.
  */
-export function isModelConnectionRunnable(
+function isModelConnectionRunnable(
   connection: ConnectionConfig | undefined,
 ): connection is ConnectionConfig {
   return Boolean(connection?.enabled && connection.status === 'ready');

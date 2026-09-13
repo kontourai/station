@@ -1,7 +1,6 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
-import type { SteerTurnResult } from '@kontourai/station-contracts/orchestration';
 import {
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
@@ -23,15 +22,17 @@ import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { drainQueuedMessageOnTurnCompleted } from '../../hooks/orchestration/queueDrain';
+import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
 import { useActiveChatTranscript } from '../../hooks/orchestration/useActiveChatTranscript';
+import { useChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
+import type { useChatInput } from '../../hooks/useChatInput';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
 import { useShareReceiver } from '../../hooks/useShareReceiver';
-import type { SlashCommand } from '../../hooks/useSlashCommands';
 import { useSTT } from '../../hooks/useSTT';
 import { useTTS } from '../../hooks/useTTS';
+import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
-import type { ApprovalMode } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
   formatChatErrorDisplay,
@@ -41,7 +42,10 @@ import {
   elidedHistoryNoticeText,
   summarizeElidedReasons,
 } from '../../utils/elidedHistory';
-import { isSessionExecutionActive } from '../../utils/execution';
+import {
+  isSessionExecutionActive,
+  sessionAdapterSupportsSteering,
+} from '../../utils/execution';
 import type {
   ModelProviderOption,
   SelectableModel,
@@ -54,6 +58,7 @@ import {
   sessionFailureText,
   transcriptCarriesFailureText,
 } from '../../utils/sessionFailure';
+import { steerRefusalMessage } from '../../utils/steerTurn';
 import { ChatEmptyState } from '../chat/ChatEmptyState';
 import { ChatInputArea } from '../chat/ChatInputArea';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
@@ -87,6 +92,16 @@ const loadOutboundQueuedMessages = () =>
 const loadConversationOpenRecoveryNotice = () =>
   import('./ConversationOpenRecoveryNotice').then((module) => ({
     default: module.ConversationOpenRecoveryNotice,
+  }));
+
+const loadReplayTransport = () =>
+  import('../chat/ReplayTransport').then(({ ReplayTransport }) => ({
+    default: ReplayTransport,
+  }));
+
+const loadSourceQuoteDrafts = () =>
+  import('../chat/SourceQuoteDrafts').then((module) => ({
+    default: module.SourceQuoteDrafts,
   }));
 
 const loadQueuedMessages = () =>
@@ -161,55 +176,7 @@ interface ChatDockBodyProps {
   /** Re-resolves the exact durable conversation identity, never an Agent guess. */
   onRetryConversationOpen?: () => void | Promise<void>;
   onForkFromTurn?: (source: ForkTurnSource) => void;
-  chatInput: {
-    input: string;
-    attachments: FileAttachment[];
-    attachmentStages: import('../../types').ComposerAttachmentStageSnapshot[];
-    sendBlockedReason?: string;
-    textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-    currentModel: string | undefined;
-    canModelSelect: boolean;
-    modelSelectionReason?: string;
-    modelsStale?: boolean;
-    modelQuery: string | null;
-    commandQuery: string | null;
-    slashCommands: SlashCommand[];
-    handleInputChange: (value: string) => void;
-    handleSend: (
-      overrideText?: string,
-      overrideAttachments?: FileAttachment[],
-      options?: { ambientContext?: string },
-    ) => Promise<void>;
-    handleCancel: () => void;
-    handleClearInput: () => void;
-    handleAddAttachments: (files: FileAttachment[]) => void;
-    selectAttachmentFiles: (files: File[]) => Promise<void>;
-    attachmentError: string | null;
-    retryAttachmentStage: (id: string) => void | Promise<void>;
-    cancelAttachmentStage: (id: string) => void | Promise<void>;
-    replaceAttachmentFile: (id: string, files: File[]) => void | Promise<void>;
-    handleRemoveAttachment: (id: string) => void;
-    handleClearAttachments: () => void;
-    handleModelSelect: (model: SelectableModel) => void;
-    handleModelReset: () => void;
-    handleModelClose: () => void;
-    handleModelOpen: () => void;
-    handleModelRuntimeOptionChange: (
-      key: string,
-      value: string | number | boolean | undefined,
-    ) => void;
-    handleApprovalModeChange: (mode: ApprovalMode) => void;
-    handleCommandSelect: (command: SlashCommand) => Promise<void>;
-    handleCommandClose: () => void;
-    handleHistoryUp: () => void;
-    handleHistoryDown: () => void;
-    handleRestorePortableDraft: (
-      text: string,
-      attachments: FileAttachment[],
-    ) => void;
-    updateFromInput: (value: string) => void;
-    closeAll: () => void;
-  };
+  chatInput: ReturnType<typeof useChatInput>;
   setShowStatsPanel: (show: boolean) => void;
 }
 
@@ -251,38 +218,6 @@ export function findPrecedingUserTurn(
     return { text, attachments };
   }
   return null;
-}
-
-/**
- * The system-message copy for every `steerOrchestrationTurn` outcome OTHER
- * than `'steered'` (that one is a success — `onSteer` returns `true` for it
- * without ever calling this).
- *
- * station#4075 stage 2 review round 2: this used to be a two-way ternary
- * (`unsupported-engine` vs. a catch-all "the turn ended before the steer
- * could be sent") — the additive-enum trap. Adding `'concurrent-steer'` to
- * `SteerTurnResult` fell into that catch-all and told the user the turn had
- * ENDED, which is false: the turn is still live, another steer just won the
- * race. Exhaustive `switch` with NO `default` case that returns a value —
- * the `never`-check in the (genuinely unreachable) fallback is what makes a
- * FUTURE outcome addition a compile error here instead of silent wrong copy
- * (the same idiom as `views/settings/registry-row.tsx`).
- */
-export function steerRefusalMessage(
-  result: Exclude<SteerTurnResult, { outcome: 'steered' }>,
-): string {
-  switch (result.outcome) {
-    case 'unsupported-engine':
-      return `${result.engineName} does not support mid-turn steering.`;
-    case 'no-active-turn':
-      return 'The turn ended before the steer could be sent.';
-    case 'concurrent-steer':
-      return 'Another steer is in progress — try again in a moment.';
-    default: {
-      const exhaustive: never = result;
-      return exhaustive;
-    }
-  }
 }
 
 export function ChatDockBody({
@@ -352,6 +287,7 @@ export function ChatDockBody({
   const busyOpen = openPhase === 'busy';
   const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
+  const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
   /*
    * One transitional state for the whole conversation, from the two things
    * that are actually still in flight after a reload: the conversation-open
@@ -378,7 +314,7 @@ export function ChatDockBody({
    * unconditional stayed green — a guard nothing can reach reads as a
    * guarantee and is not one.
    */
-  const forkFromTurn = onForkFromTurn;
+  const forkFromTurn = activeSession.replay ? undefined : onForkFromTurn;
   const renderedSession = useMemo(
     () =>
       transcript.enabled
@@ -425,7 +361,8 @@ export function ChatDockBody({
   // not in it) may claim that; the read's own pending and failed states are
   // rendered as themselves below.
   const claimsServerSession =
-    activeSession.orchestrationSessionStarted === true;
+    activeSession.orchestrationSessionStarted === true &&
+    !isReplayThread(activeSession.id);
   // The inventory can omit an unloaded child. An authorized point-read of
   // this exact child is stronger evidence than absence from that list.
   const openResolution = activeSession.conversationOpenState;
@@ -481,26 +418,35 @@ export function ChatDockBody({
    * indistinguishable from a turn that never carried them — and from a blob
    * retention had reclaimed. `elided` is the read's own report of which
    * budget fired, so this counts events the read actually withheld rather
-   * than inferring anything from what is missing, and keeps the two reasons
-   * apart in the copy.
+   * than inferring anything from what is missing. Tool-detail reductions stay
+   * in session diagnostics; they must not add a banner above an otherwise
+   * complete conversation.
    */
   const elidedHistoryText = useMemo(
     () =>
       elidedHistoryNoticeText(
         summarizeElidedReasons(
-          transcript.events.map((sequenced) => sequenced.elided),
+          transcript.events
+            .filter(
+              (item) =>
+                item.event.method !== 'tool.progress' &&
+                item.event.method !== 'tool.started' &&
+                item.event.method !== 'tool.completed' &&
+                item.event.method !== 'token-usage.updated',
+            )
+            .map((sequenced) => sequenced.elided),
         ),
       ),
     [transcript.events],
   );
   const historyElisionNotice = elidedHistoryText ? (
-    <div
+    <details
       className="history-elided chat-dock__history-elided"
-      role="status"
       data-testid="chat-dock-history-elided"
     >
+      <summary>Some recorded details are omitted</summary>
       {elidedHistoryText}
-    </div>
+    </details>
   ) : undefined;
   const historyFailureNotice = historyFailure ? (
     <div className="session-history-error" role="alert">
@@ -553,6 +499,26 @@ export function ChatDockBody({
     );
     return chatInput.handleSend(undefined, undefined, { ambientContext });
   }, [getComposedContext, chatInput]);
+  const handleQueueFollowUp = useCallback((): Promise<void> => {
+    const ambientContext = ambientContextForSend(
+      getComposedContext(),
+      chatInput.input,
+    );
+    return chatInput.handleSend(undefined, undefined, {
+      ambientContext,
+      queueOnBusy: true,
+    });
+  }, [getComposedContext, chatInput]);
+  const busyFollowUp =
+    isTurnInFlight(activeSession) &&
+    sessionAdapterSupportsSteering(
+      activeSession.agentConnectionId,
+      [],
+      activeSession.orchestrationProvider,
+    ) &&
+    chatInput.attachments.length === 0
+      ? 'steer'
+      : 'queue';
   const isExecutionActive = isSessionExecutionActive(activeSession);
 
   // TTS readback when streaming ends
@@ -775,20 +741,25 @@ export function ChatDockBody({
             messageKey={`${activeSession.id}-msg-${idx}`}
             content={displayContent}
             action={
-              translation?.terminalSession && onNewChat && retryTurn
-                ? {
-                    label: 'New chat',
-                    onClick: () => void runRecoveredTurn(retryTurn, onNewChat),
-                  }
-                : canRetry && retryTurn
+              activeSession.replay
+                ? undefined
+                : translation?.terminalSession && onNewChat && retryTurn
                   ? {
-                      label: 'Send again',
+                      label: 'New chat',
                       onClick: () =>
-                        void runRecoveredTurn(retryTurn, (text, attachments) =>
-                          sendRef.current(text, attachments),
-                        ),
+                        void runRecoveredTurn(retryTurn, onNewChat),
                     }
-                  : undefined
+                  : canRetry && retryTurn
+                    ? {
+                        label: 'Send again',
+                        onClick: () =>
+                          void runRecoveredTurn(
+                            retryTurn,
+                            (text, attachments) =>
+                              sendRef.current(text, attachments),
+                          ),
+                      }
+                    : undefined
             }
           />
         );
@@ -800,6 +771,7 @@ export function ChatDockBody({
       chatFontSize,
       removingMessages,
       activeSession.id,
+      activeSession.replay,
       activeSession.messages,
       chatInput.input,
       clearEphemeralMessages,
@@ -824,7 +796,6 @@ export function ChatDockBody({
         />
       )}
       {historyFailure && transcript.messages.length > 0 && historyFailureNotice}
-      {historyElisionNotice}
       {sessionRecordPending && (
         <SkeletonList count={1} label="Reading this session's record" />
       )}
@@ -879,6 +850,7 @@ export function ChatDockBody({
          * the reason nothing can be sent.
          */
         <div className="chat-messages chat-messages--empty" role="status">
+          {historyElisionNotice}
           {historyFailureNotice ??
             (conversationLoading ? (
               /*
@@ -909,6 +881,11 @@ export function ChatDockBody({
             showToolDetails,
             renderOverride,
             emptyState: historyFailureNotice,
+            historyNotice: historyElisionNotice,
+            hasOlderMessages: transcript.enabled && transcript.hasMore,
+            historyLoading: transcript.loading,
+            suppressActivity: Boolean(streamStatus),
+            onLoadOlder: transcript.loadOlder,
             onOpenBackgroundTasks,
             owner,
             accountableHuman,
@@ -919,15 +896,24 @@ export function ChatDockBody({
           }}
         />
       )}
-      {transcript.enabled && transcript.hasMore && (
-        <div className="session-history-controls">
-          <button
-            type="button"
-            className="button button--secondary session-history-controls__more"
-            onClick={() => void transcript.loadOlder()}
-          >
-            Load earlier events
-          </button>
+      {streamStatus && (
+        <div
+          className="chat-stream-status"
+          role="status"
+          data-chat-stream-status={activeSession.id}
+          title="Live updates are paused; the remote request may still be running."
+        >
+          <span>{streamStatus.label}</span>
+          {streamStatus.blocked && (
+            <button
+              type="button"
+              className="button button--secondary"
+              disabled={Boolean(activeSession.replay)}
+              onClick={() => openConnectionsModal({ mode: 'request-access' })}
+            >
+              Repair connection
+            </button>
+          )}
         </div>
       )}
       {activeSession.unsentMessages?.length ? (
@@ -1249,106 +1235,137 @@ export function ChatDockBody({
             .
           </div>
         )}
-      <ChatInputArea
-        sessionId={activeSession.id}
-        input={chatInput.input}
-        attachments={chatInput.attachments}
-        textareaRef={chatInput.textareaRef}
-        disabled={!agent || readOnlyOpen || resolvingOpen || busyOpen}
-        isSending={isExecutionActive}
-        turnInFlight={isTurnInFlight(activeSession)}
-        stopPending={!!activeSession.stopPending}
-        modelSupportsAttachments={modelSupportsAttachments}
-        fileAttachmentsSupported={fileAttachmentsSupported}
-        modelProviderLabel={modelProviderLabel}
-        modelProviders={modelProviders}
-        currentProviderId={activeSession.providerId}
-        fontSize={chatFontSize}
-        dockHeight={dockHeight}
-        currentModel={chatInput.currentModel}
-        currentModelSource={
-          activeSession.requestedModel === null
-            ? (activeSession.defaultModelSource ?? 'agent default')
-            : (activeSession.requestedModelSource ?? activeSession.modelSource)
-        }
-        canModelSelect={chatInput.canModelSelect}
-        modelSelectionReason={chatInput.modelSelectionReason}
-        modelsStale={chatInput.modelsStale}
-        modelsLoading={modelsLoading}
-        agentDefaultModel={agentDefaultModelId}
-        defaultModelSource={activeSession.defaultModelSource}
-        availableModels={availableModels}
-        modelQuery={chatInput.modelQuery}
-        agentConnectionId={activeSession.agentConnectionId}
-        modelRuntimeOptions={
-          activeSession.requestedProviderOptions ??
-          activeSession.providerOptions
-        }
-        secondaryActions={
-          readOnlyOpen || resolvingOpen || busyOpen
-            ? undefined
-            : secondaryActions
-        }
-        agentLabel={
-          agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
-        }
-        onOpenAgentHandoff={
-          onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff
-        }
-        agentHandoffTriggerRef={agentHandoffTriggerRef}
-        agentHandoffDisabled={secondaryActions?.handoffDisabled}
-        agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
-        executionMode={activeSession.executionMode}
-        approvalModeConnectionDefault={connectionApprovalModeDefault}
-        toolPolicyDelivery={toolPolicyDelivery}
-        lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
-        commandQuery={chatInput.commandQuery}
-        slashCommands={chatInput.slashCommands}
-        onInputChange={chatInput.handleInputChange}
-        onSend={handleSendWithContext}
-        onCancel={chatInput.handleCancel}
-        onClearInput={chatInput.handleClearInput}
-        selectAttachmentFiles={chatInput.selectAttachmentFiles}
-        attachmentError={chatInput.attachmentError}
-        attachmentStages={chatInput.attachmentStages}
-        sendBlockedReason={
-          readOnlyOpen
-            ? 'This conversation is available read-only. Retry resolution or start a new chat.'
-            : resolvingOpen || busyOpen
-              ? // The banner above already says this; repeating the SENTENCE
-                // under the composer is what made one ordinary reload read as
-                // three separate problems. `undefined` leaves the composer
-                // quietly disabled.
-                undefined
-              : chatInput.sendBlockedReason
-        }
-        onRetryAttachmentStage={chatInput.retryAttachmentStage}
-        onCancelAttachmentStage={chatInput.cancelAttachmentStage}
-        onReplaceAttachmentFile={chatInput.replaceAttachmentFile}
-        onRemoveAttachment={chatInput.handleRemoveAttachment}
-        onClearAttachments={chatInput.handleClearAttachments}
-        onModelSelect={chatInput.handleModelSelect}
-        onModelReset={chatInput.handleModelReset}
-        onModelClose={chatInput.handleModelClose}
-        onModelOpen={chatInput.handleModelOpen}
-        onModelRuntimeOptionChange={chatInput.handleModelRuntimeOptionChange}
-        onApprovalModeChange={chatInput.handleApprovalModeChange}
-        onCommandSelect={chatInput.handleCommandSelect}
-        onCommandClose={chatInput.handleCommandClose}
-        onHistoryUp={chatInput.handleHistoryUp}
-        onHistoryDown={chatInput.handleHistoryDown}
-        onRestorePortableDraft={chatInput.handleRestorePortableDraft}
-        updateFromInput={chatInput.updateFromInput}
-        closeAll={chatInput.closeAll}
-        voiceState={stt.state}
-        voiceSupported={stt.supported}
-        voiceUnsupportedReason={stt.unsupportedReason}
-        voiceError={stt.errorMessage}
-        onVoiceStart={() => stt.startListening()}
-        onVoiceStop={() => stt.stopListening()}
-        workspaceRefused={workspaceRefused}
-        onStartNewChat={onNewChat}
-      />
+      {activeSession.replay ? (
+        <LazyBoundary
+          load={loadReplayTransport}
+          pending={null}
+          componentProps={{ sessionId: activeSession.id }}
+        />
+      ) : (
+        <>
+          {chatInput.quotes.length > 0 && (
+            <LazyBoundary
+              load={loadSourceQuoteDrafts}
+              componentProps={{
+                origin: apiBase,
+                quotes: chatInput.quotes,
+                onRemove: chatInput.removeQuote,
+              }}
+              pending={
+                <SkeletonList count={1} label="Loading quoted context" />
+              }
+            />
+          )}
+          <ChatInputArea
+            hasQuotedContext={chatInput.quotes.length > 0}
+            draftText={chatInput.quotedDraftText}
+            quoteContext={chatInput.quotes}
+            sessionId={activeSession.id}
+            input={chatInput.input}
+            attachments={chatInput.attachments}
+            textareaRef={chatInput.textareaRef}
+            disabled={!agent || readOnlyOpen || resolvingOpen || busyOpen}
+            isSending={isExecutionActive}
+            turnInFlight={isTurnInFlight(activeSession)}
+            busyFollowUp={busyFollowUp}
+            onQueueFollowUp={handleQueueFollowUp}
+            stopPending={!!activeSession.stopPending}
+            modelSupportsAttachments={modelSupportsAttachments}
+            fileAttachmentsSupported={fileAttachmentsSupported}
+            modelProviderLabel={modelProviderLabel}
+            modelProviders={modelProviders}
+            currentProviderId={activeSession.providerId}
+            fontSize={chatFontSize}
+            dockHeight={dockHeight}
+            currentModel={chatInput.currentModel}
+            currentModelSource={
+              activeSession.requestedModel === null
+                ? (activeSession.defaultModelSource ?? 'agent default')
+                : (activeSession.requestedModelSource ??
+                  activeSession.modelSource)
+            }
+            canModelSelect={chatInput.canModelSelect}
+            modelSelectionReason={chatInput.modelSelectionReason}
+            modelsStale={chatInput.modelsStale}
+            modelsLoading={modelsLoading}
+            agentDefaultModel={agentDefaultModelId}
+            defaultModelSource={activeSession.defaultModelSource}
+            availableModels={availableModels}
+            modelQuery={chatInput.modelQuery}
+            agentConnectionId={activeSession.agentConnectionId}
+            modelRuntimeOptions={
+              activeSession.requestedProviderOptions ??
+              activeSession.providerOptions
+            }
+            secondaryActions={
+              readOnlyOpen || resolvingOpen || busyOpen
+                ? undefined
+                : secondaryActions
+            }
+            agentLabel={
+              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
+            }
+            onOpenAgentHandoff={
+              onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff
+            }
+            agentHandoffTriggerRef={agentHandoffTriggerRef}
+            agentHandoffDisabled={secondaryActions?.handoffDisabled}
+            agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
+            executionMode={activeSession.executionMode}
+            approvalModeConnectionDefault={connectionApprovalModeDefault}
+            toolPolicyDelivery={toolPolicyDelivery}
+            lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+            commandQuery={chatInput.commandQuery}
+            slashCommands={chatInput.slashCommands}
+            onInputChange={chatInput.handleInputChange}
+            onSend={handleSendWithContext}
+            onCancel={chatInput.handleCancel}
+            onClearInput={chatInput.handleClearInput}
+            selectAttachmentFiles={chatInput.selectAttachmentFiles}
+            attachmentError={chatInput.attachmentError}
+            attachmentStages={chatInput.attachmentStages}
+            sendBlockedReason={
+              readOnlyOpen
+                ? 'This conversation is available read-only. Retry resolution or start a new chat.'
+                : resolvingOpen || busyOpen
+                  ? // The banner above already says this; repeating the SENTENCE
+                    // under the composer is what made one ordinary reload read as
+                    // three separate problems. `undefined` leaves the composer
+                    // quietly disabled.
+                    undefined
+                  : chatInput.sendBlockedReason
+            }
+            onRetryAttachmentStage={chatInput.retryAttachmentStage}
+            onCancelAttachmentStage={chatInput.cancelAttachmentStage}
+            onReplaceAttachmentFile={chatInput.replaceAttachmentFile}
+            onRemoveAttachment={chatInput.handleRemoveAttachment}
+            onClearAttachments={chatInput.handleClearAttachments}
+            onModelSelect={chatInput.handleModelSelect}
+            onModelReset={chatInput.handleModelReset}
+            onModelClose={chatInput.handleModelClose}
+            onModelOpen={chatInput.handleModelOpen}
+            onModelRuntimeOptionChange={
+              chatInput.handleModelRuntimeOptionChange
+            }
+            onApprovalModeChange={chatInput.handleApprovalModeChange}
+            onCommandSelect={chatInput.handleCommandSelect}
+            onCommandClose={chatInput.handleCommandClose}
+            onHistoryUp={chatInput.handleHistoryUp}
+            onHistoryDown={chatInput.handleHistoryDown}
+            onRestorePortableDraft={chatInput.handleRestorePortableDraft}
+            updateFromInput={chatInput.updateFromInput}
+            closeAll={chatInput.closeAll}
+            voiceState={stt.state}
+            voiceSupported={stt.supported}
+            voiceUnsupportedReason={stt.unsupportedReason}
+            voiceError={stt.errorMessage}
+            onVoiceStart={() => stt.startListening()}
+            onVoiceStop={() => stt.stopListening()}
+            workspaceRefused={workspaceRefused}
+            onStartNewChat={onNewChat}
+          />
+        </>
+      )}
     </>
   );
 }

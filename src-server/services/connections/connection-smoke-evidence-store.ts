@@ -26,7 +26,7 @@ const SMOKE_FAILURE_REASONS = new Set<ConnectionSmokeFailureReason>([
 ]);
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** One bounded smoke receipt is fresh for exactly one day from its observation. */
-export const CONNECTION_SMOKE_FRESH_MS = 24 * 60 * 60 * 1000;
+const CONNECTION_SMOKE_FRESH_MS = 24 * 60 * 60 * 1000;
 const CONNECTION_SMOKE_STORE_VERSION = 3;
 
 type ConnectionSmokeDocument = {

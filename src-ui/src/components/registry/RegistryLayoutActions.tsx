@@ -9,7 +9,7 @@ interface RegistryLayoutItemLike {
   lifecycle?: { state?: 'installed' | 'installable' | 'disabled' };
 }
 
-export function primaryLayoutAction(
+function primaryLayoutAction(
   item: RegistryLayoutItemLike,
 ): RegistryLayoutAction | 'use' {
   if (item.lifecycle?.state === 'disabled') return 'enable';

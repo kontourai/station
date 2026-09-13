@@ -74,7 +74,7 @@ function baseShape(
  * `plugins`, `review-queue`, `connections-models`, `connections-engines`,
  * `connections-tools` and bare `agents` name no record and open on their list.
  */
-export function routeOpensDetailPane(view: NavigationView): boolean {
+function routeOpensDetailPane(view: NavigationView): boolean {
   switch (view.type) {
     case 'agent-new':
     case 'agent-edit':

@@ -114,7 +114,7 @@ export class AdoptSessionError extends Error {
 export async function fetchOrchestrationSessionEventWindow(
   threadId: string,
   apiBase?: string,
-  input?: { cursor?: string; turnLimit?: number },
+  input?: { cursor?: string; turnLimit?: number; direction?: 'newest' },
   opts?: ClientRequestOptions,
 ): Promise<OrchestrationSessionEventWindow> {
   const page =
@@ -133,7 +133,7 @@ export async function fetchOrchestrationSessionEventWindow(
 export async function fetchOrchestrationConversationEventWindow(
   conversationId: string,
   apiBase?: string,
-  input?: { cursor?: string; turnLimit?: number },
+  input?: { cursor?: string; turnLimit?: number; direction?: 'newest' },
   opts?: ClientRequestOptions,
 ): Promise<OrchestrationConversationEventWindow> {
   const page =

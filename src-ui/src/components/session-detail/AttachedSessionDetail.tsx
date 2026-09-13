@@ -1,4 +1,4 @@
-import { externalSessionContinuationSupport } from '@kontourai/station-contracts/engine-capability-matrix';
+import { externalSessionContinuationAvailability } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type {
   AdoptedSessionResult,
@@ -115,10 +115,11 @@ export function AttachedSessionDetail({
   visualViewport: ReturnType<typeof useMobileVisualViewport>;
 }) {
   const { showToast } = useToast();
-  const continuationSupport = externalSessionContinuationSupport(
+  const continuationSupport = externalSessionContinuationAvailability(
     session.provider,
+    session.attachedSource,
   );
-  const continuationSupported = continuationSupport.state === 'native';
+  const continuationSupported = continuationSupport.enabled;
   const adoptionIntent = useRef(createAdoptOrchestrationSessionIntent());
   // A settled server outcome is distinct from local reservation evidence: the
   // former says this exact continuation cannot be retried safely, whereas the

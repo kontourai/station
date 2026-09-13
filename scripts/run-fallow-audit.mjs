@@ -10,6 +10,7 @@ import {
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inventoryCodeHealthFiles } from './code-health-inventory.mjs';
+import { createFallowReview } from './fallow-review-status.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
@@ -73,10 +74,11 @@ export function fallowCommands(scope) {
   throw new Error(`Unknown Fallow scope: ${scope}`);
 }
 
-async function runAnalysis(root, command, outputFile) {
+export async function runFallowAnalysis(root, command, outputFile, args = []) {
   const execution = executeOwnedCommand(
-    'fallow',
+    process.execPath,
     [
+      fileURLToPath(import.meta.resolve('fallow/bin/fallow')),
       command,
       '--threads',
       '2',
@@ -85,6 +87,7 @@ async function runAnalysis(root, command, outputFile) {
       '--quiet',
       '--output-file',
       outputFile,
+      ...args,
     ],
     undefined,
     `fallow ${command}`,
@@ -123,7 +126,7 @@ async function runAnalysis(root, command, outputFile) {
       output.truncated
     )
       throw new Error(
-        `Fallow ${command} did not complete: ${output.stderr.text}`,
+        `Fallow ${command} did not complete: ${result.error?.message ?? output.stderr.text}`,
       );
     if (statSync(outputFile).size > 32 * 1024 * 1024)
       throw new Error('Fallow report exceeds the 32 MiB read budget');
@@ -176,7 +179,11 @@ export async function runFallowAudit(root, scope = 'changed') {
   const reports = [];
   for (const command of commands)
     reports.push(
-      await runAnalysis(root, command, join(rawDirectory, `${command}.json`)),
+      await runFallowAnalysis(
+        root,
+        command,
+        join(rawDirectory, `${command}.json`),
+      ),
     );
   const summary = summarizeFallowReports(scope, reports);
   const findings =
@@ -213,6 +220,7 @@ export async function runFallowAudit(root, scope = 'changed') {
       relative(root, join(rawDirectory, `${command}.json`)),
     ),
     limitations: [
+      'completed describes analyzer execution, never finding review or remediation.',
       'Static candidates require caller review.',
       'Complexity coverage may be estimated, not executed.',
       'Configured language, entrypoint, public-API, and ignore rules still apply.',
@@ -224,6 +232,18 @@ export async function runFallowAudit(root, scope = 'changed') {
       paths: [finding.path],
     })),
   };
+  if (scope === 'whole-tree') {
+    const reviewPath = join(rawDirectory, 'review.json');
+    writeFileSync(
+      reviewPath,
+      JSON.stringify(
+        createFallowReview(artifact.source_revision, reports),
+        null,
+        2,
+      ) + '\n',
+    );
+    artifact.review = relative(root, reviewPath);
+  }
   writeFileSync(artifactPath, JSON.stringify(artifact, null, 2) + '\n');
   return { artifactPath: relative(root, artifactPath), ...artifact };
 }

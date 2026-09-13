@@ -66,6 +66,7 @@ import {
   pairingScopeIncludes,
 } from '@kontourai/station-contracts';
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
+import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
 import {
   PAIRING_SCOPE_ENGINE_LOGIN,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
@@ -143,6 +144,7 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // Personal spatial-board reads need read; every revisioned mutation needs
   // operate. Hosted execution does not mount this family.
   '/api/spatial-board',
+  '/api/mobile-devices',
   '/api/orchestration',
   // archive#3677 PR 3: the native consent broker. The FAMILY sits on the
   // ordinary tiers so the local-grant-minted desktop credential (whose scope
@@ -238,6 +240,47 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  {
+    id: '/api/operator/accounts:operator-read',
+    method: 'GET',
+    prefix: '/api/operator/accounts',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/accounts/:accountId/actions:operator-action',
+    method: 'POST',
+    prefix: '/api/operator/accounts/:accountId/actions',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/projects/:slug/access:member-administration-read',
+    method: 'GET',
+    prefix: '/api/projects/:slug/access',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  ...[
+    '/api/projects/:slug/access/enable',
+    '/api/projects/:slug/access/invitations',
+    '/api/projects/:slug/access/invitations/:invitationId/revoke',
+    '/api/projects/:slug/access/members',
+    '/api/projects/:slug/access/transfer',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:member-administration`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+
   ...[
     '/api/home-authority/channels/:channelId/bindings',
     '/api/home-authority/channels/:channelId/bindings/:controllerDeviceId/inspect',
@@ -377,6 +420,18 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     prefix: '/api/orchestration/sessions/:threadId/outputs/:eventId/inspect',
     exact: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  // A screen can expose an arbitrary app or terminal running on the operator's
+  // device host. Inventory is read-only metadata; frame inspection deliberately
+  // requires the stronger existing terminal authority, not ordinary read.
+  {
+    id: '/api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/capture:terminal-operate',
+    method: 'POST',
+    prefix:
+      '/api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/capture',
+    exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
     origin: 'explicit',
   },
   // Terminal termination kills a PTY process. It must match the dedicated
@@ -726,6 +781,20 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  {
+    id: '/api/conversation-pull-requests:read',
+    method: 'GET',
+    prefix: '/api/conversation-pull-requests',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  ...(['POST', 'DELETE'] as const).map((method) => ({
+    id: `/api/conversation-pull-requests:${method.toLowerCase()}`,
+    method,
+    prefix: '/api/conversation-pull-requests',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit' as const,
+  })),
   // archive#1131 review round 1 (HIGH, own-audit finding beyond what the
   // reviewer named): `registerPluginHostApprovalRoutes`
   // (`plugin-host-approval-routes.ts`) exists specifically so a 'trusted'
@@ -1199,6 +1268,26 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     // its own narrow proof, rate limit, loopback-secret, or share-token
     // contract. Keep every exception method-specific and exact.
     {
+      id: 'public:account-auth-get',
+      transport: 'http',
+      method: 'GET',
+      prefix: DEPLOYMENT_AUTHENTICATION_BASE_PATH,
+      match: 'prefix',
+      capability: 'public',
+      reason:
+        'operator authentication module routes; exact endpoint dispatch and account self-authentication owned by account-auth router',
+    },
+    {
+      id: 'public:account-auth-post',
+      transport: 'http',
+      method: 'POST',
+      prefix: DEPLOYMENT_AUTHENTICATION_BASE_PATH,
+      match: 'prefix',
+      capability: 'public',
+      reason:
+        'origin-bound operator authentication module endpoints; no Project membership or host API scope',
+    },
+    {
       id: 'public:station-handshake',
       transport: 'http',
       method: 'GET',
@@ -1371,6 +1460,26 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     // Hono records middleware in `app.routes` alongside externally reachable
     // endpoints. Classify the exact registrations so the guard can enumerate
     // the real runtime without giving an unknown endpoint a wildcard pass.
+    {
+      id: 'middleware:account-continuations',
+      transport: 'http',
+      method: '*',
+      prefix: `${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/continuations/*`,
+      match: 'exact',
+      capability: 'middleware',
+      reason:
+        'Hono body-limit and no-store middleware registration; endpoint admission still requires Origin and Device/account proof',
+    },
+    {
+      id: 'middleware:account-auth',
+      transport: 'http',
+      method: '*',
+      prefix: `${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/*`,
+      match: 'exact',
+      capability: 'middleware',
+      reason:
+        'Hono registration for account origin, body and attempt middleware; does not admit undeclared HTTP methods',
+    },
     {
       id: 'middleware:runtime-global',
       transport: 'http',
@@ -1782,6 +1891,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/turns/:turnId/narrative/target',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/turns/:turnId/quote-source',
     },
     {
       method: 'PUT',
@@ -2264,6 +2377,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/orchestration/sessions/read-model' },
     { method: 'GET', path: '/api/projects' },
     { method: 'POST', path: '/api/projects' },
+    // Portable identity reads do not mutate; preparation and attachment retain
+    // the Project family's operate scope and grant no peer/member authority.
+    { method: 'GET', path: '/api/projects/:slug/identity' },
+    { method: 'POST', path: '/api/projects/:slug/identity/prepare' },
+    { method: 'POST', path: '/api/projects/attach' },
     // Reorders this Station's own project list and returns it. A mutation
     // within its family and no more sensitive than the rest of it: it reads
     // and writes nothing beyond the local ordering, and discloses no peer or
@@ -2586,6 +2704,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/starter-work/:starterId/observation' },
     { method: 'POST', path: '/api/starter-work/bind' },
     { method: 'DELETE', path: '/api/starter-work/:starterId/binding' },
+    { method: 'GET', path: '/api/mobile-devices/hosts/local/devices' },
     { method: 'GET', path: '/api/spatial-board' },
     { method: 'GET', path: '/api/spatial-board/resolved' },
     { method: 'POST', path: '/api/spatial-board/pins' },
