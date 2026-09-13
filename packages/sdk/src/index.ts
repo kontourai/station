@@ -384,6 +384,7 @@ export {
   type CoreUpdateRestartExpectation,
   type CoreUpdateRestartStatus,
   type CoreUpdateStatus,
+  type CoreUpdateStatusScope,
   type CreateSshEnvironmentInput,
   type CreateTaskReferenceInput,
   type CreateTaskUserInputReferenceInput,
