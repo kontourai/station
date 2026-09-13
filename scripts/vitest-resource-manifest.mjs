@@ -117,8 +117,12 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real framework signal handlers run in bounded, isolated child processes.
+  'src-server/runtime/bootstrap/__tests__/runtime-signal-ownership.test.ts',
   // Owns bounded TLS endpoints, OpenSSL children and TCP relay processes.
   'scripts/__tests__/local-collaboration-lab.test.ts',
+  // Owns a UDP relay child and private command-output diagnostics.
+  'scripts/__tests__/browser-transport-fixture.test.ts',
   // Real HTTP requests in isolated children exercise fatal socket-option faults.
   'packages/shared/src/__tests__/node-http-compat.test.ts',
   // Launches Chromium to reject prompt-only evidence in the composer helper.

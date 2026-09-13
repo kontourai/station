@@ -22,7 +22,7 @@ import {
 } from '../../telemetry/metrics.js';
 
 export const MAX_DIAGNOSTIC_LOG_BYTES = 256 * 1024;
-export const LOGS_NOT_CONFIGURED_REASON =
+const LOGS_NOT_CONFIGURED_REASON =
   'no log file configured (start with --log or service mode)';
 
 export interface DiagnosticsBundle {
