@@ -87,7 +87,7 @@ describe('DesktopUpdateLaunchCheck', () => {
     });
     renderWithChrome();
     expect((await screen.findByRole('status')).textContent).toContain(
-      'Station 2026.8.28 is available.',
+      'Desktop app version 2026.8.28 is available.',
     );
   });
 
@@ -124,7 +124,9 @@ describe('DesktopUpdateLaunchCheck', () => {
     renderWithChrome();
 
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Install and restart' }),
+      await screen.findByRole('button', {
+        name: 'Install desktop app update and restart',
+      }),
     );
 
     await waitFor(() => expect(relaunch).toHaveBeenCalledOnce());
@@ -141,7 +143,9 @@ describe('DesktopUpdateLaunchCheck', () => {
     renderWithChrome();
 
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Install and restart' }),
+      await screen.findByRole('button', {
+        name: 'Install desktop app update and restart',
+      }),
     );
 
     // Two banners now stack (the update-available notice and the new
@@ -160,7 +164,7 @@ describe('DesktopUpdateLaunchCheck', () => {
     // The update-available banner stays up alongside the error — the update
     // is still there even though the last install attempt failed.
     expect(within(host).getByRole('status').textContent).toContain(
-      'Station 2026.8.28 is available.',
+      'Desktop app version 2026.8.28 is available.',
     );
   });
 
@@ -181,7 +185,9 @@ describe('DesktopUpdateLaunchCheck', () => {
     renderWithChrome();
 
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Install and restart' }),
+      await screen.findByRole('button', {
+        name: 'Install desktop app update and restart',
+      }),
     );
     await waitFor(() => expect(downloadAndInstall).toHaveBeenCalledOnce());
     await waitFor(() =>
@@ -210,7 +216,9 @@ describe('DesktopUpdateLaunchCheck', () => {
 
     // Retry — the same underlying failure, the same message.
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Install and restart' }),
+      await screen.findByRole('button', {
+        name: 'Install desktop app update and restart',
+      }),
     );
     await waitFor(() => expect(downloadAndInstall).toHaveBeenCalledTimes(2));
 

@@ -122,8 +122,9 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
   useDeviceSettingsActions: () => ({ setDeviceSetting: vi.fn() }),
 }));
 let isMobile = false;
+let isDesktop = false;
 vi.mock('../platform/PlatformProfileContext', () => ({
-  usePlatformProfile: () => ({ isMobile }),
+  usePlatformProfile: () => ({ isMobile, isDesktop }),
 }));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
@@ -184,6 +185,7 @@ vi.mock('../views/settings/CoreUpdateCheck', () => ({
 describe('settings catalog completeness', () => {
   beforeEach(() => {
     isMobile = false;
+    isDesktop = false;
     updateConfig.mockReset();
     updateAppLogLevel.mockReset();
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
@@ -272,19 +274,20 @@ describe('settings catalog completeness', () => {
     const { SettingsView } = await import('../views/SettingsView');
     expect(String(SettingsView)).toContain('configData');
     const rendered = await renderedCatalogIds();
-    const expected = visibleCatalogIds({ isMobile: false });
+    const expected = visibleCatalogIds({ isMobile: false, isDesktop });
     expectExactCatalog(rendered, expected);
     // 37 at the merge base; +2 from archive#3313 (feature-previews,
     // enable-developer-tools) and +1 from the chat-dock lane's
-    // sidebar-sections, and +1 from station#585 smooth answer reveal. Counted
-    // from the merged catalog, not added up.
-    expect(SETTINGS_CATALOG).toHaveLength(41);
+    // sidebar-sections, +1 from station#585 smooth answer reveal, +1 from the
+    // update-ownership split (desktop-app-updates). Counted from the merged
+    // catalog, not added up.
+    expect(SETTINGS_CATALOG).toHaveLength(42);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
     isMobile = true;
     const rendered = await renderedCatalogIds();
-    const expected = visibleCatalogIds({ isMobile: true });
+    const expected = visibleCatalogIds({ isMobile: true, isDesktop });
     expectExactCatalog(rendered, expected);
     expect(rendered).toContain('haptic-feedback');
   });
@@ -644,7 +647,10 @@ describe('settings catalog completeness', () => {
   test('an unknown ?view= falls back to the overview and strips itself', async () => {
     window.history.replaceState({}, '', '/settings?view=not-a-section');
     const rendered = await renderedCatalogIds();
-    expectExactCatalog(rendered, visibleCatalogIds({ isMobile: false }));
+    expectExactCatalog(
+      rendered,
+      visibleCatalogIds({ isMobile: false, isDesktop }),
+    );
     expect(window.location.search).toBe('');
   });
 
@@ -676,6 +682,54 @@ describe('settings catalog completeness', () => {
         .querySelector('#core-app-updates')
         ?.classList.contains('settings__highlight-pulse'),
     ).toBe(true);
+  });
+
+  test('the desktop-only update row deep-links and pulses when desktop', async () => {
+    isDesktop = true;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: () => ({ matches: true }),
+    });
+    Element.prototype.scrollIntoView = vi.fn();
+    window.history.replaceState(
+      {},
+      '',
+      '/settings?keep=1&view=system&highlight=desktop-app-updates',
+    );
+    const { SettingsView } = await import('../views/SettingsView');
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SettingsView onBack={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        container.querySelector('#desktop-app-updates'),
+      ),
+    );
+    expect(
+      container
+        .querySelector('#desktop-app-updates')
+        ?.classList.contains('settings__highlight-pulse'),
+    ).toBe(true);
+  });
+
+  test('a desktop-only row highlight outside the desktop shell strips itself with the honest reason', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.history.replaceState(
+      {},
+      '',
+      '/settings?view=system&highlight=desktop-app-updates',
+    );
+    const { SettingsView } = await import('../views/SettingsView');
+    const { container } = await render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SettingsView onBack={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(window.location.search).toBe('?view=system'));
+    expect(container.querySelector('#desktop-app-updates')).toBeNull();
+    expect(screen.getByText('Available in the desktop app.')).toBeTruthy();
   });
 
   test('repeats the same mounted leaf request and focuses its editable control', async () => {
