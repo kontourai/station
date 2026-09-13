@@ -77,6 +77,23 @@ export interface UseConnectedServerUpdateContextOptions {
 
 const IDENTITY_QUERY_ROOT = 'connected-server-identity';
 
+/**
+ * The source-check query scope (update-ux PR4): the secret-free connection
+ * scope PLUS the answering server's boot. A server restart (new boot)
+ * invalidates cached comparisons; a selection change (new scope) never lets
+ * one connection's comparison answer for another.
+ */
+export function coreUpdateScopeFromContext(
+  context:
+    | Pick<ConnectedServerUpdateContext, 'scopeKey' | 'identity'>
+    | null
+    | undefined,
+): string | undefined {
+  if (!context) return undefined;
+  const bootId = context.identity?.bootId ?? 'no-boot';
+  return `${context.scopeKey ?? 'no-scope'}\u0000${bootId}`;
+}
+
 /** Shares the shell's health-coordinator registry: no independent polling. */
 const HEALTH_COMPOSITION = {
   checkHealth: checkServerHealth,

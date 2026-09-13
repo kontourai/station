@@ -5,6 +5,7 @@ import {
   checkForDesktopUpdate,
   type DesktopUpdateOutcome,
 } from '../../platform/native/desktopUpdate';
+import { TechnicalDetails } from './coreUpdatePresentation';
 
 /** Explicit checks report failures; the automatic launch check stays quiet. */
 export function DesktopUpdateCheck() {
@@ -71,13 +72,38 @@ export function DesktopUpdateCheck() {
       )}
       {!check.isFetching &&
         (check.isError || check.data?.status === 'check-failed') && (
-          <p role="alert">
-            Could not check for desktop updates. Check your connection and try
-            again. This build may not have an update channel configured.
-          </p>
+          <>
+            {/* D6: the failure is disclosed with its real diagnostic text —
+              never classified into offline/no-channel/signature by this UI,
+              which cannot know which one it was. */}
+            <p role="alert">
+              Could not check for desktop app updates. Try again or view
+              technical details.
+            </p>
+            <TechnicalDetails
+              detail={
+                check.data?.status === 'check-failed'
+                  ? (check.data.detail ?? null)
+                  : check.error instanceof Error
+                    ? check.error.message
+                    : null
+              }
+            />
+          </>
         )}
       {install.isError && (
-        <p role="alert">Could not install the update. Try installing again.</p>
+        <>
+          {/* D7: a failed install claims neither success nor restart. */}
+          <p role="alert">
+            The desktop update did not complete. View technical details before
+            retrying.
+          </p>
+          <TechnicalDetails
+            detail={
+              install.error instanceof Error ? install.error.message : null
+            }
+          />
+        </>
       )}
       <span className="settings__field-hint">
         Updates the app on this device from its signed release channel and

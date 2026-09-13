@@ -2,6 +2,7 @@ import type { ConnectedServerUpdateContext } from '../../hooks/useConnectedServe
 import { useConnectedServerUpdateContext } from '../../hooks/useConnectedServerUpdateContext';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { CoreUpdateCheck } from './CoreUpdateCheck';
+import { SourceInstallerDisclosure } from './SourceInstallerDisclosure';
 
 function serverHost(apiBase: string): string {
   try {
@@ -81,7 +82,9 @@ export function ConnectedServerUpdates() {
 
   // CoreUpdateCheck owns hooks internally, so this is a conditional RETURN,
   // not a conditional prop: for a built-in sidecar the source check must not
-  // mount — and therefore not request /api/system/core-update — at all.
+  // mount — and therefore not request /api/system/core-update — at all. The
+  // advanced source disclosure below is the only path back to those facts,
+  // and it fetches only while a person has it open.
   if (context.kind === 'embedded-sidecar') {
     return (
       <div>
@@ -89,6 +92,7 @@ export function ConnectedServerUpdates() {
           Built-in server — updated with this desktop app.
         </p>
         <p className="settings__field-hint">Use Desktop app updates above.</p>
+        <SourceInstallerDisclosure context={context} />
       </div>
     );
   }
@@ -104,6 +108,7 @@ export function ConnectedServerUpdates() {
         source check off. */}
       <CoreUpdateCheck
         apiBase={context.apiBase}
+        context={context}
         enabled={
           context.identityReady &&
           !context.nativeObservationPending &&
@@ -111,6 +116,7 @@ export function ConnectedServerUpdates() {
           context.reachability === 'connected'
         }
       />
+      <SourceInstallerDisclosure context={context} />
     </div>
   );
 }
