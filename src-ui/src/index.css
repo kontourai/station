@@ -9304,6 +9304,15 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     padding-block: 0;
   }
 
+  /* A passive connection label does not need a 44px interaction row. Keep
+     the message visible while preserving the composer's available height;
+     a connection-repair button retains the standard touch target. */
+  .app__main > .chat-dock--bottom .chat-stream-status:not(:has(button)) {
+    min-height: 0;
+    padding: 0 8px;
+    line-height: 1.2;
+  }
+
   /* Editing gets the limited height. Blurring the textarea restores the
      model/agent selectors; input and Send keep their full touch targets. */
   .app__main
