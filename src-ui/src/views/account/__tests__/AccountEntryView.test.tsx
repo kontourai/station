@@ -148,6 +148,7 @@ describe('invitation entry through real account SDK requests', () => {
       </StrictMode>,
     );
     await screen.findByLabelText('Email address');
+    expect(screen.getAllByRole('main')).toHaveLength(1);
     expect(
       calls.every(
         (call) =>

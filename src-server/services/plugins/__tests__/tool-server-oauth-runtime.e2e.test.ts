@@ -102,6 +102,9 @@ function runtimeContext(
       configLoader: loader,
       mcpService: service,
       logger,
+      // This fixture has no operator-installed account provider. The broad
+      // service proxy would otherwise invent one for this optional field.
+      deploymentAuthentication: undefined,
       eventBus: { emit: vi.fn() },
       environmentSecurityService,
       activeAgents: new Map(),

@@ -100,9 +100,9 @@ describe('useIsMobile', () => {
 });
 
 /**
- * The literal's own docblock says it "must stay byte-identical to the
- * condition on every mobile `@media` block across the stylesheets", and until
- * archive#3928 nothing computed that. A dock slice widened the constant to
+ * General mobile layout uses the complete query; a short-window adaptation
+ * can use its exact height-and-pointer branch. Until archive#3928 nothing
+ * checked agreement with the hook. A dock slice widened the constant to
  * `(max-width: 768px), (pointer: coarse)` to answer a dock question, leaving
  * the stylesheets on the old condition and the docblock asserting a match that
  * no longer held — so a touchscreen laptop would have taken desktop CSS and
@@ -110,18 +110,28 @@ describe('useIsMobile', () => {
  *
  * A claim in a comment is not a guarantee. This is the guarantee.
  */
-test('every mobile @media block in index.css spells MOBILE_MEDIA_QUERY exactly', () => {
+function isSharedMobileCondition(condition: string) {
+  const desktopGuard =
+    '(min-width: 769px) and (not ((max-height: 540px) and (pointer: coarse)))';
+  const shortViewportBranch = MOBILE_MEDIA_QUERY.split(',')
+    .map((clause) => clause.trim())
+    .find((clause) => clause.startsWith('(max-height:'));
+  return (
+    condition === MOBILE_MEDIA_QUERY ||
+    condition === desktopGuard ||
+    condition === shortViewportBranch
+  );
+}
+
+test('mobile stylesheet conditions agree with the shared mobile classification', () => {
   const css = readFileSync(join(process.cwd(), 'src-ui/src/index.css'), 'utf8');
   const conditions = [...css.matchAll(/@media ([^{]+)\{/g)].map((match) =>
     match[1].trim(),
   );
 
-  // The two forms this constant is allowed to appear in: the mobile blocks
-  // themselves, and the desktop blocks guarded by the negation of its second
-  // clause (a landscape phone matches BOTH width conditions, so the desktop
-  // rules have to opt out explicitly).
-  const desktopGuard =
-    '(min-width: 769px) and (not ((max-height: 540px) and (pointer: coarse)))';
+  // General layout must still cover the entire mobile population. Short-window
+  // overrides narrow that population using the same height/pointer branch.
+  expect(conditions).toContain(MOBILE_MEDIA_QUERY);
 
   const mobileShaped = conditions.filter(
     (condition) =>
@@ -135,7 +145,18 @@ test('every mobile @media block in index.css spells MOBILE_MEDIA_QUERY exactly',
 
   for (const condition of mobileShaped)
     expect(
-      condition === MOBILE_MEDIA_QUERY || condition === desktopGuard,
-      `"${condition}" is neither MOBILE_MEDIA_QUERY nor its documented desktop negation`,
+      isSharedMobileCondition(condition),
+      `"${condition}" disagrees with the shared mobile classification`,
     ).toBe(true);
+});
+
+test.each([
+  '(max-width: 768px)',
+  '(pointer: coarse)',
+  '(max-width: 768px), (pointer: coarse)',
+  '(max-height: 600px) and (pointer: coarse)',
+  '(max-width: 767px), (max-height: 540px) and (pointer: coarse)',
+  '(min-width: 769px) and (not ((max-height: 600px) and (pointer: coarse)))',
+])('rejects an inconsistent mobile condition: %s', (condition) => {
+  expect(isSharedMobileCondition(condition)).toBe(false);
 });

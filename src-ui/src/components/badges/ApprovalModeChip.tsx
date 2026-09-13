@@ -156,7 +156,12 @@ export function ApprovalModeChip({
       : effective.label;
   const chipText = isPendingApply
     ? `${approvalModeChipLabel(displayedMode)} · pending`
-    : approvalModeChipLabel(displayedMode);
+    : isOverride
+      ? approvalModeChipLabel(displayedMode)
+      : 'Default';
+  const accessibleLabel = isOverride
+    ? selectedLabel
+    : `Default — ${selectedLabel}`;
 
   return (
     <>
@@ -180,7 +185,7 @@ export function ApprovalModeChip({
         aria-label={
           isPendingApply
             ? `Approval mode: ${chipText} — takes effect next turn. Engine approval control. ${policyDisclosure}`
-            : `Approval mode: ${selectedLabel}. Engine approval control. ${policyDisclosure}`
+            : `Approval mode: ${accessibleLabel}. Engine approval control. ${policyDisclosure}`
         }
         title={
           isPendingApply
