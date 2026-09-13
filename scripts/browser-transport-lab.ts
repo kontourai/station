@@ -12,6 +12,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
+import { serveApplicationChannel } from '@kontourai/station-connect/application-channel';
 import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
 import {
   connectionDescriptionDigest,
@@ -23,6 +24,7 @@ import datachannel from 'node-datachannel';
 import type { createStationConnectionProofIssuer } from '../src-server/services/ssh/connection-proof-issuer.js';
 import { ConnectionSigningKeyStore } from '../src-server/services/ssh/connection-signing-key-store.js';
 import { EnvironmentSecurityService } from '../src-server/services/ssh/environment-security-service.js';
+import { browserCheckApplicationChannel } from './lib/browser-application-channel.mjs';
 import {
   browserAccept,
   browserChannelOpen,
@@ -41,6 +43,7 @@ import {
   runLabCommand,
   startLabRelay,
 } from './lib/local-collaboration-process.mjs';
+import { nodeApplicationChannel } from './lib/node-application-channel.js';
 
 // Transport evaluation only. No Station/account/provider API is enabled here.
 const TURN_IMAGE =
@@ -56,6 +59,7 @@ if (
         '--peer=pion',
         '--peer=node',
         '--fail-after-create',
+        '--application-protocol',
       ].includes(arg),
   ) ||
   args.filter((arg) => arg.startsWith('--browser-turn=')).length > 1 ||
@@ -65,6 +69,13 @@ if (
     'Use --browser-turn=udp or --browser-turn=tcp and optional --keep',
   );
 const peerAdapter = args.includes('--peer=pion') ? 'pion' : 'node';
+if (args.includes('--application-protocol') && peerAdapter !== 'node')
+  throw new Error(
+    'Application protocol fixture currently qualifies only the Node UDP profile',
+  );
+let applicationProtocol:
+  | { status: string; requestMarker: string; responseBytes: number }
+  | undefined;
 const browserTransport = args.includes('--browser-turn=tcp') ? 'tcp' : 'udp';
 const pionExecutable = join(
   process.cwd(),
@@ -383,6 +394,40 @@ async function exchange(
     });
   });
   peer.onDataChannel((channel) => {
+    if (channel.getLabel() === 'station-application-protocol-fixture') {
+      if (!args.includes('--application-protocol')) {
+        channel.close();
+        return;
+      }
+      serveApplicationChannel(
+        nodeApplicationChannel(channel),
+        'https://fixture-station.invalid',
+        {
+          signal: abort.signal,
+          async fetch(request) {
+            if (
+              new URL(request.url).pathname !== '/fixture/payload' ||
+              request.method !== 'POST'
+            )
+              return new Response(null, { status: 404 });
+            const marker = await request.text();
+            assert.match(marker, /^sdk-request-[a-f0-9-]{36}$/);
+            const address = server.address();
+            assert(address && typeof address !== 'string');
+            const origin = `http://127.0.0.1:${address.port}`;
+            assert.equal(
+              request.headers.get('Origin'),
+              origin,
+              'Virtual request must preserve the actual browser origin',
+            );
+            return new Response(marker.repeat(512), {
+              headers: { 'X-Fixture-Client-Origin': origin },
+            });
+          },
+        },
+      );
+      return;
+    }
     channel.onMessage((value) => {
       assert.equal(typeof value, 'string');
       assert(String(value).length < 65536);
@@ -430,6 +475,9 @@ try {
     import {createStationProofNonce} from './packages/connect/src/core/environmentProof.ts';
     import {openDeviceConnectionTrustStore} from '@kontourai/station-connect/connection-trust';
     window.stationConnectionProof = {createStationConnectionProofVerifier, connectionDescriptionDigest, newNonce: createStationProofNonce, openDeviceConnectionTrustStore};
+    import {createApplicationChannelFetch, browserApplicationChannel} from '@kontourai/station-connect/application-channel';
+    import {authenticatedFetch, setClientCredentialResolver} from '@kontourai/station-sdk/client';
+    window.stationApplicationChannel = {createApplicationChannelFetch, browserApplicationChannel, authenticatedFetch, setClientCredentialResolver};
   `,
       resolveDir: process.cwd(),
     },
@@ -551,6 +599,14 @@ try {
         entry.fingerprint === approved.fingerprint,
     ),
   );
+  if (args.includes('--application-protocol')) {
+    applicationProtocol = await bounded(
+      page.evaluate(browserCheckApplicationChannel),
+      'SDK application protocol',
+    );
+    assert.equal(applicationProtocol.status, 'passed');
+    assert(applicationProtocol.responseBytes > 16 * 1024);
+  }
   await context.close();
   await good.peer.close();
 
@@ -629,10 +685,22 @@ try {
     'Transport proof requires a nonempty relay capture',
   );
   assert.equal(captured.includes(Buffer.from(marker)), false);
+  if (applicationProtocol)
+    assert.equal(
+      captured.includes(Buffer.from(applicationProtocol.requestMarker)),
+      false,
+    );
   abort.signal.throwIfAborted();
   report = {
     scope: 'browser-transport-evaluation',
     status: 'passed',
+    applicationProtocol: applicationProtocol
+      ? {
+          status: 'passed',
+          responseBytes: applicationProtocol.responseBytes,
+          scope: 'SDK framing fixture; no account or Station application API',
+        }
+      : { status: 'not-run' },
     browser: browser.version(),
     peerAdapter,
     ...(peerAdapter === 'pion'
