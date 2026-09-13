@@ -165,6 +165,28 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
     reason: connectionState.reason,
   }),
 }));
+// The launch update check reads its connected-server context through real
+// react-query (#2032), and this file renders App without a QueryClient. A
+// settled remote-server context keeps the check on the browser-shell path the
+// update banner test below exercises.
+vi.mock('../hooks/useConnectedServerUpdateContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../hooks/useConnectedServerUpdateContext')
+  >()),
+  useConnectedServerUpdateContext: () => ({
+    scopeKey: 'scope:station.test',
+    apiBase: 'http://station.test',
+    connectionName: 'station',
+    reachability: 'connected',
+    kind: 'remote-server',
+    identity: null,
+    identitySettled: true,
+    identityReady: true,
+    nativeObservationPending: false,
+    claimedOwnerUnresolved: false,
+    isCurrent: () => true,
+  }),
+}));
 
 /**
  * A route chunk this file can hold open, so the navigation tests below can
@@ -395,7 +417,7 @@ describe('App home route resolution', () => {
     render(<App />);
 
     expect((await screen.findByRole('status')).textContent).toContain(
-      'Station update available — 3 commits behind.',
+      'Server checkout is 3 commits behind its configured upstream.',
     );
   });
 

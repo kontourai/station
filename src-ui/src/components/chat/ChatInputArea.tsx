@@ -15,6 +15,7 @@ import type {
   ComposerAttachmentStageSnapshot,
   FileAttachment,
 } from '../../types';
+import type { AdvertisedAcpMode } from '../../utils/acpSessionMode';
 import type { SavedAnswerQuote } from '../../utils/answer-quotes';
 import {
   type ApprovalMode,
@@ -56,6 +57,12 @@ const SessionModelPicker = React.lazy(() =>
 const PortableDraftsMenu = React.lazy(() =>
   import('./PortableDraftsMenu').then((module) => ({
     default: module.PortableDraftsMenu,
+  })),
+);
+
+const AcpSessionModeChip = React.lazy(() =>
+  import('../badges/AcpSessionModeChip').then((module) => ({
+    default: module.AcpSessionModeChip,
   })),
 );
 
@@ -138,6 +145,8 @@ interface ChatInputAreaProps {
   approvalModeConnectionDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
   lastAppliedApprovalMode?: unknown;
+  acpSessionModes?: AdvertisedAcpMode[];
+  acpCurrentModeId?: string;
   // Slash commands
   commandQuery: string | null;
   slashCommands: SlashCommand[];
@@ -164,6 +173,7 @@ interface ChatInputAreaProps {
     value: string | number | boolean | undefined,
   ) => void;
   onApprovalModeChange: (mode: ApprovalMode) => void;
+  onAcpSessionModeChange?: (modeId: string) => void;
   onCommandSelect: (command: SlashCommand) => Promise<void>;
   onCommandClose: () => void;
   onHistoryUp: () => void;
@@ -239,6 +249,8 @@ export function ChatInputArea({
   approvalModeConnectionDefault,
   toolPolicyDelivery,
   lastAppliedApprovalMode,
+  acpSessionModes = [],
+  acpCurrentModeId,
   commandQuery,
   slashCommands,
   onInputChange,
@@ -260,6 +272,7 @@ export function ChatInputArea({
   onModelOpen,
   onModelRuntimeOptionChange,
   onApprovalModeChange,
+  onAcpSessionModeChange,
   onCommandSelect,
   onCommandClose,
   onHistoryUp,
@@ -496,7 +509,21 @@ export function ChatInputArea({
               : 'default'}
           </button>
         )}
-        {executionMode === EXECUTION_MODE.EXTERNAL &&
+        {acpSessionModes.length > 0 && onAcpSessionModeChange ? (
+          <React.Suspense fallback={null}>
+            <AcpSessionModeChip
+              key={sessionId}
+              modes={acpSessionModes}
+              currentModeId={
+                typeof modelRuntimeOptions?.mode === 'string'
+                  ? modelRuntimeOptions.mode
+                  : acpCurrentModeId
+              }
+              onChange={onAcpSessionModeChange}
+            />
+          </React.Suspense>
+        ) : (
+          executionMode === EXECUTION_MODE.EXTERNAL &&
           approvalModeKnobSupported(agentConnectionId) && (
             <ApprovalModeChip
               // Structural reset (not blur-dependent) for the chip's local
@@ -511,7 +538,8 @@ export function ChatInputArea({
               lastAppliedApprovalMode={lastAppliedApprovalMode}
               onChange={onApprovalModeChange}
             />
-          )}
+          )
+        )}
       </div>
 
       <div className="chat-input__capsule">
