@@ -374,6 +374,47 @@ signaling authentication, renewal/recovery, native app delivery and Station
 request/stream integration remain unimplemented. The fixture's out-of-band
 trust setup does not implement those contracts.
 
+### SDK application framing over the encrypted channel
+
+After the browser transport prerequisites above, run:
+
+```sh
+npm run lab:browser-transport -- --peer=node --browser-turn=udp --application-protocol
+```
+
+This optional profile runs the published SDK `authenticatedFetch` through
+`@kontourai/station-connect/application-channel` over the already admitted
+Chromium/Node DTLS connection. It sends a synthetic request to a protocol-only
+fixture handler and verifies a streamed response larger than one wire chunk.
+The relay capture must omit its request/response marker as well as the original
+echo marker. The report labels `applicationProtocol` separately; ordinary
+transport runs report it as `not-run`.
+
+This is a Fetch/framing qualification, **not an account or full Station API
+journey**. It does not grant a person, Device or Project authority. The Pion
+profile currently refuses this option; its existing echo fixture is not an
+application adapter. Production TCP/native/remote and full account/Device/Project
+requests must qualify separately.
+
+The initial wire profile has one request per reliable ordered DataChannel,
+48 KiB JSON frames, at most 64 headers/16 KiB header text, and a **16 KiB request
+body limit**. Larger uploads are unsupported in this pilot. Response chunks are
+at most 16 KiB; consumer reads grant the next chunk. A producer chunk larger
+than 1 MiB is refused. Browser and Node fixture send queues are bounded at
+96 KiB. Opening a channel is bounded to 15 seconds and cancellation closes a
+late opener before dispatch. The connection owner still bounds channel counts
+and lifetime, admits endpoint trust and owns teardown.
+
+The adapter checks endpoint trust before and after opening, preserves opaque
+account/Device headers, rejects foreign targets and cookie-setting responses,
+and never follows redirects or retries an operation. `ApplicationChannelError`
+records whether dispatch may have occurred; disconnection is not proof that a
+mutation did not execute. Account-session signing and authorization remain with
+the SDK/provider and protected Station application. The opt-in
+[virtual application ingress](../design/connection-broker.md#protected-application-dispatch)
+is the server integration seam; composing the two against the full runtime is
+still required before enabling application relay access.
+
 ### Full collaboration
 
 Future integration uses actual membership, account, compute and plugin owners;

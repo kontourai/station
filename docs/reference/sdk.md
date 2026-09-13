@@ -936,6 +936,19 @@ invitation argument is registration eligibility, not authentication or membershi
 The [deployment authentication guide](../guides/deployment-authentication.md)
 defines the provider interface and separate invitation-acceptance operation.
 
+`getAccountAuthentication` on `@kontourai/station-sdk/account-authentication`
+may return `externalLogins` alongside the primary password or redirect login.
+Each choice supplies `id`, `displayName`, a declared Station `startPath`, and an
+optional `available` flag. A false flag means the configured choice is unavailable.
+To begin, call `runAccountOperation(apiBase, choice.startPath, {}, invitation)`;
+the successful operation returns `{ url }` for browser navigation. Keep the
+invitation in its dedicated header and validate the returned destination before
+navigation. Never attach a personal/operator credential to this account operation.
+
+Station chooses provider/callback/return parameters from operator configuration;
+clients cannot supply arbitrary OAuth parameters. See the [deployment guide](../guides/deployment-authentication.md#optional-oidc-choices-with-local-accounts)
+for configuration, callback verification and the independent Device continuation.
+
 The same account-authentication entry exports `getProjectInvitationPreview(apiBase,
 token)`. It uses a POST body, validates the minimal Project/inviter/role projection,
 and rejects incompatible role/action combinations. Keep the proof out of query
@@ -2450,18 +2463,31 @@ capture refuses mismatched targets and returns a timestamped PNG, not stream
 readiness or foreground-app provenance. See [Mobile device inspection](../guides/mobile-device-workspace.md)
 for host setup, access scopes, limits, and the web/desktop integration boundary.
 
+## Experimental encrypted-channel transport consumer
 
-### Configured external account login choices
+`@kontourai/station-connect/application-channel` supplies a Fetch-shaped adapter
+for the SDK's existing host credential/transport resolver. It accepts a fixed
+Station origin, a connection lifetime signal, an owner-provided authenticated
+channel opener and a current endpoint-trust check. It does not resolve a person,
+issue a Device grant or sign an account continuation. The existing
+`ApplicationSessionClient` owns those proof headers, and the Station still
+verifies them.
 
-`getAccountAuthentication` on `@kontourai/station-sdk/account-authentication`
-may return `externalLogins` alongside the primary password or redirect login.
-Each choice supplies `id`, `displayName`, a declared Station `startPath`, and an
-optional `available` flag. A false flag means the configured choice is unavailable.
-To begin, call `runAccountOperation(apiBase, choice.startPath, {}, invitation)`;
-the successful operation returns `{ url }` for browser navigation. Keep the
-invitation in its dedicated header and validate the returned destination before
-navigation. Never attach a personal/operator credential to this account operation.
+This adapter is opt-in and currently qualified by the
+[local SDK framing fixture](../guides/local-collaboration-lab.md#sdk-application-framing-over-the-encrypted-channel),
+with explicit request/frame bounds and a separate full-runtime acceptance gap.
+Configure the Device credential on the host resolver for channel calls. Passing
+`credential` together with `credentialOrigin` as per-call options deliberately
+bypasses that resolver and uses direct HTTP; an `ApplicationSessionClient` on
+this transport instead uses the configured resolver with `requireCredential`.
+The adapter retains explicit SDK headers separately from a browser `Request`,
+whose header guard removes `Origin` in anticipation of a later HTTP network step.
+The encrypted browser fixture checks that the original client Origin reaches
+the receiver.
 
-Station chooses provider/callback/return parameters from operator configuration;
-clients cannot supply arbitrary OAuth parameters. See the [deployment guide](../guides/deployment-authentication.md#optional-oidc-choices-with-local-accounts)
-for configuration, callback verification and the independent Device continuation.
+Connection owners must retain ordinary SDK authority guards and the selected
+account's request scope, bound channel counts/lifetimes, and close the transport
+when its endpoint trust retires. Transport readiness alone does not partition
+account or Project data. An
+uncertain dispatched mutation must not be retried automatically.
+
