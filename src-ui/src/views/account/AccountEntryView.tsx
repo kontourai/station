@@ -1,6 +1,7 @@
 import {
   getAccountAuthentication,
   getAccountSession,
+  getProjectInvitationPreview,
   runAccountOperation,
 } from '@kontourai/station-sdk/account-authentication';
 import {
@@ -10,13 +11,13 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { PageFrame } from '../../components/page-frame';
 import { ErrorState, SkeletonList } from '../../components/state';
 import { errorText } from '../../utils/errorText';
 import {
-  INVITATION_STATE_KEY,
+  clearAccountEntryContinuation,
   readAccountEntryContinuation,
 } from './account-entry-continuation';
 import './account-entry.css';
@@ -27,10 +28,26 @@ const browserFlow = readAccountEntryContinuation();
 /** The lazy entry owns a fresh, non-persisted cache and no operator query callbacks. */
 export function AccountEntryPage({ apiBase }: { apiBase: string }) {
   const [client] = useState(() => new QueryClient());
+  const [entry, setEntry] = useState({ flow: browserFlow, generation: 0 });
+  useEffect(() => {
+    const receive = () => {
+      const fragment = new URLSearchParams(window.location.hash.slice(1));
+      if (!fragment.has('invitation') && !fragment.has('token')) return;
+      const flow = readAccountEntryContinuation();
+      setEntry((current) => ({ flow, generation: current.generation + 1 }));
+    };
+    window.addEventListener('hashchange', receive);
+    receive();
+    return () => window.removeEventListener('hashchange', receive);
+  }, []);
   useEffect(() => () => client.clear(), [client]);
   return (
     <QueryClientProvider client={client}>
-      <AccountEntryView apiBase={apiBase} />
+      <AccountEntryView
+        key={entry.generation}
+        apiBase={apiBase}
+        initialFlow={entry.flow}
+      />
     </QueryClientProvider>
   );
 }
@@ -41,7 +58,11 @@ export function AccountEntryView({
   initialFlow = browserFlow,
 }: {
   apiBase: string;
-  initialFlow?: { invitation?: string; resetToken?: string };
+  initialFlow?: {
+    invitation?: string;
+    resetToken?: string;
+    invalidInvitation?: boolean;
+  };
 }) {
   const client = useQueryClient();
   const [invitation, setInvitation] = useState(initialFlow.invitation);
@@ -54,6 +75,7 @@ export function AccountEntryView({
   const [notice, setNotice] = useState<string>();
   const [error, setError] = useState<string>();
   const [joined, setJoined] = useState(false);
+  const entryId = useId();
   const descriptor = useQuery({
     queryKey: ['account', apiBase, 'provider'],
     queryFn: () => getAccountAuthentication(apiBase),
@@ -68,6 +90,16 @@ export function AccountEntryView({
     gcTime: 0,
     refetchOnWindowFocus: true,
   });
+  const preview = useQuery({
+    queryKey: ['account', apiBase, 'invitation', entryId],
+    queryFn: () => getProjectInvitationPreview(apiBase, invitation!),
+    enabled: descriptor.isSuccess && !!invitation && mode !== 'reset',
+    retry: false,
+    gcTime: 0,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+  const invitationView = preview.isSuccess ? preview.data : undefined;
   const mutation = useMutation({
     gcTime: 0,
     mutationFn: (input: {
@@ -174,11 +206,7 @@ export function AccountEntryView({
         throw new Error('Station did not confirm Project membership.');
       setJoined(true);
       setInvitation(undefined);
-      try {
-        sessionStorage.removeItem(INVITATION_STATE_KEY);
-      } catch {
-        /* The server has already consumed this invitation. */
-      }
+      clearAccountEntryContinuation(invitation);
     } catch (cause) {
       setError(errorText(cause));
     } finally {
@@ -212,14 +240,43 @@ export function AccountEntryView({
               : mode === 'reset'
                 ? 'Choose a new password'
                 : invitation
-                  ? 'Join your Project'
+                  ? invitationView
+                    ? `Join ${invitationView.projectName}`
+                    : 'Join your Project'
                   : 'Sign in to Station',
             subtitle: `${descriptor.data?.displayName ?? 'Your Station account'} · ${new URL(apiBase).host}`,
             width: 'narrow',
             body: 'flow',
           }}
         >
-          {descriptor.isPending ? (
+          {invitationView && invitation && mode !== 'reset' && (
+            <div className="account-entry__invitation">
+              <p>
+                {invitationView.inviterName} invited you as a{' '}
+                <strong>
+                  {invitationView.role === 'admin'
+                    ? 'Project admin'
+                    : invitationView.role}
+                </strong>
+                .
+              </p>
+              <p>
+                Expires {new Date(invitationView.expiresAt).toLocaleString()}.
+              </p>
+              {invitationView.recipientEmail && (
+                <p>
+                  Use an account with the verified email{' '}
+                  <strong>{invitationView.recipientEmail}</strong>.
+                </p>
+              )}
+            </div>
+          )}
+          {initialFlow.invalidInvitation ? (
+            <ErrorState
+              title="Invitation unavailable"
+              description="This invitation link is incomplete or invalid. Ask the inviter for a new link."
+            />
+          ) : descriptor.isPending ? (
             <SkeletonList count={2} />
           ) : descriptor.isError ? (
             <ErrorState
@@ -228,6 +285,18 @@ export function AccountEntryView({
               action={
                 <Button onClick={() => void descriptor.refetch()}>
                   Try again
+                </Button>
+              }
+            />
+          ) : invitation && mode !== 'reset' && preview.isPending ? (
+            <SkeletonList count={2} label="Checking invitation" />
+          ) : invitation && mode !== 'reset' && preview.isError ? (
+            <ErrorState
+              title="Invitation unavailable"
+              description="This link may have expired, been accepted or been cancelled. Ask the inviter for a new link, or try again if this Station is unavailable."
+              action={
+                <Button onClick={() => void preview.refetch()}>
+                  Check invitation again
                 </Button>
               }
             />

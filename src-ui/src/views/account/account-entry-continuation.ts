@@ -55,5 +55,27 @@ export function readAccountEntryContinuation() {
       '',
       window.location.pathname + window.location.search,
     );
-  return { invitation, resetToken };
+  return {
+    invitation,
+    resetToken,
+    ...(provided !== null && !invitation ? { invalidInvitation: true } : {}),
+  };
+}
+
+/** An older acceptance must not erase a newer link received while it was pending. */
+export function clearAccountEntryContinuation(invitation: string): void {
+  try {
+    const stored = JSON.parse(
+      sessionStorage.getItem(INVITATION_STATE_KEY) ?? 'null',
+    ) as unknown;
+    if (
+      stored &&
+      typeof stored === 'object' &&
+      'token' in stored &&
+      stored.token === invitation
+    )
+      sessionStorage.removeItem(INVITATION_STATE_KEY);
+  } catch {
+    /* Page-local continuation state is not authority. */
+  }
 }
