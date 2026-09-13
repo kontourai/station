@@ -936,6 +936,19 @@ invitation argument is registration eligibility, not authentication or membershi
 The [deployment authentication guide](../guides/deployment-authentication.md)
 defines the provider interface and separate invitation-acceptance operation.
 
+`getAccountAuthentication` on `@kontourai/station-sdk/account-authentication`
+may return `externalLogins` alongside the primary password or redirect login.
+Each choice supplies `id`, `displayName`, a declared Station `startPath`, and an
+optional `available` flag. A false flag means the configured choice is unavailable.
+To begin, call `runAccountOperation(apiBase, choice.startPath, {}, invitation)`;
+the successful operation returns `{ url }` for browser navigation. Keep the
+invitation in its dedicated header and validate the returned destination before
+navigation. Never attach a personal/operator credential to this account operation.
+
+Station chooses provider/callback/return parameters from operator configuration;
+clients cannot supply arbitrary OAuth parameters. See the [deployment guide](../guides/deployment-authentication.md#optional-oidc-choices-with-local-accounts)
+for configuration, callback verification and the independent Device continuation.
+
 The same account-authentication entry exports `getProjectInvitationPreview(apiBase,
 token)`. It uses a POST body, validates the minimal Project/inviter/role projection,
 and rejects incompatible role/action combinations. Keep the proof out of query
@@ -2487,3 +2500,4 @@ account's request scope, bound channel counts/lifetimes, and close the transport
 when its endpoint trust retires. Transport readiness alone does not partition
 account or Project data. An
 uncertain dispatched mutation must not be retried automatically.
+

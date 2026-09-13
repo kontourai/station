@@ -1170,3 +1170,15 @@ Missing, drifted, ambiguous and unverifiable resources stop before engine
 invocation. The caller retains path containment and owned-worktree admission.
 Real Git/binding-to-engine tests live in `orchestration-service.test.ts`.
 Resolution is an observation, not a filesystem lease or a compute grant.
+
+### Optional local-account OIDC
+
+`local-account-oidc.ts` reads bounded operator configuration and secret references.
+The local account provider composes pinned Better Auth OAuth verification,
+server-controlled invitation state and the existing private session/administration
+owners. The descriptor, SDK and account entry view expose configured browser
+choices alongside passwords. Failed issuer establishment disables the external
+choice and its callback without granting authority or changing local passwords.
+The real HTTP issuer fixture in `local-account-oidc.test.ts` exercises verified
+identity, callback faults and local operation during issuer unavailability.
+

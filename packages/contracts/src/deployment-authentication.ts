@@ -79,6 +79,15 @@ export interface DeploymentAuthenticationDescriptor {
   issuer: string;
   displayName: string;
   endpoints: readonly DeploymentAuthenticationEndpoint[];
+  /** Optional configured browser identity choices alongside the primary login. */
+  externalLogins?: readonly {
+    id: string;
+    displayName: string;
+    /** False when this configured optional provider could not establish trusted discovery. */
+    available?: boolean;
+    /** A declared POST begin-login endpoint returning a provider authorization URL. */
+    startPath: string;
+  }[];
   /** Exact account-cookie names; unrelated device cookies never trigger account verification. */
   sessionCookies: readonly string[];
   /** Optional standard browser entry; adapters without one retain their own UI. */

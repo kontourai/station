@@ -123,6 +123,8 @@ beforeEach(() => {
               scope: { localProjectSlug: 'example' },
               grantsDeviceAccess: false,
             });
+      if (path.endsWith('/oidc/test/begin'))
+        return reply({ url: 'javascript:alert(1)' });
       if (path.endsWith('/sign-out')) signedIn = false;
       return reply({});
     }),
@@ -135,7 +137,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 function mount(
-  initialFlow: { invitation?: string; resetToken?: string } = { invitation },
+  initialFlow: {
+    invitation?: string;
+    resetToken?: string;
+    authenticationError?: boolean;
+  } = { invitation },
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -231,6 +237,55 @@ describe('invitation entry through real account SDK requests', () => {
       ),
     ).toBe(true);
   });
+  test('offers configured identity choices without operator credentials and refuses unsafe redirects', async () => {
+    provider = {
+      ...descriptor,
+      externalLogins: [
+        {
+          id: 'test',
+          displayName: 'Example identity',
+          startPath: '/oidc/test/begin',
+        },
+      ],
+      endpoints: [
+        ...descriptor.endpoints,
+        {
+          path: '/oidc/test/begin',
+          methods: ['POST'],
+          operation: 'begin-login',
+        },
+      ],
+    };
+    mount();
+    await screen.findByLabelText('Email address');
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Continue with Example identity',
+      }),
+    );
+    await screen.findByText(
+      'The sign-in provider returned an unsupported destination.',
+    );
+    const request = calls.find((call) =>
+      call.path.endsWith('/oidc/test/begin'),
+    );
+    expect(request?.body).toEqual({});
+    expect(request?.headers.get('x-station-invitation')).toBe(invitation);
+    expect(request?.headers.has('authorization')).toBe(false);
+    expect(screen.getByLabelText('Email address')).toBeTruthy();
+  });
+
+  test('a failed provider return explains recovery while keeping the invitation', async () => {
+    mount({ invitation, authenticationError: true });
+    await screen.findByLabelText('Email address');
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Sign-in could not be completed',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Create an account' }),
+    ).toBeTruthy();
+  });
+
   test('username registration needs no email and keeps sign-in and acceptance explicit', async () => {
     provider = {
       ...descriptor,

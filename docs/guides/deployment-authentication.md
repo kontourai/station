@@ -11,7 +11,7 @@ independent. An account cookie alone cannot load the personal Project catalog.
 Built-in username/password accounts and manually shared invitation links work
 without a mail service. The implemented administration and membership boundaries
 are described below; complete shared-content/device admission remains under #488.
-Configurable OIDC is #1983; the official hosted identity contract is #489.
+Optional configured OIDC choices use the same local account/session owner (see below); the official hosted identity service remains #489.
 Optional provider integration does not make hosted identity a core prerequisite.
 
 ## Enable local accounts without email
@@ -346,3 +346,68 @@ Do not clone a live authentication authority into two active homes. Home movemen
 and recovery must use the owning home-authority procedure. Rolling back the
 adapter disables its login surface; it must not erase account history or silently
 reassign persisted principals to the local operator.
+
+
+## Optional OIDC choices with local accounts
+
+Operators can offer an OpenID Connect identity provider alongside local
+username/password accounts. Set `STATION_LOCAL_ACCOUNT_OIDC_FILE` to an absolute
+JSON file path, while retaining `STATION_LOCAL_ACCOUNTS=1` and the public
+Station authentication origin:
+
+```json
+[
+  {
+    "id": "example",
+    "displayName": "Example identity",
+    "issuer": "https://identity.example.org",
+    "clientId": "station-client",
+    "clientSecretEnv": "STATION_EXAMPLE_OIDC_SECRET"
+  }
+]
+```
+
+Provide the named secret through the operator's environment/secret manager;
+never place it in an invitation, client configuration or Project manifest.
+Treat the provider `id` and issuer as durable configuration. Change the display
+name for presentation; changing an identifier is not an account migration.
+
+Register the exact redirect URI
+`<STATION_AUTHENTICATION_ORIGIN>/api/account-auth/callback/example` with the
+issuer. This implementation supports authorization-code callbacks using GET,
+not arbitrary OAuth providers or provider-specific native token exchange.
+Custom identity protocols retain the deployment module contract above.
+
+The pinned Better Auth generic OAuth implementation performs discovery, code
+exchange, PKCE, ID-token signature/audience/issuer validation and nonce binding.
+Station additionally pins the discovered issuer to the configured issuer,
+requires an ID token on every OIDC callback (no UserInfo-only downgrade), and
+refuses registration if required verification is unavailable. Provider tokens
+are encrypted by the maintained library in Station's private account database.
+The public descriptor exposes only the configured display choice, availability
+and Station login endpoint. It exposes no client secret or provider token.
+
+The browser starts a declared POST login operation. Station chooses the callback
+and return destination; request-supplied redirect URLs or OAuth parameters are
+not accepted. Invitation intent travels in the library's server-controlled
+OAuth state and is checked again against the real invitation owner after
+verified identity returns. Account creation does not accept the invitation or
+grant Project/Device permissions. The underlying external account key includes
+verified issuer and immutable subject; reusing an operator's provider label for
+a different issuer cannot inherit an old account. UserInfo must identify the
+same subject as the verified ID token, following [OIDC Core UserInfo validation](https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse). Equal emails never link accounts automatically.
+
+Discovery runs at account-provider startup. An unavailable or mismatched
+optional issuer is shown as unavailable and its start/callback endpoints refuse;
+local username/password login remains available. Restart after repairing issuer
+configuration/discovery. Existing Station sessions use Station's current local
+account/session revocation state; disabling an account at the external IdP does
+not itself revoke an already established Station session. Operators can disable
+or revoke it through Station's account administration.
+
+The cookie-free continuation contract remains unchanged: local passwords can
+use virtual login; OIDC completes a real browser ceremony, followed by the
+existing approved-Device cookie exchange and proof-bound continuation. No
+DataChannel cookie handling or native handoff is implied. Tests with a free
+local HTTP issuer are diagnostic evidence, not production Google/Kontour,
+physical-device or independent-person acceptance.

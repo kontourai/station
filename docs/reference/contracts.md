@@ -175,3 +175,10 @@ checkout-derived value is labeled, never presented as the build's identity.
 provenance resolver; consumers render from the code and never re-parse it out
 of prose. Runtime parsing of these shapes lives at the route and SDK
 boundaries, not in this package.
+
+The deployment authentication descriptor's optional `externalLogins` lists
+operator-configured browser identity choices, their declared POST begin-login
+paths and availability. These are presentation/capability facts, not identity
+claims, Device grants or Project membership. Secret references and provider
+configuration remain private to Station's operator composition.
+

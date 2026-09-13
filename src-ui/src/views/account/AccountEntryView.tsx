@@ -61,6 +61,7 @@ export function AccountEntryView({
   initialFlow?: {
     invitation?: string;
     resetToken?: string;
+    authenticationError?: boolean;
     invalidInvitation?: boolean;
   };
 }) {
@@ -73,7 +74,11 @@ export function AccountEntryView({
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [notice, setNotice] = useState<string>();
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<string | undefined>(
+    initialFlow.authenticationError
+      ? 'Sign-in could not be completed. Try again, or contact this Station’s operator.'
+      : undefined,
+  );
   const [joined, setJoined] = useState(false);
   const entryId = useId();
   const descriptor = useQuery({
@@ -121,6 +126,42 @@ export function AccountEntryView({
     setPassword('');
     setError(undefined);
     setNotice(undefined);
+  }
+
+  async function externalSignIn(path: string) {
+    setError(undefined);
+    try {
+      const result = await mutation.mutateAsync({
+        path,
+        body: {},
+        ...(invitation ? { invitation } : {}),
+      });
+      if (
+        !result ||
+        typeof result !== 'object' ||
+        !('url' in result) ||
+        typeof result.url !== 'string'
+      )
+        throw new Error(
+          'The sign-in provider did not return a login destination.',
+        );
+      const url = new URL(result.url);
+      if (
+        url.protocol !== 'https:' &&
+        !(
+          url.protocol === 'http:' &&
+          ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+        )
+      )
+        throw new Error(
+          'The sign-in provider returned an unsupported destination.',
+        );
+      window.location.assign(url.href);
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      mutation.reset();
+    }
   }
 
   async function submit() {
@@ -227,6 +268,21 @@ export function AccountEntryView({
       mutation.reset();
     }
   }
+
+  const externalChoices =
+    mode === 'sign-in' || mode === 'register'
+      ? descriptor.data?.externalLogins?.map((provider) => (
+          <Button
+            key={provider.id}
+            disabled={busy || provider.available === false}
+            onClick={() => void externalSignIn(provider.startPath)}
+          >
+            {provider.available === false
+              ? `${provider.displayName} is unavailable`
+              : `Continue with ${provider.displayName}`}
+          </Button>
+        ))
+      : undefined;
 
   return (
     <main className="account-entry">
@@ -352,16 +408,19 @@ export function AccountEntryView({
               )}
             </>
           ) : login?.kind === 'redirect' ? (
-            <Button
-              variant="primary"
-              onClick={() => {
-                window.location.assign(
-                  `${apiBase}/api/account-auth${login.startPath}`,
-                );
-              }}
-            >
-              Continue to sign in
-            </Button>
+            <>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  window.location.assign(
+                    `${apiBase}/api/account-auth${login.startPath}`,
+                  );
+                }}
+              >
+                Continue to sign in
+              </Button>
+              {externalChoices}
+            </>
           ) : login?.kind === 'email-password' ||
             login?.kind === 'username-password' ? (
             <>
@@ -468,7 +527,10 @@ export function AccountEntryView({
                   </Button>
                 )}
               </div>
+              {externalChoices}
             </>
+          ) : externalChoices?.length ? (
+            externalChoices
           ) : (
             <p>
               This provider uses its own sign-in interface. Contact the Station
