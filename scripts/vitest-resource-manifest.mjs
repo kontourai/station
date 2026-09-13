@@ -146,6 +146,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Hono routes composed with the real Task and transcript worker owners.
   'src-server/services/search/__tests__/runtime-search.test.ts',
   'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
+  // Creates and observes real Git checkouts through the portable identity owner.
+  'src-server/services/projects/__tests__/project-identity-service.test.ts',
   // Owns real CPU-blocking worker_threads and canonical TaskGraph file fixtures.
   'src-server/services/search/__tests__/isolated-task-search.test.ts',
   // Type-only child_process import; the macro's spawn boundary is simulated

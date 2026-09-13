@@ -51,6 +51,7 @@ import { DistributionProfileService } from '../../services/plugins/distribution-
 import type { CheckoutRemoteReader } from '../../services/projects/checkout-remote-reader.js';
 import { findGitEntryOnPath } from '../../services/projects/checkout-remote-reader.js';
 import { discoverProjectIconCandidates } from '../../services/projects/project-icon-discovery.js';
+import { ProjectIdentityService } from '../../services/projects/project-identity-service.js';
 import {
   describeProjectResolution,
   type ProjectManifestRecordReader,
@@ -97,6 +98,7 @@ import {
   withDerivedWorkingDirectory,
   withoutPersistedWorkingDirectory,
 } from './layout-working-directory.js';
+import { createProjectIdentityRoutes } from './project-identity-routes.js';
 import { createWorkspacePanePreviewRoutes } from './workspace-pane-previews.js';
 
 /** Read a plugin's layout.json to create a layout reference */
@@ -281,6 +283,21 @@ export function createProjectRoutes(
   deps: ProjectRouteDeps = {},
 ) {
   const app = new Hono();
+  const resolution = deps.resolution;
+  app.route(
+    '/',
+    createProjectIdentityRoutes(
+      resolution
+        ? new ProjectIdentityService(
+            projectService,
+            storageAdapter,
+            resolution.manifests,
+            resolution.readRemotes,
+            () => resolution.bindings.hostAliases(),
+          )
+        : undefined,
+    ),
+  );
   const layoutCatalog =
     deps.layoutCatalog ?? new DistributionProfileService(projectHomeDir);
 

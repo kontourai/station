@@ -328,6 +328,60 @@ export interface ProjectManifest {
   updatedAt: string;
 }
 
+/** Portable identity/reference snapshot. No local Project ID, path or grants. */
+export type ProjectPortableIdentity = Pick<
+  ProjectManifest,
+  'schemaVersion' | 'id' | 'repos' | 'createdAt' | 'updatedAt'
+>;
+
+/** Closed identity wire fields, shared by producers and consumers. */
+export const PROJECT_PORTABLE_IDENTITY_FIELDS = Object.freeze({
+  schemaVersion: true,
+  id: true,
+  repos: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Record<keyof ProjectPortableIdentity, true>);
+export const PROJECT_GIT_RESOURCE_FIELDS = Object.freeze({
+  kind: true,
+  id: true,
+  canonicalRemote: true,
+  aliases: true,
+  role: true,
+  label: true,
+  defaultBranch: true,
+} satisfies Record<keyof ProjectGitRepoResource, true>);
+export const PROJECT_LOCAL_RESOURCE_FIELDS = Object.freeze({
+  kind: true,
+  id: true,
+  label: true,
+  role: true,
+} satisfies Record<keyof ProjectLocalOnlyResource, true>);
+
+/** The receiving environment owns this mapping; slugs are never portable keys. */
+export interface ProjectIdentityAssociation {
+  portableProjectId: string;
+  localProjectId: string;
+  localProjectSlug: string;
+}
+
+export interface ProjectIdentityView {
+  identity: ProjectPortableIdentity;
+  association: ProjectIdentityAssociation;
+}
+
+export interface ProjectAttachRequest {
+  /** Explicit local name/key; an unchanged existing attachment is reused on retry. */
+  name: string;
+  slug: string;
+  workingDirectory?: string;
+  identity: ProjectPortableIdentity;
+}
+
+export interface ProjectAttachResult extends ProjectIdentityView {
+  outcome: 'created' | 'existing';
+}
+
 // ---------------------------------------------------------------------------
 // Binding store (§3.5) — private, per-Station, per-member. Never leaves the
 // machine (never replicated, never part of a manifest, never what a peer
