@@ -268,6 +268,7 @@ export function handleTurnCompletedEvent(
     closesOpenTurn
       ? {
           turnId: event.turnId,
+          createdAt: event.createdAt,
           provenance,
           answerEligible: event.finishReason !== 'cancelled',
         }

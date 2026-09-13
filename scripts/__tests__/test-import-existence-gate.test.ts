@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,7 +23,7 @@ import { VITEST_TEST_FILE_PATTERN } from '../verification-policy-gate.mjs';
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 const gatePath = join(repoRoot, 'scripts/test-import-existence-gate.mjs');
 
-describe('extractValueSpecifiers — anchored, not the naive unanchored scan', () => {
+describe('extractValueSpecifiers — executable import syntax', () => {
   test('captures a plain static import', () => {
     const found = extractValueSpecifiers(
       "import { createCanvas } from 'canvas';\n",
@@ -42,6 +43,42 @@ describe('extractValueSpecifiers — anchored, not the naive unanchored scan', (
       "const x = require('ws');\nconst y = () => import('qrcode');\n",
     );
     expect(found.map((f) => f.specifier).sort()).toEqual(['qrcode', 'ws']);
+  });
+
+  test('ignores fixture source and comments but keeps executable template expressions', () => {
+    const content = [
+      `const fixture = "module.exports = require('shared');";`,
+      "// require('comment-only');",
+      "/* import('block-comment-only'); */",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: Source fixture must retain the template expression for the parser.
+      "const template = `import missing from 'template-only'; ${import('runtime-template')}`;",
+      "const runtime = require('runtime-package');",
+    ].join('\n');
+    expect(
+      extractValueSpecifiers(content).map((item) => item.specifier),
+    ).toEqual(['runtime-template', 'runtime-package']);
+  });
+
+  test('retains multiline imports across apostrophes and skips erased import types', () => {
+    const content = [
+      "import {\n// don't mistake this comment for a quote\nvalue\n} from 'real-import';",
+      "type Only = import('erased-import-type').Value;",
+      "import type OnlyAgain = require('erased-import-equals');",
+      "import runtime = require('runtime-import-equals');",
+      "export type { Value } from 'erased-export';",
+      "export { value } from 'runtime-export';",
+    ].join('\n');
+    expect(
+      extractValueSpecifiers(content).map((item) => item.specifier),
+    ).toEqual(['real-import', 'runtime-import-equals', 'runtime-export']);
+  });
+
+  test('uses the file extension when traversing JSX expressions', () => {
+    const found = extractValueSpecifiers(
+      "const node = <div>{import('jsx-runtime')}</div>;",
+      'view.test.tsx',
+    );
+    expect(found.map((item) => item.specifier)).toEqual(['jsx-runtime']);
   });
 
   test('does NOT capture "from" inside an ordinary assertion/comment string — the regression this gate\'s own history hit', () => {
@@ -202,6 +239,28 @@ describe('the gate as a real child process', () => {
     expect(output).toContain('OK:');
   });
 
+  test('fixture source is allowed while a real require of the same missing package fails', () => {
+    const root = scratchRepo();
+    const file = join(root, 'fixture.test.ts');
+    writeFileSync(
+      file,
+      `const fixture = "module.exports = require('shared');";\n`,
+    );
+    execFileSync('git', ['add', '-A'], { cwd: root });
+    const fixture = runGate(root);
+    expect(fixture.status).toBe(0);
+    expect(fixture.output).toContain('OK:');
+
+    writeFileSync(
+      file,
+      "// real runtime dependency\nconst value = require('shared');\n",
+    );
+    const runtime = runGate(root);
+    expect(runtime.status).toBe(1);
+    expect(runtime.output).toContain('fixture.test.ts:2');
+    expect(runtime.output).toContain("'shared'");
+  });
+
   test('negative control: a scratch repo whose test file imports a never-installed package fails by name, file, and line', () => {
     const root = scratchRepo();
     writeFileSync(
@@ -339,6 +398,12 @@ describe('the gate as a real child process', () => {
     mkdirSync(spaceDir, { recursive: true });
     const scriptCopy = join(spaceDir, 'test-import-existence-gate.mjs');
     copyFileSync(gatePath, scriptCopy);
+    mkdirSync(join(spaceDir, 'node_modules'));
+    symlinkSync(
+      realpathSync(join(repoRoot, 'node_modules/typescript')),
+      join(spaceDir, 'node_modules/typescript'),
+      'junction',
+    );
 
     const root = scratchRepo();
     writeFileSync(

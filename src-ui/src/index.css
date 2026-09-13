@@ -1722,9 +1722,10 @@ button:hover {
 }
 
 /* The coarse-pointer 44px floor for `.menu-row` lives in
-   components/chat/chat.css, NOT here: `useIsMobile.test.tsx` requires every
-   `@media` condition in this ENTRY sheet to spell `MOBILE_MEDIA_QUERY`
-   byte-for-byte, and a touch-target floor is the `(pointer: coarse)` question,
+   components/chat/chat.css, NOT here: `useIsMobile.test.tsx` requires general
+   mobile-layout conditions in this ENTRY sheet to spell `MOBILE_MEDIA_QUERY`
+   byte-for-byte; short-window overrides use its exact height/pointer branch.
+   A touch-target floor is the `(pointer: coarse)` question,
    not the mobile-layout one. The retired
    `.dock-placement-menu__item.dock-placement-menu__item` rule that carried it
    for one member of this family is where the shared rule now sits. */
@@ -5105,8 +5106,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 /* `.choice-trigger`'s coarse-pointer 44px floor lives in
    components/chat/chat.css, beside `.menu-row`'s, and NOT here:
-   `useIsMobile.test.tsx` requires every `@media` condition in this ENTRY sheet
-   to spell `MOBILE_MEDIA_QUERY` byte-for-byte so the hook and the stylesheet
+   `useIsMobile.test.tsx` requires general mobile-layout conditions in this ENTRY
+   sheet to spell `MOBILE_MEDIA_QUERY` byte-for-byte so the hook and the stylesheet
    cannot disagree about the breakpoint, and `(max-width: 768px), (pointer:
    coarse)` is not that constant. A touch-target floor is the `(pointer: coarse)`
    question anyway, not the mobile-layout one. */
