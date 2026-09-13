@@ -3760,16 +3760,6 @@ button:hover {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
 }
 
-/* Not a duration: the motion primitive (`tokens.css`) already tweens every
-   transition to 0.01ms under reduce, so the `transition: none` that used to
-   sit here said nothing new. What survives is an END STATE — the hover lift
-   is a movement, and no duration can express "do not move at all". */
-@media (prefers-reduced-motion: reduce) {
-  .chat-scroll-to-bottom:hover {
-    transform: none;
-  }
-}
-
 .message {
   box-sizing: border-box;
   max-width: 80%;
@@ -4090,6 +4080,11 @@ button:hover {
    left is END STATE — a decorative pseudo-element that should not exist at
    all, and a sweep parked where its keyframes would have carried it. */
 @media (prefers-reduced-motion: reduce) {
+  /* The shared duration reset cannot prevent a hover end-state movement. */
+  .chat-scroll-to-bottom:hover {
+    transform: none;
+  }
+
   .streaming-tip::after {
     content: none;
   }
@@ -9266,6 +9261,73 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   .chat-dock.is-dragging .chat-dock__resize-handle::after {
     opacity: 1;
     background: var(--accent-primary);
+  }
+}
+
+/* A short phone window gives an open chat the visible height without changing
+   its saved Half/Full preference. The keyboard may leave only ~150 CSS pixels:
+   preserve the header and a single-line composer instead of clipping Send. */
+@media (max-height: 540px) and (pointer: coarse) {
+  .app__main > .chat-dock--bottom:not(.is-collapsed):not(.is-dragging) {
+    top: calc(var(--chat-visual-viewport-top, 0px) + var(--safe-top));
+    bottom: auto;
+    height: calc(
+      var(--chat-visual-viewport-height, 100dvh) -
+      var(--safe-top)
+    ) !important;
+    max-height: calc(
+      var(--chat-visual-viewport-height, 100dvh) -
+      var(--safe-top)
+    );
+    z-index: var(--layer-dock);
+  }
+
+  /* This short-window chat fills the work area just like a maximized dock.
+     Passive notices yield to its input; explicit system blockers retain
+     BannerHost's higher layer and their repair controls. */
+  .app__main:has(> .chat-dock--bottom:not(.is-collapsed):not(.is-dragging))
+  > .banner-host:not(.banner-host--critical-chrome) {
+    z-index: var(--layer-notice);
+  }
+
+  .app__main > .chat-dock--bottom .chat-input {
+    flex-shrink: 0;
+    padding-bottom: max(
+      0px,
+      calc(var(--safe-bottom) - var(--chat-visual-viewport-bottom, 0px))
+    );
+  }
+
+  .app__main > .chat-dock--bottom .chat-input__capsule {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+
+  .app__main > .chat-dock--bottom .chat-input textarea {
+    max-height: max(44px, calc(1lh + 20px));
+    padding: 10px 12px;
+  }
+
+  .app__main > .chat-dock--bottom .chat-messages {
+    padding-block: 0;
+  }
+
+  /* A passive connection label does not need a 44px interaction row. Keep
+     the message visible while preserving the composer's available height;
+     a connection-repair button retains the standard touch target. */
+  .app__main > .chat-dock--bottom .chat-stream-status:not(:has(button)) {
+    min-height: 0;
+    padding: 0 8px;
+    line-height: 1.2;
+  }
+
+  /* Editing gets the limited height. Blurring the textarea restores the
+     model/agent selectors; input and Send keep their full touch targets. */
+  .app__main
+    > .chat-dock--bottom
+    .chat-input:has(textarea:focus)
+    > .chat-input__meta {
+    display: none;
   }
 }
 
