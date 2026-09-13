@@ -4,29 +4,6 @@
     {
       "scope": "root",
       "lock": "pnpm-lock.yaml",
-      "path": "examples/builder-delivery-viewer/node_modules/esbuild",
-      "name": "esbuild",
-      "version": "0.28.1",
-      "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
-      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
-      "decision": "execute",
-      "owner": "station-security",
-      "reason": "The builder-delivery-viewer example depends on @kontourai/flow-agents 5.7.0, which pins esbuild at an exact 0.28.1 (#1719), so pnpm materializes this unhoisted copy beside the root 0.28.2 one. Same reviewed tarball and byte-identical install script; the executable artifact is verified.",
-      "platform": { "os": [], "cpu": [] },
-      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
-      "purl": "pkg:npm/esbuild@0.28.1",
-      "reviewedAt": "2026-09-09",
-      "expiresAt": "2026-12-08",
-      "recheck": "dependency refresh, advisory, or platform build change",
-      "triggers": [
-        "dependency refresh",
-        "esbuild advisory",
-        "flow-agents esbuild pin change"
-      ]
-    },
-    {
-      "scope": "root",
-      "lock": "pnpm-lock.yaml",
       "path": "node_modules/@kontourai/flow-agents/node_modules/esbuild",
       "name": "esbuild",
       "version": "0.28.1",
