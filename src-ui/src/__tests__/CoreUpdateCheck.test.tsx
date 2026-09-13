@@ -446,6 +446,37 @@ describe('comparison-priority matrix (update-ux PR4)', () => {
     ).toBeNull();
   });
 
+  test('a legacy server with no installKind at all renders comparison facts, not a refusal or an apply offer', () => {
+    // Pre-#1624 wire shape: counts only. This pins TWO boundaries at once:
+    // the refusal branch must key on provenanceIssue/'unknown' and never on
+    // an absent installKind (widening it to `installKind == null` reds this
+    // test), and the missing response identity still earns no apply offer.
+    renderWith(
+      {
+        branch: 'main',
+        currentHash: 'aaaaaaa',
+        remoteHash: 'bbbbbbb',
+        behind: 2,
+        ahead: 0,
+        updateAvailable: true,
+      },
+      makeContext(),
+    );
+    expect(
+      screen.getByText(
+        'Server checkout is 2 commits behind its configured upstream.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(
+        'This server install has no usable update provenance. Station cannot determine whether a server update is available. Use the installation method that manages this server.',
+      ),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Update server checkout' }),
+    ).toBeNull();
+  });
+
   test('an older server with no response identity keeps its comparison facts but earns no apply offer', () => {
     renderWith(behindCheckout({ serverIdentity: null }));
     expect(
@@ -588,23 +619,32 @@ describe('scope binding (update-ux PR4)', () => {
     vi.setSystemTime(STARTED_AT);
     const contextA = makeContext({ scopeKey: 'scope-a' });
     const rendered = renderWithScope(contextA);
-    // A accepts a plain update start (S12).
+    // A accepts a background rebuild (updating): the rebuilding state shows
+    // persistently under A.
     act(() => {
-      applyOptions?.onSuccess?.({ success: true });
+      applyOptions?.onSuccess?.({ success: true, updating: true });
     });
-    expect(screen.getByText('Server update started.')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Updating — Station is rebuilding from source and will restart when complete.',
+      ),
+    ).toBeTruthy();
 
     const contextB = makeContext({ scopeKey: 'scope-b' });
     rendered.rerender(
       <CoreUpdateCheck apiBase="http://localhost:3141" context={contextB} />,
     );
-    expect(screen.queryByText(/Server update started/)).toBeNull();
+    expect(
+      screen.queryByText(/Updating — Station is rebuilding from source/),
+    ).toBeNull();
 
-    // Back to A: a fresh A scope starts with no accepted state either.
+    // Back to A: a fresh A scope starts with no rebuilding state either.
     rendered.rerender(
       <CoreUpdateCheck apiBase="http://localhost:3141" context={contextA} />,
     );
-    expect(screen.queryByText(/Server update started/)).toBeNull();
+    expect(
+      screen.queryByText(/Updating — Station is rebuilding from source/),
+    ).toBeNull();
     expect(screen.queryByText(/Server restart started/)).toBeNull();
   });
 
@@ -612,21 +652,27 @@ describe('scope binding (update-ux PR4)', () => {
     const contextA = makeContext({ scopeKey: 'scope-a' });
     const rendered = renderWithScope(contextA);
     act(() => {
-      applyOptions?.onSuccess?.({ success: true });
+      applyOptions?.onSuccess?.({ success: true, updating: true });
     });
-    expect(screen.getByText('Server update started.')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Updating — Station is rebuilding from source and will restart when complete.',
+      ),
+    ).toBeTruthy();
     const contextB = makeContext({ scopeKey: 'scope-b' });
     rendered.rerender(
       <CoreUpdateCheck apiBase="http://localhost:3141" context={contextB} />,
     );
     // The completion now belongs to B's render: without the originating-scope
-    // binding it would re-present A's update as B's state.
+    // binding it would re-present A's rebuild as B's state.
     const refetchesBeforeSupersededCompletion = vi.mocked(queryState.refetch)
       .mock.calls.length;
     act(() => {
-      applyOptions?.onSuccess?.({ success: true });
+      applyOptions?.onSuccess?.({ success: true, updating: true });
     });
-    expect(screen.queryByText(/Server update started/)).toBeNull();
+    expect(
+      screen.queryByText(/Updating — Station is rebuilding from source/),
+    ).toBeNull();
     expect(queryState.refetch).toHaveBeenCalledTimes(
       refetchesBeforeSupersededCompletion,
     );

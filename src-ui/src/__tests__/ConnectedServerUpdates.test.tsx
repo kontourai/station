@@ -1048,25 +1048,27 @@ describe('ConnectedServerUpdates', () => {
       ).toBeTruthy();
     });
 
+    /** A nightly bundle whose verified checkout makes the rebuild eligible. */
+    const REBUILD_ELIGIBLE_BODY = () => ({
+      installKind: 'desktop-bundle',
+      applyMethod: 'self-update',
+      channel: 'nightly',
+      currentHash: 'aaaaaaa',
+      remoteHash: 'bbbbbbb',
+      updateAvailable: true,
+      serverIdentity: {
+        instanceId: 'desktop-sidecar-stable',
+        bootId: 'boot-1',
+        sha: SHA,
+      },
+      provenanceIssue: null,
+      technicalDetail: null,
+      selfUpdateUnavailableReason: null,
+    });
     it('the disclosure offers the bundle-source rebuild only to an eligible, identity-matching install', async () => {
       await renderHarness({
         bundledStatus: sidecarStatus(),
-        coreUpdate: () => ({
-          installKind: 'desktop-bundle',
-          applyMethod: 'self-update',
-          channel: 'nightly',
-          currentHash: 'aaaaaaa',
-          remoteHash: 'bbbbbbb',
-          updateAvailable: true,
-          serverIdentity: {
-            instanceId: 'desktop-sidecar-stable',
-            bootId: 'boot-1',
-            sha: SHA,
-          },
-          provenanceIssue: null,
-          technicalDetail: null,
-          selfUpdateUnavailableReason: null,
-        }),
+        coreUpdate: REBUILD_ELIGIBLE_BODY,
       });
       await waitConnected();
       expect(
@@ -1122,6 +1124,54 @@ describe('ConnectedServerUpdates', () => {
       expect(
         screen.queryByText('Rebuild and reinstall desktop app from source…'),
       ).toBeNull();
+    });
+
+    it('a failed refetch disables the rebuild offer and marks the disclosure facts historical', async () => {
+      const { queryClient } = await renderHarness({
+        bundledStatus: sidecarStatus(),
+        coreUpdate: REBUILD_ELIGIBLE_BODY,
+      });
+      await waitConnected();
+      expect(
+        await screen.findByText(
+          'Built-in server — updated with this desktop app.',
+        ),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByText('Source installation details'));
+      expect(
+        await screen.findByText(
+          'Rebuild and reinstall desktop app from source…',
+        ),
+      ).toBeTruthy();
+
+      // The SHARED source query refetches (any invalidation does — the
+      // disclosure and the ordinary check share one key) and FAILS. The
+      // built-in card mounts no re-check button of its own, so the harness
+      // drives the same refetch the check button would.
+      coreUpdateBody = () => {
+        throw new Error('remote gone');
+      };
+      await act(async () => {
+        await queryClient.refetchQueries({
+          queryKey: ['core-update-check'],
+        });
+        // React Query batches the observer notification onto its own
+        // scheduler; the macrotask lets the error state reach the component
+        // before the assertions read the screen.
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      });
+
+      // The rebuild offer must not stand on facts a failed refetch no longer
+      // backs, and the cached result reads as history.
+      expect(
+        screen.queryByText('Rebuild and reinstall desktop app from source…'),
+      ).toBeNull();
+      expect(
+        screen.getByText(/Last checked .*\. This result may be outdated\./),
+      ).toBeTruthy();
+      // The failure's real diagnostic stays disclosed inside the card.
+      fireEvent.click(screen.getByText('Technical details'));
+      expect(screen.getByText('remote gone')).toBeTruthy();
     });
   });
 });

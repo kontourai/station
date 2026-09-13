@@ -51,7 +51,7 @@ export function CoreUpdateCheck({
   const scopeKey = coreUpdateScopeFromContext(context);
   const [restartVerification, setRestartVerification] =
     useState<RestartVerificationState>({ state: 'idle' });
-  const [accepted, setAccepted] = useState(false);
+  const [selfUpdating, setSelfUpdating] = useState(false);
   const restartAttemptRef = useRef(0);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
@@ -130,7 +130,7 @@ export function CoreUpdateCheck({
   const resetTransientState = useCallback(() => {
     cancelRestartVerification();
     setRestartVerification({ state: 'idle' });
-    setAccepted(false);
+    setSelfUpdating(false);
   }, [cancelRestartVerification]);
 
   useEffect(() => {
@@ -271,11 +271,12 @@ export function CoreUpdateCheck({
       // POST was started from no longer owns the view.
       if (applyScopeRef.current !== scopeRef.current) return;
       if (data.success && data.updating) {
-        // Git-based self-update accepted (the advanced source installer's
-        // flow): the installer rebuilds from source in the background and
-        // relaunches when done. This card has no self-updating display of its
-        // own anymore; the refetch shows the fresh comparison facts.
-        setAccepted(true);
+        // Git-based self-update accepted: the installer rebuilds from source
+        // in the background over minutes and relaunches the app when done.
+        // This process keeps serving the OLD build until that relaunch, so
+        // the card shows the persistent rebuilding state and marks its cached
+        // comparison historical until a person re-checks or the scope moves.
+        setSelfUpdating(true);
         void check();
       } else if (data.success && data.restarting) {
         if (data.restart) {
@@ -284,19 +285,18 @@ export function CoreUpdateCheck({
           setRestartVerification({ state: 'failed' });
         }
       } else if (data.success) {
-        // S12: accepted is a start, never a success verdict. The line clears
-        // when the re-check it triggered settles.
-        setAccepted(true);
+        // S12 ("Server update started.") is deliberately NOT rendered here.
+        // Plain acceptance immediately refetches, and the settled refetch IS
+        // the honest answer (fresh comparison facts, S2 during the wait); a
+        // "started" line would either never render — hidden behind the
+        // in-flight fetch and cleared on settle, the defect the review caught
+        // — or linger beside fresh facts as a stale start-claim. A start is
+        // only worth a persistent line when nothing observable follows it
+        // (the updating rebuild above, the restarting verification below).
         void check();
       }
     },
   });
-
-  const wasCheckingRef = useRef(false);
-  useEffect(() => {
-    if (wasCheckingRef.current && !checking) setAccepted(false);
-    wasCheckingRef.current = checking;
-  }, [checking]);
 
   const restartStateMatchesTarget =
     restartTargetApiBaseRef.current === apiBase &&
@@ -312,9 +312,12 @@ export function CoreUpdateCheck({
 
   // A stale scope (another selection, or a server that stopped answering)
   // turns whatever is cached into history: labeled as such, never actionable.
+  // An accepted background rebuild does the same: the server keeps serving
+  // the OLD build until its relaunch, so cached facts are history too.
   const scopeStale = context
     ? !context.isCurrent() || context.reachability !== 'connected'
     : false;
+  const comparisonSuperseded = scopeStale || selfUpdating;
 
   const view = status ? deriveComparisonView(status, checkError) : null;
 
@@ -331,7 +334,7 @@ export function CoreUpdateCheck({
   // cached facts: `!checkError` (and the failed-check view) closes the gate.
   const canApply =
     !!status &&
-    !scopeStale &&
+    !comparisonSuperseded &&
     !checkError &&
     view?.kind === 'checkout' &&
     identityMatches &&
@@ -443,9 +446,10 @@ export function CoreUpdateCheck({
           Server update verified: {verifiedBuild}.
         </div>
       )}
-      {accepted && !checking && !restarting && (
+      {selfUpdating && (
         <div className="settings__update-msg settings__update-msg--warning">
-          Server update started.
+          Updating — Station is rebuilding from source and will restart when
+          complete.
         </div>
       )}
       {updateMutation.error && (
@@ -453,14 +457,15 @@ export function CoreUpdateCheck({
           {(updateMutation.error as Error).message}
         </div>
       )}
-      {scopeStale && status && historicalTime && (
+      {comparisonSuperseded && status && historicalTime && (
         <div className="settings__update-msg">
           Last checked {historicalTime}. This result may be outdated.
         </div>
       )}
-      {/* A stale scope's cached comparison never speaks with a current voice:
-        the historical line above replaces every derived state claim. */}
-      {view && !scopeStale && <ComparisonMessage view={view} />}
+      {/* A superseded comparison (stale scope or an accepted rebuild serving
+        the old build) never speaks with a current voice: the historical line
+        above replaces every derived state claim. */}
+      {view && !comparisonSuperseded && <ComparisonMessage view={view} />}
       {technicalDisclosure}
       <span className="settings__field-hint">
         {status?.applyMethod === 'self-update'

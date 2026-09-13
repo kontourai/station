@@ -60,6 +60,7 @@ function SourceInstallationFacts({
     isFetching: checking,
     error: checkError,
     refetch: check,
+    dataUpdatedAt,
   } = useCoreUpdateStatusQuery(
     context.apiBase,
     {
@@ -89,17 +90,25 @@ function SourceInstallationFacts({
 
   const scopeStale =
     !context.isCurrent() || context.reachability !== 'connected';
+  // A failed refresh means the cached facts are no longer backed by a
+  // successful comparison: treated as history for presentation and gating,
+  // exactly like the main card's `!checkError` apply rule.
+  const comparisonSuperseded = scopeStale || !!checkError;
   const view = status ? deriveComparisonView(status, checkError) : null;
   const identityMatches = status
     ? serverIdentityMatchesView(status, context.identity)
     : false;
+  // The plan's apply-gating rules, plus a successful comparison: a failed
+  // refetch must not leave the rebuild offer standing on cached facts.
   const canRebuild =
     !!status &&
-    !scopeStale &&
+    !comparisonSuperseded &&
     identityMatches &&
     status.applyMethod === 'self-update' &&
     status.updateAvailable &&
     !status.selfUpdateUnavailableReason;
+  const historicalTime =
+    dataUpdatedAt > 0 ? new Date(dataUpdatedAt).toLocaleTimeString() : null;
 
   return (
     <div className="settings__source-facts">
@@ -110,16 +119,18 @@ function SourceInstallationFacts({
       {checking && !status && (
         <SkeletonBlock count={1} label="Checking for updates" />
       )}
-      {status && comparisonMetadata(status).length > 0 && (
-        <div className="settings__update-meta">
-          {comparisonMetadata(status).map(({ label, value }, index) => (
-            <span key={`${label}-${value}`}>
-              {index > 0 && '· '}
-              {label}: {value}
-            </span>
-          ))}
-        </div>
-      )}
+      {status &&
+        !comparisonSuperseded &&
+        comparisonMetadata(status).length > 0 && (
+          <div className="settings__update-meta">
+            {comparisonMetadata(status).map(({ label, value }, index) => (
+              <span key={`${label}-${value}`}>
+                {index > 0 && '· '}
+                {label}: {value}
+              </span>
+            ))}
+          </div>
+        )}
       {status?.selfUpdateUnavailableReason && (
         <div className="settings__update-msg settings__update-msg--warning">
           Source update cannot be applied here:{' '}
@@ -151,7 +162,12 @@ function SourceInstallationFacts({
           {(rebuildMutation.error as Error).message}
         </div>
       )}
-      {view && <ComparisonMessage view={view} />}
+      {comparisonSuperseded && status && historicalTime && (
+        <div className="settings__update-msg">
+          Last checked {historicalTime}. This result may be outdated.
+        </div>
+      )}
+      {view && !comparisonSuperseded && <ComparisonMessage view={view} />}
       {view && (view.kind === 'refusal' || view.kind === 'failed-check') && (
         <TechnicalDetails
           message={checkError ? null : status?.message}

@@ -3,7 +3,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { ConnectedServerUpdateContext } from '../hooks/useConnectedServerUpdateContext';
 
@@ -101,6 +101,86 @@ describe('CoreUpdateCheck scope isolation (real query cache)', () => {
       ),
     ).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    view.unmount();
+    client.clear();
+  });
+
+  test('an accepted background rebuild persists its message, suppresses apply, and marks cached facts historical — through the LIVE wiring', async () => {
+    // Real hook, real mutation, real isFetching transitions: the acceptance
+    // response drives the genuine onSuccess → setSelfUpdating → refetch path,
+    // not a mocked isFetching flag.
+    const SHA = 'a'.repeat(40);
+    const identity = {
+      instanceId: 'e2e-instance',
+      bootId: '11111111-1111-4111-8111-111111111111',
+      sha: SHA,
+    };
+    const fetchMock = vi.fn();
+    fetchMock.mockImplementation(async (_input, init) => {
+      if ((init?.method as string | undefined) === 'POST') {
+        // The server accepted a git-based self-update: the installer rebuilds
+        // from source over minutes while this process keeps serving the OLD
+        // build (updating:true, no restart receipt).
+        return Response.json({ success: true, updating: true });
+      }
+      return Response.json({
+        installKind: 'source-checkout',
+        applyMethod: 'git-pull',
+        branch: 'main',
+        currentHash: 'aaaaaaa',
+        remoteHash: 'bbbbbbb',
+        behind: 2,
+        ahead: 0,
+        updateAvailable: true,
+        serverIdentity: { ...identity, shaSource: 'build-stamp' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const context = {
+      ...makeContext('scope-a'),
+      identity,
+    };
+
+    const view = render(
+      <QueryClientProvider client={client}>
+        <CoreUpdateCheck apiBase={API_BASE} enabled context={context} />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Update server checkout' }),
+    );
+
+    // The acceptance drove the real mutation; the persistent rebuilding state
+    // must survive the refetch it triggered (real isFetching true → false).
+    expect(
+      await screen.findByText(
+        'Updating — Station is rebuilding from source and will restart when complete.',
+      ),
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/Checking again\. Showing the result from/),
+      ).toBeNull(),
+    );
+    // The rebuild is minutes-long: the card may not re-present the OLD
+    // build's comparison as current, and the apply offer must be gone.
+    expect(
+      screen.getByText(/Last checked .*\. This result may be outdated\./),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(
+        'Server checkout is 2 commits behind its configured upstream.',
+      ),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Update server checkout' }),
+    ).toBeNull();
+    // Never a success verdict without the durable watchdog.
+    expect(screen.queryByText(/Server update verified/)).toBeNull();
     view.unmount();
     client.clear();
   });
