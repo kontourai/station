@@ -51,7 +51,7 @@ async function run(args: string[]) {
         // This is a liveness ceiling, not an expected response/performance bound.
         timer = setTimeout(
           () => reject(new Error('Lab child exceeded liveness ceiling')),
-          90000,
+          args.includes('--check=security') ? 90000 : 240000,
         );
       }),
     ]);
@@ -146,15 +146,73 @@ describe('free local collaboration security lab', () => {
     }
   }, 120000);
 
-  it('never reports full collaboration complete when only the security fixture is available', async () => {
+  it('never reports full collaboration complete while content, compute and plugin acceptance is missing', async () => {
     const { result, output } = await run(['--check=all']);
     expect(result.status, output.stderr.text).toBe(3);
     const report = reportFrom(output.stdout.text);
     expect(report.fullScenario.status).toBe('incomplete');
     expect(report.fullScenario.missing).toContain(
-      'shared-Project membership and guest UI',
+      'shared-Project content and guest UI with approved Device access',
     );
-  }, 120000);
+    expect(report.scenarios.security.status).toBe('passed');
+    expect(report.scenarios.accounts.status).toBe('passed');
+  }, 260000);
+
+  it('drives real account/member APIs in two Stations and cleans up only owned listeners', async () => {
+    const unrelated = createServer();
+    await new Promise<void>((resolve) =>
+      unrelated.listen(0, '127.0.0.1', resolve),
+    );
+    const address = unrelated.address();
+    if (!address || typeof address === 'string')
+      throw new Error('Unrelated listener did not bind');
+    try {
+      const { root, result, output } = await run([
+        '--check=accounts',
+        '--keep',
+      ]);
+      expect(result.status, output.stderr.text).toBe(0);
+      expect(output.truncated).toBe(false);
+      expect(output.invalidUtf8).toBe(false);
+      const report = reportFrom(output.stdout.text);
+      expect(report.scope).toBe('account-and-membership-runtime');
+      expect(report.status).toBe('passed');
+      expect(report.scenarios.security.status).toBe('not-run');
+      expect(report.scenarios.accounts.status).toBe('passed');
+      expect(report.fullScenario.status).toBe('incomplete');
+      expect(new Set(report.stationIds).size).toBe(2);
+      expect(new Set(report.principals).size).toBe(2);
+      expect(new Set(report.bootIds).size).toBe(3);
+      expect(report.processes).toHaveLength(3);
+      expect(report.browserProfiles).toBe(2);
+      expect(report.ports).toHaveLength(10);
+      expect(report.ownedTcpProbeDeliveries).toBe(3);
+      expect(report.unownedTcpProbeDeliveries).toBe(0);
+      for (const port of report.ports) {
+        expect([3000, 3141]).not.toContain(port);
+        expect(await connectionAvailable(port)).toBe(false);
+      }
+      expect(await connectionAvailable(address.port)).toBe(true);
+      const homes = readdirSync(root).filter((name) =>
+        name.startsWith('station-collaboration-lab-'),
+      );
+      expect(homes).toHaveLength(1);
+      for (const name of ['account-station-a', 'account-station-b']) {
+        const identity = JSON.parse(
+          readFileSync(
+            join(root, homes[0], name, 'home/security/environment.json'),
+            'utf8',
+          ),
+        );
+        expect(output.stdout.text).not.toContain(identity.credential);
+        expect(report.stationIds).toContain(identity.environmentId);
+      }
+      expect(output.stdout.text).not.toContain('session_token');
+      expect(output.stdout.text).not.toContain('Bearer ');
+    } finally {
+      await new Promise<void>((resolve) => unrelated.close(() => resolve()));
+    }
+  }, 260000);
 
   it('requires an explicit scope before allocating homes or starting processes', async () => {
     const { root, result } = await run([]);
