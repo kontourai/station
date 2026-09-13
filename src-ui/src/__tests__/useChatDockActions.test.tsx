@@ -276,6 +276,7 @@ describe('useChatDockActions placement-aware actions', () => {
       model: 'claude-sonnet',
       modelSource: 'session override',
     });
+    expect(call?.[5]).not.toHaveProperty('requestedModel');
   });
 
   test('opening a fork preserves the selected provider and model for its first divergent turn', async () => {
@@ -293,12 +294,14 @@ describe('useChatDockActions placement-aware actions', () => {
     await act(async () => {
       await result.current.openConversation('fork-child', 'agent-a' as never, {
         model: 'source-model',
+        requestedModel: 'source-model',
         modelSource: 'runtime',
         defaultModel: 'source-default',
         defaultModelSource: 'agent default',
         providerId: 'source-provider',
         providerType: 'claude',
         providerOptions: { effort: 'high' },
+        requestedProviderOptions: { effort: 'high' },
         hydrateMessages: true,
         beforeFocus,
       });
@@ -308,12 +311,15 @@ describe('useChatDockActions placement-aware actions', () => {
     const execution = call?.[5];
     expect(execution).toMatchObject({
       model: 'source-model',
+      requestedModel: 'source-model',
+      requestedModelSource: 'session override',
       modelSource: 'runtime',
       defaultModel: 'source-default',
       defaultModelSource: 'agent default',
       providerId: 'source-provider',
       provider: 'claude',
       providerOptions: { effort: 'high' },
+      requestedProviderOptions: { effort: 'high' },
     });
     expect(setActiveChat).toHaveBeenCalledWith('fork-child');
     expect(beforeFocus).toHaveBeenCalledTimes(1);

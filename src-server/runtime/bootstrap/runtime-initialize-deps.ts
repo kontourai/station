@@ -16,6 +16,7 @@ import type { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
 import type { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import type { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import type { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
+import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
@@ -50,7 +51,8 @@ type ToolNameMapping = Map<
   }
 >;
 
-export interface RuntimeInitializationContext {
+interface RuntimeInitializationContext {
+  attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
   logger: Logger;
@@ -58,7 +60,10 @@ export interface RuntimeInitializationContext {
   approvalRegistry: ApprovalRegistry;
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
-    'verifyCredential' | 'resolveGrantedScope'
+    | 'verifyCredential'
+    | 'resolveGrantedScope'
+    | 'canSharePersonalConversation'
+    | 'personalConversationOwnerIds'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -131,10 +136,12 @@ export interface RuntimeInitializationContext {
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
   };
   onAgentConfigurationReady?: (revisions: {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
   }) => void;
   guardDefaultAgentTools?: (tools: any[]) => any[];
   replaceTemplateVariables: (text: string, agentName?: string) => string;
@@ -158,6 +165,7 @@ export function createRuntimeInitializationDeps(
   context: RuntimeInitializationContext,
 ): InitializeRuntimeDeps {
   return {
+    attachedSessionSources: context.attachedSessionSources ?? [],
     port: context.port,
     host: context.host,
     logger: context.logger,

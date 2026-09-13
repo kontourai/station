@@ -1,7 +1,7 @@
 import type { DockMode } from '../../types';
 
 /** Pure placement decision so desktop/mobile hosts cannot drift. */
-export type SessionInventoryCompactHost = 'aside' | 'card' | 'full-fallback';
+type SessionInventoryCompactHost = 'aside' | 'card' | 'full-fallback';
 
 export function resolveSessionInventoryCompactHost({
   isMobile,

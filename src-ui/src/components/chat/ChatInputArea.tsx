@@ -15,7 +15,12 @@ import type {
   ComposerAttachmentStageSnapshot,
   FileAttachment,
 } from '../../types';
-import type { ApprovalMode } from '../../utils/approvalMode';
+import type { AdvertisedAcpMode } from '../../utils/acpSessionMode';
+import type { SavedAnswerQuote } from '../../utils/answer-quotes';
+import {
+  type ApprovalMode,
+  approvalModeKnobSupported,
+} from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import {
   type EffectiveModelSource,
@@ -55,6 +60,12 @@ const PortableDraftsMenu = React.lazy(() =>
   })),
 );
 
+const AcpSessionModeChip = React.lazy(() =>
+  import('../badges/AcpSessionModeChip').then((module) => ({
+    default: module.AcpSessionModeChip,
+  })),
+);
+
 export function isPortableDraftShortcut(event: {
   key: string;
   metaKey: boolean;
@@ -73,6 +84,9 @@ interface ChatInputAreaProps {
    */
   sessionId?: string;
   // Input state
+  hasQuotedContext?: boolean;
+  draftText?: string;
+  quoteContext?: readonly SavedAnswerQuote[];
   input: string;
   attachments: FileAttachment[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -86,6 +100,14 @@ interface ChatInputAreaProps {
    * stopped being true seconds into a turn that ran for minutes.
    */
   turnInFlight: boolean;
+  /**
+   * What Enter does while a turn is in flight. Steer is the default on
+   * engines that can take mid-turn input; queue is the only path otherwise
+   * (and whenever this send carries attachments).
+   */
+  busyFollowUp?: 'steer' | 'queue';
+  /** Hold the draft as a follow-up instead of steering the open turn. */
+  onQueueFollowUp?: () => Promise<void>;
   /**
    * a Stop request is in flight. The control stays visible (the
    * turn is still the thing on screen) but is disabled and labelled with what
@@ -123,6 +145,8 @@ interface ChatInputAreaProps {
   approvalModeConnectionDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
   lastAppliedApprovalMode?: unknown;
+  acpSessionModes?: AdvertisedAcpMode[];
+  acpCurrentModeId?: string;
   // Slash commands
   commandQuery: string | null;
   slashCommands: SlashCommand[];
@@ -149,6 +173,7 @@ interface ChatInputAreaProps {
     value: string | number | boolean | undefined,
   ) => void;
   onApprovalModeChange: (mode: ApprovalMode) => void;
+  onAcpSessionModeChange?: (modeId: string) => void;
   onCommandSelect: (command: SlashCommand) => Promise<void>;
   onCommandClose: () => void;
   onHistoryUp: () => void;
@@ -156,6 +181,7 @@ interface ChatInputAreaProps {
   onRestorePortableDraft?: (
     text: string,
     attachments: FileAttachment[],
+    quotes?: readonly SavedAnswerQuote[],
   ) => void;
   updateFromInput: (value: string) => void;
   closeAll: () => void;
@@ -189,11 +215,16 @@ interface ChatInputAreaProps {
 export function ChatInputArea({
   sessionId,
   input,
+  hasQuotedContext = false,
+  draftText,
+  quoteContext,
   attachments,
   textareaRef,
   disabled,
   isSending,
   turnInFlight,
+  busyFollowUp = 'queue',
+  onQueueFollowUp,
   stopPending = false,
   modelSupportsAttachments,
   fileAttachmentsSupported = modelSupportsAttachments,
@@ -218,6 +249,8 @@ export function ChatInputArea({
   approvalModeConnectionDefault,
   toolPolicyDelivery,
   lastAppliedApprovalMode,
+  acpSessionModes = [],
+  acpCurrentModeId,
   commandQuery,
   slashCommands,
   onInputChange,
@@ -239,6 +272,7 @@ export function ChatInputArea({
   onModelOpen,
   onModelRuntimeOptionChange,
   onApprovalModeChange,
+  onAcpSessionModeChange,
   onCommandSelect,
   onCommandClose,
   onHistoryUp,
@@ -320,15 +354,15 @@ export function ChatInputArea({
     .filter(Boolean)
     .join(' ');
   const agentAccessibleLabel = `Agent: ${agentLabel ?? 'current Agent'}. ${agentHandoffDisabled ? (agentHandoffDisabledReason ?? 'Unavailable') : 'Change Agent'}`;
-  const safeMaxHeight = Math.max(dockHeight - 200, 120);
   const isMobile = useIsMobile();
-  // A turn is in flight, so this send queues behind it rather than starting
-  // one. Say so in the placeholder instead of letting "Type a message" imply
-  // the agent is idle — Station really does queue (see QueuedMessages).
+  // A turn is in flight. Steer is the default on engines that can take
+  // mid-turn input; otherwise Enter queues until this turn finishes.
   const placeholder = workspaceRefused
     ? 'This conversation continues from its original workspace — start a new chat to work here'
     : turnInFlight
-      ? 'Queue a follow-up...'
+      ? busyFollowUp === 'steer'
+        ? 'Steer this turn… (Enter steers; Queue waits)'
+        : 'Queue a follow-up…'
       : isMobile
         ? 'Type a message...'
         : 'Type a message... (Enter to send, Shift+Enter for new line)';
@@ -338,7 +372,7 @@ export function ChatInputArea({
   // seam this composer actually posts to). A courtesy check only — the
   // server is the authority — but it lets the composer say exactly how
   // much to remove instead of letting the turn fail as a provider error.
-  const overLimitBy = input.length - CHAT_INPUT_MAX_CHARS;
+  const overLimitBy = (draftText ?? input).length - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
 
   useLayoutEffect(() => {
@@ -367,6 +401,7 @@ export function ChatInputArea({
     <div className="chat-input">
       {modelQuery !== null && !input.startsWith('/model ') && (
         <ResponsiveDialogSurface
+          layer="popover"
           ariaLabel="Model"
           onClose={onModelClose}
           historyMode="entry"
@@ -474,20 +509,36 @@ export function ChatInputArea({
               : 'default'}
           </button>
         )}
-        {executionMode === EXECUTION_MODE.EXTERNAL && (
-          <ApprovalModeChip
-            // Structural reset (not blur-dependent) for the chip's local
-            // confirm state when the active session changes — this
-            // subtree persists across session switches with no natural
-            // remount otherwise (archive#727 3).
-            key={sessionId}
-            engineConnectionId={agentConnectionId}
-            toolPolicyDelivery={toolPolicyDelivery}
-            sessionOverride={modelRuntimeOptions?.approvalMode}
-            connectionDefault={approvalModeConnectionDefault}
-            lastAppliedApprovalMode={lastAppliedApprovalMode}
-            onChange={onApprovalModeChange}
-          />
+        {acpSessionModes.length > 0 && onAcpSessionModeChange ? (
+          <React.Suspense fallback={null}>
+            <AcpSessionModeChip
+              key={sessionId}
+              modes={acpSessionModes}
+              currentModeId={
+                typeof modelRuntimeOptions?.mode === 'string'
+                  ? modelRuntimeOptions.mode
+                  : acpCurrentModeId
+              }
+              onChange={onAcpSessionModeChange}
+            />
+          </React.Suspense>
+        ) : (
+          executionMode === EXECUTION_MODE.EXTERNAL &&
+          approvalModeKnobSupported(agentConnectionId) && (
+            <ApprovalModeChip
+              // Structural reset (not blur-dependent) for the chip's local
+              // confirm state when the active session changes — this
+              // subtree persists across session switches with no natural
+              // remount otherwise (archive#727 3).
+              key={sessionId}
+              engineConnectionId={agentConnectionId}
+              toolPolicyDelivery={toolPolicyDelivery}
+              sessionOverride={modelRuntimeOptions?.approvalMode}
+              connectionDefault={approvalModeConnectionDefault}
+              lastAppliedApprovalMode={lastAppliedApprovalMode}
+              onChange={onApprovalModeChange}
+            />
+          )
         )}
       </div>
 
@@ -513,7 +564,7 @@ export function ChatInputArea({
               }))}
               currentModel={currentModel}
               agentDefaultModel={agentDefaultModel}
-              maxHeight={`${safeMaxHeight}px`}
+              anchorRef={textareaRef}
               onSelect={onModelSelect}
               onClose={onModelClose}
             />
@@ -522,7 +573,7 @@ export function ChatInputArea({
             <SlashCommandSelector
               query={commandQuery}
               commands={slashCommands}
-              maxHeight={`${safeMaxHeight}px`}
+              anchorRef={textareaRef}
               onSelect={onCommandSelect}
               onClose={onCommandClose}
             />
@@ -592,7 +643,11 @@ export function ChatInputArea({
                 e.preventDefault();
                 if (workspaceRefused && !isOverLimit) {
                   await onStartNewChat?.(input, attachments);
-                } else if (input.trim() && !isOverLimit && !sendBlockedReason)
+                } else if (
+                  (input.trim() || hasQuotedContext) &&
+                  !isOverLimit &&
+                  !sendBlockedReason
+                )
                   await onSend();
               }
             }}
@@ -663,11 +718,16 @@ export function ChatInputArea({
           <React.Suspense fallback={null}>
             <PortableDraftsMenu
               input={input}
+              quotes={quoteContext}
               attachments={attachments}
               open={portableDraftsOpen}
               onOpenChange={setPortableDraftsOpen}
               onRestore={(draft) => {
-                onRestorePortableDraft?.(draft.text, draft.attachments);
+                onRestorePortableDraft?.(
+                  draft.text,
+                  draft.attachments,
+                  draft.quotes,
+                );
               }}
             />
           </React.Suspense>
@@ -683,6 +743,21 @@ export function ChatInputArea({
             </button>
           )}
           <span className="chat-controls-row__spacer" />
+          {turnInFlight && busyFollowUp === 'steer' && onQueueFollowUp ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (input.trim() && !isOverLimit) void onQueueFollowUp();
+              }}
+              disabled={isOverLimit || !input.trim()}
+              tabIndex={0}
+              className="chat-input__queue-btn"
+              aria-label="Queue this follow-up until the turn finishes"
+              title="Wait until this turn finishes, then send as a new turn"
+            >
+              Queue
+            </button>
+          ) : null}
           {turnInFlight ? (
             <button
               type="button"
@@ -719,7 +794,9 @@ export function ChatInputArea({
                 if (workspaceRefused && !isOverLimit) {
                   await onStartNewChat?.(input, attachments);
                 } else if (
-                  (input.trim() || attachments.length > 0) &&
+                  (input.trim() ||
+                    hasQuotedContext ||
+                    attachments.length > 0) &&
                   !isOverLimit
                 ) {
                   await onSend();
@@ -729,7 +806,10 @@ export function ChatInputArea({
                 if (
                   e.key === 'Enter' &&
                   !isOverLimit &&
-                  (workspaceRefused || input.trim() || attachments.length > 0)
+                  (workspaceRefused ||
+                    input.trim() ||
+                    hasQuotedContext ||
+                    attachments.length > 0)
                 ) {
                   e.preventDefault();
                   if (workspaceRefused) {
@@ -744,7 +824,9 @@ export function ChatInputArea({
                 !!sendBlockedReason ||
                 (workspaceRefused
                   ? !onStartNewChat
-                  : !input.trim() && attachments.length === 0)
+                  : !input.trim() &&
+                    !hasQuotedContext &&
+                    attachments.length === 0)
               }
               tabIndex={0}
               aria-label={workspaceRefused ? 'Start new chat' : 'Send'}
@@ -760,7 +842,12 @@ export function ChatInputArea({
               }
               className={`send-button chat-input__send-btn ${
                 !isOverLimit &&
-                (workspaceRefused || input.trim() || attachments.length > 0)
+                (
+                  workspaceRefused ||
+                    input.trim() ||
+                    hasQuotedContext ||
+                    attachments.length > 0
+                )
                   ? 'chat-input__send-btn--active'
                   : 'chat-input__send-btn--inactive'
               }`}

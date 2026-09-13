@@ -1,7 +1,7 @@
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { deriveLatestPlanArtifactFromMessages } from '../../utils/planArtifacts';
 import { pruneStaleFailureMarkers } from '../../utils/sessionFailure';
-import { buildAssistantTurnContent } from './messageParts';
+import { buildAssistantTurnContent, upsertTextPart } from './messageParts';
 
 /**
  * archive#1410: the turn identity and provenance envelope the terminal
@@ -11,6 +11,7 @@ import { buildAssistantTurnContent } from './messageParts';
  * frame rather than waiting for the next REST projection.
  */
 interface FinalizedTurnProvenance {
+  createdAt?: string;
   turnId?: string;
   provenance?: unknown;
   answerEligible?: boolean;
@@ -24,7 +25,34 @@ export function finalizeAssistantTurn(
   const chat = activeChatsStore.getChatForExecutionSession(threadId);
   if (!chat) return;
 
-  const streamingMessage = chat.streamingMessage;
+  let streamingMessage = chat.streamingMessage;
+  // A reconnect can leave a strict prefix in the live buffer. A terminal
+  // output that extends that exact prefix supplies the missing suffix; keep
+  // tool/reasoning parts and avoid appending an already received answer twice.
+  const receivedText =
+    streamingMessage?.contentParts
+      ?.filter((part) => part.type === 'text')
+      .map((part) => part.content ?? '')
+      .join('') ||
+    streamingMessage?.content ||
+    '';
+  if (
+    typeof fallbackText === 'string' &&
+    fallbackText.startsWith(receivedText) &&
+    fallbackText.length > receivedText.length
+  ) {
+    const missing = fallbackText.slice(receivedText.length);
+    streamingMessage = {
+      ...streamingMessage,
+      role: 'assistant',
+      content: `${streamingMessage?.content ?? ''}${missing}`,
+      contentParts: upsertTextPart(
+        streamingMessage?.contentParts,
+        'text',
+        missing,
+      ),
+    };
+  }
   const content = buildAssistantTurnContent(streamingMessage, fallbackText);
 
   // archive#1294: `handleRuntimeErrorEvent` (turnHandlers.ts) appends the raw
@@ -56,7 +84,18 @@ export function finalizeAssistantTurn(
   );
   const hasNonTextParts = nonTextParts.length > 0;
 
+  const retainedFailure =
+    chat.status === 'error' &&
+    !fallbackText &&
+    chat.messages?.some(
+      (message) =>
+        message.answerEligible === false &&
+        message.role === 'assistant' &&
+        (turnProvenance?.turnId === undefined ||
+          message.turnId === turnProvenance.turnId),
+    );
   if (
+    retainedFailure ||
     (!content && !(streamingMessage?.contentParts || []).length) ||
     (isDuplicateErrorText && !hasNonTextParts)
   ) {
@@ -94,11 +133,14 @@ export function finalizeAssistantTurn(
   // chat's `latestChatTimestamp` reduced to 0 for every finalized assistant
   // turn too — the live conversation sorted dead last and a finished chat
   // skipped "Just finished" straight into "Earlier".
+  // Preserve event time across reconnect/replay; playback wall time would
+  // sort archived answers after all of their recorded questions.
+  const completedAt = Date.parse(turnProvenance?.createdAt ?? '');
   const finalizedMessage = {
     role: 'assistant' as const,
     content: committedContent,
     contentParts: committedContentParts,
-    timestamp: Date.now(),
+    timestamp: Number.isFinite(completedAt) ? completedAt : Date.now(),
     // The live terminal path must carry the same row-scoped execution
     // Session identity as the durable projection. Otherwise a conversation
     // that later replaces its active Session would attach this historical

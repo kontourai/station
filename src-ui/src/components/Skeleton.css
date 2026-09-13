@@ -52,3 +52,9 @@
   gap: 12px;
   padding: 8px 0;
 }
+
+.skeleton-status-label {
+  display: var(--loading-label-display, none);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}

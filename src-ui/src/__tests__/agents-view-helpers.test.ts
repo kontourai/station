@@ -85,7 +85,7 @@ describe('agents view helpers', () => {
     // band is contiguous — the rail prints a header on every change of
     // `section`, so interleaved rows would print a heading twice.
     expect(items.map((item) => item.section)).toEqual([
-      'Engines on this machine',
+      'AI apps',
       'Your agents',
       'Your agents',
     ]);
@@ -101,7 +101,7 @@ describe('agents view helpers', () => {
     );
     expect(markup).toContain('Not set up');
     expect(markup).toContain('Ready');
-    expect(markup).toContain('Needs: a model connection');
+    expect(markup).not.toContain('Needs: a model connection');
     expect(markup).toContain('Enable');
     expect(markup).toContain('Chat');
     expect(markup).toContain('Connect');

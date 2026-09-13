@@ -42,6 +42,9 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
     selector: (state: typeof acpFixture | null) => unknown,
   ) => selector(acpFixture),
 }));
+vi.mock('../hooks/useACPConnections', () => ({
+  useACPConnections: () => ({ data: [] }),
+}));
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useCreateChatSession: () => () => 'acp-session',
 }));

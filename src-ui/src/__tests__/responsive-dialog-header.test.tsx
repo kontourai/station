@@ -60,6 +60,7 @@ const HEADER_CONSUMERS = [
   'components/chat-dock/ChatDockMobileOverflowSheet.tsx',
   'components/chat-dock/ComposerActionsMenu.tsx',
   'components/project-sidebar/ProjectSidebarStatus.tsx',
+  'components/badges/AcpSessionModeSheet.tsx',
   'components/badges/ComposerModeSheet.tsx',
   // archive#4254 extracted the model picker's dialog chrome into
   // ModelPickerDialogFrame so the new-chat flow could reuse it. The header

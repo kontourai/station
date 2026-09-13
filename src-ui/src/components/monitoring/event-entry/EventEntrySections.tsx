@@ -1,3 +1,4 @@
+import { type ReactNode, useState } from 'react';
 import { K } from '../../../../../src-shared/monitoring-keys';
 import type { MonitoringEvent } from '../../../contexts/MonitoringContext';
 import { getEventType } from '../../../views/monitoring-utils';
@@ -8,6 +9,26 @@ import {
   getTotalChars,
   getTotalTokens,
 } from './utils';
+
+/** Keep payload construction and DOM allocation behind the native disclosure. */
+function EventDetails({
+  summary,
+  children,
+}: {
+  summary: ReactNode;
+  children: () => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details
+      className="log-details"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>{summary}</summary>
+      {open ? children() : null}
+    </details>
+  );
+}
 
 export function EventEntrySections({
   event,
@@ -31,13 +52,16 @@ function ReasoningSection({ event }: { event: MonitoringEvent }) {
   if (!event[K.REASONING_TEXT]) return null;
   const text = event[K.REASONING_TEXT] as string;
   return (
-    <details className="log-details">
-      <summary>
-        Output
-        <span className="log-details-char-count">({text.length} chars)</span>
-      </summary>
-      <pre className="log-details-pre-scroll">{text}</pre>
-    </details>
+    <EventDetails
+      summary={
+        <>
+          Output
+          <span className="log-details-char-count">({text.length} chars)</span>
+        </>
+      }
+    >
+      {() => <pre className="log-details-pre-scroll">{text}</pre>}
+    </EventDetails>
   );
 }
 
@@ -110,14 +134,21 @@ function HealthChecksSection({ event }: { event: MonitoringEvent }) {
 }
 
 function ToolInputSection({ event }: { event: MonitoringEvent }) {
-  const input = buildToolInputDisplay(event);
-  if (!input) return null;
-
+  const args = event[K.TOOL_CALL_ARGS];
+  if (!args) return null;
+  const size =
+    typeof args === 'string' ? args.length : Object.keys(args).length;
+  if (!size) return null;
   return (
-    <details className="log-details">
-      <summary>Input ({input.label})</summary>
-      <pre>{input.text}</pre>
-    </details>
+    <EventDetails
+      summary={
+        <>
+          Input ({size} {typeof args === 'string' ? 'chars' : 'params'})
+        </>
+      }
+    >
+      {() => <pre>{buildToolInputDisplay(event)?.text}</pre>}
+    </EventDetails>
   );
 }
 
@@ -135,39 +166,42 @@ function ToolResultSection({
   // already-string result — re-stringifying it here would wrap it in an
   // extra layer of quotes/escapes, the same double-encode this issue fixed
   // in ToolCallDisplay.tsx. Only a non-string value needs JSON encoding.
-  const resultText =
+  const resultText = () =>
     typeof result === 'string' ? result : JSON.stringify(result, null, 2);
   return (
-    <details className="log-details">
-      <summary>
-        Result
-        <button
-          type="button"
-          className="export-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            onCopy(resultText);
-          }}
-          title="Copy to clipboard"
-        >
-          <svg
-            aria-hidden="true"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+    <EventDetails
+      summary={
+        <>
+          Result
+          <button
+            type="button"
+            className="export-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCopy(resultText());
+            }}
+            title="Copy to clipboard"
           >
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </svg>
-        </button>
-      </summary>
-      <pre>{resultText}</pre>
-    </details>
+            <svg
+              aria-hidden="true"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+          </button>
+        </>
+      }
+    >
+      {() => <pre>{resultText()}</pre>}
+    </EventDetails>
   );
 }
 
@@ -180,17 +214,22 @@ function ArtifactsSection({ event }: { event: MonitoringEvent }) {
   return (
     <>
       {summary.finalOutput && (
-        <details className="log-details">
-          <summary>
-            Output
-            {summary.finalOutput.length > 200 && (
-              <span className="log-details-char-count">
-                ({summary.finalOutput.length} chars)
-              </span>
-            )}
-          </summary>
-          <pre className="log-details-pre-scroll">{summary.finalOutput}</pre>
-        </details>
+        <EventDetails
+          summary={
+            <>
+              Output
+              {summary.finalOutput.length > 200 && (
+                <span className="log-details-char-count">
+                  ({summary.finalOutput.length} chars)
+                </span>
+              )}
+            </>
+          }
+        >
+          {() => (
+            <pre className="log-details-pre-scroll">{summary.finalOutput}</pre>
+          )}
+        </EventDetails>
       )}
       {summary.toolCalls.length > 0 && (
         <details className="log-details">

@@ -60,3 +60,19 @@ test('an unrelated plugin event does not reload the registry', async () => {
   await dispatch(SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE);
   expect(reload).not.toHaveBeenCalled();
 });
+
+test.each([
+  SERVER_EVENTS.PLUGINS_INSTALLED,
+  SERVER_EVENTS.PLUGINS_UPDATED,
+  SERVER_EVENTS.PLUGINS_GRANTS_CHANGED,
+])('refreshes Project Pane and host-action queries after %s', async (event) => {
+  const invalidations = await dispatch(event);
+  expect(invalidations).toHaveBeenCalledWith({ queryKey: ['projects'] });
+});
+
+test('plugin removal withdraws cached inventory, Project panes, layouts, Agents, and loaded frames', async () => {
+  const invalidations = await dispatch(SERVER_EVENTS.PLUGINS_REMOVED);
+  for (const key of ['plugins', 'projects', 'layouts', 'agents'])
+    expect(invalidations).toHaveBeenCalledWith({ queryKey: [key] });
+  expect(reload).toHaveBeenCalledOnce();
+});

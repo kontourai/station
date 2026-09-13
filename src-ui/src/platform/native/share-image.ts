@@ -29,7 +29,7 @@ import {
  * mirroring how the browser keeps attachment bytes inline so no local path is
  * ever exposed.
  */
-export interface SharedImageFile {
+interface SharedImageFile {
   name: string;
   mimeType: ChatImageMimeType;
   dataUrl: string;

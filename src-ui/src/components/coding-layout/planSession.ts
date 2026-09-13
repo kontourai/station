@@ -1,4 +1,4 @@
-export interface WorkflowPlanSessionLike {
+interface WorkflowPlanSessionLike {
   id: string;
   conversationId?: string;
   messages: Array<{ timestamp?: number }>;

@@ -1,4 +1,3 @@
-import { execSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -6,7 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
 import { resolveE2EApiBase } from './helpers/e2e-target';
-import { installPluginWithConsent } from './helpers/install-plugin';
+import {
+  buildExamplePlugin,
+  installPluginWithConsent,
+} from './helpers/install-plugin';
 
 const __filename = fileURLToPath(import.meta.url);
 const projectDir = join(dirname(__filename), '..');
@@ -119,10 +121,7 @@ test.describe('Knowledge Library plugin', () => {
   // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
   test.beforeAll(async ({}, testInfo) => {
     testInfo.setTimeout(150_000);
-    execSync('npx tsx ../../packages/cli/src/cli.ts plugin build', {
-      cwd: pluginDir,
-      timeout: 120_000,
-    });
+    buildExamplePlugin(pluginDir, 120_000);
 
     await deletePlugin();
     await deleteProject();

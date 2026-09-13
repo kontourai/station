@@ -5,7 +5,7 @@ import { getPathForView } from '../../app-shell/routing';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigation } from '../../contexts/NavigationContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useLaunchChat } from '../../hooks/useActiveChatSessions';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
@@ -28,7 +28,7 @@ export function useHeaderViewModel({
   onNavigate,
 }: UseHeaderViewModelOptions) {
   const settingsShortcut = useShortcutDisplay('app.settings');
-  const { navigate } = useNavigation();
+  const { navigate } = useNavigationActions();
   // #928 C2a: the brand link means Home BY NAME, so it reveals the Home
   // surface (placed in `main`; the model navigates to `/`) rather than
   // navigating to `/` and showing whatever surface occupies `main`.

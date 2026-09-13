@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +8,7 @@ import {
   PUBLIC_STATION_PROOF_PATH,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
+import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   type EnvironmentSecurityServiceFactory,
@@ -519,6 +520,53 @@ describe('environment CLI commands', () => {
       expect.anything(),
     );
   });
+
+  test.each([true, false])(
+    'explicit person binding requires a server acknowledgment (%s)',
+    async (acknowledged) => {
+      const pending = {
+        requestId: 'person-request',
+        deviceName: 'Collaborator phone',
+        source: 'tailnet' as const,
+        requester: {
+          provider: 'tailscale-serve' as const,
+          login: 'collaborator@example.test',
+        },
+        createdAt: 10,
+        expiresAt: 30,
+        status: 'pending' as const,
+      };
+      const request = makeAccessApi([pending], {
+        ...pending,
+        status: 'confirmed',
+        ...(acknowledged ? { personBindingApproved: true } : {}),
+      });
+      const operation = runEnvironmentCommand(
+        ['access', 'approve', '--bind-person', '--force'],
+        {
+          createService: () => makeService(),
+          projectHome: '/tmp/station-home',
+          request,
+          stdout,
+          stderr,
+          isInteractive: false,
+        },
+      );
+      if (acknowledged) await expect(operation).resolves.toBeUndefined();
+      else
+        await expect(operation).rejects.toThrow(
+          'did not confirm person binding',
+        );
+      expect(request).toHaveBeenLastCalledWith(
+        DEFAULT_LOOPBACK_API_BASE,
+        '/api/pairing/requests/person-request/confirm',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ bindVerifiedIdentity: true }),
+        }),
+      );
+    },
+  );
 
   test('refuses to load or send the local credential to a non-loopback API base', async () => {
     const createService = vi.fn(() => makeService());
@@ -1986,6 +2034,7 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
           'list:station',
           'approve:latest',
           'approve:force',
+          'approve:bind-person',
           'approve:api-base',
           'approve:station',
           'deny:latest',
@@ -2027,4 +2076,72 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
       }
     });
   });
+});
+
+test('packaged approval reads an existing home and proves the listener before authorizing', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'station-packaged-approval-'));
+  try {
+    ensureStationHomeSchemaSync(home);
+    mkdirSync(join(home, 'security'), { mode: 0o700 });
+    const record = {
+      schemaVersion: 1,
+      environmentId: '11111111-1111-4111-8111-111111111111',
+      credential: Buffer.alloc(32, 7).toString('base64url'),
+    };
+    writeFileSync(
+      join(home, 'security', 'environment.json'),
+      JSON.stringify(record),
+      { mode: 0o600 },
+    );
+    const pending = {
+      requestId: 'packaged-request',
+      offerId: 'packaged-offer',
+      deviceName: 'My browser',
+      source: 'same-origin',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 300000,
+      status: 'pending',
+    };
+    const request = vi.fn(
+      async (_base: string, path: string, init?: RequestInit) => {
+        if (path === '/.well-known/station/v1')
+          return { environmentId: record.environmentId };
+        if (path === PUBLIC_STATION_PROOF_PATH) {
+          expect(new Headers(init?.headers).has('Authorization')).toBe(false);
+          const { nonce } = JSON.parse(String(init?.body));
+          return {
+            protocolVersion: STATION_PROOF_PROTOCOL_VERSION,
+            environmentId: record.environmentId,
+            nonce,
+            signature: createHmac(
+              'sha256',
+              Buffer.from(record.credential, 'base64url'),
+            )
+              .update(buildStationProofMessage(record.environmentId, nonce))
+              .digest('base64url'),
+          };
+        }
+        expect(new Headers(init?.headers).get('Authorization')).toBe(
+          `Bearer ${record.credential}`,
+        );
+        if (path === '/api/pairing/requests') return { requests: [pending] };
+        if (path === '/api/pairing/requests/packaged-request/confirm')
+          return { ...pending, status: 'confirmed' };
+        throw new Error('unexpected route');
+      },
+    );
+    await runEnvironmentCommand(
+      [
+        'access',
+        'approve',
+        'packaged-request',
+        '--force',
+        `--api-base=${DEFAULT_LOOPBACK_API_BASE}`,
+      ],
+      { projectHome: home, request, stdout: vi.fn(), isInteractive: false },
+    );
+    expect(request).toHaveBeenCalledTimes(4);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });

@@ -120,6 +120,10 @@ export function useChatDockActiveChatSync({
      * the URL on the very next render (parseUrl() reads `chat` regardless of
      * pathname) and loop this effect right back into the dead conversation it
      * just gave up on. Clearing `dock` prevents a stale open Chat dock.
+     * `maximize` is not named here: `updateParams` deletes it on every
+     * `dock: null` write (station#1613), so a reload of a maximized chat whose
+     * session was never persisted closes to a plain closed dock rather than
+     * the closed-plus-maximized pair archive#795 refuses.
      */
     const clearDeadChatPointer = () => {
       updateParamsRef.current({ chat: null, dock: null });

@@ -16,7 +16,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../highlight/highlight-client', () => ({
   // Copy-button behavior is independent of highlighting; pending (never
@@ -33,8 +33,20 @@ import { markdownCodeComponents } from '../components/chat/HighlightedCodeBlock'
 
 const Code = markdownCodeComponents.code;
 
+beforeEach(() => {
+  // jsdom has no layout; the browser spec owns the tall-block boundary.
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+});
+
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   triggerHaptic.mockReset();
   Object.assign(navigator, { clipboard: undefined });
@@ -65,6 +77,12 @@ describe('HighlightedCodeBlock copy (station#3339)', () => {
     expect(triggerHaptic).toHaveBeenCalledWith('light');
   });
 
+  // ONE failure case here, not the primitive's matrix. Which clipboard states
+  // resolve `false` (absent, no `writeText`, rejected, throwing) is
+  // `copyToClipboard`'s own contract, pinned in
+  // `src-ui/src/lib/__tests__/clipboard.test.ts` -- 'resolves false when the
+  // origin has no clipboard API at all'. What is this block's to prove is that
+  // it derives its affordance from that boolean rather than from the call.
   test('a rejected clipboard write never claims a copy', async () => {
     const writeText = vi.fn().mockRejectedValue(new Error('denied'));
     Object.assign(navigator, { clipboard: { writeText } });
@@ -78,17 +96,6 @@ describe('HighlightedCodeBlock copy (station#3339)', () => {
       'This browser refused clipboard access — select the code to copy it manually.',
     );
     // No haptic confirmation for something that did not happen.
-    expect(triggerHaptic).not.toHaveBeenCalled();
-  });
-
-  test('an insecure origin with no clipboard API never claims a copy', async () => {
-    Object.assign(navigator, { clipboard: undefined });
-    renderBlock();
-
-    const button = copyButton();
-    fireEvent.click(button);
-    await waitFor(() => expect(button.textContent).toBe("Can't copy"));
-    expect(button.textContent).not.toContain('Copied');
     expect(triggerHaptic).not.toHaveBeenCalled();
   });
 

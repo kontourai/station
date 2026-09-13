@@ -22,7 +22,7 @@ const MAX_REF_LENGTH = 256;
 const MAX_LABEL_LENGTH = 256;
 const MAX_ATTEMPT_ID_LENGTH = 128;
 /** Never evict an unacknowledged receipt: refusing a new stage is safer. */
-export const MAX_APPLICATION_RECEIPTS = 64;
+const MAX_APPLICATION_RECEIPTS = 64;
 
 type RegistryState = Required<
   Pick<CredentialProfileRegistryState, 'profiles' | 'group' | 'policy'>
@@ -46,7 +46,7 @@ export type LegacyCredentialProfileRegistryState = RegistryState & {
   applicationReceipts?: LegacyApplicationReceipt[];
 };
 
-export type CredentialProfileRegistryTransition =
+type CredentialProfileRegistryTransition =
   | 'staged'
   | 'adopted'
   | 'rolled_back'
@@ -54,7 +54,7 @@ export type CredentialProfileRegistryTransition =
   | 'rejected'
   | 'ignored';
 
-export interface CredentialProfileRegistryTransitionResult {
+interface CredentialProfileRegistryTransitionResult {
   state: LegacyCredentialProfileRegistryState;
   transition: CredentialProfileRegistryTransition;
 }

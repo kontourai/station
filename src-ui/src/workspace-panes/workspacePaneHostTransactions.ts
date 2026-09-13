@@ -94,7 +94,7 @@ function rollbackPreparedOpen(
  * durable rollback SUCCEEDED: `rollbackPreparedHostDocument` says what happens
  * when it does not, and hydration is what quarantines the residue.
  */
-export type WorkspacePaneHostPrepareOpenResult =
+type WorkspacePaneHostPrepareOpenResult =
   | { readonly ok: true; readonly state: WorkspacePaneHostState }
   | {
       readonly ok: false;

@@ -1,11 +1,11 @@
 import type { ChatMessage } from '../../types';
 
-export type TranscriptRowKind =
+type TranscriptRowKind =
   | 'message:user'
   | 'message:assistant'
   | 'message:system';
 
-export interface TranscriptMessageRow {
+interface TranscriptMessageRow {
   readonly id: string;
   readonly kind: TranscriptRowKind;
   readonly message: ChatMessage;

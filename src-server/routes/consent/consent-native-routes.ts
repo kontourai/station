@@ -81,7 +81,7 @@ import type { ConsentChannelService } from '../../services/consent/consent-chann
 import type { ConsentDecision } from '../../services/consent/consent-transactions.js';
 import { consentDecisionOps } from '../../telemetry/metrics.js';
 
-export interface ConsentNativeRouteDeps {
+interface ConsentNativeRouteDeps {
   consentChannel?: ConsentChannelService;
 }
 

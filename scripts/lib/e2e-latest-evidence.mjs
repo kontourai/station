@@ -23,13 +23,21 @@ const ALLOWED_EXTENSIONS = new Set([
   '.jpeg',
   '.webp',
   '.json',
+  '.ndjson',
   '.html',
   '.txt',
   '.md',
   '.log',
   '.zip',
 ]);
-const TEXT_EXTENSIONS = new Set(['.json', '.html', '.txt', '.md', '.log']);
+const TEXT_EXTENSIONS = new Set([
+  '.json',
+  '.ndjson',
+  '.html',
+  '.txt',
+  '.md',
+  '.log',
+]);
 const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 function assertDirectory(path, label, { create = false } = {}) {

@@ -9,10 +9,21 @@
  * envelope was written".
  */
 
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { dispatch, executionPlanDigest } from '@kontourai/dispatch';
 import { FakeModelRuntime } from '@kontourai/relay';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import type { FleetCandidateResolution } from '../../../services/inference/fleet-candidate-service.js';
 import {
   type ActionOperationLedger,
@@ -28,6 +39,21 @@ import {
 } from '../authorized-turn-correlation.js';
 import { FleetInferenceRoutingError } from '../fleet-inference-model.js';
 import type { UnsealedFleetRoutingEnvelope } from '../fleet-routing-envelope.js';
+
+// This project home was the fixed path `/tmp/station-fleet-test`, and dispatch
+// really writes under it: it lands
+// `<home>/monitoring/model-dispatch-receipts.ndjson` and nothing removed it.
+// The directory was observed on this host on 2026-09-08, dated Sep 4.
+//
+// A directory shared with every other process is the wrong place to persist
+// test state: it accumulates, and anything else on the host can occupy or
+// replace the name. Own the root, and remove it in `afterAll`.
+const FLEET_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-fleet-test-'));
+const FLEET_PROJECT_HOME = join(FLEET_TEMP_ROOT, 'station-fleet-test');
+
+afterAll(() => {
+  rmSync(FLEET_TEMP_ROOT, { force: true, recursive: true });
+});
 
 const createAiSdkManagedModel = vi.fn(() => ({ id: 'fake-language-model' }));
 vi.mock('../../frameworks/framework-model-factory.js', () => ({
@@ -119,7 +145,7 @@ function config(
 ) {
   return {
     appConfig: {} as never,
-    projectHomeDir: '/tmp/station-fleet-test',
+    projectHomeDir: FLEET_PROJECT_HOME,
     dispatchEvidenceSource: {
       getConnectionReadinessEvidence: async (ids: readonly string[]) =>
         new Map(ids.map((id) => [id, readiness])),

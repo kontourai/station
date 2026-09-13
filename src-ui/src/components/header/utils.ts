@@ -5,7 +5,7 @@ export interface HeaderHelpPrompt {
   prompt: string;
 }
 
-export interface HeaderBreadcrumb {
+interface HeaderBreadcrumb {
   /** Set for project/layout views — the project the user is inside. */
   projectSlug?: string;
   layoutSlug?: string;
@@ -113,7 +113,7 @@ function sectionLabel(view: NavigationView): string | null {
 }
 
 /** The root view a section crumb links "up" to (sub-views climb to their family). */
-export function sectionRootView(view: NavigationView): NavigationView {
+function sectionRootView(view: NavigationView): NavigationView {
   const t = view.type;
   if (t.startsWith('agent')) return { type: 'agents' };
   if (t.startsWith('connections')) return { type: 'connections' };

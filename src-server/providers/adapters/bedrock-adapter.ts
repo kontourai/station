@@ -13,6 +13,7 @@ import type {
   RequestResolvedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
+import { errorMessage } from '../../utils/error-message.js';
 import type {
   ProviderAdapterShape,
   ProviderSendTurnInput,
@@ -498,7 +499,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
         this.publishTurnFailure({
           input: resolvedInput,
           turnId,
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage(error),
           resumeCursor: session.resumeCursor,
         });
       }

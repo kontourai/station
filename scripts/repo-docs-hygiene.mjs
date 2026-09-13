@@ -60,9 +60,9 @@ function benignForRepoDocs(code, value) {
     if (ip.startsWith('192.168.')) return true;
     if (ip === '100.64.0.0') return true;
     if (ip.startsWith('fe80:')) return true;
-    // A bare "fc"/"fd:" fragment (matched out of ordinary words like "RFD:")
-    // is not an address; a real ULA has hex groups after the prefix.
-    if (/^(?:fc|fd):?$/.test(ip)) return true;
+    // No fc/fd prefix exemption here: PRIVATE_IP only produces a ULA
+    // candidate for the address SHAPE (hex first group, then a colon), so a
+    // git SHA or "RFD:" never reaches this function as a candidate.
     return false;
   }
   if (code === 'absolute-developer-path') {

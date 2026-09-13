@@ -5,7 +5,7 @@ import {
 } from '@kontourai/station-shared/usage-fold';
 import { UNNAMED_AGENT } from '../../src-shared/monitoring-keys.js';
 
-export interface DailyStats {
+interface DailyStats {
   messages: number;
   cost: number;
   inputTokens: number;
@@ -121,7 +121,7 @@ export interface UsageStats {
  * closed rather than letting a later session accidentally restore a provider
  * declaration over earlier un-attributed data.
  */
-export interface ModelUsageStats {
+interface ModelUsageStats {
   messages: number;
   inputTokens: number;
   outputTokens: number;

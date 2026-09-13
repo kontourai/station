@@ -19,8 +19,8 @@ import type {
 } from './s2s-types.js';
 import { supportsS2SCorrelatedTurnsV1 } from './s2s-types.js';
 
-export type VoiceLifecycleOperation = 'start' | 'stop' | 'error' | 'interrupt';
-export type VoiceLifecycleOutcome = 'success' | 'failure';
+type VoiceLifecycleOperation = 'start' | 'stop' | 'error' | 'interrupt';
+type VoiceLifecycleOutcome = 'success' | 'failure';
 export type VoiceLifecycleReason =
   | 'explicit'
   | 'barge_in'
@@ -29,13 +29,13 @@ export type VoiceLifecycleReason =
   | 'provider_failed'
   | 'service_stop';
 
-export interface VoiceLifecycleRecord {
+interface VoiceLifecycleRecord {
   operation: VoiceLifecycleOperation;
   outcome: VoiceLifecycleOutcome;
   reason?: VoiceLifecycleReason;
 }
 
-export interface S2SSessionAdapterCallbacks {
+interface S2SSessionAdapterCallbacks {
   onAudio(chunk: Buffer): void;
   onTranscript(transcript: S2STranscript): void;
   onToolUse(event: S2SToolUseEvent): void | Promise<void>;

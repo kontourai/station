@@ -58,6 +58,13 @@ function resultPre(): string | null | undefined {
   ).find(
     (details) => details.querySelector('summary')?.textContent === 'Result',
   );
+  if (!resultDetails) throw new Error('Result disclosure did not mount');
+  // jsdom has no native disclosure action; this unit seam dispatches its toggle.
+  Object.defineProperty(resultDetails, 'open', {
+    value: true,
+    configurable: true,
+  });
+  fireEvent(resultDetails, new Event('toggle'));
   return resultDetails?.querySelector('pre')?.textContent;
 }
 
@@ -70,7 +77,7 @@ describe('EventEntrySections tool result rendering (station#3507)', () => {
         onCopyResult={vi.fn()}
       />,
     );
-    // <details> content is present in the DOM even when closed.
+    expect(document.querySelectorAll('pre')).toHaveLength(0);
     expect(resultPre()).toBe(JSON.stringify(structuredResult, null, 2));
   });
 

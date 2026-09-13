@@ -177,6 +177,7 @@ import type {
   ResourceResolution,
   ResourceResolutionResult,
 } from '@kontourai/station-contracts/project-identity';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   ProjectResourceResolver,
   type ProjectResourceResolverOptions,
@@ -191,7 +192,7 @@ import {
  * §3.6 specifies, and a seam that logs or surfaces one is the only way an
  * operator learns that a directory drifted rather than vanished.
  */
-export type ProjectWorkspacePathOutcome =
+type ProjectWorkspacePathOutcome =
   | {
       available: true;
       path: string;
@@ -251,7 +252,7 @@ async function resolveResource(
   } catch (error) {
     return {
       ok: false,
-      reason: error instanceof Error ? error.message : String(error),
+      reason: errorMessage(error),
     };
   }
 }
@@ -369,7 +370,7 @@ export function projectDirectoryPath(
  * the record declared (archive#791), and an optional `declaredPath` would let that
  * seam compile with the path silently absent.
  */
-export type ProjectDirectoryOutcome =
+type ProjectDirectoryOutcome =
   | {
       available: true;
       path: string;

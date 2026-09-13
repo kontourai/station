@@ -70,7 +70,7 @@ import {
   type SessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
-import { publicAgentIdFromRuntimeKey } from '../../routes/agents/runtime-agent-identity.js';
+import { publicAgentIdFromRuntimeKey } from '../../services/agents/runtime-agent-identity.js';
 import type { SessionQueryModule } from '../../services/orchestration/session-query-module.js';
 import { conversationStoreReadOps } from '../../telemetry/metrics.js';
 import { ReadOnlyStoreError } from '../errors.js';
@@ -130,7 +130,7 @@ export interface ConversationFileStoreReader {
   getMessages(userId: string, conversationId: string): Promise<unknown[]>;
 }
 
-export interface ConversationStoreAdapterDeps {
+interface ConversationStoreAdapterDeps {
   sessionReader: ConversationSessionReader;
   /** Keyed by agent slug, same map `station-runtime.ts` already owns as `this.memoryAdapters`. */
   fileStores: Map<string, ConversationFileStoreReader>;

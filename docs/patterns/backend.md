@@ -70,7 +70,6 @@ src-server/
 │   ├── scheduler-service.ts
 │   ├── skill-service.ts
 │   ├── sse-broadcaster.ts
-│   ├── template-service.ts
 │   ├── terminal-service.ts
 │   └── terminal-ws-server.ts
 ├── adapters/            # Storage adapters

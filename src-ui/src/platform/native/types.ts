@@ -314,10 +314,12 @@ export interface NativeShareEvent {
 export interface NativePairingDeepLinkEvent {
   url: string;
 }
-export type NativeTrayNavigationDestination =
+type NativeTrayNavigationDestination =
   | 'connections'
   | 'pairedDevices'
-  | 'coreUpdates';
+  | 'coreUpdates'
+  | 'desktopUpdates'
+  | 'serverUpdates';
 export interface NativeTrayNavigationEvent {
   destination: NativeTrayNavigationDestination;
 }

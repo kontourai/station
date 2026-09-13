@@ -85,6 +85,9 @@ describe('local UI bootstrap capability (station#2093)', () => {
       {
         credentials: 'include',
         headers: { Accept: 'application/json' },
+        // #1661: the gate's own per-attempt deadline. Whole init object, not
+        // `objectContaining` — a fourth key still fails here.
+        signal: expect.any(AbortSignal),
       },
     );
   });

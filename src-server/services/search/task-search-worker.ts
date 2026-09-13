@@ -89,3 +89,15 @@ port.on('message', async (wire: unknown) => {
   port.postMessage(reply);
   busy = false;
 });
+
+// station#1707: the LAST top-level statement, so the owner learns this worker
+// is usable only once its entry module has been transformed and evaluated,
+// its owner-bound store path validated, its provider constructed and its
+// handler registered — not merely when the thread began executing JS, which
+// is all `worker.on('online')` reports and which lands ~40-60ms earlier under
+// load. This worker opens nothing here: the TaskGraph is read per request
+// (`readTaskGraphForIsolatedSearch` above), unlike the transcript worker,
+// whose sentinel additionally covers its database open. The owner settles
+// readiness on this sentinel; a read waiting for it is waiting for a worker
+// that can actually answer.
+port.postMessage({ type: 'ready' });

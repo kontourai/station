@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 const SEED_STORAGE = `
   if (!window.sessionStorage.getItem('station:e2e-onboarding-test-initialized')) {
@@ -6,7 +7,7 @@ const SEED_STORAGE = `
     window.sessionStorage.setItem('station:e2e-onboarding-test-initialized', '1');
   }
   window.localStorage.setItem('station-connect-connections', JSON.stringify([
-    { id: 'c1', name: 'Dev Server', url: 'http://localhost:3242', lastConnected: ${Date.now()} }
+    { id: 'c1', name: 'Dev Server', url: window.location.origin, lastConnected: ${Date.now()} }
   ]));
   window.localStorage.setItem('station-connect-connections-active', 'c1');
 `;
@@ -430,7 +431,13 @@ test.describe('Onboarding Setup Launcher', () => {
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.addInitScript(SEED_STORAGE);
+    await page.addInitScript(() => {
+      localStorage.removeItem('station:onboarding-setup-dismissed');
+    });
+    await page.route('**/api/**', async (route) => {
+      if (await fulfillStationShellRead(route)) return;
+      await route.fallback();
+    });
 
     await page.route('**/api/system/status', (route) =>
       route.fulfill({

@@ -42,9 +42,18 @@ vi.mock('../contexts/ToastContext', () => ({
 }));
 
 const navigateSpy = vi.hoisted(() => vi.fn());
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate: navigateSpy }),
-}));
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({ navigate: navigateSpy });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { alias: 'operator' } }),
@@ -74,10 +83,13 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
   }),
 }));
 
-vi.mock('../hooks/useMessageContext', () => ({
-  useMessageContext: () => ({ getComposedContext: () => '' }),
+vi.mock('../contexts/MessageContextContext', () => ({
+  useMessageContextContext: () => ({ getComposedContext: () => '' }),
 }));
 
+vi.mock('../hooks/useACPConnections', () => ({
+  useACPConnections: () => ({ data: [] }),
+}));
 vi.mock('../hooks/useShareReceiver', () => ({
   useShareReceiver: () => {},
 }));
@@ -128,6 +140,9 @@ const NOT_SET_UP_LEAD_IN = "This agent isn't set up yet.";
 
 function buildChatInput() {
   return {
+    quotes: [],
+    quotedDraftText: '',
+    removeQuote: vi.fn(),
     input: '',
     attachments: [],
     textareaRef: { current: null },

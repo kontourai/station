@@ -11,6 +11,7 @@ import {
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import type { LanguageModel } from 'ai';
 import { buildAiSdkLanguageModel } from '../../runtime/frameworks/framework-model-factory.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   catalogLimit,
   ModelCatalogShapeError,
@@ -22,6 +23,8 @@ import type {
   LLMModel,
   ModelCatalogRequest,
 } from './model-provider-types.js';
+
+const logger = createLogger({ name: 'openai-compat-provider' });
 
 export class OpenAICompatLLMProvider extends AiSdkLLMProvider {
   readonly id = 'openai-compat';
@@ -183,10 +186,9 @@ export class OpenAICompatEmbeddingProvider implements IEmbeddingProvider {
       });
       return res.ok;
     } catch (e) {
-      console.debug(
-        'Failed to check OpenAI-compat embedding provider health:',
-        e,
-      );
+      logger.debug('Failed to check OpenAI-compat embedding provider health', {
+        error: e,
+      });
       return false;
     }
   }

@@ -18,7 +18,7 @@ describe('Tauri embedded WebDriver boundary', () => {
 
     expect(cargo).toContain('webdriver = ["dep:tauri-plugin-wdio-webdriver"]');
     expect(cargo).toContain(
-      'tauri-plugin-wdio-webdriver = { version = "=1.3.0", optional = true }',
+      'tauri-plugin-wdio-webdriver = { version = "=1.4.0", optional = true }',
     );
     expect(rust).toContain('#[cfg(all(not(mobile), feature = "webdriver"))]');
     expect(rust).toContain(

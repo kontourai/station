@@ -24,7 +24,7 @@ import {
 const WORK_BOARD_PERFORMANCE_BUILD_ENABLED =
   import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE === '1';
 
-export function PinResolution({
+function PinResolution({
   resolution,
   reference,
   allowNavigation = true,

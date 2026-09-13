@@ -85,7 +85,12 @@ describe('Station home lifecycle authority', () => {
     await maintenance.release();
     await maintenance.release();
     const sync = acquireStationHomeMaintenanceLease(home);
-    sync.release();
+    try {
+      await maintenance.release();
+      expect(() => acquireStationHomeMaintenanceLease(home)).toThrow();
+    } finally {
+      sync.release();
+    }
   });
 
   it('allows multiple runtimes but excludes maintenance until every lease releases', () => {

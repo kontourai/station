@@ -87,6 +87,10 @@ export const ALLOWED_MISSING = new Map([
     'placeholder path pattern in the screenshot-baseline guide, not a literal file',
   ],
   [
+    'tests/screenshots.baseline/<name>.reference.png',
+    "placeholder path pattern for a volatile entry's hand-added human-only reference (#1652), not a literal file",
+  ],
+  [
     'packages/cli/dist',
     'gitignored CLI bundle output — absent in fresh checkouts (bare-directory reference in cli.md)',
   ],

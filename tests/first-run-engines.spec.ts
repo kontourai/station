@@ -475,20 +475,9 @@ test.describe('First-run engines chapter (station#3027)', () => {
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
 
-    // WHERE it is (SHELL-12). Inside Home's own route content, on the shared
-    // dialog surface — not a fixed corner card on the notice layer, and not
-    // an app-level overlay that outlives this route.
-    const overlay = page.locator('.responsive-surface-overlay');
-    await expect(overlay).toBeVisible();
-    // archive#3656 moved the `main` landmark to the SHELL (`App.tsx`'s
-    // `#station-main`), so Home renders a `section.home-view` inside it and
-    // this assertion matched nothing for months. It is still the same claim —
-    // the chapter is a descendant of Home's own route content, not a fixed
-    // corner card and not an app-level overlay — expressed against the shell
-    // that exists (archive#3877).
     await expect(
-      page.locator('main.main-content .home-view .first-run-engines'),
-    ).toHaveCount(1);
+      page.getByRole('dialog').filter({ has: chapter }),
+    ).toBeVisible();
     await expect(page.getByText('Which agents do you use?')).toBeVisible();
 
     // available — pre-ticked and the user's to change.
@@ -501,13 +490,13 @@ test.describe('First-run engines chapter (station#3027)', () => {
       await expect(row.locator('.first-run-engines__note')).toHaveCount(0);
     }
 
-    // enabled — visibly idempotent: named as ready, carrying the Agent that
+    // enabled — visibly idempotent: named as set up, carrying the Agent that
     // already exists, and with NO control at all. A disabled checkbox would
     // drop that sentence out of the tab order.
     const enabled = engineRow(page, 'gemini-cli');
     await expect(enabled).toHaveAttribute('data-state', 'enabled');
     await expect(enabled.locator('input')).toHaveCount(0);
-    await expect(enabled).toContainText('Ready — Gemini CLI');
+    await expect(enabled).toContainText('Set up — Gemini CLI');
     await expect(enabled).toContainText(
       'Already set up as “Gemini CLI Agent”.',
     );
@@ -1100,7 +1089,9 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
 
   test('an upgraded home still gets the standalone modal', async ({ page }) => {
     // No `firstRun` record at all: a home that predates the field, which is
-    // the population the modal shipped for. Nothing about it changes.
+    // the population the modal shipped for — and, since #1600, the population
+    // that gets the SAME derived summary and on/off decision the first-run step
+    // offers, rather than the schema and an acknowledgement naming no choice.
     await patchExternalEngines(page, ENGINE_MIX);
     await pinAgentCatalog(page);
     await pinFirstRun(page, null);
@@ -1109,6 +1100,22 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await page.goto('/');
     await expect(standaloneModal(page)).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText('What Station sends')).toBeVisible();
+    await expect(
+      page.getByText(
+        'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+      ),
+    ).toBeVisible();
+    await expect(
+      standaloneModal(page).getByText('See exactly what is sent'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Keep usage telemetry on' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Turn it off' }),
+    ).toBeVisible();
+    // Its own dismissal is unchanged — the exit that decides nothing.
+    await expect(page.getByRole('button', { name: 'Not now' })).toBeVisible();
     // Chat is ready in this mix, so the launcher is not wanted; the point is
     // that the modal is the ONLY overlay, and the chapter is not offered.
     await expect(page.getByTestId('setup-launcher')).toHaveCount(0);

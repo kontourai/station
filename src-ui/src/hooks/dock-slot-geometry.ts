@@ -13,7 +13,7 @@ export interface DockSlotGeometry {
  * Chat occupant and the host fallback for a non-Chat occupant must read this
  * one value rather than carrying a second `38px` mobile approximation.
  */
-export function readCollapsedDockSlotSize(root = document.documentElement) {
+function readCollapsedDockSlotSize(root = document.documentElement) {
   return (
     Number.parseFloat(
       getComputedStyle(root).getPropertyValue('--chat-dock-header-height'),

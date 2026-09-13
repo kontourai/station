@@ -66,6 +66,7 @@ import {
   fleetProbeFailures,
   fleetProbeObservations,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { createLogger, type Logger } from '../../utils/logger.js';
 
 /**
@@ -76,7 +77,7 @@ import { createLogger, type Logger } from '../../utils/logger.js';
  * a local `smoke-passed` grade, or the fleet half of the ladder would be more
  * generous to a machine we do not control than to one we do.
  */
-export const FLEET_PROBE_TTL_MS = 15 * 60 * 1000;
+const FLEET_PROBE_TTL_MS = 15 * 60 * 1000;
 
 /**
  * How long a FAILED probe suppresses the candidate before it is retried.
@@ -86,7 +87,7 @@ export const FLEET_PROBE_TTL_MS = 15 * 60 * 1000;
  * not be excluded for a quarter of an hour, and re-probing is cheap because
  * a failing peer usually fails fast.
  */
-export const FLEET_PROBE_FAILURE_TTL_MS = 2 * 60 * 1000;
+const FLEET_PROBE_FAILURE_TTL_MS = 2 * 60 * 1000;
 
 /**
  * Upper bound for a consecutive failed probe window.
@@ -95,13 +96,13 @@ export const FLEET_PROBE_FAILURE_TTL_MS = 2 * 60 * 1000;
  * unhealthy peer into a permanent exclusion. It therefore caps at the same
  * evidence lifetime as a passing probe.
  */
-export const FLEET_PROBE_MAX_FAILURE_TTL_MS = FLEET_PROBE_TTL_MS;
+const FLEET_PROBE_MAX_FAILURE_TTL_MS = FLEET_PROBE_TTL_MS;
 
 /** Wall-clock ceiling on one probe completion. */
-export const FLEET_PROBE_TIMEOUT_MS = 20_000;
+const FLEET_PROBE_TIMEOUT_MS = 20_000;
 
 /** Probes in flight across all candidates at once. */
-export const FLEET_PROBE_MAX_CONCURRENT = 2;
+const FLEET_PROBE_MAX_CONCURRENT = 2;
 
 /**
  * Observations retained across all peers and models.
@@ -114,7 +115,7 @@ export const FLEET_PROBE_MAX_CONCURRENT = 2;
  * entry per identity that ever existed. Eviction is oldest-first and costs
  * nothing but a re-probe.
  */
-export const FLEET_PROBE_MAX_OBSERVATIONS = 1024;
+const FLEET_PROBE_MAX_OBSERVATIONS = 1024;
 
 /**
  * The probe prompt. Fixed, content-free, and never derived from the turn
@@ -423,7 +424,7 @@ export class FleetProbeService {
       .catch((error: unknown) => {
         this.#logger.warn(
           `[fleet-probe] Probe of ${target.environmentLabel ?? target.environmentId} for ${target.displayName} could not be recorded.`,
-          { error: error instanceof Error ? error.message : String(error) },
+          { error: errorMessage(error) },
         );
       })
       .finally(() => {

@@ -60,6 +60,18 @@ function Harness({
 }
 
 describe('useChatPaneFileDrop', () => {
+  test('shows external file count while browser protects bytes until drop', () => {
+    render(<Harness />);
+    fireEvent.dragEnter(screen.getByTestId('pane'), {
+      dataTransfer: transfer(
+        [],
+        [{ kind: 'file', type: 'text/plain', getAsFile: () => null }],
+      ),
+    });
+    expect(screen.getByTestId('active').textContent).toBe('true');
+    expect(screen.getByTestId('count').textContent).toBe('1');
+    expect(screen.getByTestId('calls').textContent).toBe('0');
+  });
   test('clears synchronously before the one root-owned external drop ingests', async () => {
     render(<Harness />);
     const pane = screen.getByTestId('pane');

@@ -18,8 +18,8 @@ import {
 } from './shared-working-state.js';
 
 export const MAX_SHARED_EDIT_TEXT_CODE_UNITS = 256 * 1024;
-export const MAX_SHARED_EDIT_TEXT_BYTES = 256 * 1024;
-export const SHARED_WORKING_STATE_EDIT_BATCH_DIGEST_VERSION = 1 as const;
+const MAX_SHARED_EDIT_TEXT_BYTES = 256 * 1024;
+const SHARED_WORKING_STATE_EDIT_BATCH_DIGEST_VERSION = 1 as const;
 
 /**
  * One transport batch identity.  This intentionally follows archive#2889 effect
@@ -83,12 +83,12 @@ export interface SharedWorkingStateEditBatch {
   readonly selection: { readonly anchor: number; readonly focus: number };
 }
 
-export type SharedWorkingStateEditPlan =
+type SharedWorkingStateEditPlan =
   | { readonly outcome: 'planned'; readonly batch: SharedWorkingStateEditBatch }
   | { readonly outcome: 'unchanged' }
   | { readonly outcome: 'refused'; readonly reason: string };
 
-export type SharedWorkingStatePendingProjection =
+type SharedWorkingStatePendingProjection =
   | {
       readonly outcome: 'projected';
       readonly text: string;

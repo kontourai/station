@@ -98,7 +98,7 @@ function renderRow(msg: ChatMessage) {
           id: 'thread-1',
           agentSlug: 'dev-agent',
           agentName: 'Dev Agent',
-          messages: [msg],
+          messageCount: 1,
         }}
         agents={[]}
         chatFontSize={14}

@@ -2,6 +2,7 @@ import type {
   ConversationListItem,
   ConversationOpenResolution,
 } from '@kontourai/station-contracts/orchestration';
+import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 
 export type ConversationOpenRecovery = {
@@ -18,8 +19,11 @@ interface ConversationOpenDockEffects {
   open: Parameters<typeof commitConversationOpen>[0]['open'];
   projectName: Parameters<typeof commitConversationOpen>[0]['projectName'];
   findTab: Parameters<typeof commitConversationOpen>[0]['findTab'];
+  readChat?: (tabId: string) => Partial<ChatUIState> | undefined;
+  agentName?: (agentId: string) => string | undefined;
   updateChat: (tabId: string, patch: Partial<ChatUIState>) => void;
   setRecovery: (recovery: ConversationOpenRecovery | null) => void;
+  isCurrent?: () => boolean;
 }
 
 export async function resolveConversationOpenAuthoritatively(
@@ -32,15 +36,203 @@ export async function resolveConversationOpenAuthoritatively(
   return resolveConversationOpen(conversationId, apiBase);
 }
 
+/** Provider is a model-provider field for native chats; keep the engine domain separate. */
+export function conversationExecutionChanged(
+  resolution: ConversationOpenResolution,
+  previous?: Partial<ChatUIState>,
+): boolean {
+  if (!previous || resolution.status !== 'resolved') return false;
+  const execution = resolution.execution;
+  const previousEngine =
+    previous.executionMode === EXECUTION_MODE.STATION
+      ? 'station-agent'
+      : (previous.orchestrationProvider ?? previous.provider);
+  const previousEngineConnection =
+    previous.executionMode === EXECUTION_MODE.STATION
+      ? undefined
+      : previous.agentConnectionId;
+  return (
+    (previous.currentSessionId ?? previous.conversationId) !==
+      resolution.currentSessionId ||
+    Boolean(
+      execution &&
+        (previous.agentSlug !== execution.agentId ||
+          previousEngine !== execution.provider ||
+          previousEngineConnection !== execution.engineConnectionId),
+    )
+  );
+}
+
 /** One total binding patch prevents retry and reload paths from drifting. */
 export function conversationOpenPatch(
   resolution: ConversationOpenResolution,
+  previous?: Partial<ChatUIState>,
+  choice?: {
+    validModelIds?: readonly string[];
+    provider?: string;
+    engineConnectionId?: string;
+    providerOptions?: Record<string, unknown>;
+    modelProvider?: { id: string; type: string };
+    validModelProviderIds?: readonly string[];
+    agentName?: string;
+  },
 ): Partial<ChatUIState> {
+  const resolved = resolution.status === 'resolved' ? resolution : undefined;
+  const execution = resolved?.execution;
+  const changedChild = conversationExecutionChanged(resolution, previous);
+  const native = execution?.provider === 'station-agent';
+  const unknownReplacement = changedChild && !execution;
+  const pendingChoice = Boolean(
+    execution &&
+      !changedChild &&
+      previous?.requestedModel &&
+      choice?.validModelIds === undefined,
+  );
+  const catalogMatchesExecution = Boolean(
+    execution &&
+      choice?.provider === execution.provider &&
+      choice.engineConnectionId === execution.engineConnectionId &&
+      (execution.engineConnectionId !== undefined ||
+        execution.provider === 'station-agent'),
+  );
+  const keepRequested =
+    !changedChild &&
+    Boolean(
+      previous?.requestedModel &&
+        (pendingChoice ||
+          (catalogMatchesExecution &&
+            (!native ||
+              (choice?.modelProvider &&
+                choice.validModelProviderIds?.includes(
+                  choice.modelProvider.id,
+                ) &&
+                (!previous.providerId ||
+                  previous.providerId === choice.modelProvider.id))) &&
+            choice?.validModelIds?.includes(previous.requestedModel))),
+    );
+  const nativeProvider = pendingChoice
+    ? previous?.provider
+    : keepRequested
+      ? choice?.modelProvider?.type
+      : undefined;
+  const nativeProviderId = pendingChoice
+    ? previous?.providerId
+    : keepRequested
+      ? choice?.modelProvider?.id
+      : undefined;
+  const nativeDefaultProviderId = pendingChoice
+    ? previous?.defaultProviderId
+    : keepRequested &&
+        previous?.defaultProviderId &&
+        choice?.validModelProviderIds?.includes(previous.defaultProviderId)
+      ? previous.defaultProviderId
+      : undefined;
+  const executionPatch: Partial<ChatUIState> = execution
+    ? {
+        agentSlug: execution.agentId,
+        agentName: choice?.agentName ?? execution.agentId,
+        projectSlug: resolution.conversation.projectSlug,
+        projectName:
+          previous?.projectSlug === resolution.conversation.projectSlug
+            ? previous?.projectName
+            : undefined,
+        provider: native ? nativeProvider : execution.provider,
+        orchestrationProvider: execution.provider,
+        executionMode:
+          execution.provider === 'station-agent'
+            ? EXECUTION_MODE.STATION
+            : EXECUTION_MODE.EXTERNAL,
+        executionScope: resolution.conversation.projectSlug
+          ? 'project'
+          : 'global',
+        agentConnectionId: execution.engineConnectionId,
+        providerId: native ? nativeProviderId : undefined,
+        defaultProviderId: native ? nativeDefaultProviderId : undefined,
+        defaultModel: undefined,
+        defaultModelSource: undefined,
+        model: execution.model ?? execution.acceptedModel,
+        orchestrationModel: execution.model ?? execution.acceptedModel,
+        modelSource:
+          execution.model || execution.acceptedModel ? 'runtime' : 'unknown',
+        requestedModel: keepRequested ? previous!.requestedModel : null,
+        requestedModelSource: keepRequested
+          ? previous!.requestedModelSource
+          : 'runtime',
+        requestedProviderOptions: pendingChoice
+          ? (previous?.requestedProviderOptions ?? {})
+          : keepRequested
+            ? (choice?.providerOptions ?? {})
+            : {},
+        providerOptions: {},
+        ...(changedChild
+          ? {
+              sessionAutoApprove: [],
+              pendingApprovals: [],
+              approvalToasts: new Map(),
+              lastAppliedApprovalMode: undefined,
+              currentModeId: null,
+              planArtifact: null,
+              flowRun: null,
+              activityHint: undefined,
+              backgroundTasks: [],
+              liveUsage: undefined,
+              toolCalls: [],
+              ephemeralMessages: [],
+              // A boundary read may arrive after the new child's live turn.
+              // Keep that child's stream; only predecessor state is retired.
+              ...(previous?.currentSessionId === execution.sessionId &&
+              previous.orchestrationTurnOpen
+                ? {}
+                : {
+                    orchestrationTurnOpen: false,
+                    openTurnId: undefined,
+                    openTurnShellSuperseded: undefined,
+                    streamingMessage: undefined,
+                  }),
+              pendingClientTurnId: undefined,
+              isProcessingStep: false,
+              ...(previous?.queuedMessages?.length
+                ? {
+                    queuedMessageFailure: {
+                      reviewReason: 'execution-binding-changed',
+                      message:
+                        'This conversation changed Agent or Session elsewhere. Review queued messages before retrying.',
+                      at: Date.now(),
+                    },
+                  }
+                : {}),
+            }
+          : {}),
+        ...(!changedChild && previous?.requestedModel && !keepRequested
+          ? {
+              error:
+                'The saved model choice is unavailable for this Session. The current engine model is selected.',
+            }
+          : {}),
+      }
+    : unknownReplacement
+      ? {
+          agentSlug: undefined,
+          agentName: 'Unknown Agent',
+          provider: undefined,
+          orchestrationProvider: undefined,
+          agentConnectionId: undefined,
+          executionMode: undefined,
+          model: undefined,
+          orchestrationModel: undefined,
+          requestedModel: null,
+          requestedProviderOptions: {},
+          providerOptions: {},
+          error:
+            'The current Session execution binding is unavailable. Retry opening this conversation before sending.',
+        }
+      : {};
   return {
-    conversationOpenPending: false,
-    conversationOpenFailed: false,
+    conversationOpenPending: pendingChoice,
+    conversationOpenFailed: unknownReplacement,
     conversationOpenState: resolution,
     title: resolution.conversation.title,
+    ...executionPatch,
     currentSessionId: undefined,
     orchestrationSessionStarted: false,
     ...(resolution.status === 'resolved'
@@ -54,12 +246,12 @@ export function conversationOpenPatch(
 
 /** Resolve, open, and bind one picker/recovery row as a single UI command. */
 export async function openConversationForDock(
-  conversation: ConversationListItem,
+  conversation: ConversationListItem | string,
   effects: ConversationOpenDockEffects,
 ): Promise<boolean> {
   try {
     const resolution = await resolveConversationOpenAuthoritatively(
-      conversation.id,
+      typeof conversation === 'string' ? conversation : conversation.id,
       effects.apiBase,
     );
     const outcome = await commitConversationOpen({
@@ -67,15 +259,21 @@ export async function openConversationForDock(
       open: effects.open,
       projectName: effects.projectName,
       findTab: effects.findTab,
+      isCurrent: effects.isCurrent,
+      readChat: effects.readChat,
+      agentName: effects.agentName,
     });
     if (outcome.kind === 'recovery') {
+      if (typeof conversation === 'string') return false;
       effects.setRecovery(outcome.recovery);
       return true;
     }
+    if (effects.isCurrent?.() === false) return false;
     effects.updateChat(outcome.tabId, outcome.patch);
     effects.setRecovery(null);
     return true;
   } catch {
+    if (typeof conversation === 'string') return false;
     effects.setRecovery({ conversation, status: 'error' });
     return true;
   }
@@ -87,13 +285,17 @@ export async function retryActiveConversationForDock(
   apiBase: string,
   updateChat: ConversationOpenDockEffects['updateChat'],
   onUnavailable: () => void,
+  readChat?: (tabId: string) => Partial<ChatUIState> | undefined,
 ): Promise<void> {
   try {
     const resolution = await resolveConversationOpenAuthoritatively(
       conversationId,
       apiBase,
     );
-    updateChat(sessionId, conversationOpenPatch(resolution));
+    updateChat(
+      sessionId,
+      conversationOpenPatch(resolution, readChat?.(sessionId)),
+    );
   } catch {
     onUnavailable();
   }
@@ -104,6 +306,9 @@ export async function commitConversationOpen({
   open,
   projectName,
   findTab,
+  isCurrent,
+  readChat,
+  agentName,
 }: {
   resolution: ConversationOpenResolution;
   open: (
@@ -114,19 +319,29 @@ export async function commitConversationOpen({
     model?: string,
     updatedAt?: string,
     acceptedModel?: string,
-    execution?: { hydrateMessages: true },
+    execution?: { hydrateMessages: true; beforeFocus?: () => boolean },
   ) => boolean | Promise<boolean>;
   projectName: (projectSlug: string | undefined) => string | undefined;
   findTab: (conversationId: string) => string | undefined;
+  isCurrent?: () => boolean;
+  readChat?: (tabId: string) => Partial<ChatUIState> | undefined;
+  agentName?: (agentId: string) => string | undefined;
 }): Promise<ConversationOpenCommit> {
   const conversation = resolution.conversation;
   if (
+    isCurrent?.() === false ||
     resolution.status === 'missing-session' ||
     resolution.status === 'unavailable'
   ) {
     return {
       kind: 'recovery',
-      recovery: { conversation, status: resolution.status },
+      recovery: {
+        conversation,
+        status:
+          resolution.status === 'missing-session'
+            ? 'missing-session'
+            : 'unavailable',
+      },
     };
   }
 
@@ -138,7 +353,7 @@ export async function commitConversationOpen({
     conversation.model,
     conversation.updatedAt,
     conversation.acceptedModel,
-    { hydrateMessages: true },
+    { hydrateMessages: true, ...(isCurrent ? { beforeFocus: isCurrent } : {}) },
   );
   if (!opened) {
     return {
@@ -157,5 +372,14 @@ export async function commitConversationOpen({
       recovery: { conversation, status: 'unavailable' },
     };
   }
-  return { kind: 'opened', tabId, patch: conversationOpenPatch(resolution) };
+  return {
+    kind: 'opened',
+    tabId,
+    patch: conversationOpenPatch(resolution, readChat?.(tabId), {
+      agentName:
+        resolution.status === 'resolved' && resolution.execution
+          ? agentName?.(resolution.execution.agentId)
+          : undefined,
+    }),
+  };
 }

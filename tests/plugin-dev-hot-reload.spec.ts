@@ -8,7 +8,7 @@ import { expect, test } from '@playwright/test';
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = join(dirname(__filename), '..');
-const CLI_ENTRY = join(REPO_ROOT, 'packages/cli/src/cli.ts');
+const CLI_ENTRY = join(REPO_ROOT, 'scripts/station-cli.ts');
 const TSX_CLI = join(REPO_ROOT, 'node_modules/tsx/dist/cli.mjs');
 const ORIGINAL_COPY =
   'This scaffold is ready for you to replace with real UI, queries, and plugin-specific actions.';

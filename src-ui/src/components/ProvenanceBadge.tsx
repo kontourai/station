@@ -32,7 +32,7 @@
 import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
 import { Badge } from '@kontourai/ui/react';
 
-export interface ProvenanceBadgeProps {
+interface ProvenanceBadgeProps {
   provenance?: SettingProvenanceEntry;
 }
 

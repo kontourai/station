@@ -551,6 +551,74 @@ describe('verification status projection', () => {
     }
   });
 
+  // station#1827 round-4 review, L1: the previous verifier specified this and
+  // it was still uncovered. `tailFallback` is a SECOND envelope builder, with
+  // its own allow-list, reached only when the ordinary rendering is over the
+  // 8 KiB control cap -- exactly the largest, least readable runs, where a
+  // reader is least able to go and look for themselves. A marker carried in
+  // the ordinary path and dropped here would say "scanned" on those runs.
+  test('carries the declared-cause marker into the over-cap tail fallback (station#1827)', () => {
+    const worktree = mkdtempSync(join(tmpdir(), 'station-1827-overcap-'));
+    const key = 'e'.repeat(64);
+    const cause = 'ci:fast exceeded its 12-minute feedback budget';
+    try {
+      const persisted = persistVerificationOutput({
+        root: worktree,
+        requestKey: key,
+        // Escaped to eight bytes each in JSON, so the ordinary envelope is
+        // comfortably past the cap and the fallback is the path taken.
+        stdout: '\u0000'.repeat(8 * 1024),
+      });
+      const rendered = renderBounded({
+        disposition: 'executed',
+        request: { key, laneId: 'ci-fast' },
+        receipt: {
+          request: { key, worktree },
+          terminal: {
+            status: 'infrastructure_error',
+            exitCode: null,
+            passed: false,
+            infrastructureCause: cause,
+          },
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 1,
+          },
+          cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+          artifacts: persisted.artifacts,
+        },
+        summary: {
+          terminal: 'infrastructure_error',
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 1,
+          },
+          firstCausalExcerpt: cause,
+          infrastructureCause: cause,
+        },
+      });
+
+      expect(Buffer.byteLength(rendered)).toBeLessThanOrEqual(8 * 1024);
+      const parsed = JSON.parse(rendered);
+      // The fallback really was taken -- otherwise this asserts nothing about
+      // that builder's allow-list.
+      expect(parsed.truncated).toBe(true);
+      expect(typeof parsed.summary.failedCheckRedactedStdoutTail).toBe(
+        'string',
+      );
+      // The excerpt and the field that says how it was selected travel
+      // together or not at all.
+      expect(parsed.summary.firstCausalExcerpt).toBe(cause);
+      expect(parsed.summary.infrastructureCause).toBe(cause);
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
   test('keeps submit limited to the non-evidence full-regression surface', () => {
     expect(parseVerificationCommand(['submit', 'full-regression'])).toEqual({
       command: 'submit',
@@ -741,6 +809,85 @@ describe('verification status projection', () => {
       disposition: 'executed',
       summary: { terminal: 'completed', passed: false, indeterminate: true },
     });
+  });
+
+  // station#1827 fix round 2. The first round stamped this from the RECEIPT,
+  // alongside `passed` and `indeterminate`, and the delta review measured what
+  // that produced: because the `...result.summary` spread comes first, the
+  // receipt's full-length copy overwrote the summarizer's truncation-aligned
+  // one, so a rendered document held a 67-byte excerpt beside a 347-byte
+  // marker of the same declaration. The first round's test could not see it
+  // because it put identical text on both sides. This one does not.
+  //
+  // `passed` and `indeterminate` are verdict facts no summary shape carries,
+  // so the receipt is their only source. This is a claim ABOUT the excerpt
+  // beside it, so the summary is its only honest source.
+  test('renders the summary marker, never the receipt copy that would outrun its excerpt (station#1827)', () => {
+    const declaration = `ci:fast exceeded its budget ${'x'.repeat(300)}`;
+    const excerpt = declaration.slice(0, 67);
+    const stopped = {
+      terminal: {
+        status: 'infrastructure_error',
+        exitCode: null,
+        passed: false,
+        // The durable full-length record.
+        infrastructureCause: declaration,
+      },
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      artifacts: [],
+      request: { key: 'k' },
+    };
+
+    const bounded = boundedControlResult({
+      disposition: 'executed',
+      request: { key: 'k', laneId: 'ci-fast' },
+      receipt: stopped,
+      // What the summarizer produced under its own byte budget: the marker is
+      // the truncated excerpt, not the whole declaration.
+      summary: {
+        terminal: 'infrastructure_error',
+        counts: stopped.counts,
+        firstCausalExcerpt: excerpt,
+        infrastructureCause: excerpt,
+      },
+    });
+    expect(bounded.summary.infrastructureCause).toBe(excerpt);
+    expect(bounded.summary.infrastructureCause).toBe(
+      bounded.summary.firstCausalExcerpt,
+    );
+    expect(bounded.summary.passed).toBe(false);
+
+    // A summary the summarizer gave no marker does not gain one from the
+    // receipt: the byte budget dropped it deliberately, and re-adding it here
+    // would restore the very divergence above.
+    const dropped = boundedControlResult({
+      disposition: 'executed',
+      request: { key: 'k', laneId: 'ci-fast' },
+      receipt: stopped,
+      summary: {
+        terminal: 'infrastructure_error',
+        counts: stopped.counts,
+        firstCausalExcerpt: excerpt,
+      },
+    });
+    expect(dropped.summary.infrastructureCause).toBeUndefined();
+
+    // station#1827 fix round 2, L5: a `reused` or `joined` disposition has no
+    // summary at all, so `boundedControlResult` synthesizes one from the
+    // receipt -- with ZERO causal excerpts. A marker there qualifies nothing
+    // and contradicts its own documented meaning.
+    const reused = boundedControlResult({
+      disposition: 'reused',
+      request: { key: 'k', laneId: 'ci-fast' },
+      receipt: stopped,
+    });
+    expect(reused.summary.causalExcerpts).toBeUndefined();
+    expect(reused.summary.firstCausalExcerpt).toBeUndefined();
+    expect(reused.summary.infrastructureCause).toBeUndefined();
+    // The verdict facts ARE still stamped there, which is what makes the
+    // absence above a decision rather than an oversight.
+    expect(reused.summary.passed).toBe(false);
   });
 
   // station#3584 review item 1: summarizeVerificationOutput

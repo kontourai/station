@@ -10,8 +10,8 @@ import { workspacePaneHostReferenceDocuments } from './workspacePaneHostStorage'
 
 export const FILE_PREVIEW_PANE_STATE_STORAGE_PREFIX =
   'station:file-preview-pane-state:v1';
-export const MAX_FILE_PREVIEW_PANE_STATE_BYTES = 4 * 1024;
-export const MAX_FILE_PREVIEW_PANE_STATE_ENTRIES = 24;
+const MAX_FILE_PREVIEW_PANE_STATE_BYTES = 4 * 1024;
+const MAX_FILE_PREVIEW_PANE_STATE_ENTRIES = 24;
 
 const utf8 = new TextEncoder();
 

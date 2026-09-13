@@ -1,3 +1,5 @@
+export const CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES = 2 * 1024;
+
 /**
  * Name every reason a changed-test diagnostic is not a complete account of
  * its run. Producer and verifier import this pure policy so the completion
@@ -5,6 +7,11 @@
  */
 export function incompleteDiagnosticReasons(diagnostics) {
   const reasons = [];
+  const preparation = diagnostics?.preparation;
+  if (preparation?.infrastructureError === true)
+    reasons.push(
+      `${preparation.phase ?? 'preparation'}: ${preparation.error ?? 'verification preparation failed'}`,
+    );
   const executions = Array.isArray(diagnostics?.executions)
     ? diagnostics.executions
     : [];
@@ -45,6 +52,7 @@ export function incompleteDiagnosticReasons(diagnostics) {
   }
   if (
     executions.length === 0 &&
+    preparation?.infrastructureError !== true &&
     (diagnostics?.selection?.deferredLanes?.length ?? 0) === 0
   )
     reasons.push('no test executed and no deferred lane was named');

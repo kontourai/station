@@ -6,7 +6,13 @@ import type {
   FleetServeReceiptPage,
 } from '@kontourai/station-contracts/fleet-routing-receipt';
 import { HEALTH_PROBE_TIMEOUT_MS } from '@kontourai/station-contracts/http';
+import type { SystemIdentityResponse } from '@kontourai/station-contracts/system-status';
 import { _getApiBase } from '../api';
+import { parseRestartExpectation } from '../core-update-restart-expectation';
+import {
+  parseSystemIdentityResponse,
+  parseSystemUpdateStatus,
+} from '../system-update-status-parser';
 import type {
   AuthStatusData,
   BrandingData,
@@ -267,6 +273,15 @@ export async function fetchMonitoringEvents(
   signal?: AbortSignal,
   filters: MonitoringEventFilters = {},
 ): Promise<unknown[]> {
+  return (await fetchMonitoringEventWindow(start, end, signal, filters)).events;
+}
+
+export async function fetchMonitoringEventWindow(
+  start?: Date,
+  end?: Date,
+  signal?: AbortSignal,
+  filters: MonitoringEventFilters = {},
+): Promise<{ events: unknown[]; truncated: boolean }> {
   const apiBase = await resolveApiBase();
   const params = new URLSearchParams();
   if (start) {
@@ -275,6 +290,8 @@ export async function fetchMonitoringEvents(
   if (end) {
     params.set('end', end.toISOString());
   }
+  // No bounds means all history, not the route's unbounded live SSE branch.
+  if (!start && !end) params.set('end', new Date().toISOString());
   if (filters.agent) params.set('agent', filters.agent);
   if (filters.tool) params.set('tool', filters.tool);
   if (filters.engine) params.set('engine', filters.engine);
@@ -288,13 +305,19 @@ export async function fetchMonitoringEvents(
   // Read the body before branching on status so a route-authored error
   // sentence survives — same order as the fleet fetchers above.
   let result:
-    | { success: boolean; data?: unknown[]; error?: string }
+    | {
+        success: boolean;
+        data?: unknown[];
+        truncated?: boolean;
+        error?: string;
+      }
     | undefined;
   let parseFailure: unknown;
   try {
     result = (await response.json()) as {
       success: boolean;
       data?: unknown[];
+      truncated?: boolean;
       error?: string;
     };
   } catch (error) {
@@ -336,7 +359,19 @@ export async function fetchMonitoringEvents(
       ),
     );
   }
-  return result.data ?? [];
+  if (!Array.isArray(result.data)) {
+    throw new Error('The monitoring events response has no event array.');
+  }
+  // Older peers may omit the flag. At a requested cap, disclose possible
+  // truncation rather than claiming the result is complete.
+  return {
+    events: result.data,
+    truncated:
+      result.truncated === true ||
+      (result.truncated === undefined &&
+        filters.limit !== undefined &&
+        result.data.length >= filters.limit),
+  };
 }
 
 export async function fetchBranding(): Promise<BrandingData> {
@@ -362,56 +397,49 @@ export async function fetchBranding(): Promise<BrandingData> {
 
 export async function requestCoreUpdateStatus(
   apiBaseOverride?: string,
+  signal?: AbortSignal,
 ): Promise<CoreUpdateStatus> {
   const apiBase = await resolveApiBase(apiBaseOverride);
   const response = await authenticatedFetch(
     `${apiBase}/api/system/core-update`,
+    { signal },
   );
-  const result = (await response.json()) as CoreUpdateStatus;
-  if (result.error) {
-    throw new Error(result.error);
+  // HTTP status is checked BEFORE the body can read as success: a 503/401
+  // whose body happens to parse must not be normalized into a status object
+  // (the status is preserved for the same terminal/transient classification
+  // the other system fetchers feed).
+  if (!response.ok) {
+    throw new StationHttpError(
+      response.status,
+      `Failed to fetch core update status: ${response.status}`,
+    );
   }
-  return result;
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length > 0 &&
-    value.trim() === value &&
-    ![...value].some((character) => {
-      const codePoint = character.codePointAt(0);
-      return (
-        codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f)
-      );
-    })
-  );
-}
-
-function isCanonicalTimestamp(value: unknown): value is string {
-  if (!isNonEmptyString(value)) return false;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
-}
-
-function parseRestartExpectation(
-  value: unknown,
-): CoreUpdateRestartExpectation | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const record = value as Record<string, unknown>;
-  if (
-    typeof record.expectedHash !== 'string' ||
-    !/^[a-f0-9]{7}$/.test(record.expectedHash) ||
-    !isNonEmptyString(record.expectedInstanceId) ||
-    !isCanonicalTimestamp(record.deadlineAt)
-  ) {
-    return null;
+  const parsed = parseSystemUpdateStatus(await response.json());
+  if (parsed.error) {
+    throw new Error(parsed.error);
   }
-  return {
-    expectedHash: record.expectedHash,
-    expectedInstanceId: record.expectedInstanceId,
-    deadlineAt: record.deadlineAt,
-  };
+  return parsed;
+}
+
+/**
+ * Read the answering server's identity triple. The 503 `identity_unavailable`
+ * branch is a non-ok response, so it throws a `StationHttpError` with the
+ * status preserved rather than parsing the body as an identity.
+ */
+export async function requestSystemIdentity(
+  apiBase: string,
+  signal?: AbortSignal,
+): Promise<SystemIdentityResponse> {
+  const response = await authenticatedFetch(`${apiBase}/api/system/identity`, {
+    signal,
+  });
+  if (!response.ok) {
+    throw new StationHttpError(
+      response.status,
+      `Failed to fetch system identity: ${response.status}`,
+    );
+  }
+  return parseSystemIdentityResponse(await response.json());
 }
 
 export async function applyCoreUpdate(apiBase: string): Promise<{

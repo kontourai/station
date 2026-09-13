@@ -13,6 +13,10 @@ import {
   rm as rmAsync,
 } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import {
+  type JsonSerializationOptions,
+  serializeJsonDocument,
+} from './durable-json-file.js';
 import { fsyncDirectorySync } from './fs-windows-compat.js';
 import { acquireFileMutationLockAsync } from './lifecycle-events.js';
 
@@ -115,7 +119,7 @@ export function readJsonFileSnapshot<T>(
   }
 }
 
-interface JsonFileWriteOptions {
+interface JsonFileWriteOptions extends JsonSerializationOptions {
   expectedFingerprint?: string | null;
   maxBytes?: number;
   label?: string;
@@ -125,9 +129,19 @@ interface JsonFileWriteOptions {
 
 function serializeJsonFile(
   value: unknown,
-  options?: Pick<JsonFileWriteOptions, 'maxBytes' | 'label'>,
+  options?: Pick<
+    JsonFileWriteOptions,
+    'maxBytes' | 'label' | 'indent' | 'trailingNewline'
+  >,
 ): string {
-  const serialized = JSON.stringify(value, null, 2);
+  // The byte limit measures the document that is actually written, trailing
+  // newline included, so a caller cannot opt into a byte the cap never saw.
+  const serialized = serializeJsonDocument(
+    value,
+    // `?? 2` would be wrong: `null` is a caller asking for compact JSON.
+    options?.indent === undefined ? 2 : options.indent,
+    options?.trailingNewline ?? false,
+  );
   if (
     options?.maxBytes !== undefined &&
     Buffer.byteLength(serialized) > options.maxBytes
@@ -146,7 +160,10 @@ function serializeJsonFile(
 export async function publishJsonFileWithOwnedLock(
   path: string,
   value: unknown,
-  options?: Pick<JsonFileWriteOptions, 'maxBytes' | 'label' | 'beforeCommit'>,
+  options?: Pick<
+    JsonFileWriteOptions,
+    'maxBytes' | 'label' | 'beforeCommit' | 'indent' | 'trailingNewline'
+  >,
 ): Promise<void> {
   await mkdirAsync(dirname(path), { recursive: true, mode: 0o700 });
   const serialized = serializeJsonFile(value, options);

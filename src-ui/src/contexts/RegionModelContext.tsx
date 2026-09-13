@@ -141,8 +141,9 @@ const REGION_ARRANGEMENT_PERSIST_DELAY_MS = 150;
  *
  * 1. A URL deep link, for Chat only: `dockSlotPlacement` PLACES Chat there
  *    (`placeSurface`, relocating whatever held the region by the model's own
- *    rule — the previous Chat region when it may, else the first free dock
- *    region), and `dock=open` shows it. Read from the URL itself, not from
+ *    rule — the previous Chat region when it may, else the displaced
+ *    surface's own default region, else the model's search order), and
+ *    `dock=open` shows it. Read from the URL itself, not from
  *    navigation's blended `dockMode`, which falls back to the device setting.
  * 2. The `regionArrangement` record: every surface's placement, every size,
  *    every visibility — Chat's included when the URL says nothing. A record
@@ -477,10 +478,10 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     // `lastDockMaximized` to false on the very next show and `focusSession`'s
     // `setDockState(true, lastDockMaximized)` would reopen docked (#1563).
     // `setDockState(true, undefined)` leaves the memory alone and does not
-    // touch the URL's `maximize` param: a close through `setDockState` clears
-    // it (archive#795), and a param that lingers from some other write (a
-    // `?maximize=true` link without `dock=open`, a dead-chat pointer clear)
-    // is re-seeded into the region by the inbound effect below, so that Chat
+    // touch the URL's `maximize` param: every param write that closes the dock
+    // clears it (archive#795, station#1613), and a param that arrives without
+    // passing a writer (a `?maximize=true` link without `dock=open`) is
+    // re-seeded into the region by the inbound effect below, so that Chat
     // opens at Full rather than diverging from the shell. A maximize change
     // navigation already shows — the collapse-on-navigate seam clears the URL
     // param first (`useDockShellChrome.restoreDockToDocked`) precisely so

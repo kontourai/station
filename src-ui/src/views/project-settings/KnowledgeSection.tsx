@@ -173,18 +173,7 @@ function KnowledgeStoreSubsection({ slug }: { slug: string }) {
   );
 }
 
-/**
- * `guard` is `ProjectSettingsView.tsx`'s own `useUnsavedGuard` guard (
- * finding, 1) — both cross-links below must route through it
- * like every other navigation trigger on a page with dirty state.
- */
-export function KnowledgeSection({
-  slug,
-  guard,
-}: {
-  slug: string;
-  guard: (callback: () => void) => void;
-}) {
+export function KnowledgeSection({ slug }: { slug: string }) {
   const { navigate } = useNavigation();
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<{
@@ -270,12 +259,10 @@ export function KnowledgeSection({
           type="button"
           className="button button--link"
           onClick={() =>
-            guard(() =>
-              navigate('/settings', {
-                view: 'knowledge',
-                highlight: 'personal-knowledge-store',
-              }),
-            )
+            navigate('/settings', {
+              view: 'knowledge',
+              highlight: 'personal-knowledge-store',
+            })
           }
         >
           Open Settings → My knowledge store
@@ -284,7 +271,7 @@ export function KnowledgeSection({
         <button
           type="button"
           className="button button--link"
-          onClick={() => guard(() => navigate('/connections/knowledge'))}
+          onClick={() => navigate('/connections/knowledge')}
         >
           Open Knowledge infrastructure
         </button>

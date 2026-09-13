@@ -112,7 +112,7 @@ export function toggleSessionInventoryOccurrence(input: {
 export function readSessionInventoryHostRegistration(hostId: string) {
   return registrations.get(hostId);
 }
-export function subscribeSessionInventoryOccurrence(
+function subscribeSessionInventoryOccurrence(
   hostId: string,
   listener: () => void,
 ) {

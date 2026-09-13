@@ -36,7 +36,7 @@ export type WorkspacePaneHostPopOut =
       ): WorkspacePaneHostPopOutAvailability;
     };
 
-export interface WorkspacePaneHostCommandsProps {
+interface WorkspacePaneHostCommandsProps {
   group: WorkspacePaneHostTabGroup;
   selectedPane: WorkspacePaneInstance;
   paneLabel: string;
