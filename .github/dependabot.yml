@@ -42,6 +42,29 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # vite 8 replaces Rollup with Rolldown. The entry bundle grows about
+      # 80 KB gzip from finer chunking, not from added weight (#260, parent
+      # #61), and the cross-chunk-cycle guard in vite.config.ts goes inert
+      # (#262). plugin-react 6 peers vite ^8 only, so the two move together.
+      # Remove both entries when the #260 lane lands the migration.
+      - dependency-name: vite
+        versions: ['>=8']
+      - dependency-name: "@vitejs/plugin-react"
+        versions: ['>=6']
+      # AI SDK provider-spec v4 is one migration (#1227; #282): ai 7,
+      # @ai-sdk/provider 4, provider-utils 5, and every provider major. It is
+      # blocked upstream: @strands-agents/sdk peers @ai-sdk/provider ^3 and
+      # types VercelModel on LanguageModelV3, and @voltagent/core peers ai ^6
+      # and provider-utils 4.x. Station also implements LanguageModelV3 in
+      # fleet-inference-model.ts. Minor and patch updates on the current line
+      # keep flowing. Remove these entries when both upstreams admit v4.
+      - dependency-name: ai
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@ai-sdk/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@voltagent/*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: cargo
     directory: /src-desktop
     schedule:
