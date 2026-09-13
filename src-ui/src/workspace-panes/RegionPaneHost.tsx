@@ -32,11 +32,16 @@ import {
  * key is pinned by `RegionPaneHost.test.tsx` and named in
  * `docs/design/placement.md`. Two readers keep it:
  *
- * - the model-less mount (`ChatDock` with no region, the pre-region path
- *   App-level tests still take) is Chat alone in its own host, which is
- *   exactly the document this id names, so it keeps using it;
+ * - a host given NO region (`RegionShells`' model-less branch renders
+ *   `<ChatDock />` without one, the pre-region path App-level tests still
+ *   take) is Chat alone in its own host, which is exactly the document this
+ *   id names, so it keeps using it. A `ChatDock` handed a `regionId` — the
+ *   plumbing `ChatDockRegionForwarding.test.tsx` pins; no production caller
+ *   does it — is that region's host, on that region's document, exactly as
+ *   `RegionShells` would mount it;
  * - a region host whose own document has never been written ADOPTS it
- *   (`adoptLegacyChatDockDocument`) when Chat occupies the region.
+ *   (`adoptLegacyChatDockDocument`) when Chat occupies the region — per
+ *   region, on that region's first Chat mount; the legacy key never retires.
  */
 export const AMBIENT_CHAT_DOCK_DOCUMENT_ID = 'chat-dock';
 
@@ -44,8 +49,8 @@ export const AMBIENT_CHAT_DOCK_DOCUMENT_ID = 'chat-dock';
  * The document a dock region owns: `ambient:<region>` (#2045). Per REGION,
  * not per occupant — a surface moving from `bottom` to `right` leaves one
  * document and joins another, which is the shape slice 2's tabs need (a
- * region's document holds every pane placed there). The model-less mount has
- * no region and keeps the legacy Chat document.
+ * region's document holds every pane placed there). A host given no region
+ * keeps the legacy Chat document.
  */
 export function regionPaneHostDocumentId(
   regionId: DockRegionId | undefined,
@@ -195,9 +200,17 @@ export type RenderActivityPane = (
  * Chat's alone, on the legacy document.
  *
  * The inner host is keyed by its document (`WorkspacePaneHost`) AND by the
- * occupant: a swap changes what the region's document may hold, and the
- * controller initialises from its document once, so the host remounts and
- * re-hydrates rather than rendering yesterday's catalog.
+ * occupant. A swap changes what the region's document may hold; the
+ * controller already follows that on its own — a changed instance set is a
+ * new authority fingerprint, and its layout effect revokes the panes no
+ * longer in the catalog (`workspacePaneHostController.ts`,
+ * `authorityFingerprint`). The key is belt-and-braces on top of that: a
+ * fresh controller hydrates the region's key against the new catalog in one
+ * step instead of revoking and then admitting, and the old occupant's pane
+ * subtree is torn down with it rather than living on until revocation. Kept
+ * deliberately; drop it only with a test that swaps occupants under a stale
+ * persisted document and proves the fingerprint path alone lands on the new
+ * occupant's baseline.
  *
  * The renderers are supplied by the caller, not imported: Chat's lives in
  * `ChatDock.tsx` and Activity's behind `RegionShells`' lazy boundary, and

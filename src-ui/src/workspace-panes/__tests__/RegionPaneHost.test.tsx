@@ -243,8 +243,10 @@ const BOTTOM_STORAGE_KEY = 'station:workspace-pane-host:v2:ambient:bottom';
  * is the discriminator: the baseline's is `root`, so `legacy-group`
  * surviving under the region key proves the legacy document was read, not
  * a baseline written. Each `false` case is a distinct guard: absent legacy,
- * region key already present, corrupt legacy. Deleting a guard makes its
- * case write.
+ * region key already present, corrupt legacy. Deleting either of the first
+ * two guards makes its case write; deleting the corrupt-legacy guard (the
+ * `try`/`catch`) makes its case THROW out of a render-time call instead of
+ * returning false, which is what the no-throw assertion there is for.
  */
 test('adoptLegacyChatDockDocument re-identifies the legacy document as the region’s and leaves the legacy key', () => {
   const storage = new Map<string, string>();

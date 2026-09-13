@@ -693,9 +693,15 @@ export function useDockShellChrome({
     // the registry does not hold, takes the occupant's own id: a non-Chat
     // shell reading "Hide Chat" would be #1386's defect relocated. That third
     // case is unreachable today — `RegionShells` mounts a host only for an
-    // occupant in `REGION_SURFACE_PANES`, whose keys
-    // `region-surface-panes.test.ts` pins to the registry's dock-capable
-    // surfaces.
+    // occupant the REGISTRY holds (`model.surfaces.has`), and a registered
+    // occupant always has a title. That a registered dock occupant also has
+    // a pane rests on two guards upstream of the shell — the record parser
+    // empties a region whose stored surface does not declare it
+    // (`region-arrangement-record.ts`, `parseOccupant`) and `placeSurface`
+    // refuses an undeclared region (`surfaceMayOccupy`), so `home` never
+    // reaches a dock region — plus `region-surface-panes.test.ts`, which
+    // pins every dock-declaring surface to an entry in
+    // `REGION_SURFACE_PANES`.
     surfaceTitle:
       regionModel && shellOccupant
         ? (regionModel.surfaces.get(shellOccupant)?.title ?? shellOccupant)

@@ -263,8 +263,11 @@ Two facts that follow from the map and are easy to get wrong:
   ADOPTION: when a region Chat occupies mounts and its own key has never been
   written, `adoptLegacyChatDockDocument` restores the legacy document against
   the Chat catalog, re-identifies it as the region's and persists it under the
-  region's key; the legacy key is left in place for an older build in the
-  same-device stale-tab window. Stated plainly: every build that ever wrote
+  region's key. This is per REGION, on that region's first Chat mount — a
+  device whose Chat has lived in `bottom` and later in `right` adopts twice,
+  once into each — and the legacy key never retires: it is left in place for
+  an older build in the same-device stale-tab window and, being what every
+  later adoption reads from, is never rewritten by a region either. Stated plainly: every build that ever wrote
   `ambient:chat-dock` wrote it with Chat as its only pane, so its content
   equals the region's baseline and the adoption carries nothing a fresh
   baseline would not — it is the mechanism by which the key is honoured, not

@@ -2893,11 +2893,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 /**
  * The model-less ambient placement of the shared Chat workspace pane: Chat
  * mounted in its own dock (`RegionPaneHost` → `DockShell` → chromeless
- * `WorkspacePaneHost`) on the legacy `chat-dock` document. `RegionShells`
- * takes this branch only without a region model (App-level tests on the
- * pre-region mount); with one, every dock region mounts its own host and
- * Chat renders through it as a pane (#2045), so a `regionId` here is the
- * pre-#2045 forwarding kept for that path alone.
+ * `WorkspacePaneHost`). `RegionShells` mounts this only without a region
+ * model (App-level tests on the pre-region mount), and without a `regionId`,
+ * which is what puts the host on the legacy `chat-dock` document. With a
+ * model, every dock region mounts its own host and Chat renders through it
+ * as a pane (#2045). A `regionId` forwarded here — pinned plumbing
+ * (`ChatDockRegionForwarding.test.tsx`), no production caller — makes the
+ * host that region's, on that region's document, the same host `RegionShells`
+ * would mount.
  */
 export function ChatDock({
   regionId,

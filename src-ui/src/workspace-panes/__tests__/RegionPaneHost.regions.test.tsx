@@ -13,6 +13,7 @@
  * the constants moving.
  */
 
+import { WORKSPACE_ACTIVITY_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-activity-pane';
 import {
   act,
   cleanup,
@@ -36,13 +37,26 @@ import { deviceSettingsStore } from '../../lib/device-settings-store';
 vi.mock('../../views/SessionsView', () => ({
   SessionsView: () => <div data-testid="sessions-view" />,
 }));
-vi.mock('../../components/chat-dock/ChatDock', () => ({
-  // The model-less mount; never taken under `RegionModelProvider`.
-  ChatDock: () => null,
-  renderAmbientChatPane: () => (
-    <p data-testid="ambient-chat-occupant">Chat pane</p>
-  ),
+/** The open action Chat's pane sees: the region host's own controller. */
+const openProbe = vi.hoisted(() => ({
+  action: null as
+    | import('../WorkspacePaneHostOpenContext').WorkspacePaneHostOpenAction
+    | null,
 }));
+vi.mock('../../components/chat-dock/ChatDock', async () => {
+  const { useWorkspacePaneHostOpenAction } = await import(
+    '../WorkspacePaneHostOpenContext'
+  );
+  function ChatPane() {
+    openProbe.action = useWorkspacePaneHostOpenAction();
+    return <p data-testid="ambient-chat-occupant">Chat pane</p>;
+  }
+  return {
+    // The model-less mount; never taken under `RegionModelProvider`.
+    ChatDock: () => null,
+    renderAmbientChatPane: () => <ChatPane />,
+  };
+});
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
 }));
@@ -77,6 +91,7 @@ function currentModel(): ReturnType<typeof useRegionModel> {
 
 beforeEach(() => {
   model = null;
+  openProbe.action = null;
   // jsdom has no Web Locks; the host exposes no lockManager prop (it IS the
   // production wiring), so the lease is granted through `navigator.locks`
   // the way `browserWorkspacePaneHostLockManager` takes it.
@@ -258,6 +273,64 @@ test('the legacy `ambient:chat-dock` document is adopted by the region Chat occu
   // The legacy key is left in place: an older build in the same-device
   // stale-tab window still reads it.
   expect(storedDocument(LEGACY_CHAT_DOCK_KEY)?.root.id).toBe('legacy-group');
+});
+
+/**
+ * Adoption follows CHAT, not `bottom`: a device whose Chat lives in `right`
+ * adopts into `ambient:right`, and `ambient:bottom` — empty, no host — is
+ * never written. An adoption pinned to the default region passed every
+ * other test in this file (verifier finding on #2045); this is the one it
+ * fails. The placement is seeded the way a remembered one arrives, through
+ * the `dockSlotPlacement` device setting the model seeds from.
+ */
+test('the legacy document is adopted into the region Chat occupies, not into `bottom`', async () => {
+  window.localStorage.setItem(
+    LEGACY_CHAT_DOCK_KEY,
+    chatDocument('chat-dock', 'legacy-group'),
+  );
+  deviceSettingsStore.set('dockSlotPlacement', 'right');
+
+  renderShells();
+  await waitFor(() => expect(model).not.toBeNull());
+  await waitFor(() =>
+    expect(currentModel().regions.right.occupant).toBe('chat'),
+  );
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+
+  await waitFor(() =>
+    expect(storedDocument(RIGHT_KEY)?.root.id).toBe('legacy-group'),
+  );
+  expect(storedDocument(RIGHT_KEY)?.id).toBe('right');
+  expect(window.localStorage.getItem(BOTTOM_KEY)).toBeNull();
+});
+
+/**
+ * The open path of a region host admits only the panes of surfaces occupying
+ * the region: opening Activity's pane into the region Chat holds is refused
+ * by admission (`reason: 'refused'`, not `no-lease` — the lease is held, as
+ * the persisted document proves first), and the region's document does not
+ * gain it. Before #2045 only the model-less mount pinned this.
+ */
+test('a region host refuses opening a pane of a surface that does not occupy the region', async () => {
+  renderShells();
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+  await waitFor(() => expect(storedDocument(BOTTOM_KEY)?.id).toBe('bottom'));
+  await waitFor(() => expect(openProbe.action).not.toBeNull());
+
+  let outcome: unknown;
+  act(() => {
+    outcome = openProbe.action?.open(WORKSPACE_ACTIVITY_PANE_INSTANCE);
+  });
+
+  expect(outcome).toEqual({ ok: false, reason: 'refused' });
+  expect(
+    storedDocument(BOTTOM_KEY)?.instances.map((i) => i.descriptorId),
+  ).toEqual(['pane:builtin:chat']);
+  expect(screen.queryByTestId('sessions-view')).toBeNull();
 });
 
 /**
