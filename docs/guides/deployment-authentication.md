@@ -375,7 +375,10 @@ and return destination; request-supplied redirect URLs or OAuth parameters are
 not accepted. Invitation intent travels in the library's server-controlled
 OAuth state and is checked again against the real invitation owner after
 verified identity returns. Account creation does not accept the invitation or
-grant Project/Device permissions. Equal emails never link accounts automatically.
+grant Project/Device permissions. The underlying external account key includes
+verified issuer and immutable subject; reusing an operator's provider label for
+a different issuer cannot inherit an old account. UserInfo must identify the
+same subject as the verified ID token. Equal emails never link accounts automatically.
 
 Discovery runs at account-provider startup. An unavailable or mismatched
 optional issuer is shown as unavailable and its start/callback endpoints refuse;

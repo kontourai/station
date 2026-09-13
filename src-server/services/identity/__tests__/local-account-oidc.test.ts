@@ -20,7 +20,11 @@ const stationOrigin = 'http://127.0.0.1:48999';
 const basePath = '/api/account-auth';
 const invitation = 'invitation-valid-fixture-0001';
 
-async function fixture(discoveryAvailable = true) {
+async function fixture(
+  discoveryAvailable = true,
+  prior?: { stateDirectory: string; secret: string },
+  userEmail = 'person@example.test',
+) {
   const key = await generateKeyPair('RS256');
   const rotatedKey = await generateKeyPair('RS256');
   const rotatedJwk = {
@@ -44,6 +48,8 @@ async function fixture(discoveryAvailable = true) {
   let badNonce = false;
   let badAudience = false;
   let omitIdToken = false;
+  let omitTokenEmail = false;
+  let userInfoSubject = 'immutable-person-one';
   let rotated = false;
   let forged = false;
   let expired = false;
@@ -72,9 +78,9 @@ async function fixture(discoveryAvailable = true) {
   app.get('/jwks', (c) => c.json({ keys: [jwk, rotatedJwk] }));
   app.get('/userinfo', (c) =>
     c.json({
-      sub: 'immutable-person-one',
-      id: 'immutable-person-one',
-      email: 'person@example.test',
+      sub: userInfoSubject,
+      id: userInfoSubject,
+      email: userEmail,
       email_verified: true,
       name: 'Fixture Person',
     }),
@@ -118,8 +124,7 @@ async function fixture(discoveryAvailable = true) {
       return c.json({ error: 'invalid_grant' }, 400);
     const idToken = await new SignJWT({
       nonce: badNonce ? 'wrong-nonce' : flow.nonce,
-      email: 'person@example.test',
-      email_verified: true,
+      ...(omitTokenEmail ? {} : { email: userEmail, email_verified: true }),
       name: 'Fixture Person',
     })
       .setProtectedHeader({
@@ -150,8 +155,11 @@ async function fixture(discoveryAvailable = true) {
   if (!address || typeof address === 'string')
     throw new Error('Issuer did not listen');
   issuerOrigin = `http://127.0.0.1:${address.port}`;
-  const stateDirectory = await mkdtemp(join(tmpdir(), 'station-oidc-'));
-  cleanup.push(() => rm(stateDirectory, { recursive: true, force: true }));
+  const stateDirectory =
+    prior?.stateDirectory ?? (await mkdtemp(join(tmpdir(), 'station-oidc-')));
+  const secret = prior?.secret ?? randomBytes(32).toString('hex');
+  if (!prior)
+    cleanup.push(() => rm(stateDirectory, { recursive: true, force: true }));
   const provider = await createLocalAccountProvider(
     {
       stationId: 'oidc-test',
@@ -159,14 +167,14 @@ async function fixture(discoveryAvailable = true) {
       stateDirectory,
       basePath,
     },
-    randomBytes(32).toString('hex'),
+    secret,
     {
       mayRegister: async (input) => {
         eligibility.push(input);
         return (
           allowed &&
           input.invitation === invitation &&
-          (!input.email || input.email === 'person@example.test')
+          (!input.email || input.email === userEmail)
         );
       },
       deliver: async () => {
@@ -252,7 +260,12 @@ async function fixture(discoveryAvailable = true) {
     },
     description: service.describe(),
     stateDirectory,
+    authority: { stateDirectory, secret },
     clearCookies: () => jar.clear(),
+    useUserInfo: (subject: string) => {
+      omitTokenEmail = true;
+      userInfoSubject = subject;
+    },
     rotateKey: () => {
       rotated = true;
     },
@@ -387,5 +400,47 @@ describe('local accounts with a real HTTP OIDC issuer', () => {
     if (first.kind !== 'authenticated' || second.kind !== 'authenticated')
       throw new Error('Fixture accounts were not authenticated');
     expect(second.session.subject).toBe(first.session.subject);
+  });
+  test.each([true, false])(
+    'requires UserInfo to identify the ID-token subject (match=%s)',
+    async (matches) => {
+      const f = await fixture();
+      f.useUserInfo(matches ? 'immutable-person-one' : 'different-person');
+      await f.call('/callback/test-idp', { url: await f.begin() });
+      expect((await f.account()).kind === 'authenticated').toBe(matches);
+    },
+  );
+  test('reusing a provider label with a different issuer cannot take over an equal subject', async () => {
+    const firstIssuer = await fixture();
+    await firstIssuer.call('/callback/test-idp', {
+      url: await firstIssuer.begin(),
+    });
+    const first = await firstIssuer.account();
+    expect(first.kind).toBe('authenticated');
+    const secondIssuer = await fixture(
+      true,
+      firstIssuer.authority,
+      'second-person@example.test',
+    );
+    await secondIssuer.call('/callback/test-idp', {
+      url: await secondIssuer.begin(),
+    });
+    const second = await secondIssuer.account();
+    expect(second.kind).toBe('authenticated');
+    if (first.kind !== 'authenticated' || second.kind !== 'authenticated')
+      throw new Error('Fixture accounts were not authenticated');
+    expect(second.session.subject).not.toBe(first.session.subject);
+  });
+  test('equal emails from different issuers do not link accounts', async () => {
+    const firstIssuer = await fixture();
+    await firstIssuer.call('/callback/test-idp', {
+      url: await firstIssuer.begin(),
+    });
+    expect((await firstIssuer.account()).kind).toBe('authenticated');
+    const secondIssuer = await fixture(true, firstIssuer.authority);
+    await secondIssuer.call('/callback/test-idp', {
+      url: await secondIssuer.begin(),
+    });
+    expect((await secondIssuer.account()).kind).not.toBe('authenticated');
   });
 });

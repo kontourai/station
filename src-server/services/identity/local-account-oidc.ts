@@ -1,5 +1,8 @@
+import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
+import type { GenericOAuthConfig } from 'better-auth/plugins/generic-oauth';
+import { decodeJwt } from 'jose';
 import { z } from 'zod/v3';
 
 const issuer = z
@@ -67,4 +70,46 @@ export function readLocalAccountOidcConfiguration(
       );
     return { ...provider, clientSecret };
   });
+}
+
+const oidcIdentityClaims = z.object({
+  iss: z.string(),
+  sub: z.string().min(1),
+  aud: z.union([z.string(), z.array(z.string()).min(1)]),
+  exp: z.number().finite(),
+  iat: z.number().finite(),
+  azp: z.string().optional(),
+});
+
+/** Invoked by the maintained OAuth callback AFTER its signature/issuer/audience/nonce verifier succeeds. */
+export function createOidcAccountSubject(
+  configuration: Pick<LocalAccountOidcProvider, 'issuer' | 'clientId'>,
+): NonNullable<GenericOAuthConfig['accountSubject']> {
+  return ({ tokens, profile }) => {
+    if (!tokens.idToken) throw new Error('OIDC identity token is required.');
+    // Decoding here does not establish authenticity: Better Auth owns that
+    // preceding step. This callback binds its verified token to UserInfo and
+    // derives the immutable account key before any user/session can be created.
+    const claims = oidcIdentityClaims.safeParse(decodeJwt(tokens.idToken));
+    if (!claims.success)
+      throw new Error('OIDC identity claims are incomplete.');
+    const identity = claims.data;
+    const audiences =
+      typeof identity.aud === 'string' ? [identity.aud] : identity.aud;
+    if (
+      identity.iss !== configuration.issuer ||
+      identity.sub !== profile.sub ||
+      identity.exp * 1000 <= Date.now() ||
+      audiences.some((audience) => audience !== configuration.clientId) ||
+      (identity.azp !== undefined && identity.azp !== configuration.clientId)
+    )
+      throw new Error(
+        'OIDC identity does not match its verified profile or client.',
+      );
+    // Provider labels are operator-editable. Include the verified issuer so
+    // a new issuer with an equal subject cannot inherit an existing account.
+    return `oidc-v1:${createHash('sha256')
+      .update(JSON.stringify([identity.iss, identity.sub]))
+      .digest('base64url')}`;
+  };
 }

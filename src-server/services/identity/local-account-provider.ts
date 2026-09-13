@@ -18,7 +18,10 @@ import { genericOAuth, username } from 'better-auth/plugins';
 import { z } from 'zod/v3';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
 import { LocalAccountAdministration } from './local-account-administration.js';
-import type { LocalAccountOidcProvider } from './local-account-oidc.js';
+import {
+  createOidcAccountSubject,
+  type LocalAccountOidcProvider,
+} from './local-account-oidc.js';
 
 export interface LocalAccountEmail {
   kind: 'verify-email' | 'reset-password';
@@ -140,6 +143,7 @@ export async function createLocalAccountProvider(
                   scopes: ['openid', 'profile', 'email'],
                   pkce: true,
                   requireIdTokenVerification: true,
+                  accountSubject: createOidcAccountSubject(provider),
                   disableImplicitSignUp: true,
                   disableProviderLogout: true,
                 })),
@@ -212,22 +216,11 @@ export async function createLocalAccountProvider(
           const provider = context.socialProviders.find(
             (entry) => entry.id === configured.id,
           );
-          if (
-            provider?.issuer !== configured.issuer ||
-            !provider.idToken ||
-            !provider.requiresIdTokenNonce
-          )
-            return false;
-          // The generic OAuth interface also supports UserInfo-only OAuth.
-          // This configured OIDC flow requires an ID token on EVERY callback.
-          // Delegate signature/issuer/audience/nonce checks to the maintained
-          // provider; never substitute local JWT decoding for verification.
-          const getUserInfo = provider.getUserInfo.bind(provider);
-          provider.getUserInfo = async (tokens) =>
-            typeof tokens.idToken === 'string' && tokens.idToken.length > 0
-              ? getUserInfo(tokens)
-              : null;
-          return true;
+          return (
+            provider?.issuer === configured.issuer &&
+            !!provider.idToken &&
+            !!provider.requiresIdTokenNonce
+          );
         })
         .map((provider) => provider.id),
     );
