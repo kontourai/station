@@ -92,8 +92,12 @@ vi.mock('../views/SessionsView', () => ({
 }));
 // The Chat shell would mount the whole chat data stack; this file needs the
 // region surface HOST, not what Chat renders inside it.
+// Since #2045 `RegionShells` renders Chat as a pane of the region's host
+// through `renderAmbientChatPane`; `ChatDock` is the model-less mount this
+// harness never takes.
 vi.mock('../components/chat-dock/ChatDock', () => ({
   ChatDock: () => <div data-testid="chat-shell" />,
+  renderAmbientChatPane: () => <div data-testid="chat-shell" />,
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),

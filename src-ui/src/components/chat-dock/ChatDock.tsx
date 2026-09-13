@@ -298,17 +298,23 @@ const loadConversationOpenRevalidator = () =>
  * already settled), and App.tsx's `showAmbientChatDock` remounts the dock on
  * ordinary navigation.
  */
-const loadAmbientChatDockPaneHost = () =>
-  import('../../workspace-panes/AmbientChatDockPaneHost').then((module) => ({
-    default: module.AmbientChatDockPaneHost,
+const loadRegionPaneHost = () =>
+  import('../../workspace-panes/RegionPaneHost').then((module) => ({
+    default: module.RegionPaneHost,
   }));
 
-void loadAmbientChatDockPaneHost().catch(() => {
+void loadRegionPaneHost().catch(() => {
   // The boundary reports a failed import where it renders; the warm-up has
   // no surface of its own.
 });
 
-function renderAmbientChatPane(
+/**
+ * Chat as a region pane: what `RegionPaneHost` renders for the canonical
+ * Chat occurrence, whichever dock region holds it (#2045). Exported for
+ * `RegionShells`, which hands it to each region's host; the chat stack this
+ * pane mounts stays in this module.
+ */
+export function renderAmbientChatPane(
   _instance: WorkspacePaneInstance,
   onRequestAuth: (() => Promise<boolean> | undefined) | undefined,
   shellChrome: DockShellChrome,
@@ -2885,10 +2891,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 }
 
 /**
- * The ambient application placement of the shared Chat workspace pane: Chat
- * mounted in its own dock (`AmbientChatDockPaneHost` → `DockShell` →
- * chromeless `WorkspacePaneHost`). Chat is the only pane that host renders
- * (#928 C2b deleted the legacy docked-Home path and its occupant switching).
+ * The model-less ambient placement of the shared Chat workspace pane: Chat
+ * mounted in its own dock (`RegionPaneHost` → `DockShell` → chromeless
+ * `WorkspacePaneHost`). `RegionShells` mounts this only without a region
+ * model (App-level tests on the pre-region mount), and without a `regionId`,
+ * which is what puts the host on the legacy `chat-dock` document. With a
+ * model, every dock region mounts its own host and Chat renders through it
+ * as a pane (#2045). A `regionId` forwarded here — pinned plumbing
+ * (`ChatDockRegionForwarding.test.tsx`), no production caller — makes the
+ * host that region's, on that region's document, with the same admission
+ * `RegionShells` would apply (not the same props: this path supplies no
+ * Activity renderer).
  */
 export function ChatDock({
   regionId,
@@ -2902,7 +2915,7 @@ export function ChatDock({
   // without a visible gap rather than blinking a placeholder in and out.
   return (
     <LazyBoundary
-      load={loadAmbientChatDockPaneHost}
+      load={loadRegionPaneHost}
       componentProps={{
         onRequestAuth,
         renderChatPane: renderAmbientChatPane,

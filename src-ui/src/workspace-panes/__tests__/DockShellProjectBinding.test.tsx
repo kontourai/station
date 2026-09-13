@@ -12,7 +12,7 @@
  * onto the persistent shell, where the content's remounts cannot reach it.
  *
  * These tests mount the REAL `DockShell` (the same component
- * `AmbientChatDockPaneHost` wraps Chat in) and read the binding through the
+ * `RegionPaneHost` wraps Chat in) and read the binding through the
  * REAL `DockShellChrome` it hands its render prop — not a hand-built chrome
  * object. Chat's own content is stubbed (see `DockShellControlParity.test.tsx`
  * on why the full, heavy `ChatWorkspacePane` is not mounted here): the one

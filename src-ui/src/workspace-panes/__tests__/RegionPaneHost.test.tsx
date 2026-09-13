@@ -15,12 +15,15 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { useBasisPaneLauncher } from '../BasisPaneLauncher';
 import {
   AMBIENT_CHAT_DOCK_DOCUMENT_ID,
-  AmbientChatDockPaneHost,
+  adoptLegacyChatDockDocument,
   createAmbientChatDockPaneDocument,
-} from '../AmbientChatDockPaneHost';
-import { useBasisPaneLauncher } from '../BasisPaneLauncher';
+  createRegionPaneHostDocument,
+  RegionPaneHost,
+  regionPaneHostDocumentId,
+} from '../RegionPaneHost';
 import { workspacePaneHostStorageKey } from '../workspacePaneHostStorage';
 
 vi.mock('../../contexts/DeviceSettingsContext', () => ({
@@ -114,7 +117,7 @@ afterEach(() => {
 
 function renderAmbientHost() {
   return render(
-    <AmbientChatDockPaneHost
+    <RegionPaneHost
       renderChatPane={(instance) => (
         <p data-testid="ambient-chat-occupant">
           Chat pane {instance.instanceId}
@@ -171,13 +174,124 @@ test('the ambient dock document names a projectless chat occupant in the docked 
  * was not. Its key is a user's persisted dock state, so the document's own
  * identity (scope + id, the two inputs `workspacePaneHostStorageKey` folds)
  * must still resolve to the pre-C2b literal — a renamed id or scope would
- * silently reset every device's dock.
+ * silently reset every device's dock. Since #2045 that document is the
+ * model-less mount's and the source a region adopts from
+ * (`RegionPaneHost.regions.test.tsx`).
  */
 test('the persisted dock document keeps its pre-C2b storage key', () => {
   const document = createAmbientChatDockPaneDocument();
   expect(AMBIENT_CHAT_DOCK_DOCUMENT_ID).toBe('chat-dock');
   expect(workspacePaneHostStorageKey(document.scope, document.id)).toBe(
     AMBIENT_DOCK_STORAGE_KEY,
+  );
+});
+
+/**
+ * #2045: a dock region's document is `ambient:<region>`, per REGION; only
+ * the model-less mount (no region) keeps the legacy Chat document. A host
+ * that derived the id from its occupant instead would fail the first two.
+ */
+test('a region host document is the region’s; the model-less mount keeps the legacy one', () => {
+  expect(regionPaneHostDocumentId('bottom')).toBe('bottom');
+  expect(
+    workspacePaneHostStorageKey(
+      { kind: 'ambient' },
+      regionPaneHostDocumentId('right'),
+    ),
+  ).toBe('station:workspace-pane-host:v2:ambient:right');
+  expect(regionPaneHostDocumentId(undefined)).toBe('chat-dock');
+  const document = createRegionPaneHostDocument('left', ['activity']);
+  expect(document).toMatchObject({
+    id: 'left',
+    scope: { kind: 'ambient' },
+    instances: [{ descriptorId: 'pane:builtin:activity' }],
+  });
+  expect(() => createRegionPaneHostDocument('left', ['home'])).toThrow(
+    /no built-in pane/,
+  );
+});
+
+/** A persisted Chat document under `id`, with a tab group id restoration keeps. */
+function persistedChatDocument(id: string, rootId: string): string {
+  return JSON.stringify({
+    version: '1.1',
+    id,
+    scope: { kind: 'ambient' },
+    instances: [
+      {
+        version: '1.0',
+        descriptorId: 'pane:builtin:chat',
+        instanceId: 'workspace-chat',
+        stateKey: 'workspace-chat',
+        boundContext: { sourceId: 'builtin:workspace-chat' },
+      },
+    ],
+    activeInstanceId: 'workspace-chat',
+    root: {
+      type: 'tabs',
+      id: rootId,
+      instanceIds: ['workspace-chat'],
+      selectedInstanceId: 'workspace-chat',
+    },
+  });
+}
+
+const BOTTOM_STORAGE_KEY = 'station:workspace-pane-host:v2:ambient:bottom';
+
+/**
+ * The pure half of adoption (#2045, design constraint 1). The tab group id
+ * is the discriminator: the baseline's is `root`, so `legacy-group`
+ * surviving under the region key proves the legacy document was read, not
+ * a baseline written. Each `false` case is a distinct guard: absent legacy,
+ * region key already present, corrupt legacy. Deleting either of the first
+ * two guards makes its case write; deleting the corrupt-legacy guard (the
+ * `try`/`catch`) makes its case THROW out of a render-time call instead of
+ * returning false; the bare call in that case is the no-throw check (an
+ * uncaught throw fails the test).
+ */
+test('adoptLegacyChatDockDocument re-identifies the legacy document as the region’s and leaves the legacy key', () => {
+  const storage = new Map<string, string>();
+  const adapter = {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => void storage.set(key, value),
+    removeItem: (key: string) => void storage.delete(key),
+  };
+
+  expect(adoptLegacyChatDockDocument(adapter, 'bottom')).toBe(false);
+  expect(storage.has(BOTTOM_STORAGE_KEY)).toBe(false);
+
+  storage.set(
+    AMBIENT_DOCK_STORAGE_KEY,
+    persistedChatDocument('chat-dock', 'legacy-group'),
+  );
+  expect(adoptLegacyChatDockDocument(adapter, 'bottom')).toBe(true);
+  const adopted = JSON.parse(storage.get(BOTTOM_STORAGE_KEY) ?? 'null');
+  expect(adopted).toMatchObject({
+    id: 'bottom',
+    scope: { kind: 'ambient' },
+    root: { id: 'legacy-group' },
+    instances: [{ descriptorId: 'pane:builtin:chat' }],
+  });
+  expect(storage.get(AMBIENT_DOCK_STORAGE_KEY)).toBe(
+    persistedChatDocument('chat-dock', 'legacy-group'),
+  );
+
+  // Present region key: not overwritten, whatever the legacy says.
+  storage.set(
+    BOTTOM_STORAGE_KEY,
+    persistedChatDocument('bottom', 'region-group'),
+  );
+  expect(adoptLegacyChatDockDocument(adapter, 'bottom')).toBe(false);
+  expect(JSON.parse(storage.get(BOTTOM_STORAGE_KEY)!).root.id).toBe(
+    'region-group',
+  );
+
+  // Corrupt legacy: nothing written, no throw.
+  storage.clear();
+  storage.set(AMBIENT_DOCK_STORAGE_KEY, '{not json');
+  expect(adoptLegacyChatDockDocument(adapter, 'right')).toBe(false);
+  expect(storage.has('station:workspace-pane-host:v2:ambient:right')).toBe(
+    false,
   );
 });
 
@@ -225,9 +339,7 @@ test('ambient dock renderPane mounts the canonical chat occupant through a chrom
 });
 
 test('the production ambient host refuses project-bound Basis so the launcher uses its fallback', async () => {
-  render(
-    <AmbientChatDockPaneHost renderChatPane={() => <ProjectBasisLauncher />} />,
-  );
+  render(<RegionPaneHost renderChatPane={() => <ProjectBasisLauncher />} />);
 
   fireEvent.click(screen.getByRole('button', { name: 'Open project Basis' }));
 

@@ -18,10 +18,14 @@ import { RegionShells } from '../RegionShells';
 vi.mock('../../views/SessionsView', () => ({
   SessionsView: () => <div data-testid="sessions-view" />,
 }));
-// The Chat shell would mount the whole chat data stack; `RegionShells` is
-// here as the region surface HOST, not for what it renders inside Chat.
+// Chat's pane would mount the whole chat data stack; `RegionShells` is here
+// as the region surface HOST, not for what it renders inside Chat. Since
+// #2045 the host renders Chat through `renderAmbientChatPane`, so that is
+// the seam stubbed; `ChatDock` is the model-less mount this harness never
+// takes.
 vi.mock('../../components/chat-dock/ChatDock', () => ({
   ChatDock: () => <div data-testid="chat-shell" />,
+  renderAmbientChatPane: () => <div data-testid="chat-shell" />,
 }));
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
