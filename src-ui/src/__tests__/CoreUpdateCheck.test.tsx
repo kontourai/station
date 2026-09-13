@@ -130,11 +130,13 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     ).toBeTruthy();
   });
 
+  // Fixture fidelity: the exact bytes the real route emits for a stampless
+  // bundle (system-update-routes.ts wraps the resolver's detail sentence).
   const UNKNOWN_REFUSAL = {
     installKind: 'unknown' as const,
     updateAvailable: false,
     message:
-      'no git checkout and no station-nightly-source.json build stamp near /bundle/Resources/dist-server',
+      'This install carries no update provenance (no git checkout and no station-nightly-source.json build stamp near /bundle/Resources/dist-server), so updates cannot be checked from here.',
   };
 
   test('an unknown install renders the bounded refusal, never the raw diagnostic as explanation', () => {
@@ -171,7 +173,7 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     expect(details.open).toBe(true);
     expect(
       screen.getByText(
-        'no git checkout and no station-nightly-source.json build stamp near /bundle/Resources/dist-server',
+        'This install carries no update provenance (no git checkout and no station-nightly-source.json build stamp near /bundle/Resources/dist-server), so updates cannot be checked from here.',
       ),
     ).toBeTruthy();
     // The bounded refusal stays visible alongside the disclosure.
