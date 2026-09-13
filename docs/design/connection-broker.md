@@ -317,6 +317,42 @@ production signing-key or certificate rotation. Its Station admission callback
 is test-owned and does not verify an external account. No remotely selectable
 trust header, Project membership or operator credential is introduced.
 
+### Protected application dispatch
+
+`StationRuntimeOptions.virtualApplication` is an opt-in, trusted process
+composition seam for a connector. It supplies the canonical Station origin and
+a `ready` callback receiving `fetch(Request)` and a retirement `AbortSignal`.
+No listener, broker account or remote enablement is created by this option.
+The callback runs only after full runtime initialization and route coverage
+validation. A replacement initialization retires the previous dispatcher;
+shutdown prevents late publication and stops pending response delivery.
+
+The owner in `src-server/services/connections/virtual-application.ts` dispatches
+fresh Requests into the same protected Hono application without Node socket or
+proxy metadata. It rejects foreign targets, cookie operations, cookie headers,
+trusted ingress/proxy headers and HTTP hop headers. Cookies remain an HTTPS
+mechanism; the connector transports the SDK's opaque account continuation and
+proof with its independently approved Device credential and actual client
+Origin. Account, Device, Project and execution checks remain in their existing
+owners. Responses that set cookies are refused, and redirects are returned
+without following them. These refusals do not roll back an application action
+that has already executed, so the connector must not retry mutations silently.
+
+The ingress bounds simultaneous requests, counting open response bodies, to 32.
+Body consumption supplies backpressure. Client cancellation releases response
+custody, while retirement rejects pending callers and cancels late/open response
+bodies. Cancellation cannot promise reversal of a dispatched operation. The
+connector still owns wire-frame/body limits, channel lifetime, authenticated
+endpoint admission and its own process/socket cleanup.
+
+Focused tests cover ordinary runtime admission, forbidden authority headers,
+opaque proof preservation, cookie refusal, capacity, and retirement before and
+after response headers. Bootstrap lifecycle tests control heavyweight startup;
+they do not prove the full application route composition over a DataChannel.
+Real encrypted SDK login, Project traffic, reconnection and native delivery
+remain required before enabling the connector. This seam alone does not satisfy
+those acceptance requirements.
+
 ### Transport qualification
 
 The [browser transport evaluation](../guides/local-collaboration-lab.md#browser-transport-evaluation)

@@ -19,6 +19,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 | Module | Intent | Primary source |
 | --- | --- | --- |
+| [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
@@ -113,6 +114,24 @@ principal-composition suite exercise refusal and identity propagation. They do n
 prove a production identity provider, email delivery, visual design or physical
 two-human acceptance. See [deployment authentication](../guides/deployment-authentication.md)
 for the operator contract and the remaining account/member delivery boundaries.
+
+## VirtualApplicationIngress
+
+**Intent and Interface.** A trusted connector receives the protected Station
+application through `StationRuntimeOptions.virtualApplication` only after
+startup completes. Its Fetch-compatible dispatcher and retirement signal do not
+supply account, Device or Project authority. The canonical Station origin is
+fixed at composition time; the connector supplies actual client Origin and the
+existing scoped credentials inside its authenticated encrypted channel.
+
+**Implementation and callers.** `services/connections/virtual-application.ts`
+under `src-server` constructs fresh Requests, refuses cookie and proxy authority,
+limits open response custody, and fences late or streaming delivery.
+`runtime/bootstrap/station-runtime.ts` captures the already protected Hono app
+at route composition, publishes after initialization, and retires it at
+replacement or shutdown. No Node socket metadata is synthesized. See
+[protected application dispatch](../design/connection-broker.md#protected-application-dispatch)
+for lifecycle, limits and the remaining encrypted-path acceptance.
 
 ## AgentPluginLoader
 

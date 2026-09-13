@@ -109,6 +109,10 @@ import { ApprovalGuardianService } from '../../services/approvals/approval-guard
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
+import {
+  type VirtualApplication,
+  VirtualApplicationIngress,
+} from '../../services/connections/virtual-application.js';
 import { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import { AssignmentClaimService } from '../../services/evidence/assignment-claim-service.js';
 import type { ConsoleBridgeService } from '../../services/evidence/console-bridge-service.js';
@@ -451,6 +455,12 @@ type PersistedAgentReloadTarget =
   | { kind: 'managed'; metadata: any; spec: AgentSpec };
 
 export interface StationRuntimeOptions {
+  /** Trusted connector composition; no virtual listener is enabled by default. */
+  virtualApplication?: {
+    origin: string;
+    ready: (application: VirtualApplication) => void;
+  };
+
   projectSharing?: boolean;
   authentication?: DeploymentAuthenticationConfiguration;
   localAccounts?: LocalAccountConfiguration;
@@ -472,6 +482,10 @@ export interface StationRuntimeOptions {
  * Manages VoltAgent instances with dynamic agent loading
  */
 export class StationRuntime {
+  private readonly virtualApplicationConfiguration?: StationRuntimeOptions['virtualApplication'];
+  private readonly virtualApplicationLifetime = new AbortController();
+  private virtualApplication?: VirtualApplicationIngress;
+
   private readonly projectSharingEnabled: boolean;
   private projectMembership?: ReturnType<typeof createProjectMembershipRuntime>;
   private readonly authenticationConfiguration?: DeploymentAuthenticationConfiguration;
@@ -973,6 +987,10 @@ export class StationRuntime {
   }
 
   constructor(options: StationRuntimeOptions = {}) {
+    this.virtualApplicationConfiguration = options.virtualApplication
+      ? { ...options.virtualApplication }
+      : undefined;
+
     const configuredSharing = process.env.STATION_PROJECT_SHARING;
     if (
       configuredSharing !== undefined &&
@@ -3113,10 +3131,28 @@ export class StationRuntime {
    * (archive#1019's `custom-writer not found` cross-test contamination).
    */
   async initialize(): Promise<void> {
+    if (this.virtualApplicationConfiguration)
+      this.virtualApplicationLifetime.signal.throwIfAborted();
+    this.virtualApplication?.stop();
+    const virtualApplication = this.virtualApplicationConfiguration
+      ? new VirtualApplicationIngress(
+          this.virtualApplicationConfiguration.origin,
+        )
+      : undefined;
+    this.virtualApplication = virtualApplication;
     const inFlight = this.runInitialize();
     this.initializeInFlight = inFlight;
     try {
-      return await inFlight;
+      await inFlight;
+      if (virtualApplication) {
+        this.virtualApplicationLifetime.signal.throwIfAborted();
+        this.virtualApplicationConfiguration!.ready(
+          virtualApplication.activate(),
+        );
+      }
+    } catch (error) {
+      virtualApplication?.stop();
+      throw error;
     } finally {
       if (this.initializeInFlight === inFlight) {
         this.initializeInFlight = null;
@@ -3272,7 +3308,10 @@ export class StationRuntime {
           ollamaAdapter: this.ollamaAdapter,
           createVoltAgentInstance: async (slug) =>
             this.createVoltAgentInstance(slug),
-          configureRoutes: (app: any) => this.configureRoutes(app),
+          configureRoutes: (app: any) => {
+            this.configureRoutes(app);
+            this.virtualApplication?.bind(app);
+          },
           reloadAgents: async () => this.reloadAgents(),
           captureAgentConfigurationRevisions: () =>
             this.captureAgentConfigurationRevisions(),
@@ -4239,6 +4278,9 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    this.virtualApplicationLifetime?.abort();
+    this.virtualApplication?.stop();
+
     this.searchAdmissionStopped = true;
     this.runtimeSearch?.stop();
     // Settle any pending native-engine adoption window before timers are
