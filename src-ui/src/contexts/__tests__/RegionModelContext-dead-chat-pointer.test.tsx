@@ -145,7 +145,7 @@ describe('a reload carrying a chat pointer nothing can resolve', () => {
       new URLSearchParams(window.location.search).get('maximize'),
     ).toBeNull();
     expect(model?.regions.right).toMatchObject({
-      occupant: null,
+      panes: [], occupant: null,
       visible: false,
     });
     expect(model?.regions.left.occupant).toBeNull();
@@ -173,7 +173,7 @@ describe('a reload carrying a chat pointer nothing can resolve', () => {
 
     await waitFor(() =>
       expect(model?.regions.right).toMatchObject({
-        occupant: 'activity',
+        panes: ['activity'], occupant: 'activity',
         visible: true,
       }),
     );
@@ -193,7 +193,7 @@ describe('a reload carrying a chat pointer nothing can resolve', () => {
 
     await waitFor(() =>
       expect(model?.regions.right).toMatchObject({
-        occupant: 'activity',
+        panes: ['activity'], occupant: 'activity',
         visible: true,
       }),
     );

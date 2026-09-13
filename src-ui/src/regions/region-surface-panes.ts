@@ -10,11 +10,12 @@
  * outlet, not a pane host (`MainRegionSurface`).
  *
  * Readers, named here so the inventory is never a label nothing derives:
- * `RegionShells` mounts a host only for an occupant with an entry;
- * `RegionPaneHost` builds the region's baseline document from the occupant's
- * entry and admits a persisted or opened pane only when `regionSurfaceOfPane`
- * names the surface occupying the region. `region-surface-panes.test.ts` pins
- * the keys to the registry's dock-capable surfaces in both directions.
+ * `RegionShells` mounts a host only for a selected pane with an entry;
+ * `RegionPaneHost` builds the region's document from its panes' entries (in
+ * tab order, #2046 2a) and admits a persisted or opened pane only when
+ * `regionSurfaceOfPane` names a surface the region holds.
+ * `region-surface-panes.test.ts` pins the keys to the registry's
+ * dock-capable surfaces in both directions.
  *
  * Kept apart from `region-model.ts` on purpose: the model is pure over ids and
  * imports no pane contract, and this module is what `RegionShells` needs

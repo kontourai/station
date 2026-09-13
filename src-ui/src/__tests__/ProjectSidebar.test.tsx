@@ -37,11 +37,19 @@ vi.mock('../contexts/RegionModelContext', () => ({
             main: {
               visible: true,
               size: 0,
+              panes: sidebarRegion.mainOccupant
+                ? [sidebarRegion.mainOccupant]
+                : [],
               occupant: sidebarRegion.mainOccupant,
             },
-            left: { visible: false, size: 400, occupant: null },
-            right: { visible: false, size: 400, occupant: null },
-            bottom: { visible: false, size: 320, occupant: 'chat' },
+            left: { visible: false, size: 400, panes: [], occupant: null },
+            right: { visible: false, size: 400, panes: [], occupant: null },
+            bottom: {
+              visible: false,
+              size: 320,
+              panes: ['chat'],
+              occupant: 'chat',
+            },
           },
         },
 }));

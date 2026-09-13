@@ -31,6 +31,7 @@ import {
   type RegionState,
   revealSurface,
   seedRegionArrangementFromDock,
+  selectRegionPane,
   showSurfaceAlone,
   surfaceMayOccupy,
   syncRegionArrangementFromDock,
@@ -72,8 +73,23 @@ interface RegionModelValue {
   lastShownRegion: RegionId | null;
   surfaces: typeof REGION_SURFACE_REGISTRY;
   setRegion(id: RegionId, patch: Partial<RegionState>): void;
+  /**
+   * Place a surface (`placeSurface` in region-model.ts, #2046 2a): into a
+   * dock region it joins the panes there, selected; into `main` it replaces;
+   * into a region already holding it, it is selected and the region shown.
+   */
   placeSurface(surfaceId: string, regionId: RegionId): void;
+  /**
+   * Reveal a surface where it is — its region shown and its tab selected —
+   * or place it where it belongs (`revealSurface`/`showSurfaceAlone`).
+   */
   showSurface(surfaceId: string, intent?: SurfaceIntent): void;
+  /**
+   * Select a pane the region holds (#2046 2a): it becomes the region's
+   * `occupant`, the pane `RegionPaneHost` shows. Places nothing and changes
+   * no visibility; a surface the region does not hold is ignored.
+   */
+  selectPane(regionId: RegionId, surfaceId: string): void;
   /**
    * The surface's toggle — its chord, its row in the folded Regions menu, its
    * dock control's show/hide half. Decided once here, by the pure
@@ -294,6 +310,13 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       setRegions(next);
     }
     if (regionId === 'main') navigateToMainOutlet();
+  }, []);
+
+  const selectPane = useCallback((regionId: RegionId, surfaceId: string) => {
+    const next = selectRegionPane(regionsRef.current, regionId, surfaceId);
+    if (next === regionsRef.current) return;
+    regionsRef.current = next;
+    setRegions(next);
   }, []);
 
   const showSurface = useCallback(
@@ -598,6 +621,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       setRegion,
       placeSurface,
       showSurface,
+      selectPane,
       toggleSurface,
       surfaceIntents,
       consumeSurfaceIntent,
@@ -610,6 +634,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       setRegion,
       placeSurface,
       showSurface,
+      selectPane,
       toggleSurface,
       surfaceIntents,
       consumeSurfaceIntent,

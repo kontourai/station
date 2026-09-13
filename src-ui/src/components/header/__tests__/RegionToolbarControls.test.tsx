@@ -15,10 +15,15 @@ const chatCss = readFileSync('src-ui/src/components/chat/chat.css', 'utf8');
 
 const harness = vi.hoisted(() => ({
   regions: {
-    main: { visible: true, size: 0, occupant: 'home' as string | null },
-    left: { visible: false, size: 400, occupant: null },
-    right: { visible: false, size: 400, occupant: null },
-    bottom: { visible: true, size: 320, occupant: 'chat' },
+    main: {
+      visible: true,
+      size: 0,
+      panes: ['home'],
+      occupant: 'home' as string | null,
+    },
+    left: { visible: false, size: 400, panes: [], occupant: null },
+    right: { visible: false, size: 400, panes: [], occupant: null },
+    bottom: { visible: true, size: 320, panes: ['chat'], occupant: 'chat' },
   },
   setDockMode: vi.fn(),
   setDockState: vi.fn(),
@@ -167,21 +172,25 @@ describe('RegionToolbarControls', () => {
     Object.assign(harness.regions.main, {
       visible: true,
       size: 0,
+      panes: ['home'],
       occupant: 'home',
     });
     Object.assign(harness.regions.left, {
       visible: false,
       size: 400,
+      panes: [],
       occupant: null,
     });
     Object.assign(harness.regions.right, {
       visible: false,
       size: 400,
+      panes: [],
       occupant: null,
     });
     Object.assign(harness.regions.bottom, {
       visible: true,
       size: 320,
+      panes: ['chat'],
       occupant: 'chat',
     });
     harness.setDockMode.mockReset();
@@ -257,9 +266,14 @@ describe('RegionToolbarControls', () => {
   test('the Activity chord issues the model toggle whether Activity is unplaced, docked or in main', () => {
     Object.assign(harness.regions.bottom, {
       visible: false,
+      panes: [],
       occupant: null,
     });
-    Object.assign(harness.regions.right, { visible: true, occupant: 'chat' });
+    Object.assign(harness.regions.right, {
+      visible: true,
+      panes: ['chat'],
+      occupant: 'chat',
+    });
     const { rerender } = render(<RegionToolbarControls />);
 
     harness.shortcuts.get('activity.toggle')?.handler();
@@ -267,6 +281,7 @@ describe('RegionToolbarControls', () => {
 
     Object.assign(harness.regions.right, {
       visible: true,
+      panes: ['activity'],
       occupant: 'activity',
     });
     rerender(<RegionToolbarControls />);
@@ -276,8 +291,11 @@ describe('RegionToolbarControls', () => {
     // ⌘⇧A with Activity occupying `main` (#1523): the same command. The
     // model relocates it to its dock region; the toolbar must not turn this
     // into a `showSurface` that reveals it where it already is.
-    harness.regions.right.occupant = null;
-    harness.regions.main.occupant = 'activity';
+    Object.assign(harness.regions.right, { panes: [], occupant: null });
+    Object.assign(harness.regions.main, {
+      panes: ['activity'],
+      occupant: 'activity',
+    });
     rerender(<RegionToolbarControls />);
     harness.shortcuts.get('activity.toggle')?.handler();
     expectOnlyToggle('activity', 3);
@@ -630,27 +648,26 @@ describe('RegionToolbarControls', () => {
 
   /**
    * The tooltip is the honest form of what "Swap in X" implied. It is DERIVED by
-   * running the model's own `placeSurface` over the arrangement, so it names the
-   * region the displaced surface actually lands in — and says nothing at all when
+   * running the model's own `placeSurface` over the arrangement, so it says
+   * what happens to the pane the region shows — and says nothing at all when
    * nothing is displaced.
    */
-  test('a segment whose region is taken says where its occupant goes, and an empty one promises nothing', () => {
+  test('a segment whose region is taken says what happens to its shown pane, and an empty one promises nothing', () => {
     render(<RegionToolbarControls />);
     const { menu } = openLayoutMenu();
 
-    // Activity → Bottom evicts Chat. Chat cannot go back to the region Activity
-    // vacates (Activity is unplaced) and its own default region IS the bottom
-    // Activity just took, so the model falls through to its search order for a
-    // surface leaving `bottom` — `['bottom','right','left']` — which is RIGHT,
-    // not Left. Written here as the derivation reports it: my first draft of
-    // this expectation said Left and the assertion caught me, which is the
-    // whole argument for computing the sentence from `placeSurface` rather
-    // than composing it by hand.
+    // Activity → Bottom joins Chat's region (#2046 2a, decision 3): Chat is
+    // not evicted, it stays in `bottom` behind Activity's tab — which the
+    // reader will not see until Chat's tab is selected, so "hidden" is the
+    // picker's own word for it. Written as the derivation reports it, which
+    // is the whole argument for computing the sentence from `placeSurface`
+    // rather than composing it by hand: before 2a the same derivation said
+    // "Chat moves to Right".
     expect(
       within(surfaceRow(menu, 'Activity'))
         .getByRole('radio', { name: 'Bottom' })
         .getAttribute('title'),
-    ).toBe('Chat moves to Right');
+    ).toBe('Chat stays in Bottom, hidden');
     // Activity → Main displaces Home, and `placeSurface` UNPLACES what leaves
     // `main` rather than relocating it (#928 C2a).
     expect(
@@ -674,24 +691,29 @@ describe('RegionToolbarControls', () => {
     const described = document.getElementById(
       bottom.getAttribute('aria-describedby') ?? '',
     );
-    expect(described?.textContent).toBe('Chat moves to Right');
+    expect(described?.textContent).toBe('Chat stays in Bottom, hidden');
     expect(bottom.textContent).toContain('Bottom');
   });
 
   /**
-   * #1552 review M3. `placeSurface` carries the TARGET region's previous
-   * visibility across to the surface it displaces, so a relocation can arrive
-   * hidden — and the note used to say "moves to Right" for exactly that, while
-   * the picker's own segment for that surface then read Hidden. One arrangement,
-   * two contradictory statements. Both now come from `placementOf`.
+   * #1552 review M3. The note and the pressed segment used to contradict each
+   * other for a surface the reader could not see ("moves to Right" beside a
+   * pressed Hidden). Both come from `placementOf`, and since #2046 2a a
+   * surface the region holds behind another pane's tab is the same case: the
+   * note says it stays, hidden, and its own row reads Hidden.
    */
-  test('a displaced surface that lands hidden is described as landing hidden', () => {
+  test('a shown pane joined by another is described as staying hidden, and its row reads Hidden', () => {
     // Chat holds `right` and is SHOWN; Activity holds `bottom` and is hidden.
-    // Choosing CHAT's Bottom segment sends Activity to `right` carrying
-    // `bottom`'s visibility at the time of the move, which is false.
-    Object.assign(harness.regions.right, { visible: true, occupant: 'chat' });
+    // Choosing CHAT's Bottom segment puts Chat in `bottom` beside Activity,
+    // selected; Activity stays there, behind Chat's tab.
+    Object.assign(harness.regions.right, {
+      visible: true,
+      panes: ['chat'],
+      occupant: 'chat',
+    });
     Object.assign(harness.regions.bottom, {
       visible: false,
+      panes: ['activity'],
       occupant: 'activity',
     });
     render(<RegionToolbarControls />);
@@ -700,21 +722,67 @@ describe('RegionToolbarControls', () => {
     const note = within(surfaceRow(menu, 'Chat'))
       .getByRole('radio', { name: 'Bottom' })
       .getAttribute('title');
-    expect(note).toBe('Activity moves to Right, hidden');
-
-    // The precondition that makes "hidden" the honest word: Activity is not
-    // visible now, and the move relocates it without revealing it — so a note
-    // stopping at "moves to Right" would promise the reader a surface they will
-    // still not see. (`checked` is the raw attribute string, so this compares
-    // against 'true' rather than truthiness — every segment has the attribute.)
+    expect(note).toBe('Activity stays in Bottom, hidden');
     expect(
       segments(menu, 'Activity').find((segment) => segment.checked === 'true')
         ?.label,
     ).toBe('Hidden');
   });
 
+  /**
+   * #2046 2a: a surface a region holds BEHIND the pane it shows is placed but
+   * not seen. Its row must read Hidden (not the region), its region segment
+   * must issue `placeSurface` — which selects it — rather than the
+   * visibility write a hidden REGION gets, and its Hidden segment, already
+   * pressed, must not hide the region the reader is looking at. Reverting
+   * `placementOf` to "region visible" reds the first assertion; reverting the
+   * segment handler to `setRegion` reds the second; reverting the Hidden
+   * handler reds the third.
+   */
+  test('a pane behind another’s tab reads Hidden, its region segment selects it, and its Hidden segment does nothing', () => {
+    Object.assign(harness.regions.bottom, {
+      visible: true,
+      panes: ['chat', 'activity'],
+      occupant: 'activity',
+    });
+    render(<RegionToolbarControls />);
+    let { menu } = openLayoutMenu();
+
+    expect(segments(menu, 'Chat')).toEqual([
+      { label: 'Left', checked: 'false' },
+      { label: 'Bottom', checked: 'false' },
+      { label: 'Right', checked: 'false' },
+      { label: 'Hidden', checked: 'true' },
+    ]);
+    expect(segments(menu, 'Activity')).toEqual([
+      { label: 'Left', checked: 'false' },
+      { label: 'Bottom', checked: 'true' },
+      { label: 'Right', checked: 'false' },
+      { label: 'Main', checked: 'false' },
+      { label: 'Hidden', checked: 'false' },
+    ]);
+    // Choosing Chat's Bottom: it already holds `bottom`, so nothing is
+    // displaced and no note is claimed.
+    const bottom = within(surfaceRow(menu, 'Chat')).getByRole('radio', {
+      name: 'Bottom',
+    });
+    expect(bottom.hasAttribute('title')).toBe(false);
+
+    chooseSegment(menu, 'Chat', 'Bottom');
+    expect(harness.placeSurface).toHaveBeenLastCalledWith('chat', 'bottom');
+    expect(harness.setRegion).not.toHaveBeenCalled();
+
+    ({ menu } = openLayoutMenu());
+    chooseSegment(menu, 'Chat', 'Hidden');
+    expect(harness.setRegion).not.toHaveBeenCalled();
+    expect(harness.placeSurface).toHaveBeenCalledTimes(1);
+  });
+
   test('with Activity in main, Main is its pressed segment and Chat is still offered no Main', () => {
-    harness.regions.main.occupant = 'activity';
+    Object.assign(harness.regions.main, {
+      panes: ['activity'],
+      occupant: 'activity',
+    });
     render(<RegionToolbarControls />);
     const { menu } = openLayoutMenu();
 
@@ -744,7 +812,10 @@ describe('RegionToolbarControls', () => {
    * out of it — and here it is three routes, not one.
    */
   test('a main occupant is offered every dock region it declares as a way out of main', () => {
-    harness.regions.main.occupant = 'activity';
+    Object.assign(harness.regions.main, {
+      panes: ['activity'],
+      occupant: 'activity',
+    });
     render(<RegionToolbarControls />);
 
     for (const region of ['Left', 'Bottom', 'Right'] as const) {
@@ -768,7 +839,10 @@ describe('RegionToolbarControls', () => {
     // write. The only meaning is that Home has the primary area back, which is
     // `placeSurface`'s own documented rule for `main` (the displaced surface is
     // unplaced) rather than a new unplace primitive.
-    harness.regions.main.occupant = 'activity';
+    Object.assign(harness.regions.main, {
+      panes: ['activity'],
+      occupant: 'activity',
+    });
     render(<RegionToolbarControls />);
     const { menu } = openLayoutMenu();
 
@@ -815,7 +889,10 @@ describe('RegionToolbarControls', () => {
   test('the folded menu offers to move a main occupant to the dock, and to show an unplaced one', () => {
     harness.bottomOnly = true;
     harness.isMobile = false;
-    harness.regions.main.occupant = 'activity';
+    Object.assign(harness.regions.main, {
+      panes: ['activity'],
+      occupant: 'activity',
+    });
     const { rerender } = render(<RegionToolbarControls />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
@@ -835,7 +912,7 @@ describe('RegionToolbarControls', () => {
     expect(screen.queryByRole('menu')).toBeNull();
 
     // Once the model has moved it out of `main`, the row is a toggle again.
-    harness.regions.main.occupant = 'home';
+    Object.assign(harness.regions.main, { panes: ['home'], occupant: 'home' });
     rerender(<RegionToolbarControls />);
     fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
     expect(

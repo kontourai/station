@@ -127,7 +127,7 @@ describe('what the server answered decides what the reload shows', () => {
     await waitFor(
       () =>
         expect(model?.regions.right).toMatchObject({
-          occupant: 'activity',
+          panes: ['activity'], occupant: 'activity',
           visible: true,
         }),
       { timeout: 4000 },

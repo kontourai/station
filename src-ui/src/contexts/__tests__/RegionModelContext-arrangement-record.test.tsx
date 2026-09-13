@@ -180,6 +180,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
     expect(model?.regions.right).toEqual({
       visible: true,
       size: 517,
+      panes: ['activity'],
       occupant: 'activity',
       maximized: false,
     });
@@ -226,6 +227,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
 
     expect(model?.regions.left).toMatchObject({
       visible: true,
+      panes: ['chat'],
       occupant: 'chat',
     });
     expect(model?.regions.bottom.occupant).toBeNull();
@@ -233,6 +235,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
     expect(model?.regions.right).toEqual({
       visible: false,
       size: 517,
+      panes: ['activity'],
       occupant: 'activity',
       maximized: false,
     });
@@ -243,7 +246,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
     expectNoWrites(spies);
   });
 
-  test('?dockSlotPlacement=right places Chat in an occupied right, relocating Activity by the model’s own rule, and writes nothing', async () => {
+  test('?dockSlotPlacement=right places Chat in an occupied right, joining Activity by the model’s own rule, and writes nothing', async () => {
     seedEnvelope({ regionArrangement: activityRightRecord() });
     setUrl('/?dockSlotPlacement=right');
     const spies = spyOnEverySetter();
@@ -252,14 +255,18 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
     await waitFor(() => expect(model).not.toBeNull());
 
     // No `dock=open`, and the record held Chat hidden: placed, not shown.
+    // #2046 2a: Chat JOINS `right` behind Activity, which the record shows
+    // there and which keeps the tab; nothing is displaced and `right` stays
+    // visible for the pane it is showing.
     expect(model?.regions.right).toMatchObject({
-      occupant: 'chat',
-      visible: false,
-    });
-    // Activity swaps into the region Chat vacated, keeping its visibility.
-    expect(model?.regions.bottom).toMatchObject({
+      panes: ['activity', 'chat'],
       occupant: 'activity',
       visible: true,
+    });
+    expect(model?.regions.bottom).toMatchObject({
+      panes: [],
+      occupant: null,
+      visible: false,
     });
     await settle();
     expectNoWrites(spies);
@@ -295,6 +302,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
     expect(model?.regions.right).toEqual({
       visible: true,
       size: 480,
+      panes: ['chat'],
       occupant: 'chat',
       maximized: false,
     });
@@ -519,6 +527,7 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
     await waitFor(() => expect(model).not.toBeNull());
 
     expect(model?.regions.bottom).toMatchObject({
+      panes: ['chat'],
       occupant: 'chat',
       visible: true,
       maximized: true,
@@ -547,6 +556,7 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
     expect(model?.regions.right).toEqual({
       visible: true,
       size: 517,
+      panes: ['activity'],
       occupant: 'activity',
       maximized: true,
     });
@@ -573,6 +583,7 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
     await waitFor(() => expect(model).not.toBeNull());
 
     expect(model?.regions.bottom).toMatchObject({
+      panes: ['chat'],
       occupant: 'chat',
       visible: true,
       maximized: true,

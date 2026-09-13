@@ -286,7 +286,7 @@ function assertModelsARouteWithoutTheProjectPageChunk(): void {
 const FRAMED_BRANCHES = [
   {
     name: 'standard-data renderer',
-    occupant: 'standard-data',
+    panes: ['standard-data'], occupant: 'standard-data',
     apply() {
       catalogMock.entries[0].availability = {
         state: 'available',
@@ -301,7 +301,7 @@ const FRAMED_BRANCHES = [
   },
   {
     name: 'builtin pane',
-    occupant: 'mounted-pane',
+    panes: ['mounted-pane'], occupant: 'mounted-pane',
     apply() {
       catalogMock.entries[0].availability = {
         state: 'available',
@@ -317,7 +317,7 @@ const FRAMED_BRANCHES = [
     // `plugin-component`, so what it proves is "a contributed renderer keeps
     // the frame", not anything specific to MCP.
     name: 'contributed renderer',
-    occupant: 'contributed-pane',
+    panes: ['contributed-pane'], occupant: 'contributed-pane',
     apply() {
       catalogMock.entries[0].availability = {
         state: 'available',
@@ -332,7 +332,7 @@ const FRAMED_BRANCHES = [
   },
   {
     name: 'unavailable page',
-    occupant: 'availability-list',
+    panes: ['availability-list'], occupant: 'availability-list',
     apply() {
       catalogMock.entries[0].availability = {
         state: 'coming-soon',

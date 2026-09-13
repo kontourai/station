@@ -72,12 +72,12 @@ interface RegionPlacementSegment {
   region: RegionId | null;
   checked: boolean;
   /**
-   * What choosing this segment does to the region's CURRENT occupant, worded
-   * from what `placeSurface` will actually do rather than from a guess about
-   * it — the model relocates a displaced surface into the region the incoming
-   * one vacates, else its own default region, else the first free one in the
-   * model's search order, else nowhere. `undefined` when nothing is
-   * displaced.
+   * What choosing this segment does to the pane the region currently SHOWS,
+   * worded from what `placeSurface` will actually do rather than from a guess
+   * about it — into a dock region the incoming surface joins the panes and
+   * the shown one stays, behind it (#2046 2a); into `main` the shown one is
+   * unplaced. `undefined` when the region shows nothing, or shows this
+   * surface already.
    */
   displaces?: string;
   onSelect: () => void;
@@ -213,7 +213,10 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
    * for a relocation `placeSurface` makes with `visible: false`, and the picker
    * then showed that surface as Hidden).
    *
-   * `main` is always visible, so holding it is always showing.
+   * Seen means the region is visible AND this is the pane it shows: a
+   * surface behind another pane's tab (#2046 2a) is placed, not seen.
+   * `main` is always visible and shows its one pane, so holding it is always
+   * showing.
    */
   const placementOf = (
     arrangement: RegionArrangement,
@@ -223,28 +226,28 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
     return {
       region,
       shown: Boolean(
-        region && (region === 'main' || arrangement[region].visible),
+        region &&
+          (region === 'main' ||
+            (arrangement[region].visible &&
+              arrangement[region].occupant === surfaceId)),
       ),
     };
   };
 
   /**
-   * What happens to the region's current occupant if `surfaceId` takes the
+   * What happens to the pane the region shows if `surfaceId` takes the
    * region — computed by running the model's own `placeSurface` over the
    * arrangement and reading the result, not by restating its rules here.
    *
    * This is the honest form of what the retired verb list called "Swap in X".
-   * The rules are not obvious (a swap back into the vacated region, else the
-   * displaced surface's own default region, else the model's search order,
-   * else unplaced; and into `main` the displaced surface
-   * is always unplaced), and a hand-written sentence about them is a claim
-   * nothing derives — the class of defect this arc exists to remove. Pure
-   * function, no state touched.
-   *
-   * A relocation can also arrive HIDDEN — `placeSurface` carries the target
-   * region's previous visibility across to the displaced surface — so a landing
-   * region alone does not mean the reader will see it there. Three outcomes,
-   * three sentences.
+   * A hand-written sentence about the rules is a claim nothing derives — the
+   * class of defect this arc exists to remove — so the sentence is read off
+   * the result: the shown pane is unplaced (`main`), or it stays in the
+   * region behind the incoming pane (a dock region, #2046 2a), which the
+   * reader will not see until its tab is selected, or — should the model
+   * ever relocate again — it moves, seen or hidden. Pure function, no state
+   * touched. Nothing is said for a surface the region already holds: choosing
+   * its segment selects it, and displaces nothing.
    */
   const displacementNote = (
     surfaceId: string,
@@ -252,10 +255,14 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
   ): string | undefined => {
     const displaced = occupantOf(id);
     if (!displaced || displaced === surfaceId) return undefined;
+    if (id !== 'main' && regions[id].panes.includes(surfaceId))
+      return undefined;
     const displacedTitle = surfaces.get(displaced)?.title ?? displaced;
     const next = placeSurfaceInArrangement(regions, surfaceId, id);
     const landed = placementOf(next, displaced);
     if (!landed.region) return `${displacedTitle} is hidden`;
+    if (landed.region === id)
+      return `${displacedTitle} stays in ${regionLabel(id)}, hidden`;
     return landed.shown
       ? `${displacedTitle} moves to ${regionLabel(landed.region)}`
       : `${displacedTitle} moves to ${regionLabel(landed.region)}, hidden`;
@@ -281,9 +288,14 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
           displaces: displacementNote(surface.id, id),
           onSelect: () => {
             // Already there but hidden: this is a reveal, not a move — the same
-            // command the retired "Show <surface>" row issued.
+            // command the retired "Show <surface>" row issued. Held behind
+            // another pane's tab: `placeSurface` into a region already holding
+            // the surface selects it and shows the region (#2046 2a).
             if (held === id) {
-              if (!shown) model.setRegion(id, { visible: true });
+              if (shown) return;
+              if (regions[id].occupant === surface.id)
+                model.setRegion(id, { visible: true });
+              else place(surface.id, id);
               return;
             }
             place(surface.id, id);
@@ -301,8 +313,12 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
             // back — which is `placeSurface`'s own documented rule for `main`
             // (the displaced surface is UNPLACED, never relocated), so this
             // takes that route rather than inventing an unplace primitive.
+            // A surface behind another pane's tab is already not seen, and
+            // hiding its region would hide the pane the reader IS seeing, so
+            // its Hidden segment — already pressed — does nothing (#2046 2a).
             if (held === 'main') model.placeSurface('home', 'main');
-            else model.setRegion(held, { visible: false });
+            else if (regions[held].occupant === surface.id)
+              model.setRegion(held, { visible: false });
           },
         },
       ],
@@ -330,11 +346,15 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
             };
           }
           const occupied = occupiedDockRegion(regions, surface.id);
-          // The surface is shown only when it IS the folded region — the one
-          // visible dock a coarse device has — not merely when its own region
-          // is marked visible.
+          // The surface is shown only when it IS the folded region's selected
+          // pane — the one visible dock a coarse device has — not merely when
+          // its own region is marked visible (#2046 2a: nor when the region
+          // shows another pane's tab).
           const shown = Boolean(
-            occupied && occupied === foldedRegion && regions[occupied].visible,
+            occupied &&
+              occupied === foldedRegion &&
+              regions[occupied].visible &&
+              regions[occupied].occupant === surface.id,
           );
           // "… the dock", like the `main`-occupant row above, and for the
           // same reason it is honest here: these rows exist only on a
