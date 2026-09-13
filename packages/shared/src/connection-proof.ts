@@ -13,6 +13,7 @@ import {
   jwtVerify,
   SignJWT,
 } from 'jose';
+import { randomCorrelationId } from './random-id.js';
 
 const BINDING_FIELDS = [
   'stationId',
@@ -154,7 +155,9 @@ export async function signStationConnectionProof(input: {
     })
     .setIssuer(`urn:station:${trust.stationId}`)
     .setAudience(STATION_CONNECTION_PROOF_AUDIENCE)
-    .setJti(crypto.randomUUID())
+    // This is a correlation ID, not a credential or secret challenge. The
+    // independently generated client nonce and exact binding prevent replay.
+    .setJti(randomCorrelationId())
     .setIssuedAt(now)
     .setNotBefore(now)
     .setExpirationTime(now + STATION_CONNECTION_PROOF_LIFETIME_SECONDS)
