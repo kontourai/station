@@ -43,6 +43,7 @@ import { EnvironmentStatus } from './settings/EnvironmentStatus';
 import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
 import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
+import { LocalAccountsSection } from './settings/LocalAccountsSection';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
 import { SystemSection } from './settings/SystemSection';
@@ -626,6 +627,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 onChange={setConfig}
               />
               <UsageTelemetryDisclosure />
+              <LocalAccountsSection />
             </>
           )}
 

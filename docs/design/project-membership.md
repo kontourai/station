@@ -1,5 +1,15 @@
 # Project membership and device enrollment
 
+> Implementation update: local username/password enrollment and manually shared,
+> single-use invitation links are the first account path. No mail service is
+> required. The membership store/service, operator/admin controls and standalone
+> account entry implement these boundaries; shared-resource admission and real
+> two-human/device acceptance remain incomplete. See the
+> [deployment authentication guide](../guides/deployment-authentication.md).
+> An optional email restriction still requires provider-verified contact evidence.
+> Possession of a general link is an explicit invitation capability, never a
+> claim to own an email address or a grant of device/compute authority.
+
 > Status: initial verified-tailnet identity and explicit device binding approved
 > by the owner on 2026-09-12 for [#1513](https://github.com/kontourai/station/issues/1513).
 > This document specifies the contract; it does not claim implemented API or

@@ -1,10 +1,18 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
+import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
+import { createLocalAccountAdministrationRoutes } from '../../routes/system/local-account-administration-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
+import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
+import type {
+  ProjectMembershipAuthority,
+  ProjectMembershipService,
+} from '../../services/projects/project-membership-service.js';
+import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
 
 export {
   type BoundedBodyResult,
@@ -499,7 +507,9 @@ export function pullRequestThreadForProject<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  projectMembership?: ProjectMembershipService;
   deploymentAuthentication?: LoadedDeploymentAuthentication;
+  localAccounts?: LoadedLocalAccounts;
   runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
   app: HonoApp;
   logger: Logger;
@@ -1238,7 +1248,46 @@ export function configureRuntimeRoutes(
   });
   context.app.route(
     '/api/account-auth',
-    createDeploymentAuthenticationRoutes(context.deploymentAuthentication),
+    createDeploymentAuthenticationRoutes(
+      context.deploymentAuthentication,
+      context.projectMembership && context.deploymentAuthentication
+        ? (request, token, environment) =>
+            context.projectMembership!.accept(token, {
+              async current() {
+                const account =
+                  await context.deploymentAuthentication!.service.authenticate(
+                    request,
+                  );
+                if (account.kind !== 'authenticated')
+                  throw new ProjectMembershipRefusal('forbidden');
+                const ingress = identifyIngress({
+                  env: environment,
+                  req: {
+                    header: (name) => request.headers.get(name) ?? undefined,
+                  },
+                });
+                if (
+                  ingress &&
+                  deploymentHumanPrincipal(
+                    ingress.provider,
+                    ingress.subject,
+                    ingress.subject,
+                  ).id !== account.principal.id
+                )
+                  throw new ProjectMembershipRefusal('forbidden');
+                return {
+                  principal: account.principal,
+                  verifiedEmails: account.session.contacts.map(
+                    (contact) => contact.value,
+                  ),
+                };
+              },
+              async operator() {
+                throw new ProjectMembershipRefusal('forbidden');
+              },
+            })
+        : undefined,
+    ),
   );
   context.app.route(
     '/api/home-authority',
@@ -2881,6 +2930,109 @@ export function configureRuntimeRoutes(
     }),
   );
   context.app.route('/agents', createWorkflowRoutes(context.layoutService));
+  const projectMembershipAuthority = (
+    request: Request,
+  ): ProjectMembershipAuthority => ({
+    async current() {
+      if (
+        !isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        )
+      )
+        throw new ProjectMembershipRefusal('forbidden');
+      const account =
+        await context.deploymentAuthentication?.service.authenticate(request);
+      if (
+        !isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        )
+      )
+        throw new ProjectMembershipRefusal('forbidden');
+      if (account?.kind === 'authenticated') {
+        const runtime = getRuntimeAuthenticatedRequestPrincipal(request);
+        const binding =
+          runtime?.authority === 'device-credential'
+            ? context.environmentSecurityService.identifyDevice(
+                runtime.credential,
+              )?.principalBinding
+            : undefined;
+        const principal =
+          context.deploymentAuthentication!.service.resolvePrincipal(
+            request,
+            binding
+              ? [
+                  deploymentHumanPrincipal(
+                    binding.provider,
+                    binding.subject,
+                    binding.subject,
+                  ),
+                ]
+              : [],
+          );
+        if (
+          !principal ||
+          roomRequestPrincipals.get(request)?.id !== principal.id
+        )
+          throw new ProjectMembershipRefusal('forbidden');
+        return {
+          principal,
+          verifiedEmails: account.session.contacts.map(
+            (contact) => contact.value,
+          ),
+        };
+      }
+      if (account && account.kind !== 'absent')
+        throw new ProjectMembershipRefusal('forbidden');
+      const principal = roomRequestPrincipals.get(request);
+      if (!principal) throw new ProjectMembershipRefusal('forbidden');
+      return { principal, verifiedEmails: [] };
+    },
+    async operator() {
+      if (
+        !isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ) ||
+        (getRuntimeAuthenticatedRequestPrincipal(request)?.authority !==
+          'operator-credential' &&
+          getRuntimeAuthenticatedRequestPrincipal(request)?.locality !==
+            'home-possession')
+      )
+        throw new ProjectMembershipRefusal('forbidden');
+    },
+  });
+  context.app.use('/api/projects/:slug/access', async (c, next) => {
+    roomRequestPrincipals.set(
+      c.req.raw,
+      resolveOrchestrationRequestPrincipal(c),
+    );
+    await next();
+  });
+  context.app.route(
+    '/api/operator/accounts',
+    createLocalAccountAdministrationRoutes(
+      context.localAccounts,
+      context.deploymentAuthentication,
+      (request) => projectMembershipAuthority(request).operator(),
+    ),
+  );
+  context.app.use('/api/projects/:slug/access/*', async (c, next) => {
+    roomRequestPrincipals.set(
+      c.req.raw,
+      resolveOrchestrationRequestPrincipal(c),
+    );
+    await next();
+  });
+  context.app.route(
+    '/api/projects',
+    createProjectMembershipRoutes(
+      context.projectMembership,
+      projectMembershipAuthority,
+      context.deploymentAuthentication?.publicOrigin,
+    ),
+  );
   context.app.route(
     '/api/projects',
     createProjectRoutes(

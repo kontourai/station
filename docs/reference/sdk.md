@@ -884,6 +884,46 @@ server produces an error, never an ordinary local-creation fallback. The full
 portable target picker, shared-member authorization and cross-machine execution
 admission remain separate consumers of this identity API.
 
+## Project access administration and account entry
+
+`@kontourai/station-sdk/project-access-client` exports `getProjectAccess` and
+`changeProjectAccess`. Both take the selected Station API base, local Project
+slug and explicit `ClientRequestOptions`. Reads return the acting principal,
+exact Station/local/portable Project scope, members and invitations. Commands
+enable sharing, invite or revoke invitations, change a member, or transfer
+ownership. Capture the returned scope and member revision for writes; do not
+reconstruct authority from a slug or email. Enabling requires the expected local
+Project ID and current Station operator authority.
+
+`@kontourai/station-sdk/project-access` also exports `useProjectAccess(slug,
+requestScope)`. Its query keys include the selected Station and authority, and
+its mutations capture that scope before asynchronous work. Do not persist
+administrative projections or invitation tokens in application caches. Project
+administration grants no Station settings, device or compute authority.
+
+`@kontourai/station-sdk/account-authentication` exports
+`getAccountAuthentication(apiBase)`, `getAccountSession(apiBase)` and
+`runAccountOperation(apiBase, endpoint, body, invitation?)`. These use the fixed
+account namespace with account cookies and explicitly omit ambient operator
+bearers. Use the account page's own browser origin. A session read returns
+`null` for an unauthenticated account; an unavailable or incompatible service
+remains an error. Choose operations from the provider descriptor; the optional
+invitation argument is registration eligibility, not authentication or membership.
+The [deployment authentication guide](../guides/deployment-authentication.md)
+defines the provider interface and separate invitation-acceptance operation.
+
+An invitation command's `email: null` explicitly creates a single-use link for
+any authenticated holder. A string restricts acceptance to that verified email;
+do not silently omit or clear a requested restriction. The descriptor may select
+`username-password` login so local account registration needs no email service.
+
+`@kontourai/station-sdk/local-accounts` exports `getLocalAccounts(apiBase,
+options)` and `changeLocalAccount(apiBase, accountId, action, options)` for current
+Station operators. Actions disable/enable sign-in, revoke sessions or create a
+one-time recovery link. Capture the selected Station request scope, require
+explicit confirmation and keep recovery links out of persisted caches. External
+providers return a guidance projection instead of local account controls.
+
 ## Plugin Query Hooks
 
 React Query wrappers for plugin management. Use these instead of raw `useQuery`.

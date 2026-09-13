@@ -25,6 +25,7 @@ import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { errorText } from '../utils/errorText';
+import { AccessSection } from './project-settings/AccessSection';
 import { AgentsSection } from './project-settings/AgentsSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
 import { LayoutsSection } from './project-settings/LayoutsSection';
@@ -46,6 +47,7 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['agents', 'Agents'],
   ['layouts', 'Layouts'],
   ['resources', 'Resources'],
+  ['access', 'People and access'],
   ['knowledge', 'Project knowledge'],
   ['danger', 'Danger zone'],
 ] as const;
@@ -412,6 +414,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           pins is provably untouched without an e2e run this slice cannot make.
 */}
         <ResourcesSection slug={slug} />
+        {project && <AccessSection slug={slug} projectId={project.id} />}
 
         {/* Knowledge */}
         <KnowledgeSection slug={slug} />

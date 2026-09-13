@@ -1,16 +1,24 @@
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
+import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { z } from 'zod/v3';
 import {
   attestedProxyPeerAddress,
   getDirectSocketAddress,
   RuntimeAuthFailureLimiter,
 } from '../../security/runtime-request-security.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
+import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
 
 /** Narrow account endpoint owner. Loading this surface grants no personal-device API scope. */
 export function createDeploymentAuthenticationRoutes(
   authentication?: LoadedDeploymentAuthentication,
+  acceptInvitation?: (
+    request: Request,
+    token: string,
+    environment: unknown,
+  ) => Promise<ProjectMembershipScope>,
 ) {
   const app = new Hono();
   const attempts = new RuntimeAuthFailureLimiter({ maxFailures: 120 });
@@ -63,6 +71,31 @@ export function createDeploymentAuthenticationRoutes(
         contacts: result.session.contacts,
       },
     });
+  });
+  app.post('/accept-invitation', async (c) => {
+    if (!acceptInvitation)
+      return c.json({ error: { code: 'project_sharing_unavailable' } }, 501);
+    try {
+      const body = z
+        .object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) })
+        .strict()
+        .parse(await c.req.json());
+      const scope = await acceptInvitation(c.req.raw, body.token, c.env);
+      return c.json({ data: { scope, grantsDeviceAccess: false } });
+    } catch (error) {
+      if (error instanceof z.ZodError || error instanceof SyntaxError)
+        return c.json({ error: { code: 'invalid_invitation_request' } }, 400);
+      if (error instanceof ProjectMembershipRefusal)
+        return c.json(
+          { error: { code: `project_access_${error.code}` } },
+          error.code === 'unavailable'
+            ? 503
+            : error.code === 'forbidden'
+              ? 403
+              : 409,
+        );
+      return c.json({ error: { code: 'project_access_unavailable' } }, 503);
+    }
   });
   const forward = (c: Context) => {
     // The mounted route path is stripped only at its fixed, Station-owned base.

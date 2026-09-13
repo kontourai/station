@@ -92,6 +92,7 @@
     "./plugin": "./src/plugin.ts",
     "./plugin-foreground-work": "./src/plugin-foreground-work.ts",
     "./project": "./src/project.ts",
+    "./project-membership": "./src/project-membership.ts",
     "./project-identity": "./src/project-identity.ts",
     "./project-task-room": "./src/project-task-room.ts",
     "./project-task-room-browser": "./src/project-task-room-browser.ts",
@@ -166,7 +167,8 @@
     "./workspace-evidence-panels": "./src/workspace-evidence-panels.ts",
     "./workspace-file-preview": "./src/workspace-file-preview.ts",
     "./workspace-isolation": "./src/workspace-isolation.ts",
-    "./cloud-move": "./src/cloud-move.ts"
+    "./cloud-move": "./src/cloud-move.ts",
+    "./local-accounts": "./src/local-accounts.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",
