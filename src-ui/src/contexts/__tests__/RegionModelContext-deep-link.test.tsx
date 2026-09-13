@@ -7,6 +7,12 @@ import { ActivityDockPane } from '../../app-shell/ActivityRegionShell';
 import { RegionShells } from '../../app-shell/RegionShells';
 import { DockShell } from '../../components/chat-dock/DockShell';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
+import { toRegionArrangementRecord } from '../../regions/region-arrangement-record';
+import {
+  DEFAULT_DEVICE_REGION_ARRANGEMENT,
+  placeSurface,
+  updateRegion,
+} from '../../regions/region-model';
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
 import { navigationStore } from '../navigation-store';
@@ -45,6 +51,9 @@ vi.mock('../ProjectsContext', () => ({
 }));
 
 let model: ReturnType<typeof useRegionModel> | null = null;
+
+/** The live provider's model, past TypeScript's narrowing of a reset `model`. */
+const liveModel = () => model as ReturnType<typeof useRegionModel> | null;
 
 function Probe() {
   const value = useRegionModel();
@@ -403,6 +412,146 @@ describe('RegionModelProvider surface deep-link adoption', () => {
  * that knows the placement landed in `main` — navigates to `/` after the
  * state write, through the store call `useShowSurface` makes.
  */
+/**
+ * 2a review (MEDIUM): Chat's inbound links act on Chat's region and used to
+ * leave another pane's tab selected there. Each seeds the persisted record
+ * with Chat BEHIND Activity's tab in `bottom` (the 2a join), then arrives by
+ * the link. The URL's Chat params also persist across reloads, so a param
+ * that merely repeats what the record holds is a reload, not a link, and
+ * the record's selection — the user's last tab choice — stands.
+ * Reverting the `selectRegionPane`/`occupant: 'chat'` writes in
+ * `initialRegionPlacement`, `initialRegionArrangement` and the inbound
+ * navigation effect fails the matching `occupant: 'chat'` assertion;
+ * selecting Chat unconditionally fails the `occupant: 'activity'` ones.
+ */
+describe('Chat’s inbound links select Chat’s tab (#2046 2b)', () => {
+  function seedChatBehindActivity(patch: {
+    visible: boolean;
+    maximized?: boolean;
+  }) {
+    const arrangement = updateRegion(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'bottom'),
+      'bottom',
+      patch,
+    );
+    expect(arrangement.bottom).toMatchObject({
+      panes: ['chat', 'activity'],
+      occupant: 'activity',
+      ...patch,
+    });
+    deviceSettingsStore.set(
+      'regionArrangement',
+      toRegionArrangementRecord(arrangement),
+    );
+  }
+
+  test('?dockSlotPlacement= that moves Chat selects its tab; one that names where Chat already is leaves the record’s tab', async () => {
+    seedChatBehindActivity({ visible: true });
+    setUrl('/?dockSlotPlacement=right');
+    const moved = render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(liveModel()?.regions.right).toMatchObject({
+      panes: ['chat'],
+      occupant: 'chat',
+    });
+    expect(liveModel()?.regions.bottom).toMatchObject({
+      panes: ['activity'],
+      occupant: 'activity',
+    });
+    moved.unmount();
+    model = null;
+
+    // The reload shape: the URL remembers `bottom`, which the record holds.
+    seedChatBehindActivity({ visible: true });
+    setUrl('/?dockSlotPlacement=bottom&dock=open');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(liveModel()?.regions.bottom).toMatchObject({
+      panes: ['chat', 'activity'],
+      occupant: 'activity',
+      visible: true,
+    });
+  });
+
+  test('dock=open at load shows Chat’s tab only when it shows the region', async () => {
+    seedChatBehindActivity({ visible: false });
+    setUrl('/?dock=open');
+    const opened = render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(liveModel()?.regions.bottom).toMatchObject({
+      occupant: 'chat',
+      visible: true,
+    });
+    opened.unmount();
+    model = null;
+
+    seedChatBehindActivity({ visible: true });
+    setUrl('/?dock=open');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(liveModel()?.regions.bottom).toMatchObject({
+      occupant: 'activity',
+      visible: true,
+    });
+  });
+
+  test('?maximize=true selects Chat’s tab when it is the URL’s maximize, not the record’s', async () => {
+    seedChatBehindActivity({ visible: true });
+    setUrl('/?dock=open&maximize=true');
+    const maximized = render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(liveModel()?.regions.bottom).toMatchObject({
+      occupant: 'chat',
+      maximized: true,
+      visible: true,
+    });
+    maximized.unmount();
+    model = null;
+
+    seedChatBehindActivity({ visible: true, maximized: true });
+    setUrl('/?dock=open&maximize=true');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(liveModel()?.regions.bottom).toMatchObject({
+      occupant: 'activity',
+      maximized: true,
+    });
+  });
+
+  test('an inbound dock=open (a focusSession reveal) shows Chat’s tab, and a later maximize keeps it', async () => {
+    seedChatBehindActivity({ visible: false });
+    setUrl('/');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(liveModel()?.regions.bottom).toMatchObject({
+      occupant: 'activity',
+      visible: false,
+    });
+
+    act(() => navigationStore.setDockState(true, false));
+    await waitFor(() =>
+      expect(liveModel()?.regions.bottom).toMatchObject({
+        occupant: 'chat',
+        visible: true,
+      }),
+    );
+
+    // Activity's tab again, then a maximize arriving through navigation:
+    // Chat's tab, since the maximize is Chat's.
+    act(() => liveModel()?.selectPane('bottom', 'activity'));
+    await waitFor(() =>
+      expect(liveModel()?.regions.bottom.occupant).toBe('activity'),
+    );
+    act(() => navigationStore.setDockState(true, true));
+    await waitFor(() =>
+      expect(liveModel()?.regions.bottom).toMatchObject({
+        occupant: 'chat',
+        maximized: true,
+      }),
+    );
+  });
+});
+
 describe('a placement into main navigates to the route outlet', () => {
   test('showSurface(home) from another route places Home in main and navigates to /', async () => {
     setUrl('/settings');

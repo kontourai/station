@@ -193,12 +193,18 @@ export function syncRegionArrangementFromDock(
   if (regionIsEmpty(next[placement])) {
     return placeSurface(next, 'chat', placement, isDockOpen);
   }
-  if (next[placement].panes.includes('chat')) {
-    return updateRegion(next, placement, { visible: isDockOpen });
-  }
-  if (currentChatRegion) {
-    return updateRegion(next, currentChatRegion, { visible: isDockOpen });
-  }
+  // `dock=open` is Chat's mirror: an open shows CHAT, so its tab is selected
+  // in the region it opens (2a review, MEDIUM — a region showing Activity's
+  // tab used to open without Chat coming to the front). A close leaves the
+  // selection where it was.
+  const openChat = (region: DockRegionId) =>
+    updateRegion(
+      next,
+      region,
+      isDockOpen ? { visible: true, occupant: 'chat' } : { visible: false },
+    );
+  if (next[placement].panes.includes('chat')) return openChat(placement);
+  if (currentChatRegion) return openChat(currentChatRegion);
 
   // Chat is in no region (#2046 2b: its tab was closed, which unplaces it).
   // Navigation saying the dock is CLOSED asks for nothing — an unplaced Chat

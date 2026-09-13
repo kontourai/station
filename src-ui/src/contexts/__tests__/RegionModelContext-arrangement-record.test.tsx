@@ -254,13 +254,14 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
     render(<Harness />);
     await waitFor(() => expect(model).not.toBeNull());
 
-    // No `dock=open`, and the record held Chat hidden: placed, not shown.
-    // #2046 2a: Chat JOINS `right` behind Activity, which the record shows
-    // there and which keeps the tab; nothing is displaced and `right` stays
-    // visible for the pane it is showing.
+    // #2046 2a: Chat JOINS `right`, which the record shows with Activity;
+    // nothing is displaced and `right` stays visible. #2046 2b (2a review):
+    // the param moved Chat, so it is Chat's link and Chat's tab is selected
+    // — a placement link that landed Chat behind another pane's tab named
+    // a pane the reader could not see.
     expect(model?.regions.right).toMatchObject({
       panes: ['activity', 'chat'],
-      occupant: 'activity',
+      occupant: 'chat',
       visible: true,
     });
     expect(model?.regions.bottom).toMatchObject({

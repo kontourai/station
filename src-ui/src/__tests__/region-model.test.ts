@@ -1075,6 +1075,81 @@ describe('region model', () => {
     expect(dockMirrorDiff(before, after)).toEqual({});
   });
 
+  /**
+   * 2a review, test-power gaps (I8, I10). I8: `dockMirrorDiff` mirrors a
+   * size change from the region that HOLDS Chat, selected or not — the
+   * injection that read `occupant` instead of `panes` passed every fixture
+   * because none resized a region with Chat behind a tab. I10:
+   * `regionStatesEqual` compares `panes` element by element, in order — a
+   * same-set reorder is a change (the tab strip's reorder depends on it),
+   * which the injection that compared as a set passed every fixture for.
+   */
+  test('the size mirror follows a region holding Chat behind another pane’s tab, and a reorder is a change', () => {
+    const chatBehind = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'activity',
+      'bottom',
+    );
+    expect(chatBehind.bottom).toMatchObject({
+      panes: ['chat', 'activity'],
+      occupant: 'activity',
+    });
+    const resized = updateRegion(chatBehind, 'bottom', { size: 411 });
+    expect(dockMirrorDiff(chatBehind, resized)).toEqual({
+      size: { bottom: 411 },
+    });
+
+    const reordered = updateRegion(chatBehind, 'bottom', {
+      panes: ['activity', 'chat'],
+    });
+    expect(reordered).not.toBe(chatBehind);
+    expect(reordered.bottom).toMatchObject({
+      panes: ['activity', 'chat'],
+      occupant: 'activity',
+    });
+    // The same order again: no change, by reference.
+    expect(
+      updateRegion(reordered, 'bottom', { panes: ['activity', 'chat'] }),
+    ).toBe(reordered);
+  });
+
+  /**
+   * 2a review (MEDIUM): `dock=open` is Chat's mirror, so an inbound open
+   * selects Chat's tab in the region it opens — whether that is the
+   * requested region or the one Chat lives in — and a close leaves the
+   * selection alone. Reverting the `occupant: 'chat'` write fails the first
+   * two `occupant` assertions.
+   */
+  test('an inbound dock=open selects Chat’s tab in the region it opens; a close keeps the selection', () => {
+    const settings = { chatDockHeight: 320, chatDockWidth: 400 };
+    const chatBehind = updateRegion(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'bottom'),
+      'bottom',
+      { visible: false },
+    );
+    expect(chatBehind.bottom.occupant).toBe('activity');
+
+    // The requested region holds Chat.
+    expect(
+      syncRegionArrangementFromDock(chatBehind, settings, true, 'bottom')
+        .bottom,
+    ).toMatchObject({ visible: true, occupant: 'chat' });
+    // Chat lives elsewhere than the requested region, which is occupied
+    // (an EMPTY requested region is the older rule: Chat is placed there).
+    const rightTaken = updateRegion(chatBehind, 'right', {
+      panes: ['fixture'],
+      occupant: 'fixture',
+    });
+    expect(
+      syncRegionArrangementFromDock(rightTaken, settings, true, 'right').bottom,
+    ).toMatchObject({ visible: true, occupant: 'chat' });
+    // A close: hidden, selection untouched.
+    const shown = updateRegion(chatBehind, 'bottom', { visible: true });
+    expect(
+      syncRegionArrangementFromDock(shown, settings, false, 'bottom').bottom,
+    ).toMatchObject({ visible: false, occupant: 'activity' });
+  });
+
   // #2046 2b: the tab strip's close and the region bar's placement.
   describe('closing a tab and moving a region', () => {
     const both = updateRegion(
