@@ -83,6 +83,18 @@ beforeEach(() => {
     eligible: false,
     reason: 'no source checkout recorded',
   });
+  // The GET diagnostics read the REAL process env for the server identity;
+  // scrub it so `serverIdentity` is deterministically null unless a test
+  // explicitly arms it.
+  for (const key of [
+    'STATION_BUILD_SHA',
+    'STATION_BUILD_BRANCH',
+    'STATION_BUILD_BUILT_AT',
+    'STATION_INSTANCE_ID',
+    'STATION_BOOT_ID',
+  ]) {
+    delete process.env[key];
+  }
 });
 
 describe('GET /core-update on a desktop bundle', () => {
@@ -100,8 +112,36 @@ describe('GET /core-update on a desktop bundle', () => {
       currentHash: SHA.slice(0, 7),
       remoteHash: OTHER_SHA.slice(0, 7),
       updateAvailable: true,
+      serverIdentity: null,
+      provenanceIssue: null,
+      technicalDetail: null,
+      // The beforeEach default refusal reason surfaces as a diagnostic —
+      // this is what lets the UI say WHY apply is unavailable.
+      selfUpdateUnavailableReason: 'no source checkout recorded',
     });
     expect(body.error).toBeUndefined();
+  });
+
+  test('carries the server identity triple when the process has one', async () => {
+    vi.mocked(resolveInstallProvenance).mockReturnValue(bundleProvenance);
+    vi.mocked(fetchChannelLatestSha).mockResolvedValue(SHA);
+    process.env.STATION_BUILD_SHA = 'abcdef0123456789abcdef0123456789abcdef01';
+    process.env.STATION_INSTANCE_ID = 'desktop';
+    process.env.STATION_BOOT_ID = '22222222-2222-4222-8222-222222222222';
+    try {
+      const body = await json(await createApp().request('/core-update'));
+      expect(body.serverIdentity).toEqual({
+        instanceId: 'desktop',
+        bootId: '22222222-2222-4222-8222-222222222222',
+        // Env-only sha: labeled as checkout-derived, never build-stamp.
+        sha: 'abcdef0123456789abcdef0123456789abcdef01',
+        shaSource: 'checkout',
+      });
+    } finally {
+      delete process.env.STATION_BUILD_SHA;
+      delete process.env.STATION_INSTANCE_ID;
+      delete process.env.STATION_BOOT_ID;
+    }
   });
 
   test('an up-to-date bundle reports updateAvailable false', async () => {
@@ -111,6 +151,9 @@ describe('GET /core-update on a desktop bundle', () => {
     const body = await json(await createApp().request('/core-update'));
     expect(body.updateAvailable).toBe(false);
     expect(body.remoteHash).toBe(SHA.slice(0, 7));
+    expect(body.selfUpdateUnavailableReason).toBe(
+      'no source checkout recorded',
+    );
   });
 
   test('remote failure is a disclosed warning, not an error the SDK throws on (AC2)', async () => {
@@ -127,6 +170,10 @@ describe('GET /core-update on a desktop bundle', () => {
     // Provenance still reported even though the remote was unreachable.
     expect(body.channel).toBe('nightly');
     expect(body.currentHash).toBe(SHA.slice(0, 7));
+    // The caught comparison diagnostic lands in technicalDetail; the
+    // user-facing message stays the summarized sentence.
+    expect(body.technicalDetail).toContain('ENOTFOUND');
+    expect(body.message).not.toContain('ENOTFOUND');
   });
 });
 
@@ -135,6 +182,7 @@ describe('GET /core-update on an unknown install', () => {
     vi.mocked(resolveInstallProvenance).mockReturnValue({
       installKind: 'unknown',
       detail: 'no git checkout and no station-nightly-source.json build stamp',
+      reason: 'missing',
     });
 
     const body = await json(await createApp().request('/core-update'));
@@ -143,6 +191,34 @@ describe('GET /core-update on an unknown install', () => {
     expect(body.message).toContain('station-nightly-source.json');
     expect(body.error).toBeUndefined();
     expect(JSON.stringify(body)).not.toContain('Not a git repository');
+    // Missing-provenance diagnostics: the reason comes from the resolver's
+    // typed code, the detail (with its filesystem paths) from the field.
+    expect(body.provenanceIssue).toBe('missing');
+    expect(body.technicalDetail).toBe(
+      'no git checkout and no station-nightly-source.json build stamp',
+    );
+    expect(body.serverIdentity).toBeNull();
+    expect(body.selfUpdateUnavailableReason).toBeNull();
+  });
+
+  test('an invalid stamp names the invalidity, never absence (update-ux PR2)', async () => {
+    vi.mocked(resolveInstallProvenance).mockReturnValue({
+      installKind: 'unknown',
+      detail:
+        'a build stamp exists at /bundle/station-nightly-source.json but is malformed',
+      reason: 'invalid-stamp',
+    });
+
+    const body = await json(await createApp().request('/core-update'));
+    expect(body.updateAvailable).toBe(false);
+    expect(body.applyMethod).toBeUndefined();
+    expect(body.provenanceIssue).toBe('invalid-stamp');
+    expect(body.message).toMatch(
+      /^This server's update provenance is invalid\./,
+    );
+    expect(body.message).toContain('updates cannot be checked from here');
+    expect(body.technicalDetail).toContain('malformed');
+    expect(body.error).toBeUndefined();
   });
 });
 
@@ -177,7 +253,50 @@ describe('GET /core-update on a source checkout (AC4)', () => {
       behind: 3,
       ahead: 0,
       updateAvailable: true,
+      // A healthy checkout comparison carries the diagnostics too — null
+      // where nothing is wrong (update-ux PR2).
+      serverIdentity: null,
+      provenanceIssue: null,
+      technicalDetail: null,
+      selfUpdateUnavailableReason: null,
     });
+  });
+
+  test('a failed comparison keeps its identity and discloses the caught diagnostic', async () => {
+    vi.mocked(resolveInstallProvenance).mockReturnValue({
+      installKind: 'source-checkout',
+      gitRoot: '/repo',
+      branch: 'main',
+      sha: 'abc1234',
+    });
+    process.env.STATION_BUILD_SHA = 'abcdef0123456789abcdef0123456789abcdef01';
+    process.env.STATION_INSTANCE_ID = 'desktop';
+    process.env.STATION_BOOT_ID = '22222222-2222-4222-8222-222222222222';
+    // Upstream EXISTS (first rev-parse succeeds), then the fetch that
+    // follows fails — that is what reaches the route's outer catch, unlike
+    // an upstream-less checkout which takes the disclosed noUpstream branch.
+    let gitCall = 0;
+    vi.mocked(execGit).mockImplementation(async () => {
+      gitCall += 1;
+      if (gitCall === 1)
+        return { stdout: 'origin/main\n', stderr: '' } as never;
+      throw new Error('git fetch timed out');
+    });
+    try {
+      const body = await json(await createApp().request('/core-update'));
+      expect(body.updateAvailable).toBe(false);
+      // The SDK throws on `error`, but the identity of the process that
+      // failed was still captured BEFORE the comparison — it must survive.
+      expect(body.error).toContain('git fetch timed out');
+      expect(body.serverIdentity).toMatchObject({ instanceId: 'desktop' });
+      expect(body.technicalDetail).toContain('git fetch timed out');
+      expect(body.provenanceIssue).toBeNull();
+      expect(body.selfUpdateUnavailableReason).toBeNull();
+    } finally {
+      delete process.env.STATION_BUILD_SHA;
+      delete process.env.STATION_INSTANCE_ID;
+      delete process.env.STATION_BOOT_ID;
+    }
   });
 
   test('a checkout without an upstream keeps noUpstream and gains the additive fields', async () => {
@@ -200,6 +319,10 @@ describe('GET /core-update on a source checkout (AC4)', () => {
       ahead: 0,
       updateAvailable: false,
       noUpstream: true,
+      serverIdentity: null,
+      provenanceIssue: null,
+      technicalDetail: null,
+      selfUpdateUnavailableReason: null,
     });
     expect(body.error).toBeUndefined();
   });
@@ -224,6 +347,7 @@ describe('POST /core-update apply guard (AC3)', () => {
     vi.mocked(resolveInstallProvenance).mockReturnValue({
       installKind: 'unknown',
       detail: 'nothing found',
+      reason: 'missing',
     });
     vi.mocked(execGit).mockClear();
 
@@ -251,6 +375,8 @@ describe('git-based self-update (#1624)', () => {
     const body = await json(await createApp().request('/core-update'));
     expect(body.applyMethod).toBe('self-update');
     expect(body.updateAvailable).toBe(true);
+    // Eligible means no unavailable reason to disclose.
+    expect(body.selfUpdateUnavailableReason).toBeNull();
     expect(body.error).toBeUndefined();
   });
 
