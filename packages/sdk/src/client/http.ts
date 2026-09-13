@@ -19,6 +19,7 @@
  * `packages/sdk/src/__tests__/client-entry-portability.test.ts`.
  */
 
+import { ACCOUNT_AUTHENTICATION_FAILURE_HEADER } from '@kontourai/station-contracts/application-session';
 import {
   type ConnectionRetryClassification,
   isTerminalConnectionStatus,
@@ -268,6 +269,8 @@ export type ClientCredential = {
    * is synchronous returns nothing and nothing changes.
    */
   onUnauthorized?: () => void | Promise<void>;
+  /** Account-session refusal does not revoke or erase the independently approved Device credential. */
+  onAccountUnauthorized?: () => void | Promise<void>;
   /**
    * Records that this Station accepted an authenticated request, and names the
    * URL it was accepted on. The URL matters to the recipient: a connection
@@ -737,6 +740,12 @@ async function reportUnauthorized(
 ): Promise<void> {
   if (response.status !== 401 || opts?.authentication === 'omit') return;
   if (configured && sameOrigin(url, configured.origin)) {
+    if (
+      response.headers.get(ACCOUNT_AUTHENTICATION_FAILURE_HEADER) === 'account'
+    ) {
+      await awaitCredentialReport(configured.onAccountUnauthorized?.());
+      return;
+    }
     // Awaited so the response boundary is ordered after the transition this
     // report causes. A store that serializes writes across documents (Web
     // Locks) applies them in a lock callback, so without this a caller that
