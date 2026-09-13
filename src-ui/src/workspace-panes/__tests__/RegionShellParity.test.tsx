@@ -414,9 +414,19 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
         visible: true,
       }),
     );
+    // Let any host `RegionShells` mounted resolve its chunk: a host handed
+    // an occupant with no pane throws, and the throw only becomes visible
+    // (as the lazy boundary's error surface) once the chunk has loaded.
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
 
     expect(document.querySelector('[data-region="right"]')).toBeNull();
     expect(shells()).toHaveLength(1);
+    // #2045: "nothing" includes no host that threw on a pane it has no
+    // inventory for — `RegionShells` decides from the registry before
+    // mounting, so no boundary ever has an error to report.
+    expect(document.querySelector('.lazy-boundary__error')).toBeNull();
   });
 
   test.each(PRE_REFACTOR_CAPTURE)(
