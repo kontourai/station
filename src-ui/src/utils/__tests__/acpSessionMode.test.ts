@@ -52,4 +52,13 @@ describe('advertisedAcpSessionModesFromConnection', () => {
       modes: [],
     });
   });
+
+  test('drops modes entries that are not ids instead of throwing during render', () => {
+    const connection = JSON.parse(
+      '{"modes":[{"id":"chat","name":"Chat"},null,"  ","code"]}',
+    );
+    expect(advertisedAcpSessionModesFromConnection(connection)).toEqual({
+      modes: [{ id: 'code', name: 'code' }],
+    });
+  });
 });

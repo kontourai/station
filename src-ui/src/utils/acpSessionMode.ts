@@ -68,7 +68,14 @@ export function advertisedAcpSessionModesFromConnection(
         : {}),
     };
   }
-  const ids = connection?.modes?.filter((id) => id.trim()) ?? [];
+  // `modes` is parsed JSON. An entry that is not an id must not throw inside
+  // the chat pane's render and take the whole conversation down with it.
+  const rawModes: unknown = connection?.modes;
+  const ids = Array.isArray(rawModes)
+    ? rawModes.filter(
+        (id): id is string => typeof id === 'string' && id.trim() !== '',
+      )
+    : [];
   return {
     modes: ids.map((id) => ({ id, name: id })),
   };
