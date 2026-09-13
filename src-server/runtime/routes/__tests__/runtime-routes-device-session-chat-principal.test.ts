@@ -46,6 +46,10 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  DEPLOYMENT_AUTHENTICATION_VERSION,
+  type DeploymentAuthenticationProvider,
+} from '@kontourai/station-contracts/deployment-authentication';
+import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
@@ -55,6 +59,8 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
+import type { LoadedDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
+import { DeploymentAuthenticationService } from '../../../services/identity/deployment-authentication-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -268,6 +274,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
   async function setup(
     searchMode?: 'device' | 'whois' | 'home' | 'operator',
     taskReferences = false,
+    deploymentAuthentication?: LoadedDeploymentAuthentication,
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
     const roomHomeDir = mkdtempSync(
@@ -376,6 +383,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     });
     const app = new Hono();
     const context = deepStub({
+      deploymentAuthentication,
       app,
       port: 4321,
       appConfig: {},
@@ -719,6 +727,98 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(
         pairing.identifyDevice(credentials[1]!)?.principalBinding?.subject,
       ).toBe('collaborator@example.test');
+    } finally {
+      await roomRuntime.close();
+      store.close();
+    }
+  });
+
+  test('an account principal reaches the real staging owner while device admission remains independent', async () => {
+    const provider: DeploymentAuthenticationProvider = {
+      version: DEPLOYMENT_AUTHENTICATION_VERSION,
+      issuer: 'urn:station:account-test',
+      displayName: 'Test accounts',
+      sessionCookies: ['test_account'],
+      endpoints: [{ path: '/logout', methods: ['POST'], operation: 'logout' }],
+      authenticate: async () => ({
+        kind: 'authenticated',
+        session: {
+          subject: 'opaque-member',
+          displayName: 'Member',
+          sessionId: 'session-one',
+          authenticatedAt: new Date(Date.now() - 1000).toISOString(),
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          contacts: [],
+        },
+      }),
+      handle: async () => new Response(null, { status: 204 }),
+    };
+    const service = new DeploymentAuthenticationService(provider);
+    const { app, store, roomRuntime, paired } = await setup(undefined, false, {
+      service,
+      publicOrigin: 'https://station.example.test',
+    });
+    const prepareSpy = vi.spyOn(AttachmentStagingService.prototype, 'prepare');
+    try {
+      const headers = {
+        'Content-Type': 'application/json',
+        Cookie: 'test_account=present',
+      };
+      const denied = await app.request(
+        '/api/orchestration/attachment-staging/prepare',
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(ATTACHMENT_DESCRIPTOR),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(denied.status).toBe(401);
+      expect(prepareSpy).not.toHaveBeenCalled();
+      const admitted = await app.request(
+        '/api/orchestration/attachment-staging/prepare',
+        {
+          method: 'POST',
+          headers: { ...headers, Authorization: `Bearer ${paired.credential}` },
+          body: JSON.stringify(ATTACHMENT_DESCRIPTOR),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(admitted.status, await admitted.text()).toBe(200);
+      expect(prepareSpy).toHaveBeenCalledOnce();
+      const expected = await service.authenticate(
+        new Request('https://station.example.test', { headers }),
+      );
+      if (expected.kind !== 'authenticated')
+        throw new Error('Account fixture did not authenticate');
+      expect(prepareSpy.mock.calls[0]![0].principalId).toBe(
+        expected.principal.id,
+      );
+      expect(expected.principal.id).not.toBe(
+        `human:device:${paired.device.id}`,
+      );
+      prepareSpy.mockClear();
+      const conflict = await app.request(
+        '/api/orchestration/attachment-staging/prepare',
+        {
+          method: 'POST',
+          headers: {
+            ...headers,
+            Authorization: `Bearer ${paired.credential}`,
+            [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+            [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+              JSON.stringify({
+                provider: 'tailscale-serve',
+                login: 'different@github',
+              }),
+            ).toString('base64url'),
+          },
+          body: JSON.stringify(ATTACHMENT_DESCRIPTOR),
+        },
+        LOOPBACK_SERVE_PROXY_ENV,
+      );
+      expect(conflict.status).toBe(401);
+      expect(prepareSpy).not.toHaveBeenCalled();
     } finally {
       await roomRuntime.close();
       store.close();

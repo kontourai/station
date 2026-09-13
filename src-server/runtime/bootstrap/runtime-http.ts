@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin';
+import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
 import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
 import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
@@ -494,6 +495,41 @@ function configureRuntimeSecurity(
       });
       return c.json({ error: { code: 'insufficient_scope' } }, 403);
     }
+    const accountOperation =
+      c.req.path === DEPLOYMENT_AUTHENTICATION_BASE_PATH ||
+      c.req.path.startsWith(`${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/`);
+    if (security.deploymentAuthentication && !accountOperation) {
+      const hasAccount = security.deploymentAuthentication.hasCredential(
+        c.req.raw,
+      );
+      if (hasAccount) {
+        const retryAfter = limiter.retryAfterSeconds(limiterKey);
+        if (retryAfter !== undefined) {
+          c.header('Retry-After', String(retryAfter));
+          return c.json({ error: { code: AUTH_RATE_LIMITED_ERROR_CODE } }, 429);
+        }
+        // Reserve before asynchronous verification; parallel attempts cannot
+        // all enter the adapter before the first failure has been counted.
+        limiter.recordFailure(limiterKey);
+      }
+      const account = await security.deploymentAuthentication.authenticate(
+        c.req.raw,
+      );
+      if (account.kind === 'authenticated') limiter.clear(limiterKey);
+      if (account.kind === 'invalid') {
+        return c.json(
+          {
+            error: {
+              code: 'account_authentication_invalid',
+              reason: account.reason,
+            },
+          },
+          401,
+        );
+      }
+      if (account.kind === 'unavailable')
+        return c.json({ error: { code: 'authentication_unavailable' } }, 503);
+    }
     if (
       requiredCapability.capability === 'public' ||
       requiredCapability.capability === 'mcp-token' ||
@@ -827,6 +863,7 @@ function configureRuntimeSecurity(
         body: bodyResult,
         duplex: 'half',
       });
+      security.deploymentAuthentication?.transferRequest(raw, c.req.raw);
       // The request was deliberately rewrapped after bounded body buffering.
       // Carry the already middleware-verified principal to that replacement;
       // route handlers must never fall back to reparsing bearer/cookie input.

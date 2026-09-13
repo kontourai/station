@@ -1,5 +1,11 @@
+import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
+import {
+  type LoadedDeploymentAuthentication,
+  loadDeploymentAuthentication,
+  readDeploymentAuthenticationConfiguration,
+} from '../../services/identity/deployment-authentication-loader.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -437,6 +443,7 @@ type PersistedAgentReloadTarget =
   | { kind: 'managed'; metadata: any; spec: AgentSpec };
 
 export interface StationRuntimeOptions {
+  authentication?: DeploymentAuthenticationConfiguration;
   pluginInstallationHost?: PluginInstallationHost;
   projectHomeDir?: string;
   port?: number;
@@ -455,6 +462,8 @@ export interface StationRuntimeOptions {
  * Manages VoltAgent instances with dynamic agent loading
  */
 export class StationRuntime {
+  private readonly authenticationConfiguration?: DeploymentAuthenticationConfiguration;
+  private deploymentAuthentication?: LoadedDeploymentAuthentication;
   private readonly pluginInstallationHost: PluginInstallationHost;
   private configLoader: ConfigLoader;
   private appConfig!: AppConfig;
@@ -947,6 +956,10 @@ export class StationRuntime {
   }
 
   constructor(options: StationRuntimeOptions = {}) {
+    this.authenticationConfiguration = structuredClone(
+      options.authentication ??
+        readDeploymentAuthenticationConfiguration(process.env),
+    );
     const projectHomeDir = options.projectHomeDir || resolveHomeDir();
     // archive#3217, and it has to be HERE rather than in `index.ts`: the
     // pre-boot hooks `index.ts` runs are not on every entry point's path, so
@@ -3079,6 +3092,15 @@ export class StationRuntime {
     // state prevents any listener from being configured.
     const identity = await this.environmentSecurityService.initialize();
     this.stationEnvironmentId = identity.environmentId;
+    if (this.authenticationConfiguration && !this.deploymentAuthentication) {
+      this.deploymentAuthentication = await loadDeploymentAuthentication(
+        this.authenticationConfiguration,
+        {
+          stationId: identity.environmentId,
+          homeDirectory: this.configLoader.getProjectHomeDir(),
+        },
+      );
+    }
     const packageProjections = await this.pluginInstallationHost.reconcile();
     if (packageProjections.status === 'pending')
       this.logger.warn('Plugin catalog projection remains pending', {
@@ -3653,6 +3675,7 @@ export class StationRuntime {
       kitLifecycleReady,
       projectTaskRoomRuntime,
     } = configureRuntimeRoutes({
+      deploymentAuthentication: this.deploymentAuthentication,
       app,
       logger: this.logger,
       eventBus: this.eventBus,
@@ -4179,6 +4202,12 @@ export class StationRuntime {
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
+    try {
+      await this.deploymentAuthentication?.service.close();
+      this.deploymentAuthentication = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
     if (this.runtimeSearch) {
       const retirement = await this.runtimeSearch.close();
       if (retirement.state !== 'closed')
