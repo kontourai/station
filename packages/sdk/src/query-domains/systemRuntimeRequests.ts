@@ -6,8 +6,13 @@ import type {
   FleetServeReceiptPage,
 } from '@kontourai/station-contracts/fleet-routing-receipt';
 import { HEALTH_PROBE_TIMEOUT_MS } from '@kontourai/station-contracts/http';
+import type { SystemIdentityResponse } from '@kontourai/station-contracts/system-status';
 import { _getApiBase } from '../api';
 import { parseRestartExpectation } from '../core-update-restart-expectation';
+import {
+  parseSystemIdentityResponse,
+  parseSystemUpdateStatus,
+} from '../system-update-status-parser';
 import type {
   AuthStatusData,
   BrandingData,
@@ -392,16 +397,49 @@ export async function fetchBranding(): Promise<BrandingData> {
 
 export async function requestCoreUpdateStatus(
   apiBaseOverride?: string,
+  signal?: AbortSignal,
 ): Promise<CoreUpdateStatus> {
   const apiBase = await resolveApiBase(apiBaseOverride);
   const response = await authenticatedFetch(
     `${apiBase}/api/system/core-update`,
+    { signal },
   );
-  const result = (await response.json()) as CoreUpdateStatus;
-  if (result.error) {
-    throw new Error(result.error);
+  // HTTP status is checked BEFORE the body can read as success: a 503/401
+  // whose body happens to parse must not be normalized into a status object
+  // (the status is preserved for the same terminal/transient classification
+  // the other system fetchers feed).
+  if (!response.ok) {
+    throw new StationHttpError(
+      response.status,
+      `Failed to fetch core update status: ${response.status}`,
+    );
   }
-  return result;
+  const parsed = parseSystemUpdateStatus(await response.json());
+  if (parsed.error) {
+    throw new Error(parsed.error);
+  }
+  return parsed;
+}
+
+/**
+ * Read the answering server's identity triple. The 503 `identity_unavailable`
+ * branch is a non-ok response, so it throws a `StationHttpError` with the
+ * status preserved rather than parsing the body as an identity.
+ */
+export async function requestSystemIdentity(
+  apiBase: string,
+  signal?: AbortSignal,
+): Promise<SystemIdentityResponse> {
+  const response = await authenticatedFetch(`${apiBase}/api/system/identity`, {
+    signal,
+  });
+  if (!response.ok) {
+    throw new StationHttpError(
+      response.status,
+      `Failed to fetch system identity: ${response.status}`,
+    );
+  }
+  return parseSystemIdentityResponse(await response.json());
 }
 
 export async function applyCoreUpdate(apiBase: string): Promise<{

@@ -384,7 +384,7 @@ function localDelegatedTaskService(
   };
 }
 
-function installCurrentStationFetch() {
+function installCurrentStationFetch(projectDirectory?: string) {
   fetchMock.mockImplementation(async (input) => {
     const url = String(input);
     if (url === `${CURRENT_API}/.well-known/station/v1`) {
@@ -394,6 +394,12 @@ function installCurrentStationFetch() {
       return json({
         success: true,
         data: { slug: 'reviewer', name: 'Reviewer', available: true },
+      });
+    }
+    if (projectDirectory && url === `${CURRENT_API}/api/projects/workspace`) {
+      return json({
+        success: true,
+        data: { workingDirectory: projectDirectory },
       });
     }
     throw new Error(`Unexpected request: ${url}`);
@@ -706,6 +712,67 @@ describe('Station Control canonical Environment + Agent execution', () => {
       );
     },
   );
+
+  test.each(['foreground', 'delegation'] as const)(
+    '%s uses receiver binding resolution before constructing a start',
+    async (kind) => {
+      installCurrentStationFetch('/tmp/legacy');
+      const resolveProjectSessionDirectory = vi.fn(async () => '/tmp/rebound');
+      const service = { ...localService(), resolveProjectSessionDirectory };
+      const { delegateTask, executeExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      const target = {
+        ...currentTarget(),
+        workspace: { kind: 'project' as const, projectSlug: 'workspace' },
+      };
+      if (kind === 'foreground') {
+        await executeExecutionTargetMessage(
+          { target, message: 'Use this Project' },
+          service as never,
+        );
+      } else {
+        await delegateTask(
+          { target, prompt: 'Use this Project' },
+          service as never,
+        );
+      }
+      expect(resolveProjectSessionDirectory).toHaveBeenCalledWith('workspace');
+      expect(service.startSessionInternal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({ cwd: '/tmp/rebound' }),
+        }),
+        expect.anything(),
+        expect.anything(),
+      );
+    },
+  );
+
+  test('binding refusal prevents foreground planning from retaining the legacy cwd', async () => {
+    installCurrentStationFetch('/tmp/legacy');
+    const service = {
+      ...localService(),
+      resolveProjectSessionDirectory: vi.fn(async () => {
+        throw new Error('binding missing');
+      }),
+    };
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    await expect(
+      executeExecutionTargetMessage(
+        {
+          target: {
+            ...currentTarget(),
+            workspace: { kind: 'project', projectSlug: 'workspace' },
+          },
+          message: 'Use this Project',
+        },
+        service as never,
+      ),
+    ).rejects.toThrow('binding missing');
+    expect(service.startSessionInternal).not.toHaveBeenCalled();
+  });
 
   test('executes a local delegation through the injected canonical service', async () => {
     installCurrentStationFetch();
