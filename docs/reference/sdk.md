@@ -2373,6 +2373,16 @@ the 503 `identity_unavailable` branch surfaces as a `StationHttpError` with
 its status preserved. Every export is re-exported from
 `@kontourai/station-sdk` and `@kontourai/station-sdk/queries`.
 
+`useCoreUpdateStatusQuery(apiBase, config?, scope?)` accepts an optional third
+`CoreUpdateStatusScope` argument: `{ scopeKey?, assertCurrent? }`. When
+`scopeKey` is present it joins the query key, so a cached comparison captured
+for one connection (or one answering boot) can never be served to another.
+`assertCurrent` is checked immediately before the request is issued and again
+after it resolves — throwing rejects the fetch, so an obsolete or superseded
+scope's completion never resolves as current data. Both fields are
+secret-free: credentials and credential-evidence objects must never enter a
+query key or these callbacks. Existing two-argument callers are unaffected.
+
 ## Saved answer quotations
 
 `getAssistantQuoteSource(apiBase, sessionId, turnId, options)` from

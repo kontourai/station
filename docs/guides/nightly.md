@@ -116,6 +116,37 @@ The nightly lane is for contributor dogfooding. It is locally signed on the Mac
 that builds it and is not a public, notarized release ring. Stable and preview
 remain the only public distribution rings.
 
+## Update checks in Settings: source check vs release check
+
+Two distinct mechanisms answer "is there an update?", and Settings keeps them
+separate:
+
+- **Desktop release check.** Tauri's configured signed update feed owns
+  desktop release availability and installation. The packaged server code
+  updates with the desktop app.
+- **Server source check** (`GET /api/system/core-update`). This reports
+  source-comparison facts for the connected server: a git checkout's
+  behind/ahead counts, or a stamped install's build hash versus its configured
+  source ref. A stamped build hash that differs from the source ref is a
+  build-stamp comparison only — it does **not** establish that an installable
+  release is available, and the UI never renders it as "update available".
+
+An established built-in (embedded sidecar) server never runs the ordinary
+source check at all; its update path is the desktop app itself, and its card
+says so.
+
+### Advanced source installer boundary
+
+The checkout-backed bundle installer survives behind the **Source installation
+details** disclosure on the server updates card, under the action
+**Rebuild and reinstall desktop app from source…**. It is a distinct advanced
+workflow, not the normal desktop update path: the source query behind it mounts
+only while the disclosure is open, it names the affected host from the
+correlated server identity, and the server-side eligibility revalidation on
+apply remains authoritative. Coordination between a simultaneous source
+rebuild and a signed-updater installation is an explicit, unsolved risk — do
+not run both against the same install.
+
 ## Install or refresh
 
 Use Node 24 from a clean checkout with the intended `origin` remote:

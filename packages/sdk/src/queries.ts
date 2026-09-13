@@ -575,6 +575,7 @@ export {
   type CoreUpdateRestartExpectation,
   type CoreUpdateRestartStatus,
   type CoreUpdateStatus,
+  type CoreUpdateStatusScope,
   type DeploymentCapabilityId,
   type DeploymentCapabilityState,
   fetchAuthStatus,

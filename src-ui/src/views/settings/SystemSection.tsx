@@ -6,7 +6,7 @@ import {
   BuildProvenance,
   InstalledAppBuildProvenance,
 } from './BuildProvenance';
-import { CoreUpdateCheck } from './CoreUpdateCheck';
+import { ConnectedServerUpdates } from './ConnectedServerUpdates';
 import { DesktopUpdateCheck } from './DesktopUpdateCheck';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
@@ -59,7 +59,7 @@ export function SystemSection({
         <span className="settings__field-label">
           {settingsRow('core-app-updates').title}
         </span>
-        <CoreUpdateCheck apiBase={apiBase} />
+        <ConnectedServerUpdates />
       </div>
 
       <div {...settingsRow('deployed-build')} tabIndex={-1}>
