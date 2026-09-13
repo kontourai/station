@@ -15,6 +15,8 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { toRegionArrangementRecord } from '../../regions/region-arrangement-record';
+import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../../regions/region-model';
 import { useBasisPaneLauncher } from '../BasisPaneLauncher';
 import {
   AMBIENT_CHAT_DOCK_DOCUMENT_ID,
@@ -22,6 +24,7 @@ import {
   createAmbientChatDockPaneDocument,
   createRegionPaneHostDocument,
   RegionPaneHost,
+  reconcileRegionPaneHostDocument,
   regionPaneHostDocumentId,
 } from '../RegionPaneHost';
 import { workspacePaneHostStorageKey } from '../workspacePaneHostStorage';
@@ -209,6 +212,126 @@ test('a region host document is the region’s; the model-less mount keeps the l
   expect(() => createRegionPaneHostDocument('left', ['home'])).toThrow(
     /no built-in pane/,
   );
+});
+
+/**
+ * #2046 2a. The record's `pane-host.documentId` is the region id, which is
+ * what this module names the region's document — the record module cannot
+ * import this one (bundle), so the two are pinned equal here. And the
+ * derived document puts the selected pane first in nothing but `active`:
+ * tab order is the arrangement's, selection is the arrangement's.
+ */
+test('the record’s pane-host documentId is the region’s document id, and the derived document activates the selected pane', () => {
+  const twoPanes = {
+    ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+    right: {
+      visible: true,
+      size: 400,
+      panes: ['chat', 'activity'],
+      occupant: 'activity',
+      maximized: false,
+    },
+  };
+  const occupant = toRegionArrangementRecord(twoPanes).regions.right.occupant;
+  if (occupant?.kind !== 'pane-host') throw new Error('expected pane-host');
+  expect(occupant.documentId).toBe(regionPaneHostDocumentId('right'));
+
+  const document = createRegionPaneHostDocument(
+    'right',
+    ['chat', 'activity'],
+    'activity',
+  );
+  expect(document.instances.map((i) => i.descriptorId)).toEqual([
+    'pane:builtin:chat',
+    'pane:builtin:activity',
+  ]);
+  expect(document.activeInstanceId).toBe('workspace-activity');
+  expect(document.root).toMatchObject({
+    type: 'tabs',
+    instanceIds: ['workspace-chat', 'workspace-activity'],
+    selectedInstanceId: 'workspace-activity',
+  });
+  // No selection named, or one with no pane: the first pane.
+  expect(
+    createRegionPaneHostDocument('right', ['chat', 'activity'])
+      .activeInstanceId,
+  ).toBe('workspace-chat');
+  expect(
+    createRegionPaneHostDocument('right', ['chat', 'activity'], 'home')
+      .activeInstanceId,
+  ).toBe('workspace-chat');
+});
+
+/**
+ * The mount-time half of the pane set (#2046 2a): hydration can drop a
+ * persisted pane the region no longer holds but can never ADD one, so a
+ * region key written with Chat alone is rewritten to the derived two-pane
+ * document before the host reads it. Deleting the write (or the call in
+ * `RegionPaneHost`) makes the region show Chat alone after a reload that
+ * added Activity between launches. A matching set is left untouched — its
+ * tab group id survives — an absent key is not written (the host starts
+ * from the derived document itself), and a persisted SUPERSET is not its
+ * case either: hydration prunes that on its own.
+ */
+test('reconcileRegionPaneHostDocument rewrites a persisted document whose pane list differs and leaves a matching one alone', () => {
+  const storage = new Map<string, string>();
+  const adapter = {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => void storage.set(key, value),
+    removeItem: (key: string) => void storage.delete(key),
+  };
+  const twoPanes = createRegionPaneHostDocument(
+    'bottom',
+    ['chat', 'activity'],
+    'activity',
+  );
+
+  // Absent key: nothing written.
+  expect(reconcileRegionPaneHostDocument(adapter, twoPanes)).toBe(false);
+  expect(storage.has(BOTTOM_STORAGE_KEY)).toBe(false);
+
+  // Chat alone persisted, two panes derived: rewritten.
+  storage.set(BOTTOM_STORAGE_KEY, persistedChatDocument('bottom', 'my-group'));
+  expect(reconcileRegionPaneHostDocument(adapter, twoPanes)).toBe(true);
+  expect(JSON.parse(storage.get(BOTTOM_STORAGE_KEY)!)).toMatchObject({
+    id: 'bottom',
+    instances: [
+      { descriptorId: 'pane:builtin:chat' },
+      { descriptorId: 'pane:builtin:activity' },
+    ],
+    activeInstanceId: 'workspace-activity',
+  });
+
+  // Matching list, different selection: left alone, selection included —
+  // the mounted host follows the arrangement's selection on its own.
+  const chatSelected = createRegionPaneHostDocument(
+    'bottom',
+    ['chat', 'activity'],
+    'chat',
+  );
+  expect(reconcileRegionPaneHostDocument(adapter, chatSelected)).toBe(false);
+  expect(JSON.parse(storage.get(BOTTOM_STORAGE_KEY)!).activeInstanceId).toBe(
+    'workspace-activity',
+  );
+
+  // Chat alone derived, two panes persisted: NOT this function's case.
+  // Hydration against the one-pane catalog already restores that document
+  // as Chat alone (`RegionPaneHost.regions.test.tsx`, "a stale region
+  // document naming the previous occupant"), so the persisted pane list
+  // hydrates equal to the derived one and nothing is written here; the host
+  // persists the pruned document once it owns the lease.
+  const chatAlone = createRegionPaneHostDocument('bottom', ['chat']);
+  expect(reconcileRegionPaneHostDocument(adapter, chatAlone)).toBe(false);
+  expect(
+    JSON.parse(storage.get(BOTTOM_STORAGE_KEY)!).instances.map(
+      (i: { descriptorId: string }) => i.descriptorId,
+    ),
+  ).toEqual(['pane:builtin:chat', 'pane:builtin:activity']);
+
+  // Corrupt key: nothing written, no throw.
+  storage.set(BOTTOM_STORAGE_KEY, '{not json');
+  expect(reconcileRegionPaneHostDocument(adapter, twoPanes)).toBe(false);
+  expect(storage.get(BOTTOM_STORAGE_KEY)).toBe('{not json');
 });
 
 /** A persisted Chat document under `id`, with a tab group id restoration keeps. */

@@ -7,7 +7,7 @@ import {
   restoreWorkspacePaneHostDocument,
   type WorkspacePaneHostDocumentV1,
 } from '@kontourai/station-contracts/workspace-pane-host';
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { DockShell } from '../components/chat-dock/DockShell';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
@@ -19,7 +19,9 @@ import {
 } from '../regions/region-surface-panes';
 import type { DockMode } from '../types';
 import { WorkspacePaneHost } from './WorkspacePaneHost';
+import type { WorkspacePaneHostOpenAction } from './WorkspacePaneHostOpenContext';
 import {
+  hydrateWorkspacePaneHost,
   persistWorkspacePaneHost,
   type WorkspacePaneHostStorage,
   workspacePaneHostStorageKey,
@@ -62,9 +64,12 @@ export function regionPaneHostDocumentId(
 const REGION_PANE_HOST_SCOPE = { kind: 'ambient' } as const;
 
 /**
- * The baseline document for a region holding `surfaceIds`: one tab group of
- * the surfaces' canonical panes. This slice places one surface per region,
- * so the list is one long; the shape already admits more.
+ * The document for a region holding `surfaceIds`, in tab order: one tab
+ * group of the surfaces' canonical panes, with `selectedSurfaceId`'s pane
+ * active (the first when none is named). Derived from the arrangement
+ * (`RegionState.panes` and `occupant`, #2046 2a), so the arrangement is the
+ * authority for what a region holds and which pane shows; the host's
+ * persisted copy carries nothing this does not.
  *
  * Throws rather than returning null, the same way the descriptors themselves
  * refuse to parse: every input is a code-owned constant, so a failure here is
@@ -75,6 +80,7 @@ const REGION_PANE_HOST_SCOPE = { kind: 'ambient' } as const;
 export function createRegionPaneHostDocument(
   documentId: string,
   surfaceIds: readonly string[],
+  selectedSurfaceId?: string,
 ): WorkspacePaneHostDocumentV1 {
   const instances = surfaceIds.map((surfaceId) => {
     const pane = regionSurfacePane(surfaceId);
@@ -89,7 +95,68 @@ export function createRegionPaneHostDocument(
   );
   if (!document)
     throw new Error(`Invalid built-in region host document "${documentId}"`);
-  return document;
+  const selected =
+    selectedSurfaceId === undefined
+      ? undefined
+      : regionSurfacePane(selectedSurfaceId)?.instance.instanceId;
+  if (
+    selected === undefined ||
+    selected === document.activeInstanceId ||
+    document.root.type !== 'tabs'
+  )
+    return document;
+  return {
+    ...document,
+    activeInstanceId: selected,
+    root: { ...document.root, selectedInstanceId: selected },
+  };
+}
+
+/**
+ * Bring a region's persisted document into line with the arrangement's pane
+ * set before the host hydrates it (#2046 2a). Hydration restores whatever
+ * the region key holds against the catalog, and a persisted document can
+ * only LOSE panes there (admission drops what the region no longer holds);
+ * it never gains one. So a region key written while the region held Chat
+ * alone would keep showing Chat alone after Activity joined between
+ * launches — the arrangement record says two panes, the document one. When
+ * the persisted pane list (the instance ids, in order) differs from
+ * `document`'s, the derived document is persisted in its place; a matching
+ * list is left as it is, active pane included (the mounted host follows the
+ * arrangement's selection on its own, see `RegionPaneHost`). Like adoption,
+ * this is a mount that writes the region key, and only when the two
+ * disagree; an unreadable key is left for the host, which starts from the
+ * derived document. Returns whether it wrote.
+ */
+export function reconcileRegionPaneHostDocument(
+  storage: WorkspacePaneHostStorage,
+  document: WorkspacePaneHostDocumentV1,
+): boolean {
+  try {
+    if (
+      storage.getItem(
+        workspacePaneHostStorageKey(document.scope, document.id),
+      ) === null
+    )
+      return false;
+    const persisted = hydrateWorkspacePaneHost(
+      storage,
+      document.scope,
+      document.id,
+      document.instances,
+    ).document;
+    if (!persisted) return false;
+    const persistedIds = persisted.instances.map((i) => i.instanceId);
+    const derivedIds = document.instances.map((i) => i.instanceId);
+    if (
+      persistedIds.length === derivedIds.length &&
+      persistedIds.every((id, index) => id === derivedIds[index])
+    )
+      return false;
+    return persistWorkspacePaneHost(storage, document);
+  } catch {
+    return false;
+  }
 }
 
 /** The legacy Chat dock document: the model-less mount's, and adoption's source. */
@@ -191,27 +258,39 @@ export type RenderActivityPane = (
  * `dock.toggle`/`dock.maximize`) around a chromeless `WorkspacePaneHost`
  * holding the region's document, whose panes are the surfaces placed there.
  * Chat and Activity both render through it; the `presentation` stays
- * `chromeless` until slice 2 gives a region tabs. The shell's geometry report
- * goes to the clearance reducer, one entry per rendered region (#928; the
- * reducer is the one writer of the CSS variables, archive#3902/archive#3929).
+ * `chromeless` until slice 2b gives a region tabs, so of several panes the
+ * host shows the SELECTED one and the rest are reachable through their
+ * chord, the toolbar and `showSurface` (#2046 2a). The shell's geometry
+ * report goes to the clearance reducer, one entry per rendered region (#928;
+ * the reducer is the one writer of the CSS variables,
+ * archive#3902/archive#3929).
  *
- * The occupant is read from the region model — this is shell machinery, like
+ * The pane set and the selected pane are read from the region model
+ * (`RegionState.panes`, `occupant`) — this is shell machinery, like
  * `DockShell`, not a surface renderer (`region-surface-boundary.test.ts`
- * pins those). Without a region (the model-less `ChatDock` mount) the host is
- * Chat's alone, on the legacy document.
+ * pins those). The document is DERIVED from them
+ * (`createRegionPaneHostDocument`); admission of a persisted or opened pane
+ * is over the pane set. Without a region (the model-less `ChatDock` mount)
+ * the host is Chat's alone, on the legacy document.
  *
- * The inner host is keyed by its document (`WorkspacePaneHost`) AND by the
- * occupant. A swap changes what the region's document may hold; the
- * controller already follows that on its own — a changed instance set is a
- * new authority fingerprint, and its layout effect revokes the panes no
- * longer in the catalog (`workspacePaneHostController.ts`,
- * `authorityFingerprint`). The key is belt-and-braces on top of that: a
- * fresh controller hydrates the region's key against the new catalog in one
- * step instead of revoking and then admitting, and the old occupant's pane
- * subtree is torn down with it rather than living on until revocation. Kept
- * deliberately; drop it only with a test that swaps occupants under a stale
- * persisted document and proves the fingerprint path alone lands on the new
- * occupant's baseline.
+ * The inner host is keyed by its document (`WorkspacePaneHost`) and by
+ * nothing else (#2046 2a, decision 4): a changed pane set is a new
+ * authority fingerprint, and the controller's layout effect restores the
+ * derived document, revoking the panes no longer held
+ * (`workspacePaneHostController.ts`, `authorityFingerprint`).
+ * `RegionPaneHost.regions.test.tsx` proves that path alone lands on the
+ * region's current panes under a stale persisted document (the test the
+ * #2045 docblock named as the condition for dropping its occupant key). The
+ * one thing the fingerprint cannot do is ADD a pane at mount, which
+ * `reconcileRegionPaneHostDocument` does before the first hydration.
+ *
+ * Selection: the arrangement's `occupant` is the pane the host shows. The
+ * controller owns the live selection (its `select` also writes navigation's
+ * `pane` param, the way a tab click does), so when the live active pane
+ * differs from the arrangement's the host selects the arrangement's through
+ * the controller's own `focusExisting` — and only then, so a mount whose
+ * persisted document already agrees writes nothing to navigation. Nothing
+ * writes the other way this slice: no tab strip exists to select from.
  *
  * The renderers are supplied by the caller, not imported: Chat's lives in
  * `ChatDock.tsx` and Activity's behind `RegionShells`' lazy boundary, and
@@ -232,28 +311,58 @@ export function RegionPaneHost({
   renderActivityPane?: RenderActivityPane;
 }) {
   const model = useRegionModelOptional();
-  const occupant =
-    regionId && model ? model.regions[regionId].occupant : 'chat';
-  const documentId = regionPaneHostDocumentId(regionId);
-  // Before the inner host's first read of the region key (its controller
-  // hydrates in its own state initialiser), so the adopted document is what
-  // it finds. Once per mount: a region host mounts when its region becomes
-  // occupied, and adoption only acts on a region key that is absent.
-  useState(() => {
-    if (regionId && occupant === 'chat')
-      adoptLegacyChatDockDocument(window.localStorage, regionId);
-  });
-  const occupants = useMemo(
-    () => (occupant && regionSurfacePane(occupant) ? [occupant] : []),
-    [occupant],
+  const region = regionId && model ? model.regions[regionId] : undefined;
+  const regionPanes = region?.panes;
+  // The panes with a built-in pane entry, in the region's tab order; an id
+  // without one (a fixture the model admits to a dock region) has nothing
+  // to render and is left out. `region.panes` keeps its identity while the
+  // set is unchanged (`updateRegion`), so this is stable across selection
+  // and visibility writes.
+  const panes = useMemo(
+    () =>
+      regionPanes
+        ? regionPanes.filter((surfaceId) => regionSurfacePane(surfaceId))
+        : ['chat'],
+    [regionPanes],
   );
+  const selected =
+    region && region.occupant && panes.includes(region.occupant)
+      ? region.occupant
+      : panes[0];
+  const documentId = regionPaneHostDocumentId(regionId);
   const document = useMemo(
     () =>
-      occupants.length
-        ? createRegionPaneHostDocument(documentId, occupants)
+      panes.length
+        ? createRegionPaneHostDocument(documentId, panes, selected)
         : null,
-    [documentId, occupants],
+    [documentId, panes, selected],
   );
+  // Before the inner host's first read of the region key (its controller
+  // hydrates in its own state initialiser), so the adopted or reconciled
+  // document is what it finds. Once per mount: a region host mounts when its
+  // region becomes occupied, adoption only acts on a region key that is
+  // absent, and a pane set that changes while mounted reaches the host
+  // through the fingerprint path instead.
+  useState(() => {
+    if (!regionId || !document) return;
+    if (panes.includes('chat'))
+      adoptLegacyChatDockDocument(window.localStorage, regionId);
+    reconcileRegionPaneHostDocument(window.localStorage, document);
+  });
+  const [openAction, setOpenAction] =
+    useState<WorkspacePaneHostOpenAction | null>(null);
+  const [liveActiveInstanceId, setLiveActiveInstanceId] = useState<
+    string | null
+  >(null);
+  const selectedInstanceId = selected
+    ? regionSurfacePane(selected)?.instance.instanceId
+    : undefined;
+  useEffect(() => {
+    if (!openAction || !selectedInstanceId || liveActiveInstanceId === null)
+      return;
+    if (liveActiveInstanceId === selectedInstanceId) return;
+    openAction.focusExisting?.(selectedInstanceId);
+  }, [liveActiveInstanceId, openAction, selectedInstanceId]);
   return (
     <DockShell
       regionId={regionId}
@@ -262,13 +371,16 @@ export function RegionPaneHost({
       {(shellChrome) =>
         document ? (
           <WorkspacePaneHost
-            key={occupants.join('+')}
             document={document}
             presentation="chromeless"
             admitRestoredInstance={(candidate) =>
-              admitRegionPane(candidate, occupants)
+              admitRegionPane(candidate, panes)
             }
-            admitOpenInstance={(instance) => isRegionPane(instance, occupants)}
+            admitOpenInstance={(instance) => isRegionPane(instance, panes)}
+            onOpenActionChange={setOpenAction}
+            onDocumentChange={(live) =>
+              setLiveActiveInstanceId(live.activeInstanceId)
+            }
             renderPane={(instance) => {
               switch (regionSurfaceOfPane(instance)) {
                 case 'chat':

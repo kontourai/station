@@ -387,3 +387,175 @@ test('a stale region document naming the previous occupant restores as the curre
     ).queryByTestId('ambient-chat-occupant'),
   ).toBeNull();
 });
+
+/**
+ * #2046 2a: a region holding two panes derives a two-pane document, persists
+ * it under the region's key with the arrangement's selected pane active, and
+ * on reload — the arrangement record naming both panes and the selection —
+ * hydrates that document and shows the selected pane. Reverting the
+ * pane-set derivation (`createRegionPaneHostDocument(documentId, [occupant])`)
+ * fails the two-instance assertion; reverting the selection sync fails the
+ * `activeInstanceId` assertion after the model's `selectPane`, and the
+ * reload's "Chat is what renders" assertion.
+ */
+test('a two-pane region persists both panes with the selected one active and reloads showing it', async () => {
+  const first = renderShells();
+  await waitFor(() => expect(model).not.toBeNull());
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+
+  act(() => currentModel().placeSurface('activity', 'bottom'));
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+  await screen.findByTestId('sessions-view');
+  expect(currentModel().regions.bottom).toMatchObject({
+    panes: ['chat', 'activity'],
+    occupant: 'activity',
+  });
+  // One shell, the region's; the chromeless host shows the selected pane
+  // only, so Chat's occupant is not mounted while Activity is selected.
+  expect(document.querySelectorAll('.chat-dock')).toHaveLength(1);
+  expect(screen.queryByTestId('ambient-chat-occupant')).toBeNull();
+  await waitFor(() =>
+    expect(
+      storedDocument(BOTTOM_KEY)?.instances.map((i) => i.descriptorId),
+    ).toEqual(['pane:builtin:chat', 'pane:builtin:activity']),
+  );
+  await waitFor(() =>
+    expect(
+      (storedDocument(BOTTOM_KEY) as { activeInstanceId?: string } | null)
+        ?.activeInstanceId,
+    ).toBe('workspace-activity'),
+  );
+
+  // The model's select reaches the host: Chat's tab shows, Activity's does
+  // not, and the persisted document follows.
+  act(() => currentModel().selectPane('bottom', 'chat'));
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+  expect(screen.queryByTestId('sessions-view')).toBeNull();
+  await waitFor(() =>
+    expect(
+      (storedDocument(BOTTOM_KEY) as { activeInstanceId?: string } | null)
+        ?.activeInstanceId,
+    ).toBe('workspace-chat'),
+  );
+  // The arrangement record carries the pane set and the selection (the
+  // provider writes it 150 ms after the change).
+  await waitFor(() => {
+    const record = (
+      deviceSettingsStore.get('regionArrangement') as {
+        regions?: { bottom?: { occupant?: unknown } };
+      }
+    ).regions?.bottom?.occupant;
+    expect(record).toEqual({
+      kind: 'pane-host',
+      documentId: 'bottom',
+      panes: [
+        { kind: 'surface', id: 'chat' },
+        { kind: 'surface', id: 'activity' },
+      ],
+      selected: 'chat',
+    });
+  });
+
+  // Reload: a fresh provider reads the record, the host hydrates the
+  // region's document, and Chat — the selected pane — is what renders.
+  first.unmount();
+  model = null;
+  deviceSettingsStore.reloadFromStorage();
+  renderShells();
+  await waitFor(() => expect(model).not.toBeNull());
+  await waitFor(() =>
+    expect(currentModel().regions.bottom).toMatchObject({
+      panes: ['chat', 'activity'],
+      occupant: 'chat',
+      visible: true,
+    }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+  expect(screen.queryByTestId('sessions-view')).toBeNull();
+  expect(
+    storedDocument(BOTTOM_KEY)?.instances.map((i) => i.descriptorId),
+  ).toEqual(['pane:builtin:chat', 'pane:builtin:activity']);
+});
+
+/**
+ * The test the #2045 docblock named as the condition for dropping the
+ * host's `occupants.join('+')` key (#2046 2a, decision 4): the pane set of a
+ * MOUNTED region changes — Activity joins `right` while it holds Chat, then
+ * Chat leaves for `bottom` (the swap's end state, reached without a swap) —
+ * under a stale persisted document, and the controller's authority-
+ * fingerprint path alone, no remount, lands the region on its current
+ * panes. The `DockShell` node identity across both changes is what proves
+ * "no remount"; the persisted document and the rendered pane are what prove
+ * the fingerprint path did the work.
+ */
+test('a region host follows its pane set through the fingerprint path alone: no remount under a stale document', async () => {
+  window.localStorage.setItem(RIGHT_KEY, chatDocument('right', 'stale-group'));
+  deviceSettingsStore.set('dockSlotPlacement', 'right');
+
+  renderShells();
+  await waitFor(() => expect(model).not.toBeNull());
+  await waitFor(() =>
+    expect(currentModel().regions.right.occupant).toBe('chat'),
+  );
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+  const rightShell = document.querySelector<HTMLElement>(
+    '[data-region="right"]',
+  );
+  if (!rightShell) throw new Error('right shell never rendered');
+  // The stale document (Chat alone, `stale-group`) matches the pane set, so
+  // it is what the host hydrated — the reconciliation left it alone.
+  await waitFor(() =>
+    expect(storedDocument(RIGHT_KEY)?.root.id).toBe('stale-group'),
+  );
+
+  // Activity joins `right`: the fingerprint changes, the host restores the
+  // derived two-pane document with Activity active, and persists it.
+  act(() => currentModel().placeSurface('activity', 'right'));
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+  await screen.findByTestId('sessions-view');
+  expect(document.querySelector('[data-region="right"]')).toBe(rightShell);
+  await waitFor(() =>
+    expect(
+      storedDocument(RIGHT_KEY)?.instances.map((i) => i.descriptorId),
+    ).toEqual(['pane:builtin:chat', 'pane:builtin:activity']),
+  );
+  expect(storedDocument(RIGHT_KEY)?.root.id).toBe('root');
+
+  // Chat leaves for `bottom`: `right`'s fingerprint changes again, Chat's
+  // pane is revoked from `right`'s document, and Activity stays selected.
+  act(() => currentModel().placeSurface('chat', 'bottom'));
+  await waitFor(() =>
+    expect(
+      document.querySelector<HTMLElement>('#chat-dock')?.dataset.region,
+    ).toBe('bottom'),
+  );
+  expect(document.querySelector('[data-region="right"]')).toBe(rightShell);
+  expect(currentModel().regions.right).toMatchObject({
+    panes: ['activity'],
+    occupant: 'activity',
+  });
+  await waitFor(() =>
+    expect(
+      storedDocument(RIGHT_KEY)?.instances.map((i) => i.descriptorId),
+    ).toEqual(['pane:builtin:activity']),
+  );
+  await waitFor(() =>
+    expect(
+      storedDocument(BOTTOM_KEY)?.instances.map((i) => i.descriptorId),
+    ).toEqual(['pane:builtin:chat']),
+  );
+  expect(within(rightShell).queryByTestId('ambient-chat-occupant')).toBeNull();
+  expect(within(rightShell).queryByTestId('sessions-view')).not.toBeNull();
+});

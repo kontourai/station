@@ -410,6 +410,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
 
     act(() =>
       currentRegionModel().setRegion('right', {
+        panes: ['fixture'],
         occupant: 'fixture',
         visible: true,
       }),
@@ -565,41 +566,56 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     );
   });
 
-  test('the default Bottom swap relocates Chat and mirrors its new region', async () => {
+  /**
+   * #2046 2a, decision 3: the retired "Swap in Activity" under the Bottom
+   * heading no longer relocates Chat. Activity JOINS `bottom`'s panes,
+   * selected, and Chat stays behind its tab in the same region — the shell
+   * node is the same `bottom` shell, now labelled by the pane it shows, and
+   * navigation's placement is unchanged (no `setDockMode`). Until 2b's tab
+   * strip, Chat's tab is reached through its chord: ⌘D selects it back.
+   * Reverting to displacement fails the `right` assertion (it would hold
+   * Chat) and the `setDockMode` one (it would be called with 'right').
+   */
+  test('the default Bottom placement joins Activity to Chat’s region; ⌘D selects Chat’s tab back', async () => {
     seedPlacement('bottom', 'open');
     const chatShell = await renderShellsSettled();
     const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
 
-    // The retired "Swap in Activity" under the Bottom heading.
     chooseLayoutSegment('Activity', 'Bottom');
 
     await waitFor(() =>
-      expect(currentRegionModel().regions.bottom.occupant).toBe('activity'),
+      expect(currentRegionModel().regions.bottom).toMatchObject({
+        panes: ['chat', 'activity'],
+        occupant: 'activity',
+        visible: true,
+      }),
     );
-    expect(currentRegionModel().regions.right).toMatchObject({
-      occupant: 'chat',
-      visible: true,
-    });
+    expect(currentRegionModel().regions.right.panes).toEqual([]);
     await waitFor(() =>
       expect(
         document.querySelector('section[aria-label="Activity"]'),
       ).not.toBeNull(),
     );
-    await waitFor(() =>
-      expect(document.querySelector('#chat-dock')).not.toBeNull(),
-    );
-    // #2045: hosts are the regions'. The node that was Chat's shell is
-    // `bottom`'s and now holds Activity; Chat's shell is `right`'s, a new one.
+    // One shell, the same node: `bottom`'s host stayed mounted through the
+    // pane-set change (no occupant key remount, decision 4).
+    expect(shells()).toHaveLength(1);
     expect(chatShell.isConnected).toBe(true);
     expect(chatShell.dataset.region).toBe('bottom');
     expect(chatShell.getAttribute('aria-label')).toBe('Activity');
-    expect(
-      document.querySelector<HTMLElement>('#chat-dock')?.dataset.region,
-    ).toBe('right');
+    // Chat is behind Activity's tab: not on screen, so its shell id is not
+    // claimed by anything (the shell labels by the pane it shows).
+    expect(document.querySelector('#chat-dock')).toBeNull();
+    expect(navigationStore.getSnapshot().dockMode).toBe('bottom');
+    expect(dockModeWrite).not.toHaveBeenCalled();
+
+    act(() => shortcutEntries('dock.toggle')[0]?.handler());
     await waitFor(() =>
-      expect(navigationStore.getSnapshot().dockMode).toBe('right'),
+      expect(currentRegionModel().regions.bottom.occupant).toBe('chat'),
     );
-    expect(dockModeWrite).toHaveBeenCalledWith('right');
+    await waitFor(() =>
+      expect(document.querySelector('#chat-dock')).toBe(chatShell),
+    );
+    expect(currentRegionModel().regions.bottom.visible).toBe(true);
   });
 
   test('a non-chat shell neither takes the chat id nor the maximize command', async () => {
@@ -616,6 +632,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     await waitFor(() => expect(shells()).toHaveLength(2));
     act(() =>
       currentRegionModel().setRegion('right', {
+        panes: ['fixture'],
         occupant: 'fixture',
         visible: true,
       }),
@@ -722,48 +739,48 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     });
     const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
     // The retired "Swap in Activity" under the BOTTOM heading — Chat holds
-    // `bottom` here and Activity holds `right`, so the row naming Activity as the
-    // incoming surface was Bottom's. Choosing it swaps the pair: Activity takes
-    // `bottom`, and `placeSurface` returns Chat to the region Activity vacated.
+    // `bottom` here and Activity holds `right`. Since #2046 2a choosing it
+    // JOINS Activity to `bottom` (selected) and vacates `right`: nothing is
+    // swapped, Chat stays in `bottom` behind Activity's tab, and Chat's
+    // mirror has nothing to say (its region did not move).
     chooseLayoutSegment('Activity', 'Bottom');
-    // #2045: the two shells are `bottom`'s and `right`'s, not Chat's and
-    // Activity's — the swap changes what each region's host holds, so the
-    // shells are re-queried by occupant rather than held across the swap.
     await waitFor(() =>
-      expect(
-        document.querySelector<HTMLElement>('#chat-dock')?.dataset.region,
-      ).toBe('right'),
+      expect(currentRegionModel().regions.bottom).toMatchObject({
+        panes: ['chat', 'activity'],
+        occupant: 'activity',
+        visible: true,
+      }),
     );
-    expect(
-      document.querySelector<HTMLElement>('section[aria-label="Activity"]')
-        ?.dataset.region,
-    ).toBe('bottom');
-    expect(currentRegionModel().regions.right.visible).toBe(true);
-    expect(currentRegionModel().regions.bottom.visible).toBe(true);
-    await waitFor(() =>
-      expect(navigationStore.getSnapshot().dockMode).toBe('right'),
-    );
-    expect(dockModeWrite).toHaveBeenCalledTimes(1);
-    await act(async () => Promise.resolve());
-    expect(dockModeWrite).toHaveBeenCalledTimes(1);
-    expect(deviceSettingsStore.get('chatDockWidth')).toBe(600);
-    expect(currentRegionModel().regions.right.size).toBe(600);
-    expect(shells()).toHaveLength(2);
-    // Both region hosts survived the swap; each now holds the other pane.
+    expect(currentRegionModel().regions.right).toMatchObject({
+      panes: [],
+      visible: false,
+      // The vacated region keeps its size for the next surface placed there.
+      size: 600,
+    });
+    await waitFor(() => expect(shells()).toHaveLength(1));
+    // `bottom`'s host is the same node, now showing Activity; `right`'s host
+    // unmounted with its last pane.
     expect(chatShell?.isConnected).toBe(true);
-    expect(activityShell.isConnected).toBe(true);
-    expect(document.querySelector('#chat-dock')).toBe(activityShell);
+    expect(activityShell.isConnected).toBe(false);
     expect(document.querySelector('section[aria-label="Activity"]')).toBe(
       chatShell,
     );
+    expect(document.querySelector('#chat-dock')).toBeNull();
+    expect(navigationStore.getSnapshot().dockMode).toBe('bottom');
+    await act(async () => Promise.resolve());
+    expect(dockModeWrite).not.toHaveBeenCalled();
+    // Not Chat's region, so its width was never Chat's mirror to write.
+    expect(deviceSettingsStore.get('chatDockWidth')).toBe(400);
   });
 
-  // #1385: Chat maximized in `bottom`, Activity swapped in. Maximize used to
-  // be Chat's navigation flag, so Chat's shell — re-propped to `right` by the
-  // swap — kept rendering `width: 100%` on a fixed side panel, over the
-  // Activity shell the user had just asked for. Maximize is now the region's
-  // attribute and `placeSurface` clears it on both ends of the move.
-  test('the #1385 repro: swapping Activity into a maximized Chat region leaves nothing maximized', async () => {
+  // #1385: Chat maximized in `bottom`, Activity placed into it. Maximize used
+  // to be Chat's navigation flag, so Chat's shell — re-propped by the swap —
+  // kept rendering `width: 100%` on a fixed side panel, over the Activity
+  // shell the user had just asked for. Maximize is now the region's attribute
+  // and `placeSurface` clears it in the region a surface enters; since #2046
+  // 2a Activity JOINS `bottom` rather than displacing Chat, and the one
+  // shell — `bottom`'s, showing Activity — comes out restored.
+  test('the #1385 repro: placing Activity into a maximized Chat region leaves nothing maximized', async () => {
     seedPlacement('bottom', 'maximized');
     const chatShell = await renderShellsSettled();
     await waitFor(() =>
@@ -775,36 +792,28 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
 
     act(() => currentRegionModel().placeSurface('activity', 'bottom'));
 
-    // #2045: hosts are the regions'; Chat's shell after the swap is `right`'s
-    // node, re-queried rather than the `bottom` node held above.
-    await waitFor(() =>
-      expect(
-        document.querySelector<HTMLElement>('#chat-dock')?.dataset.region,
-      ).toBe('right'),
-    );
-    const chatShellAfter = document.querySelector<HTMLElement>('#chat-dock');
-    if (!chatShellAfter) throw new Error('Chat shell never rendered');
+    await waitFor(() => expect(shells()).toHaveLength(1));
     const activityShell = document.querySelector<HTMLElement>(
       'section[aria-label="Activity"]',
     );
     if (!activityShell) throw new Error('Activity shell never rendered');
     expect(activityShell.dataset.region).toBe('bottom');
     expect(activityShell).toBe(chatShell);
-    expect(currentRegionModel().regions.right).toMatchObject({
-      occupant: 'chat',
+    expect(currentRegionModel().regions.bottom).toMatchObject({
+      panes: ['chat', 'activity'],
+      occupant: 'activity',
       visible: true,
       maximized: false,
     });
-    expect(currentRegionModel().regions.bottom).toMatchObject({
-      occupant: 'activity',
+    expect(currentRegionModel().regions.right).toMatchObject({
+      panes: [],
+      visible: false,
       maximized: false,
     });
     await waitFor(() =>
-      expect(chatShellAfter.classList.contains('is-maximized')).toBe(false),
+      expect(activityShell.classList.contains('is-maximized')).toBe(false),
     );
-    // The fixed side panel is not full-width over the Activity shell.
-    expect(chatShellAfter.style.width).not.toBe('100%');
-    expect(activityShell.classList.contains('is-maximized')).toBe(false);
+    expect(activityShell.style.width).not.toBe('100%');
     expect(document.querySelectorAll('.chat-dock.is-maximized')).toHaveLength(
       0,
     );
@@ -915,17 +924,29 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       ).not.toBeNull(),
     );
     expect(shells()).toHaveLength(1);
+    // #2046 2a: Activity joined Chat's region above, so hiding Activity hides
+    // that one region — its shell stays mounted, collapsed, labelled by the
+    // pane it shows — and showing Activity expands it again.
     selectRegionCommand('Hide Activity from the dock');
     await waitFor(() =>
       expect(
-        document.querySelector('section[aria-label="Activity"]'),
-      ).toBeNull(),
+        document
+          .querySelector('section[aria-label="Activity"]')
+          ?.classList.contains('is-collapsed'),
+      ).toBe(true),
     );
+    expect(currentRegionModel().regions.right).toMatchObject({
+      panes: ['chat', 'activity'],
+      occupant: 'activity',
+      visible: false,
+    });
     selectRegionCommand('Show Activity in the dock');
     await waitFor(() =>
       expect(
-        document.querySelector('section[aria-label="Activity"]'),
-      ).not.toBeNull(),
+        document
+          .querySelector('section[aria-label="Activity"]')
+          ?.classList.contains('is-collapsed'),
+      ).toBe(false),
     );
 
     /**
