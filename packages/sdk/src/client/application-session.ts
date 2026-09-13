@@ -72,8 +72,8 @@ const continuationSchema = z
   .strict();
 const base64url = (bytes: Uint8Array) =>
   btoa(String.fromCharCode(...bytes))
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
     .replace(/=+$/, '');
 const encode = (value: unknown) =>
   base64url(new TextEncoder().encode(JSON.stringify(value)));
