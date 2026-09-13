@@ -32,9 +32,20 @@ vi.mock('../../../providers/registries/registry.js', () => ({
   ]),
 }));
 
-vi.mock('../../../services/plugins/plugin-install-transaction.js', () => ({
-  installPluginFromSource,
-}));
+// Only the installer is replaced. Preview reaches the real
+// capturePluginRegistryAcquisition from the same module (#1521); with no
+// registry id, no claim and no policy authority it yields no acquisition, so a
+// local source previews exactly as before. A bare-object mock would turn that
+// call into `undefined is not a function` and every preview into a 500.
+vi.mock(
+  '../../../services/plugins/plugin-install-transaction.js',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../../../services/plugins/plugin-install-transaction.js')
+    >()),
+    installPluginFromSource,
+  }),
+);
 
 const cleanupDirs: string[] = [];
 

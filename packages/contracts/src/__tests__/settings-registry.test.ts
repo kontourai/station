@@ -113,6 +113,8 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         // UX audit RT-02 — the durable first-run record for this home.
         'firstRun',
         'fleetContribution',
+        // #1521 — candidate registry signature policy; applied separately.
+        'registryTrust',
         'templateVariables',
         // station#2652 — the first-run "About you" answers.
         'userProfile',
