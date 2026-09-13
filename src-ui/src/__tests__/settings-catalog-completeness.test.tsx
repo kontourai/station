@@ -89,6 +89,14 @@ const updateAppLogLevel = vi.fn();
 vi.mock('@kontourai/station-sdk/app-config', () => ({ updateAppLogLevel }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  // LocalAccountsSection (settings view) captures a host request authority at
+  // render; the factory mock must name every export the view tree touches.
+  // Shape mirrors the real hook's return for the fields the section reads.
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'authority-key',
+    isCurrent: () => true,
+  }),
 }));
 const updateConfig = vi.fn();
 const INITIAL_CONFIG = { logLevel: 'info', templateVariables: [] };
