@@ -2,6 +2,7 @@ import {
   type MCPLocalConnectionCustody,
   MCPLocalCustodyError,
 } from '@kontourai/station-shared/mcp';
+import { cancelSharedDeviceCodeLogins } from '../../services/connections/device-code-login.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import {
   type OptionalNetworkShutdownTask,
@@ -113,6 +114,13 @@ export async function shutdownRuntimeServices({
 
   for (const timer of timers) clearTimeout(timer);
   timers.length = 0;
+
+  // Engine device-code logins are child processes waiting on a person. Their
+  // own deadlines bound them, but a restart must not leave them running until
+  // the code expires.
+  await attempt('deviceCodeLogins.cancelAll', async () => {
+    cancelSharedDeviceCodeLogins();
+  });
 
   await attempt(
     'schedulerService.stop',

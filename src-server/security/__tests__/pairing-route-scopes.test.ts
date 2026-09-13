@@ -1478,3 +1478,32 @@ describe('API docs stay credentialed while their launcher does not (#934)', () =
     expect(post?.capability).not.toBe('public');
   });
 });
+
+/*
+ * Engine device-code login. These leaves START a process on the host, so they
+ * carry their own `engine:login` rule instead of inheriting the enrolment
+ * family's `access:manage`. Pinned because deleting that rule would go
+ * unnoticed otherwise: the explicit enrolment prefix still matches every leaf
+ * beneath it, so the leaf scan would keep reporting them as declared.
+ */
+describe('engine device-code login routes', () => {
+  const leaf = '/api/connections/agent/:id/enrolment/:ref/device-code';
+
+  test.each(['GET', 'POST', 'DELETE'] as const)(
+    '%s on the device-code leaf requires engine:login through its own rule',
+    (method) => {
+      expect(requiredPairingScope(method, leaf)).toBe('engine:login');
+      expect(matchPairingScopeRule(method, leaf)).toMatchObject({
+        origin: 'explicit',
+        prefix: leaf,
+        scope: 'engine:login',
+      });
+    },
+  );
+
+  test('the enrolment leaf above it keeps access:manage', () => {
+    expect(
+      requiredPairingScope('GET', '/api/connections/agent/:id/enrolment/:ref'),
+    ).toBe('access:manage');
+  });
+});

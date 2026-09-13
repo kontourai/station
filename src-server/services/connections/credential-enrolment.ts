@@ -2,19 +2,14 @@
  * archive#3549: enrol an account into a credential profile by delegating the
  * login to the engine's OWN CLI, pointed at a Station-owned app-home.
  *
- * ## Why Station does not implement OAuth
+ * ## How the delegation works
  *
- * The obvious shape — Station runs the OAuth flow and stores the token — forces
- * two policy choices with no good answer: which flows are sanctioned per
- * provider (and who keeps that current as terms change), and whether Station
- * registers its own OAuth client or reuses each CLI's client id.
- *
- * Both dissolve if the CLI does the login. Station already knows how to point
- * an engine at a profile directory — that is exactly what `claudeAppHomeEnv` /
- * `codexAppHomeEnv` do for sessions. The same override applied to the CLI's
- * *login* makes it authenticate INTO that profile. The CLI authenticates as
- * itself, which is what the provider expects; Station chooses no flow, so it
- * cannot choose a wrong one, and it never sees a token.
+ * Station already knows how to point an engine at a profile directory — that is
+ * exactly what `claudeAppHomeEnv` / `codexAppHomeEnv` do for sessions. The same
+ * override applied to the CLI's *login* makes it authenticate INTO that
+ * profile: the credential is written by the CLI, into the CLI's own store,
+ * inside the directory Station named. The CLI authenticates as itself, which is
+ * what the provider expects, and no token passes through Station.
  *
  * Verified live on macOS — the platform whose Keychain storage makes this
  * non-obvious (`APP_HOME_ENGINES.claude` carries that caveat):
@@ -98,11 +93,18 @@ export function enrolmentHomeEnv(
 }
 
 /**
- * The login the USER runs, in a terminal. It is interactive and browser-based,
- * so it is deliberately returned rather than spawned: Station describes what
- * will run and the caller surfaces it, instead of a background process
- * silently opening a browser.
+ * The engine's own login command, as argv.
+ *
+ * `enrolmentCommand` returns it for the caller to surface, because a
+ * browser-based login is one Station cannot drive on the user's behalf — the
+ * browser it would open is on the host, which is no use to someone on another
+ * device. Where an engine offers a mechanism Station CAN relay, `device-code-login.ts`
+ * runs this same command with that mechanism's flag.
  */
+export function enrolmentLoginArgs(engine: EnrolmentEngine): string[] {
+  return engine === 'claude' ? ['auth', 'login'] : ['login'];
+}
+
 export function enrolmentCommand(
   engine: EnrolmentEngine,
   profileDir: string,
@@ -110,14 +112,14 @@ export function enrolmentCommand(
   return engine === 'claude'
     ? {
         command: 'claude',
-        args: ['auth', 'login'],
+        args: enrolmentLoginArgs(engine),
         env: enrolmentHomeEnv(engine, profileDir),
         description:
           "Signs in with Claude Code's own login, storing the account in this credential profile instead of your global Claude config.",
       }
     : {
         command: 'codex',
-        args: ['login'],
+        args: enrolmentLoginArgs(engine),
         env: enrolmentHomeEnv(engine, profileDir),
         description:
           "Signs in with Codex's own login, storing the account in this credential profile instead of your global Codex config.",
