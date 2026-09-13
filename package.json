@@ -265,7 +265,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.4.0",
-    "@ai-sdk/amazon-bedrock": "^4.0.141",
+    "@ai-sdk/amazon-bedrock": "^5.0.81",
     "@ai-sdk/anthropic": "^3.0.102",
     "@ai-sdk/google": "^3.0.101",
     "@ai-sdk/openai-compatible": "^2.0.35",
