@@ -223,9 +223,10 @@
 
 .station-connect-row__url {
   margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  pointer-events: auto;
+  user-select: text;
+  overflow-wrap: anywhere;
+  white-space: normal;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
   color: var(--text-secondary, #999);

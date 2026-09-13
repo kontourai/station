@@ -254,7 +254,14 @@ describe('ChatDockBody bounded-read elision notice (station#3386)', () => {
       threadId: 'thread-alpha',
       turnId: `turn-${eventId}`,
       createdAt: '2026-08-19T03:00:00.000Z',
-      method: 'turn.started',
+      method: elided === 'output_limit' ? 'tool.completed' : 'turn.started',
+      ...(elided === 'output_limit'
+        ? {
+            toolCallId: eventId,
+            toolName: 'read_file',
+            output: 'Short preview',
+          }
+        : {}),
     },
     ...(elided ? { elided } : {}),
   });
@@ -265,7 +272,7 @@ describe('ChatDockBody bounded-read elision notice (station#3386)', () => {
    * budgets take different things, so folding them into one sentence would
    * have thrown the distinction away at the last step.
    */
-  test('keeps the two budgets apart instead of folding them into one count', () => {
+  test('discloses omitted message content without adding tool-detail noise', () => {
     renderDock({
       events: [
         sequenced('evt-whole', 1),
@@ -275,9 +282,15 @@ describe('ChatDockBody bounded-read elision notice (station#3386)', () => {
     });
 
     const notice = screen.getByTestId('chat-dock-history-elided');
-    expect(notice.textContent).toBe(
-      '1 earlier item is shown without its content, and 1 tool result is shortened — too large to load in full here. The session still holds the complete content.',
+    expect(notice.textContent).toContain(
+      '1 recorded event has omitted content in this view. The session record retains the full details.',
     );
+    expect(notice.textContent).not.toContain('tool result');
+  });
+
+  test('does not put a tool-only truncation notice above the conversation', () => {
+    renderDock({ events: [sequenced('tool-result', 1, 'output_limit')] });
+    expect(screen.queryByTestId('chat-dock-history-elided')).toBeNull();
   });
 
   test('a whole payload removed reads differently from a tool result shortened', () => {
@@ -289,7 +302,7 @@ describe('ChatDockBody bounded-read elision notice (station#3386)', () => {
     });
     expect(
       screen.getByTestId('chat-dock-history-elided').textContent,
-    ).toContain('2 earlier items are shown without their content');
+    ).toContain('2 recorded events have omitted content');
     expect(
       screen.getByTestId('chat-dock-history-elided').textContent,
     ).not.toContain('tool result');
@@ -300,12 +313,12 @@ describe('ChatDockBody bounded-read elision notice (station#3386)', () => {
 
     const notice = screen.getByTestId('chat-dock-history-elided');
     expect(notice.textContent).toContain(
-      '1 earlier item is shown without its content',
+      '1 recorded event has omitted content',
     );
     // The distinction the marker exists for: withheld by a budget, still
     // held by the session — NOT reclaimed, and not absent from the start.
     expect(notice.textContent).toContain(
-      'The session still holds the complete content',
+      'The session record retains the full details',
     );
   });
 

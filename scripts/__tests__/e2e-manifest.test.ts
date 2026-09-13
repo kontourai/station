@@ -184,6 +184,7 @@ describe('e2e manifest', () => {
 
     expect(PRODUCT_E2E_EXECUTION_PROFILE.parallelWorkers).toBe(2);
     expect(PRODUCT_E2E_EXECUTION_PROFILE.parallelSafetyExceptions).toEqual({
+      'tests/chat-history-reopen.spec.ts': expect.any(String),
       'tests/sidebar-geometry.spec.ts': expect.any(String),
       'tests/mobile-dock-clearance.spec.ts': expect.any(String),
       'tests/flow-gate-verdicts.spec.ts': expect.any(String),

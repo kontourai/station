@@ -51,8 +51,8 @@ export function elidedHistoryNoticeText(
   if (summary.byteLimit > 0) {
     clauses.push(
       summary.byteLimit === 1
-        ? '1 earlier item is shown without its content'
-        : `${summary.byteLimit} earlier items are shown without their content`,
+        ? '1 recorded event has omitted content'
+        : `${summary.byteLimit} recorded events have omitted content`,
     );
   }
   if (summary.outputLimit > 0) {
@@ -65,5 +65,5 @@ export function elidedHistoryNoticeText(
   // Worded for the reader, not the mechanism (the "history read's size
   // budget" phrasing leaked an internal name — chat-surface honesty pass):
   // say what is reduced and that nothing is lost, without naming the budget.
-  return `${clauses.join(', and ')} — too large to load in full here. The session still holds the complete content.`;
+  return `${clauses.join(', and ')} in this view. The session record retains the full details.`;
 }

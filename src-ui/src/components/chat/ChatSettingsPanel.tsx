@@ -9,6 +9,10 @@ import {
 } from '../../contexts/DeviceSettingsContext';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { Toggle } from '../Toggle';
+import {
+  ReplayCaptureControls,
+  type ReplayCaptureSource,
+} from './ReplayCaptureControls';
 
 interface ChatSettingsPanelProps {
   isOpen: boolean;
@@ -38,6 +42,7 @@ interface ChatSettingsPanelProps {
   };
   /** Developer-tools entry: step the current conversation's events in-dock. */
   onReplayConversation?: () => void;
+  replayCaptureSource?: ReplayCaptureSource;
 }
 
 export function ChatSettingsPanel({
@@ -54,6 +59,7 @@ export function ChatSettingsPanel({
   setAutoHideEnabled,
   sessionSummary,
   onReplayConversation,
+  replayCaptureSource,
 }: ChatSettingsPanelProps) {
   const reasoningId = useId();
   const toolsId = useId();
@@ -253,6 +259,10 @@ export function ChatSettingsPanel({
       {developerToolsEnabled && onReplayConversation ? (
         <fieldset className="chat-settings-modal__section">
           <legend className="chat-settings-modal__label">Event replay</legend>
+          <ReplayCaptureControls
+            source={replayCaptureSource}
+            onOpen={onClose}
+          />
           <button
             type="button"
             className="chat-settings-modal__btn"
