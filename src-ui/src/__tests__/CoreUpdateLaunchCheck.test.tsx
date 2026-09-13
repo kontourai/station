@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let isMobile = false;
+let isDesktop = false;
 let desktopStatus:
   | {
       updateAvailable: boolean;
@@ -15,6 +16,9 @@ let desktopStatus:
 const { useCoreUpdateStatusQuery } = vi.hoisted(() => ({
   useCoreUpdateStatusQuery: vi.fn(),
 }));
+const { useConnectedServerUpdateContext } = vi.hoisted(() => ({
+  useConnectedServerUpdateContext: vi.fn(),
+}));
 const connectedServerContext = vi.hoisted(() => ({
   current: {
     scopeKey: 'scope:station.test',
@@ -24,15 +28,17 @@ const connectedServerContext = vi.hoisted(() => ({
     kind: 'remote-server',
     identity: null,
     identitySettled: true,
+    identityReady: true,
+    nativeObservationPending: false,
     isCurrent: () => true,
   },
 }));
 vi.mock('@kontourai/station-sdk', () => ({ useCoreUpdateStatusQuery }));
 vi.mock('../hooks/useConnectedServerUpdateContext', () => ({
-  useConnectedServerUpdateContext: () => connectedServerContext.current,
+  useConnectedServerUpdateContext,
 }));
 vi.mock('../platform/PlatformProfileContext', () => ({
-  usePlatformProfile: () => ({ isMobile }),
+  usePlatformProfile: () => ({ isMobile, isDesktop }),
 }));
 
 const { CoreUpdateLaunchCheck, compareVersions, validateNativeUpdateFeed } =
@@ -60,17 +66,24 @@ describe('CoreUpdateLaunchCheck', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     isMobile = false;
+    isDesktop = false;
     desktopStatus = undefined;
     connectedServerContext.current = {
       ...connectedServerContext.current,
       reachability: 'connected',
       kind: 'remote-server',
       identitySettled: true,
+      identityReady: true,
+      nativeObservationPending: false,
     };
     useCoreUpdateStatusQuery.mockClear();
     useCoreUpdateStatusQuery.mockImplementation(() => ({
       data: desktopStatus,
     }));
+    useConnectedServerUpdateContext.mockReset();
+    useConnectedServerUpdateContext.mockImplementation(
+      () => connectedServerContext.current,
+    );
     bannerStore.clear();
   });
 
@@ -134,6 +147,7 @@ describe('CoreUpdateLaunchCheck', () => {
   });
 
   test('does not query the source or raise a banner for an established embedded sidecar', async () => {
+    isDesktop = true;
     desktopStatus = {
       updateAvailable: true,
       installKind: 'source-checkout',
@@ -147,6 +161,9 @@ describe('CoreUpdateLaunchCheck', () => {
 
     renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
 
+    expect(useConnectedServerUpdateContext).toHaveBeenCalledWith({
+      identityEnabled: true,
+    });
     expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
       'http://station.test',
       expect.objectContaining({ enabled: false }),
@@ -155,7 +172,58 @@ describe('CoreUpdateLaunchCheck', () => {
     expect(bannerStore.getSnapshot()).toHaveLength(0);
   });
 
-  test('holds the source query while identity correlation is pending', () => {
+  test('holds the desktop source query while a native observation is still pending', () => {
+    isDesktop = true;
+    connectedServerContext.current = {
+      ...connectedServerContext.current,
+      nativeObservationPending: true,
+    };
+
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+
+    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
+      'http://station.test',
+      expect.objectContaining({ enabled: false }),
+    );
+  });
+
+  test('issues no identity request plumbing on launch checks without desktop native ownership', () => {
+    // Mobile shell: the release feed owns updates; no identity, no source query.
+    isMobile = true;
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+    expect(useConnectedServerUpdateContext).toHaveBeenCalledWith({
+      identityEnabled: false,
+    });
+    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
+      'http://station.test',
+      expect.objectContaining({ enabled: false }),
+    );
+
+    // Browser shell: identity stays off, while the server-facts source query
+    // keeps its pre-correlation behavior.
+    isMobile = false;
+    desktopStatus = {
+      updateAvailable: true,
+      installKind: 'source-checkout',
+      applyMethod: 'git-pull',
+      behind: 1,
+    };
+    useCoreUpdateStatusQuery.mockClear();
+    useCoreUpdateStatusQuery.mockImplementation(() => ({
+      data: desktopStatus,
+    }));
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+    expect(useConnectedServerUpdateContext).toHaveBeenCalledWith({
+      identityEnabled: false,
+    });
+    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
+      'http://station.test',
+      expect.objectContaining({ enabled: true }),
+    );
+  });
+
+  test('holds the desktop source query while identity correlation is pending', () => {
+    isDesktop = true;
     connectedServerContext.current = {
       ...connectedServerContext.current,
       identitySettled: false,

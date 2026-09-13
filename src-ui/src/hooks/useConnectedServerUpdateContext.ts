@@ -28,9 +28,36 @@ export interface ConnectedServerUpdateContext {
   reachability: ServerReachability;
   kind: EstablishedServerKind;
   identity: SystemIdentityResponse | null;
+  /**
+   * True once the current scope's identity request SETTLED — success OR
+   * error. It answers "correlation has stopped waiting", never "the server
+   * answered": enablement decisions must read `identityReady`, not this.
+   */
   identitySettled: boolean;
+  /**
+   * True only when the current scope's identity request SUCCEEDED. This is
+   * the fail-closed enablement input: an identity error leaves the card in
+   * the honest unresolved state with the source check off.
+   */
+  identityReady: boolean;
+  /**
+   * A desktop shell supervising a bundled server has not received its first
+   * native observation yet. Identity can outrun the async native snapshot,
+   * so any source-check enablement must hold until this clears — a
+   * subscription that never delivers keeps the check off, deliberately.
+   */
+  nativeObservationPending: boolean;
   /** True only while the captured selection and native binding remain current. */
   isCurrent: () => boolean;
+}
+
+export interface UseConnectedServerUpdateContextOptions {
+  /**
+   * When false, no identity request is issued at all. Launch checks on
+   * shells without desktop native ownership pass false; Settings, which
+   * renders identity wherever it appears, keeps the default (enabled).
+   */
+  identityEnabled?: boolean;
 }
 
 const IDENTITY_QUERY_ROOT = 'connected-server-identity';
@@ -87,7 +114,10 @@ function bindingSatisfiesRequirement(
  * scope tuple plus the observed server/native boot identity, so a superseded
  * selection can neither label nor repopulate another scope's cache.
  */
-export function useConnectedServerUpdateContext(): ConnectedServerUpdateContext {
+export function useConnectedServerUpdateContext(
+  options: UseConnectedServerUpdateContextOptions = {},
+): ConnectedServerUpdateContext {
+  const identityEnabled = options.identityEnabled ?? true;
   const {
     apiBase,
     activeConnection,
@@ -198,7 +228,8 @@ export function useConnectedServerUpdateContext(): ConnectedServerUpdateContext 
       observedServerBootId,
       observedNativeBootId,
     ],
-    enabled: scopeKey !== null && reachability === 'connected',
+    enabled:
+      identityEnabled && scopeKey !== null && reachability === 'connected',
     staleTime: 0,
     gcTime: 0,
     retry: false,
@@ -230,7 +261,13 @@ export function useConnectedServerUpdateContext(): ConnectedServerUpdateContext 
         );
       };
       if (!issuedIsCurrent()) throw supersededError();
-      const identity = await requestSystemIdentity(apiBase, signal);
+      // The request goes to the origin captured WITH this evidence, so the
+      // wire request and the authority it is checked against share one
+      // capture — never a render-captured base beside a fresh one.
+      const identity = await requestSystemIdentity(
+        issuedEvidence.origin,
+        signal,
+      );
       if (!issuedIsCurrent()) throw supersededError();
       return identity;
     },
@@ -255,6 +292,14 @@ export function useConnectedServerUpdateContext(): ConnectedServerUpdateContext 
 
   const identity = identityQuery.data ?? null;
   const identitySettled = identityQuery.isSuccess || identityQuery.isError;
+  const identityReady = identityQuery.isSuccess;
+  // A supervising desktop can answer identity before the async native
+  // snapshot lands; until an observation exists the correlation must not
+  // hand the source check to a server it cannot yet name.
+  const nativeObservationPending =
+    profile.isDesktop &&
+    profile.supervisesBundledServer &&
+    nativeStatus === null;
 
   const kind = resolveEstablishedServerKind({
     scopeCurrent,
@@ -282,6 +327,8 @@ export function useConnectedServerUpdateContext(): ConnectedServerUpdateContext 
     kind,
     identity,
     identitySettled,
+    identityReady,
+    nativeObservationPending,
     isCurrent,
   };
 }

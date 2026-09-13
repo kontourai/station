@@ -18,6 +18,10 @@ function ServerIdentitySummary({
 }) {
   const profile = usePlatformProfile();
 
+  if (context.reachability === 'checking') {
+    return <p className="settings__field-hint">Checking the connection…</p>;
+  }
+
   if (context.reachability !== 'connected') {
     return (
       <p className="settings__field-hint">
@@ -92,10 +96,16 @@ export function ConnectedServerUpdates() {
   return (
     <div>
       <ServerIdentitySummary context={context} />
+      {/* Fail-closed enablement: identity SUCCESS (not merely settled), no
+        pending native observation on a supervising desktop, and a connected
+        server. An identity error or a not-yet-delivered native snapshot
+        keeps the automatic source check off. */}
       <CoreUpdateCheck
         apiBase={context.apiBase}
         enabled={
-          context.identitySettled && context.reachability === 'connected'
+          context.identityReady &&
+          !context.nativeObservationPending &&
+          context.reachability === 'connected'
         }
       />
     </div>

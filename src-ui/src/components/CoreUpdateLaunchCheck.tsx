@@ -91,8 +91,13 @@ export function CoreUpdateLaunchCheck({
   installedVersion?: string;
   channel?: string;
 }) {
-  const { isMobile } = usePlatformProfile();
-  const context = useConnectedServerUpdateContext();
+  const { isMobile, isDesktop } = usePlatformProfile();
+  // A launch check that owns no desktop native correlation never needs the
+  // identity roundtrip: mobile uses the release feed below, and a browser
+  // cannot host an embedded sidecar.
+  const context = useConnectedServerUpdateContext({
+    identityEnabled: isDesktop,
+  });
   const [failure, setFailure] = useState<string | null>(null);
   const [latest, setLatest] = useState<NativeUpdateFeed | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -100,13 +105,18 @@ export function CoreUpdateLaunchCheck({
     // Mobile packages use the immutable, provenance-pinned release feed below.
     // Every other shell asks its selected Station, sharing the exact query key
     // that Settings consumes so opening the review surface does not re-probe.
-    // The source query waits for the connected-server correlation: an
-    // established embedded sidecar is updated with this desktop app and must
-    // never fire it, and a pending identity knows too little to start one.
+    // On a desktop shell the source query waits for the connected-server
+    // correlation: an established embedded sidecar is updated with this
+    // desktop app and must never fire it, a pending identity or native
+    // observation knows too little to start one. A browser shell keeps its
+    // pre-correlation behavior: no sidecar is possible there, so the launch
+    // banner rests on the server's own comparison facts.
     enabled:
       !isMobile &&
-      context.identitySettled &&
-      context.kind !== 'embedded-sidecar',
+      (!isDesktop ||
+        (context.identitySettled &&
+          !context.nativeObservationPending &&
+          context.kind !== 'embedded-sidecar')),
     staleTime: 5 * 60 * 1000,
   });
 

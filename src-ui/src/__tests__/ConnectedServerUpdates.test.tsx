@@ -133,6 +133,15 @@ const SAME_ORIGIN_STORE: StationProfileStore = {
   ],
 };
 
+/** A saved local owner that records the desktop sidecar's stable instance id. */
+const SERVICE_STORE_WITH_SIDECAR_OWNER: StationProfileStore = {
+  schemaVersion: 1,
+  revision: 0,
+  defaultProfile: 'local-service',
+  projectProfiles: {},
+  profiles: [localProfile('local-service', LOOPBACK, 'desktop-sidecar-stable')],
+};
+
 const HANDSHAKE = {
   schemaVersion: 1,
   environmentId: 'environment-1',
@@ -178,6 +187,7 @@ function sidecarStatus(
 
 let identityBody: () => unknown;
 let identityMode: 'auto' | 'queue';
+let identityFailure: number | undefined;
 let identityCalls: Array<{ url: string; signal: AbortSignal | null }>;
 let transportCalls: string[];
 let identityQueue: Array<{
@@ -209,6 +219,7 @@ async function renderHarness({
   bundledStatus = null,
   authorize = true,
   identity = DEFAULT_IDENTITY,
+  identityFailure: failureStatus = undefined,
   queueIdentity = false,
   profileOverrides = {},
 }: {
@@ -216,11 +227,13 @@ async function renderHarness({
   bundledStatus?: BundledServerStatus | null;
   authorize?: boolean;
   identity?: () => unknown;
+  identityFailure?: number;
   queueIdentity?: boolean;
   profileOverrides?: Partial<typeof DESKTOP_PROFILE>;
 } = {}) {
   identityBody = identity;
   identityMode = queueIdentity ? 'queue' : 'auto';
+  identityFailure = failureStatus;
   identityCalls = [];
   transportCalls = [];
   identityQueue = [];
@@ -281,15 +294,16 @@ async function renderHarness({
   }
 
   const queryClient = new QueryClient();
-  const view = render(
+  const buildTree = () => (
     <QueryClientProvider client={queryClient}>
       <ApiBaseProvider>
         <CorrelationProbe />
         <ConnectedServerUpdates />
       </ApiBaseProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
-  return { view, queryClient };
+  const view = render(buildTree());
+  return { view, queryClient, rerender: () => view.rerender(buildTree()) };
 }
 
 async function waitConnected() {
@@ -351,6 +365,11 @@ describe('ConnectedServerUpdates', () => {
           init as { authorityGuard?: () => void } | undefined
         )?.authorityGuard;
         authorityGuard?.();
+        if (identityFailure !== undefined) {
+          return new Response('identity unavailable', {
+            status: identityFailure,
+          });
+        }
         if (identityMode === 'queue') {
           return new Promise<Response>((resolve) => {
             identityQueue.push({ resolve, signal });
@@ -553,6 +572,103 @@ describe('ConnectedServerUpdates', () => {
     expect(
       screen.queryByText('Built-in server — updated with this desktop app.'),
     ).toBeNull();
+    expect(
+      transportCalls.filter((url) => url.includes('/api/system/core-update')),
+    ).toHaveLength(0);
+  });
+
+  it('keeps the source check off when the identity request fails for an established-shaped sidecar', async () => {
+    await renderHarness({
+      bundledStatus: sidecarStatus(),
+      identityFailure: 503,
+    });
+    await waitConnected();
+    await waitIdentitySettled();
+    expect(
+      await screen.findByText('Server update method unknown.'),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('Built-in server — updated with this desktop app.'),
+    ).toBeNull();
+    // An identity error is settled but not ready: the automatic source check
+    // must stay off against a server the correlation could not name.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(
+      transportCalls.filter((url) => url.includes('/api/system/core-update')),
+    ).toHaveLength(0);
+  });
+
+  it('holds the source check until the native observation arrives, then renders the built-in copy', async () => {
+    // Mount with a saved local owner already answering (identity settles)
+    // while the supervising desktop's native snapshot is still pending: the
+    // real snapshot arrives through an async subscription after mount.
+    const { rerender } = await renderHarness({
+      store: SERVICE_STORE_WITH_SIDECAR_OWNER,
+      identity: () =>
+        identityResponseFor({ instanceId: 'desktop-sidecar-stable' }),
+      bundledStatus: null,
+    });
+    await waitConnected();
+    await waitIdentitySettled();
+    expect(context?.identityReady).toBe(true);
+    expect(context?.nativeObservationPending).toBe(true);
+    expect(
+      screen.queryByText('Built-in server — updated with this desktop app.'),
+    ).toBeNull();
+    expect(
+      transportCalls.filter((url) => url.includes('/api/system/core-update')),
+    ).toHaveLength(0);
+
+    // The subscription delivers after identity has settled.
+    native.bundledStatus = sidecarStatus();
+    rerender();
+    expect(
+      await screen.findByText(
+        'Built-in server — updated with this desktop app.',
+      ),
+    ).toBeTruthy();
+    expect(
+      transportCalls.filter((url) => url.includes('/api/system/core-update')),
+    ).toHaveLength(0);
+  });
+
+  it('does not render the built-in copy while the observed sidecar is only starting', async () => {
+    await renderHarness({
+      bundledStatus: sidecarStatus({ phase: 'starting' }),
+    });
+    await waitConnected();
+    await waitIdentitySettled();
+    expect(
+      await screen.findByText('Server update method unknown.'),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('Built-in server — updated with this desktop app.'),
+    ).toBeNull();
+  });
+
+  it('renders a neutral checking line, not the unavailable copy, while the connection is being checked', async () => {
+    await renderHarness({
+      store: SAME_ORIGIN_STORE,
+      queueIdentity: true,
+      profileOverrides: { supervisesBundledServer: false },
+    });
+    // The held probe identity keeps the coordinator in its connecting state.
+    expect(await screen.findByText('Checking the connection…')).toBeTruthy();
+    expect(
+      screen.queryByText(
+        'Connected server unavailable. Reconnect to check its update status.',
+      ),
+    ).toBeNull();
+    await drainProbeUntilConnected(() =>
+      identityResponseFor({
+        instanceId: 'instance-a',
+        bootId: 'boot-a',
+        devicePresentation: { deviceClass: 'paired', hostName: 'Host A' },
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Checking the connection…')).toBeNull(),
+    );
   });
 
   it('never renders the built-in copy in a browser shell even when identity strings would match', async () => {
