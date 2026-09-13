@@ -59,6 +59,7 @@ const calls: { path: string; headers: Headers; body: unknown }[] = [];
 let signedIn: boolean;
 let signInFails: boolean;
 let joinFails: boolean;
+let previewFails: boolean;
 let provider: unknown;
 
 beforeEach(() => {
@@ -66,6 +67,7 @@ beforeEach(() => {
   signedIn = false;
   signInFails = false;
   joinFails = false;
+  previewFails = false;
   provider = descriptor;
   sessionStorage.clear();
   setClientCredentialResolver(() => ({
@@ -83,6 +85,20 @@ beforeEach(() => {
       });
       const reply = (data: unknown) => Response.json({ data });
       if (path === '/api/account-auth') return reply(provider);
+      if (path.endsWith('/invitation-preview'))
+        return previewFails
+          ? Response.json(
+              { error: { message: 'Invitation unavailable.' } },
+              { status: 409 },
+            )
+          : reply({
+              projectName: 'Example Project',
+              inviterName: 'Project owner',
+              role: 'viewer',
+              actions: ['view'],
+              expiresAt: '2099-01-01T00:00:00.000Z',
+              recipientEmail: null,
+            });
       if (path.endsWith('/session'))
         return signedIn ? reply(account) : new Response(null, { status: 401 });
       if (
@@ -141,6 +157,65 @@ async function enterCredentials() {
 }
 
 describe('invitation entry through real account SDK requests', () => {
+  test('a new same-document invitation replaces the preview and clears private form state', async () => {
+    render(
+      <StrictMode>
+        <AccountEntryPage apiBase={apiBase} />
+      </StrictMode>,
+    );
+    await screen.findByLabelText('Email address');
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'draft-that-must-not-move' },
+    });
+    window.history.replaceState(
+      null,
+      '',
+      `/account/join#invitation=${invitation}`,
+    );
+    fireEvent(window, new HashChangeEvent('hashchange'));
+    await screen.findByRole('heading', { name: 'Join Example Project' });
+    expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe(
+      '',
+    );
+    window.history.replaceState(
+      null,
+      '',
+      '/account/join#invitation=invalid-new-link',
+    );
+    fireEvent(window, new HashChangeEvent('hashchange'));
+    await screen.findByText('Invitation unavailable');
+    expect(
+      screen.queryByRole('heading', { name: 'Join Example Project' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Accept invitation' }),
+    ).toBeNull();
+    window.history.replaceState(null, '', '/');
+  });
+  test('shows the offered Project and role before sign-in and never places invitation proof in a URL', async () => {
+    mount();
+    await screen.findByRole('heading', { name: 'Join Example Project' });
+    expect(screen.getByText(/Project owner invited you/)).toBeTruthy();
+    expect(screen.getByLabelText('Email address')).toBeTruthy();
+    expect(
+      calls.find((call) => call.path.endsWith('/invitation-preview'))?.body,
+    ).toEqual({ token: invitation });
+    expect(calls.every((call) => !call.path.includes(invitation))).toBe(true);
+    expect(calls.some((call) => call.path.endsWith('/accept-invitation'))).toBe(
+      false,
+    );
+  });
+  test('an invalid invitation shows a recovery state before account registration or acceptance', async () => {
+    previewFails = true;
+    mount();
+    await screen.findByText('Invitation unavailable');
+    expect(
+      screen.queryByRole('button', { name: 'Create an account' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Accept invitation' }),
+    ).toBeNull();
+  });
   test('the production page boots under StrictMode with its own query provider', async () => {
     render(
       <StrictMode>

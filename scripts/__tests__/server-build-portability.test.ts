@@ -369,10 +369,10 @@ function launchDesktopServer(release: string, root: string, port: number) {
     sha: stagedBuild.sha,
     shaSource: 'build-stamp' as const,
     bootId: randomUUID(),
-    // This raw bearer probe has no home-possession locality, even on loopback.
+    // A bare bearer authenticates the probe without proving host-local presence.
     devicePresentation: {
-      deviceClass: 'paired' as const,
-      hostName: hostname().trim().split('.')[0] || 'the host',
+      deviceClass: 'paired',
+      hostName: hostname().split('.')[0],
     },
   };
   const child = spawn(process.execPath, ['dist-server/command-station.js'], {

@@ -1,7 +1,8 @@
 # Free local collaboration lab
 
-> Status: the transport and enrollment fixture is implemented. Full Station
-> UI, shared-Project, compute and plugin integration remains under
+> Status: transport/enrollment and real local-account/member scenarios are
+> implemented. Shared content, approved Device access, UI, compute and plugin
+> integration remains under
 > [#1985](https://github.com/kontourai/station/issues/1985) and its feature owners.
 
 Use this lab to test the [connection broker's confidentiality boundary](../design/connection-broker.md)
@@ -48,10 +49,82 @@ The security check covers:
   of the test application's plaintext markers or credentials. A missing
   plaintext substring alone is not treated as encryption proof.
 
+## Real local accounts and Project membership
+
+The account scenario uses two actual Station source processes, two isolated
+browser profiles, the built-in local account provider, and the published SDK
+account/Project APIs. It needs the pinned Node/dependency setup and Chromium;
+OpenSSL is only required by the separate security scenario.
+
+```sh
+npm run dependencies:ci
+npm run install:playwright
+npm run lab:collaboration -- --check=accounts
+```
+
+The fixture creates fresh Station homes, OS-home/config/cache directories and
+empty dotenv files. Source execution uses the repository's schema and TypeScript
+configuration. It waits for the real listener handshake and verifies the existing
+Station challenge-response proof before presenting the operator credential, then
+checks the boot, instance and source-checkout identity. This is source-runtime
+acceptance, not proof of a packaged desktop/mobile release.
+
+The controller creates Projects and invitations with each fixture Station's own
+operator credential. Guests use the SDK in actual browser origins with native
+HttpOnly cookie handling; no operator credential enters their pages and no
+cookie is copied into a virtual transport. These are API journeys, not rendered
+onboarding/UI acceptance. The built-in account provider runs without mail, a
+hosted identity account or model credentials.
+
+The scenario checks:
+
+- Invitation-only registration, sign-in and two distinct issuer-qualified people.
+- Explicit viewer/contributor membership. A consumed invitation is refused for
+  the other authenticated person before that person accepts their own invitation.
+- A cancelled invitation is refused for a revoked member who could otherwise
+  accept it. Caller-supplied contact claims and unverified local usernames cannot
+  satisfy a contact-restricted invitation.
+- A fresh invitation from Station A is refused at Station B and remains usable
+  at A. Current member revisions work; stale revisions cannot overwrite them.
+- Membership acceptance reports `grantsDeviceAccess: false`; the actual paired
+  device list stays empty. Account-authenticated guests still receive 401 on
+  private Project and operator routes without an approved Device grant.
+- Restarting the real Station preserves account identity, cookies, membership and
+  revocation. Account session revocation and disable/enable invalidate old cookies
+  while preserving membership and another person's session. The final sign-in
+  waits across the provider's normal ten-second rate-limit window; the limiter
+  is not disabled or replaced with a test clock.
+
+The two Station origins use `127.0.0.1` and `localhost` as distinct hostnames:
+[cookies are not isolated by port](https://www.rfc-editor.org/rfc/rfc6265#section-8.5).
+The same username registered independently at the other Station has a different
+issuer-qualified identity. That login does not inherit the first Station's
+Project membership.
+
+Account lab runs hold a cooperating fixture lease through startup, stop and
+restart. Each process has an isolated four-port listener block and a bounded
+lifetime. A fixture-only Node TCP guard permits its own listeners and an owned
+positive-control probe; a second owned probe must be refused with the specific
+guard error and receive no request. This prevents the scenario from contacting
+model services or background registry endpoints through Node TCP. It is a
+portable diagnostic restriction, not an OS sandbox or hostile-plugin boundary.
+Expected blocked background metadata refreshes may appear in private process
+logs. Teardown uses the existing owned-process implementation and preserves an
+unrelated listener in the CLI acceptance test.
+
+Run `--check=all` to execute both available stages. They currently use separate
+pairs of disposable homes; the report names each stage under `scenarios` and
+marks unselected stages `not-run`. The full command still exits 3 because approved
+Device/content access, compute/plugin integration, the production relay adapter
+and real-human/native/network acceptance are not complete. The account stage
+uses direct loopback HTTP; it does not claim to carry account sessions through
+the encrypted broker before the owning continuation contract lands.
+
 ## Output and retained evidence
 
 Success prints a `STATION_LOCAL_LAB_REPORT` JSON line with
-`scope: "transport-and-enrollment-fixture"` and `status: "passed"`.
+`status: "passed"` and the selected scope: `transport-and-enrollment-fixture`,
+`account-and-membership-runtime`, or `local-collaboration-stages`.
 `fullScenario.status` remains `incomplete`. A security-fixture pass is not a
 shared-Project acceptance receipt.
 

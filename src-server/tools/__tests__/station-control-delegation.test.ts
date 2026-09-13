@@ -717,7 +717,8 @@ describe('Station Control canonical Environment + Agent execution', () => {
     '%s uses receiver binding resolution before constructing a start',
     async (kind) => {
       installCurrentStationFetch('/tmp/legacy');
-      const resolveProjectSessionDirectory = vi.fn(async () => '/tmp/rebound');
+      const rebound = join(tmpdir(), 'station-rebound-fixture');
+      const resolveProjectSessionDirectory = vi.fn(async () => rebound);
       const service = { ...localService(), resolveProjectSessionDirectory };
       const { delegateTask, executeExecutionTargetMessage } = await import(
         '../station-control-delegation.js'
@@ -740,7 +741,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       expect(resolveProjectSessionDirectory).toHaveBeenCalledWith('workspace');
       expect(service.startSessionInternal).toHaveBeenCalledWith(
         expect.objectContaining({
-          input: expect.objectContaining({ cwd: '/tmp/rebound' }),
+          input: expect.objectContaining({ cwd: rebound }),
         }),
         expect.anything(),
         expect.anything(),
