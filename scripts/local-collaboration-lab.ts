@@ -7,18 +7,24 @@ import { localLabEnvironment } from './lib/local-collaboration-process.mjs';
 const args = process.argv.slice(2);
 if (args.includes('--help')) {
   process.stdout.write(
-    'Local collaboration lab: --check=security | --check=all [--keep]\n' +
+    'Local collaboration lab: --check=security | --check=accounts | --check=all [--keep]\n' +
       'Security runs real TLS and Station pairing in isolated fixtures. All reports incomplete until Project/compute/plugin integration lands.\n',
   );
 } else {
   if (
     args.some(
-      (arg) => !['--check=security', '--check=all', '--keep'].includes(arg),
+      (arg) =>
+        ![
+          '--check=security',
+          '--check=accounts',
+          '--check=all',
+          '--keep',
+        ].includes(arg),
     ) ||
     args.filter((arg) => arg.startsWith('--check=')).length !== 1
   )
     throw new Error(
-      'Choose --check=security or --check=all; use --help for scope',
+      'Choose --check=security, --check=accounts or --check=all; use --help for scope',
     );
   process.umask(0o077);
   const root = mkdtempSync(join(tmpdir(), 'station-collaboration-lab-'));
@@ -38,19 +44,45 @@ if (args.includes('--help')) {
   process.once('SIGTERM', interrupted);
   let passed = false;
   try {
-    const { checkLocalCollaborationSecurity } = await import(
-      './lib/local-collaboration-check.js'
-    );
-    const result = await checkLocalCollaborationSecurity(root, abort.signal);
+    const security = args.includes('--check=accounts')
+      ? undefined
+      : await (
+          await import('./lib/local-collaboration-check.js')
+        ).checkLocalCollaborationSecurity(root, abort.signal);
+    const accounts = args.includes('--check=security')
+      ? undefined
+      : await (
+          await import('./lib/local-collaboration-accounts.js')
+        ).checkLocalCollaborationAccounts(root, abort.signal);
+    const result =
+      accounts && security
+        ? {
+            stationIds: [...security.stationIds, ...accounts.stationIds],
+            ports: [...new Set([...security.ports, ...accounts.ports])],
+            checks: [...security.checks, ...accounts.checks],
+          }
+        : (accounts ?? security);
     const report = {
       schemaVersion: 1,
-      scope: 'transport-and-enrollment-fixture',
+      scope: accounts
+        ? security
+          ? 'local-collaboration-stages'
+          : 'account-and-membership-runtime'
+        : 'transport-and-enrollment-fixture',
       status: 'passed',
       ...result,
+      scenarios: {
+        security: security
+          ? { status: 'passed', ...security }
+          : { status: 'not-run' },
+        accounts: accounts
+          ? { status: 'passed', ...accounts }
+          : { status: 'not-run' },
+      },
       fullScenario: {
         status: 'incomplete',
         missing: [
-          'shared-Project membership and guest UI',
+          'shared-Project content and guest UI with approved Device access',
           'offered compute and plugin authorization',
           'production key enrollment and browser/native transport',
           'real two-human/device and tenant-isolation acceptance',

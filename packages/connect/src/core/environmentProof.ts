@@ -1,7 +1,7 @@
 import {
   buildStationProofMessage,
   STATION_PROOF_PROTOCOL_VERSION,
-} from '@kontourai/station-contracts';
+} from '@kontourai/station-contracts/environment-security';
 
 function decodeBase64url(value: string): ArrayBuffer {
   const padded = value
