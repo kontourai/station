@@ -246,7 +246,8 @@ const BOTTOM_STORAGE_KEY = 'station:workspace-pane-host:v2:ambient:bottom';
  * region key already present, corrupt legacy. Deleting either of the first
  * two guards makes its case write; deleting the corrupt-legacy guard (the
  * `try`/`catch`) makes its case THROW out of a render-time call instead of
- * returning false, which is what the no-throw assertion there is for.
+ * returning false; the bare call in that case is the no-throw check (an
+ * uncaught throw fails the test).
  */
 test('adoptLegacyChatDockDocument re-identifies the legacy document as the region’s and leaves the legacy key', () => {
   const storage = new Map<string, string>();

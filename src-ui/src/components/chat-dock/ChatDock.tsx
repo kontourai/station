@@ -2899,8 +2899,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
  * model, every dock region mounts its own host and Chat renders through it
  * as a pane (#2045). A `regionId` forwarded here — pinned plumbing
  * (`ChatDockRegionForwarding.test.tsx`), no production caller — makes the
- * host that region's, on that region's document, the same host `RegionShells`
- * would mount.
+ * host that region's, on that region's document, with the same admission
+ * `RegionShells` would apply (not the same props: this path supplies no
+ * Activity renderer).
  */
 export function ChatDock({
   regionId,

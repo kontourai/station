@@ -37,8 +37,9 @@ import {
  *   take) is Chat alone in its own host, which is exactly the document this
  *   id names, so it keeps using it. A `ChatDock` handed a `regionId` — the
  *   plumbing `ChatDockRegionForwarding.test.tsx` pins; no production caller
- *   does it — is that region's host, on that region's document, exactly as
- *   `RegionShells` would mount it;
+ *   does it — is that region's host, on that region's document, with the
+ *   admission `RegionShells` would apply (its props differ: no Activity
+ *   renderer, so only Chat can render on that path);
  * - a region host whose own document has never been written ADOPTS it
  *   (`adoptLegacyChatDockDocument`) when Chat occupies the region — per
  *   region, on that region's first Chat mount; the legacy key never retires.
