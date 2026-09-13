@@ -2430,6 +2430,17 @@ verifies them.
 This adapter is opt-in and currently qualified by the
 [local SDK framing fixture](../guides/local-collaboration-lab.md#sdk-application-framing-over-the-encrypted-channel),
 with explicit request/frame bounds and a separate full-runtime acceptance gap.
-Connection owners must retain ordinary SDK authority guards, bound channel
-counts/lifetimes, and close the transport when its endpoint trust retires. An
+Configure the Device credential on the host resolver for channel calls. Passing
+`credential` together with `credentialOrigin` as per-call options deliberately
+bypasses that resolver and uses direct HTTP; an `ApplicationSessionClient` on
+this transport instead uses the configured resolver with `requireCredential`.
+The adapter retains explicit SDK headers separately from a browser `Request`,
+whose header guard removes `Origin` in anticipation of a later HTTP network step.
+The encrypted browser fixture checks that the original client Origin reaches
+the receiver.
+
+Connection owners must retain ordinary SDK authority guards and the selected
+account's request scope, bound channel counts/lifetimes, and close the transport
+when its endpoint trust retires. Transport readiness alone does not partition
+account or Project data. An
 uncertain dispatched mutation must not be retried automatically.
