@@ -798,6 +798,22 @@ describe('ChatInputArea', () => {
     expect(onApprovalModeChange).not.toHaveBeenCalled();
   });
 
+  test('omits the approval chip for an external engine with no native knob (station#1933)', () => {
+    render(
+      <ChatInputArea
+        {...renderProps({
+          executionMode: 'external',
+          agentConnectionId: 'acp',
+        })}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: /^Approval mode:/ }),
+    ).toBeNull();
+    expect(screen.queryByText(/Set by engine/)).toBeNull();
+  });
+
   test('station#1945: advertised ACP modes replace the approval-mode chip', async () => {
     const onAcpSessionModeChange = vi.fn();
     const onApprovalModeChange = vi.fn();
@@ -837,9 +853,12 @@ describe('ChatInputArea', () => {
       onAcpSessionModeChange: vi.fn(),
     });
     expect(screen.queryByRole('button', { name: /^Session mode:/ })).toBeNull();
+    // kiro has no native approval knob: no chip and no read-only note
+    // either (station#1933).
     expect(
-      screen.getByRole('note', { name: /Engine approval mode/ }),
-    ).toBeTruthy();
+      screen.queryByRole('button', { name: /^Approval mode:/ }),
+    ).toBeNull();
+    expect(screen.queryByText(/Set by engine/)).toBeNull();
   });
 
   describe('prompt size guard (station#2807)', () => {

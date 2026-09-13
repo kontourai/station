@@ -68,17 +68,18 @@ describe('ApprovalModeChip', () => {
     );
     expect(trigger().getAttribute('aria-label')).toContain('Default');
   });
-  test('projects producer matrices: ACP is partial while Station is fully bound', () => {
-    const { rerender } = render(
+  test('renders nothing for an engine whose adapter has no approval knob', () => {
+    const { rerender, container } = render(
       <ApprovalModeChip
         engineConnectionId="acp"
         toolPolicyDelivery={ENGINE_CAPABILITY_MATRICES.acp.toolPolicy}
         onChange={vi.fn()}
       />,
     );
-    expect(screen.getByRole('note').getAttribute('title')).toContain(
-      'Station approvals partly apply',
-    );
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('note')).toBeNull();
+    expect(screen.queryByText(/Set by engine/)).toBeNull();
 
     rerender(
       <ApprovalModeChip
@@ -87,9 +88,7 @@ describe('ApprovalModeChip', () => {
         onChange={vi.fn()}
       />,
     );
-    expect(screen.getByRole('note').getAttribute('title')).toContain(
-      'before every tool call',
-    );
+    expect(container.firstChild).toBeNull();
   });
 
   test('discloses pre-tool grant delivery alongside a supported engine approval mode', () => {
@@ -321,7 +320,7 @@ describe('ApprovalModeChip', () => {
     expect(onChange).toHaveBeenCalledWith('ask');
   });
 
-  test('re-selecting the receipted mode is a no-op', async () => {
+  test('re-selecting the current mode is a no-op', async () => {
     const onChange = vi.fn();
     render(
       <ApprovalModeChip
@@ -341,14 +340,36 @@ describe('ApprovalModeChip', () => {
     ).toBeNull();
   });
 
-  test('the chip and picker follow the receipted mode over stale requested state', async () => {
-    render(
+  test('the chip and picker follow a newer request over a prior receipt (station#1933)', async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
       <ApprovalModeChip
-        engineConnectionId="codex"
-        sessionOverride="ask"
+        engineConnectionId="claude"
+        sessionOverride={undefined}
         connectionDefault={undefined}
-        lastAppliedApprovalMode="auto"
-        onChange={vi.fn()}
+        lastAppliedApprovalMode="ask"
+        onChange={onChange}
+      />,
+    );
+
+    // No override: the engine's receipt labels the chip (station#1950).
+    expect(
+      screen.getByRole('button', {
+        name: /^Approval mode: Default — Ask first\./,
+      }),
+    ).toBeTruthy();
+
+    await openSheet();
+    fireEvent.click(option(/^Auto/));
+    expect(onChange).toHaveBeenCalledWith('auto');
+
+    rerender(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        sessionOverride="auto"
+        connectionDefault={undefined}
+        lastAppliedApprovalMode="ask"
+        onChange={onChange}
       />,
     );
 
@@ -360,7 +381,7 @@ describe('ApprovalModeChip', () => {
     expect(option(/^Ask first/).getAttribute('aria-checked')).toBe('false');
   });
 
-  test('a pending full-access request keeps the receipted mode visible', async () => {
+  test('a pending full-access request shows Full access, not the prior receipt', async () => {
     render(
       <ApprovalModeChip
         engineConnectionId="codex"
@@ -372,9 +393,12 @@ describe('ApprovalModeChip', () => {
     );
 
     const chip = screen.getByRole('button', {
-      name: /^Approval mode: Ask · pending — takes effect next turn\./,
+      name: /^Approval mode: Full access · pending — takes effect next turn\./,
     });
     expect(chip.className).toContain('chat-input__approval-chip--pending');
+    expect(
+      chip.querySelector('.chat-input__approval-chip-label')?.textContent,
+    ).toBe('Full access · pending');
   });
 
   test('with no lastAppliedApprovalMode reported at all yet, a never override is still shown as pending rather than assumed applied', async () => {
@@ -442,6 +466,9 @@ describe('ApprovalModeChip', () => {
     expect(trigger().className).toContain(
       'chat-input__approval-chip--override',
     );
+    expect(
+      screen.getByRole('button', { name: /^Approval mode: Auto\./ }),
+    ).toBeTruthy();
   });
 
   test('#727 review item 4: auto is provider-aware in its description, and never mentions "safe"', async () => {
@@ -472,59 +499,8 @@ describe('ApprovalModeChip', () => {
     expect(autoDescription.toLowerCase()).not.toContain('safe');
   });
 
-  test('renders read-only for a provider with no native approval knob', async () => {
-    render(
-      <ApprovalModeChip
-        engineConnectionId="acp"
-        sessionOverride={undefined}
-        connectionDefault={undefined}
-        onChange={vi.fn()}
-      />,
-    );
-
-    expect(screen.queryByRole('button')).toBeNull();
-    expect(screen.getByText('Set by engine')).toBeTruthy();
-  });
-
-  test('narrowing the visible chip does not narrow what it discloses', async () => {
-    // The policy half is hidden below 480px because the two labels together
-    // overflowed the composer row on a phone (archive#3151). That is only
-    // defensible while the full pairing survives in the accessible name and
-    // the tooltip — approvals are a security-relevant readout, and a user
-    // deciding whether to let an engine run unattended has to be able to
-    // reach "Station is not the thing governing this". So: the element may
-    // shrink, the disclosure may not.
-    render(
-      <ApprovalModeChip
-        engineConnectionId="acp"
-        sessionOverride={undefined}
-        connectionDefault={undefined}
-        toolPolicyDelivery={{
-          state: 'partial',
-          permissionHook: 'requestPermission',
-          evidence: 'sharedStagedPolicy',
-          adapterModule: 'acp-adapter',
-        }}
-        onChange={vi.fn()}
-      />,
-    );
-
-    const chip = screen.getByRole('note');
-    expect(chip.getAttribute('aria-label')).toContain(
-      'Station approvals partly apply',
-    );
-    expect(chip.getAttribute('title')).toContain(
-      'Station approvals partly apply',
-    );
-    // The class the media query keys off has to exist, or the rule targets
-    // nothing and the overflow returns silently.
-    expect(
-      chip.querySelector('.chat-input__approval-chip-policy'),
-    ).toBeTruthy();
-  });
-
-  test('renders read-only when no engineConnectionId is known at all', async () => {
-    render(
+  test('renders nothing when no engineConnectionId is known at all', () => {
+    const { container } = render(
       <ApprovalModeChip
         sessionOverride="ask"
         connectionDefault={undefined}
@@ -532,20 +508,17 @@ describe('ApprovalModeChip', () => {
       />,
     );
 
+    expect(container.firstChild).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
-    expect(screen.getByText('Set by engine')).toBeTruthy();
   });
 
   /**
-   * archive#1010. `config.approvalMode` is a generic connection-config bag
-   * field with no server-side gate (nothing restricts it to the two adapters
-   * that read it), so a no-knob connection carrying one used to make the inert
-   * chip announce a governing posture — "Ask first — default" — that the
-   * adapter provably ignores. An inert control asserting a security posture
-   * nothing enforces is worse than one asserting nothing.
+   * archive#1010, updated station#1933: a no-knob connection carrying a
+   * generic `config.approvalMode` must not announce a governing posture,
+   * and the long inert "Set by engine" substitute is gone too.
    */
-  test('an inert chip never reports a mode, even when the connection carries an approvalMode default', async () => {
-    render(
+  test('a no-knob engine never reports a mode, even when the connection carries an approvalMode default', () => {
+    const { container } = render(
       <ApprovalModeChip
         engineConnectionId="kiro"
         sessionOverride={undefined}
@@ -554,13 +527,13 @@ describe('ApprovalModeChip', () => {
       />,
     );
 
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(container.firstChild).toBeNull();
     expect(screen.queryByText(/Ask first/)).toBeNull();
-    expect(screen.getByText('Set by engine')).toBeTruthy();
+    expect(screen.queryByText(/Set by engine/)).toBeNull();
   });
 
-  test('a session override on a no-knob engine is not reported as an applied posture', async () => {
-    render(
+  test('a session override on a no-knob engine is not reported as an applied posture', () => {
+    const { container } = render(
       <ApprovalModeChip
         engineConnectionId="kiro"
         sessionOverride="never"
@@ -569,25 +542,9 @@ describe('ApprovalModeChip', () => {
       />,
     );
 
+    expect(container.firstChild).toBeNull();
     expect(screen.queryByText(/Never ask/)).toBeNull();
     expect(screen.queryByText(/Full access/)).toBeNull();
-    expect(screen.getByText('Set by engine')).toBeTruthy();
-  });
-
-  test('the inert chip explains why it is inert rather than leaving it a mystery', async () => {
-    render(<ApprovalModeChip engineConnectionId="kiro" onChange={vi.fn()} />);
-
-    const note = screen.getByRole('note');
-    expect(note.getAttribute('title')).toContain(
-      'Station cannot set approvals for this engine',
-    );
-    expect(note.getAttribute('aria-label')).toContain(
-      'Station cannot set approvals for this engine',
-    );
-    // Inert treatment is what makes the absence of a click safe to ship: it
-    // must not be a button, and it must not advertise a popup.
-    expect(note.tagName).toBe('SPAN');
-    expect(note.getAttribute('aria-haspopup')).toBeNull();
   });
 
   /**

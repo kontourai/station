@@ -17,7 +17,10 @@ import type {
 } from '../../types';
 import type { AdvertisedAcpMode } from '../../utils/acpSessionMode';
 import type { SavedAnswerQuote } from '../../utils/answer-quotes';
-import type { ApprovalMode } from '../../utils/approvalMode';
+import {
+  type ApprovalMode,
+  approvalModeKnobSupported,
+} from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import {
   type EffectiveModelSource,
@@ -520,7 +523,8 @@ export function ChatInputArea({
             />
           </React.Suspense>
         ) : (
-          executionMode === EXECUTION_MODE.EXTERNAL && (
+          executionMode === EXECUTION_MODE.EXTERNAL &&
+          approvalModeKnobSupported(agentConnectionId) && (
             <ApprovalModeChip
               // Structural reset (not blur-dependent) for the chip's local
               // confirm state when the active session changes — this
