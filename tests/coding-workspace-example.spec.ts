@@ -333,8 +333,14 @@ test('coding example preserves both Panes and its authored native Agent in a rea
       assignedAgentSlug: agent,
       projectSlug: slug,
     });
-    const cwd = receipt.session.cwd;
-    expect(cwd).not.toBe(repo);
+    // Compare canonical paths: on macOS mkdtempSync yields /var/... while the
+    // server may report /private/var/..., so a raw-string inequality could
+    // hold for the repository root itself. The linked-worktree proof likewise
+    // excludes the main worktree entry, which `git worktree list` always
+    // prints first.
+    const cwd = realpathSync(receipt.session.cwd);
+    const repoRoot = realpathSync(repo);
+    expect(cwd).not.toBe(repoRoot);
     expect(
       realpathSync(
         execFileSync('git', ['-C', cwd, 'rev-parse', '--show-toplevel'], {
@@ -342,16 +348,18 @@ test('coding example preserves both Panes and its authored native Agent in a rea
           windowsHide: true,
         }).trim(),
       ),
-    ).toBe(realpathSync(cwd));
-    expect(
-      execFileSync('git', ['-C', repo, 'worktree', 'list', '--porcelain'], {
-        encoding: 'utf8',
-        windowsHide: true,
-      })
-        .split('\n')
-        .filter((line) => line.startsWith('worktree '))
-        .map((line) => realpathSync(line.slice('worktree '.length).trim())),
-    ).toContain(realpathSync(cwd));
+    ).toBe(cwd);
+    const linkedWorktrees = execFileSync(
+      'git',
+      ['-C', repo, 'worktree', 'list', '--porcelain'],
+      { encoding: 'utf8', windowsHide: true },
+    )
+      .split('\n')
+      .filter((line) => line.startsWith('worktree '))
+      .map((line) => realpathSync(line.slice('worktree '.length).trim()))
+      .filter((worktree) => worktree !== repoRoot);
+    expect(linkedWorktrees.length).toBeGreaterThan(0);
+    expect(linkedWorktrees).toContain(cwd);
     const actionRequests = requests.filter((request) =>
       JSON.stringify(request).includes(
         'Review the current diff for correctness',
@@ -378,7 +386,7 @@ test('coding example preserves both Panes and its authored native Agent in a rea
           session: {
             agentId: receipt.session.assignedAgentSlug,
             projectSlug: receipt.session.projectSlug,
-            cwd,
+            cwd: receipt.session.cwd,
           },
           controlledModel: model,
           authored,
