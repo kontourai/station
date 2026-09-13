@@ -6,6 +6,7 @@ import type { ProjectMembershipService } from '../projects/project-membership-se
 import {
   createDeploymentAuthenticationHost,
   type LoadedDeploymentAuthentication,
+  readAuthenticationBrowserOrigins,
 } from './deployment-authentication-loader.js';
 import { DeploymentAuthenticationService } from './deployment-authentication-service.js';
 import {
@@ -15,6 +16,7 @@ import {
 
 export interface LocalAccountConfiguration {
   publicOrigin: string;
+  allowedBrowserOrigins?: readonly string[];
 }
 export interface LoadedLocalAccounts extends LoadedDeploymentAuthentication {
   administration: LocalAccountProvider['administration'];
@@ -34,7 +36,11 @@ export function readLocalAccountConfiguration(
   const publicOrigin = environment.STATION_AUTHENTICATION_ORIGIN;
   if (!publicOrigin)
     throw new Error('Local accounts require a public authentication origin.');
-  return { publicOrigin };
+  const allowedBrowserOrigins = readAuthenticationBrowserOrigins(environment);
+  return {
+    publicOrigin,
+    ...(allowedBrowserOrigins ? { allowedBrowserOrigins } : {}),
+  };
 }
 
 function readOrCreateSecret(stateDirectory: string, stationId: string): string {
@@ -92,6 +98,7 @@ export async function loadLocalAccounts(
   const providerHost = await createDeploymentAuthenticationHost(
     input.publicOrigin,
     host,
+    input.allowedBrowserOrigins,
   );
   let provider: LocalAccountProvider | undefined;
   try {
@@ -111,6 +118,7 @@ export async function loadLocalAccounts(
     return {
       service: new DeploymentAuthenticationService(provider),
       publicOrigin: providerHost.publicOrigin,
+      allowedBrowserOrigins: providerHost.allowedBrowserOrigins,
       administration: provider.administration,
       issueRecovery: provider.issueRecovery.bind(provider),
     };
