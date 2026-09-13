@@ -167,9 +167,9 @@ describe('starter plugin examples', () => {
    * JSON shape: the `minimal-layout` package identity survives the migration,
    * the single Pane names that package as its provenance and a
    * `plugin-component` renderer the entrypoint really registers with rendered
-   * output, and no legacy `layout` is co-declared. The loader refuses both
-   * channels in one manifest, so a leftover layout.json would be an install
-   * failure, not an inert file; its absence is pinned on disk as well.
+   * output, and no legacy `layout` is co-declared. The loader refuses a
+   * manifest that declares both channels, but an unreferenced layout.json on
+   * disk would be inert to it, so the file's absence is pinned separately.
    */
   test('minimal example declares one portable Workspace Pane its entrypoint renders', async () => {
     const pluginDir = join(examplesDir, 'minimal-layout');
