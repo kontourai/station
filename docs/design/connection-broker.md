@@ -239,7 +239,41 @@ admitted signing key and connection-proof lifecycle. The initial
 [shared JOSE verifier](../../packages/shared/src/connection-proof.ts) and
 [Station issuer](../../src-server/services/ssh/connection-proof-issuer.ts)
 are exercised by the browser transport fixture. Production key enrollment,
-storage, rotation/recovery and bootstrap issuance are not enabled by this slice.
+Device approval/recovery and bootstrap issuance are not enabled by this slice.
+
+The [Station signing-key store](../../src-server/services/ssh/connection-signing-key-store.ts)
+owns private local custody in `security/connection-signing-key.json`. It reuses
+the existing environment identity and guarded JSON mutation/publication owner.
+The private PKCS8 key never appears in its public descriptor; the public key is
+derived through Node's crypto implementation. Existing keys survive reopening
+and concurrent initialization converges on one identity. A local rotation must
+match the observed Station, enrollment, generation and public key under the
+mutation lock; exactly one competing rotation can advance it.
+The issuer reloads current custody and refuses to sign with a retired generation.
+
+This is a local storage primitive, not an enrollment or administration API.
+Private-home access is required, and public descriptor export does not approve
+the key at a Device. Corrupt, oversized, linked, unsupported or wrong-Station
+records fail instead of being silently regenerated. A reset environment cannot
+adopt the old signing record. POSIX private file/directory permissions are
+checked; this does not claim Windows ACL or hostile-same-user isolation.
+
+Rotation changes the signing identity and requires the Device trust owner to
+admit the new generation through its approved path. It does not silently replace
+client trust, recall plaintext, terminate existing application work or rotate
+independent direct-access credentials. Key loss/backup restoration and active
+home fencing retain explicit recovery work. The shared publisher's rename is
+the visible commit point; directory-fsync limitations do not justify claiming
+perfect crash durability or automatically retrying an uncertain rotation.
+
+The [Device trust store](../../packages/connect/src/core/connectionTrust.ts)
+retains independently approved public keys and revoked generations in the
+browser's IndexedDB partition. It serializes revision comparisons across tabs
+and the browser rechecks this state and proof expiry before accepting a peer
+description. The [local lab guide](../guides/local-collaboration-lab.md#device-side-signing-trust)
+describes its operator-approval precondition, storage failures and recovery limits.
+This is a connection-layer component; it does not supply the production approval
+UI, recover a changed enrollment, or grant account/Project access.
 
 Use a separately admitted P-256 signing key with compact JWS/JWT `ES256` from
 the maintained `jose` implementation. Do not negotiate an algorithm from broker
