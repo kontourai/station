@@ -5,8 +5,8 @@ import {
   checkForDesktopUpdate,
   type DesktopUpdateOutcome,
 } from '../../platform/native/desktopUpdate';
-import { TechnicalDetails } from './coreUpdatePresentation';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { TechnicalDetails } from './coreUpdatePresentation';
 
 /** Explicit checks report failures; the automatic launch check stays quiet. */
 export function DesktopUpdateCheck() {

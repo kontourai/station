@@ -206,7 +206,9 @@ test.describe('Core Update Flow', () => {
     });
 
     await page.goto('/settings');
-    await page.getByRole('button', { name: /Check for server updates/ }).click();
+    await page
+      .getByRole('button', { name: /Check for server updates/ })
+      .click();
     const apply = page.getByRole('button', { name: 'Update server checkout' });
     await expect(apply).toBeVisible({ timeout: 10000 });
 
@@ -238,7 +240,9 @@ test.describe('Core Update Flow', () => {
     });
 
     await page.goto('/settings');
-    await page.getByRole('button', { name: /Check for server updates/ }).click();
+    await page
+      .getByRole('button', { name: /Check for server updates/ })
+      .click();
     await expect(
       page.getByText('Server checkout matches its configured upstream.'),
     ).toBeVisible({

@@ -17,8 +17,22 @@ import {
 
 vi.mock('@kontourai/station-connect', () => ({
   QRDisplay: () => <div />,
-  useConnections: () => ({ activeConnection: { name: 'Local' } }),
+  useConnections: () => ({
+    activeConnection: {
+      name: 'Local',
+      ownerId: null,
+      accessMethods: [],
+      selectedAccessMethodId: null,
+    },
+    apiBase: 'http://station.test',
+    captureCredentialEvidence: () => null,
+    isCredentialEvidenceCurrent: () => false,
+  }),
   useHostUrl: () => ({ hostUrl: 'http://station.test', isDetecting: false }),
+  // The settings view tree now reaches ConnectedServerUpdates → its context
+  // hook's health composition; the catalog under test is the enumeration, so
+  // a stable connected status is the neutral answer here.
+  useConnectionStatus: () => ({ status: 'connected' }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch: vi.fn(),
