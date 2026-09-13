@@ -398,6 +398,23 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
     ).toMatchObject({ capability: 'pairing-scope' });
   });
 
+  test('continuation middleware classification does not admit arbitrary methods', () => {
+    expect(
+      requiredExternalSurfaceCapability(
+        'http',
+        '*',
+        '/api/account-auth/continuations/*',
+      ),
+    ).toMatchObject({ capability: 'middleware' });
+    expect(
+      requiredExternalSurfaceCapability(
+        'http',
+        'DELETE',
+        '/api/account-auth/continuations/login',
+      ),
+    ).toBeUndefined();
+  });
+
   test('the catch-all mount exceptions are exactly the two known absolute-leaf-path bases', () => {
     // '' (createOtlpReceiverRoutes -> /v1/*) and '/' (createInvokeRoutes ->
     // /invoke, /agents/:slug/invoke, ...) are the only bases whose sub-router

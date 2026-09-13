@@ -73,6 +73,14 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 ## DeploymentAuthentication
 
+`ApplicationSessionService` owns the proof-bound continuation store and current
+provider-session/Device composition. `application-session-routes.ts` exposes its
+bounded control surface, and `application-session-runtime.ts` installs it before
+request admission. `account-response-guard.ts` rechecks delivery with zero
+prefetch. The SDK application-session client owns key/proof construction; a relay
+only carries the authenticated encrypted request/response stream. Provider hooks
+resolve private session references; no virtual response installs a browser cookie.
+
 **Intent and Interface.** The public `deployment-authentication` contract lets an
 operator supply a versioned authentication module at startup. Its factory receives
 the selected Station identity, public origin, fixed authentication base path and
