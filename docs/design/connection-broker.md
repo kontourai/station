@@ -247,7 +247,8 @@ the existing environment identity and guarded JSON mutation/publication owner.
 The private PKCS8 key never appears in its public descriptor; the public key is
 derived through Node's crypto implementation. Existing keys survive reopening
 and concurrent initialization converges on one identity. A local rotation must
-name the expected generation; exactly one competing rotation can advance it.
+match the observed Station, enrollment, generation and public key under the
+mutation lock; exactly one competing rotation can advance it.
 The issuer reloads current custody and refuses to sign with a retired generation.
 
 This is a local storage primitive, not an enrollment or administration API.
@@ -264,6 +265,15 @@ independent direct-access credentials. Key loss/backup restoration and active
 home fencing retain explicit recovery work. The shared publisher's rename is
 the visible commit point; directory-fsync limitations do not justify claiming
 perfect crash durability or automatically retrying an uncertain rotation.
+
+The [Device trust store](../../packages/connect/src/core/connectionTrust.ts)
+retains independently approved public keys and revoked generations in the
+browser's IndexedDB partition. It serializes revision comparisons across tabs
+and the browser rechecks this state and proof expiry before accepting a peer
+description. The [local lab guide](../guides/local-collaboration-lab.md#device-side-signing-trust)
+describes its operator-approval precondition, storage failures and recovery limits.
+This is a connection-layer component; it does not supply the production approval
+UI, recover a changed enrollment, or grant account/Project access.
 
 Use a separately admitted P-256 signing key with compact JWS/JWT `ES256` from
 the maintained `jose` implementation. Do not negotiate an algorithm from broker
