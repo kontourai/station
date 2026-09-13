@@ -1003,6 +1003,8 @@ describe('device-code enrolment routes', () => {
     options: {
       deviceCode?: boolean;
       signedIn?: boolean;
+      /** Hold environment preparation open, so a cancel can land before the spawn. */
+      holdBaseEnv?: boolean;
       /**
        * `by-directory` mirrors codex-cli 0.154.0: pointed at a CODEX_HOME that
        * does not exist, `codex login status` reports a configuration error
@@ -1011,12 +1013,18 @@ describe('device-code enrolment routes', () => {
       status?: 'authenticated' | 'unauthenticated' | 'unknown' | 'by-directory';
     } = {},
   ) {
+    const envGate: { release?: () => void } = {};
     const { service } = credentialRecoveryFixture();
     const spawned = fakeChild();
     const spawnLogin = vi.fn(() => spawned.child);
     const deviceCodeLogins = new DeviceCodeLoginManager({
       spawnLogin: spawnLogin as never,
-      baseEnv: async () => ({ PATH: '/usr/bin' }),
+      baseEnv: options.holdBaseEnv
+        ? () =>
+            new Promise((resolve) => {
+              envGate.release = () => resolve({ PATH: '/usr/bin' });
+            })
+        : async () => ({ PATH: '/usr/bin' }),
       capabilities: async () => ({
         engine: 'codex' as const,
         observedAt: '2026-09-11T00:00:00.000Z',
@@ -1055,7 +1063,7 @@ describe('device-code enrolment routes', () => {
       loginCapabilities: loginCapabilitiesStub(),
       deviceCodeLogins,
     });
-    return { app, spawned, spawnLogin, deviceCodeLogins };
+    return { app, spawned, spawnLogin, deviceCodeLogins, envGate };
   }
 
   test('starts a login and relays the URL and code the CLI printed', async () => {
@@ -1123,12 +1131,15 @@ describe('device-code enrolment routes', () => {
       '/agent/codex/enrolment/profile-a/device-code',
       { method: 'POST' },
     );
-    const body = await readJson<{ success: boolean; outcome: string }>(res);
+    const body = await readJson<{
+      success: boolean;
+      data: { outcome: string };
+    }>(res);
 
     expect(res.status).toBe(409);
     expect(body).toMatchObject({
       success: false,
-      outcome: 'already-signed-in',
+      data: { outcome: 'already-signed-in' },
     });
     expect(spawnLogin).not.toHaveBeenCalled();
   });
@@ -1158,12 +1169,15 @@ describe('device-code enrolment routes', () => {
       '/agent/codex/enrolment/profile-a/device-code',
       { method: 'POST' },
     );
-    const body = await readJson<{ success: boolean; outcome: string }>(res);
+    const body = await readJson<{
+      success: boolean;
+      data: { outcome: string };
+    }>(res);
 
     expect(res.status).toBe(409);
     expect(body).toMatchObject({
       success: false,
-      outcome: 'sign-in-state-unknown',
+      data: { outcome: 'sign-in-state-unknown' },
     });
     expect(spawnLogin).not.toHaveBeenCalled();
   });
@@ -1176,10 +1190,41 @@ describe('device-code enrolment routes', () => {
       '/agent/codex/enrolment/profile-a/device-code',
       { method: 'POST' },
     );
-    const body = await readJson<{ success: boolean; outcome: string }>(res);
+    const body = await readJson<{
+      success: boolean;
+      data: { outcome: string };
+    }>(res);
 
     expect(res.status).toBe(503);
-    expect(body).toMatchObject({ success: false, outcome: 'closed' });
+    expect(body).toMatchObject({ success: false, data: { outcome: 'closed' } });
+    expect(spawnLogin).not.toHaveBeenCalled();
+  });
+
+  test('a login cancelled before it spawned is reported as cancelled, not as a success', async () => {
+    const { app, spawnLogin, envGate } = routes({ holdBaseEnv: true });
+
+    const started = app.request(
+      '/agent/codex/enrolment/profile-a/device-code',
+      { method: 'POST' },
+    );
+    await vi.waitFor(() => expect(envGate.release).toBeTypeOf('function'));
+    const cancelled = await app.request(
+      '/agent/codex/enrolment/profile-a/device-code',
+      { method: 'DELETE' },
+    );
+    expect(cancelled.status).toBe(200);
+    envGate.release?.();
+
+    const res = await started;
+    const body = await readJson<{
+      success: boolean;
+      data: { outcome: string };
+    }>(res);
+    expect(res.status).toBe(409);
+    expect(body).toMatchObject({
+      success: false,
+      data: { outcome: 'cancelled' },
+    });
     expect(spawnLogin).not.toHaveBeenCalled();
   });
 

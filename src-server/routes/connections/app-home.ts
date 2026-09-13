@@ -680,7 +680,11 @@ export function createAppHomeRoutes(deps?: {
         result.kind === 'sign-in-state-unknown'
       ) {
         return c.json(
-          { success: false, error: result.reason, outcome: result.kind },
+          {
+            success: false,
+            error: result.reason,
+            data: { outcome: result.kind },
+          },
           409,
         );
       }
@@ -689,7 +693,11 @@ export function createAppHomeRoutes(deps?: {
       }
       if (result.kind === 'closed') {
         return c.json(
-          { success: false, error: result.reason, outcome: result.kind },
+          {
+            success: false,
+            error: result.reason,
+            data: { outcome: result.kind },
+          },
           503,
         );
       }

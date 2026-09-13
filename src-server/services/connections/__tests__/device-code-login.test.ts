@@ -818,3 +818,39 @@ describe('a cancel or shutdown during the pre-spawn checks is honoured', () => {
     expect(spawnLogin).not.toHaveBeenCalled();
   });
 });
+
+describe('a cancel reaches only the profile it names', () => {
+  test("cancelling one profile leaves another profile's pending start alone", async () => {
+    const { manager, spawnLogin, capabilities } = harness();
+    const gate: { release?: () => void } = {};
+    capabilities.mockImplementationOnce(
+      (() =>
+        new Promise((resolve) => {
+          gate.release = () => resolve(capabilitiesWith('--device-auth'));
+        })) as never,
+    );
+
+    const other = manager.start('codex', `${PROFILE_DIR}-other`);
+    await vi.waitFor(() => expect(gate.release).toBeTypeOf('function'));
+    manager.cancel(PROFILE_DIR);
+    gate.release?.();
+
+    expect((await other).kind).toBe('started');
+    expect(spawnLogin).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('zero-width characters', () => {
+  test('a URL containing a zero-width character is not relayed', () => {
+    // Without the rejection, the parser would percent-encode it into the path
+    // and relay a URL that looks like the real one but is not.
+    const output = [
+      '   https://auth.openai.com/co\u200bdex/device',
+      '2. Enter this one-time code',
+      '   7IEZ-B1FLE',
+      '',
+    ].join('\n');
+
+    expect(parseDeviceCodePrompt(output)).toBeUndefined();
+  });
+});

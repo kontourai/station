@@ -192,7 +192,8 @@ const UNSAFE_URI_CHARACTERS =
  * The URL Station is willing to relay to a client, or nothing. It must parse,
  * use https, name a host, carry no userinfo (`https://auth.example@evil/`
  * reads as one host and goes to another), stay under a length bound, and hold
- * no control or bidi characters.
+ * no control, bidi-override or zero-width characters. What is relayed is the
+ * parsed `href`, not the text.
  */
 function relayableVerificationUri(candidate: string): string | undefined {
   if (candidate.length > MAX_VERIFICATION_URI_LENGTH) return undefined;
