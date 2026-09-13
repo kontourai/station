@@ -43,7 +43,7 @@ const MAX_RECORD_BYTES = 8192;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-export class ConnectionSigningKeyStoreError extends Error {
+class ConnectionSigningKeyStoreError extends Error {
   constructor(
     readonly code:
       | 'key_store_invalid'
