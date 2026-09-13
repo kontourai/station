@@ -71,7 +71,7 @@ jobs:
       # because of it (station#2306).
       - name: Initialize Tauri Android project
         working-directory: src-desktop
-        run: npx tauri android init --ci --skip-targets-install --config tauri.conf.json
+        run: npx tauri android init --ci --skip-targets-install --config tauri.conf.json --config tauri.android.dev.conf.json
       - name: Apply Dev Android launcher, splash, and label resources
         run: node scripts/apply-android-channel-icons.mjs dev
       - name: Apply native credential bootstrap to the generated namespace
@@ -91,7 +91,7 @@ jobs:
         run: df -h /
       - name: Build Android debug APK and AAB
         working-directory: src-desktop
-        run: STATION_CLIENT_BUILD_REUSE=1 RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --debug --apk --aab --config tauri.conf.json
+        run: STATION_CLIENT_BUILD_REUSE=1 RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --debug --apk --aab --config tauri.conf.json --config tauri.android.dev.conf.json
         env:
           NDK_HOME: "${{ env.ANDROID_HOME }}/ndk/27.0.12077973"
           # Optional secret-free Dev backend origin supplied by repository or
