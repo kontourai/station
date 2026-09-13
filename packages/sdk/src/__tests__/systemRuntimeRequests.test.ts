@@ -510,6 +510,51 @@ describe('systemRuntimeRequests', () => {
         requestCoreUpdateStatus('http://custom.test'),
       ).rejects.toThrow('boom');
     });
+
+    it('throws the server error message alone, with no status fields at all', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ error: 'boom' }),
+      } as Response);
+
+      await expect(
+        requestCoreUpdateStatus('http://custom.test'),
+      ).rejects.toThrow('boom');
+    });
+
+    it.each([
+      ['noUpstream', 'yes'],
+      ['remoteUnreachable', 1],
+    ])(
+      'rejects a non-boolean %s used for state derivation (%p)',
+      async (field, supplied) => {
+        vi.mocked(fetch).mockResolvedValue({
+          ok: true,
+          json: async () => ({ updateAvailable: false, [field]: supplied }),
+        } as Response);
+
+        await expect(
+          requestCoreUpdateStatus('http://custom.test'),
+        ).rejects.toThrow('Core update status is unavailable');
+      },
+    );
+
+    it.each([
+      ['null body', null],
+      ['string body', 'x'],
+    ])(
+      'rejects a %s instead of reading it as a status',
+      async (_label, body) => {
+        vi.mocked(fetch).mockResolvedValue({
+          ok: true,
+          json: async () => body,
+        } as unknown as Response);
+
+        await expect(
+          requestCoreUpdateStatus('http://custom.test'),
+        ).rejects.toThrow('Core update status is unavailable');
+      },
+    );
   });
 
   describe('system identity (update-ux PR2)', () => {
@@ -573,6 +618,68 @@ describe('systemRuntimeRequests', () => {
         'System identity is unavailable',
       );
     });
+
+    it.each([
+      [
+        'instanceId',
+        {
+          bootId: '11111111-1111-4111-8111-111111111111',
+          sha: 'abcdef0123456789abcdef0123456789abcdef01',
+        },
+      ],
+      [
+        'bootId',
+        {
+          instanceId: 'phone-dogfood',
+          sha: 'abcdef0123456789abcdef0123456789abcdef01',
+        },
+      ],
+    ])('rejects a triple missing its %s leg', async (_leg, body) => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => body,
+      } as Response);
+
+      await expect(requestSystemIdentity('http://custom.test')).rejects.toThrow(
+        'System identity is unavailable',
+      );
+    });
+
+    it('drops a malformed shaSource label silently, keeping the identity', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          instanceId: 'phone-dogfood',
+          bootId: '11111111-1111-4111-8111-111111111111',
+          sha: 'abcdef0123456789abcdef0123456789abcdef01',
+          shaSource: 42,
+        }),
+      } as Response);
+
+      const identityResponse =
+        await requestSystemIdentity('http://custom.test');
+      // The triple survives; only the unproven label is gone — no throw, no
+      // fabricated shaSource.
+      expect(identityResponse.instanceId).toBe('phone-dogfood');
+      expect(identityResponse).not.toHaveProperty('shaSource');
+    });
+
+    it.each([
+      ['null body', null],
+      ['string body', 'x'],
+    ])(
+      'rejects a %s instead of reading it as an identity',
+      async (_label, body) => {
+        vi.mocked(fetch).mockResolvedValue({
+          ok: true,
+          json: async () => body,
+        } as unknown as Response);
+
+        await expect(
+          requestSystemIdentity('http://custom.test'),
+        ).rejects.toThrow('System identity is unavailable');
+      },
+    );
 
     it('drops a malformed devicePresentation instead of projecting it', async () => {
       vi.mocked(fetch).mockResolvedValue({
