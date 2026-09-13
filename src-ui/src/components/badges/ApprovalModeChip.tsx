@@ -44,10 +44,11 @@ interface ApprovalModeChipProps {
   /**
    * The mode the adapter last confirmed as actually applied (from
    * `session.configured` / `turn.started` metadata — see
-   * ChatUIState.lastAppliedApprovalMode). Used only to detect "confirmed
-   * client-side but not yet applied server-side" for 'never' (archive#727).
-   * It is not the chip's displayed value — a newer session override is
-   * (station#1933).
+   * ChatUIState.lastAppliedApprovalMode). With no session override it is the
+   * displayed mode (station#1950). A session override outranks it, because
+   * that override is the next turn's request (station#1933); against a 'never'
+   * override it only detects "confirmed client-side but not yet applied
+   * server-side" (archive#727).
    */
   lastAppliedApprovalMode?: unknown;
   onChange: (mode: ApprovalMode) => void;
