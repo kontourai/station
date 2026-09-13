@@ -89,6 +89,8 @@ const updateAppLogLevel = vi.fn();
 vi.mock('@kontourai/station-sdk/app-config', () => ({ updateAppLogLevel }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  // This catalog fixture has no request-scoped account administration authority.
+  useHostRequestAuthorityScope: () => null,
 }));
 const updateConfig = vi.fn();
 const INITIAL_CONFIG = { logLevel: 'info', templateVariables: [] };

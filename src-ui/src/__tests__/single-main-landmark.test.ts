@@ -33,6 +33,8 @@ const PRE_SHELL_MAIN_OWNERS = new Set([
   // Standalone public share routes; they mount their own document shell.
   'views/share/SharedAnswerView.tsx',
   'views/share/SharedAnswerBoundary.tsx',
+  // main.tsx mounts account entry instead of App on standalone /account paths.
+  'views/account/AccountEntryView.tsx',
   // The shell's own landmark.
   'App.tsx',
   // Unreferenced by any route or component (kept out of the sweep's scope
