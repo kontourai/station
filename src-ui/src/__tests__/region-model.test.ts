@@ -1200,6 +1200,34 @@ describe('region model', () => {
       expect(removeRegionPane(both, 'right', 'chat')).toBe(both);
     });
 
+    /**
+     * A close is a relocation and restores the region (#1385), whichever
+     * pane leaves. Reverting `maximized: false` in the kept-panes branch
+     * leaves `bottom` maximized after Chat's close, and the next Chat
+     * reveal lands in `right` UNDER a maximized sibling — hidden.
+     */
+    test('closing a tab restores a maximized region, so the next reveal is not hidden under it', () => {
+      const maximized = updateRegion(both, 'bottom', { maximized: true });
+      const chatClosed = removeRegionPane(maximized, 'bottom', 'chat');
+      expect(chatClosed.bottom).toMatchObject({
+        panes: ['activity'],
+        occupant: 'activity',
+        visible: true,
+        maximized: false,
+      });
+      const revealed = revealSurface(chatClosed, 'chat', 'bottom').arrangement;
+      expect(revealed.right).toMatchObject({ panes: ['chat'], visible: true });
+      expect(
+        (['left', 'right', 'bottom'] as const).filter(
+          (id) => revealed[id].maximized,
+        ),
+      ).toEqual([]);
+      // The selected pane's close restores too.
+      expect(
+        removeRegionPane(maximized, 'bottom', 'activity').bottom,
+      ).toMatchObject({ panes: ['chat'], occupant: 'chat', maximized: false });
+    });
+
     test('moveRegionPanes carries the whole pane set, its order and its selection, and empties the source', () => {
       const moved = moveRegionPanes(both, 'bottom', 'right');
       expect(moved.right).toMatchObject({

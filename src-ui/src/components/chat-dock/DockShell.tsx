@@ -5,6 +5,7 @@ import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
+import { regionHoldsChat } from '../../regions/region-model';
 import type { DockMode } from '../../types';
 import { ChatDockResizeHandle } from './ChatDockResizeHandle';
 
@@ -51,7 +52,10 @@ export function DockShell({
   // follow the pane set, not the pane the region shows. A region that holds
   // Chat and Activity is one shell, and it is Chat's shell whichever tab is
   // selected — so ⌘M keeps working while Chat is behind Activity's tab.
-  const holdsChat = region ? region.panes.includes('chat') : true;
+  const holdsChat =
+    regionId && regionModel
+      ? regionHoldsChat(regionModel.regions, regionId)
+      : true;
   const landmarkLabel = holdsChat
     ? 'Dock'
     : (regionModel?.surfaces.get(occupant ?? '')?.title ?? 'Dock');

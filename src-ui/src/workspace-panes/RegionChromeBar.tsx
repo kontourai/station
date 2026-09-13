@@ -146,10 +146,13 @@ function RegionTabStrip({
               role="tab"
               id={workspacePaneHostTabIdentity(groupId, tab.instanceId)}
               aria-selected={isSelected}
-              aria-controls={workspacePaneHostPanelIdentity(
-                groupId,
-                tab.instanceId,
-              )}
+              // Only the selected pane is mounted (the dock host renders
+              // one tabpanel), so only its tab names a panel that exists.
+              aria-controls={
+                isSelected
+                  ? workspacePaneHostPanelIdentity(groupId, tab.instanceId)
+                  : undefined
+              }
               tabIndex={isSelected ? 0 : -1}
               data-region-tab={tab.surfaceId}
               className="region-tabs__tab"
@@ -172,7 +175,23 @@ function RegionTabStrip({
                 type="button"
                 className="region-tabs__close"
                 aria-label={`Close ${tab.title}`}
-                onClick={() => onClose(tab.surfaceId)}
+                onClick={(event) => {
+                  // The button under focus is about to unmount; keep focus
+                  // in the bar. With two tabs the strip itself goes, so the
+                  // bar's first control is the stable target; with more,
+                  // the tab the model selects next (the neighbour).
+                  const bar =
+                    event.currentTarget.closest<HTMLElement>('.region-chrome');
+                  onClose(tab.surfaceId);
+                  queueMicrotask(() => {
+                    if (document.activeElement !== document.body) return;
+                    const target =
+                      bar?.querySelector<HTMLElement>(
+                        '[role="tab"][aria-selected="true"]',
+                      ) ?? bar?.querySelector<HTMLElement>('button');
+                    target?.focus();
+                  });
+                }}
               >
                 <CloseGlyph />
               </button>

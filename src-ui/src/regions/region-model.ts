@@ -139,6 +139,21 @@ export function chatRegion(
   return occupiedDockRegion(arrangement, 'chat');
 }
 
+/**
+ * Whether `regionId` HOLDS Chat — selected or behind another pane's tab
+ * (#2046 2b, ownership decision D3). The one derivation behind everything
+ * that is Chat's rather than the selected pane's: `#chat-dock`, the "Dock"
+ * landmark, the `dock.maximize` registration (`DockShell`), the persisted
+ * snap key, the project binding's cleanup and the collapse-on-navigate
+ * mirror (`useDockShellChrome`). Two readers of one rule, not two rules.
+ */
+export function regionHoldsChat(
+  arrangement: RegionArrangement,
+  regionId: RegionId,
+): boolean {
+  return arrangement[regionId].panes.includes('chat');
+}
+
 export function foldedDockRegion(
   arrangement: RegionArrangement,
   lastShownRegion: RegionId | null,
@@ -295,8 +310,12 @@ export function placeSurface(
  * Take `surfaceId` out of `regionId`'s panes. A region left with other panes
  * keeps them and its visibility; when the pane leaving was the selected one,
  * the pane at its position (or the last) is selected, the way closing a tab
- * selects its neighbour. An emptied dock region hides (and a hide clears its
- * maximize); an emptied `main` stays visible — the outlet treats a null
+ * selects its neighbour. Either way the region comes out RESTORED: a pane
+ * leaving is a relocation, and every relocation restores (#1385) — a region
+ * left maximized after Chat's close would hide the region the next Chat
+ * reveal places into (index.css hides every non-maximized dock shell under
+ * a maximized one), with ⌘M no longer registered to undo it. An emptied dock
+ * region hides; an emptied `main` stays visible — the outlet treats a null
  * occupant as Home. Shared by `placeSurface` (the region a surface leaves)
  * and `removeRegionPane` (a closed tab), so the two cannot select different
  * neighbours.
@@ -320,6 +339,7 @@ function withoutRegionPane(
             previous.occupant === surfaceId
               ? panes[Math.min(index, panes.length - 1)]
               : previous.occupant,
+          maximized: false,
         }
       : {
           panes,

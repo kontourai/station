@@ -325,8 +325,11 @@ Two facts that follow from the map and are easy to get wrong:
   mount that writes the region key, and only when the two disagree.
   Selection runs one way through the host: it makes the controller's active
   pane follow the arrangement's selected pane (through the controller's own
-  `focusExisting`, which also writes navigation's `pane` param the way a tab
-  click does), and only when the two differ. The tab strip (#2046 2b) never
+  `focusExisting`), and only when the two differ. A region host's controller
+  is constructed with `navigationSelection: false`, so that follow writes no
+  history entry and no `?pane=` param, and an inbound `?pane=` naming one of
+  its panes moves nothing — the model is the only selection authority for a
+  dock region, where the layout hosts keep `?pane=` as theirs. The tab strip (#2046 2b) never
   writes the controller: a tab click is the model's `selectPane`, a close
   its `removePane`, a reorder a `panes` write, the placement grab
   `moveRegionPanes` — so the arrangement stays the one authority and the

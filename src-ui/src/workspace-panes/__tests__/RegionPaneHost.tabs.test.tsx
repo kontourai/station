@@ -147,6 +147,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.localStorage.clear();
   deviceSettingsStore.reloadFromStorage();
@@ -561,6 +562,101 @@ test('⌘M maximizes the region while Chat is not the selected tab (D3)', async 
   await waitFor(() =>
     expect(currentModel().regions.bottom.maximized).toBe(false),
   );
+  // The persisted snap key is Chat's too (`useDockShellChrome`'s own
+  // derivation, not `DockShell`'s): hiding this shell while Chat is behind
+  // Activity's tab writes it. Reverting `shellHoldsChat` to the selected
+  // pane leaves the key unwritten.
+  fireEvent.click(within(shell()).getByLabelText('Hide Activity'));
+  await waitFor(() =>
+    expect(window.localStorage.getItem('station.chatDock.snap')).toBe(
+      'collapsed',
+    ),
+  );
+  fireEvent.click(within(shell()).getByLabelText('Show Activity'));
+  await waitFor(() =>
+    expect(shell().classList.contains('is-collapsed')).toBe(false),
+  );
+});
+
+/**
+ * A close restores the region: closing Chat's tab under ⌘M would otherwise
+ * leave `bottom` maximized with nothing registered to undo it, and the next
+ * Chat reveal — placed into `right`, `bottom` being occupied — renders under
+ * the maximized sibling, which index.css hides. Reverting the kept-panes
+ * `maximized: false` fails the first assertion.
+ */
+test('closing a tab while the region is maximized restores it, and the next Chat reveal is visible', async () => {
+  await renderJoined();
+  act(() => shortcut('dock.maximize').handler());
+  await waitFor(() =>
+    expect(shell().classList.contains('is-maximized')).toBe(true),
+  );
+
+  fireEvent.click(within(shell()).getByLabelText('Close Chat'));
+  await waitFor(() =>
+    expect(currentModel().regions.bottom).toMatchObject({
+      panes: ['activity'],
+      maximized: false,
+    }),
+  );
+  expect(shell().classList.contains('is-maximized')).toBe(false);
+
+  act(() => navigationStore.setDockState(true, false));
+  await waitFor(() =>
+    expect(
+      document.querySelector<HTMLElement>('#chat-dock')?.dataset.region,
+    ).toBe('right'),
+  );
+  expect(document.querySelectorAll('.chat-dock.is-maximized')).toHaveLength(0);
+  expect(currentModel().regions.right.visible).toBe(true);
+});
+
+/**
+ * Closing a tab from the keyboard must not drop focus to `<body>`: the
+ * button under focus unmounts (with two tabs, the whole strip does), so the
+ * bar's first control takes it. Reverting the close handler's refocus fails
+ * the `contains` assertion.
+ */
+test('closing a tab keeps keyboard focus in the region bar', async () => {
+  await renderJoined();
+  const close = within(shell()).getByLabelText('Close Activity');
+  close.focus();
+  expect(document.activeElement).toBe(close);
+  fireEvent.click(close);
+  await waitFor(() =>
+    expect(currentModel().regions.bottom.panes).toEqual(['chat']),
+  );
+  await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+  expect(shell().contains(document.activeElement)).toBe(true);
+});
+
+/**
+ * A shell that BECOMES Chat's adopts Chat's persisted snap: Activity's
+ * region seeds from the default at mount, and when Chat joins it the snap
+ * it reports is the key's, not the default it started from. Reverting the
+ * re-seed leaves `dockSnap` at 'half'.
+ */
+test('a region that gains Chat adopts Chat’s persisted snap', async () => {
+  await renderJoined();
+  fireEvent.click(within(shell()).getByLabelText('Close Chat'));
+  await waitFor(() =>
+    expect(currentModel().regions.bottom.panes).toEqual(['activity']),
+  );
+  expect(document.querySelector('#chat-dock')).toBeNull();
+  window.localStorage.setItem('station.chatDock.snap', 'full');
+
+  act(() => currentModel().placeSurface('chat', 'bottom'));
+  await waitFor(() =>
+    expect(currentModel().regions.bottom).toMatchObject({
+      panes: ['activity', 'chat'],
+      occupant: 'chat',
+    }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+  expect(shell().id).toBe('chat-dock');
+  await waitFor(() => expect(chatProbe.chrome?.dockSnap).toBe('full'));
 });
 
 /**

@@ -24,7 +24,7 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { useProjects } from '../contexts/ProjectsContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { readToolbarHeight } from '../lib/toolbarGeometry';
-import { chatRegion } from '../regions/region-model';
+import { chatRegion, regionHoldsChat } from '../regions/region-model';
 import type { DockMode } from '../types';
 import {
   type DockSlotGeometry,
@@ -282,7 +282,7 @@ export function useDockShellChrome({
   // and the fullscreen pane's local instance are Chat's by construction.
   const shellHoldsChat =
     regionId && regionModel
-      ? regionModel.regions[regionId].panes.includes('chat')
+      ? regionHoldsChat(regionModel.regions, regionId)
       : true;
   const shellPanes =
     regionId && regionModel ? regionModel.regions[regionId].panes : undefined;
@@ -411,6 +411,15 @@ export function useDockShellChrome({
   const [dockSnap, setDockSnap] = useState<DockSnap>(() =>
     shellHoldsChat ? readDockSnap() : DEFAULT_DOCK_SNAP,
   );
+  // A shell that BECOMES Chat's — Chat joins a region that was Activity's
+  // alone (#2046 2a joins rather than displaces) — adopts Chat's persisted
+  // snap the way a mount holding Chat does, so its next `applyDockSnap`
+  // does not overwrite the key with the default it started from.
+  const [seededForChat, setSeededForChat] = useState(shellHoldsChat);
+  if (shellHoldsChat !== seededForChat) {
+    setSeededForChat(shellHoldsChat);
+    if (shellHoldsChat) setDockSnap(readDockSnap());
+  }
   const [liveDragHeight, setLiveDragHeight] = useState<number | null>(null);
   const isCollapsedDragPreview = !readerIsDockOpen && liveDragHeight !== null;
 

@@ -198,12 +198,19 @@ describe('the tab strip writes the model', () => {
     expect(handlers.onCloseTab).not.toHaveBeenCalled();
   });
 
-  test('each tab controls the dock host’s panel by the shared group id', () => {
+  test('the selected tab controls the dock host’s panel by the shared group id; a tab behind it names no panel', () => {
     renderBar();
-    const tab = screen.getByRole('tab', { name: 'Activity' });
+    const tab = screen.getByRole('tab', { name: 'Chat' });
     expect(tab.id).toBeTruthy();
     expect(tab.getAttribute('aria-controls')).toBeTruthy();
     expect(tab.getAttribute('aria-controls')).not.toBe(tab.id);
+    // The dock host mounts one tabpanel — the selected pane's — so an
+    // `aria-controls` on the other tab would point at nothing.
+    expect(
+      screen
+        .getByRole('tab', { name: 'Activity' })
+        .getAttribute('aria-controls'),
+    ).toBeNull();
   });
 
   test('close closes that tab and nothing else', () => {
