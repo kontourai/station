@@ -96,6 +96,35 @@ interface ApiEnvelope<T> {
   session?: unknown;
 }
 
+/** A local execution view uses the same binding owner as engine admission. */
+async function readExecutionProject(
+  access: EnvironmentAccess,
+  slug: string,
+  orchestrationService: OrchestrationService,
+) {
+  const project = (await getProject(
+    access.apiBase,
+    slug,
+    access.requestOptions,
+  )) as
+    | {
+        workingDirectory?: string;
+        defaultWorkspaceIsolation?: 'shared' | 'worktree';
+      }
+    | undefined;
+  if (
+    !project ||
+    access.kind !== 'current' ||
+    !orchestrationService.resolveProjectSessionDirectory
+  )
+    return project;
+  return {
+    ...project,
+    workingDirectory:
+      await orchestrationService.resolveProjectSessionDirectory(slug),
+  };
+}
+
 interface StationHandshake {
   environmentId: string;
 }
@@ -3094,11 +3123,8 @@ export async function delegateTask(
       )) as ExecutionTargetAgentView,
     getConnection: async (access, id) =>
       readConnection(access as DelegationTarget, id),
-    getProject: async (access, slug) =>
-      (await getProject(access.apiBase, slug, access.requestOptions)) as {
-        workingDirectory?: string;
-        defaultWorkspaceIsolation?: 'shared' | 'worktree';
-      },
+    getProject: (access, slug) =>
+      readExecutionProject(access, slug, orchestrationService),
     getProviderAdapter: (provider) =>
       orchestrationService.getProviderAdapter(provider),
   } satisfies Parameters<typeof resolveExecutionTarget>[1];
@@ -3407,14 +3433,7 @@ export async function executeExecutionTargetMessage(
           throw new ForegroundInvocationUnavailableError();
         return structuredClone(capturedProject);
       }
-      return (await getProject(
-        access.apiBase,
-        slug,
-        access.requestOptions,
-      )) as {
-        workingDirectory?: string;
-        defaultWorkspaceIsolation?: 'shared' | 'worktree';
-      };
+      return readExecutionProject(access, slug, orchestrationService);
     },
     getProviderAdapter: (provider) =>
       orchestrationService.getProviderAdapter(provider),

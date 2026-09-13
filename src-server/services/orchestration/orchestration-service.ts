@@ -1088,6 +1088,10 @@ async function resolveStartSessionCwd(
 }
 
 export class OrchestrationService {
+  /** Shared receiver-local path observation used by target planning and start admission. */
+  readonly resolveProjectSessionDirectory?: (
+    slug: string,
+  ) => Promise<string | undefined>;
   readonly sessionCommands: SessionCommandModule;
   private readonly sessionCommandImplementation: SessionCommandImplementation;
   readonly sessionQueries: SessionQueryModule;
@@ -1317,6 +1321,8 @@ export class OrchestrationService {
   })();
 
   constructor(private readonly options: OrchestrationServiceOptions) {
+    this.resolveProjectSessionDirectory =
+      options.resolveProjectSessionDirectory;
     this.nativeOutputDeclarations = createNativeOutputDeclarationOperation({
       authority: this.nativeOutputGrants,
       workspaceForCall: (facts) => facts.workspaceRoot,
