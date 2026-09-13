@@ -20,7 +20,10 @@ import {
   personalControllerTenantId,
 } from '../personal-home-authority-identity.js';
 import { readPlannedHomeAdmissionJournal } from '../planned-home-admission-schema.js';
-import { createPlannedHomeControlRoomWriteAdmissionAdapter } from '../planned-home-control-room-write-adapter.js';
+import {
+  createPlannedHomeControlRoomWriteAdmissionAdapter,
+  plannedHomeControlRoomWriteAdmissionId,
+} from '../planned-home-control-room-write-adapter.js';
 import {
   createPlannedHomeControlSessionAuthority,
   type PlannedHomeControlAdmissionPort,
@@ -265,6 +268,25 @@ test('same proposal id in two room channels derives distinct central identities'
       projectTaskRoomChannelId(secondScope),
     ]),
   );
+});
+
+test('room-write admission id derivation is pinned to a literal digest', () => {
+  // Literal pin: changing the namespace or framing re-keys every admission;
+  // update deliberately with a versioned namespace.
+  // Expected value is sha256(JSON.stringify([
+  //   'station.planned-home-room-write-admission/v1', channelId, proposalId
+  // ])) computed independently with node:crypto.
+  const channelId = projectTaskRoomChannelId({
+    projectId: 'project-alpha',
+    projectSlug: 'project-alpha',
+    taskId: 'task-42',
+  });
+  expect(channelId).toBe(
+    'project-task:384a8f2bfed28ba640bd6fe4388852ae1d812e44bd043ffabcca59b38345abbd',
+  );
+  expect(
+    plannedHomeControlRoomWriteAdmissionId(channelId, 'proposal-0001'),
+  ).toBe('01bc499b5a6afeefc5e77a34aadbaf0946b6f162274435c1c700658b1cdea8a2');
 });
 
 test('configured missing, revoked, and locally denied authority never becomes unmanaged', async () => {
