@@ -27,11 +27,12 @@ import {
   type PluginInstallConsent,
 } from '../../services/plugins/plugin-install-consent.js';
 import {
+  capturePluginRegistryAcquisition,
   installPluginFromSource,
   type PluginInstallTransactionDeps,
   previewInstalledPluginRecovery,
   recoverInstalledPlugin,
-  resolvePluginRegistrySource,
+  resolvePluginRegistryInstall,
 } from '../../services/plugins/plugin-install-transaction.js';
 import { localPluginInstallationState } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
@@ -46,13 +47,6 @@ import {
   requiredPermissionsForManifest,
 } from '../../services/plugins/plugin-permissions.js';
 import {
-  isRegistryAcquisitionRefusal,
-  RegistryAcquisitionRefused,
-  registryAcquisitionRefusalDetails,
-  registryAcquisitionRevision,
-  verifyRetainedRegistryAcquisition,
-} from '../../services/plugins/registry-acquisition.js';
-import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
   detectPluginConflicts,
   detectWorkspacePaneCatalogConflicts,
   fetchPluginSource,
@@ -60,6 +54,14 @@ import type { RegistryTrustPolicyAuthority } from '../../services/plugins/regist
   PluginPreviewUnsupportedDependencyError,
   resolvePluginDependencies,
 } from '../../services/plugins/plugin-source.js';
+import {
+  isRegistryAcquisitionRefusal,
+  RegistryAcquisitionRefused,
+  registryAcquisitionRefusalDetails,
+  registryAcquisitionRevision,
+  verifyRetainedRegistryAcquisition,
+} from '../../services/plugins/registry-acquisition.js';
+import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   errorMessage,
@@ -76,14 +78,6 @@ import {
 } from '../system/configuration-activation.js';
 import { buildPlugin } from './plugin-bundles.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
-import {
-  capturePluginRegistryAcquisition,
-  installPluginFromSource,
-  type PluginInstallSharedDeps,
-  previewInstalledPluginRecovery,
-  recoverInstalledPlugin,
-  resolvePluginRegistryInstall,
-} from './plugin-install-shared.js';
 
 interface PluginInstallRouteDeps {
   installationHost?: PluginInstallationHost;

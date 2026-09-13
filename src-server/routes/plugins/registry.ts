@@ -6,12 +6,12 @@ import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import { observePluginGrantRevisions } from '../../services/plugins/plugin-permissions.js';
-import { isRecord } from '../../utils/is-record.js';
 import {
   isRegistryAcquisitionRefusal,
   registryAcquisitionRefusalDetails,
 } from '../../services/plugins/registry-acquisition.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
+import { isRecord } from '../../utils/is-record.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 /**
  * Registry Routes — browse, install, and uninstall agents and tools

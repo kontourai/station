@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
-import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL } from '@kontourai/station-contracts/registry-trust';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 
 export { AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL } from '@kontourai/station-contracts/registry-trust';
 

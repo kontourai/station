@@ -61,6 +61,7 @@ import {
   quiesceAllPluginPublicServerModules,
   quiescePluginPublicServerModule,
 } from '../../services/plugins/plugin-public-server.js';
+import {
   isRegistryAcquisitionRefusal,
   registryAcquisitionRefusalDetails,
 } from '../../services/plugins/registry-acquisition.js';

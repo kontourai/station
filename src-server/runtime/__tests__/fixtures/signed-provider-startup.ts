@@ -11,7 +11,7 @@ import {
 import {
   capturePluginRegistryAcquisition,
   installPluginFromSource,
-} from '../../../routes/plugins/plugin-install-shared.js';
+} from '../../../services/plugins/plugin-install-transaction.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { derivePluginConsentBasis } from '../../../services/plugins/plugin-install-consent.js';
 import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
