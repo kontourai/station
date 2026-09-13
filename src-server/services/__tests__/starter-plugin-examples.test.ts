@@ -159,26 +159,53 @@ function hasRenderedImplementation(
 }
 
 describe('starter plugin examples', () => {
-  test('minimal example installs as an immediately usable layout', async () => {
+  /**
+   * The minimal example is the first-party portable starter (#265): an Agent
+   * Plugins 1.0 package whose only Station contribution is one Workspace Pane.
+   * The manifest is read through the loader the product installs with, so
+   * the assertions bind to what Station admits rather than to a hand-read
+   * JSON shape: the `minimal-layout` package identity survives the migration,
+   * the single Pane names that package as its provenance and a
+   * `plugin-component` renderer the entrypoint really registers with rendered
+   * output, and no legacy `layout` is co-declared. The loader refuses both
+   * channels in one manifest, so a leftover layout.json would be an install
+   * failure, not an inert file; its absence is pinned on disk as well.
+   */
+  test('minimal example declares one portable Workspace Pane its entrypoint renders', async () => {
     const pluginDir = join(examplesDir, 'minimal-layout');
     const manifest = await readPluginManifestFile(
       join(pluginDir, 'plugin.json'),
     );
-    const layout = readJson<{
-      icon: string;
-      tabs: Array<{ component: string }>;
-    }>(join(pluginDir, manifest.layout?.source ?? 'missing-layout.json'));
-    const entrypoint = readFileSync(
-      join(pluginDir, manifest.entrypoint ?? ''),
-      'utf-8',
-    );
 
-    expect(manifest.layout?.slug).toBe('minimal');
-    expect(layout.icon).toBe('🧩');
-    expect(layout.tabs.map((tab) => tab.component)).toEqual([
-      'minimal-workspace',
-    ]);
-    expect(entrypoint).toContain("'minimal-workspace'");
+    expect(manifest).toMatchObject({
+      name: 'minimal-layout',
+      displayName: 'Minimal Workspace',
+      version: '1.0.0',
+    });
+    expect(manifest.layout).toBeUndefined();
+    expect(manifest.layouts).toBeUndefined();
+    expect(manifest.build).toBeUndefined();
+    expect(existsSync(join(pluginDir, 'layout.json'))).toBe(false);
+    expect(manifest.permissions).toContain('navigation.dock');
+
+    const panes = manifest.workspacePanes ?? [];
+    expect(panes).toHaveLength(1);
+    expect(panes[0]).toMatchObject({
+      id: 'pane:plugin%3Aminimal-layout:minimal:workspace',
+      name: 'Minimal Workspace',
+      renderer: { kind: 'plugin-component', name: 'minimal-workspace' },
+      provenance: { origin: 'plugin', pluginId: 'minimal-layout' },
+    });
+
+    expect(manifest.entrypoint).toBeTruthy();
+    const entrypointPath = join(pluginDir, manifest.entrypoint ?? '');
+    expect(existsSync(entrypointPath)).toBe(true);
+    const { registered } = exportedComponentRegistrations(entrypointPath);
+    const implementation = registered.get('minimal-workspace');
+    expect(implementation).toBeDefined();
+    expect(implementation && hasRenderedImplementation(implementation)).toBe(
+      true,
+    );
   });
 
   test('registry manifest curates the Phase 2 starter set', () => {
@@ -245,7 +272,8 @@ describe('starter plugin examples', () => {
 
   /**
    * #765 D1 class pin, over the WHOLE bundled default registry rather than
-   * one plugin. Every layout component a bundled plugin's layout declares
+   * one plugin. Every plugin component a bundled plugin declares — through a
+   * legacy layout tab or a Workspace Pane's `plugin-component` renderer —
    * must be a key in its exported `components` object, backed by a component
    * function with rendered output. The old text search only proved that a
    * quoted name occurred somewhere in the entrypoint; a comment, constant,
@@ -258,7 +286,7 @@ describe('starter plugin examples', () => {
    * install-path half of the defect — a registry face that materialized the
    * tree without ever building it — is pinned in registry.routes.test.ts.
    */
-  test('every bundled default-registry plugin declares layout components its entrypoint registers', async () => {
+  test('every bundled default-registry plugin declares plugin components its entrypoint registers', async () => {
     const defaultRegistry = readJson<{
       plugins: Array<{ id: string; source: string }>;
     }>(join(examplesDir, 'registry', 'default.json'));
@@ -272,28 +300,45 @@ describe('starter plugin examples', () => {
 
       expect(manifest.build, `${entry.id}: manifest.build`).toBeUndefined();
 
-      if (!manifest.layout) continue;
+      const declared: Array<{ site: string; component: string }> = [];
+      if (manifest.layout) {
+        const layout = readJson<{
+          tabs?: Array<{ id: string; component?: unknown }>;
+        }>(join(pluginDir, manifest.layout.source));
+        for (const tab of layout.tabs ?? []) {
+          // Only plain-string components are plugin components the bundle must
+          // register; builtin/mcp references resolve elsewhere.
+          if (typeof tab.component !== 'string') continue;
+          declared.push({
+            site: `layout tab '${tab.id}'`,
+            component: tab.component,
+          });
+        }
+      }
+      for (const pane of manifest.workspacePanes ?? []) {
+        if (pane.renderer.kind !== 'plugin-component') continue;
+        declared.push({
+          site: `workspace pane '${pane.id}'`,
+          component: pane.renderer.name,
+        });
+      }
+      if (declared.length === 0) continue;
+
       expect(
         manifest.entrypoint,
-        `${entry.id}: a layout plugin needs an entrypoint to build a bundle`,
+        `${entry.id}: a plugin declaring plugin components needs an entrypoint to build a bundle`,
       ).toBeTruthy();
       const entrypointPath = join(pluginDir, manifest.entrypoint ?? '');
       const { registered } = exportedComponentRegistrations(entrypointPath);
-      const layout = readJson<{
-        tabs?: Array<{ id: string; component?: unknown }>;
-      }>(join(pluginDir, manifest.layout.source));
-      for (const tab of layout.tabs ?? []) {
-        // Only plain-string components are plugin components the bundle must
-        // register; builtin/mcp references resolve elsewhere.
-        if (typeof tab.component !== 'string') continue;
-        const implementation = registered.get(tab.component);
+      for (const { site, component } of declared) {
+        const implementation = registered.get(component);
         expect(
           implementation,
-          `${entry.id}: layout tab '${tab.id}' declares component '${tab.component}' the entrypoint never registers`,
+          `${entry.id}: ${site} declares component '${component}' the entrypoint never registers`,
         ).toBeDefined();
         expect(
           implementation && hasRenderedImplementation(implementation),
-          `${entry.id}: registered component '${tab.component}' has no rendered implementation`,
+          `${entry.id}: registered component '${component}' has no rendered implementation`,
         ).toBe(true);
       }
     }
