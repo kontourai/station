@@ -740,12 +740,6 @@ async function reportUnauthorized(
 ): Promise<void> {
   if (response.status !== 401 || opts?.authentication === 'omit') return;
   if (configured && sameOrigin(url, configured.origin)) {
-    if (
-      response.headers.get(ACCOUNT_AUTHENTICATION_FAILURE_HEADER) === 'account'
-    ) {
-      await awaitCredentialReport(configured.onAccountUnauthorized?.());
-      return;
-    }
     // Awaited so the response boundary is ordered after the transition this
     // report causes. A store that serializes writes across documents (Web
     // Locks) applies them in a lock callback, so without this a caller that
@@ -753,7 +747,11 @@ async function reportUnauthorized(
     // user-visible contract the recovery suite pins ("the banner is gone the
     // moment the accepted response resolves") held only where the store
     // happened to be synchronous. Bounded — see `awaitCredentialReport`.
-    await awaitCredentialReport(configured.onUnauthorized?.());
+    await awaitCredentialReport(
+      response.headers.get(ACCOUNT_AUTHENTICATION_FAILURE_HEADER) === 'account'
+        ? configured.onAccountUnauthorized?.()
+        : configured.onUnauthorized?.(),
+    );
   }
 }
 
