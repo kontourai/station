@@ -579,6 +579,10 @@ interface OrchestrationServiceOptions {
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
   listProjects?: () => AttachedProjectRoot[];
+  /** Destination-local resource resolution for new starts and missing-cwd recovery. */
+  resolveProjectSessionDirectory?: (
+    slug: string,
+  ) => Promise<string | undefined>;
   /** Private exact PR point read; it never shares the public route's branch resolver. */
   nativeDeclaredPullRequestResolver?: {
     read(input: {
@@ -926,12 +930,16 @@ function isWithinDirectory(root: string, candidate: string): boolean {
  * never consulted. See `project-resource-shadow.ts` for why the migration is
  * shadowed before it is flipped.
  */
-function resolveStartSessionCwd(
+// Runtime composition resolves the current local resource before containment and
+// engine invocation. Embedded consumers without that callback retain legacy cwd
+// behavior; recovered sessions with a persisted cwd retain their original path.
+async function resolveStartSessionCwd(
   input: ProviderSessionStartInput,
   listProjects?: () => AttachedProjectRoot[],
   observeShadow?: (sample: CwdShadowSample) => void,
   admittedWorkspace?: ForegroundInvocationAdmission['provisionedWorkspace'],
-): ProviderSessionStartInput {
+  resolveProjectDirectory?: (slug: string) => Promise<string | undefined>,
+): Promise<ProviderSessionStartInput> {
   const rawProjectSlug = input.metadata?.projectSlug;
   const projectSlug =
     typeof rawProjectSlug === 'string' && rawProjectSlug
@@ -981,6 +989,10 @@ function resolveStartSessionCwd(
       provider: input.provider,
       projectCwd,
     });
+  }
+
+  if (projectSlug && resolveProjectDirectory) {
+    projectCwd = await resolveProjectDirectory(projectSlug);
   }
 
   const cwd = suppliedCwd ?? projectCwd;
@@ -1076,6 +1088,10 @@ function resolveStartSessionCwd(
 }
 
 export class OrchestrationService {
+  /** Shared receiver-local path observation used by target planning and start admission. */
+  readonly resolveProjectSessionDirectory?: (
+    slug: string,
+  ) => Promise<string | undefined>;
   readonly sessionCommands: SessionCommandModule;
   private readonly sessionCommandImplementation: SessionCommandImplementation;
   readonly sessionQueries: SessionQueryModule;
@@ -1305,6 +1321,8 @@ export class OrchestrationService {
   })();
 
   constructor(private readonly options: OrchestrationServiceOptions) {
+    this.resolveProjectSessionDirectory =
+      options.resolveProjectSessionDirectory;
     this.nativeOutputDeclarations = createNativeOutputDeclarationOperation({
       authority: this.nativeOutputGrants,
       workspaceForCall: (facts) => facts.workspaceRoot,
@@ -4220,7 +4238,7 @@ export class OrchestrationService {
             reviewIsolation: _untrustedReviewIsolation,
             ...publicStartInput
           } = input as ProviderSessionStartInput;
-          let startInput = resolveStartSessionCwd(
+          let startInput = await resolveStartSessionCwd(
             normalizeOmittedModelId(
               stripReservedCapabilityMetadata(publicStartInput),
             ),
@@ -4228,6 +4246,7 @@ export class OrchestrationService {
             this.options.observeCwdShadow,
             internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
               readExecutionWorkspaceBinding(internal?.executionWorkspace),
+            this.options.resolveProjectSessionDirectory,
           );
           if (internal?.reviewIsolation) {
             startInput = {
@@ -7087,6 +7106,8 @@ export class OrchestrationService {
               input,
               this.options.listProjects,
               this.options.observeCwdShadow,
+              undefined,
+              this.options.resolveProjectSessionDirectory,
             ),
     };
   }

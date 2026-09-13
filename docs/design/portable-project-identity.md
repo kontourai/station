@@ -1,5 +1,19 @@
 # Design: portable Project identity — remote-keyed resources, per-Station bindings
 
+> Current implementation note: new engine starts resolve the primary resource
+> through `project-session-directory.ts` in runtime composition. An explicit
+> local binding overrides legacy `workingDirectory`; missing, drifted or
+> unverifiable Git checkouts refuse execution. Directory-less local-only
+> Projects retain their organizational/global behavior. Caller-supplied paths
+> must fit the resolved root unless the existing owned-worktree admission
+> authorizes them. Recovery fills an absent cwd using the same resolver and
+> preserves an already persisted cwd. This does not prove receiving-Station
+> authorization, compute consent, execution leases or physical fleet delivery.
+> The dated migration inventory below is historical; live scope is tracked in
+> [#106](https://github.com/kontourai/station/issues/106) and
+> [#483](https://github.com/kontourai/station/issues/483).
+
+
 > Status: **draft for owner review (2026-08-01, revision 2); tracking issue
 > [#1425](https://github.com/kontourai/station/issues/1425).** Twelve open
 > questions are open — see §9, each with a recommendation; OQ-12 is explicitly
