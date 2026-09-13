@@ -20,6 +20,7 @@ export function createProjectSessionDirectoryResolver(
       const resource = manifest?.repos.find(
         (entry) => entry.id === result.resourceId,
       );
+      // Presence only: path expansion and filesystem reads belong to the resolver above.
       if (
         !project.workingDirectory &&
         (!manifest || resource?.kind === 'local-only')
