@@ -3,7 +3,6 @@ import {
   WORKSPACE_ACTIVITY_PANE_INSTANCE,
 } from '@kontourai/station-contracts/workspace-activity-pane';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { PageFrame, type PageFrameSpec } from '../components/page-frame';
 import { SkeletonBlock } from '../components/Skeleton';
@@ -12,7 +11,6 @@ import {
   type SurfaceIntentRecord,
   useRegionModel,
 } from '../contexts/RegionModelContext';
-import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
 import {
   type ActivityWorkspacePaneBinding,
@@ -129,34 +127,18 @@ export function ActivityRegionShell(_props: { regionId: 'main' }) {
 }
 
 /**
- * Activity as a pane of a dock region's host (#2045): the shared dock header
- * — the SAME `ChatDockHeader` Chat's pane renders, driven by the chrome the
- * region's `DockShell` hands down — over the pane inside `.dock-slot__body`,
- * the one scroll container every non-Chat dock occupant renders in
- * (archive#4460, pinned by `ActivityRegionShell.dock-body.test.tsx`).
+ * Activity as a pane of a dock region's host (#2045): the pane inside
+ * `.dock-slot__body`, the one scroll container every non-Chat dock occupant
+ * renders in (archive#4460, pinned by `ActivityRegionShell.dock-body.test.tsx`).
+ * No bar of its own since #2046 2b: the region's chrome bar — placement,
+ * tab strip, maximize, visibility — is `RegionChromeBar`, rendered once by
+ * the region host above every pane, and Activity has no toolbar content of
+ * its own to add to it.
  */
-export function ActivityDockPane({ chrome }: { chrome: DockShellChrome }) {
+export function ActivityDockPane() {
   return (
-    <>
-      <ChatDockHeader
-        regionVisible={chrome.isDockOpen}
-        shellMaximized={chrome.isDockMaximized}
-        canMaximize={chrome.canMaximize}
-        showMaximizeShortcut={chrome.ownsMaximizeShortcut}
-        restoreSnap={chrome.dockSnap}
-        surfaceShortcutId={chrome.surfaceShortcutId}
-        // From the chrome, which derives it from the region's occupant —
-        // one derivation for every shell's visibility name (#1386).
-        surfaceTitle={chrome.surfaceTitle}
-        isDragging={chrome.isDragging}
-        onDockSnap={chrome.applyDockSnap}
-        availableDockSlotPlacements={chrome.availableDockSlotPlacements}
-        effectiveDockSlotPlacement={chrome.effectiveDockSlotPlacement}
-        onDockPlacementChange={chrome.commitDockPlacement}
-      />
-      <div className="dock-slot__body">
-        <ActivityPane />
-      </div>
-    </>
+    <div className="dock-slot__body">
+      <ActivityPane />
+    </div>
   );
 }

@@ -83,9 +83,7 @@ function Harness({
           {shell ? (
             // Activity as a dock pane, in the shell the region host would
             // mount around it (#2045): the pane takes the intent.
-            <DockShell regionId="right">
-              {(chrome) => <ActivityDockPane chrome={chrome} />}
-            </DockShell>
+            <DockShell regionId="right">{() => <ActivityDockPane />}</DockShell>
           ) : null}
           {host ? <RegionShells /> : null}
         </RegionModelProvider>

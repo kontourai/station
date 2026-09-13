@@ -9,7 +9,9 @@
  * Only Chat's pane renderer is mocked (it would mount the whole chat data
  * stack), so RegionShells → `RegionPaneHost` → `DockShell` →
  * `useDockShellChrome` is the shipped path (#2045: the host is the REGION's,
- * one per occupied dock region, and Chat is a pane of it).
+ * one per occupied dock region, and Chat is a pane of it; #2046 2b: the
+ * region bar and its tab strip render above the panes, and a region holding
+ * Chat is Chat's shell whichever tab it shows).
  */
 
 import {
@@ -570,11 +572,13 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
    * #2046 2a, decision 3: the retired "Swap in Activity" under the Bottom
    * heading no longer relocates Chat. Activity JOINS `bottom`'s panes,
    * selected, and Chat stays behind its tab in the same region — the shell
-   * node is the same `bottom` shell, now labelled by the pane it shows, and
-   * navigation's placement is unchanged (no `setDockMode`). Until 2b's tab
-   * strip, Chat's tab is reached through its chord: ⌘D selects it back.
-   * Reverting to displacement fails the `right` assertion (it would hold
-   * Chat) and the `setDockMode` one (it would be called with 'right').
+   * node is the same `bottom` shell, and navigation's placement is unchanged
+   * (no `setDockMode`). #2046 2b: the shell is Chat's whichever tab shows
+   * (D3 — it keeps `#chat-dock` and the "Dock" landmark), the region bar
+   * renders both tabs with Activity's pressed, and ⌘D selects Chat's tab
+   * back. Reverting to displacement fails the `right` assertion (it would
+   * hold Chat) and the `setDockMode` one (it would be called with 'right');
+   * reverting D3 fails the `#chat-dock` assertion after the join.
    */
   test('the default Bottom placement joins Activity to Chat’s region; ⌘D selects Chat’s tab back', async () => {
     seedPlacement('bottom', 'open');
@@ -593,18 +597,23 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     expect(currentRegionModel().regions.right.panes).toEqual([]);
     await waitFor(() =>
       expect(
-        document.querySelector('section[aria-label="Activity"]'),
-      ).not.toBeNull(),
+        within(chatShell)
+          .getByRole('tab', { name: 'Activity' })
+          .getAttribute('aria-selected'),
+      ).toBe('true'),
     );
     // One shell, the same node: `bottom`'s host stayed mounted through the
     // pane-set change (no occupant key remount, decision 4).
     expect(shells()).toHaveLength(1);
     expect(chatShell.isConnected).toBe(true);
     expect(chatShell.dataset.region).toBe('bottom');
-    expect(chatShell.getAttribute('aria-label')).toBe('Activity');
-    // Chat is behind Activity's tab: not on screen, so its shell id is not
-    // claimed by anything (the shell labels by the pane it shows).
-    expect(document.querySelector('#chat-dock')).toBeNull();
+    expect(chatShell.getAttribute('aria-label')).toBe('Dock');
+    expect(document.querySelector('#chat-dock')).toBe(chatShell);
+    expect(
+      within(chatShell)
+        .getByRole('tab', { name: 'Chat' })
+        .getAttribute('aria-selected'),
+    ).toBe('false');
     expect(navigationStore.getSnapshot().dockMode).toBe('bottom');
     expect(dockModeWrite).not.toHaveBeenCalled();
 
@@ -613,8 +622,13 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       expect(currentRegionModel().regions.bottom.occupant).toBe('chat'),
     );
     await waitFor(() =>
-      expect(document.querySelector('#chat-dock')).toBe(chatShell),
+      expect(
+        within(chatShell)
+          .getByRole('tab', { name: 'Chat' })
+          .getAttribute('aria-selected'),
+      ).toBe('true'),
     );
+    expect(document.querySelector('#chat-dock')).toBe(chatShell);
     expect(currentRegionModel().regions.bottom.visible).toBe(true);
   });
 
@@ -758,14 +772,23 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       size: 600,
     });
     await waitFor(() => expect(shells()).toHaveLength(1));
-    // `bottom`'s host is the same node, now showing Activity; `right`'s host
-    // unmounted with its last pane.
+    // `bottom`'s host is the same node, now showing Activity behind a tab
+    // strip; `right`'s host unmounted with its last pane. The one shell is
+    // still Chat's (#2046 2b, D3): `#chat-dock`, "Dock".
     expect(chatShell?.isConnected).toBe(true);
     expect(activityShell.isConnected).toBe(false);
-    expect(document.querySelector('section[aria-label="Activity"]')).toBe(
-      chatShell,
-    );
-    expect(document.querySelector('#chat-dock')).toBeNull();
+    expect(document.querySelector('section[aria-label="Activity"]')).toBeNull();
+    expect(document.querySelector('#chat-dock')).toBe(chatShell);
+    expect(chatShell?.getAttribute('aria-label')).toBe('Dock');
+    if (!chatShell) throw new Error('chat shell must render');
+    expect(
+      within(chatShell)
+        .getAllByRole('tab')
+        .map((tab) => [tab.textContent, tab.getAttribute('aria-selected')]),
+    ).toEqual([
+      ['Chat', 'false'],
+      ['Activity', 'true'],
+    ]);
     expect(navigationStore.getSnapshot().dockMode).toBe('bottom');
     await act(async () => Promise.resolve());
     expect(dockModeWrite).not.toHaveBeenCalled();
@@ -793,12 +816,18 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     act(() => currentRegionModel().placeSurface('activity', 'bottom'));
 
     await waitFor(() => expect(shells()).toHaveLength(1));
-    const activityShell = document.querySelector<HTMLElement>(
-      'section[aria-label="Activity"]',
-    );
-    if (!activityShell) throw new Error('Activity shell never rendered');
+    // The one shell is Chat's region's, showing Activity's tab (D3).
+    const activityShell = document.querySelector<HTMLElement>('#chat-dock');
+    if (!activityShell) throw new Error('the joined shell never rendered');
     expect(activityShell.dataset.region).toBe('bottom');
     expect(activityShell).toBe(chatShell);
+    await waitFor(() =>
+      expect(
+        within(activityShell)
+          .getByRole('tab', { name: 'Activity' })
+          .getAttribute('aria-selected'),
+      ).toBe('true'),
+    );
     expect(currentRegionModel().regions.bottom).toMatchObject({
       panes: ['chat', 'activity'],
       occupant: 'activity',
@@ -902,38 +931,40 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     );
     expect(clearance('--region-right-size')).toBe('');
 
+    // Activity JOINS Chat's region (#2046 2a): one shell, still Chat's
+    // (#2046 2b, D3 — `#chat-dock` stays whichever tab shows), no tab strip
+    // on a coarse device, Activity selected.
     act(() => currentRegionModel().placeSurface('activity', 'right'));
-    await waitFor(() => expect(shells()).toHaveLength(1));
-    expect(
-      document.querySelector('section[aria-label="Activity"]'),
-    ).not.toBeNull();
-    expect(document.querySelectorAll('#chat-dock')).toHaveLength(0);
+    await waitFor(() =>
+      expect(currentRegionModel().regions.right.occupant).toBe('activity'),
+    );
+    expect(shells()).toHaveLength(1);
+    expect(document.querySelectorAll('#chat-dock')).toHaveLength(1);
+    expect(document.querySelector('section[aria-label="Activity"]')).toBeNull();
+    expect(shell.getAttribute('aria-label')).toBe('Dock');
+    expect(within(shell).queryByRole('tablist')).toBeNull();
     // #917: at this width the toolbar renders no region control at all, so the
     // `⋯` menu below is the only route. Asserted here so a regression that
     // brings the fieldset back cannot hide behind the commands still working.
     expect(document.querySelector('.app-toolbar__regions')).toBeNull();
+    // D2: the folded rows are the region's panes — the selected pane's row
+    // is the region's Hide, the other pane's row selects it.
     selectRegionCommand('Show Chat in the dock');
     await waitFor(() =>
-      expect(document.querySelectorAll('#chat-dock')).toHaveLength(1),
+      expect(currentRegionModel().regions.right.occupant).toBe('chat'),
     );
     expect(shells()).toHaveLength(1);
     selectRegionCommand('Show Activity in the dock');
     await waitFor(() =>
-      expect(
-        document.querySelector('section[aria-label="Activity"]'),
-      ).not.toBeNull(),
+      expect(currentRegionModel().regions.right.occupant).toBe('activity'),
     );
     expect(shells()).toHaveLength(1);
     // #2046 2a: Activity joined Chat's region above, so hiding Activity hides
-    // that one region — its shell stays mounted, collapsed, labelled by the
-    // pane it shows — and showing Activity expands it again.
+    // that one region — its shell stays mounted, collapsed — and showing
+    // Activity expands it again.
     selectRegionCommand('Hide Activity from the dock');
     await waitFor(() =>
-      expect(
-        document
-          .querySelector('section[aria-label="Activity"]')
-          ?.classList.contains('is-collapsed'),
-      ).toBe(true),
+      expect(shell.classList.contains('is-collapsed')).toBe(true),
     );
     expect(currentRegionModel().regions.right).toMatchObject({
       panes: ['chat', 'activity'],
@@ -942,11 +973,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     });
     selectRegionCommand('Show Activity in the dock');
     await waitFor(() =>
-      expect(
-        document
-          .querySelector('section[aria-label="Activity"]')
-          ?.classList.contains('is-collapsed'),
-      ).toBe(false),
+      expect(shell.classList.contains('is-collapsed')).toBe(false),
     );
 
     /**

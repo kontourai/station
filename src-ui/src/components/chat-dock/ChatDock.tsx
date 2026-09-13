@@ -413,7 +413,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     isDockMaximized,
     isMobile,
     visualViewport,
-    availableDockSlotPlacements,
     effectiveDockSlotPlacement,
     commitDockPlacement,
   } = chrome;
@@ -569,7 +568,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const {
     dockSnap,
     dockHeight,
-    isDragging,
     applyDockSnap,
     restoreDockToDocked,
     onMobileHeaderDragPointerDown,
@@ -2013,6 +2011,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 onRestoreDock: () => applyDockSnap('half'),
                 isDockMaximized: isPaneMaximized,
                 dockControls: !isFullscreenPlacement,
+                // The region's other panes (#2046 2b): a coarse device has
+                // no tab strip, so the sheet is where a pane sharing Chat's
+                // region is reached. From the chrome, which derives it from
+                // the region model this renderer may not read.
+                regionPanes: chrome.regionPanes,
+                onSelectRegionPane: chrome.selectRegionPane,
               }}
             />
           ) : (
@@ -2120,24 +2124,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 onNewChat: () => setShowNewChatModal(true),
                 setShowChatSettings,
               }}
-              isDragging={isDragging}
-              onDockSnap={applyDockSnap}
+              // The region's own controls — placement, maximize, visibility,
+              // the tab strip — are the region bar's (`RegionChromeBar`,
+              // #2046 2b); this is Chat's toolbar content, rendered into
+              // that bar's slots.
               fullscreen={isFullscreenPlacement}
-              availableDockSlotPlacements={availableDockSlotPlacements}
-              effectiveDockSlotPlacement={effectiveDockSlotPlacement}
-              onDockPlacementChange={commitDockPlacement}
               regionVisible={isDockOpen}
-              shellMaximized={isDockMaximized}
-              // #1386: Chat's own header said "Hide dock region" while every
-              // other shell said "Hide <title>", because this was the one
-              // `ChatDockHeader` that passed no title. From the chrome, not
-              // from the registry: Chat's renderer is not allowed to read the
-              // region model (`region-surface-boundary.test.ts`), and the
-              // chrome already derives the shell's shortcut id the same way.
-              surfaceTitle={chrome.surfaceTitle}
-              canMaximize={chrome.canMaximize}
-              showMaximizeShortcut={chrome.ownsMaximizeShortcut}
-              surfaceShortcutId={chrome.surfaceShortcutId}
               moreActions={importedSessionId ? [] : dockMoreActions}
               // #3309: the tab strip's controls fold into the header — one
               // chrome bar, every reclaimed pixel is transcript space. Only

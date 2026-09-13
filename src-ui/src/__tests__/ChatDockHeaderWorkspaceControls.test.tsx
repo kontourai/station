@@ -64,16 +64,10 @@ function renderHeader(
       onNewChat: vi.fn(),
       setShowChatSettings: vi.fn(),
     },
-    isDragging: false,
-    onDockSnap: vi.fn(),
-    availableDockSlotPlacements: ['left', 'bottom', 'right'],
-    effectiveDockSlotPlacement: 'bottom',
-    onDockPlacementChange: vi.fn(),
+    // The region's controls (placement, maximize, visibility) left this
+    // header for the region bar with #2046 2b; only the pane's own toolbar
+    // props remain.
     regionVisible: true,
-    shellMaximized: false,
-    // Chat's shell. Required since #1386, which retired the "dock region"
-    // fallback that only Chat's own header ever rendered.
-    surfaceTitle: 'Chat',
     ...overrides,
   };
   return {
@@ -422,16 +416,17 @@ describe('one-bar rule (#3309)', () => {
             button.getAttribute('aria-label') ?? button.textContent ?? '',
         ),
     ).toEqual([
-      'Move the dock',
       // Open/New are labelled by their visible text; their chords are in the
       // tooltips ("Open Conversation", "New Chat"), which is where every
       // shortcut in this bar lives since #1536 F retired the keycap spans.
+      // The placement grab, maximize and the visibility chevron that used to
+      // bracket these are the REGION's since #2046 2b and render in the
+      // region bar (`RegionChromeBar.test.tsx` pins them there).
       'Open',
       'New',
       'More dock actions',
-      'Expand dock region to workspace',
-      'Hide Chat',
     ]);
+    expect(screen.queryByLabelText('Hide Chat')).toBeNull();
     // The gear is a row of that one menu now, not a control of its own.
     expect(screen.queryByRole('button', { name: 'Chat settings' })).toBeNull();
   });

@@ -7,7 +7,13 @@ import {
   restoreWorkspacePaneHostDocument,
   type WorkspacePaneHostDocumentV1,
 } from '@kontourai/station-contracts/workspace-pane-host';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { DockShell } from '../components/chat-dock/DockShell';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
@@ -18,6 +24,8 @@ import {
   regionSurfacePane,
 } from '../regions/region-surface-panes';
 import type { DockMode } from '../types';
+import { RegionChromeBar, type RegionChromeTab } from './RegionChromeBar';
+import { RegionChromeSlotsContext } from './RegionChromeSlots';
 import { WorkspacePaneHost } from './WorkspacePaneHost';
 import type { WorkspacePaneHostOpenAction } from './WorkspacePaneHostOpenContext';
 import {
@@ -255,15 +263,19 @@ export type RenderActivityPane = (
 /**
  * One dock region's pane host (#2045): `DockShell` (the one dock chrome shell
  * — root box, resize handle, geometry/snap/drag state,
- * `dock.toggle`/`dock.maximize`) around a chromeless `WorkspacePaneHost`
- * holding the region's document, whose panes are the surfaces placed there.
- * Chat and Activity both render through it; the `presentation` stays
- * `chromeless` until slice 2b gives a region tabs, so of several panes the
- * host shows the SELECTED one and the rest are reachable through their
- * chord, the toolbar and `showSurface` (#2046 2a). The shell's geometry
- * report goes to the clearance reducer, one entry per rendered region (#928;
- * the reducer is the one writer of the CSS variables,
- * archive#3902/archive#3929).
+ * `dock.toggle`/`dock.maximize`) around the region's chrome bar
+ * (`RegionChromeBar`, #2046 2b: placement grab, tab strip, maximize,
+ * visibility, and the slots the selected pane's own toolbar renders into)
+ * and a `dock`-presentation `WorkspacePaneHost` holding the region's
+ * document, whose panes are the surfaces placed there. Chat and Activity
+ * both render through it. The strip is one tab per pane in `RegionState.panes`
+ * order; a tab click is the model's `selectPane`, a close its `removePane`,
+ * a reorder a `panes` write — the tab strip is a READER of the arrangement,
+ * and the host shows the SELECTED pane (a pane behind a tab is not mounted).
+ * The shell's geometry report goes to the clearance reducer, one entry per
+ * rendered region (#928; the reducer is the one writer of the CSS
+ * variables, archive#3902/archive#3929); the bar is inside the shell's
+ * reported box, so the strip costs the workspace no clearance of its own.
  *
  * The pane set and the selected pane are read from the region model
  * (`RegionState.panes`, `occupant`) — this is shell machinery, like
@@ -289,8 +301,9 @@ export type RenderActivityPane = (
  * `pane` param, the way a tab click does), so when the live active pane
  * differs from the arrangement's the host selects the arrangement's through
  * the controller's own `focusExisting` — and only then, so a mount whose
- * persisted document already agrees writes nothing to navigation. Nothing
- * writes the other way this slice: no tab strip exists to select from.
+ * persisted document already agrees writes nothing to navigation. The tab
+ * strip writes the ARRANGEMENT (`selectPane`), never the controller, so
+ * selection still runs one way through this seam: model → host.
  *
  * The renderers are supplied by the caller, not imported: Chat's lives in
  * `ChatDock.tsx` and Activity's behind `RegionShells`' lazy boundary, and
@@ -363,41 +376,112 @@ export function RegionPaneHost({
     if (liveActiveInstanceId === selectedInstanceId) return;
     openAction.focusExisting?.(selectedInstanceId);
   }, [liveActiveInstanceId, openAction, selectedInstanceId]);
+
+  // The region bar's tabs, from the same `panes` the document derives from.
+  const tabs = useMemo<RegionChromeTab[]>(
+    () =>
+      panes.flatMap((surfaceId) => {
+        const pane = regionSurfacePane(surfaceId);
+        return pane
+          ? [
+              {
+                surfaceId,
+                instanceId: pane.instance.instanceId,
+                title: model?.surfaces.get(surfaceId)?.title ?? surfaceId,
+              },
+            ]
+          : [];
+      }),
+    [model, panes],
+  );
+  // The id the strip's tabs and the host's panel share: the REGION's, so the
+  // pair is stable whatever tab-group id a persisted (adopted) document
+  // carries.
+  const groupId = `region:${documentId}`;
+  const selectTab = useCallback(
+    (surfaceId: string) => {
+      if (regionId && model) model.selectPane(regionId, surfaceId);
+    },
+    [model, regionId],
+  );
+  const closeTab = useCallback(
+    (surfaceId: string) => {
+      if (regionId && model) model.removePane(regionId, surfaceId);
+    },
+    [model, regionId],
+  );
+  const reorderTab = useCallback(
+    (surfaceId: string, toIndex: number) => {
+      if (!regionId || !model) return;
+      const current = model.regions[regionId].panes;
+      const from = current.indexOf(surfaceId);
+      if (from === -1 || toIndex < 0 || toIndex >= current.length) return;
+      const order = current.filter((pane) => pane !== surfaceId);
+      order.splice(toIndex, 0, surfaceId);
+      model.setRegion(regionId, { panes: order });
+    },
+    [model, regionId],
+  );
+  // The bar's slots, published to the panes below so the selected pane's
+  // toolbar can render into them (`RegionChromeSlots`). State, not refs: the
+  // pane must re-render once the slot exists.
+  const [leadingSlot, setLeadingSlot] = useState<HTMLElement | null>(null);
+  const [trailingSlot, setTrailingSlot] = useState<HTMLElement | null>(null);
+  const slots = useMemo(
+    () => ({ leading: leadingSlot, trailing: trailingSlot }),
+    [leadingSlot, trailingSlot],
+  );
   return (
     <DockShell
       regionId={regionId}
       onRenderedRegionGeometryChange={reportRegionClearance}
     >
-      {(shellChrome) =>
-        document ? (
-          <WorkspacePaneHost
-            document={document}
-            presentation="chromeless"
-            admitRestoredInstance={(candidate) =>
-              admitRegionPane(candidate, panes)
+      {(shellChrome) => (
+        <RegionChromeSlotsContext.Provider value={slots}>
+          <RegionChromeBar
+            chrome={shellChrome}
+            groupId={groupId}
+            tabs={tabs}
+            selectedSurfaceId={selected}
+            onSelectTab={selectTab}
+            onCloseTab={
+              regionId && model && tabs.length > 1 ? closeTab : undefined
             }
-            admitOpenInstance={(instance) => isRegionPane(instance, panes)}
-            onOpenActionChange={setOpenAction}
-            onDocumentChange={(live) =>
-              setLiveActiveInstanceId(live.activeInstanceId)
-            }
-            renderPane={(instance) => {
-              switch (regionSurfaceOfPane(instance)) {
-                case 'chat':
-                  return renderChatPane(instance, onRequestAuth, shellChrome);
-                case 'activity':
-                  if (!renderActivityPane)
-                    throw new Error(
-                      'Region host holds Activity but was given no Activity renderer',
-                    );
-                  return renderActivityPane(instance, shellChrome);
-                default:
-                  return null;
-              }
-            }}
+            onReorderTab={reorderTab}
+            leadingSlotRef={setLeadingSlot}
+            trailingSlotRef={setTrailingSlot}
           />
-        ) : null
-      }
+          {document ? (
+            <WorkspacePaneHost
+              document={document}
+              presentation="dock"
+              dockGroupId={groupId}
+              admitRestoredInstance={(candidate) =>
+                admitRegionPane(candidate, panes)
+              }
+              admitOpenInstance={(instance) => isRegionPane(instance, panes)}
+              onOpenActionChange={setOpenAction}
+              onDocumentChange={(live) =>
+                setLiveActiveInstanceId(live.activeInstanceId)
+              }
+              renderPane={(instance) => {
+                switch (regionSurfaceOfPane(instance)) {
+                  case 'chat':
+                    return renderChatPane(instance, onRequestAuth, shellChrome);
+                  case 'activity':
+                    if (!renderActivityPane)
+                      throw new Error(
+                        'Region host holds Activity but was given no Activity renderer',
+                      );
+                    return renderActivityPane(instance, shellChrome);
+                  default:
+                    return null;
+                }
+              }}
+            />
+          ) : null}
+        </RegionChromeSlotsContext.Provider>
+      )}
     </DockShell>
   );
 }

@@ -214,6 +214,28 @@ export function ChatDockMobileOverflowSheet({
             Collapse chat
           </button>
         )}
+        {/* #2046 2b: the region's other panes. No tab strip on a coarse
+            device, so this row is how a pane sharing Chat's region is
+            switched to from Chat; the toolbar's `⋯` region rows are the
+            way back. */}
+        {overflow.onSelectRegionPane
+          ? (overflow.regionPanes ?? [])
+              .filter((pane) => !pane.selected)
+              .map((pane) => (
+                <button
+                  key={pane.id}
+                  type="button"
+                  role="menuitem"
+                  className="composer-actions-menu__item"
+                  onClick={() => {
+                    const select = overflow.onSelectRegionPane;
+                    run(() => select?.(pane.id));
+                  }}
+                >
+                  Switch to {pane.title}
+                </button>
+              ))
+          : null}
         {projectScope && (
           <button
             type="button"

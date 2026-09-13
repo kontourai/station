@@ -6,9 +6,9 @@ import {
   useIsMobile,
 } from '../../hooks/useIsMobile';
 import {
+  DOCK_REGION_IDS,
   foldedDockRegion,
   isDockRegion,
-  occupiedDockRegion,
   occupiedRegion,
   placeSurface as placeSurfaceInArrangement,
   type RegionArrangement,
@@ -268,6 +268,82 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
       : `${displacedTitle} moves to ${regionLabel(landed.region)}, hidden`;
   };
 
+  /**
+   * The folded device's rows, per REGION (#2046 2b, D2). Each occupied dock
+   * region contributes its panes in tab order: the SELECTED pane's row is
+   * the region's Show/Hide — hiding it hides the region, every pane of it —
+   * and each pane behind a tab gets a `Show <title> in the dock` row whose
+   * toggle selects it (`toggleSurface`, #2046 2a). Grouped by region so the
+   * rows say what the toggle acts on: two surfaces sharing a region are two
+   * rows of one region, not two independent toggles that happen to move the
+   * same shell. After them, the `main` occupant's "Move … to the dock" row
+   * and a `Show` row for each unplaced dock surface, in registry order.
+   *
+   * "… the dock", for the same reason on every row: these rows exist only on
+   * a BOTTOM-ONLY device (`availablePlacements`: a coarse pointer or a
+   * viewport at or under 768px, so a narrow desktop window too), where the
+   * fold gives the whole shell one dock slot.
+   *
+   * #1386: the bare `Hide Activity` was the accessible name of the SHELL
+   * HEADER's own visibility control at the same time — two buttons, one name,
+   * both on screen (pinned by `RegionShellParity.test.tsx`, and the reason
+   * `project-architecture.spec.ts` has to scope its query to the pane). The
+   * shell's control is the one a user points at, so the row is what says
+   * which shell it means.
+   */
+  const foldedMenuItems = (): RegionSurfaceMenuItem[] => {
+    const rows: RegionSurfaceMenuItem[] = [];
+    const placed = new Set<string>();
+    for (const regionId of DOCK_REGION_IDS) {
+      const region = regions[regionId];
+      for (const paneId of region.panes) {
+        const surface = surfaces.get(paneId);
+        if (!surface) continue;
+        placed.add(paneId);
+        // Shown only when this IS the folded region's selected pane — the
+        // one visible dock a coarse device has — not merely when its region
+        // is marked visible, nor when the region shows another pane's tab.
+        const shown =
+          regionId === foldedRegion &&
+          region.visible &&
+          region.occupant === paneId;
+        rows.push({
+          key: `${regionId}:${paneId}`,
+          label: shown
+            ? `Hide ${surface.title} from the dock`
+            : `Show ${surface.title} in the dock`,
+          icon: surface.icon,
+          checked: shown,
+          onSelect: () => toggleSurface(surface),
+        });
+      }
+    }
+    for (const surface of surfaceList) {
+      if (placed.has(surface.id)) continue;
+      // A surface occupying `main` is not a dock toggle: "Show" would reveal
+      // it where it already is (nothing happens) and "Hide" has no meaning
+      // for the always-visible primary area. Its row names what the toggle
+      // does — return it to the dock (#1523).
+      if (occupiedRegion(regions, surface.id) === 'main') {
+        rows.push({
+          key: surface.id,
+          label: `Move ${surface.title} to the dock`,
+          icon: surface.icon,
+          onSelect: () => toggleSurface(surface),
+        });
+        continue;
+      }
+      rows.push({
+        key: surface.id,
+        label: `Show ${surface.title} in the dock`,
+        icon: surface.icon,
+        checked: false,
+        onSelect: () => toggleSurface(surface),
+      });
+    }
+    return rows;
+  };
+
   const placementRow = (surface: RegisteredSurface): RegionPlacementRow => {
     // Showing, not merely placed: a surface in a hidden dock region is Hidden as
     // far as this picker is concerned, which is the same question the folded
@@ -331,55 +407,7 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
     commandsInOverflowMenu: bottomOnly && isMobile,
     surfaceList,
     toggleSurface,
-    menuItems: bottomOnly
-      ? surfaceList.map((surface) => {
-          // A surface occupying `main` is not a dock toggle: "Show" would
-          // reveal it where it already is (nothing happens) and "Hide" has no
-          // meaning for the always-visible primary area. Its row names what
-          // the toggle does — return it to the dock (#1523).
-          if (occupiedRegion(regions, surface.id) === 'main') {
-            return {
-              key: surface.id,
-              label: `Move ${surface.title} to the dock`,
-              icon: surface.icon,
-              onSelect: () => toggleSurface(surface),
-            };
-          }
-          const occupied = occupiedDockRegion(regions, surface.id);
-          // The surface is shown only when it IS the folded region's selected
-          // pane — the one visible dock a coarse device has — not merely when
-          // its own region is marked visible (#2046 2a: nor when the region
-          // shows another pane's tab).
-          const shown = Boolean(
-            occupied &&
-              occupied === foldedRegion &&
-              regions[occupied].visible &&
-              regions[occupied].occupant === surface.id,
-          );
-          // "… the dock", like the `main`-occupant row above, and for the
-          // same reason it is honest here: these rows exist only on a
-          // BOTTOM-ONLY device (`availablePlacements`: a coarse pointer or a
-          // viewport at or under 768px, so a narrow desktop window too), where
-          // the fold gives the whole shell one dock slot.
-          //
-          // #1386: the bare `Hide Activity` was the accessible name of the
-          // SHELL HEADER's own visibility control at the same time — two
-          // buttons, one name, both on screen (pinned by
-          // `RegionShellParity.test.tsx`, and the reason
-          // `project-architecture.spec.ts` has to scope its query to the
-          // pane). The shell's control is the one a user points at, so the
-          // row is what says which shell it means.
-          return {
-            key: surface.id,
-            label: shown
-              ? `Hide ${surface.title} from the dock`
-              : `Show ${surface.title} in the dock`,
-            icon: surface.icon,
-            checked: shown,
-            onSelect: () => toggleSurface(surface),
-          };
-        })
-      : [],
+    menuItems: bottomOnly ? foldedMenuItems() : [],
     // One row per surface that declares a DOCK region — `surfaceList`, the same
     // set the chords and the folded menu use. Home is excluded by that filter
     // and correctly so: its only placement is `main`, so its row would be a

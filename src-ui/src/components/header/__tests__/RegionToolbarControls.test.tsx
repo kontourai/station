@@ -923,6 +923,58 @@ describe('RegionToolbarControls', () => {
     expect(screen.queryByRole('menuitem')).toBeNull();
   });
 
+  /**
+   * #2046 2b, D2: the folded rows are per REGION, in the region's TAB ORDER.
+   * A region holding two panes contributes both: the selected pane's row is
+   * the region's Hide (checked), the pane behind its tab gets a Show row
+   * (unchecked) that selects it — both through the model's own toggle. With
+   * the region hidden, both read Show. The fixture puts Activity FIRST in
+   * tab order, the reverse of registry order: the per-surface rows this
+   * replaced walked the registry and would list Chat first, so a revert
+   * fails on the order.
+   */
+  test('the folded menu lists a two-pane region’s panes in tab order, the selected one as the region’s Hide', () => {
+    harness.bottomOnly = true;
+    harness.isMobile = false;
+    Object.assign(harness.regions.bottom, {
+      visible: true,
+      panes: ['activity', 'chat'],
+      occupant: 'chat',
+    });
+    const { rerender } = render(<RegionToolbarControls />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
+    let menu = screen.getByRole('menu', { name: 'Region surfaces' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitemcheckbox')
+        .map((item) => [item.textContent, item.getAttribute('aria-checked')]),
+    ).toEqual([
+      ['Show Activity in the dock', 'false'],
+      ['Hide Chat from the dock', 'true'],
+    ]);
+    expect(within(menu).queryByRole('menuitem')).toBeNull();
+    fireEvent.click(
+      within(menu).getByRole('menuitemcheckbox', {
+        name: 'Show Activity in the dock',
+      }),
+    );
+    expectOnlyToggle('activity');
+
+    harness.regions.bottom.visible = false;
+    rerender(<RegionToolbarControls />);
+    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
+    menu = screen.getByRole('menu', { name: 'Region surfaces' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitemcheckbox')
+        .map((item) => [item.textContent, item.getAttribute('aria-checked')]),
+    ).toEqual([
+      ['Show Activity in the dock', 'false'],
+      ['Show Chat in the dock', 'false'],
+    ]);
+  });
+
   test('Home registers no chord', () => {
     render(<RegionToolbarControls />);
     expect([...harness.shortcuts.keys()].sort()).toEqual([
