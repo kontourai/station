@@ -53,19 +53,30 @@ import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
+import type { LocalAccountView } from '@kontourai/station-contracts/local-accounts';
+import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import type {
+  ProjectAccessAdministrationView,
+  ProjectInvitationView,
+} from '@kontourai/station-contracts/project-membership';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import type { LoadedDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
 import { DeploymentAuthenticationService } from '../../../services/identity/deployment-authentication-service.js';
+import { loadLocalAccounts } from '../../../services/identity/local-account-runtime.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
+import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
+import { ProjectService } from '../../../services/projects/project-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { createRuntimeSearch } from '../../../services/search/runtime-search.js';
 import {
@@ -275,6 +286,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     searchMode?: 'device' | 'whois' | 'home' | 'operator',
     taskReferences = false,
     deploymentAuthentication?: LoadedDeploymentAuthentication,
+    withMembership = false,
+    withLocalAccounts = false,
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
     const roomHomeDir = mkdtempSync(
@@ -381,9 +394,40 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       projectId: task.projectId,
       title: 'Kept answer',
     });
+    const membershipStorage = withMembership
+      ? new FileStorageAdapter(roomHomeDir)
+      : undefined;
+    const membershipProjects = membershipStorage
+      ? new ProjectService(
+          membershipStorage,
+          new ProjectManifestStore(roomHomeDir, membershipStorage),
+        )
+      : undefined;
+    const sharedProject = await membershipProjects?.createProject({
+      name: 'Example shared Project',
+      slug: 'example',
+    });
+    const membership = membershipStorage
+      ? createProjectMembershipRuntime(
+          roomHomeDir,
+          'environment-local',
+          membershipStorage,
+        )
+      : undefined;
+    const localAccounts =
+      withLocalAccounts && membership
+        ? await loadLocalAccounts(
+            { publicOrigin: 'http://localhost:4321' },
+            { stationId: 'environment-local', homeDirectory: roomHomeDir },
+            membership.service,
+          )
+        : undefined;
     const app = new Hono();
     const context = deepStub({
-      deploymentAuthentication,
+      projectMembership: membership?.service,
+      ...(membershipStorage ? { storageAdapter: membershipStorage } : {}),
+      deploymentAuthentication: localAccounts ?? deploymentAuthentication,
+      localAccounts,
       app,
       port: 4321,
       appConfig: {},
@@ -416,7 +460,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         readTaskView: (id: string) => (id === task.id ? task : null),
         listTasks: () => [],
       },
-      projectService: {
+      projectService: membershipProjects ?? {
         listProjects: () => [{ id: task.projectId, slug: 'project' }],
         ...(taskReferences ? { getProject: () => project } : {}),
       },
@@ -431,6 +475,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     return {
       app,
       store,
+      membership,
+      localAccounts,
+      sharedProject,
       roomRuntime: result.projectTaskRoomRuntime!,
       pairing,
       paired,
@@ -728,6 +775,314 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         pairing.identifyDevice(credentials[1]!)?.principalBinding?.subject,
       ).toBe('collaborator@example.test');
     } finally {
+      await roomRuntime.close();
+      store.close();
+    }
+  });
+
+  async function responseData<T>(response: Response): Promise<T> {
+    return ((await response.json()) as { data: T }).data;
+  }
+
+  test('shareable invitation supports local username registration and explicit acceptance without email or a new device grant', async () => {
+    const h = await setup(undefined, false, undefined, true, true);
+    const invoke = (
+      path: string,
+      body?: unknown,
+      headers: Record<string, string> = {},
+    ) =>
+      h.app.request(
+        path,
+        {
+          method: body === undefined ? 'GET' : 'POST',
+          headers: {
+            Origin: 'http://localhost:4321',
+            'Content-Type': 'application/json',
+            ...headers,
+          },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+    try {
+      const operator = { Authorization: `Bearer ${OPERATOR_SECRET}` };
+      const enabled = await invoke(
+        '/api/projects/example/access/enable',
+        { localProjectId: h.sharedProject!.id },
+        operator,
+      );
+      expect(enabled.status, await enabled.clone().text()).toBe(200);
+      const view = await responseData<ProjectAccessAdministrationView>(enabled);
+      const offered = await invoke(
+        '/api/projects/example/access/invitations',
+        {
+          scope: view.scope,
+          email: null,
+          role: 'viewer',
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        },
+        operator,
+      );
+      expect(offered.status, await offered.clone().text()).toBe(200);
+      const { token, invitation } = await responseData<{
+        token: string;
+        invitation: ProjectInvitationView;
+      }>(offered);
+      expect(invitation.recipientEmail).toBeNull();
+      const devicesBefore = h.pairing.listDevices();
+      const user = {
+        username: 'collaborator',
+        password: 'A local test password 12345',
+        name: 'Collaborator',
+      };
+      expect(
+        (await invoke('/api/account-auth/sign-up/username', user)).status,
+      ).toBe(403);
+      const registration = await invoke(
+        '/api/account-auth/sign-up/username',
+        user,
+        { 'x-station-invitation': token },
+      );
+      expect(registration.status, await registration.clone().text()).toBe(200);
+      expect(registration.headers.get('set-cookie') ?? '').not.toContain(
+        'session_token',
+      );
+      const login = await invoke('/api/account-auth/sign-in/username', {
+        username: user.username,
+        password: user.password,
+      });
+      expect(login.status, await login.clone().text()).toBe(200);
+      expect(await login.clone().json()).toEqual({ success: true });
+      const Cookie = login.headers
+        .getSetCookie()
+        .map((value) => value.split(';')[0])
+        .join('; ');
+      expect(Cookie).toContain('session_token=');
+      const identity = await invoke('/api/account-auth/session', undefined, {
+        Cookie,
+      });
+      expect(identity.status, await identity.clone().text()).toBe(200);
+      const account = await responseData<{
+        principal: PrincipalRef;
+        contacts: unknown[];
+      }>(identity);
+      expect(account.contacts).toEqual([]);
+      expect(account.principal.id).not.toBe(LOCAL_OPERATOR_PRINCIPAL_ID);
+      const before = await responseData<ProjectAccessAdministrationView>(
+        await invoke('/api/projects/example/access', undefined, operator),
+      );
+      expect(before.members).toHaveLength(1);
+      const accepted = await invoke(
+        '/api/account-auth/accept-invitation',
+        { token },
+        { Cookie },
+      );
+      expect(accepted.status, await accepted.clone().text()).toBe(200);
+      expect(await responseData<unknown>(accepted)).toEqual({
+        scope: view.scope,
+        grantsDeviceAccess: false,
+      });
+      const after = await responseData<ProjectAccessAdministrationView>(
+        await invoke('/api/projects/example/access', undefined, operator),
+      );
+      expect(after.members).toContainEqual(
+        expect.objectContaining({
+          principal: account.principal,
+          role: 'viewer',
+          status: 'active',
+        }),
+      );
+      expect(h.pairing.listDevices()).toEqual(devicesBefore);
+      expect(
+        (await invoke('/api/projects', undefined, { Cookie })).status,
+      ).toBe(401);
+      expect(
+        (
+          await invoke(
+            '/api/account-auth/accept-invitation',
+            { token },
+            { Cookie },
+          )
+        ).status,
+      ).toBe(409);
+      // A link does not let the user silently satisfy an email-restricted invitation.
+      const restricted = await invoke(
+        '/api/projects/example/access/invitations',
+        {
+          scope: view.scope,
+          email: 'someone@example.test',
+          role: 'viewer',
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        },
+        operator,
+      );
+      const restrictedToken = (
+        await responseData<{ token: string }>(restricted)
+      ).token;
+      expect(
+        (
+          await invoke(
+            '/api/account-auth/accept-invitation',
+            { token: restrictedToken },
+            { Cookie },
+          )
+        ).status,
+      ).toBe(409);
+      const administration = await invoke(
+        '/api/operator/accounts',
+        undefined,
+        operator,
+      );
+      expect(administration.status, await administration.clone().text()).toBe(
+        200,
+      );
+      const accounts = (
+        await responseData<{ accounts: LocalAccountView[] }>(administration)
+      ).accounts;
+      expect(accounts).toHaveLength(1);
+      expect(accounts[0]).toMatchObject({
+        username: 'collaborator',
+        disabled: false,
+        emailVerified: false,
+      });
+      expect(accounts[0]).not.toHaveProperty('email');
+      const accountId = accounts[0]!.accountId;
+      const actions = `/api/operator/accounts/${accountId}/actions`;
+      expect(
+        (await invoke(actions, { action: 'create-recovery' }, { Cookie }))
+          .status,
+      ).toBe(401);
+      expect(
+        (
+          await invoke(
+            actions,
+            { action: 'create-recovery' },
+            { Authorization: `Bearer ${h.paired.credential}` },
+          )
+        ).status,
+      ).toBe(403);
+      const recovery = await invoke(
+        actions,
+        { action: 'create-recovery' },
+        operator,
+      );
+      expect(recovery.status, await recovery.clone().text()).toBe(200);
+      const recoveryUrl = new URL(
+        (await responseData<{ recoveryUrl: string }>(recovery)).recoveryUrl,
+      );
+      const resetToken = new URLSearchParams(recoveryUrl.hash.slice(1)).get(
+        'token',
+      );
+      expect(resetToken).toBeTruthy();
+      const newPassword = 'A changed local password 45678';
+      const reset = await invoke('/api/account-auth/reset-password', {
+        token: resetToken,
+        newPassword,
+      });
+      expect(reset.status, await reset.clone().text()).toBe(200);
+      expect(
+        (await invoke('/api/account-auth/session', undefined, { Cookie }))
+          .status,
+      ).toBe(401);
+      expect(
+        (
+          await invoke('/api/account-auth/reset-password', {
+            token: resetToken,
+            newPassword,
+          })
+        ).status,
+      ).toBe(400);
+      const relogin = await invoke('/api/account-auth/sign-in/username', {
+        username: user.username,
+        password: newPassword,
+      });
+      expect(relogin.status, await relogin.clone().text()).toBe(200);
+      const nextCookie = relogin.headers
+        .getSetCookie()
+        .map((value) => value.split(';')[0])
+        .join('; ');
+      const recovered = await invoke('/api/account-auth/session', undefined, {
+        Cookie: nextCookie,
+      });
+      expect(
+        (await responseData<{ principal: PrincipalRef }>(recovered)).principal,
+      ).toEqual(account.principal);
+      expect(
+        (await invoke(actions, { action: 'disable' }, operator)).status,
+      ).toBe(200);
+      expect(
+        (
+          await invoke('/api/account-auth/session', undefined, {
+            Cookie: nextCookie,
+          })
+        ).status,
+      ).toBe(401);
+      expect(
+        h.pairing
+          .listDevices()
+          .map(({ lastUsedAt: _lastUsedAt, ...grant }) => grant),
+      ).toEqual(
+        devicesBefore.map(({ lastUsedAt: _lastUsedAt, ...grant }) => grant),
+      );
+    } finally {
+      await h.localAccounts?.service.close();
+      h.membership?.close();
+      await h.roomRuntime.close();
+      h.store.close();
+    }
+  });
+
+  test('operator Project administration uses real credentials and membership rather than admitting every paired device', async () => {
+    const { app, store, roomRuntime, paired, membership, sharedProject } =
+      await setup(undefined, false, undefined, true);
+    try {
+      const base = '/api/projects/example/access';
+      const invoke = (credential: string, path: string, body?: unknown) =>
+        app.request(
+          path,
+          {
+            method: body === undefined ? 'GET' : 'POST',
+            headers: {
+              Authorization: `Bearer ${credential}`,
+              'Content-Type': 'application/json',
+            },
+            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+      const enabled = await invoke(OPERATOR_SECRET, `${base}/enable`, {
+        localProjectId: sharedProject!.id,
+      });
+      expect(enabled.status, await enabled.clone().text()).toBe(200);
+      const view = (await enabled.json()) as {
+        data: {
+          scope: { localProjectId: string };
+          members: { principal: { id: string }; role: string }[];
+        };
+      };
+      expect(view.data.scope.localProjectId).toBe(sharedProject!.id);
+      expect(view.data.members).toMatchObject([
+        { principal: { id: LOCAL_OPERATOR_PRINCIPAL_ID }, role: 'owner' },
+      ]);
+      expect((await invoke(paired.credential, base)).status).toBe(403);
+      expect(
+        (
+          await invoke(paired.credential, `${base}/enable`, {
+            localProjectId: sharedProject!.id,
+          })
+        ).status,
+      ).toBe(403);
+      const offered = await invoke(OPERATOR_SECRET, `${base}/invitations`, {
+        scope: view.data.scope,
+        email: 'invitee@example.test',
+        role: 'viewer',
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      });
+      expect(offered.status, await offered.clone().text()).toBe(200);
+      const invalid = await invoke('invalid-credential', base);
+      expect(invalid.status).toBe(401);
+    } finally {
+      membership?.close();
       await roomRuntime.close();
       store.close();
     }

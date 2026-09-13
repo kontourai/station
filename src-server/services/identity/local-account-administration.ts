@@ -1,16 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite';
-
-export interface LocalAccountView {
-  accountId: string;
-  name: string;
-  email: string;
-  emailVerified: boolean;
-  disabled: boolean;
-}
+import type { LocalAccountView } from '@kontourai/station-contracts/local-accounts';
 
 /** Station-owned account policy; no dependency on an authentication library's administrator roles. */
 export class LocalAccountAdministration {
-  constructor(private readonly database: DatabaseSync) {
+  constructor(
+    private readonly database: DatabaseSync,
+    private readonly usesUsernames = false,
+  ) {
     database.exec(`CREATE TABLE IF NOT EXISTS station_account_policy (
       account_id TEXT PRIMARY KEY NOT NULL,
       disabled INTEGER NOT NULL DEFAULT 0 CHECK (disabled IN (0, 1)),
@@ -22,7 +18,7 @@ export class LocalAccountAdministration {
     // Better Auth's pinned, documented user schema; passwords/tokens live in
     // separate tables and never enter this operator projection.
     const rows = this.database
-      .prepare(`SELECT u.id, u.name, u.email, u.emailVerified,
+      .prepare(`SELECT u.id, u.name, u.email, u.emailVerified, ${this.usesUsernames ? 'u.username' : 'NULL'} AS username,
       COALESCE(p.disabled, 0) AS disabled FROM user u
       LEFT JOIN station_account_policy p ON p.account_id = u.id ORDER BY u.id LIMIT 1001`)
       .all();
@@ -35,6 +31,7 @@ export class LocalAccountAdministration {
         typeof row.id !== 'string' ||
         typeof row.name !== 'string' ||
         typeof row.email !== 'string' ||
+        (this.usesUsernames && typeof row.username !== 'string') ||
         ![0, 1].includes(Number(row.emailVerified)) ||
         ![0, 1].includes(Number(row.disabled))
       ) {
@@ -43,7 +40,9 @@ export class LocalAccountAdministration {
       return {
         accountId: row.id,
         name: row.name,
-        email: row.email,
+        ...(this.usesUsernames
+          ? { username: row.username as string }
+          : { email: row.email }),
         emailVerified: row.emailVerified === 1,
         disabled: row.disabled === 1,
       };

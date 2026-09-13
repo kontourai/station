@@ -1,0 +1,54 @@
+.account-entry {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: max(1.5rem, var(--safe-top, 0px)) max(1rem, var(--safe-right, 0px))
+    max(1.5rem, var(--safe-bottom, 0px)) max(1rem, var(--safe-left, 0px));
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.account-entry__card {
+  width: min(100%, 30rem);
+  padding: 1.5rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+.account-entry__brand {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.account-entry h1 {
+  font-size: 1.65rem;
+  line-height: 1.25;
+}
+.account-entry form,
+.account-entry label {
+  display: grid;
+  gap: 0.5rem;
+}
+.account-entry form {
+  gap: 1rem;
+  margin-block: 1.5rem;
+}
+.account-entry input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.65rem 0.75rem;
+  font: inherit;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+.account-entry__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.account-entry [role="alert"] {
+  color: var(--status-error);
+}
+.account-entry p {
+  overflow-wrap: anywhere;
+}

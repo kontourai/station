@@ -43,7 +43,8 @@ export interface ProjectMemberView {
 
 export interface ProjectInvitationView {
   id: string;
-  recipientEmail: string;
+  /** Null is an explicit single-use link invitation; a string requires that verified email. */
+  recipientEmail: string | null;
   role: Exclude<ProjectMemberRole, 'owner'>;
   actions: readonly ProjectMemberAction[];
   invitedBy: PrincipalRef;
@@ -54,6 +55,9 @@ export interface ProjectInvitationView {
 
 export interface ProjectAccessAdministrationView {
   version: typeof PROJECT_MEMBERSHIP_VERSION;
+  actingPrincipal: PrincipalRef;
+  /** Browser-facing authentication origin; absent when invitation login is unavailable. */
+  invitationOrigin?: string;
   scope: ProjectMembershipScope;
   members: readonly ProjectMemberView[];
   invitations: readonly ProjectInvitationView[];

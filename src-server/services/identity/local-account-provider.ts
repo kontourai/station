@@ -1,7 +1,5 @@
-import { createHash } from 'node:crypto';
-import { chmod, lstat } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import {
   DEPLOYMENT_AUTHENTICATION_VERSION,
   type DeploymentAuthenticationHost,
@@ -10,6 +8,9 @@ import {
 import { type BetterAuthOptions, betterAuth } from 'better-auth';
 import { getCookies } from 'better-auth/cookies';
 import { getMigrations } from 'better-auth/db/migration';
+import { username } from 'better-auth/plugins';
+import { z } from 'zod/v3';
+import { openPrivateSqlite } from '../../utils/private-sqlite.js';
 import { LocalAccountAdministration } from './local-account-administration.js';
 
 export interface LocalAccountEmail {
@@ -20,7 +21,7 @@ export interface LocalAccountEmail {
 
 export interface LocalAccountEnrollment {
   /** Checks the real pending invitation. This is eligibility to register, never membership. */
-  mayRegister(input: { invitation: string; email: string }): Promise<boolean>;
+  mayRegister(input: { invitation: string; email?: string }): Promise<boolean>;
   /** Server-owned mail transport; callers must not supply a delivery destination. */
   deliver(message: LocalAccountEmail): Promise<void>;
 }
@@ -28,6 +29,7 @@ export interface LocalAccountEnrollment {
 export interface LocalAccountProvider extends DeploymentAuthenticationProvider {
   /** Private operator route composition only; never forwarded through provider.handle. */
   administration: LocalAccountAdministration;
+  issueRecovery(accountId: string): Promise<string>;
 }
 
 /** Maintained password/session implementation behind Station's common authentication contract. */
@@ -35,27 +37,21 @@ export async function createLocalAccountProvider(
   host: Readonly<DeploymentAuthenticationHost>,
   secret: string,
   enrollment: LocalAccountEnrollment,
+  mode: 'email-password' | 'username-password' = 'email-password',
 ): Promise<LocalAccountProvider> {
   if (secret.length < 32)
     throw new Error(
       'Local accounts require an operator-owned authentication secret.',
     );
   const databasePath = join(host.stateDirectory, 'local-accounts.sqlite');
-  const existing = await lstat(databasePath).catch(
-    (error: NodeJS.ErrnoException) => {
-      if (error.code === 'ENOENT') return undefined;
-      throw error;
-    },
-  );
-  if (existing && (!existing.isFile() || existing.isSymbolicLink()))
-    throw new Error('Local account database must be a regular owned file.');
-  const database = new DatabaseSync(databasePath);
+  const localUsername = mode === 'username-password';
+  const database = openPrivateSqlite(databasePath, 'Local accounts');
+  const recoveries = new Map<string, (url: string) => void>();
   try {
-    if (process.platform !== 'win32') await chmod(databasePath, 0o600);
-    database.exec(
-      'PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;',
+    const administration = new LocalAccountAdministration(
+      database,
+      localUsername,
     );
-    const administration = new LocalAccountAdministration(database);
     const options = {
       database,
       secret,
@@ -66,23 +62,35 @@ export async function createLocalAccountProvider(
       logger: { disabled: true },
       emailAndPassword: {
         enabled: true,
-        requireEmailVerification: true,
+        requireEmailVerification: !localUsername,
         autoSignIn: false,
         minPasswordLength: 12,
         maxPasswordLength: 128,
         revokeSessionsOnPasswordReset: true,
-        sendResetPassword: async ({ user, token }) =>
-          enrollment.deliver({
+        resetPasswordTokenExpiresIn: 20 * 60,
+        sendResetPassword: async ({ user, token }) => {
+          const url = `${host.publicOrigin}/account/reset#token=${encodeURIComponent(token)}`;
+          if (localUsername) {
+            const accept = recoveries.get(user.email);
+            if (!accept)
+              throw new Error(
+                'Local account recovery requires operator authorization.',
+              );
+            accept(url);
+            return;
+          }
+          await enrollment.deliver({
             kind: 'reset-password',
             recipient: user.email,
             // The account recovery view submits the token explicitly; GET or
             // mail-preview navigation never consumes it. Fragments stay off HTTP logs.
-            url: `${host.publicOrigin}/account/reset#token=${encodeURIComponent(token)}`,
-          }),
+            url,
+          });
+        },
       },
       emailVerification: {
-        sendOnSignUp: true,
-        sendOnSignIn: true,
+        sendOnSignUp: !localUsername,
+        sendOnSignIn: !localUsername,
         autoSignInAfterVerification: false,
         sendVerificationEmail: async ({ user, url }) =>
           enrollment.deliver({
@@ -101,6 +109,16 @@ export async function createLocalAccountProvider(
         useSecureCookies: host.publicOrigin.startsWith('https:'),
       },
       account: { accountLinking: { enabled: false } },
+      plugins: localUsername
+        ? [
+            username({
+              minUsernameLength: 3,
+              maxUsernameLength: 32,
+              usernameValidator: (value) =>
+                /^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,31}$/.test(value),
+            }),
+          ]
+        : [],
       rateLimit: { enabled: true, storage: 'database', window: 60, max: 10 },
       user: {
         additionalFields: {
@@ -123,7 +141,7 @@ export async function createLocalAccountProvider(
                 !!invitation &&
                 (await enrollment.mayRegister({
                   invitation,
-                  email: user.email,
+                  ...(localUsername ? {} : { email: user.email }),
                 }))
               );
             },
@@ -140,9 +158,11 @@ export async function createLocalAccountProvider(
     const migration = await getMigrations(options);
     await migration.runMigrations();
     const auth = betterAuth(options);
+    const signUpPath = localUsername ? '/sign-up/username' : '/sign-up/email';
+    const signInPath = localUsername ? '/sign-in/username' : '/sign-in/email';
     const endpoints: DeploymentAuthenticationProvider['endpoints'] = [
-      { path: '/sign-up/email', methods: ['POST'], operation: 'register' },
-      { path: '/sign-in/email', methods: ['POST'], operation: 'begin-login' },
+      { path: signUpPath, methods: ['POST'], operation: 'register' },
+      { path: signInPath, methods: ['POST'], operation: 'begin-login' },
       { path: '/sign-out', methods: ['POST'], operation: 'logout' },
       {
         path: '/send-verification-email',
@@ -176,14 +196,44 @@ export async function createLocalAccountProvider(
         methods: ['POST'],
         operation: 'revoke-session',
       },
-    ];
+    ].filter(
+      (endpoint) =>
+        !localUsername ||
+        !['verify-contact', 'request-recovery'].includes(endpoint.operation),
+    ) as DeploymentAuthenticationProvider['endpoints'];
     const cookie = getCookies(options).sessionToken.name;
     let closed = false;
     return {
       administration,
+      async issueRecovery(accountId) {
+        if (!localUsername || closed || !administration.permits(accountId))
+          throw new Error('Local account recovery is unavailable.');
+        const row = database
+          .prepare('SELECT email FROM user WHERE id = ?')
+          .get(accountId);
+        if (typeof row?.email !== 'string' || recoveries.has(row.email))
+          throw new Error('Local account recovery is unavailable.');
+        let url: string | undefined;
+        recoveries.set(row.email, (value) => {
+          url = value;
+        });
+        try {
+          await auth.api.requestPasswordReset({ body: { email: row.email } });
+          if (!url || !administration.permits(accountId))
+            throw new Error('Local account recovery was not created.');
+          return url;
+        } finally {
+          recoveries.delete(row.email);
+        }
+      },
       version: DEPLOYMENT_AUTHENTICATION_VERSION,
       issuer: `urn:station:local-accounts:${host.stationId}`,
       displayName: 'Station account',
+      login: {
+        kind: mode,
+        signInPath,
+        signUpPath,
+      },
       sessionCookies: [cookie],
       endpoints,
       async authenticate(request) {
@@ -191,7 +241,11 @@ export async function createLocalAccountProvider(
           headers: request.headers,
           query: { disableCookieCache: true, disableRefresh: true },
         });
-        if (!current?.user.emailVerified || !current.user.verifiedAt)
+        if (
+          !current ||
+          (!localUsername &&
+            (!current.user.emailVerified || !current.user.verifiedAt))
+        )
           return { kind: 'invalid', reason: 'invalid-credential' };
         if (!administration.permits(current.user.id, current.session.createdAt))
           return { kind: 'invalid', reason: 'revoked' };
@@ -203,13 +257,15 @@ export async function createLocalAccountProvider(
             sessionId: current.session.id,
             authenticatedAt: current.session.createdAt.toISOString(),
             expiresAt: current.session.expiresAt.toISOString(),
-            contacts: [
-              {
-                kind: 'email',
-                value: current.user.email,
-                verifiedAt: current.user.verifiedAt.toISOString(),
-              },
-            ],
+            contacts: localUsername
+              ? []
+              : [
+                  {
+                    kind: 'email',
+                    value: current.user.email,
+                    verifiedAt: current.user.verifiedAt!.toISOString(),
+                  },
+                ],
           },
         };
       },
@@ -227,7 +283,8 @@ export async function createLocalAccountProvider(
             { status: 404 },
           );
         }
-        if (path === '/sign-up/email') {
+        let operation = request;
+        if (path === signUpPath) {
           const input: unknown = await request.clone().json();
           const invitation = request.headers.get('x-station-invitation');
           const email =
@@ -239,16 +296,50 @@ export async function createLocalAccountProvider(
               : undefined;
           if (
             !invitation ||
-            !email ||
-            !(await enrollment.mayRegister({ invitation, email }))
+            (!localUsername && !email) ||
+            !(await enrollment.mayRegister({
+              invitation,
+              ...(localUsername ? {} : { email }),
+            }))
           ) {
             return Response.json(
               { error: { code: 'invitation_required' } },
               { status: 403 },
             );
           }
+          if (localUsername) {
+            const parsed = z
+              .object({
+                username: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,31}$/),
+                password: z.string().min(12).max(128),
+                name: z.string().trim().min(1).max(128).optional(),
+              })
+              .strict()
+              .safeParse(input);
+            if (!parsed.success)
+              return Response.json(
+                { error: { code: 'invalid_request' } },
+                { status: 400 },
+              );
+            const headers = new Headers(request.headers);
+            headers.delete('Content-Length');
+            operation = new Request(
+              `${host.publicOrigin}${host.basePath}/sign-up/email`,
+              {
+                method: 'POST',
+                headers,
+                signal: request.signal,
+                body: JSON.stringify({
+                  ...parsed.data,
+                  name: parsed.data.name ?? parsed.data.username,
+                  // Better Auth requires a unique internal email column. This
+                  // reserved-domain value is never contact or identity evidence.
+                  email: `${randomUUID()}@station.invalid`,
+                }),
+              },
+            );
+          }
         }
-        let operation = request;
         if (path === '/change-password') {
           const body: unknown = await request.clone().json();
           if (!body || typeof body !== 'object' || Array.isArray(body))
@@ -268,12 +359,9 @@ export async function createLocalAccountProvider(
         const response = await auth.handler(operation);
         if (
           response.ok &&
-          [
-            '/sign-in/email',
-            '/sign-up/email',
-            '/get-session',
-            '/change-password',
-          ].includes(path)
+          [signInPath, signUpPath, '/get-session', '/change-password'].includes(
+            path,
+          )
         ) {
           // Session tokens stay in HttpOnly cookies. The core self endpoint
           // supplies the closed identity view without library token records.

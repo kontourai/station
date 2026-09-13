@@ -42,7 +42,7 @@ const memberSchema = z
 const invitationSchema = z
   .object({
     id: z.string().min(1),
-    recipientEmail: z.string().email(),
+    recipientEmail: z.string().email().nullable(),
     role: z.enum(['viewer', 'contributor', 'admin']),
     invitedBy: principalSchema,
     status: z.enum(['pending', 'accepted', 'revoked']),
@@ -161,6 +161,7 @@ export class ProjectMembershipStore {
         .map((row) => this.parseInvitation(row.record));
       return {
         version: PROJECT_MEMBERSHIP_VERSION,
+        actingPrincipal: structuredClone(actor),
         scope: structuredClone(scope),
         members: members.map((member) => ({
           ...member,
@@ -177,15 +178,16 @@ export class ProjectMembershipStore {
     scope: ProjectMembershipScope,
     actor: PrincipalRef,
     input: {
-      email: string;
+      email: string | null;
       role: Exclude<ProjectMemberRole, 'owner'>;
       expiresAt: string;
     },
   ): { invitation: ProjectInvitationView; token: string } {
-    const email = input.email.trim().toLowerCase();
+    const email =
+      input.email === null ? null : input.email.trim().toLowerCase();
     if (
-      !z.string().email().safeParse(email).success ||
-      email.length > 320 ||
+      (email !== null &&
+        (!z.string().email().safeParse(email).success || email.length > 320)) ||
       !['viewer', 'contributor', 'admin'].includes(input.role)
     )
       throw new ProjectMembershipRefusal('invitation_invalid');
@@ -253,12 +255,15 @@ export class ProjectMembershipStore {
   }
 
   /** Eligibility for account enrollment; does not consume the invitation or grant membership. */
-  mayRegister(token: string, email: string): boolean {
+  mayRegister(token: string, email?: string): boolean {
     try {
       return this.transaction(() => {
         const { scope, invitation } = this.pendingInvitation(token);
         this.requireGrant(scope, invitation.invitedBy, invitation.role);
-        return invitation.recipientEmail === email.trim().toLowerCase();
+        return (
+          invitation.recipientEmail === null ||
+          invitation.recipientEmail === email?.trim().toLowerCase()
+        );
       });
     } catch (error) {
       if (
@@ -281,6 +286,7 @@ export class ProjectMembershipStore {
     return this.transaction(() => {
       const { scope, invitation } = this.pendingInvitation(token);
       if (
+        invitation.recipientEmail !== null &&
         !verifiedEmails.some(
           (email) => email.trim().toLowerCase() === invitation.recipientEmail,
         )

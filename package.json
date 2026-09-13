@@ -263,7 +263,6 @@
     "test:fixtures:guard": "npm run test:fixtures:check && npm run test:focused -- scripts/__tests__/test-fixture-policy.test.ts scripts/__tests__/fixture-audit.test.ts scripts/__tests__/connection-fixtures.test.ts scripts/__tests__/test-mutations.test.ts scripts/__tests__/journey-profiles.test.ts"
   },
   "dependencies": {
-    "better-auth": "1.7.4",
     "@agentclientprotocol/sdk": "^1.4.0",
     "@ai-sdk/amazon-bedrock": "^4.0.141",
     "@ai-sdk/anthropic": "^3.0.102",
@@ -338,6 +337,7 @@
     "agent-skills-ts-sdk": "^2.4.2",
     "ai": "^6.0.280",
     "ajv": "^8.20.0",
+    "better-auth": "1.7.4",
     "chokidar": "^5.0.0",
     "debug": "^4.4.3",
     "dompurify": "^3.4.15",
