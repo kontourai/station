@@ -112,6 +112,46 @@ describe('ChatMessageList', () => {
     };
   }
 
+  test('loads older messages only on reader scroll near the top and coalesces pending requests', async () => {
+    let finish!: () => void;
+    const loadOlder = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(
+      <ChatMessageList
+        activeSession={resizeSession()}
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        hasOlderMessages
+        onLoadOlder={loadOlder}
+      />,
+    );
+    const log = screen.getByRole('log');
+    installScrollGeometry(log);
+    expect(
+      log.contains(screen.getByRole('button', { name: 'Earlier messages' })),
+    ).toBe(true);
+    log.scrollTop = 0;
+    fireEvent.scroll(log);
+    expect(loadOlder).not.toHaveBeenCalled();
+    fireEvent.wheel(log);
+    fireEvent.scroll(log);
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+    fireEvent.wheel(log);
+    fireEvent.scroll(log);
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+    finish();
+    await Promise.resolve();
+    log.scrollTop = 300;
+    fireEvent.wheel(log);
+    fireEvent.scroll(log);
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+  });
+
   test('layoutHeight preserves pinned-bottom and scrolled-up reader intent before ResizeObserver delivery', () => {
     const session = resizeSession();
     const view = render(

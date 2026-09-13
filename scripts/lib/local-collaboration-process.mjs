@@ -84,15 +84,33 @@ export async function runLabCommand(executable, args, cwd, timeoutMs = 30000) {
       new Error('Local lab child output exceeded its capture contract'),
     );
   if (errors.length)
-    throw new AggregateError(errors, 'Local lab command failed');
+    throw new AggregateError(errors, 'Local lab command failed', {
+      cause: {
+        stdout: output.stdout.text,
+        stderr: output.stderr.text,
+      },
+    });
+  return { stdout: output.stdout.text, stderr: output.stderr.text };
 }
 
-export async function startLabRelay(targetPort, directory, mode = 'forward') {
+export async function startLabRelay(
+  targetPort,
+  directory,
+  mode = 'forward',
+  transport = 'tcp',
+) {
+  if (!['tcp', 'udp'].includes(transport))
+    throw new Error('Unsupported lab relay transport');
   const readyPath = join(directory, 'ready.json');
   const { execution, capture } = own(
     process.execPath,
     [
-      join(import.meta.dirname, 'local-collaboration-relay.mjs'),
+      join(
+        import.meta.dirname,
+        transport === 'udp'
+          ? 'local-collaboration-udp-relay.mjs'
+          : 'local-collaboration-relay.mjs',
+      ),
       String(targetPort),
       directory,
       mode,

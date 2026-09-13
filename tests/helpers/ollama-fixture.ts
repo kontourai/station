@@ -6,10 +6,17 @@ export interface OllamaFixture {
   model: string;
 }
 
+export interface OllamaFixtureStream {
+  text(content: string): void;
+  tool(name: string, args: Record<string, unknown>, id: string): void;
+  finish(reason?: 'stop' | 'tool_calls'): void;
+}
+
 export function startOllamaFixture(
   model: string,
   onChat: (body: unknown) => void = () => undefined,
   reply = 'Fixture response',
+  onStream?: (stream: OllamaFixtureStream, body: unknown) => void,
 ): Promise<OllamaFixture> {
   return new Promise((resolve, reject) => {
     const server = createHttpServer((request, response) => {
@@ -66,6 +73,40 @@ export function startOllamaFixture(
             'cache-control': 'no-cache',
             connection: 'close',
           });
+          if (onStream) {
+            const write = (
+              delta: unknown,
+              finishReason: string | null = null,
+            ) =>
+              response.write(
+                `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\n`,
+              );
+            onStream(
+              {
+                text: (content) => {
+                  write({ content });
+                },
+                tool: (name, args, id) => {
+                  write({
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id,
+                        type: 'function',
+                        function: { name, arguments: JSON.stringify(args) },
+                      },
+                    ],
+                  });
+                },
+                finish: (reason = 'stop') => {
+                  write({}, reason);
+                  response.end('data: [DONE]\n\n');
+                },
+              },
+              body,
+            );
+            return;
+          }
           response.write(
             `data: ${JSON.stringify({ choices: [{ delta: { content: reply }, finish_reason: 'stop' }] })}\n\n`,
           );

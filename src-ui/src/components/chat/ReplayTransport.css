@@ -39,3 +39,30 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.replay-transport {
+  max-height: 48vh;
+  overflow-y: auto;
+}
+.replay-transport summary,
+.replay-capture label {
+  min-height: 44px;
+  cursor: pointer;
+}
+.replay-transport summary {
+  display: flex;
+  align-items: center;
+}
+.replay-transport input[type="number"] {
+  width: 6rem;
+}
+.replay-transport select,
+.replay-transport input,
+.replay-capture input {
+  min-height: 44px;
+}
+.replay-capture {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

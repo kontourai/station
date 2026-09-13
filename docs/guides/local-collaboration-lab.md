@@ -76,6 +76,77 @@ or global network configuration.
 
 ## Remaining acceptance
 
+### Browser transport evaluation
+
+An optional profile exercises a real Chromium browser against a Node WebRTC
+peer through local coturn allocations. It evaluates the encrypted transport;
+the Node peer echoes fixture content and does not expose a Station application
+or Project API.
+
+Prerequisites are the repository's dependencies, OpenSSL, a local Docker engine
+at its default local socket/pipe, and Playwright's Chromium installation:
+
+```bash
+npm exec -- playwright install chromium
+npm run lab:browser-transport
+npm run lab:browser-transport -- --keep
+```
+
+The profile uses the pinned official coturn image by digest, with an isolated
+Docker configuration and loopback-only published control ports. No hosted
+account or model is involved. Its relay allocations stay inside the container;
+both WebRTC peers are required to select relay candidates. The container runs
+as the image's non-root user, with a read-only root, bounded temporary storage,
+process/memory/CPU limits, and only `NET_BIND_SERVICE` retained because the
+official binary carries that file capability. It receives no application keys.
+The container and capture process have a two-minute lifetime ceiling. Ordinary
+completion stops/removes the exact owned container and stops the capture child.
+An operation-specific owner label is recorded before container allocation, and
+cleanup verifies the owner, exact container name and pinned image before acting.
+`--fail-after-create` is a negative lifecycle diagnostic: it injects a failure
+after allocation and loses the returned ID so cleanup must resolve the original
+operation safely. It must exit 1, remove its own container and preserve any
+unrelated container; a nonzero exit alone does not prove successful cleanup.
+
+Each run generates two distinct endpoint certificates. Approved fingerprint
+trust is supplied independently by the fixture controller. The checks require:
+
+- A browser DTLS connection to the approved certificate, with both sides using
+  TURN and a fixture message delivered and echoed through the DataChannel.
+- Refusal of a signaling description that advertises an unapproved fingerprint.
+- An actual browser DTLS failure when a substitute endpoint advertises the
+  approved fingerprint but presents its different certificate. A timeout does
+  not satisfy this check.
+- A nonempty, bounded capture on the Node peer's UDP relay path containing none
+  of the fixture application marker. DTLS verification and the negative control
+  are required in addition to the capture assertion.
+
+The default profile uses **UDP TURN control on both peers**, verified locally
+with Chromium 151.0.7922.34, `node-datachannel` 0.33.3, native `libdatachannel`
+0.24.3, and coturn 4.18.0. These are observed test versions, not a cross-platform
+support promise or a selected production adapter. The library is a development
+dependency for this evaluation; no application transport is enabled by installing it.
+
+The optional diagnostic `--browser-turn=tcp` retains a distinct failure path.
+In the inspected setup, Chromium allocated through TURN/TCP but ICE failed
+before DTLS with the Node peer using TURN/UDP. Configuring the packaged Node
+peer itself for TURN/TCP produced no relay candidates. Do not infer TCP support
+from the native API's option names, or silently fall back to UDP and report the
+TCP scenario passed. The newer 0.33.4 release notes a separate handshake
+reliability fix; the repository's dependency-age policy refused it at the time
+of evaluation. The older eligible release is not production approval.
+
+Success prints `STATION_BROWSER_TRANSPORT_REPORT` with the tested transport,
+versions, capture size and completed checks. The report is published after
+cleanup. Failure exits 1 and retains private protocol diagnostics; `--keep`
+also retains successful evidence. Fixture ICE credentials and keys stay in the
+private temporary home, not in the public report. Production key enrollment,
+signaling authentication, renewal/recovery, native app delivery and Station
+request/stream integration remain unimplemented. The fixture's out-of-band
+trust setup does not implement those contracts.
+
+### Full collaboration
+
 Future integration uses actual membership, account, compute and plugin owners;
 missing behavior must not become a successful skipped test. Station-local
 accounts under [#1981](https://github.com/kontourai/station/issues/1981) will
