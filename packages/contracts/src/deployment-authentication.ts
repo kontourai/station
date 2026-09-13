@@ -80,6 +80,14 @@ export interface DeploymentAuthenticationDescriptor {
   endpoints: readonly DeploymentAuthenticationEndpoint[];
   /** Exact account-cookie names; unrelated device cookies never trigger account verification. */
   sessionCookies: readonly string[];
+  /** Optional standard browser entry; adapters without one retain their own UI. */
+  login?:
+    | {
+        kind: 'email-password' | 'username-password';
+        signInPath: string;
+        signUpPath?: string;
+      }
+    | { kind: 'redirect'; startPath: string };
 }
 
 export interface DeploymentAuthenticationProvider
