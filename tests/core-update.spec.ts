@@ -133,19 +133,23 @@ test.describe('Core Update Flow', () => {
     await page.goto('/settings');
     await page.getByRole('button', { name: /Check for Updates/ }).click();
 
+    // The launch banner AND the settings card both present the derived
+    // source wording (correct: two surfaces, one fact) — scope to the server
+    // updates card to keep the locator strict-mode clean.
+    const serverCard = page.locator('[data-catalog-id="core-app-updates"]');
     // The checkout apply offer, with the behind count on the derived line.
     await expect(
-      page.getByRole('button', { name: 'Update server checkout' }),
+      serverCard.getByRole('button', { name: 'Update server checkout' }),
     ).toBeVisible({ timeout: 10000 });
     await expect(
-      page.getByText(
+      serverCard.getByText(
         'Server checkout is 3 commits behind its configured upstream.',
       ),
     ).toBeVisible();
     // Branch and hash info under the source-metadata labels.
-    await expect(page.getByText('Branch: main')).toBeVisible();
-    await expect(page.getByText('Checkout: abc1234')).toBeVisible();
-    await expect(page.getByText('Source ref: def5678')).toBeVisible();
+    await expect(serverCard.getByText('Branch: main')).toBeVisible();
+    await expect(serverCard.getByText('Checkout: abc1234')).toBeVisible();
+    await expect(serverCard.getByText('Source ref: def5678')).toBeVisible();
   });
 
   test('executes core update and shows the restart verification', async ({

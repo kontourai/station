@@ -1082,11 +1082,16 @@ describe('ConnectedServerUpdates', () => {
           'Rebuild and reinstall desktop app from source…',
         ),
       ).toBeTruthy();
-      expect(
-        screen.getByText(
-          'This build differs from the configured source ref. This check does not establish whether an installable release is available.',
-        ),
-      ).toBeTruthy();
+      const differsLine = screen.getByText(
+        'This build differs from the configured source ref. This check does not establish whether an installable release is available.',
+      );
+      // Same voice pin as the card: a stamp difference is warning-toned and
+      // glyph-less, never the success voice.
+      expect(differsLine.className).toContain('settings__update-msg--warning');
+      expect(differsLine.className).not.toContain(
+        'settings__update-msg--success',
+      );
+      expect(differsLine.querySelector('svg')).toBeNull();
     });
 
     it('an ineligible install shows the verified refusal reason instead of the rebuild action', async () => {

@@ -168,6 +168,28 @@ describe('CoreUpdateLaunchCheck', () => {
     expect(bannerStore.getSnapshot()).toHaveLength(0);
   });
 
+  test('a desktop-bundle behind-count with a differing stamp never becomes a release banner', async () => {
+    // Injection-gap fixture: a bundle that ALSO carries behind>0. The banner
+    // filter keys on the install kind, not on the presence of a behind
+    // count — a stamped build's counts are stamp facts, not release facts.
+    desktopStatus = {
+      updateAvailable: true,
+      installKind: 'desktop-bundle',
+      applyMethod: 'reinstall',
+      channel: 'nightly',
+      currentHash: 'aaaaaaa',
+      remoteHash: 'bbbbbbb',
+      behind: 3,
+      ahead: 0,
+    };
+
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    expect(screen.queryByText(/commits? behind/)).toBeNull();
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
+  });
+
   test('a source checkout behind shows the exact source wording and the server-card link, with singular commits', async () => {
     desktopStatus = {
       updateAvailable: true,

@@ -179,11 +179,19 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
       screen.queryByRole('button', { name: 'Update server checkout' }),
     ).toBeNull();
     // S10, verbatim: SHA inequality is a build-stamp fact, never a release.
-    expect(
-      screen.getByText(
-        'This build differs from the configured source ref. This check does not establish whether an installable release is available.',
-      ),
-    ).toBeTruthy();
+    const differsLine = screen.getByText(
+      'This build differs from the configured source ref. This check does not establish whether an installable release is available.',
+    );
+    // The differs state must NOT speak in the success voice — no success
+    // tone class, no success glyph (verifier injection: tone/glyph flipped).
+    expect(differsLine.className).toContain('settings__update-msg--warning');
+    expect(differsLine.className).not.toContain(
+      'settings__update-msg--success',
+    );
+    expect(differsLine.className).not.toContain(
+      'settings__update-text--success',
+    );
+    expect(differsLine.querySelector('svg')).toBeNull();
     expect(screen.getByText(/Channel: nightly/)).toBeTruthy();
     expect(screen.getByText(/Build: aaaaaaa/)).toBeTruthy();
     expect(screen.getByText(/Source ref: bbbbbbb/)).toBeTruthy();
@@ -475,6 +483,38 @@ describe('comparison-priority matrix (update-ux PR4)', () => {
     expect(
       screen.queryByRole('button', { name: 'Update server checkout' }),
     ).toBeNull();
+  });
+
+  test('an identity refetch onto a NEW boot invalidates the apply offer on the cached comparison', () => {
+    // Same selection, cached comparison in hand: the server restarts and the
+    // view's correlated identity refetches onto a NEW boot while the cached
+    // status still claims the OLD one. The gate compares the view identity
+    // the check answered with — a boot mismatch closes the apply offer even
+    // though the comparison counts still read as current.
+    const before = makeContext();
+    const rendered = renderWith(behindCheckout(), before);
+    expect(
+      screen.getByRole('button', { name: 'Update server checkout' }),
+    ).toBeTruthy();
+
+    const restarted = makeContext({
+      identity: {
+        ...VIEW_IDENTITY,
+        bootId: '22222222-2222-4222-8222-222222222222',
+      },
+    });
+    rendered.rerender(
+      <CoreUpdateCheck apiBase="http://localhost:3141" context={restarted} />,
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Update server checkout' }),
+    ).toBeNull();
+    // The comparison facts remain visible — only the offer is invalidated.
+    expect(
+      screen.getByText(
+        'Server checkout is 2 commits behind its configured upstream.',
+      ),
+    ).toBeTruthy();
   });
 
   test('an older server with no response identity keeps its comparison facts but earns no apply offer', () => {
