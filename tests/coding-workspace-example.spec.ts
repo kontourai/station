@@ -235,7 +235,7 @@ test('coding example preserves both Panes and its authored native Agent in a rea
           page.getByRole('region', { name: 'Chat dock', exact: true }),
         ).toBeVisible();
         await expect(
-          page.getByText('No active session', { exact: true }),
+          page.getByText('No chat open', { exact: true }),
         ).toBeVisible();
         expect(requests).toHaveLength(beforeDock);
         await page
