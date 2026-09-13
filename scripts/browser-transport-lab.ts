@@ -23,6 +23,7 @@ import {
   browserSend,
   browserStats as readBrowserStats,
 } from './lib/browser-transport-page.mjs';
+import { startPionFixture } from './lib/browser-transport-pion.js';
 import {
   runLabCommand,
   startLabRelay,
@@ -39,15 +40,24 @@ if (
         '--browser-turn=udp',
         '--browser-turn=tcp',
         '--keep',
+        '--peer=pion',
+        '--peer=node',
         '--fail-after-create',
       ].includes(arg),
   ) ||
-  args.filter((arg) => arg.startsWith('--browser-turn=')).length > 1
+  args.filter((arg) => arg.startsWith('--browser-turn=')).length > 1 ||
+  args.filter((arg) => arg.startsWith('--peer=')).length > 1
 )
   throw new Error(
     'Use --browser-turn=udp or --browser-turn=tcp and optional --keep',
   );
+const peerAdapter = args.includes('--peer=pion') ? 'pion' : 'node';
 const browserTransport = args.includes('--browser-turn=tcp') ? 'tcp' : 'udp';
+const pionExecutable = join(
+  process.cwd(),
+  '.kontourai/browser-transport',
+  process.platform === 'win32' ? 'pion-peer.exe' : 'pion-peer',
+);
 process.umask(0o077);
 const root = mkdtempSync(join(tmpdir(), 'station-browser-transport-'));
 const errors: unknown[] = [];
@@ -78,7 +88,17 @@ let turnUdpPort: number | undefined;
 let turnTcpPort: number | undefined;
 let relay: Awaited<ReturnType<typeof startLabRelay>> | undefined;
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
-const peers: InstanceType<typeof datachannel.PeerConnection>[] = [];
+type LabPeer = {
+  close(): void | Promise<void>;
+  getSelectedCandidatePair(): {
+    local: { type: string };
+    remote: { type: string };
+  } | null;
+};
+const peers: LabPeer[] = [];
+let pionProvenance:
+  | Awaited<ReturnType<typeof startPionFixture>>['provenance']
+  | undefined;
 const observers: (() => Promise<unknown>)[] = [];
 const server = createServer((_request, response) => {
   response.writeHead(200, { 'Content-Type': 'text/html' });
@@ -205,6 +225,40 @@ async function exchange(
     'browser ICE gathering',
   );
   assert.match(remote.sdp, / typ relay/);
+  if (peerAdapter === 'pion') {
+    const fixture = await startPionFixture({
+      executable: pionExecutable,
+      directory: join(root, `pion-${peers.length}`),
+      certificate: key.cert,
+      key: key.key,
+      offer: remote,
+      turnPort: relay.port,
+      username,
+      password,
+    });
+    peers.push(fixture.peer);
+    if (pionProvenance) assert.deepEqual(fixture.provenance, pionProvenance);
+    pionProvenance = fixture.provenance;
+    observers.push(async () => ({
+      state: fixture.diagnostics(),
+      browser: await page.evaluate(readBrowserStats),
+    }));
+    assert.match(fixture.answer.sdp, / typ relay/);
+    assert.equal(
+      fixture.answer.sdp.match(/^a=fingerprint:sha-256 (.+)$/m)?.[1]?.trim(),
+      key.fingerprint,
+    );
+    const sdp = substitute
+      ? fixture.answer.sdp.replace(key.fingerprint, pin)
+      : fixture.answer.sdp;
+    await page.evaluate(browserAccept, { sdp, pin, candidates: [] });
+    return {
+      peer: fixture.peer,
+      get messages() {
+        return fixture.readMessages();
+      },
+    };
+  }
   const peer = new datachannel.PeerConnection('station-transport-fixture', {
     iceServers: [
       {
@@ -341,7 +395,12 @@ try {
   turnUdpPort = Number(publishedUdp.split(':').at(-1));
   const relayRoot = join(root, 'relay');
   mkdirSync(relayRoot, { mode: 0o700 });
-  relay = await startLabRelay(turnUdpPort, relayRoot, 'forward', 'udp');
+  relay = await startLabRelay(
+    peerAdapter === 'pion' ? turnTcpPort : turnUdpPort,
+    relayRoot,
+    'forward',
+    peerAdapter === 'pion' ? 'tcp' : 'udp',
+  );
   const approved = await identity('approved-station');
   const substituted = await identity('unapproved-station');
   server.listen(0, '127.0.0.1');
@@ -372,7 +431,34 @@ try {
     ),
   );
   await context.close();
-  good.peer.close();
+  await good.peer.close();
+
+  const reconnectContext = await browser.newContext();
+  const reconnectPage = await reconnectContext.newPage();
+  await reconnectPage.goto(`http://127.0.0.1:${address.port}`);
+  const reconnected = await exchange(
+    reconnectPage,
+    approved,
+    approved.fingerprint,
+  );
+  await reconnectPage.waitForFunction(browserChannelOpen, undefined, {
+    timeout: 20000,
+  });
+  await reconnectPage.evaluate(browserSend, marker);
+  await reconnectPage.waitForFunction(browserReceived, marker, {
+    timeout: 10000,
+  });
+  assert.deepEqual(reconnected.messages, [marker]);
+  assert.equal(
+    reconnected.peer.getSelectedCandidatePair()?.local.type,
+    'relay',
+  );
+  assert.equal(
+    reconnected.peer.getSelectedCandidatePair()?.remote.type,
+    'relay',
+  );
+  await reconnectContext.close();
+  await reconnected.peer.close();
 
   const replacementContext = await browser.newContext();
   const replacementPage = await replacementContext.newPage();
@@ -399,7 +485,7 @@ try {
   assert(hostileStats.some((entry) => entry.dtlsState === 'failed'));
   assert.deepEqual(hostile.messages, []);
   await hostileContext.close();
-  hostile.peer.close();
+  await hostile.peer.close();
   await relay.close();
   const captured = readFileSync(relay.capturePath);
   assert(
@@ -412,16 +498,22 @@ try {
     scope: 'browser-transport-evaluation',
     status: 'passed',
     browser: browser.version(),
-    nodeDatachannel: '0.33.3',
-    libdatachannel: datachannel.getLibraryVersion(),
+    peerAdapter,
+    ...(peerAdapter === 'pion'
+      ? pionProvenance
+      : {
+          nodeDatachannel: '0.33.3',
+          libdatachannel: datachannel.getLibraryVersion(),
+        }),
     browserTurnTransport: browserTransport,
-    stationTurnTransport: 'udp',
+    stationTurnTransport: peerAdapter === 'pion' ? 'tcp' : 'udp',
     captureBytes: captured.length,
     turnImage: TURN_IMAGE,
     checks: [
       'TURN relay selected at both peers',
       'browser-native DTLS connected',
       'application content echoed through encrypted data channel',
+      'fresh browser and peer reconnect using the same approved Station certificate',
       'unapproved signaling fingerprint refused',
       'substituted endpoint fails DTLS fingerprint verification',
     ],
@@ -444,7 +536,7 @@ try {
 } finally {
   for (const peer of peers) {
     try {
-      peer.close();
+      await peer.close();
     } catch (error) {
       errors.push(error);
     }
