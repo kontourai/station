@@ -187,11 +187,7 @@ export function ApprovalModeChip({
             ? `Approval mode: ${chipText} — takes effect next turn. Engine approval control. ${policyDisclosure}`
             : `Approval mode: ${accessibleLabel}. Engine approval control. ${policyDisclosure}`
         }
-        title={
-          isPendingApply
-            ? `Engine approval mode: Full access was confirmed but has not applied yet — it takes effect starting with your next message. ${policyDisclosure}`
-            : `Engine approval mode for this session: ${selectedLabel}. ${policyDisclosure}`
-        }
+        title={`Approval mode: ${selectedLabel}. ${policyDisclosure}`}
         onClick={() => setIsSheetOpen((open) => !open)}
       >
         <span className="chat-input__approval-chip-label" aria-hidden="true">
