@@ -89,6 +89,37 @@ const post = (app: Hono, path: string, body: unknown) =>
   });
 
 describe('Project membership through revision and administration routes', () => {
+  test('invitation preview discloses only its offered Project and fails after cancellation', async () => {
+    const h = await harness();
+    const access = await h.service.enable('example', h.project.id, h.access);
+    const offer = await h.service.invite(
+      access.scope,
+      { ...invitation(), email: null },
+      h.access,
+    );
+    expect(await h.service.previewInvitation(offer.token)).toEqual({
+      projectName: 'Example',
+      inviterName: owner.display,
+      role: 'viewer',
+      actions: ['view'],
+      expiresAt: offer.invitation.expiresAt,
+      recipientEmail: null,
+    });
+    expect(
+      (await h.service.administration('example', h.access)).members,
+    ).toHaveLength(1);
+    await h.service.revokeInvitation(
+      access.scope,
+      offer.invitation.id,
+      h.access,
+    );
+    await expect(
+      h.service.previewInvitation(offer.token),
+    ).rejects.toMatchObject({ code: 'invitation_invalid' });
+    await expect(
+      h.service.previewInvitation('x'.repeat(43)),
+    ).rejects.toMatchObject({ code: 'invitation_invalid' });
+  });
   test('membership body limits do not capture unrelated Project API operations', async () => {
     const h = await harness();
     h.app.post('/api/projects', async (c) =>

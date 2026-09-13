@@ -150,6 +150,14 @@ issuer, expiry and verified contacts. It exposes neither a session token nor
 the private session record ID. With no adapter configured, these routes return
 501. A missing/invalid account returns 401; provider unavailability returns 503.
 
+`POST /api/account-auth/invitation-preview` takes `{ "token": "<invitation>" }`
+and returns only the offered Project name, inviter display, role/actions, expiry
+and optional verified-email restriction. A current link is required, but sign-in
+is not: this lets the recipient understand the offer first. The service holds the
+exact Project revision and checks the current invitation and inviter authority.
+It returns no filesystem path, member inventory or private work. Keep the token
+in the request body; never put it in an HTTP path or query string.
+
 `POST /api/account-auth/accept-invitation` accepts a single invitation token
 using the current authenticated account. Email-restricted invitations additionally
 require matching verified contact evidence. When Project
@@ -179,7 +187,9 @@ member/resource authorization implementation.
 
 ## Browser invitation entry
 
-`/account/join#invitation=<token>` opens the account entry independently of the
+`/account/join#invitation=<token>` previews the current Project, inviter and
+offered role before presenting account entry. A refused preview shows recovery
+guidance without offering registration or acceptance. The page runs independently of the
 personal Station provider tree and persisted Project query cache. It uses the
 same browser origin's account service and attaches no operator bearer. Sign-in
 and invitation acceptance are separate user actions. Password registration is
@@ -193,6 +203,10 @@ single-use checks remain authoritative. Password-reset proof stays only in the
 open page's memory. An invalid new invitation cannot select a prior invitation
 saved in the tab. `/account/reset#token=<proof>` uses the provider's declared
 recovery operation and returns to sign-in after success.
+
+A new invitation fragment received in an already open tab replaces the current
+entry and clears its form state. An earlier acceptance finishing afterward clears
+only its own saved continuation, never the newly received invitation.
 
 This entry currently confirms membership; the complete shared-work/device
 admission journey remains under #488. Optional native opening, compatible

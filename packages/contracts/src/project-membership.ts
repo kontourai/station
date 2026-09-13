@@ -62,3 +62,13 @@ export interface ProjectAccessAdministrationView {
   members: readonly ProjectMemberView[];
   invitations: readonly ProjectInvitationView[];
 }
+
+/** Minimal disclosure to a holder of a current invitation; no files, paths or member inventory. */
+export interface ProjectInvitationPreview {
+  projectName: string;
+  inviterName: string;
+  role: Exclude<ProjectMemberRole, 'owner'>;
+  actions: readonly ProjectMemberAction[];
+  expiresAt: string;
+  recipientEmail: string | null;
+}

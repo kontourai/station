@@ -936,6 +936,12 @@ invitation argument is registration eligibility, not authentication or membershi
 The [deployment authentication guide](../guides/deployment-authentication.md)
 defines the provider interface and separate invitation-acceptance operation.
 
+The same account-authentication entry exports `getProjectInvitationPreview(apiBase,
+token)`. It uses a POST body, validates the minimal Project/inviter/role projection,
+and rejects incompatible role/action combinations. Keep the proof out of query
+cache keys and persisted data. Preview success does not authenticate a person,
+consume the invitation or grant membership.
+
 An invitation command's `email: null` explicitly creates a single-use link for
 any authenticated holder. A string restricts acceptance to that verified email;
 do not silently omit or clear a requested restriction. The descriptor may select
