@@ -332,10 +332,9 @@ describe('ApprovalModeChip', () => {
       />,
     );
 
+    // No override: the engine's receipt labels the chip (station#1950).
     expect(
-      screen.getByRole('button', {
-        name: /^Approval mode: Ask first — default\./,
-      }),
+      screen.getByRole('button', { name: /^Approval mode: Ask first\./ }),
     ).toBeTruthy();
 
     await openSheet();
