@@ -69,6 +69,19 @@ export async function getAccountAuthentication(
         .max(32),
       sessionCookies: z.array(z.string()).max(4),
       login: login.optional(),
+      externalLogins: z
+        .array(
+          z
+            .object({
+              id: z.string().min(1).max(64),
+              displayName: z.string().min(1).max(256),
+              startPath: path,
+              available: z.boolean().optional(),
+            })
+            .strict(),
+        )
+        .max(4)
+        .optional(),
     })
     .strict()
     .safeParse(value);

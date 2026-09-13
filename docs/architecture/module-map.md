@@ -1137,3 +1137,15 @@ app identity from a screen or live readiness from a snapshot.
 `src-server/routes/__tests__/mobile-device.routes.test.ts`, and
 `packages/sdk/src/__tests__/mobile-device.test.ts`. See the
 [operator guide](../guides/mobile-device-workspace.md).
+
+
+### Optional local-account OIDC
+
+`local-account-oidc.ts` reads bounded operator configuration and secret references.
+The local account provider composes pinned Better Auth OAuth verification,
+server-controlled invitation state and the existing private session/administration
+owners. The descriptor, SDK and account entry view expose configured browser
+choices alongside passwords. Failed issuer establishment disables the external
+choice and its callback without granting authority or changing local passwords.
+The real HTTP issuer fixture in `local-account-oidc.test.ts` exercises verified
+identity, callback faults and local operation during issuer unavailability.

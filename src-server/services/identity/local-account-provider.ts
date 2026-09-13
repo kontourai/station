@@ -7,12 +7,18 @@ import {
   type DeploymentAuthenticationResult,
 } from '@kontourai/station-contracts/deployment-authentication';
 import { type BetterAuthOptions, betterAuth } from 'better-auth';
+import {
+  addOAuthServerContext,
+  createAuthMiddleware,
+  getOAuthState,
+} from 'better-auth/api';
 import { getCookies } from 'better-auth/cookies';
 import { getMigrations } from 'better-auth/db/migration';
-import { username } from 'better-auth/plugins';
+import { genericOAuth, username } from 'better-auth/plugins';
 import { z } from 'zod/v3';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
 import { LocalAccountAdministration } from './local-account-administration.js';
+import type { LocalAccountOidcProvider } from './local-account-oidc.js';
 
 export interface LocalAccountEmail {
   kind: 'verify-email' | 'reset-password';
@@ -39,6 +45,7 @@ export async function createLocalAccountProvider(
   secret: string,
   enrollment: LocalAccountEnrollment,
   mode: 'email-password' | 'username-password' = 'email-password',
+  oidc: readonly LocalAccountOidcProvider[] = [],
 ): Promise<LocalAccountProvider> {
   if (secret.length < 32)
     throw new Error(
@@ -109,17 +116,47 @@ export async function createLocalAccountProvider(
         cookiePrefix: `station-account-${createHash('sha256').update(host.stationId).digest('hex').slice(0, 20)}`,
         useSecureCookies: host.publicOrigin.startsWith('https:'),
       },
-      account: { accountLinking: { enabled: false } },
-      plugins: localUsername
-        ? [
-            username({
-              minUsernameLength: 3,
-              maxUsernameLength: 32,
-              usernameValidator: (value) =>
-                /^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,31}$/.test(value),
-            }),
-          ]
-        : [],
+      account: { accountLinking: { enabled: false }, encryptOAuthTokens: true },
+      plugins: [
+        ...(localUsername
+          ? [
+              username({
+                minUsernameLength: 3,
+                maxUsernameLength: 32,
+                usernameValidator: (value) =>
+                  /^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,31}$/.test(value),
+              }),
+            ]
+          : []),
+        ...(oidc.length
+          ? [
+              genericOAuth({
+                config: oidc.map((provider) => ({
+                  providerId: provider.id,
+                  name: provider.displayName,
+                  discoveryUrl: `${provider.issuer.replace(/\/$/, '')}/.well-known/openid-configuration`,
+                  clientId: provider.clientId,
+                  clientSecret: provider.clientSecret,
+                  scopes: ['openid', 'profile', 'email'],
+                  pkce: true,
+                  requireIdTokenVerification: true,
+                  disableImplicitSignUp: true,
+                  disableProviderLogout: true,
+                })),
+              }),
+            ]
+          : []),
+      ],
+      hooks: {
+        before: createAuthMiddleware(async (context) => {
+          if (context.path !== '/sign-in/social') return;
+          const invitation = context.request?.headers.get(
+            'x-station-invitation',
+          );
+          if (invitation)
+            await addOAuthServerContext({ stationInvitation: invitation });
+        }),
+      },
       rateLimit: { enabled: true, storage: 'database', window: 60, max: 10 },
       user: {
         additionalFields: {
@@ -135,16 +172,25 @@ export async function createLocalAccountProvider(
         user: {
           create: {
             before: async (user, context) => {
-              const invitation = context?.request?.headers.get(
-                'x-station-invitation',
-              );
-              return (
+              const oauthState = await getOAuthState();
+              const callbackInvitation =
+                oauthState?.serverContext?.stationInvitation;
+              const invitation =
+                typeof callbackInvitation === 'string'
+                  ? callbackInvitation
+                  : context?.request?.headers.get('x-station-invitation');
+              const eligible =
                 !!invitation &&
                 (await enrollment.mayRegister({
                   invitation,
-                  ...(localUsername ? {} : { email: user.email }),
-                }))
-              );
+                  ...(!localUsername || (oauthState && user.emailVerified)
+                    ? { email: user.email }
+                    : {}),
+                }));
+              if (!eligible) return false;
+              return user.emailVerified === true
+                ? { data: { ...user, verifiedAt: new Date() } }
+                : true;
             },
           },
           update: {
@@ -159,6 +205,33 @@ export async function createLocalAccountProvider(
     const migration = await getMigrations(options);
     await migration.runMigrations();
     const auth = betterAuth(options);
+    const context = await auth.$context;
+    const availableOidc = new Set(
+      oidc
+        .filter((configured) => {
+          const provider = context.socialProviders.find(
+            (entry) => entry.id === configured.id,
+          );
+          if (
+            provider?.issuer !== configured.issuer ||
+            !provider.idToken ||
+            !provider.requiresIdTokenNonce
+          )
+            return false;
+          // The generic OAuth interface also supports UserInfo-only OAuth.
+          // This configured OIDC flow requires an ID token on EVERY callback.
+          // Delegate signature/issuer/audience/nonce checks to the maintained
+          // provider; never substitute local JWT decoding for verification.
+          const getUserInfo = provider.getUserInfo.bind(provider);
+          provider.getUserInfo = async (tokens) =>
+            typeof tokens.idToken === 'string' && tokens.idToken.length > 0
+              ? getUserInfo(tokens)
+              : null;
+          return true;
+        })
+        .map((provider) => provider.id),
+    );
+
     function resolveSession(
       current: {
         user: {
@@ -190,21 +263,35 @@ export async function createLocalAccountProvider(
           sessionId: current.session.id,
           authenticatedAt: current.session.createdAt.toISOString(),
           expiresAt: current.session.expiresAt.toISOString(),
-          contacts: localUsername
-            ? []
-            : [
-                {
-                  kind: 'email',
-                  value: current.user.email,
-                  verifiedAt: (current.user.verifiedAt as Date).toISOString(),
-                },
-              ],
+          contacts:
+            current.user.emailVerified &&
+            current.user.verifiedAt instanceof Date
+              ? [
+                  {
+                    kind: 'email',
+                    value: current.user.email,
+                    verifiedAt: (current.user.verifiedAt as Date).toISOString(),
+                  },
+                ]
+              : [],
         },
       };
     }
     const signUpPath = localUsername ? '/sign-up/username' : '/sign-up/email';
     const signInPath = localUsername ? '/sign-in/username' : '/sign-in/email';
     const endpoints: DeploymentAuthenticationProvider['endpoints'] = [
+      ...oidc.flatMap((provider) => [
+        {
+          path: `/oidc/${provider.id}/begin`,
+          methods: ['POST'] as const,
+          operation: 'begin-login' as const,
+        },
+        {
+          path: `/callback/${provider.id}`,
+          methods: ['GET'] as const,
+          operation: 'callback' as const,
+        },
+      ]),
       { path: signUpPath, methods: ['POST'], operation: 'register' },
       { path: signInPath, methods: ['POST'], operation: 'begin-login' },
       { path: '/sign-out', methods: ['POST'], operation: 'logout' },
@@ -278,6 +365,16 @@ export async function createLocalAccountProvider(
         signInPath,
         signUpPath,
       },
+      ...(oidc.length
+        ? {
+            externalLogins: oidc.map((provider) => ({
+              id: provider.id,
+              displayName: provider.displayName,
+              startPath: `/oidc/${provider.id}/begin`,
+              available: availableOidc.has(provider.id),
+            })),
+          }
+        : {}),
       sessionCookies: [cookie],
       endpoints,
       sessionReferences: {
@@ -368,6 +465,76 @@ export async function createLocalAccountProvider(
           );
         }
         let operation = request;
+        const external = oidc.find(
+          (provider) => path === `/oidc/${provider.id}/begin`,
+        );
+        if (external) {
+          if (!availableOidc.has(external.id))
+            return Response.json(
+              { error: { code: 'oidc_provider_unavailable' } },
+              { status: 503 },
+            );
+          const body = z
+            .object({})
+            .strict()
+            .safeParse(await request.clone().json());
+          const invitation = request.headers.get('x-station-invitation');
+          if (
+            !body.success ||
+            (invitation && !/^[A-Za-z0-9._-]{16,2048}$/.test(invitation))
+          )
+            return Response.json(
+              { error: { code: 'invalid_oidc_login' } },
+              { status: 400 },
+            );
+          const headers = new Headers(request.headers);
+          headers.delete('Content-Length');
+          headers.set('Content-Type', 'application/json');
+          const response = await auth.handler(
+            new Request(`${host.publicOrigin}${host.basePath}/sign-in/social`, {
+              method: 'POST',
+              headers,
+              signal: request.signal,
+              body: JSON.stringify({
+                provider: external.id,
+                callbackURL: `${host.publicOrigin}/account`,
+                errorCallbackURL: `${host.publicOrigin}/account`,
+                requestSignUp: !!invitation,
+                disableRedirect: true,
+              }),
+            }),
+          );
+          if (!response.ok)
+            return Response.json(
+              { error: { code: 'oidc_login_unavailable' } },
+              { status: response.status },
+            );
+          const value: unknown = await response.json();
+          const parsed = z.object({ url: z.string().url() }).safeParse(value);
+          if (!parsed.success)
+            return Response.json(
+              { error: { code: 'oidc_login_unavailable' } },
+              { status: 503 },
+            );
+          const destination = new URL(parsed.data.url);
+          if (
+            destination.protocol !== 'https:' &&
+            !(
+              destination.protocol === 'http:' &&
+              ['localhost', '127.0.0.1', '[::1]'].includes(destination.hostname)
+            )
+          )
+            return Response.json(
+              { error: { code: 'oidc_login_unavailable' } },
+              { status: 503 },
+            );
+          const outgoing = new Headers(response.headers);
+          outgoing.delete('Content-Length');
+          return new Response(
+            JSON.stringify({ data: { url: parsed.data.url } }),
+            { status: 200, headers: outgoing },
+          );
+        }
         if (path === signUpPath) {
           const input: unknown = await request.clone().json();
           const invitation = request.headers.get('x-station-invitation');
@@ -440,6 +607,14 @@ export async function createLocalAccountProvider(
             body: JSON.stringify({ ...body, revokeOtherSessions: true }),
           });
         }
+        const callbackProvider = oidc.find(
+          (provider) => path === `/callback/${provider.id}`,
+        );
+        if (callbackProvider && !availableOidc.has(callbackProvider.id))
+          return Response.json(
+            { error: { code: 'oidc_provider_unavailable' } },
+            { status: 503 },
+          );
         const response = await auth.handler(operation);
         if (
           response.ok &&

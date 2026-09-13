@@ -74,6 +74,19 @@ const descriptorSchema = z
           .strict(),
       ])
       .optional(),
+    externalLogins: z
+      .array(
+        z
+          .object({
+            id: text(64),
+            displayName: text(256),
+            startPath: z.string(),
+            available: z.boolean().optional(),
+          })
+          .strict(),
+      )
+      .max(4)
+      .optional(),
     sessionCookies: z
       .array(
         z
@@ -131,6 +144,7 @@ export function readDeploymentAuthenticationDescriptor(
     endpoints: provider.endpoints,
     sessionCookies: provider.sessionCookies,
     login: provider.login,
+    externalLogins: provider.externalLogins,
   });
   if (
     !parsed.success ||
@@ -159,6 +173,16 @@ export function readDeploymentAuthenticationDescriptor(
       (login.signUpPath && !declared(login.signUpPath, 'POST', 'register')))
   )
     throw new Error('Browser password endpoints are not declared.');
+  if (
+    descriptor.externalLogins?.some(
+      (entry) => !declared(entry.startPath, 'POST', 'begin-login'),
+    ) ||
+    new Set(descriptor.externalLogins?.map((entry) => entry.id)).size !==
+      (descriptor.externalLogins?.length ?? 0)
+  )
+    throw new Error(
+      'External browser login choices must be unique declared endpoints.',
+    );
   const issuer = new URL(descriptor.issuer);
   if (
     issuer.username ||

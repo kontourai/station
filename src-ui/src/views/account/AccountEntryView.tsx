@@ -91,6 +91,42 @@ export function AccountEntryView({
     setNotice(undefined);
   }
 
+  async function externalSignIn(path: string) {
+    setError(undefined);
+    try {
+      const result = await mutation.mutateAsync({
+        path,
+        body: {},
+        ...(invitation ? { invitation } : {}),
+      });
+      if (
+        !result ||
+        typeof result !== 'object' ||
+        !('url' in result) ||
+        typeof result.url !== 'string'
+      )
+        throw new Error(
+          'The sign-in provider did not return a login destination.',
+        );
+      const url = new URL(result.url);
+      if (
+        url.protocol !== 'https:' &&
+        !(
+          url.protocol === 'http:' &&
+          ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+        )
+      )
+        throw new Error(
+          'The sign-in provider returned an unsupported destination.',
+        );
+      window.location.assign(url.href);
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      mutation.reset();
+    }
+  }
+
   async function submit() {
     setError(undefined);
     setNotice(undefined);
@@ -406,6 +442,21 @@ export function AccountEntryView({
               operator for its login link.
             </p>
           )}
+          {!joined &&
+            session.isSuccess &&
+            !session.data &&
+            (mode === 'sign-in' || mode === 'register') &&
+            descriptor.data?.externalLogins?.map((provider) => (
+              <Button
+                key={provider.id}
+                disabled={busy || provider.available === false}
+                onClick={() => void externalSignIn(provider.startPath)}
+              >
+                {provider.available === false
+                  ? `${provider.displayName} is unavailable`
+                  : `Continue with ${provider.displayName}`}
+              </Button>
+            ))}
           {notice && <p role="status">{notice}</p>}
           {error && <p role="alert">{error}</p>}
         </PageFrame>

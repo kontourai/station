@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -36,6 +36,49 @@ describe('built-in local account lifetime', () => {
         STATION_AUTHENTICATION_ORIGIN: publicOrigin,
       }),
     ).toThrow();
+  });
+
+  test('OIDC configuration resolves private secret references and rejects unsafe or duplicate providers', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'station-oidc-config-'));
+    roots.push(root);
+    const file = join(root, 'providers.json');
+    const provider = {
+      id: 'example',
+      displayName: 'Example identity',
+      issuer: 'https://identity.example.test',
+      clientId: 'station',
+      clientSecretEnv: 'STATION_EXAMPLE_OIDC_SECRET',
+    };
+    const environment = {
+      STATION_LOCAL_ACCOUNTS: '1',
+      STATION_AUTHENTICATION_ORIGIN: publicOrigin,
+      STATION_LOCAL_ACCOUNT_OIDC_FILE: file,
+      STATION_EXAMPLE_OIDC_SECRET: 'fixture-private-secret',
+    };
+    await writeFile(file, JSON.stringify([provider]));
+    expect(readLocalAccountConfiguration(environment)?.oidc?.[0]).toMatchObject(
+      { issuer: provider.issuer, clientSecret: 'fixture-private-secret' },
+    );
+    expect(() =>
+      readLocalAccountConfiguration({
+        ...environment,
+        STATION_EXAMPLE_OIDC_SECRET: undefined,
+      }),
+    ).toThrow('secret is unavailable');
+    await writeFile(file, JSON.stringify([provider, provider]));
+    expect(() => readLocalAccountConfiguration(environment)).toThrow(
+      'duplicate',
+    );
+    for (const issuer of [
+      'http://identity.example.test',
+      'https://user:secret@identity.example.test',
+      'https://identity.example.test#fragment',
+    ]) {
+      await writeFile(file, JSON.stringify([{ ...provider, issuer }]));
+      expect(() => readLocalAccountConfiguration(environment)).toThrow(
+        'Invalid',
+      );
+    }
   });
 
   test('reopening preserves cookies and opaque person identity, while another Station or missing secret is refused', async () => {

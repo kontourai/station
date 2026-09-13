@@ -10,11 +10,16 @@ import {
 } from './deployment-authentication-loader.js';
 import { DeploymentAuthenticationService } from './deployment-authentication-service.js';
 import {
+  type LocalAccountOidcProvider,
+  readLocalAccountOidcConfiguration,
+} from './local-account-oidc.js';
+import {
   createLocalAccountProvider,
   type LocalAccountProvider,
 } from './local-account-provider.js';
 
 export interface LocalAccountConfiguration {
+  oidc?: readonly LocalAccountOidcProvider[];
   publicOrigin: string;
   allowedBrowserOrigins?: readonly string[];
 }
@@ -39,6 +44,7 @@ export function readLocalAccountConfiguration(
   const allowedBrowserOrigins = readAuthenticationBrowserOrigins(environment);
   return {
     publicOrigin,
+    oidc: readLocalAccountOidcConfiguration(environment),
     ...(allowedBrowserOrigins ? { allowedBrowserOrigins } : {}),
   };
 }
@@ -114,6 +120,7 @@ export async function loadLocalAccounts(
         },
       },
       'username-password',
+      input.oidc,
     );
     return {
       service: new DeploymentAuthenticationService(provider),
