@@ -99,6 +99,24 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
+  test.each([
+    [true, 14, '16px'],
+    [true, 20, '20px'],
+    [false, 14, '14px'],
+  ])(
+    'keeps a readable mobile input floor (mobile=%s, preference=%s)',
+    (mobile, fontSize, expected) => {
+      const original = window.matchMedia;
+      window.matchMedia = (query) => ({ ...original(query), matches: mobile });
+      try {
+        renderChatInputArea({ fontSize });
+        expect(screen.getByRole('textbox').style.fontSize).toBe(expected);
+      } finally {
+        window.matchMedia = original;
+      }
+    },
+  );
+
   test('surfaces a microphone permission failure in the composer', () => {
     renderChatInputArea({
       voiceState: 'error',

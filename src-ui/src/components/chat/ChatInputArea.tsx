@@ -626,7 +626,8 @@ export function ChatInputArea({
               isComposing.current = false;
             }}
             style={{
-              fontSize: `${fontSize}px`,
+              // iOS zooms focused small inputs, pushing the Send action offscreen.
+              fontSize: `${isMobile ? Math.max(16, fontSize) : fontSize}px`,
               flex: 1,
               resize: 'none',
               minHeight: 0,
