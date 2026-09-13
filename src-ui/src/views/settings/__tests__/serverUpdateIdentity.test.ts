@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import type { SystemIdentityResponse } from '@kontourai/station-contracts/system-status';
+import { describe, expect, it } from 'vitest';
 import type { BundledServerStatus } from '../../../platform/native/types';
 import {
   type ConnectedServerCorrelationInput,
