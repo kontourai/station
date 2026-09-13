@@ -260,8 +260,23 @@ export function allocateNightlyVersionCode({
 }
 
 import { readFileSync, writeFileSync } from 'node:fs';
+import {
+  pairingSchemeForChannel,
+  readChannelPlatformMatrix,
+} from '../channel-platform-matrix.mjs';
 import { assertProductVersion } from '../product-version.mjs';
 import { updaterPluginConfig } from './native-release-config.mjs';
+
+function nightlyDeepLinkConfig() {
+  const scheme = pairingSchemeForChannel(
+    readChannelPlatformMatrix(),
+    'nightly',
+  );
+  return {
+    mobile: [{ scheme: [scheme], appLink: false }],
+    desktop: { schemes: [scheme] },
+  };
+}
 
 /**
  * SemVer-valid marketing version. The prerelease segment carries the same day
@@ -332,6 +347,7 @@ export function createNightlyConfig({
     productName: NIGHTLY_PRODUCT_NAME,
     version: nightlyVersion(packageVersion, date, build),
     identifier: nightlyIdentifier(productionIdentifier),
+    plugins: { 'deep-link': nightlyDeepLinkConfig() },
     bundle: {
       android: { versionCode },
       macOS: { bundleVersion: String(versionCode) },
@@ -395,7 +411,7 @@ export function createNightlyDesktopConfig({
       targets: ['app'],
       macOS: { bundleVersion: String(nightlyVersionCode(date, build)) },
     },
-    plugins,
+    plugins: { ...plugins, 'deep-link': nightlyDeepLinkConfig() },
   };
 }
 

@@ -376,6 +376,12 @@ describe('the tauri config overlay', () => {
       productName: 'Station Nightly',
       version: '0.1.0-nightly.2412.2',
       identifier: 'io.kontourai.station.nightly',
+      plugins: {
+        'deep-link': {
+          mobile: [{ scheme: ['station-nightly'], appLink: false }],
+          desktop: { schemes: ['station-nightly'] },
+        },
+      },
       bundle: {
         android: { versionCode: 241_202 },
         macOS: { bundleVersion: '241202' },
@@ -448,6 +454,10 @@ describe('the desktop tauri config overlay (station#575)', () => {
         macOS: { bundleVersion: '241203' },
       },
       plugins: {
+        'deep-link': {
+          mobile: [{ scheme: ['station-nightly'], appLink: false }],
+          desktop: { schemes: ['station-nightly'] },
+        },
         updater: {
           pubkey: 'trusted-public-key',
           endpoints: [
