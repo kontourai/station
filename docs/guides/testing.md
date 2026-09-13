@@ -363,6 +363,20 @@ physical Windows
 workflow remains a separate post-merge hardware-reference diagnostic and does
 not replace the PR gate.
 
+The hosted Windows floor always uploads its existing redacted verification
+receipts and output, including failed runs. A cleanup record with one surviving
+owned child is a boolean failure to prove settlement, not an enumerated live PID.
+The structured settlement line identifies the last observed COMPLETE, guard
+close, stdout/stderr EOF, drain, and acknowledgement barriers. Its
+`stateMessagesObserved` count says how many launcher state messages the
+coordinator folded in; at zero the drain flags stay `null` and the barrier
+fields are coordinator defaults, not an observed snapshot. It contains only
+validated exact coordinator, target, and guard PID/start identities; a wrapper
+start that was not already known remains `null`. Environment, arguments, command
+paths, and raw unredacted output are outside this diagnostic. The record locates
+the missing proof barrier; it does not claim the underlying Windows failure is
+fixed.
+
 ### Unified usability feedback
 
 The fresh-home workflow combines its route walkthrough, core-loop receipts,

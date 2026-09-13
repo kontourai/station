@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
-import { exactProcessIdentity } from '../../packages/shared/src/process-identity.mjs';
+import {
+  exactProcessIdentity,
+  isWindowsRoundTripUtcIso,
+} from '../../packages/shared/src/process-identity.mjs';
 import { buildWindowsOwnedGuard } from './windows-owned-guard-build.mjs';
 
 const TERMINATION_FORCE_MS = 5_000;
@@ -206,6 +209,41 @@ function failedExecution(error) {
   };
 }
 
+function windowsSettlementState(value) {
+  const booleanKeys = [
+    'complete',
+    'guardClosed',
+    'stdoutEof',
+    'stderrEof',
+    'stdoutDrained',
+    'stderrDrained',
+    'acknowledged',
+    'aborted',
+  ];
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    !booleanKeys.every((key) => typeof value[key] === 'boolean') ||
+    !(
+      value.completeStatus === null || Number.isInteger(value.completeStatus)
+    ) ||
+    !(value.guardCloseOk === null || typeof value.guardCloseOk === 'boolean')
+  )
+    return null;
+  return Object.fromEntries([
+    ...booleanKeys.map((key) => [key, value[key]]),
+    ['completeStatus', value.completeStatus],
+    ['guardCloseOk', value.guardCloseOk],
+  ]);
+}
+
+function settlementIdentity(value, { allowUnknownStart = false } = {}) {
+  if (!Number.isInteger(value?.pid) || value.pid < 1) return null;
+  if (typeof value?.start === 'string' && isWindowsRoundTripUtcIso(value.start))
+    return { pid: value.pid, start: value.start };
+  return allowUnknownStart ? { pid: value.pid, start: null } : null;
+}
+
 function deferred() {
   let resolveDeferred;
   const promise = new Promise((resolve) => {
@@ -307,6 +345,39 @@ export function executeOwnedCommand(
     );
 
   const treeSettlement = { proven: false, abortRequested: false };
+  const settlementEvidence = {
+    kind: 'windows-owned-settlement',
+    version: 1,
+    identities: {
+      coordinator: null,
+      wrapper: null,
+      target: null,
+      guard: null,
+    },
+    barriers: {
+      complete: false,
+      completeStatus: null,
+      guardClosed: false,
+      guardCloseOk: null,
+      stdoutEof: false,
+      stderrEof: false,
+      // Drain flags are only ever observed from a launcher state message.
+      // They default to `null` (unknown), never `true`, so a record written
+      // after the launcher died or IPC broke before any state arrived cannot
+      // read as a drained snapshot nothing observed.
+      stdoutDrained: null,
+      stderrDrained: null,
+      acknowledged: false,
+      aborted: false,
+      receiverOutputEof: false,
+      treeSettlementAcknowledged: false,
+      settlementProven: false,
+    },
+    // Count of validated `owned-command-settlement-state` messages folded into
+    // `barriers`. Zero means the barrier fields above are coordinator
+    // defaults, not an observed launcher snapshot.
+    stateMessagesObserved: 0,
+  };
   const abortSettlement = deferred();
   let completeSettledJob = false;
   let resolveInner;
@@ -323,6 +394,7 @@ export function executeOwnedCommand(
         'Windows owned command cannot start without an exact round-trip UTC coordinator CreationDate identity',
       ),
     );
+  settlementEvidence.identities.coordinator = settlementIdentity(parent);
   let guard;
   try {
     guard = spawnOptions.guardExecutable
@@ -356,10 +428,27 @@ export function executeOwnedCommand(
         }
       },
       onSpawn: (child, _identity) => {
+        settlementEvidence.identities.wrapper = settlementIdentity(
+          {
+            pid: _identity?.pid ?? child.pid,
+            start: _identity?.processStart ?? null,
+          },
+          { allowUnknownStart: true },
+        );
         child.on('message', (message) => {
           if (message?.type === 'owned-command-tree-settled') {
             treeSettlement.proven = true;
+            settlementEvidence.barriers.treeSettlementAcknowledged = true;
+            settlementEvidence.barriers.settlementProven = true;
             abortSettlement.resolve();
+            return;
+          }
+          if (message?.type === 'owned-command-settlement-state') {
+            const state = windowsSettlementState(message.state);
+            if (state) {
+              Object.assign(settlementEvidence.barriers, state);
+              settlementEvidence.stateMessagesObserved += 1;
+            }
             return;
           }
           if (message?.type === 'owned-command-bound') {
@@ -384,6 +473,13 @@ export function executeOwnedCommand(
               });
               return;
             }
+            settlementEvidence.identities.target = settlementIdentity({
+              pid: message.pid,
+              start: message.processStart,
+            });
+            settlementEvidence.identities.guard = settlementIdentity(
+              message.guard,
+            );
             try {
               callerOnSpawn?.(child, {
                 pid: message.pid,
@@ -452,7 +548,11 @@ export function executeOwnedCommand(
   ]).then(async (result) => {
     try {
       await outputEOF.wait(spawnOptions.outputEofTimeoutMs);
-      if (completeSettledJob && !result.error) treeSettlement.proven = true;
+      settlementEvidence.barriers.receiverOutputEof = true;
+      if (completeSettledJob && !result.error) {
+        treeSettlement.proven = true;
+        settlementEvidence.barriers.settlementProven = true;
+      }
       return result;
     } catch (error) {
       return {
@@ -525,6 +625,7 @@ export function executeOwnedCommand(
     completionRequiresCleanup: true,
     terminate: () => settleTree(false),
     forceTerminate: () => settleTree(true),
+    settlementEvidence: () => JSON.parse(JSON.stringify(settlementEvidence)),
   };
 }
 

@@ -432,6 +432,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // These tests start real children through the owned-process helper rather
   // than importing node:child_process directly.
   'scripts/__tests__/owned-process.test.ts',
+  // Forks the real Windows owned launcher with an IPC channel and a fake guard
+  // (node itself, exiting on a bad module path) to prove the production
+  // `onState` wiring delivers settlement-state messages to the coordinator.
+  // Bounded, single-shot, and disposed with SIGTERM.
+  'scripts/__tests__/windows-owned-launcher.test.ts',
   // Executes the Node UTC conversion used by the reusable fleet workflow;
   // retain the process boundary so a host-local offset cannot be mistaken for
   // the canonical portable-release timestamp contract.
