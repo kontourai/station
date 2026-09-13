@@ -121,8 +121,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/bootstrap/__tests__/runtime-signal-ownership.test.ts',
   // Owns bounded TLS endpoints, OpenSSL children and TCP relay processes.
   'scripts/__tests__/local-collaboration-lab.test.ts',
-  // Creates and observes real Git checkouts through the portable identity owner.
-  'src-server/services/projects/__tests__/project-identity-service.test.ts',
+  // Owns a UDP relay child and private command-output diagnostics.
+  'scripts/__tests__/browser-transport-fixture.test.ts',
   // Real HTTP requests in isolated children exercise fatal socket-option faults.
   'packages/shared/src/__tests__/node-http-compat.test.ts',
   // Launches Chromium to reject prompt-only evidence in the composer helper.
@@ -146,6 +146,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Hono routes composed with the real Task and transcript worker owners.
   'src-server/services/search/__tests__/runtime-search.test.ts',
   'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
+  // Creates and observes real Git checkouts through the portable identity owner.
+  'src-server/services/projects/__tests__/project-identity-service.test.ts',
   // Owns real CPU-blocking worker_threads and canonical TaskGraph file fixtures.
   'src-server/services/search/__tests__/isolated-task-search.test.ts',
   // Type-only child_process import; the macro's spawn boundary is simulated
