@@ -52,6 +52,34 @@ export interface DevicePresentation {
   hostName: string;
 }
 
+/**
+ * The answering server's process/build identity: which Station instance, which
+ * boot of it, built from which commit. All three fields are required for the
+ * identity to be an identity — a partial answer must be reported as
+ * unavailable, never served as one. `shaSource` names what computed `sha`: a
+ * checkout-derived value must not read as the build's identity.
+ */
+export interface SystemRuntimeIdentity {
+  instanceId: string;
+  bootId: string;
+  sha: string;
+  shaSource?: 'build-stamp' | 'checkout';
+}
+
+/**
+ * The `GET /api/system/identity` response. `devicePresentation` is the same
+ * request-bound projection `/api/system/status` serves, repeated here so an
+ * identity probe can present host-hands affordances without a second status
+ * request; optional because servers older than that projection omit it.
+ */
+export interface SystemIdentityResponse extends SystemRuntimeIdentity {
+  /** Optional for compatibility with older servers. */
+  devicePresentation?: DevicePresentation;
+}
+
+/** Why an install could not state what it is (update provenance diagnostics). */
+export type UpdateProvenanceIssue = 'missing' | 'invalid-stamp';
+
 /** Disclosure from this home, not a certificate of transferred execution authority. */
 export type HomeRecoveryDisclosure =
   | { kind: 'not-restored' | 'unavailable' }

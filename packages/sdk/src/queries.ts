@@ -592,6 +592,7 @@ export {
   type MonitoringStatsData,
   renewAuth,
   requestCoreUpdateStatus,
+  requestSystemIdentity,
   requestSystemStatus,
   resolveFleetReceiptsRefetchInterval,
   resolveMonitoringStatsRefetchInterval,

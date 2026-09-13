@@ -147,6 +147,8 @@ describe('resolveInstallProvenance', () => {
     expect(provenance.installKind).toBe('unknown');
     if (provenance.installKind === 'unknown') {
       expect(provenance.detail).toContain('not at that checkout');
+      // The reason is a typed code, never re-parsed from detail text.
+      expect(provenance.reason).toBe('missing');
     }
   });
 
@@ -197,6 +199,10 @@ describe('resolveInstallProvenance', () => {
     expect(provenance.installKind).toBe('unknown');
     if (provenance.installKind === 'unknown') {
       expect(provenance.detail).toContain('malformed');
+      // Distinct from 'missing': the stamp EXISTS, it just failed the shape
+      // the nightly installer writes — the update surface words these two
+      // differently, so the codes must not blur.
+      expect(provenance.reason).toBe('invalid-stamp');
     }
   });
 
@@ -208,6 +214,7 @@ describe('resolveInstallProvenance', () => {
     expect(provenance.installKind).toBe('unknown');
     if (provenance.installKind === 'unknown') {
       expect(provenance.detail).toContain(NIGHTLY_SOURCE_STAMP_FILENAME);
+      expect(provenance.reason).toBe('missing');
     }
   });
 
