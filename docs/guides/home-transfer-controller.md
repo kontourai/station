@@ -184,8 +184,19 @@ that channel remains unresolved. Finishing requires the exact admission identity
 and a stable receipt digest. A changed intent or receipt conflicts. Restarting,
 waiting, or losing a process does not finish an admission.
 
-This is private storage infrastructure: production room writers and Agent launch
-paths are not yet connected to it. Integrators must verify a durable local effect
+`ProjectTaskRoomHistory` also accepts a private optional write-admission port.
+With that port configured, a new append obtains admission inside the local
+write transaction after checking local authority, existing proposal identity,
+source seal and capacity. Local authority is checked again after admission.
+Committed and duplicate outcomes settle only from the validated durable receipt;
+a lost settlement acknowledgement returns unavailable and can be retried after
+reopening the room. Duplicate replay does not request new admission. Calls are
+bounded to one second, below the worker's five-second budget. A timeout never
+clears an unresolved controller record. Unmanaged rooms retain their original
+write path.
+
+This is private integration infrastructure: production runtime composition and
+Agent launch paths are not yet connected to the controller journal. Integrators must verify a durable local effect
 receipt before calling finish; storing a digest does not verify the receipt or
 prove that execution stopped. A previously finished record is historical replay,
 never permission to run the effect again. No public admission endpoint is shipped.

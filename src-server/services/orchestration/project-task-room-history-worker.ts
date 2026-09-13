@@ -102,6 +102,7 @@ interface AppendRequest {
   body: ProjectTaskRoomRecord['body'];
   grantReceipt: unknown;
   authorizationId: string;
+  writeAdmissionRequired: boolean;
 }
 type Request =
   | {
@@ -458,6 +459,7 @@ function validRequest(value: unknown): value is Request {
       'body',
       'grantReceipt',
       'authorizationId',
+      'writeAdmissionRequired',
     ]) &&
     validScope(value.scope) &&
     [
@@ -479,6 +481,7 @@ function validRequest(value: unknown): value is Request {
     canonical(value.grantReceipt.principal) === canonical(value.principal) &&
     value.grantReceipt.policyRevision === value.policyRevision &&
     value.grantReceipt.receiptId === value.authorizationId &&
+    typeof value.writeAdmissionRequired === 'boolean' &&
     value.grantReceipt.capability ===
       expectedCapability(value.principal, value.body) &&
     measureBoundedJson(value.body, {
@@ -571,9 +574,13 @@ async function open(
 ) {
   db.exec('BEGIN IMMEDIATE');
   try {
-    if (!(await authorizeCommit(requestId, request.authorizationId))) {
+    const authorization = await authorizeCommit(
+      requestId,
+      request.authorizationId,
+    );
+    if (authorization !== 'admitted') {
       db.exec('ROLLBACK');
-      return { kind: 'denied' };
+      return refused(authorization);
     }
     const value = head(request.scope);
     if (value) {
@@ -753,11 +760,18 @@ async function sealSource(
       !room ||
       room.channel_id !== request.channelId ||
       room.project_slug !== request.scope.projectSlug ||
-      room.policy_revision !== request.policyRevision ||
-      !(await authorizeCommit(requestId, request.authorizationId))
+      room.policy_revision !== request.policyRevision
     ) {
       db.exec('ROLLBACK');
       return { kind: 'denied' };
+    }
+    const authorization = await authorizeCommit(
+      requestId,
+      request.authorizationId,
+    );
+    if (authorization !== 'admitted') {
+      db.exec('ROLLBACK');
+      return refused(authorization);
     }
     const all = db
       .prepare(
@@ -851,17 +865,31 @@ async function sealSource(
   }
 }
 
-const authorizationWaiters = new Map<string, (granted: boolean) => void>();
-function authorizeCommit(requestId: number, authorizationId: string) {
-  return new Promise<boolean>((resolve) => {
-    const key = `${requestId}:${authorizationId}`;
+type CommitPhase = 'authorize' | 'admit-new-write';
+type CommitDisposition = 'admitted' | 'denied' | 'unavailable';
+const authorizationWaiters = new Map<
+  string,
+  (disposition: CommitDisposition) => void
+>();
+function authorizeCommit(
+  requestId: number,
+  authorizationId: string,
+  phase: CommitPhase = 'authorize',
+) {
+  return new Promise<CommitDisposition>((resolve) => {
+    const key = `${requestId}:${authorizationId}:${phase}`;
     authorizationWaiters.set(key, resolve);
     parentPort!.postMessage({
       type: 'authorize',
       id: requestId,
       authorizationId,
+      phase,
     });
   });
+}
+
+function refused(disposition: CommitDisposition) {
+  return { kind: disposition === 'unavailable' ? 'unavailable' : 'denied' };
 }
 
 async function append(request: AppendRequest, requestId: number) {
@@ -877,9 +905,13 @@ async function append(request: AppendRequest, requestId: number) {
       db.exec('ROLLBACK');
       return { kind: 'denied' };
     }
-    if (!(await authorizeCommit(requestId, request.authorizationId))) {
+    const authorization = await authorizeCommit(
+      requestId,
+      request.authorizationId,
+    );
+    if (authorization !== 'admitted') {
       db.exec('ROLLBACK');
-      return { kind: 'denied' };
+      return refused(authorization);
     }
     const existing = readIdentity(room.channel_id, request.proposalId);
     if (existing) {
@@ -901,6 +933,17 @@ async function append(request: AppendRequest, requestId: number) {
     if (count.count >= init.maxIdentities) {
       db.exec('ROLLBACK');
       return { kind: 'capacity' };
+    }
+    if (request.writeAdmissionRequired) {
+      const admission = await authorizeCommit(
+        requestId,
+        request.authorizationId,
+        'admit-new-write',
+      );
+      if (admission !== 'admitted') {
+        db.exec('ROLLBACK');
+        return refused(admission);
+      }
     }
     const seq = room.head_seq + 1;
     const proposalBody = {
@@ -1583,17 +1626,26 @@ async function handleRequest(message: unknown) {
 let requestQueue = Promise.resolve();
 parentPort.on('message', (message: unknown) => {
   if (
-    exactObject(message, ['type', 'id', 'authorizationId', 'granted']) &&
+    exactObject(message, [
+      'type',
+      'id',
+      'authorizationId',
+      'phase',
+      'disposition',
+    ]) &&
     message.type === 'authorization' &&
     Number.isSafeInteger(message.id) &&
     typeof message.authorizationId === 'string' &&
-    typeof message.granted === 'boolean'
+    (message.phase === 'authorize' || message.phase === 'admit-new-write') &&
+    ['admitted', 'denied', 'unavailable'].includes(
+      message.disposition as string,
+    )
   ) {
-    const key = `${message.id}:${message.authorizationId}`;
+    const key = `${message.id}:${message.authorizationId}:${message.phase}`;
     const resolve = authorizationWaiters.get(key);
     if (resolve) {
       authorizationWaiters.delete(key);
-      resolve(message.granted);
+      resolve(message.disposition as CommitDisposition);
     }
     return;
   }
