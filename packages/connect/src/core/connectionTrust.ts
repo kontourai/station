@@ -32,8 +32,7 @@ function validStation(stationId: string) {
 function readRecord(
   value: unknown,
   stationId: string,
-): DeviceConnectionTrustRecord | null {
-  if (value === undefined) return null;
+): DeviceConnectionTrustRecord {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new DeviceTrustError('device_trust_invalid');
   const record = value as DeviceConnectionTrustRecord;
@@ -159,10 +158,13 @@ export async function openDeviceConnectionTrustStore() {
         reject(failure ?? new DeviceTrustError('device_trust_unavailable'));
       transaction.oncomplete = () => resolve(result);
       const store = transaction.objectStore(STORE);
-      const request = store.get(stationId);
+      // get() conflates an absent row with a corrupt stored undefined value.
+      const request = store.openCursor(stationId);
       request.onsuccess = () => {
         try {
-          const current = readRecord(request.result, stationId);
+          const current = request.result
+            ? readRecord(request.result.value, stationId)
+            : null;
           result = transform ? transform(current) : current;
           if (!transform) return;
           const put = () => {
@@ -256,7 +258,7 @@ export async function openDeviceConnectionTrustStore() {
       const expected = readRecord(snapshot, stationId);
       const current = await transact(stationId);
       return (
-        expected?.status === 'approved' &&
+        expected.status === 'approved' &&
         current?.status === 'approved' &&
         current.revision === expected.revision &&
         JSON.stringify(current.trust) === JSON.stringify(expected.trust)

@@ -239,24 +239,48 @@ test('revocation persists as a tombstone and only independently approved fresh r
   ).toBe(3);
 });
 
-test('corrupt state is refused instead of being silently treated as first approval', async () => {
-  const page = await pageIn();
-  const { trust, keyId } = await key();
-  const invalid = { schemaVersion: 99, revision: 1, status: 'approved', trust };
-  await page.evaluate(corruptBrowserTrustRecord, {
-    stationId: trust.stationId,
-    value: invalid,
-  });
-  await expect(operation(page, 'read', trust.stationId)).rejects.toThrow(
-    'device_trust_invalid',
-  );
-  await expect(operation(page, 'approve', trust, null, keyId)).rejects.toThrow(
-    'device_trust_invalid',
-  );
-  await expect(operation(page, 'revoke', trust.stationId, 1)).rejects.toThrow(
-    'device_trust_invalid',
-  );
-});
+test.each([
+  'future-version',
+  'undefined',
+  'null',
+  'unknown-field',
+  'wrong-station',
+  'invalid-revision',
+  'invalid-status',
+])(
+  'corrupt %s state is refused instead of being silently treated as first approval',
+  async (kind) => {
+    const page = await pageIn();
+    const { trust, keyId } = await key();
+    const record: Record<string, unknown> = {
+      schemaVersion: 1,
+      revision: 1,
+      status: 'approved',
+      trust,
+    };
+    if (kind === 'future-version') record.schemaVersion = 99;
+    if (kind === 'unknown-field') record.operator = true;
+    if (kind === 'wrong-station')
+      record.trust = { ...trust, stationId: randomUUID() };
+    if (kind === 'invalid-revision') record.revision = 0;
+    if (kind === 'invalid-status') record.status = 'unknown';
+    const invalid =
+      kind === 'undefined' ? undefined : kind === 'null' ? null : record;
+    await page.evaluate(corruptBrowserTrustRecord, {
+      stationId: trust.stationId,
+      value: invalid,
+    });
+    await expect(operation(page, 'read', trust.stationId)).rejects.toThrow(
+      'device_trust_invalid',
+    );
+    await expect(
+      operation(page, 'approve', trust, null, keyId),
+    ).rejects.toThrow('device_trust_invalid');
+    await expect(operation(page, 'revoke', trust.stationId, 1)).rejects.toThrow(
+      'device_trust_invalid',
+    );
+  },
+);
 
 test('the browser caller refuses a valid signed answer after another tab revokes trust', async () => {
   const context = await browser.newContext();

@@ -211,6 +211,8 @@ it is not a verified power-loss or storage-backup guarantee. Missing/denied stor
 corrupt records, unsupported database versions and failed writes are explicit
 failures, with no memory-only approval fallback. Call `close()` when the Device
 connection owner is disposed.
+An existing row containing `null` or `undefined` is corrupt, not a missing
+approval; only a genuinely absent row can use the first-approval path.
 
 The fixture verifies the signed proof, then awaits `isCurrent(snapshot)` before
 accepting the peer description. An independent tab that revokes trust before
