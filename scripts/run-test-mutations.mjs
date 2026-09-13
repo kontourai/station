@@ -55,6 +55,40 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'device-trust-before-peer-acceptance',
+    test: 'scripts/__tests__/device-connection-trust.test.ts',
+    failure:
+      'the browser caller refuses a valid signed answer after another tab revokes trust',
+    files: [
+      {
+        path: 'scripts/lib/browser-transport-page.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (!(await window.stationConnectionTrustStore.isCurrent(trustRecord)))',
+            'if (false)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'project-binding-revision-admission',
+    test: 'src-server/routes/projects/__tests__/projects.routes.test.ts',
+    failure:
+      'POST /:slug/bind refuses a Project changed before revision admission without recording a binding',
+    files: [
+      {
+        path: 'src-server/routes/projects/projects.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'return await revision.withCurrentRead(async () => {',
+            'return await (async (operation) => operation(revision.value))(async () => {',
+          ),
+      },
+    ],
+  },
+  {
     id: 'empty-dock-new-chat-action',
     test: 'src-ui/src/__tests__/ChatDockContentArea.test.tsx',
     failure: 'starts a chat through the empty dock action',

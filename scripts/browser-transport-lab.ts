@@ -12,15 +12,28 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
+import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
+import {
+  connectionDescriptionDigest,
+  stationConnectionSigningKeyId,
+} from '@kontourai/station-shared/connection-proof';
 import { chromium, type Page } from '@playwright/test';
+import { build, stop as stopBundler } from 'esbuild';
 import datachannel from 'node-datachannel';
+import type { createStationConnectionProofIssuer } from '../src-server/services/ssh/connection-proof-issuer.js';
+import { ConnectionSigningKeyStore } from '../src-server/services/ssh/connection-signing-key-store.js';
+import { EnvironmentSecurityService } from '../src-server/services/ssh/environment-security-service.js';
 import {
   browserAccept,
   browserChannelOpen,
+  browserConnectionContext,
   browserFailed,
+  browserHasNoRemoteDescription,
   browserOffer,
   browserReceived,
+  browserRevokeConnectionTrust,
   browserSend,
+  browserSetConnectionTrust,
   browserStats as readBrowserStats,
 } from './lib/browser-transport-page.mjs';
 import { startPionFixture } from './lib/browser-transport-pion.js';
@@ -100,10 +113,19 @@ let pionProvenance:
   | Awaited<ReturnType<typeof startPionFixture>>['provenance']
   | undefined;
 const observers: (() => Promise<unknown>)[] = [];
-const server = createServer((_request, response) => {
+let clientProofScript = '';
+let connectionTrust: ApprovedStationConnectionTrust;
+let proofIssuer: ReturnType<typeof createStationConnectionProofIssuer>;
+const admittedConnections = new Set<string>();
+const server = createServer((request, response) => {
+  if (request.url === '/connection-proof.js') {
+    response.writeHead(200, { 'Content-Type': 'text/javascript' });
+    response.end(clientProofScript);
+    return;
+  }
   response.writeHead(200, { 'Content-Type': 'text/html' });
   response.end(
-    '<!doctype html><title>Station browser transport fixture</title>',
+    '<!doctype html><title>Station browser transport fixture</title><script src="/connection-proof.js"></script>',
   );
 });
 
@@ -148,12 +170,80 @@ async function cleanupContainer() {
 
 async function offer(page: Page, port: number) {
   const transport = browserTransport;
+  await page.evaluate(browserSetConnectionTrust, {
+    trust: connectionTrust,
+    approvedKeyId: await stationConnectionSigningKeyId(connectionTrust),
+  });
   return page.evaluate(browserOffer, {
     port: transport === 'udp' ? (turnUdpPort ?? port) : (turnTcpPort ?? port),
     username,
     password,
     transport,
   });
+}
+
+async function acceptSignedAnswer(
+  page: Page,
+  offer: string,
+  sdp: string,
+  pin: string,
+  candidates: { candidate: string; sdpMid: string }[],
+  revokeTrust = false,
+) {
+  const context = await page.evaluate(browserConnectionContext);
+  const clientFingerprint = offer
+    .match(/^a=fingerprint:sha-256 (.+)$/m)?.[1]
+    ?.trim();
+  const stationFingerprint = sdp
+    .match(/^a=fingerprint:sha-256 (.+)$/m)?.[1]
+    ?.trim();
+  assert(clientFingerprint && stationFingerprint);
+  const binding = {
+    ...context,
+    stationId: connectionTrust.stationId,
+    enrollmentId: connectionTrust.enrollmentId,
+    generation: connectionTrust.generation,
+    clientFingerprint,
+    stationFingerprint,
+    offerSha256: await connectionDescriptionDigest(offer),
+    answerSha256: await connectionDescriptionDigest(sdp),
+  };
+  admittedConnections.add(binding.connectionId);
+  let proof: string;
+  try {
+    proof = await proofIssuer.issue(binding);
+  } finally {
+    admittedConnections.delete(binding.connectionId);
+  }
+  const [header, payload, signature] = proof.split('.');
+  const invalid = `${header}.${payload}.${signature[0] === 'A' ? 'B' : 'A'}${signature.slice(1)}`;
+  await assert.rejects(
+    page.evaluate(browserAccept, { sdp, pin, candidates, proof: invalid }),
+    /Station connection proof refused/,
+  );
+  if (revokeTrust) {
+    const revoker = await page.context().newPage();
+    try {
+      await revoker.goto(page.url());
+      await revoker.evaluate(
+        browserRevokeConnectionTrust,
+        connectionTrust.stationId,
+      );
+      await assert.rejects(
+        page.evaluate(browserAccept, { sdp, pin, candidates, proof }),
+        /Device signing trust changed before accepting the connection/,
+      );
+      assert.equal(await page.evaluate(browserHasNoRemoteDescription), true);
+    } finally {
+      await revoker.close();
+    }
+    return;
+  }
+  await page.evaluate(browserAccept, { sdp, pin, candidates, proof });
+  await assert.rejects(
+    page.evaluate(browserAccept, { sdp, pin, candidates, proof }),
+    /Connection proof already consumed/,
+  );
 }
 
 async function bounded<T>(promise: Promise<T>, phase: string): Promise<T> {
@@ -216,6 +306,7 @@ async function exchange(
   key: Awaited<ReturnType<typeof identity>>,
   pin: string,
   substitute = false,
+  revokeTrust = false,
 ) {
   assert(relay);
   assert(turnUdpPort);
@@ -251,7 +342,7 @@ async function exchange(
     const sdp = substitute
       ? fixture.answer.sdp.replace(key.fingerprint, pin)
       : fixture.answer.sdp;
-    await page.evaluate(browserAccept, { sdp, pin, candidates: [] });
+    await acceptSignedAnswer(page, remote.sdp, sdp, pin, [], revokeTrust);
     return {
       peer: fixture.peer,
       get messages() {
@@ -286,10 +377,6 @@ async function exchange(
     browser: await page.evaluate(readBrowserStats),
   }));
   const messages: string[] = [];
-  const candidates: { candidate: string; sdpMid: string }[] = [];
-  peer.onLocalCandidate((candidate, sdpMid) =>
-    candidates.push({ candidate, sdpMid }),
-  );
   const gathered = new Promise<void>((resolve) => {
     peer.onGatheringStateChange((state) => {
       if (state === 'complete') resolve();
@@ -315,11 +402,45 @@ async function exchange(
   const sdp = substitute
     ? answer.sdp.replace(key.fingerprint, pin)
     : answer.sdp;
-  await page.evaluate(browserAccept, { sdp, pin, candidates });
+  // Gathering is complete. The signed SDP is the complete candidate set;
+  // do not append separate unsigned candidate callback events afterward.
+  await acceptSignedAnswer(page, remote.sdp, sdp, pin, [], revokeTrust);
   return { peer, messages };
 }
 
 try {
+  const authorityHome = join(root, 'station-authority');
+  const environment = new EnvironmentSecurityService({
+    homeDir: authorityHome,
+  });
+  const environmentIdentity = await environment.initialize();
+  connectionTrust = await new ConnectionSigningKeyStore(
+    authorityHome,
+  ).initialize();
+  assert.equal(connectionTrust.stationId, environmentIdentity.environmentId);
+  const reopenedKeys = new ConnectionSigningKeyStore(authorityHome);
+  assert.deepEqual(reopenedKeys.readDescriptor(), connectionTrust);
+  proofIssuer = reopenedKeys.createIssuer((binding) =>
+    admittedConnections.has(binding.connectionId),
+  );
+  const bundled = await build({
+    stdin: {
+      contents: `
+    import {createStationConnectionProofVerifier, connectionDescriptionDigest} from '@kontourai/station-shared/connection-proof';
+    import {createStationProofNonce} from './packages/connect/src/core/environmentProof.ts';
+    import {openDeviceConnectionTrustStore} from '@kontourai/station-connect/connection-trust';
+    window.stationConnectionProof = {createStationConnectionProofVerifier, connectionDescriptionDigest, newNonce: createStationProofNonce, openDeviceConnectionTrustStore};
+  `,
+      resolveDir: process.cwd(),
+    },
+    bundle: true,
+    platform: 'browser',
+    format: 'iife',
+    write: false,
+  });
+  assert.equal(bundled.outputFiles.length, 1);
+  clientProofScript = bundled.outputFiles[0].text;
+  stopBundler();
   writeFileSync(
     join(root, 'container-owner.json'),
     JSON.stringify({
@@ -460,6 +581,21 @@ try {
   await reconnectContext.close();
   await reconnected.peer.close();
 
+  const revokedContext = await browser.newContext();
+  const revokedPage = await revokedContext.newPage();
+  await revokedPage.goto(`http://127.0.0.1:${address.port}`);
+  const revokedPeer = await exchange(
+    revokedPage,
+    approved,
+    approved.fingerprint,
+    false,
+    true,
+  );
+  assert.equal(await revokedPage.evaluate(browserChannelOpen), false);
+  assert.deepEqual(revokedPeer.messages, []);
+  await revokedPeer.peer.close();
+  await revokedContext.close();
+
   const replacementContext = await browser.newContext();
   const replacementPage = await replacementContext.newPage();
   await replacementPage.goto(`http://127.0.0.1:${address.port}`);
@@ -511,6 +647,10 @@ try {
     turnImage: TURN_IMAGE,
     checks: [
       'TURN relay selected at both peers',
+      'Station-signed exact client, generation and SDP proof verified and consumed in the browser',
+      'Station signing identity restored from its private home before proof issuance',
+      'tampered proof refused before accepting the connection description',
+      'Device trust persisted and rechecked after crypto; cross-tab revocation refused before SDP acceptance',
       'browser-native DTLS connected',
       'application content echoed through encrypted data channel',
       'fresh browser and peer reconnect using the same approved Station certificate',
@@ -534,6 +674,7 @@ try {
     { mode: 0o600 },
   );
 } finally {
+  stopBundler();
   for (const peer of peers) {
     try {
       await peer.close();

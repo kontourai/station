@@ -109,7 +109,145 @@ operation safely. It must exit 1, remove its own container and preserve any
 unrelated container; a nonzero exit alone does not prove successful cleanup.
 
 Each run generates two distinct endpoint certificates. Approved fingerprint
-trust is supplied independently by the fixture controller. The checks require:
+trust is supplied independently by the fixture controller.
+
+The controller initializes an isolated Station security home, creates a separate
+signing identity, then reopens its private key store before issuing proofs. It
+supplies only the public descriptor to the browser's fixture trust owner. This
+checks persistence and reuse of the existing Station identity; it does not
+implement a production key-approval UI. Before
+accepting SDP, the browser verifies a 30-second ES256 connection proof against
+its own nonce/connection ID, the admitted Station generation, both fingerprints
+and the exact offer/answer bytes. Altered proofs and successful-proof replay
+are refused. This uses maintained JOSE and browser WebCrypto. It models the
+[connection-proof contract](../design/connection-broker.md#connection-proof-contract);
+the private fixture callback is not a production account or key-enrollment API.
+The full gathered SDP is signed; extra unsigned candidate callbacks are not
+forwarded as an implicit trust extension.
+
+### Local operator signing-key commands
+
+From a Station checkout, the operator can inspect an existing home's public
+connection signing key or deliberately create it. Use an absolute home path;
+the command never selects the default home or starts Station:
+
+```sh
+npm run connection:key -- inspect --home=/absolute/path/to/station-home
+npm run connection:key -- initialize --home=/absolute/path/to/station-home
+```
+
+The home must already have its Station security identity. `inspect` is read-only
+and exits 2 when that home's connection key has not been initialized. Initialization
+preserves an existing valid key. Missing homes, corrupt keys and identity mismatches
+are refused; initialization is not a recovery/reset command. Successful commands
+emit one JSON report containing public `trust` metadata and its `keyId` (the
+SHA-256 JWK thumbprint). Use `npm run --silent connection:key -- ...` when capturing
+stdout as JSON. Exit 1 reports a closed refusal reason on stderr without private
+key material, credentials, raw parser errors or home paths.
+
+To rotate, supply the generation and key ID from the inspected report and
+acknowledge that Devices will need independent approval of the new key:
+
+```sh
+npm run connection:key -- rotate --home=/absolute/path/to/station-home \
+  --expected-generation=1 --expected-key-id='<keyId-from-inspect>' \
+  --acknowledge-device-reapproval
+```
+
+Rotation compares the exact observed Station, enrollment, generation and public
+key under the store's mutation lock. Concurrent or stale requests cannot rotate a
+replacement key. It retains the Station/enrollment IDs, increments the generation
+and replaces only the connection signing key. Ordinary direct credentials remain
+independent. If output is lost after publication, inspect again; retrying the old
+rotation inputs fails instead of rotating twice.
+
+This is the **operator side** of key admission. A public report obtained solely
+from an untrusted broker is not authenticated. Devices still need an independently
+authenticated approval ceremony; printing a descriptor does not install Device
+trust, link an account, enable a broker, or grant Project access. Rotation stops
+new issuance with the retired key. An unreachable Device retaining the old public
+key cannot learn revocation immediately: a previously minted proof may remain
+verifiable for its remaining 30-second lifetime, and a compromised old private
+key remains dangerous until that Device independently updates or revokes trust.
+Automatic recovery, remote approval, Device trust persistence and established
+channel termination are separate implementation work.
+
+The command requires the existing private-home filesystem authority. It is not
+a tenant sandbox, an OS keychain, or protection from another process running as
+the same OS user. No network listener or telemetry is needed for this local
+operation; the bounded public result is its receipt.
+
+### Device-side signing trust
+
+The browser fixture consumes `@kontourai/station-connect/connection-trust`.
+Its `openDeviceConnectionTrustStore()` stores only public signing trust in the
+current browser origin/storage partition. The trusted caller supplies a descriptor
+and key ID from independently authenticated operator approval; neither broker
+discovery nor account login is that approval ceremony. Production approval UI and
+account/session transport are not enabled by this module.
+
+The store exposes `read`, `approve`, `revoke`, `isCurrent`, and `close`.
+`approve(descriptor, expectedRevision, approvedKeyId)` requires `null` for first
+approval or the exact current revision for a change. The key ID is a SHA-256
+JWK thumbprint, matching the local operator command above. A rotation within the
+same enrollment must advance the generation and replace the key; stale revisions,
+lower generations and changed enrollments are refused. Repeating the current
+approved descriptor at its current revision is a no-op. A changed enrollment
+requires a separate authenticated recovery design; there is no automatic reset.
+
+`revoke(stationId, expectedRevision)` retains the last generation as a revoked
+record. It cannot be overwritten as a new first approval or reactivated with the
+same key. A later independently approved higher-generation key can restore trust.
+The store contains at most 256 Station records, including revoked ones; reaching
+the limit refuses additions while retaining the ability to revoke existing trust.
+It stores no private keys, provider cookies, application continuations or Device
+credentials and does not change direct connection profiles or Project membership.
+
+Changes use a single IndexedDB transaction to compare and publish the revision
+across tabs. Writes request `strict` durability, refuse a downgraded durability
+mode, and resolve only after transaction completion. This follows the
+[IndexedDB transaction contract](https://www.w3.org/TR/IndexedDB/#transaction-durability-hint);
+it is not a verified power-loss or storage-backup guarantee. Missing/denied storage,
+corrupt records, unsupported database versions and failed writes are explicit
+failures, with no memory-only approval fallback. Call `close()` when the Device
+connection owner is disposed.
+An existing row containing `null` or `undefined` is corrupt, not a missing
+approval; only a genuinely absent row can use the first-approval path.
+
+The fixture verifies the signed proof, then awaits `isCurrent(snapshot)` before
+accepting the peer description. An independent tab that revokes trust before
+that check causes refusal before SDP acceptance or application content. This
+check is not a synchronous replacement for the cryptographic verifier's
+`isCurrent` predicate: both checks retain their respective owners. After the
+storage await, `verifier.assertStillCurrent()` rechecks the consumed proof's
+expiry and in-memory handshake authority before SDP acceptance; the storage
+read cannot extend the signed proof's lifetime. It does not
+promise continuous revocation of an already established channel; application
+requests still require the account lane's current session/Device authorization.
+
+Run the actual Chromium persistence and concurrency tests locally without TURN,
+accounts or model calls:
+
+```sh
+npm run test:focused -- scripts/__tests__/device-connection-trust.test.ts
+npm run test:mutation:smoke -- --case=device-trust-before-peer-acceptance
+```
+
+Those tests reopen a real persistent browser profile, race two tabs, check
+rotation/revocation, and exercise denied storage, corruption and capacity. The
+mutation command requires a clean linked worktree; it removes the caller's
+post-crypto trust check, requires the named browser refusal test to catch that
+defect, and restores the exact source before checking again. The
+full browser transport command additionally proves cross-tab revocation against
+an otherwise valid signed answer. Clearing browser data, restoring old browser
+backups, same-origin malicious code and untrusted client-code distribution remain
+outside this store's protection. Losing the store requires fresh independent
+approval; discovery must not reconstruct trust automatically. Native shells and
+other browser implementations require their own qualification.
+
+### Browser security checks
+
+The checks require:
 
 - A browser DTLS connection to the approved certificate, with both sides using
   TURN and a fixture message delivered and echoed through the DataChannel.

@@ -90,9 +90,19 @@ room authority. `deployment-authentication-routes.ts` owns the narrow login/self
 surface, its origin/body/attempt bounds and declared-operation dispatch. Account
 authentication does not bypass device scope or implement Project membership.
 
+`local-account-runtime.ts` composes the built-in username/password provider,
+private persistent signing authority and real Project enrollment eligibility.
+`local-account-administration-routes.ts` exposes operator-only account disabling,
+session revocation and recovery links. `ProjectMembershipService` holds the
+current local Project revision while `ProjectMembershipStore` atomically manages
+scoped members, invitation acceptance and ownership transfer. The SDK's
+`project-access`, `local-accounts` and `account-authentication` subpaths serve
+the Project/admin controls and the separate browser account entry. Account
+entry does not mount personal connection providers or persisted Project caches.
+
 **Evidence and limits.** External-module HTTP fixtures and the real runtime
 principal-composition suite exercise refusal and identity propagation. They do not
-prove a production identity provider, email delivery, the member/admin UI or physical
+prove a production identity provider, email delivery, visual design or physical
 two-human acceptance. See [deployment authentication](../guides/deployment-authentication.md)
 for the operator contract and the remaining account/member delivery boundaries.
 

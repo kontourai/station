@@ -7,6 +7,12 @@ import {
   readDeploymentAuthenticationConfiguration,
 } from '../../services/identity/deployment-authentication-loader.js';
 import {
+  type LoadedLocalAccounts,
+  type LocalAccountConfiguration,
+  loadLocalAccounts,
+  readLocalAccountConfiguration,
+} from '../../services/identity/local-account-runtime.js';
+import {
   closePluginActivationSession,
   completePluginActivationComposition,
   deliverPluginActivationNotifications,
@@ -16,6 +22,7 @@ import {
 } from '../../services/plugins/plugin-activation-composition.js';
 import { createLocalPluginInstallationHost } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 /**
@@ -443,7 +450,9 @@ type PersistedAgentReloadTarget =
   | { kind: 'managed'; metadata: any; spec: AgentSpec };
 
 export interface StationRuntimeOptions {
+  projectSharing?: boolean;
   authentication?: DeploymentAuthenticationConfiguration;
+  localAccounts?: LocalAccountConfiguration;
   pluginInstallationHost?: PluginInstallationHost;
   projectHomeDir?: string;
   port?: number;
@@ -462,8 +471,12 @@ export interface StationRuntimeOptions {
  * Manages VoltAgent instances with dynamic agent loading
  */
 export class StationRuntime {
+  private readonly projectSharingEnabled: boolean;
+  private projectMembership?: ReturnType<typeof createProjectMembershipRuntime>;
   private readonly authenticationConfiguration?: DeploymentAuthenticationConfiguration;
   private deploymentAuthentication?: LoadedDeploymentAuthentication;
+  private readonly localAccountConfiguration?: LocalAccountConfiguration;
+  private localAccounts?: LoadedLocalAccounts;
   private readonly pluginInstallationHost: PluginInstallationHost;
   private configLoader: ConfigLoader;
   private appConfig!: AppConfig;
@@ -956,9 +969,32 @@ export class StationRuntime {
   }
 
   constructor(options: StationRuntimeOptions = {}) {
+    const configuredSharing = process.env.STATION_PROJECT_SHARING;
+    if (
+      configuredSharing !== undefined &&
+      configuredSharing !== '0' &&
+      configuredSharing !== '1'
+    )
+      throw new Error('STATION_PROJECT_SHARING must be 0 or 1.');
+    this.projectSharingEnabled =
+      options.projectSharing ?? configuredSharing === '1';
+    this.localAccountConfiguration = structuredClone(
+      options.localAccounts ?? readLocalAccountConfiguration(process.env),
+    );
+    if (
+      this.localAccountConfiguration &&
+      (!this.projectSharingEnabled ||
+        options.authentication ||
+        process.env.STATION_AUTHENTICATION_MODULE)
+    )
+      throw new Error(
+        'Local accounts require Project sharing and cannot be combined with an authentication module.',
+      );
     this.authenticationConfiguration = structuredClone(
       options.authentication ??
-        readDeploymentAuthenticationConfiguration(process.env),
+        (this.localAccountConfiguration
+          ? undefined
+          : readDeploymentAuthenticationConfiguration(process.env)),
     );
     const projectHomeDir = options.projectHomeDir || resolveHomeDir();
     // archive#3217, and it has to be HERE rather than in `index.ts`: the
@@ -3092,7 +3128,31 @@ export class StationRuntime {
     // state prevents any listener from being configured.
     const identity = await this.environmentSecurityService.initialize();
     this.stationEnvironmentId = identity.environmentId;
-    if (this.authenticationConfiguration && !this.deploymentAuthentication) {
+    if (this.projectSharingEnabled && !this.projectMembership) {
+      this.projectMembership = createProjectMembershipRuntime(
+        this.configLoader.getProjectHomeDir(),
+        identity.environmentId,
+        this.storageAdapter,
+      );
+    }
+    if (this.localAccountConfiguration && !this.deploymentAuthentication) {
+      if (!this.projectMembership)
+        throw new Error(
+          'Local account enrollment requires Project membership.',
+        );
+      this.localAccounts = await loadLocalAccounts(
+        this.localAccountConfiguration,
+        {
+          stationId: identity.environmentId,
+          homeDirectory: this.configLoader.getProjectHomeDir(),
+        },
+        this.projectMembership.service,
+      );
+      this.deploymentAuthentication = this.localAccounts;
+    } else if (
+      this.authenticationConfiguration &&
+      !this.deploymentAuthentication
+    ) {
       this.deploymentAuthentication = await loadDeploymentAuthentication(
         this.authenticationConfiguration,
         {
@@ -3675,7 +3735,9 @@ export class StationRuntime {
       kitLifecycleReady,
       projectTaskRoomRuntime,
     } = configureRuntimeRoutes({
+      projectMembership: this.projectMembership?.service,
       deploymentAuthentication: this.deploymentAuthentication,
+      localAccounts: this.localAccounts,
       app,
       logger: this.logger,
       eventBus: this.eventBus,
@@ -4203,8 +4265,15 @@ export class StationRuntime {
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
     try {
+      this.projectMembership?.close();
+      this.projectMembership = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
       await this.deploymentAuthentication?.service.close();
       this.deploymentAuthentication = undefined;
+      this.localAccounts = undefined;
     } catch (error) {
       failures.push(error);
     }

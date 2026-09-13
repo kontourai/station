@@ -1703,9 +1703,77 @@ fn ensure_mobile_profile_store_genesis(path: &std::path::Path) -> Result<(), Str
 /// can require explicit recovery, but can never silently relabel a used root
 /// as virgin and publish a credentialless replacement over its profile set.
 #[cfg(not(mobile))]
-fn ensure_station_profile_store_genesis(app: &AppHandle, root: &std::path::Path) -> Result<(), String> {
+fn ensure_station_profile_store_genesis(
+    app: &AppHandle,
+    root: &std::path::Path,
+) -> Result<(), String> {
+    // Genesis is initialization, not a mutation protocol for every read/write.
+    // Revalidate the durable marker and current file on each call, but avoid
+    // re-hardening the root and acquiring a second lock once both exist.
+    // A concurrent initializer can have published only part of the marker/file
+    // pair. Fall back to its lock and re-read before classifying that state.
+    if let Ok(true) = station_profile_store_is_initialized(root) {
+        return Ok(());
+    }
     ensure_station_profile_store_genesis_after_schema(app, root, false)
 }
+
+#[cfg(not(mobile))]
+fn station_profile_store_is_initialized(root: &std::path::Path) -> Result<bool, String> {
+    match std::fs::symlink_metadata(root) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("inspect saved Station root: {error}")),
+        Ok(_) => {}
+    }
+    #[cfg(windows)]
+    {
+        let marker = profile_store_genesis_marker_path(root);
+        match std::fs::symlink_metadata(&marker) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(format!("inspect saved Station genesis marker: {error}")),
+            Ok(_) => {}
+        }
+        let config = root.join("config");
+        let path = config.join("profiles.json");
+        if let Err(error) = std::fs::symlink_metadata(&path) {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                return Err("saved Station metadata is missing from an initialized or in-progress shared root; restore profiles.json before launching Station".into());
+            }
+            return Err(format!("inspect saved Station metadata: {error}"));
+        }
+        // Every observation still verifies every live filesystem boundary.
+        // Batch the four targets so each access starts PowerShell only once.
+        use crate::windows_path_trust::TrustKind;
+        crate::windows_path_trust::verify(&[
+            (TrustKind::Directory, root),
+            (TrustKind::File, &marker),
+            (TrustKind::Directory, &config),
+            (TrustKind::File, &path),
+        ])?;
+        let signature = std::fs::read_to_string(&marker)
+            .map_err(|error| format!("read saved Station genesis marker: {error}"))?;
+        if signature != STATION_PROFILE_STORE_GENESIS_SIGNATURE {
+            return Err("saved Station genesis marker is invalid".into());
+        }
+        let contents = std::fs::read_to_string(&path)
+            .map_err(|error| format!("read saved Station metadata: {error}"))?;
+        parse_station_profile_store(&contents).map(|_| true)
+    }
+    #[cfg(not(windows))]
+    {
+        if !validate_profile_store_genesis_marker(root)? {
+            return Ok(false);
+        }
+        match read_station_profile_store(&root.join("config").join("profiles.json")) {
+            Ok(contents) => parse_station_profile_store(&contents).map(|_| true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(
+                "saved Station metadata is missing from an initialized or in-progress shared root; restore profiles.json before launching Station".to_string(),
+            ),
+            Err(error) => Err(format!("read saved Station metadata: {error}")),
+        }
+    }
+}
+
 #[cfg(not(mobile))]
 fn ensure_station_profile_store_genesis_after_schema(app: &AppHandle, root: &std::path::Path, fresh_schema: bool) -> Result<(), String> {
     let path = root.join("config").join("profiles.json");
@@ -3658,19 +3726,49 @@ enum ProfileLockOwnerLiveness {
 }
 
 #[cfg(not(mobile))]
-fn native_profile_lock_birth(app: &AppHandle, pid: u32) -> Result<Option<String>, String> {
-    let resource_dir = simplified_sidecar_resource_dir(
-        &app.path()
-            .resource_dir()
-            .map_err(|error| format!("locate packaged process identity authority: {error}"))?,
-    );
-    match profile_lock_birth_bridge(&resource_dir, pid) {
-        Ok(birth) => Ok(Some(birth)),
-        // An unavailable identity remains a fence during reclamation, but a
-        // fresh writer must not publish a v2 record without one.
-        Err(RegistryBridgeFailure::Invocation | RegistryBridgeFailure::Protocol) => Ok(None),
-        Err(RegistryBridgeFailure::Untrusted | RegistryBridgeFailure::HomeSchema) => Ok(None),
+fn profile_lock_birth_with_current_process_cache(
+    pid: u32,
+    cache: &std::sync::OnceLock<(u32, String)>,
+    resolve: impl FnOnce() -> Result<Option<String>, String>,
+) -> Result<Option<String>, String> {
+    let own_pid = std::process::id();
+    if pid == own_pid {
+        if let Some((cached_pid, birth)) = cache.get() {
+            if *cached_pid == own_pid {
+                return Ok(Some(birth.clone()));
+            }
+        }
     }
+    let result = resolve()?;
+    if pid == own_pid {
+        if let Some(birth) = &result {
+            if !birth.is_empty() && birth.len() <= 512 {
+                // A process cannot change its own birth identity while alive.
+                // Keep the PID too so a fork cannot reuse its parent's value.
+                // Foreign PIDs and failed lookups are always probed afresh.
+                let _ = cache.set((own_pid, birth.clone()));
+            }
+        }
+    }
+    Ok(result)
+}
+
+#[cfg(not(mobile))]
+fn native_profile_lock_birth(app: &AppHandle, pid: u32) -> Result<Option<String>, String> {
+    static CURRENT_BIRTH: std::sync::OnceLock<(u32, String)> = std::sync::OnceLock::new();
+    profile_lock_birth_with_current_process_cache(pid, &CURRENT_BIRTH, || {
+        let resource_dir = simplified_sidecar_resource_dir(
+            &app.path()
+                .resource_dir()
+                .map_err(|error| format!("locate packaged process identity authority: {error}"))?,
+        );
+        match profile_lock_birth_bridge(&resource_dir, pid) {
+            Ok(birth) => Ok(Some(birth)),
+            // Missing identity still fences reclamation and fresh lock writes.
+            Err(RegistryBridgeFailure::Invocation | RegistryBridgeFailure::Protocol) => Ok(None),
+            Err(RegistryBridgeFailure::Untrusted | RegistryBridgeFailure::HomeSchema) => Ok(None),
+        }
+    })
 }
 
 impl Drop for StationProfileLock {
@@ -5277,6 +5375,87 @@ fn resolve_local_self_provision_client_instance_id(profile: &CredentialProfile) 
 }
 
 #[cfg(not(mobile))]
+fn validate_local_self_provision_owner(
+    store: &CredentialProfileStore,
+    profile_name: &str,
+    launch: &SidecarLaunchContext,
+    status: &BundledServerStatus,
+    resolve_service: impl FnOnce() -> Result<
+        Option<(String, service_state::ResolvedLocalService)>,
+        String,
+    >,
+) -> Result<(), NativeCommandError> {
+    let denied = || {
+        NativeCommandError::new(
+            "local_profile_not_owned",
+            "the selected Station does not match the running desktop runtime",
+        )
+    };
+    let profile = selected_profile_from_store(store, profile_name)?;
+    let local = profile.local_service.as_ref().ok_or_else(&denied)?;
+    let home = launch.station_home.to_str().ok_or_else(&denied)?;
+    let origin = exact_origin(&profile.endpoint)?;
+    if profile.setup_source != "local"
+        || status.fail_closed
+        || status.phase != bundled_server_state::ServerPhase::Running
+        || !credential_endpoint_uses_secure_transport(&origin)
+        || status.api_base.as_deref() != Some(origin.as_str())
+        || status.port != Some(local.server_port)
+        || status.instance_id.as_deref() != Some(local.instance_id.as_str())
+        || !same_runtime_home_identity(&local.base_dir, home, &launch.station_root)
+    {
+        return Err(denied());
+    }
+    match status.ownership {
+        bundled_server_state::ServerOwnership::Sidecar => {
+            // A sidecar has a live native supervisor, not a service installer
+            // manifest. Requiring service/<id>.json here stranded fresh apps
+            // before the profile could acquire its environment binding.
+            if status.instance_id.as_deref() != Some(launch.instance_id.as_str())
+                || !status.generation.is_some_and(|generation| generation > 0)
+                || !status
+                    .boot_id
+                    .as_deref()
+                    .is_some_and(|boot| !boot.is_empty())
+            {
+                return Err(denied());
+            }
+            let owners = store
+                .profiles
+                .iter()
+                .filter(|candidate| {
+                    candidate.setup_source == "local"
+                        && candidate.local_service.as_ref().is_some_and(|service| {
+                            same_runtime_home_identity(
+                                &service.base_dir,
+                                home,
+                                &launch.station_root,
+                            )
+                        })
+                })
+                .collect::<Vec<_>>();
+            if owners.len() != 1 || !owners[0].name.eq_ignore_ascii_case(profile_name) {
+                return Err(denied());
+            }
+        }
+        bundled_server_state::ServerOwnership::Service => {
+            let (name, service) = resolve_service()
+                .map_err(|error| NativeCommandError::new("local_profile_not_owned", error))?
+                .ok_or_else(&denied)?;
+            let service_home = service.base_dir.to_str().ok_or_else(&denied)?;
+            if !name.eq_ignore_ascii_case(profile_name)
+                || service.manifest.instance_id != local.instance_id
+                || !same_runtime_home_identity(service_home, home, &launch.station_root)
+            {
+                return Err(denied());
+            }
+        }
+        _ => return Err(denied()),
+    }
+    Ok(())
+}
+
+#[cfg(not(mobile))]
 #[tauri::command]
 fn station_local_self_provision(
     app: AppHandle,
@@ -5303,21 +5482,6 @@ fn station_local_self_provision(
     })?;
     let station_root = &state.supervisor.context.launch.station_root;
     let station_home = &state.supervisor.context.launch.station_home;
-    let (owned_name, owned_service) =
-        service_state::resolve_runtime_owned_service(station_root, station_home)
-            .map_err(|error| NativeCommandError::new("local_profile_not_owned", error))?
-            .ok_or_else(|| {
-                NativeCommandError::new(
-                    "local_profile_not_owned",
-                    "no saved Station is owned by this desktop runtime",
-                )
-            })?;
-    if !owned_name.eq_ignore_ascii_case(&profile_name) {
-        return Err(NativeCommandError::new(
-            "local_profile_not_owned",
-            "the selected Station belongs to another desktop runtime",
-        ));
-    }
     let origin = exact_origin(&profile.endpoint)?;
     if !credential_endpoint_uses_secure_transport(&origin) {
         return Err(NativeCommandError::new(
@@ -5332,23 +5496,13 @@ fn station_local_self_provision(
             "the selected Station has no local service",
         )
     })?;
-    if status.phase != bundled_server_state::ServerPhase::Running
-        || !matches!(
-            status.ownership,
-            bundled_server_state::ServerOwnership::Sidecar
-                | bundled_server_state::ServerOwnership::Service
-        )
-        || status.api_base.as_deref() != Some(origin.as_str())
-        || status.port != Some(local.server_port)
-        || status.instance_id.as_deref() != Some(local.instance_id.as_str())
-        || owned_service.base_dir != *station_home
-        || owned_service.manifest.instance_id != local.instance_id
-    {
-        return Err(NativeCommandError::new(
-            "local_profile_not_owned",
-            "the selected Station does not match the running desktop runtime",
-        ));
-    }
+    validate_local_self_provision_owner(
+        &store,
+        &profile_name,
+        &state.supervisor.context.launch,
+        &status,
+        || service_state::resolve_runtime_owned_service(station_root, station_home),
+    )?;
     // The full consequential tail lives behind one FnOnce. The readable
     // credential gate below invokes this exact closure only after a server
     // confirms `{ "eligible": false }`, or returns without making the local-grant request,
@@ -8024,6 +8178,11 @@ where
 {
     let station_home = service_state::admit_station_runtime_home(&station_home)
         .map_err(|error| format!("Desktop rejected its Station runtime home: {error}"))?;
+    // Admission follows existing ancestors and returns a canonical path. On
+    // Windows that can carry a verbatim prefix (\\?\), while Node's runtime
+    // home/root admission uses ordinary Win32 paths. Preserve the admitted
+    // location but normalize its spelling before crossing the Node bridge.
+    let station_home = dunce::simplified(&station_home).to_path_buf();
     ensure_schema(&station_home)
         .map_err(|error| format!("Desktop could not establish its Station home schema: {error}"))?;
     Ok(station_home)
@@ -11813,6 +11972,24 @@ mod tests {
         )));
     }
 
+    #[cfg(all(not(mobile), windows))]
+    #[test]
+    fn prepared_windows_home_uses_node_compatible_path_spelling() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().join("runtime");
+        std::fs::create_dir_all(&home).unwrap();
+        let canonical = std::fs::canonicalize(&home).unwrap();
+        assert!(canonical.to_string_lossy().starts_with(r"\\?\"));
+        let expected = dunce::simplified(&canonical).to_path_buf();
+        let prepared = prepare_desktop_station_home(home, |bridge_home| {
+            assert_eq!(bridge_home, expected.as_path());
+            assert!(!bridge_home.to_string_lossy().starts_with(r"\\?\"));
+            Ok(())
+        }).unwrap();
+        assert_eq!(prepared, expected);
+        assert_eq!(std::fs::canonicalize(prepared).unwrap(), canonical);
+    }
+
     #[cfg(not(mobile))]
     #[test]
     fn an_operator_set_root_still_reaches_the_sidecar_even_when_it_equals_the_home() {
@@ -13256,6 +13433,131 @@ mod tests {
         .unwrap()
     }
 
+    #[cfg(not(mobile))]
+    fn native_provision_owner_fixture() -> (
+        tempfile::TempDir,
+        CredentialProfileStore,
+        SidecarLaunchContext,
+        BundledServerStatus,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        let mut launch = sample_sidecar_context(Some(3141));
+        launch.station_root = directory.path().join("shared");
+        launch.station_home = launch.station_root.join("instances/nightly");
+        launch.instance_id = "inst".into();
+        std::fs::create_dir_all(&launch.station_home).unwrap();
+        let mut store = local_self_provision_fixture_store();
+        store.profiles[0].local_service.as_mut().unwrap().base_dir =
+            launch.station_home.to_string_lossy().into_owned();
+        let mut status = BundledServerStatus::initial(String::new(), String::new());
+        status.phase = bundled_server_state::ServerPhase::Running;
+        status.port = Some(3141);
+        status.api_base = Some("http://127.0.0.1:3141".into());
+        status.instance_id = Some("inst".into());
+        status.generation = Some(1);
+        status.boot_id = Some("boot-1".into());
+        (directory, store, launch, status)
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn native_sidecar_owner_admission_needs_no_service_install_manifest() {
+        let (_directory, store, launch, status) = native_provision_owner_fixture();
+        assert!(!launch.station_home.join("service").exists());
+        validate_local_self_provision_owner(&store, "local", &launch, &status, || {
+            panic!("a sidecar must not require service installer metadata")
+        })
+        .unwrap();
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn native_sidecar_provision_refuses_foreign_or_ambiguous_profiles_and_stale_status() {
+        let (_directory, store, launch, status) = native_provision_owner_fixture();
+        let check = |store: &CredentialProfileStore, status: &BundledServerStatus| {
+            validate_local_self_provision_owner(store, "local", &launch, status, || {
+                panic!("wrong owner route")
+            })
+        };
+        let mut foreign = store.clone();
+        foreign.profiles[0].local_service.as_mut().unwrap().base_dir = launch
+            .station_root
+            .join("instances/other")
+            .to_string_lossy()
+            .into_owned();
+        assert!(check(&foreign, &status).is_err());
+        foreign = store.clone();
+        foreign.profiles[0]
+            .local_service
+            .as_mut()
+            .unwrap()
+            .instance_id = "foreign".into();
+        assert!(check(&foreign, &status).is_err());
+        foreign = store.clone();
+        foreign.profiles[0].endpoint = "https://remote.example".into();
+        assert!(check(&foreign, &status).is_err());
+        foreign = store.clone();
+        foreign.profiles[0].setup_source = "paired".into();
+        assert!(check(&foreign, &status).is_err());
+        let mut duplicate = store.clone();
+        let mut extra = duplicate.profiles[0].clone();
+        extra.name = "duplicate".into();
+        duplicate.profiles.push(extra);
+        assert!(check(&duplicate, &status).is_err());
+        let mut stale = status.clone();
+        stale.generation = None;
+        assert!(check(&store, &stale).is_err());
+        stale = status.clone();
+        stale.boot_id = None;
+        assert!(check(&store, &stale).is_err());
+        stale = status.clone();
+        stale.fail_closed = true;
+        assert!(check(&store, &stale).is_err());
+        stale = status.clone();
+        stale.phase = bundled_server_state::ServerPhase::Starting;
+        assert!(check(&store, &stale).is_err());
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn native_service_provision_still_requires_its_manifest_owner() {
+        let (_directory, store, launch, mut status) = native_provision_owner_fixture();
+        status.ownership = bundled_server_state::ServerOwnership::Service;
+        let resolve = || service_state::ResolvedLocalService {
+            base_dir: std::fs::canonicalize(&launch.station_home).unwrap(),
+            manifest: service_state::ServiceManifest {
+                host: "localhost".into(),
+                instance_id: "inst".into(),
+                node_path: "node".into(),
+                platform: std::env::consts::OS.into(),
+                repo_path: "/repo".into(),
+                server_port: 3141,
+                ui_port: 3000,
+            },
+        };
+        validate_local_self_provision_owner(&store, "local", &launch, &status, || {
+            Ok(Some(("local".into(), resolve())))
+        })
+        .unwrap();
+        assert!(
+            validate_local_self_provision_owner(&store, "local", &launch, &status, || Ok(None))
+                .is_err()
+        );
+        assert!(
+            validate_local_self_provision_owner(&store, "local", &launch, &status, || Err(
+                "manifest invalid".into()
+            ))
+            .is_err()
+        );
+        assert!(
+            validate_local_self_provision_owner(&store, "local", &launch, &status, || Ok(Some((
+                "foreign".into(),
+                resolve()
+            ))))
+            .is_err()
+        );
+    }
+
     /// A test-only CAS publisher with the same native profile lock and
     /// revision contract as `station_profile_store_write_internal`. The real
     /// multiprocess worker below drives the production bootstrap retry helper
@@ -13576,6 +13878,164 @@ mod tests {
         std::fs::remove_file(root.join("config")).unwrap();
         symlink(&external, root.join("installs")).unwrap();
         assert!(!station_profile_store_genesis_admissible(&root).unwrap());
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn initialized_profile_store_revalidates_marker_and_missing_file_without_recreating() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".station");
+        assert!(!station_profile_store_is_initialized(&root).unwrap());
+        ensure_station_profile_store_root(&root).unwrap();
+        assert!(!station_profile_store_is_initialized(&root).unwrap());
+        write_profile_store_genesis_marker(&root).unwrap();
+        let path = root.join("config/profiles.json");
+        crate::windows_path_trust::ensure(&[(
+            crate::windows_path_trust::TrustKind::Directory,
+            path.parent().unwrap(),
+        )])
+        .unwrap();
+        write_empty_station_profile_store(&path).unwrap();
+        assert!(station_profile_store_is_initialized(&root).unwrap());
+        std::fs::write(&path, b"").unwrap();
+        assert!(station_profile_store_is_initialized(&root).is_err());
+        std::fs::write(&path, EMPTY_STATION_PROFILE_STORE).unwrap();
+        assert!(station_profile_store_is_initialized(&root).unwrap());
+        std::fs::remove_file(&path).unwrap();
+        assert!(station_profile_store_is_initialized(&root)
+            .unwrap_err()
+            .contains("restore profiles.json"));
+        assert!(!path.exists());
+        write_empty_station_profile_store(&path).unwrap();
+        std::fs::write(profile_store_genesis_marker_path(&root), b"invalid marker").unwrap();
+        assert!(station_profile_store_is_initialized(&root)
+            .unwrap_err()
+            .contains("marker is invalid"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn initialized_windows_profile_store_verifies_every_batched_target() {
+        use crate::windows_path_trust::TrustKind;
+        use std::os::windows::process::CommandExt;
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".station");
+        let config = root.join("config");
+        let path = config.join("profiles.json");
+        let marker = profile_store_genesis_marker_path(&root);
+        ensure_station_profile_store_root(&root).unwrap();
+        crate::windows_path_trust::ensure(&[(TrustKind::Directory, &config)]).unwrap();
+        write_profile_store_genesis_marker(&root).unwrap();
+        write_empty_station_profile_store(&path).unwrap();
+        assert!(station_profile_store_is_initialized(&root).unwrap());
+        for (kind, target) in [
+            (TrustKind::Directory, &root),
+            (TrustKind::File, &marker),
+            (TrustKind::Directory, &config),
+            (TrustKind::File, &path),
+        ] {
+            let encoded = crate::windows_path_trust::base64_utf8(&target.to_string_lossy());
+            let script = format!(
+                r#"$ErrorActionPreference='Stop'; $p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{encoded}')); $directory=[IO.Directory]::Exists($p); $acl=if($directory){{[IO.Directory]::GetAccessControl($p)}}else{{[IO.File]::GetAccessControl($p)}}; $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new('S-1-1-0'),[Security.AccessControl.FileSystemRights]::Read,[Security.AccessControl.AccessControlType]::Allow)); if($directory){{[IO.Directory]::SetAccessControl($p,$acl)}}else{{[IO.File]::SetAccessControl($p,$acl)}}"#,
+            );
+            let output =
+                std::process::Command::new(crate::windows_path_trust::powershell_path().unwrap())
+                    .args(crate::windows_path_trust::encoded_powershell_command(
+                        &script,
+                    ))
+                    .creation_flags(0x08000000)
+                    .output()
+                    .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                station_profile_store_is_initialized(&root).is_err(),
+                "untrusted target accepted: {}",
+                target.display()
+            );
+            crate::windows_path_trust::ensure(&[(kind, target)]).unwrap();
+            assert!(station_profile_store_is_initialized(&root).unwrap());
+        }
+    }
+
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn initialized_profile_store_refuses_redirected_or_loose_metadata() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".station");
+        ensure_station_profile_store_root(&root).unwrap();
+        write_profile_store_genesis_marker(&root).unwrap();
+        let path = root.join("config/profiles.json");
+        write_empty_station_profile_store(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(station_profile_store_is_initialized(&root).is_err());
+        std::fs::remove_file(&path).unwrap();
+        let target = temp.path().join("unrelated");
+        std::fs::write(&target, EMPTY_STATION_PROFILE_STORE).unwrap();
+        symlink(&target, &path).unwrap();
+        assert!(station_profile_store_is_initialized(&root).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            EMPTY_STATION_PROFILE_STORE
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_lock_birth_caches_only_this_process_successful_identity() {
+        let cache = std::sync::OnceLock::new();
+        let own = std::process::id();
+        let foreign = own.checked_add(1).unwrap_or(1);
+        assert_eq!(
+            profile_lock_birth_with_current_process_cache(own, &cache, || Ok(None)).unwrap(),
+            None
+        );
+        assert!(
+            profile_lock_birth_with_current_process_cache(own, &cache, || Err(
+                "temporary failure".into()
+            ))
+            .is_err()
+        );
+        assert!(cache.get().is_none());
+        assert_eq!(
+            profile_lock_birth_with_current_process_cache(own, &cache, || Ok(Some(
+                "own-birth".into()
+            )))
+            .unwrap()
+            .as_deref(),
+            Some("own-birth")
+        );
+        assert_eq!(
+            profile_lock_birth_with_current_process_cache(own, &cache, || panic!(
+                "own birth must be reused"
+            ))
+            .unwrap()
+            .as_deref(),
+            Some("own-birth")
+        );
+        for birth in ["foreign-1", "foreign-2"] {
+            assert_eq!(
+                profile_lock_birth_with_current_process_cache(foreign, &cache, || Ok(Some(
+                    birth.into()
+                )))
+                .unwrap()
+                .as_deref(),
+                Some(birth)
+            );
+        }
+        let inherited = std::sync::OnceLock::from((foreign, "parent-birth".to_string()));
+        assert_eq!(
+            profile_lock_birth_with_current_process_cache(own, &inherited, || Ok(Some(
+                "child-birth".into()
+            )))
+            .unwrap()
+            .as_deref(),
+            Some("child-birth")
+        );
     }
 
     #[cfg(not(mobile))]
