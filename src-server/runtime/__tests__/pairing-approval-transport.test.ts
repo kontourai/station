@@ -15,6 +15,7 @@ import {
   UI_PROXY_BACKEND_PREFIXES,
   uiRequestHandler,
 } from '../../../packages/cli/src/commands/lifecycle.js';
+import { isRuntimeRequestPrincipalCurrent } from '../../security/runtime-request-security.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { DevicePairingService } from '../../services/ssh/device-pairing-service.js';
 import {
@@ -78,6 +79,9 @@ function createPairingApp(allowedOrigins: string[]) {
     getLevel: vi.fn(() => 'info' as const),
   };
   const app = new Hono();
+  const authorizeCredential = (candidate: string) =>
+    candidate === OPERATOR_CREDENTIAL;
+  const resolveGrantedScope = () => DEFAULT_GRANT_PAIRING_SCOPE;
   configureDevicePairingPublicRoutes(app as never, pairing, {
     // Read per request, so a proxy origin can be admitted once its port is
     // known — the same shape as a deployment configuring its UI origin.
@@ -88,12 +92,19 @@ function createPairingApp(allowedOrigins: string[]) {
     logger,
     eventBus: { emit: vi.fn() } as unknown as EventBus,
     security: {
-      verifyCredential: (candidate) => candidate === OPERATOR_CREDENTIAL,
-      resolveGrantedScope: () => DEFAULT_GRANT_PAIRING_SCOPE,
+      verifyCredential: authorizeCredential,
+      resolveGrantedScope,
       allowedOrigins,
     },
   });
-  configureDevicePairingHostRoutes(app as never, pairing);
+  configureDevicePairingHostRoutes(app as never, pairing, {
+    verifyOperatorCredential: authorizeCredential,
+    isApprovalCurrent: (request) =>
+      isRuntimeRequestPrincipalCurrent(request, {
+        authorizeCredential,
+        resolveGrantedScope,
+      }),
+  });
   return app;
 }
 
