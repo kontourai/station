@@ -204,6 +204,10 @@ open page's memory. An invalid new invitation cannot select a prior invitation
 saved in the tab. `/account/reset#token=<proof>` uses the provider's declared
 recovery operation and returns to sign-in after success.
 
+A new invitation fragment received in an already open tab replaces the current
+entry and clears its form state. An earlier acceptance finishing afterward clears
+only its own saved continuation, never the newly received invitation.
+
 This entry currently confirms membership; the complete shared-work/device
 admission journey remains under #488. Optional native opening, compatible
 platform downloads and installation continuation are required follow-up

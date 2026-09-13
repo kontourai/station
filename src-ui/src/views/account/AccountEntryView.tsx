@@ -17,7 +17,7 @@ import { PageFrame } from '../../components/page-frame';
 import { ErrorState, SkeletonList } from '../../components/state';
 import { errorText } from '../../utils/errorText';
 import {
-  INVITATION_STATE_KEY,
+  clearAccountEntryContinuation,
   readAccountEntryContinuation,
 } from './account-entry-continuation';
 import './account-entry.css';
@@ -28,10 +28,26 @@ const browserFlow = readAccountEntryContinuation();
 /** The lazy entry owns a fresh, non-persisted cache and no operator query callbacks. */
 export function AccountEntryPage({ apiBase }: { apiBase: string }) {
   const [client] = useState(() => new QueryClient());
+  const [entry, setEntry] = useState({ flow: browserFlow, generation: 0 });
+  useEffect(() => {
+    const receive = () => {
+      const fragment = new URLSearchParams(window.location.hash.slice(1));
+      if (!fragment.has('invitation') && !fragment.has('token')) return;
+      const flow = readAccountEntryContinuation();
+      setEntry((current) => ({ flow, generation: current.generation + 1 }));
+    };
+    window.addEventListener('hashchange', receive);
+    receive();
+    return () => window.removeEventListener('hashchange', receive);
+  }, []);
   useEffect(() => () => client.clear(), [client]);
   return (
     <QueryClientProvider client={client}>
-      <AccountEntryView apiBase={apiBase} />
+      <AccountEntryView
+        key={entry.generation}
+        apiBase={apiBase}
+        initialFlow={entry.flow}
+      />
     </QueryClientProvider>
   );
 }
@@ -42,7 +58,11 @@ export function AccountEntryView({
   initialFlow = browserFlow,
 }: {
   apiBase: string;
-  initialFlow?: { invitation?: string; resetToken?: string };
+  initialFlow?: {
+    invitation?: string;
+    resetToken?: string;
+    invalidInvitation?: boolean;
+  };
 }) {
   const client = useQueryClient();
   const [invitation, setInvitation] = useState(initialFlow.invitation);
@@ -186,11 +206,7 @@ export function AccountEntryView({
         throw new Error('Station did not confirm Project membership.');
       setJoined(true);
       setInvitation(undefined);
-      try {
-        sessionStorage.removeItem(INVITATION_STATE_KEY);
-      } catch {
-        /* The server has already consumed this invitation. */
-      }
+      clearAccountEntryContinuation(invitation);
     } catch (cause) {
       setError(errorText(cause));
     } finally {
@@ -255,7 +271,12 @@ export function AccountEntryView({
               )}
             </div>
           )}
-          {descriptor.isPending ? (
+          {initialFlow.invalidInvitation ? (
+            <ErrorState
+              title="Invitation unavailable"
+              description="This invitation link is incomplete or invalid. Ask the inviter for a new link."
+            />
+          ) : descriptor.isPending ? (
             <SkeletonList count={2} />
           ) : descriptor.isError ? (
             <ErrorState

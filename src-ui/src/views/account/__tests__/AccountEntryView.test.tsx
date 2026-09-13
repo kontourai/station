@@ -157,6 +157,41 @@ async function enterCredentials() {
 }
 
 describe('invitation entry through real account SDK requests', () => {
+  test('a new same-document invitation replaces the preview and clears private form state', async () => {
+    render(
+      <StrictMode>
+        <AccountEntryPage apiBase={apiBase} />
+      </StrictMode>,
+    );
+    await screen.findByLabelText('Email address');
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'draft-that-must-not-move' },
+    });
+    window.history.replaceState(
+      null,
+      '',
+      `/account/join#invitation=${invitation}`,
+    );
+    fireEvent(window, new HashChangeEvent('hashchange'));
+    await screen.findByRole('heading', { name: 'Join Example Project' });
+    expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe(
+      '',
+    );
+    window.history.replaceState(
+      null,
+      '',
+      '/account/join#invitation=invalid-new-link',
+    );
+    fireEvent(window, new HashChangeEvent('hashchange'));
+    await screen.findByText('Invitation unavailable');
+    expect(
+      screen.queryByRole('heading', { name: 'Join Example Project' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Accept invitation' }),
+    ).toBeNull();
+    window.history.replaceState(null, '', '/');
+  });
   test('shows the offered Project and role before sign-in and never places invitation proof in a URL', async () => {
     mount();
     await screen.findByRole('heading', { name: 'Join Example Project' });
