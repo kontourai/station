@@ -164,7 +164,10 @@ function useInboxRowHoverCard() {
   };
 }
 
-const loadChatInboxHoverCard = () => import('./ChatInboxHoverCard');
+const loadChatInboxHoverCard = () =>
+  import('./ChatInboxHoverCard').then((module) => ({
+    default: module.ChatInboxHoverCard,
+  }));
 
 function SnoozeActions({
   item,

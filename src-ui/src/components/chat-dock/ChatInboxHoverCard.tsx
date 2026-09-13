@@ -61,7 +61,13 @@ function sourceLabel(source: 'explicit' | 'branch-derived' | 'task-declared') {
  * each fetch's absence is honest: a section the card cannot derive is
  * absent, and a fetch that failed renders a named gap, never a zero.
  */
-export default function ChatInboxHoverCard({
+/**
+ * Named, not default: the only caller is a dynamic `import()` whose thunk
+ * re-wraps it as `{ default: … }` for `LazyBoundary`. A bare default export
+ * at that seam has no statically visible caller, and the fallow audit
+ * (correctly) refuses new exports nothing calls.
+ */
+export function ChatInboxHoverCard({
   item,
   now,
   cwd,
