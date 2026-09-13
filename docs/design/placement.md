@@ -221,14 +221,14 @@ Two facts that follow from the map and are easy to get wrong:
   occupant, and (additive, #928 slice iii) its `maximized`, absent in older
   records and read as false. The occupant is `null` for an empty region,
   `{ kind: 'surface', id }` for a region holding one surface, and — since
-  #2046 2a (decisions 1 and 2) — `{ kind: 'pane-host', documentId, panes:
+  #2046 2a (decisions 1 and 2) — `{ kind: 'pane-host', panes:
   [{ kind: 'surface', id }, …], selected }` for a region holding two or more:
   the surfaces inline, in tab order, so the arrangement never depends on the
-  region's localStorage pane-host document to be readable. `documentId` is
-  the region id (the id of the region's own document, below); the parser
-  requires it to be a string and reads nothing else from it — the host
-  derives the id from the region, so the field carries no fact the region id
-  does not. A single-pane region keeps the `surface` form on purpose: a build
+  region's localStorage pane-host document to be readable. The variant names
+  no document (decision 1 as amended by the 2a review, applied in 2b): the
+  host derives the region's document id from the region, so the `documentId`
+  the 2a record carried was a fact the region id already held; the parser
+  ignores it where an earlier build wrote it. A single-pane region keeps the `surface` form on purpose: a build
   that predates `pane-host` still reads every single-pane region. A newer
   variant survives being READ by an older build (the parser treats an
   unknown `kind` as an empty region rather than rejecting the record), but
@@ -245,9 +245,13 @@ Two facts that follow from the map and are easy to get wrong:
   maximized every other shell is hidden (`index.css`, pinned by
   `region-maximize-owns-dock-area.test.ts`).
   Precedence at load, highest first: a URL deep link, for Chat only —
-  `dockSlotPlacement` places Chat there through `placeSurface`, relocating an
-  occupant by the model's own rule, `dock=open` shows it, and `maximize=true`
-  maximizes Chat's region (restoring any other); then the
+  `dockSlotPlacement` places Chat there through `placeSurface` (joining the
+  panes the region holds), `dock=open` shows it, and `maximize=true`
+  maximizes Chat's region (restoring any other); each of the three selects
+  Chat's tab in the region it acts on, since 2b (2a review: they are Chat's
+  links, and a region showing another pane's tab is not what they named);
+  the same holds for the inbound `dock=open` and `maximize` a
+  `focusSession` reveal writes later; then the
   record, when it differs from the registry default, for every surface's
   placement, size, visibility and maximize, Chat's included; then the legacy dock seed
   (`chatDockHeight`/`chatDockWidth`, the `dockSlotPlacement` device setting),
@@ -262,8 +266,8 @@ Two facts that follow from the map and are easy to get wrong:
   registry no longer has (retired since the record was written), or one that
   does not declare the region it was stored in, is dropped — the whole region
   reads as empty for the `surface` form, the one pane for a `pane-host`,
-  whose other panes are kept; a `pane-host` without a string `documentId` or
-  an array of panes reads as empty, and a `selected` that is not one of the
+  whose other panes are kept; a `pane-host` without an array of panes reads
+  as empty, and a `selected` that is not one of the
   kept panes falls back to the first; a surface named by two regions keeps
   the first in `main`, `left`, `right`, `bottom` order and is dropped from
   the later regions' panes, a region left with nothing reading as empty and

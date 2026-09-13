@@ -508,9 +508,8 @@ describe('region arrangement record (#928 D)', () => {
       const record = toRegionArrangementRecord(TWO_PANES);
       expect(record.regions.right.occupant).toEqual({
         kind: 'pane-host',
-        // The region id: the id `RegionPaneHost` gives the region's own
-        // document (`ambient:right`), pinned there.
-        documentId: 'right',
+        // No document id (2b): the host derives the region's document from
+        // the region, so the record names none.
         panes: [
           { kind: 'surface', id: 'activity' },
           { kind: 'surface', id: 'chat' },
@@ -566,7 +565,6 @@ describe('region arrangement record (#928 D)', () => {
         recordWith('right', {
           occupant: {
             kind: 'pane-host',
-            documentId: 'right',
             panes: [
               { kind: 'surface', id: 'retired-surface' },
               { kind: 'surface', id: 'home' }, // declares only `main`
@@ -585,7 +583,6 @@ describe('region arrangement record (#928 D)', () => {
           visible: true,
           occupant: {
             kind: 'pane-host',
-            documentId: 'right',
             panes: [{ kind: 'surface', id: 'home' }],
           },
         }),
@@ -593,15 +590,10 @@ describe('region arrangement record (#928 D)', () => {
       expect(nothingLeft).toMatchObject({ panes: [], occupant: null });
     });
 
-    test('a pane-host without a string documentId or an array of panes reads as empty', () => {
+    test('a pane-host without an array of panes reads as empty; a documentId a 2a build wrote is ignored', () => {
       for (const occupant of [
-        { kind: 'pane-host', panes: [{ kind: 'surface', id: 'chat' }] },
-        {
-          kind: 'pane-host',
-          documentId: 7,
-          panes: [{ kind: 'surface', id: 'chat' }],
-        },
-        { kind: 'pane-host', documentId: 'right', panes: 'chat' },
+        { kind: 'pane-host', panes: 'chat' },
+        { kind: 'pane-host' },
         { kind: 'pane-host', documentId: 'right' },
       ]) {
         expect(
@@ -610,6 +602,23 @@ describe('region arrangement record (#928 D)', () => {
           JSON.stringify(occupant),
         ).toMatchObject({ panes: [], occupant: null });
       }
+      // The 2a record carried `documentId`; the field is neither required
+      // nor read now, so a record from that build still resolves its panes.
+      expect(
+        parseRegionArrangementRecord(
+          recordWith('right', {
+            occupant: {
+              kind: 'pane-host',
+              documentId: 7,
+              panes: [
+                { kind: 'surface', id: 'chat' },
+                { kind: 'surface', id: 'activity' },
+              ],
+              selected: 'activity',
+            },
+          }),
+        )!.right,
+      ).toMatchObject({ panes: ['chat', 'activity'], occupant: 'activity' });
     });
 
     test('a surface in two regions is dropped from the later region’s panes, keeping the rest', () => {
@@ -631,7 +640,6 @@ describe('region arrangement record (#928 D)', () => {
             size: 400,
             occupant: {
               kind: 'pane-host',
-              documentId: 'right',
               panes: [
                 { kind: 'surface', id: 'activity' },
                 { kind: 'surface', id: 'chat' },
@@ -671,7 +679,6 @@ describe('region arrangement record (#928 D)', () => {
           recordWith('main', {
             occupant: {
               kind: 'pane-host',
-              documentId: 'main',
               panes: [
                 { kind: 'surface', id: 'home' },
                 { kind: 'surface', id: 'activity' },
@@ -683,7 +690,7 @@ describe('region arrangement record (#928 D)', () => {
       ).toMatchObject({ panes: ['activity'], occupant: 'activity' });
     });
 
-    test('records differing only in pane order, selection or document id are not equal', () => {
+    test('records differing only in pane order or selection are not equal', () => {
       const record = toRegionArrangementRecord(TWO_PANES);
       const occupant = record.regions.right.occupant;
       if (occupant?.kind !== 'pane-host') throw new Error('unreachable');
@@ -706,14 +713,6 @@ describe('region arrangement record (#928 D)', () => {
           record,
           recordWith('right', {
             occupant: { ...occupant, selected: 'activity' },
-          }),
-        ),
-      ).toBe(false);
-      expect(
-        regionArrangementRecordsEqual(
-          record,
-          recordWith('right', {
-            occupant: { ...occupant, documentId: 'other' },
           }),
         ),
       ).toBe(false);

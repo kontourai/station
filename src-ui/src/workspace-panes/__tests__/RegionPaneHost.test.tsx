@@ -15,8 +15,6 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { toRegionArrangementRecord } from '../../regions/region-arrangement-record';
-import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../../regions/region-model';
 import { useBasisPaneLauncher } from '../BasisPaneLauncher';
 import {
   AMBIENT_CHAT_DOCK_DOCUMENT_ID,
@@ -215,27 +213,13 @@ test('a region host document is the region’s; the model-less mount keeps the l
 });
 
 /**
- * #2046 2a. The record's `pane-host.documentId` is the region id, which is
- * what this module names the region's document — the record module cannot
- * import this one (bundle), so the two are pinned equal here. And the
- * derived document puts the selected pane first in nothing but `active`:
- * tab order is the arrangement's, selection is the arrangement's.
+ * #2046 2a. The derived document puts the selected pane first in nothing but
+ * `active`: tab order is the arrangement's, selection is the arrangement's.
+ * (The record's `pane-host` names no document — the region's id IS its
+ * document id, `regionPaneHostDocumentId`, pinned above — so there is no
+ * second name to keep equal; 2b dropped the field the 2a record carried.)
  */
-test('the record’s pane-host documentId is the region’s document id, and the derived document activates the selected pane', () => {
-  const twoPanes = {
-    ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
-    right: {
-      visible: true,
-      size: 400,
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
-      maximized: false,
-    },
-  };
-  const occupant = toRegionArrangementRecord(twoPanes).regions.right.occupant;
-  if (occupant?.kind !== 'pane-host') throw new Error('expected pane-host');
-  expect(occupant.documentId).toBe(regionPaneHostDocumentId('right'));
-
+test('the derived document activates the selected pane and keeps the arrangement’s tab order', () => {
   const document = createRegionPaneHostDocument(
     'right',
     ['chat', 'activity'],

@@ -453,7 +453,6 @@ test('a two-pane region persists both panes with the selected one active and rel
     ).regions?.bottom?.occupant;
     expect(record).toEqual({
       kind: 'pane-host',
-      documentId: 'bottom',
       panes: [
         { kind: 'surface', id: 'chat' },
         { kind: 'surface', id: 'activity' },

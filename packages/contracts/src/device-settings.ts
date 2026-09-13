@@ -177,9 +177,9 @@ export type RegionArrangementRecordRegionId =
  * surface is `{ kind: 'surface', id }`; a region holding two or more is
  * `pane-host` (#2046 2a), carrying its surfaces inline in tab order plus the
  * selected one, so the arrangement is readable without the region's
- * localStorage pane-host document. `documentId` names that document (the
- * region id, `ambient:<region>`); the UI parser requires it to be a string
- * and reads nothing else from it — the host derives the id from the region.
+ * localStorage pane-host document. It names no document: the host derives
+ * the region's document id from the region, so a field naming it carried no
+ * fact the region id does not (2a review; the field was dropped in 2b).
  * A single-pane region keeps writing `surface`, so a build that predates
  * `pane-host` (the same-device stale-tab window) still reads every
  * single-pane region; a reader that meets an unknown `kind` treats the
@@ -189,7 +189,6 @@ export type RegionOccupantRecord =
   | { kind: 'surface'; id: string }
   | {
       kind: 'pane-host';
-      documentId: string;
       panes: { kind: 'surface'; id: string }[];
       selected?: string;
     };

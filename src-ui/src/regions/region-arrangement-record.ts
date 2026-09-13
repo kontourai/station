@@ -6,15 +6,14 @@
  *
  * - `toRegionArrangementRecord` serializes live state. A region holding one
  *   surface is written as `{ kind: 'surface', id }`; one holding two or more
- *   as `{ kind: 'pane-host', documentId, panes, selected }` (#2046 2a,
- *   decisions 1 and 2): the surfaces inline in tab order, so the arrangement
- *   never depends on the region's localStorage pane-host document to be
- *   readable, and the single-pane form unchanged, so a build that predates
- *   `pane-host` still reads every single-pane region in the same-device
- *   stale-tab window. `documentId` is the region id — the id
- *   `RegionPaneHost` gives the region's document (`ambient:<region>`,
- *   `regionPaneHostDocumentId`, pinned by `RegionPaneHost.test.tsx`); the
- *   parser checks that it is a string and reads nothing else from it.
+ *   as `{ kind: 'pane-host', panes, selected }` (#2046 2a, decisions 1 and
+ *   2): the surfaces inline in tab order, so the arrangement never depends
+ *   on the region's localStorage pane-host document to be readable, and the
+ *   single-pane form unchanged, so a build that predates `pane-host` still
+ *   reads every single-pane region in the same-device stale-tab window. The
+ *   variant names no document: `RegionPaneHost` derives the region's
+ *   document id from the region (`ambient:<region>`), so a `documentId`
+ *   field carried nothing the region id does not and was dropped (2b).
  * - `parseRegionArrangementRecord` is the ONLY validation the record gets:
  *   the device-settings store checks a composite for "is a plain object" and
  *   nothing more, so every reader runs this. It never throws and fails closed
@@ -74,16 +73,12 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   );
 }
 
-function toOccupantRecord(
-  id: RegionId,
-  state: RegionState,
-): RegionOccupantRecord | null {
+function toOccupantRecord(state: RegionState): RegionOccupantRecord | null {
   const [first] = state.panes;
   if (first === undefined) return null;
   if (state.panes.length === 1) return { kind: 'surface', id: first };
   return {
     kind: 'pane-host',
-    documentId: id,
     panes: state.panes.map((pane) => ({ kind: 'surface', id: pane })),
     ...(state.occupant === null ? {} : { selected: state.occupant }),
   };
@@ -98,7 +93,7 @@ export function toRegionArrangementRecord(
     regions[id] = {
       visible: state.visible,
       size: state.size,
-      occupant: toOccupantRecord(id, state),
+      occupant: toOccupantRecord(state),
       maximized: state.maximized,
     };
   }
@@ -157,8 +152,8 @@ function parseSurfaceEntry(
  * it. Per entry the rules of `parseSurfaceEntry` apply, so a `pane-host`
  * region keeps the panes it can and drops the rest; a `selected` that is not
  * one of the kept panes falls back to the first (`normalizeRegionPanes`,
- * which also gives a `surface` occupant its one pane as the selection).
- * `documentId` must be a string for the variant to be read at all.
+ * which also gives a `surface` occupant its one pane as the selection). A
+ * `documentId` an earlier 2a build wrote is ignored.
  */
 function parseOccupant(
   value: unknown,
@@ -169,9 +164,7 @@ function parseOccupant(
     ? []
     : value.kind === 'surface'
       ? [value]
-      : value.kind === 'pane-host' &&
-          typeof value.documentId === 'string' &&
-          Array.isArray(value.panes)
+      : value.kind === 'pane-host' && Array.isArray(value.panes)
         ? value.panes
         : [];
   const selected = isPlainObject(value) ? value.selected : undefined;
@@ -258,8 +251,8 @@ export function parseRegionArrangementRecord(
  * Both sides are canonical records — `toRegionArrangementRecord`'s output,
  * or a stored value re-serialised through it (`recordOf`) — so the writer's
  * key order holds on both and a serialised comparison is a field-by-field
- * one: kind and id for a surface; document id, panes in order, and the
- * selection for a pane host.
+ * one: kind and id for a surface; panes in order and the selection for a
+ * pane host.
  */
 function occupantsEqual(
   a: RegionOccupantRecord | null,
