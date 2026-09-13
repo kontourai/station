@@ -1,20 +1,32 @@
 [
   {
     "file": "src-ui/src/components/conversation-stats/ConversationStatsModal.tsx",
-    "line": 314,
+    "line": 315,
     "snippet": "Prompt total",
     "reason": "LLM-prompt sense (station#4196 cache-honest totals): the tokens actually put in front of the model (input + cache read + cache write). A token-accounting term of art, not the retired Prompts/Skills authoring noun the #190 rename removed."
   },
   {
     "file": "src-ui/src/components/usage-stats/UsageDrillDownModal.tsx",
-    "line": 129,
+    "line": 130,
     "snippet": "Prompt Total",
     "reason": "LLM-prompt sense (station#4196 cache-honest model drilldown): the declared-disjoint cache-inclusive input total, not the retired Prompts/Skills authoring noun."
   },
   {
     "file": "src-ui/src/components/usage-stats/UsageDrillDownModal.tsx",
-    "line": 162,
+    "line": 163,
     "snippet": "Prompt Total/Turn",
     "reason": "LLM-prompt sense (station#4196 cache-honest model drilldown): the per-turn form of the declared-disjoint cache-inclusive input total, not the retired Prompts/Skills authoring noun."
+  },
+  {
+    "file": "src-ui/src/__tests__/AgentConnectionView.test.tsx",
+    "line": 57,
+    "snippet": "Required to launch the Muse Code runtime.",
+    "reason": "Server-verbatim fixture (connections UI, the connections UI overhaul). This is the exact byte string `buildCliRuntimePrerequisites` emits (`src-server/providers/auth/cli-auth.ts:410`), and the fixture's entire value is that it is byte-identical to what the server produces -- the missing-binary case previously shipped untested because a hand-written fixture used a shape no producer writes, so it asserted an outcome the real path could not reach. Rewording it here would restore that defect. The stale noun is the SERVER's, is shared by every CLI engine, and is tracked in station#1946; this gate scans UI roots only, so the source fix is outside both its reach and this change's scope."
+  },
+  {
+    "file": "src-ui/src/__tests__/AgentConnectionView.test.tsx",
+    "line": 829,
+    "snippet": "Required to launch the Muse Code runtime.",
+    "reason": "Server-verbatim fixture (connections UI, the connections UI overhaul). This is the exact byte string `buildCliRuntimePrerequisites` emits (`src-server/providers/auth/cli-auth.ts:410`), and the fixture's entire value is that it is byte-identical to what the server produces -- the missing-binary case previously shipped untested because a hand-written fixture used a shape no producer writes, so it asserted an outcome the real path could not reach. Rewording it here would restore that defect. The stale noun is the SERVER's, is shared by every CLI engine, and is tracked in station#1946; this gate scans UI roots only, so the source fix is outside both its reach and this change's scope."
   }
 ]

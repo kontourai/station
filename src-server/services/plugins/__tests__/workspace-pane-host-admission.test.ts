@@ -510,7 +510,7 @@ describe('Workspace Pane host invocation admission', () => {
       home,
       pluginId,
       ['agents.invoke'],
-      captureWorkspacePaneHostPackage(
+      await captureWorkspacePaneHostPackage(
         home,
         pluginId,
         store.createPackageMcpAdmissionJournal(),
@@ -720,7 +720,7 @@ describe('Workspace Pane host invocation admission', () => {
     const proof = await nativeHostProof({ retainArtifact: true });
     if (proof.retained?.state !== 'observed')
       throw new Error('fixture installation absent');
-    const permissionArtifact = captureWorkspacePaneHostPackage(
+    const permissionArtifact = await captureWorkspacePaneHostPackage(
       home,
       pluginId,
       store.createPackageMcpAdmissionJournal(),
@@ -910,6 +910,38 @@ describe('Workspace Pane host invocation admission', () => {
         .toBe(true);
     },
   );
+
+  test('observes immediate provider rejection while admission locks unwind', async () => {
+    const failure = new Error('provider refused');
+    const guarded = createWorkspacePaneHostAdmission({
+      projectHomeDir: home,
+      projects: storage,
+      journal: store.createPackageMcpAdmissionJournal(),
+      withInvocationPermission: async (_pluginId, invoke) => {
+        const invoked = await invoke();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        return invoked;
+      },
+    });
+    const prepared = await guarded.prepare({
+      pluginId,
+      projectSlug,
+      actionId: 'literal',
+    });
+    await expect(
+      prepared.run((admission) =>
+        admission.invoke(
+          'start',
+          {
+            threadId: 'immediate-rejection',
+            agentId: admission.agentId,
+            projectSlug,
+          },
+          () => Promise.reject(failure),
+        ),
+      ),
+    ).rejects.toBe(failure);
+  });
 
   test('refuses changed Project policy after pending start resolution, before provider invocation', async () => {
     const entered = deferred();

@@ -205,7 +205,7 @@ export function CommandPalette() {
     selectedProjectLayout,
   } = useNavigation();
   const { getAllShortcuts } = useShortcutRegistry();
-  const { isMobile } = usePlatformProfile();
+  const { isMobile, isDesktop } = usePlatformProfile();
   const { locale } = useLocale();
 
   useEffect(() => {
@@ -243,8 +243,9 @@ export function CommandPalette() {
   }, [open, query, settingsCatalog]);
 
   const settingsCommands = useMemo(
-    () => settingsCatalog?.settingsPaletteCommands({ isMobile }) ?? [],
-    [isMobile, settingsCatalog],
+    () =>
+      settingsCatalog?.settingsPaletteCommands({ isMobile, isDesktop }) ?? [],
+    [isMobile, isDesktop, settingsCatalog],
   );
   const settingsLocaleFormatter: SettingsLocaleFormatter | null =
     settingsCatalog
@@ -483,7 +484,12 @@ export function CommandPalette() {
         keywords: [...setting.keywords],
         detail: settingsLocaleFormatter
           ? setting.unavailable
-            ? settingsLocaleFormatter.formatMessage('unavailableMobile', locale)
+            ? settingsLocaleFormatter.formatMessage(
+                setting.unavailableReason === 'desktop'
+                  ? 'unavailableDesktop'
+                  : 'unavailableMobile',
+                locale,
+              )
             : settingsScopeDetail(
                 setting.scope,
                 locale,
@@ -507,7 +513,9 @@ export function CommandPalette() {
                 ) ?? 'Unavailable',
               reasonLabel:
                 settingsLocaleFormatter?.formatMessage(
-                  'unavailableMobile',
+                  setting.unavailableReason === 'desktop'
+                    ? 'unavailableDesktop'
+                    : 'unavailableMobile',
                   locale,
                 ) ?? '',
             });
@@ -554,7 +562,11 @@ export function CommandPalette() {
     // all other commands. An unavailable pane reveals its resolver-backed
     // state and bounded action without trying to mount a renderer.
     for (const entry of paneCatalog.entries) {
-      const presentation = presentWorkspacePaneAvailability(entry.availability);
+      const presentation = presentWorkspacePaneAvailability(
+        entry.availability,
+        entry.rendererGate,
+        entry.rendererResolution,
+      );
       const route =
         entry.instance && selectedProject
           ? workspacePaneDirectRoute(

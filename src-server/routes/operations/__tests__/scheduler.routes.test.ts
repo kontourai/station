@@ -5,11 +5,13 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { SSE_KEEPALIVE_INTERVAL_MS } from '../../../constants.js';
 import { SchedulerJobConflictError } from '../../../services/scheduling/builtin-scheduler.js';
 import {
   SchedulerStorageCorruptError,
   SchedulerStorageUnavailableError,
 } from '../../../services/scheduling/scheduler-ledger.js';
+import { SchedulerScheduleInvalidError } from '../../../services/scheduling/scheduler-service.js';
 
 const metricMocks = vi.hoisted(() => ({ schedulerJobRunsAdd: vi.fn() }));
 
@@ -265,6 +267,58 @@ describe('Scheduler Routes', () => {
     expect(Array.isArray(body.data)).toBe(true);
     expect(body.data.length).toBeGreaterThan(0);
   });
+
+  test('GET /jobs/preview-schedule forwards the timezone the expression is written in', async () => {
+    // #1536 D1: without it the service evaluates the expression as UTC, so a
+    // preview of a zoned job returns different instants from the ones it fires
+    // at — the Add Job form showed "Tue 2:00 AM MDT" for a Mon 8:00 AM MDT job.
+    const { app, svc } = setup();
+    await app.request(
+      '/jobs/preview-schedule?cron=0+8+*+*+1-5&count=3&timezone=Australia%2FBrisbane',
+    );
+    expect(svc.previewSchedule).toHaveBeenCalledWith(
+      '0 8 * * 1-5',
+      3,
+      'Australia/Brisbane',
+    );
+  });
+
+  test('GET /jobs/preview-schedule omits the timezone when none is asked for', async () => {
+    // Absent stays absent rather than becoming the server's own zone: the
+    // scheduler treats an unzoned schedule as UTC and the preview must agree.
+    const { app, svc } = setup();
+    await app.request('/jobs/preview-schedule?cron=0+8+*+*+1-5');
+    expect(svc.previewSchedule).toHaveBeenCalledWith(
+      '0 8 * * 1-5',
+      5,
+      undefined,
+    );
+  });
+
+  test.each([
+    ['an unknown IANA zone', 'cron=0+8+*+*+1-5&timezone=Mars%2FOlympus'],
+    ['a cron field out of range', 'cron=0+99+*+*+*'],
+  ])(
+    'GET /jobs/preview-schedule answers 400 for %s, not 500',
+    async (_label, query) => {
+      // #1536 R3: `nextOccurrences` throws a RangeError on an unknown zone, and
+      // the route reported it as a 500 — an operator's typo presented as a
+      // server fault. The real service validates; only the mock is replaced
+      // here, so the STATUS MAPPING is what this exercises.
+      const { app, svc } = setup();
+      svc.previewSchedule = vi
+        .fn()
+        .mockRejectedValue(
+          new SchedulerScheduleInvalidError('Invalid schedule: bad zone'),
+        );
+
+      const res = await app.request(`/jobs/preview-schedule?${query}`);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { success: boolean; error: string };
+      expect(body.success).toBe(false);
+      expect(body.error).toContain('Invalid schedule');
+    },
+  );
 
   test('GET /jobs/preview-schedule returns 400 without cron', async () => {
     const { app } = setup();
@@ -544,5 +598,41 @@ describe('Scheduler Routes', () => {
     );
     expect(body).toEqual({ success: true });
     expect(svc.removeJob).toHaveBeenCalledWith('daily-report');
+  });
+
+  /**
+   * THE WIRE VALUE, end to end. `sseKeepalive` and `SSE_KEEPALIVE_FRAME`
+   * (`routes/sse-response.ts`) are unit-tested against the frame OBJECT, which
+   * cannot notice the event name changing — renaming it leaves this suite and
+   * `orchestration.routes.test.ts` green while breaking live consumers:
+   * `packages/sdk/src/client/project-task-rooms.ts` dispatches on
+   * `message.event === 'ping'`, and the CLI's `consumeSseFrames`
+   * (`packages/cli/src/commands/session-client.ts`) tolerates the frame only
+   * because its `data` line is EMPTY — a non-empty payload would reach its
+   * `JSON.parse` and be handed to `onFrame` as a chat event.
+   *
+   * So both fields are asserted, against the bytes Hono actually emits.
+   */
+  test('the /events keepalive is exactly an `event: ping` frame with an empty data line', async () => {
+    vi.useFakeTimers();
+    try {
+      const { app } = setup();
+      const response = await app.request('/events');
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toContain(
+        'text/event-stream',
+      );
+
+      const reader = response.body!.getReader();
+      // Nothing is written until a full interval elapses: the subscription is
+      // a no-op mock, so the first bytes on this stream are the keepalive.
+      await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE_INTERVAL_MS);
+      const { value } = await reader.read();
+
+      expect(new TextDecoder().decode(value)).toBe('event: ping\ndata: \n\n');
+      await reader.cancel();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

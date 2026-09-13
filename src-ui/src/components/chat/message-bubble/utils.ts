@@ -88,9 +88,9 @@ export function resolveTurnEngine(
 }
 
 /** Which model slot a rendered claim came from. */
-export type TurnModelSlot = 'requested' | 'reported' | 'agreed';
+type TurnModelSlot = 'requested' | 'reported' | 'agreed';
 
-export interface TurnModelClaim {
+interface TurnModelClaim {
   slot: TurnModelSlot;
   /** Short badge label naming WHICH model identity this is. */
   label: string;
@@ -110,7 +110,7 @@ export interface TurnModelClaim {
  * the complete set of model statements the row is allowed to make: possibly
  * empty, when the envelope observed no model at all.
  */
-export type TurnModelIdentity =
+type TurnModelIdentity =
   | { source: 'metadata-absent' }
   | { source: 'envelope'; claims: TurnModelClaim[] };
 

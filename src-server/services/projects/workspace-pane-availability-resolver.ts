@@ -12,7 +12,7 @@ import {
 import { workspacePaneAvailabilityMetricDescriptor } from './workspace-pane-known-declarations.js';
 
 /** Minimal catalog provenance required to produce a safe default input. */
-export interface WorkspacePaneAvailabilityContribution {
+interface WorkspacePaneAvailabilityContribution {
   id: string;
   enabled: boolean;
   installationReadiness?: { state: 'ready' | 'pending' | 'unavailable' };

@@ -4,7 +4,7 @@ import { join, resolve, sep } from 'node:path';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { buildPlugin as buildPluginBundle } from '@kontourai/station-shared/build';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
-import { capturePluginRuntimeArtifact } from '../../services/plugins/plugin-runtime-artifact.js';
+import { capturePluginRuntimeArtifactAsync } from '../../services/plugins/plugin-runtime-artifact.js';
 import type { Logger } from '../../utils/logger.js';
 import { errorMessage } from '../schemas/schemas.js';
 
@@ -43,24 +43,6 @@ export function assertPluginBundleAssetsContained(pluginDir: string): void {
   }
 }
 
-/** Resolve executable bytes only from the current admitted installation. */
-export function resolvePluginBundle(
-  pluginsDir: string,
-  name: string,
-  file: 'bundle.js' | 'bundle.css',
-  journal?: PackageMcpAdmissionJournal,
-): { path: string; isCurrent(): boolean } | null {
-  const artifact = capturePluginRuntimeArtifact(pluginsDir, name, journal);
-  if (!artifact) return null;
-  const path = containedRegularFile(
-    artifact.packageRoot,
-    join(artifact.packageRoot, 'dist', file),
-  );
-  return path && artifact.isCurrent()
-    ? { path, isCurrent: artifact.isCurrent }
-    : null;
-}
-
 /** Capture before reading and check again before delivering executable bytes. */
 export async function readPluginBundle(
   pluginsDir: string,
@@ -69,10 +51,19 @@ export async function readPluginBundle(
   journal?: PackageMcpAdmissionJournal,
 ): Promise<string | null> {
   try {
-    const bundle = resolvePluginBundle(pluginsDir, name, file, journal);
-    if (!bundle?.isCurrent()) return null;
-    const content = await readFile(bundle.path, 'utf8');
-    return bundle.isCurrent() ? content : null;
+    const artifact = await capturePluginRuntimeArtifactAsync(
+      pluginsDir,
+      name,
+      journal,
+    );
+    if (!artifact) return null;
+    const path = containedRegularFile(
+      artifact.packageRoot,
+      join(artifact.packageRoot, 'dist', file),
+    );
+    if (!path) return null;
+    const content = await readFile(path, 'utf8');
+    return (await artifact.isCurrentAsync()) ? content : null;
   } catch {
     return null;
   }

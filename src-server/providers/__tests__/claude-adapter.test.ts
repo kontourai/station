@@ -1,6 +1,7 @@
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -9,6 +10,10 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  deriveConfigHomeAffinity,
+  resolveConfigHomeAffinity,
+} from '../sessions/transcript-file-io.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 
 // The genuine built-in station-control server as it appears in a resolved
@@ -229,6 +234,222 @@ describe('ClaudeAdapter', () => {
     ).rejects.toThrow('distinct child session');
     expect(mockQuery).not.toHaveBeenCalled();
     await expect(adapter.hasSession('station-child')).resolves.toBe(false);
+  });
+
+  test('leaves a reported child to ledger cleanup when SDK initialization fails', async () => {
+    mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+    mockQuery.mockImplementation(() => {
+      throw new Error('initialization failed');
+    });
+    mockDeleteSession.mockResolvedValue(undefined);
+    const adapter = new ClaudeAdapter();
+    const onProviderChildCreated = vi.fn();
+    await expect(
+      adapter.adoptSession(
+        {
+          provider: 'claude',
+          threadId: 'station-child',
+          sourceSessionId: 'vendor-source',
+          sourceKind: 'claude-transcript',
+          cwd: '/workspace/project',
+        },
+        { onProviderChildCreationStarted: () => {}, onProviderChildCreated },
+      ),
+    ).rejects.toThrow('initialization failed');
+    expect(onProviderChildCreated).toHaveBeenCalledWith('vendor-child');
+    expect(mockDeleteSession).not.toHaveBeenCalled();
+    await adapter.discardSession('station-child', {
+      adoptionKey: 'station-child',
+      resumeCursor: 'vendor-child',
+      sourceSessionId: 'vendor-source',
+      cwd: '/workspace/project',
+    });
+    expect(mockDeleteSession).toHaveBeenCalledExactlyOnceWith('vendor-child', {
+      dir: '/workspace/project',
+    });
+  });
+
+  test('cold resume retains the adopted Claude source home through SDK init and refuses a changed home', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'station-claude-cold-source-'));
+    vi.stubEnv('CLAUDE_CONFIG_DIR', home);
+    try {
+      const identity = deriveConfigHomeAffinity('claude-config-home', home)!;
+      const getAppHomeEnv = vi.fn(async () => ({
+        CLAUDE_CONFIG_DIR: '/unused-profile-home',
+      }));
+      const options = {
+        getAppHomeEnv,
+        resolveSourceHome: (affinity: typeof identity.affinity) =>
+          resolveConfigHomeAffinity('claude-config-home', home, affinity),
+      };
+      mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter(options);
+      const child = await adapter.adoptSession(
+        {
+          provider: 'claude',
+          threadId: 'station-child',
+          sourceSessionId: 'vendor-source',
+          sourceKind: 'claude-transcript',
+          sourceAffinity: identity.affinity,
+          cwd: '/workspace/project',
+        },
+        {
+          onProviderChildCreationStarted: () => {},
+          onProviderChildCreated: () => {},
+        },
+      );
+      expect(child.resumeCursor).toEqual({
+        claudeSessionId: 'vendor-child',
+        sourceAffinity: identity.affinity,
+      });
+      await adapter.stopSession('station-child');
+      const restarted = new ClaudeAdapter(options);
+      mockQuery.mockReturnValue(
+        createMockQuery([
+          {
+            type: 'system',
+            subtype: 'init',
+            session_id: 'vendor-child',
+            cwd: '/workspace/project',
+            model: 'claude-sonnet-4-6',
+            tools: [],
+            mcp_servers: [],
+          },
+        ]),
+      );
+      const resumed = await restarted.startSession({
+        provider: 'claude',
+        threadId: 'station-child',
+        resumeCursor: child.resumeCursor,
+        cwd: '/workspace/project',
+        persistSession: true,
+      });
+      await vi.waitFor(() => expect(resumed.status).toBe('ready'));
+      expect(resumed.resumeCursor).toEqual(child.resumeCursor);
+      expect(getAppHomeEnv).not.toHaveBeenCalled();
+      expect(mockQuery).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({ resume: 'vendor-child' }),
+        }),
+      );
+      await restarted.stopSession('station-child');
+      const calls = mockQuery.mock.calls.length;
+      vi.stubEnv('CLAUDE_CONFIG_DIR', join(home, 'changed'));
+      await expect(
+        new ClaudeAdapter(options).startSession({
+          provider: 'claude',
+          threadId: 'station-child',
+          resumeCursor: child.resumeCursor,
+          cwd: '/workspace/project',
+        }),
+      ).rejects.toThrow('affinity');
+      expect(mockQuery).toHaveBeenCalledTimes(calls);
+      expect(getAppHomeEnv).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('reports creation only after source-home validation and before the SDK fork', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'station-claude-adoption-home-'));
+    vi.stubEnv('CLAUDE_CONFIG_DIR', home);
+    try {
+      const identity = deriveConfigHomeAffinity('claude-config-home', home)!;
+      const adapter = new ClaudeAdapter({
+        resolveSourceHome: (affinity) =>
+          resolveConfigHomeAffinity('claude-config-home', home, affinity),
+      });
+      const order: string[] = [];
+      mockForkSession.mockImplementation(async () => {
+        order.push('fork');
+        return { sessionId: 'vendor-child' };
+      });
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const base = {
+        provider: 'claude' as const,
+        threadId: 'station-child',
+        sourceSessionId: 'vendor-source',
+        sourceKind: 'claude-transcript',
+        cwd: '/workspace/project',
+      };
+      const hooks = {
+        onProviderChildCreationStarted: vi.fn(() => {
+          order.push('start');
+        }),
+        onProviderChildCreated: vi.fn(() => {
+          order.push('child');
+        }),
+      };
+      await expect(
+        adapter.adoptSession(
+          {
+            ...base,
+            sourceAffinity: { ...identity.affinity, ref: '0'.repeat(64) },
+          },
+          hooks,
+        ),
+      ).rejects.toThrow('affinity');
+      expect(mockForkSession).not.toHaveBeenCalled();
+      expect(hooks.onProviderChildCreationStarted).not.toHaveBeenCalled();
+      await adapter.adoptSession(
+        { ...base, sourceAffinity: identity.affinity },
+        hooks,
+      );
+      expect(order).toEqual(['start', 'fork', 'child']);
+      mockDeleteSession.mockResolvedValue(undefined);
+      await adapter.discardSession('station-child', {
+        adoptionKey: 'station-child',
+        sourceAffinity: identity.affinity,
+        sourceSessionId: 'vendor-source',
+        sourceKind: 'claude-transcript',
+        cwd: base.cwd,
+        resumeCursor: 'vendor-child',
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('does not report successful adopted-child cleanup when SDK deletion fails', async () => {
+    const adapter = new ClaudeAdapter();
+    mockDeleteSession.mockRejectedValue(new Error('delete failed'));
+    await expect(
+      adapter.discardSession('station-child', {
+        adoptionKey: 'station-child',
+        sourceSessionId: 'vendor-source',
+        cwd: '/workspace/project',
+        resumeCursor: 'vendor-child',
+      }),
+    ).rejects.toThrow('delete failed');
+    expect(mockDeleteSession).toHaveBeenCalledTimes(1);
+  });
+
+  test('keeps zero-match or ambiguous adopted-child recovery unresolved', async () => {
+    const adapter = new ClaudeAdapter();
+    const recovery = {
+      adoptionKey: 'station-child',
+      sourceSessionId: 'vendor-source',
+      cwd: '/workspace/project',
+      createdAt: '2026-09-06T00:00:00Z',
+    };
+    mockListSessions.mockResolvedValue([]);
+    await expect(
+      adapter.discardSession('station-child', recovery),
+    ).rejects.toThrow('unique continuation');
+    mockListSessions.mockResolvedValue(
+      ['one', 'two'].map((sessionId) => ({
+        sessionId,
+        customTitle: 'Station continuation station-child',
+        lastModified: Date.parse(recovery.createdAt),
+      })),
+    );
+    await expect(
+      adapter.discardSession('station-child', recovery),
+    ).rejects.toThrow('unique continuation');
+    expect(mockDeleteSession).not.toHaveBeenCalled();
   });
 
   test('deletes the provider transcript when an adopted session is discarded', async () => {
@@ -1800,6 +2021,171 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test.each([true, false])(
+    'a provider refusal emits one failed-turn error with wrapper=%s and leaves native binding status unknown',
+    async (throwsWrapper) => {
+      const failureText =
+        "API Error: Opus 5 (1M context)'s safeguards flagged this message. Details: [reasoning_extraction]";
+      mockQuery.mockReturnValue({
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: 'result',
+            subtype: 'success',
+            is_error: true,
+            result: failureText,
+            stop_reason: null,
+            usage: { input_tokens: 1, output_tokens: 0 },
+            uuid: 'refused-result',
+            session_id: 'native-refused',
+          };
+          if (throwsWrapper)
+            throw new Error(
+              `Claude Code returned an error result: ${failureText}`,
+            );
+        },
+        interrupt: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn(),
+      });
+      const adapter = new ClaudeAdapter();
+      const events: any[] = [];
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'refused-turn',
+        resumeCursor: 'last-known-native',
+      });
+      await vi.waitFor(async () =>
+        expect((await adapter.listSessions())[0]?.status).toBe('error'),
+      );
+      await expect(
+        adapter.sendTurn({
+          threadId: 'refused-turn',
+          input: 'must not be silently accepted',
+        }),
+      ).rejects.toThrow(
+        'The provider turn ended before the input could be enqueued.',
+      );
+      expect(events.some((event) => event.method === 'turn.started')).toBe(
+        false,
+      );
+      await adapter.stopAll();
+      await drain;
+      const failures = events.filter(
+        (event) => event.method === 'runtime.error',
+      );
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toMatchObject({
+        code: 'engine-turn-failed',
+        retriable: false,
+        message: failureText,
+      });
+      expect(events.some((event) => event.method === 'turn.completed')).toBe(
+        false,
+      );
+      expect(
+        failures.some((event) => event.code === 'engine-session-binding-dead'),
+      ).toBe(false);
+    },
+  );
+
+  test('a query failure during asynchronous turn setup refuses enqueue without publishing a started turn', async () => {
+    let failQuery!: () => void;
+    const failureReady = new Promise<void>((resolve) => {
+      failQuery = resolve;
+    });
+    const adapter = new ClaudeAdapter();
+    mockQuery.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        await failureReady;
+        yield {
+          type: 'result',
+          is_error: true,
+          result: 'Query failed during control setup',
+          usage: { input_tokens: 0, output_tokens: 0 },
+          uuid: 'setup-failure',
+          session_id: 'native-setup',
+        };
+      },
+      setPermissionMode: vi.fn(async () => {
+        failQuery();
+        await vi.waitFor(async () =>
+          expect((await adapter.listSessions())[0]?.status).toBe('error'),
+        );
+      }),
+      close: vi.fn(),
+    });
+    const events: any[] = [];
+    const drain = (async () => {
+      for await (const event of adapter.streamEvents()) events.push(event);
+    })();
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'setup-failure',
+      modelOptions: { approvalMode: 'ask' },
+    });
+    await expect(
+      adapter.sendTurn({
+        threadId: 'setup-failure',
+        input: 'no silent enqueue',
+        modelOptions: { approvalMode: 'auto' },
+      }),
+    ).rejects.toThrow('The provider turn ended');
+    await adapter.stopAll();
+    await drain;
+    expect(
+      events.filter((event) => event.method === 'runtime.error'),
+    ).toHaveLength(1);
+    expect(events.some((event) => event.method === 'turn.started')).toBe(false);
+  });
+
+  test('a later SDK message ends wrapper suppression so a distinct query failure remains visible', async () => {
+    mockQuery.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'result',
+          is_error: true,
+          result: 'Provider refusal',
+          usage: { input_tokens: 0, output_tokens: 0 },
+          uuid: 'first-failure',
+          session_id: 'native-refused',
+        };
+        yield { type: 'system', subtype: 'status', status: null };
+        throw new Error('Distinct later transport failure');
+      },
+      close: vi.fn(),
+    });
+    const adapter = new ClaudeAdapter();
+    const events: any[] = [];
+    const drain = (async () => {
+      for await (const event of adapter.streamEvents()) events.push(event);
+    })();
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'later-failure',
+    });
+    await vi.waitFor(() =>
+      expect(
+        events.filter((event) => event.method === 'runtime.error'),
+      ).toHaveLength(2),
+    );
+    await expect(
+      adapter.sendTurn({
+        threadId: 'later-failure',
+        input: 'no silent enqueue',
+      }),
+    ).rejects.toThrow('The provider turn ended');
+    await adapter.stopAll();
+    await drain;
+    expect(
+      events
+        .filter((event) => event.method === 'runtime.error')
+        .map((event) => event.message),
+    ).toEqual(['Provider refusal', 'Distinct later transport failure']);
+    expect(events.some((event) => event.method === 'turn.started')).toBe(false);
+  });
+
   /**
    * archive#1827. Reproduces the ticket's exact live shape: the SDK
    * delivers a `result` message with `is_error: true` (the STRUCTURED
@@ -1807,8 +2193,7 @@ describe('ClaudeAdapter', () => {
    * normal message stream, and only THEN the underlying `claude` CLI
    * process exits and the SDK's own query iterator re-throws the SAME
    * failure text wrapped as a generic Error (`Query`'s `lastErrorResultText`
-   * mechanism in `@anthropic-ai/claude-agent-sdk`'s `sdk.mjs`, cited in
-   * `claude-result-outcome.ts`'s doc comment). Before this fix, that shape
+   * mechanism in `@anthropic-ai/claude-agent-sdk`'s `sdk.mjs`). Before this fix, that shape
    * published the raw text as `turn.completed` (folding an error into what
    * looked like a completed reply) and then published it a SECOND time,
    * unclassified, from the generic catch — exactly the "shown twice, then
@@ -2090,7 +2475,7 @@ describe('ClaudeAdapter', () => {
     });
   });
 
-  test('an absent approvalMode keeps the pre-existing default permission mode (#727)', async () => {
+  test('an absent approvalMode omits permissionMode so Claude settings apply (station#1950)', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const adapter = new ClaudeAdapter();
 
@@ -2099,9 +2484,41 @@ describe('ClaudeAdapter', () => {
       threadId: 'thread-approval-default',
     });
 
-    expect(mockQuery).toHaveBeenCalledWith({
-      prompt: expect.anything(),
-      options: expect.objectContaining({ permissionMode: 'default' }),
+    const options = mockQuery.mock.calls[0]?.[0]?.options as Record<
+      string,
+      unknown
+    >;
+    expect(options).not.toHaveProperty('permissionMode');
+  });
+
+  test('init permissionMode auto is reported as the applied approval mode (station#1950)', async () => {
+    mockQuery.mockReturnValue(
+      createMockQuery([
+        {
+          type: 'system',
+          subtype: 'init',
+          session_id: 'claude-session',
+          cwd: '/tmp',
+          model: 'claude-sonnet-4-6',
+          permissionMode: 'auto',
+          uuid: 'init-auto',
+        },
+      ]),
+    );
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-inherit-auto',
+    });
+
+    await iterator.next(); // session.started
+    await iterator.next(); // session.configured (spawn, no claimed mode)
+    const initConfigured = await iterator.next();
+    expect(initConfigured.value).toMatchObject({
+      method: 'session.configured',
+      metadata: { permissionMode: 'auto', approvalMode: 'auto' },
     });
   });
 
@@ -2157,6 +2574,23 @@ describe('ClaudeAdapter', () => {
         allowDangerouslySkipPermissions: undefined,
       }),
     });
+  });
+
+  test('a later turn without approvalMode does not reset Claude to default (station#1950)', async () => {
+    const mockedQuery = createMockQuery([]);
+    mockQuery.mockReturnValue(mockedQuery);
+    const adapter = new ClaudeAdapter();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-keep-engine-default',
+      modelOptions: { approvalMode: 'auto' },
+    });
+    await adapter.sendTurn({
+      threadId: 'thread-keep-engine-default',
+      input: 'follow-up',
+    });
+    expect(mockedQuery.setPermissionMode).not.toHaveBeenCalled();
   });
 
   test('a per-turn approvalMode downgrade (auto -> ask) calls setPermissionMode and reaches Claude from the next turn (#727)', async () => {
@@ -2791,13 +3225,21 @@ describe('ClaudeAdapter', () => {
         model: undefined,
         resume: undefined,
         includePartialMessages: true,
+        // station#1877: asks the SDK to summarise what a subagent is doing.
+        // task_progress.summary is documented as carrying the model-generated
+        // status only when this is on, so without it a background subagent
+        // reports its description once and then goes silent.
+        agentProgressSummaries: true,
+        // station#1877: declares that Station renders a per-task stop control
+        // wired to `stop_task`. Fail-closed both ways, so it ships with that
+        // control and never without it.
+        perTaskStopAffordance: true,
         persistSession: false,
         env: scrubBootInternalSecrets({
           ...process.env,
           TMPDIR: engineSpawnTmpDirPath(),
         }),
         canUseTool: expect.any(Function),
-        permissionMode: 'default',
         allowDangerouslySkipPermissions: undefined,
         thinking: undefined,
         effort: undefined,
@@ -3369,6 +3811,7 @@ describe('ClaudeAdapter', () => {
       });
       controlled.push({
         type: 'result',
+        is_error: false,
         result: 'hi',
         stop_reason: 'end_turn',
         usage: { input_tokens: 1, output_tokens: 1 },
@@ -3388,6 +3831,7 @@ describe('ClaudeAdapter', () => {
 
       controlled.push({
         type: 'result',
+        is_error: false,
         result: 'bye',
         stop_reason: 'end_turn',
         usage: { input_tokens: 1, output_tokens: 1 },
@@ -4303,8 +4747,13 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
   });
 
   /** A push-driven query whose iterator can also FINISH, modelling the
-   * `claude` process exiting on its own. */
-  function createEndableMockQuery() {
+   * `claude` process exiting on its own.
+   *
+   * `endOnClose: false` models the engine `CLAUDE_STREAM_STOP_GRACE_MS`
+   * exists for (station#1569 item 1): one whose iterator does NOT end when
+   * `query.close()` lands, so `stopSession` reaches its grace instead of the
+   * consumer's own settle. */
+  function createEndableMockQuery({ endOnClose = true } = {}) {
     const pending: any[] = [];
     let wake: (() => void) | null = null;
     let ended = false;
@@ -4337,6 +4786,7 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
       // the stopSession ordering below a real test rather than a mock's
       // convenience (station#1558 fix round, M8).
       close: vi.fn().mockImplementation(() => {
+        if (!endOnClose) return;
         ended = true;
         wake?.();
         wake = null;
@@ -4362,12 +4812,28 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
     throw new Error(`no ${method} within ${limit} events`);
   }
 
+  /** Drains everything the stream produces until it goes quiet, so a test can
+   * assert what was NOT published (an absence a `nextOf` scan cannot see). */
+  async function drainUntilQuiet(iterator: AsyncIterator<any>, quietMs = 40) {
+    const seen: any[] = [];
+    const NOTHING = Symbol('nothing-else');
+    for (;;) {
+      const next = await Promise.race([
+        iterator.next().then((result) => result.value),
+        new Promise((resolve) => setTimeout(() => resolve(NOTHING), quietMs)),
+      ]);
+      if (next === NOTHING) return seen;
+      seen.push(next);
+    }
+  }
+
   async function openCallOn(
     threadId: string,
     query: ReturnType<typeof createEndableMockQuery>,
+    options?: ConstructorParameters<typeof ClaudeAdapter>[0],
   ) {
     mockQuery.mockReturnValue(query);
-    const adapter = new ClaudeAdapter();
+    const adapter = new ClaudeAdapter(options);
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({ provider: 'claude', threadId });
     const turn = await adapter.sendTurn({ threadId, input: 'work' });
@@ -4506,5 +4972,414 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
         new Promise((resolve) => setTimeout(() => resolve(NOTHING), 50)),
       ]),
     ).toBe(NOTHING);
+  });
+
+  /**
+   * station#1569 (item 1): the branch `CLAUDE_STREAM_STOP_GRACE_MS` exists
+   * for — an engine whose iterator does NOT end when `query.close()` lands,
+   * so `consumeMessages`' own settle never runs and `stopSession` has to do
+   * it. Every case above is served by a query that ends on close, which is
+   * exactly why this branch had no test.
+   */
+  describe('the stop grace elapsing (station#1569 item 1)', () => {
+    // The default-bound case below installs a fake clock. If it ever fails
+    // mid-await, its own `finally` does not run before the next test starts —
+    // and a fake clock left installed makes every later test in this file
+    // time out, which reads as four unrelated regressions. Restoring here
+    // bounds a failure to the test that failed.
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    test('settles the open call as unresolved, on its own turn, before session.exited', async () => {
+      const query = createEndableMockQuery({ endOnClose: false });
+      const { adapter, iterator, turnId } = await openCallOn(
+        'thread-grace-elapsed',
+        query,
+        { streamStopGraceMs: 5 },
+      );
+
+      await adapter.stopSession('thread-grace-elapsed');
+
+      expect(await nextOf(iterator, 'tool.completed')).toMatchObject({
+        toolCallId: 'toolu-open',
+        toolName: 'Bash',
+        status: 'unresolved',
+        turnId,
+        output:
+          'No result was reported before the session ended; whether the tool ran is unknown.',
+      });
+      await nextOf(iterator, 'session.exited');
+      // The stop returned rather than hanging on an iterator that never ends:
+      // the bound is the whole point of the grace.
+      expect(query.close).toHaveBeenCalled();
+    });
+
+    test('a tool_result that drains AFTER that settle still publishes the real terminal on its issuing turn', async () => {
+      const query = createEndableMockQuery({ endOnClose: false });
+      const { adapter, iterator, turnId } = await openCallOn(
+        'thread-grace-late-result',
+        query,
+        { streamStopGraceMs: 5 },
+      );
+
+      await adapter.stopSession('thread-grace-late-result');
+      expect(await nextOf(iterator, 'tool.completed')).toMatchObject({
+        status: 'unresolved',
+      });
+      await nextOf(iterator, 'session.exited');
+
+      // The SDK was holding this the whole time. Before station#1569 the
+      // replay guard dropped it because the settle had cleared its entry,
+      // leaving `unresolved` standing over an outcome Station did receive.
+      query.push({
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-open', content: 'ok' },
+          ],
+        },
+        uuid: 'user-late',
+        session_id: 'thread-grace-late-result',
+      });
+
+      // Drained rather than scanned: when this regresses the result is
+      // DROPPED, and a scan for an event that never arrives can only fail by
+      // timing out. This says "nothing was published" in 40ms instead.
+      const seen = await drainUntilQuiet(iterator);
+      expect(seen.filter((event) => event.method === 'tool.completed')).toEqual(
+        [
+          expect.objectContaining({
+            toolCallId: 'toolu-open',
+            toolName: 'Bash',
+            status: 'success',
+            // The turn that ISSUED the call, read back from the settle record —
+            // there is no active turn left to fall back on.
+            turnId,
+            output: 'ok',
+          }),
+        ],
+      );
+    });
+
+    /**
+     * station#1586 (item 1): every case above injects a 5ms bound, so the
+     * DEFAULT — `CLAUDE_STREAM_STOP_GRACE_MS`, the value every real stop
+     * actually uses — was never exercised. A test that spends a real second
+     * to reach it is a test nobody runs, so this drives the clock instead:
+     * the adapter is constructed with NO `streamStopGraceMs`, and the settle
+     * is proven to fire at 1000ms and not before.
+     */
+    test('with no injected bound, the settle fires at the 1s default and not before', async () => {
+      const query = createEndableMockQuery({ endOnClose: false });
+      const warn = vi.fn();
+      const { adapter, iterator, turnId } = await openCallOn(
+        'thread-grace-default',
+        query,
+        { logger: { warn } },
+      );
+
+      // Collected in the background: with the clock frozen, a `nextOf` scan
+      // for an event that has not been published yet would never resolve.
+      const seen: any[] = [];
+      const collector = (async () => {
+        for (;;) {
+          const next = await iterator.next();
+          if (next.done) return;
+          seen.push(next.value);
+        }
+      })();
+      void collector;
+
+      vi.useFakeTimers();
+      try {
+        let stopSettled = false;
+        const stop = adapter.stopSession('thread-grace-default').then(() => {
+          stopSettled = true;
+        });
+
+        // One millisecond short of the default: the grace is still running,
+        // so nothing has been settled and nothing has been said about it.
+        await vi.advanceTimersByTimeAsync(999);
+        expect(
+          seen.filter((event) => event.method === 'tool.completed'),
+        ).toEqual([]);
+        expect(warn).not.toHaveBeenCalled();
+        expect(stopSettled).toBe(false);
+
+        // …and the millisecond that reaches 1000 is the one that fires it.
+        await vi.advanceTimersByTimeAsync(1);
+        await stop;
+        expect(stopSettled).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(seen.filter((event) => event.method === 'tool.completed')).toEqual(
+        [
+          expect.objectContaining({
+            toolCallId: 'toolu-open',
+            toolName: 'Bash',
+            status: 'unresolved',
+            turnId,
+          }),
+        ],
+      );
+      // The operator-visible half of station#1569 item 1, carrying the bound
+      // that actually elapsed — the literal, so widening the default cannot
+      // leave this assertion silently describing a different wait.
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('within 1000ms of close()'),
+      );
+    });
+
+    test('a second result for an id already superseded is dropped like any other replay', async () => {
+      const query = createEndableMockQuery({ endOnClose: false });
+      const { adapter, iterator } = await openCallOn(
+        'thread-grace-double-result',
+        query,
+        { streamStopGraceMs: 5 },
+      );
+
+      await adapter.stopSession('thread-grace-double-result');
+      await nextOf(iterator, 'tool.completed');
+      await nextOf(iterator, 'session.exited');
+
+      const result = {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-open', content: 'ok' },
+          ],
+        },
+        uuid: 'user-late',
+        session_id: 'thread-grace-double-result',
+      };
+      query.push(result);
+      query.push({ ...result, uuid: 'user-late-2' });
+
+      // The settle record is consumed by the first result, so the second is
+      // an untracked id again — one late correction, not a repeatable one.
+      const seen = await drainUntilQuiet(iterator);
+      expect(seen.filter((event) => event.method === 'tool.completed')).toEqual(
+        [expect.objectContaining({ status: 'success' })],
+      );
+    });
+  });
+
+  /**
+   * station#1569 (item 6): `stopSession` removes the record BEFORE awaiting
+   * the settle, so a `startSession` for the same thread during that await
+   * makes the thread live again — and `session.exited` is keyed by threadId,
+   * not by record.
+   */
+  describe('a restart during the stop drain (station#1569 item 6)', () => {
+    test('publishes no session.exited for a thread that is live again, and still settles the stopped session own calls', async () => {
+      // The stopped session's stream is ended explicitly below rather than by
+      // `close()`, so the restart is guaranteed to land inside the window
+      // instead of racing a timer.
+      const query = createEndableMockQuery({ endOnClose: false });
+      const { adapter, iterator, turnId } = await openCallOn(
+        'thread-stop-restart',
+        query,
+      );
+
+      const stop = adapter.stopSession('thread-stop-restart');
+      const restarted = createEndableMockQuery();
+      mockQuery.mockReturnValue(restarted);
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-stop-restart',
+      });
+      // Only now does the stopped session's stream end, so the stop resolves
+      // with the new record already installed.
+      query.end();
+      await stop;
+
+      const seen = await drainUntilQuiet(iterator);
+      const methods = seen.map((event) => event.method);
+      // The restart happened…
+      expect(methods).toContain('session.started');
+      // …the stopped session's open call still got its honest terminal…
+      expect(seen).toContainEqual(
+        expect.objectContaining({
+          method: 'tool.completed',
+          toolCallId: 'toolu-open',
+          status: 'unresolved',
+          turnId,
+        }),
+      );
+      // …and nothing told the client this thread's session had ended.
+      expect(methods).not.toContain('session.exited');
+      expect(await adapter.hasSession('thread-stop-restart')).toBe(true);
+    });
+
+    test('with no restart, the same stop still publishes session.exited', async () => {
+      // The discriminating control for the assertion above: the suppression
+      // is conditional on the thread being retaken, not unconditional.
+      const query = createEndableMockQuery({ endOnClose: false });
+      const { adapter, iterator } = await openCallOn(
+        'thread-stop-no-restart',
+        query,
+      );
+
+      const stop = adapter.stopSession('thread-stop-no-restart');
+      query.end();
+      await stop;
+
+      const methods = (await drainUntilQuiet(iterator)).map(
+        (event) => event.method,
+      );
+      expect(methods).toContain('session.exited');
+      expect(await adapter.hasSession('thread-stop-no-restart')).toBe(false);
+    });
+
+    /**
+     * station#1573 (station#1569 M1): the same window, and the part of it
+     * that destroys data. Both cleanup leaves are keyed by threadId —
+     * `skillOverlayDirFor(sessionId)` is `<root>/<sessionId>` and the
+     * manifest is written under that same `sessionId` — so a restarted
+     * session materializes into exactly the paths the old stop is about to
+     * remove.
+     *
+     * Driven through the real `stopSession` with the two leaves injected
+     * (`skillsCleanup`), because the decision under test is whether
+     * stopSession CALLS them; the adapter test harness cannot materialize
+     * real skills, and a test of a pure predicate would not prove the caller
+     * consults it.
+     */
+    describe('skills cleanup (station#1573)', () => {
+      function cleanupSpies() {
+        return {
+          cleanupMaterializedSkills: vi.fn().mockResolvedValue(undefined),
+          removeSkillOverlayDir: vi.fn().mockResolvedValue(undefined),
+        };
+      }
+
+      test('is skipped for a thread the restart now owns', async () => {
+        const skillsCleanup = cleanupSpies();
+        const query = createEndableMockQuery({ endOnClose: false });
+        const { adapter } = await openCallOn('thread-cleanup-restart', query, {
+          skillsCleanup,
+        });
+        // The overlay branch is the destructive one (an unconditional
+        // recursive remove), so make this session own an overlay.
+        (
+          adapter as unknown as {
+            sessions: Map<string, { skillsOverlayDir?: string }>;
+          }
+        ).sessions.get('thread-cleanup-restart')!.skillsOverlayDir =
+          '/tmp/station-overlay/thread-cleanup-restart';
+
+        const stop = adapter.stopSession('thread-cleanup-restart');
+        mockQuery.mockReturnValue(createEndableMockQuery());
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-cleanup-restart',
+        });
+        query.end();
+        await stop;
+
+        expect(skillsCleanup.removeSkillOverlayDir).not.toHaveBeenCalled();
+        expect(skillsCleanup.cleanupMaterializedSkills).not.toHaveBeenCalled();
+      });
+
+      test('runs for an ordinary stop — the skip is conditional, not the new default', async () => {
+        const skillsCleanup = cleanupSpies();
+        const query = createEndableMockQuery({ endOnClose: false });
+        const { adapter } = await openCallOn(
+          'thread-cleanup-no-restart',
+          query,
+          { skillsCleanup },
+        );
+        (
+          adapter as unknown as {
+            sessions: Map<string, { skillsOverlayDir?: string }>;
+          }
+        ).sessions.get('thread-cleanup-no-restart')!.skillsOverlayDir =
+          '/tmp/station-overlay/thread-cleanup-no-restart';
+
+        const stop = adapter.stopSession('thread-cleanup-no-restart');
+        query.end();
+        await stop;
+
+        expect(skillsCleanup.cleanupMaterializedSkills).toHaveBeenCalledWith(
+          expect.objectContaining({
+            cwd: '/tmp/station-overlay/thread-cleanup-no-restart',
+            sessionId: 'thread-cleanup-no-restart',
+          }),
+        );
+        expect(skillsCleanup.removeSkillOverlayDir).toHaveBeenCalledWith(
+          'thread-cleanup-no-restart',
+          expect.anything(),
+        );
+      });
+
+      test('the real-cwd manifest path is skipped by the same guard', async () => {
+        // The other branch: no overlay, so cleanup is scoped to the session's
+        // own manifest inside the user's real workspace — written under the
+        // same threadId, and therefore the restarted session's manifest too.
+        const skillsCleanup = cleanupSpies();
+        const query = createEndableMockQuery({ endOnClose: false });
+        const { adapter } = await openCallOn('thread-cleanup-cwd', query, {
+          skillsCleanup,
+        });
+        (
+          adapter as unknown as {
+            sessions: Map<string, { session: { cwd?: string } }>;
+          }
+        ).sessions.get('thread-cleanup-cwd')!.session.cwd = '/repo/project';
+
+        const stop = adapter.stopSession('thread-cleanup-cwd');
+        mockQuery.mockReturnValue(createEndableMockQuery());
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-cleanup-cwd',
+        });
+        query.end();
+        await stop;
+
+        expect(skillsCleanup.cleanupMaterializedSkills).not.toHaveBeenCalled();
+      });
+
+      test('the real-cwd manifest path runs for an ordinary stop', async () => {
+        // station#1586 (item 5): the discriminating control the overlay
+        // branch already had and this one did not. Without it, the assertion
+        // above holds just as well for a branch that never cleans up at all
+        // — "skipped when retaken" only means something beside "runs when
+        // not".
+        const skillsCleanup = cleanupSpies();
+        const query = createEndableMockQuery({ endOnClose: false });
+        const { adapter } = await openCallOn(
+          'thread-cleanup-cwd-no-restart',
+          query,
+          { skillsCleanup },
+        );
+        // No overlay: cleanup is scoped to this session's own manifest inside
+        // the user's real workspace.
+        (
+          adapter as unknown as {
+            sessions: Map<string, { session: { cwd?: string } }>;
+          }
+        ).sessions.get('thread-cleanup-cwd-no-restart')!.session.cwd =
+          '/repo/project';
+
+        const stop = adapter.stopSession('thread-cleanup-cwd-no-restart');
+        query.end();
+        await stop;
+
+        expect(skillsCleanup.cleanupMaterializedSkills).toHaveBeenCalledWith(
+          expect.objectContaining({
+            cwd: '/repo/project',
+            sessionId: 'thread-cleanup-cwd-no-restart',
+          }),
+        );
+        // The overlay leaf belongs to the other branch: a session with no
+        // overlay must not have its (non-existent) overlay directory removed.
+        expect(skillsCleanup.removeSkillOverlayDir).not.toHaveBeenCalled();
+      });
+    });
   });
 });

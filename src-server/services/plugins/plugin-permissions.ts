@@ -31,11 +31,11 @@ import {
   isCanonicalPluginId,
   permissionTier,
 } from '@kontourai/station-contracts/plugin';
+import { isRecord } from '../../utils/is-record.js';
 import { createLogger, type Logger } from '../../utils/logger.js';
 import {
   GrantsFileStore,
   GrantsStoreUnavailableError,
-  isPlainObject,
 } from './grants-file-store.js';
 import {
   pluginContentDigest,
@@ -236,7 +236,7 @@ export function pluginsDirFor(projectHomeDir: string): string {
 
 /** Valid = plain object; every value a legacy array or a bound record. */
 function pluginGrantsShapeProblems(value: unknown): string[] {
-  if (!isPlainObject(value)) {
+  if (!isRecord(value)) {
     return ['must be a plain object keyed by plugin name'];
   }
   const problems: string[] = [];
@@ -256,7 +256,7 @@ function pluginGrantsShapeProblems(value: unknown): string[] {
       permissionsProblem(pluginName, entry);
       continue;
     }
-    if (!isPlainObject(entry)) {
+    if (!isRecord(entry)) {
       problems.push(
         `${pluginName}: entry must be an array of permission strings or a { permissions, contentDigest } record`,
       );
@@ -283,7 +283,7 @@ function pluginGrantsShapeProblems(value: unknown): string[] {
     }
     if (entry.installAuthority !== undefined) {
       const authority = entry.installAuthority;
-      if (!isPlainObject(authority)) {
+      if (!isRecord(authority)) {
         problems.push(`${pluginName}: installAuthority must be an object`);
         continue;
       }
@@ -330,7 +330,7 @@ function pluginGrantsShapeProblems(value: unknown): string[] {
       const ids = new Set<string>();
       for (const dependency of authority.ownedDependencies) {
         if (
-          !isPlainObject(dependency) ||
+          !isRecord(dependency) ||
           !['contentDigest,id', 'contentDigest,generation,id'].includes(
             Object.keys(dependency).sort().join(','),
           ) ||
@@ -766,6 +766,7 @@ export interface CapturedPluginPermissionArtifact {
   readonly pluginId: string;
   readonly digest: string;
   isCurrent(): boolean;
+  isCurrentAsync?(): Promise<boolean>;
 }
 
 /**
@@ -857,6 +858,33 @@ export function readPluginGrantState(
           ? artifact.digest
           : null
         : pluginContentDigest(pluginsDirFor(projectHomeDir), pluginName);
+  return describePluginGrantState(record, currentDigest);
+}
+
+/** Reread grants after the yielding byte check so revocation during I/O wins. */
+export async function readPluginGrantStateAsync(
+  projectHomeDir: string,
+  pluginName: string,
+  artifact: CapturedPluginPermissionArtifact,
+): Promise<PluginGrantState> {
+  const initial = readPluginGrantRecord(projectHomeDir, pluginName);
+  if (initial.permissions.length === 0)
+    return describePluginGrantState(initial, null);
+  const current =
+    artifact.pluginId === pluginName &&
+    (await (artifact.isCurrentAsync?.() ?? artifact.isCurrent()));
+  const record = readPluginGrantRecord(projectHomeDir, pluginName);
+  return describePluginGrantState(
+    record,
+    current && record.permissions.length > 0 ? artifact.digest : null,
+  );
+}
+
+/** Inert presentation of a caller's observed bytes; invocation checks own fresh observation. */
+export function describePluginGrantState(
+  record: PluginGrantRecord,
+  currentDigest: string | null,
+): PluginGrantState {
   const { binding, granted, withheld } = derivePluginGrantBinding(
     record,
     currentDigest,

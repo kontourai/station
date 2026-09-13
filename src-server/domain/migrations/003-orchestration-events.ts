@@ -265,6 +265,8 @@ CREATE TABLE IF NOT EXISTS provider_session_adoptions (
   provider TEXT NOT NULL,
   source_session_id TEXT NOT NULL,
   source_kind TEXT NOT NULL,
+  source_affinity TEXT,
+  source_boundary TEXT,
   cwd TEXT NOT NULL,
   project_root TEXT NOT NULL,
   status TEXT NOT NULL,
@@ -748,6 +750,13 @@ export function ensureOrchestrationAdoptionColumns(
         "ALTER TABLE provider_session_adoptions ADD COLUMN owner_token TEXT NOT NULL DEFAULT 'legacy-unfenced'",
       );
     }
+    const existing = new Set(columns.map((column) => column.name));
+    for (const name of ['source_affinity', 'source_boundary']) {
+      if (!existing.has(name))
+        db.exec(
+          `ALTER TABLE provider_session_adoptions ADD COLUMN ${name} TEXT`,
+        );
+    }
     db.exec('COMMIT');
   } catch (error) {
     try {
@@ -940,9 +949,20 @@ export function ensureOrchestrationEventStoreColumns(
     .prepare('PRAGMA table_info(orchestration_command_receipts)')
     .all() as Array<{ name?: string }>;
   if (!receiptColumns.some((column) => column.name === 'client_origin')) {
-    db.exec(
-      'ALTER TABLE orchestration_command_receipts ADD COLUMN client_origin TEXT',
-    );
+    try {
+      db.exec(
+        'ALTER TABLE orchestration_command_receipts ADD COLUMN client_origin TEXT',
+      );
+    } catch (error) {
+      // Two constructors can observe the old schema together. The first adds
+      // the column; the second must tolerate only that exact additive race.
+      if (
+        !(error instanceof Error) ||
+        !error.message.includes('duplicate column name')
+      ) {
+        throw error;
+      }
+    }
   }
   // v3 deliberately reruns the complete projection build once so existing v2
   // stores receive the JavaScript (rather than SQLite trim) request-identity

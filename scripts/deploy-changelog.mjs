@@ -152,6 +152,22 @@ export function groupChangelogSlice({ commits, githubRepo }) {
 }
 
 /**
+ * Whether this checkout is shallow. A probe failure is not evidence of
+ * shallowness, so it falls back to `false` and lets the caller take the
+ * disclosed-empty path rather than invent a cause.
+ */
+function isShallowRepository(execGit) {
+  try {
+    return (
+      String(execGit(['rev-parse', '--is-shallow-repository'])).trim() ===
+      'true'
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The Git-backed derivation. `execGit` is injected so tests and callers with
  * pre-captured log output never spawn a process.
  */
@@ -200,6 +216,15 @@ export function deriveChangelogSlice({
         : (error?.stderr?.toString?.() ?? '');
     const failureText = `${stderr}\n${error?.message ?? ''}`;
     if (!/Not a valid object name/.test(failureText)) throw error;
+    // Under a shallow checkout the probe cannot tell an unfetched object from
+    // a genuinely absent one, so the disclosed note's claim about history
+    // would be a guess. Refuse instead of guessing: deepening is cheap and
+    // settles the question, where a recorded empty slice silently ends it.
+    if (isShallowRepository(execGit)) {
+      throw new Error(
+        `changelog slice cannot be derived: previous ship SHA ${previousSha.slice(0, 7)} is absent and this checkout is shallow, so it may simply be unfetched rather than gone. Deepen this checkout and retry; in CI that is \`fetch-depth: 0\` on the job that records the ledger.`,
+      );
+    }
     return {
       previousSha,
       groups: Object.fromEntries(CHANGELOG_GROUP_ORDER.map((g) => [g, []])),

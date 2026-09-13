@@ -4,6 +4,10 @@
  * NotificationService uses EventBus instead (main /events endpoint).
  */
 
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger({ name: 'sse-broadcaster' });
+
 export class SSEBroadcaster {
   private clients = new Set<(data: string) => void>();
 
@@ -18,7 +22,9 @@ export class SSEBroadcaster {
       try {
         send(data);
       } catch (e) {
-        console.debug('Failed to broadcast SSE event, removing client:', e);
+        logger.debug('Failed to broadcast SSE event, removing client', {
+          error: e,
+        });
         this.clients.delete(send);
       }
     }

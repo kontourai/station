@@ -26,9 +26,14 @@
  *    holding this lock across both closes it.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { basename, join } from 'node:path';
+import { basename, join, resolve } from 'node:path';
+import { setImmediate } from 'node:timers/promises';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
-import { computePluginTreeDigest } from '@kontourai/station-shared/plugin-tree-digest';
+import {
+  computePluginTreeDigest,
+  observePluginTreeAsync,
+  type PluginTreeObservation,
+} from '@kontourai/station-shared/plugin-tree-digest';
 import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
 
 /**
@@ -42,7 +47,7 @@ import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
  * through the existing installation/consent owners. Observation retains data.
  * Unreadable or unsupported trees return null and cannot authorize execution.
  */
-export function computePluginContentDigest(
+function pluginContentRoot(
   pluginsDir: string,
   pluginName: string,
 ): string | null {
@@ -55,7 +60,61 @@ export function computePluginContentDigest(
       return null;
     }
   }
-  return computePluginTreeDigest(root);
+  return root;
+}
+
+export function computePluginContentDigest(
+  pluginsDir: string,
+  pluginName: string,
+): string | null {
+  const root = pluginContentRoot(pluginsDir, pluginName);
+  return root ? computePluginTreeDigest(root) : null;
+}
+
+const contentObservations = new Map<
+  string,
+  {
+    tail: Promise<PluginTreeObservation | null>;
+    queued?: Promise<PluginTreeObservation | null>;
+  }
+>();
+
+export async function computePluginContentDigestAsync(
+  pluginsDir: string,
+  pluginName: string,
+): Promise<string | null> {
+  return (
+    (await observePluginContentAsync(pluginsDir, pluginName))?.digest ?? null
+  );
+}
+
+export function observePluginContentAsync(
+  pluginsDir: string,
+  pluginName: string,
+): Promise<PluginTreeObservation | null> {
+  const root = pluginContentRoot(pluginsDir, pluginName);
+  if (!root) return Promise.resolve(null);
+  const absoluteRoot = resolve(root);
+  const queue = contentObservations.get(absoluteRoot) ?? {
+    tail: Promise.resolve(null),
+    queued: undefined,
+  };
+  if (queue.queued) return queue.queued;
+  const observation = queue.tail
+    .then(() => setImmediate())
+    .then(() => {
+      // Requests received during this scan join the NEXT scan. Its bytes are
+      // observed after every caller arrived, and physical scans never overlap.
+      queue.queued = undefined;
+      return observePluginTreeAsync(absoluteRoot);
+    });
+  queue.queued = observation;
+  queue.tail = observation;
+  contentObservations.set(absoluteRoot, queue);
+  void observation.then(() => {
+    if (queue.tail === observation) contentObservations.delete(absoluteRoot);
+  });
+  return observation;
 }
 
 /**
@@ -87,6 +146,8 @@ export const PLUGIN_TREE_COPY = {
 /**
  * Memoized {@link computePluginContentDigest}, keyed by the resolved plugin
  * directory (archive#4288).
+ * Captured runtime artifacts use fresh observations instead; HTTP callers
+ * yield between digest batches rather than using this legacy memo.
  *
  * Why a memo exists at all: binding grants to content means the *enforcement*
  * predicates read a digest, and those run per request on the plugin server

@@ -3,6 +3,7 @@ import {
   parseProjectTaskRoomBrowserLiveSnapshot,
 } from '@kontourai/station-contracts/project-task-room-browser';
 import {
+  isCancelledError,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -227,15 +228,28 @@ export async function refetchAuthoritativeProjectTaskRoomDocument(
   // A newer accepted stream document can arrive during cancellation. It is
   // already authoritative; do not start an older recovery after its fence.
   if (current !== observed && isDocumentSnapshot(current)) return current;
-  return client.fetchQuery({
-    queryKey,
-    staleTime: 0,
-    queryFn: async ({ signal }) =>
-      fetchProjectTaskRoomDocument(await _getApiBase(), taskId, undefined, {
-        headers: { 'Cache-Control': 'no-cache' },
-        signal,
-      }),
-  });
+  try {
+    return await client.fetchQuery({
+      queryKey,
+      staleTime: 0,
+      queryFn: async ({ signal }) =>
+        fetchProjectTaskRoomDocument(await _getApiBase(), taskId, undefined, {
+          headers: { 'Cache-Control': 'no-cache' },
+          signal,
+        }),
+    });
+  } catch (error) {
+    // An accepted stream document cancels the older GET. Its replacement also
+    // settles callers waiting to reconcile a receipt with current truth.
+    const replacement = client.getQueryData(queryKey);
+    if (
+      isCancelledError(error) &&
+      replacement !== current &&
+      isDocumentSnapshot(replacement)
+    )
+      return replacement;
+    throw error;
+  }
 }
 /** Ephemeral live state is delivered to the caller; durable queries are only invalidated. */
 export function useProjectTaskRoomStream(

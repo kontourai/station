@@ -1,15 +1,33 @@
+import { rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   pairingScopePresetString,
 } from '@kontourai/station-contracts';
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, describe, expect, test, vi } from 'vitest';
 import { registerEngineConnection } from '../../../domain/agent-registry.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { providerAdapterLaunchabilitySource } from '../../../providers/registries/registry.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createRuntimeServiceBundle } from '../runtime-service-bootstrap.js';
+
+// `mkdtemp('/tmp/station-runtime-bootstrap-')` hardcoded `/tmp` as the mkdtemp
+// BASE and never removed what it made, so every run left one more directory in
+// a world-writable directory shared with the whole host -- 123 had accumulated
+// when this was found (#1790; the live count drifts as sibling lanes on `main`
+// add more and the host's /tmp cleaner reaps older ones). `tmpdir()` is the
+// platform's own answer -- `/tmp` does not exist on Windows at all -- and the
+// roots are removed below.
+const createdTempRoots: string[] = [];
+
+afterAll(() => {
+  for (const root of createdTempRoots) {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
 
 describe('createRuntimeServiceBundle', () => {
   test('creates storage-backed services and defers terminal WS until secure startup', () => {
@@ -129,8 +147,9 @@ describe('createRuntimeServiceBundle', () => {
       id === 'claude' ? { status: 'ready' } : null,
     );
     const stationHomeDir = await import('node:fs/promises').then(
-      ({ mkdtemp }) => mkdtemp('/tmp/station-runtime-bootstrap-'),
+      ({ mkdtemp }) => mkdtemp(join(tmpdir(), 'station-runtime-bootstrap-')),
     );
+    createdTempRoots.push(stationHomeDir);
     const configLoader = {
       getProjectHomeDir: () => stationHomeDir,
       agentExists: vi.fn(async () => false),

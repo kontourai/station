@@ -64,9 +64,18 @@ vi.mock('../lib/serverHealth', () => ({
   probeServerConnection: vi.fn(),
 }));
 
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate: vi.fn() }),
-}));
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({ navigate: vi.fn() });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 
 vi.mock('../views/settings/BuildProvenance', () => ({
   BuildProvenance: () => null,
@@ -81,8 +90,8 @@ vi.mock('../views/KnowledgeConnectionView', () => ({
   KnowledgeConnectionView: () => <div data-testid="embedded-view" />,
   default: () => <div data-testid="embedded-view" />,
 }));
-vi.mock('../components/monitoring/MonitoringView', () => ({
-  MonitoringView: () => <div data-testid="embedded-view" />,
+vi.mock('../views/MonitoringView', () => ({
+  MonitoringViewWithBoundary: () => <div data-testid="embedded-view" />,
   default: () => <div data-testid="embedded-view" />,
 }));
 vi.mock('../views/settings/StationConfigSection', () => ({
@@ -156,6 +165,8 @@ describe('Developer tabs render exactly one h1 (station#2645)', () => {
       expect(h1s.length).toBe(1);
       expect(h1s[0].textContent).toBe(name);
       expect(h1s[0].classList.contains('page__title')).toBe(true);
+      if (name === 'Telemetry')
+        expect(screen.getByTestId('embedded-view')).toBeTruthy();
       // The tab body itself contributes none.
       expect(container.querySelectorAll('.page-frame__body h1').length).toBe(0);
     });

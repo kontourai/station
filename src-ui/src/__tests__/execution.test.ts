@@ -1089,16 +1089,38 @@ describe('execution utils', () => {
     ).toBe('Prerequisites are ready. Run smoke.');
   });
 
-  test('sessionAdapterSupportsSteering only reports true for a connection that explicitly declares steering (#613)', () => {
+  test('sessionAdapterSupportsSteering reads midTurnSteer, not a connection capabilities flag', () => {
     const connections = [
       {
-        id: 'claude',
+        id: 'claude-runtime',
         kind: 'agent',
         type: 'claude',
         name: 'Claude Runtime',
         enabled: true,
         capabilities: ['agent-runtime'],
-        config: {},
+        config: { engineId: 'claude' },
+        status: 'ready',
+        prerequisites: [],
+      },
+      {
+        id: 'muse-runtime',
+        kind: 'agent',
+        type: 'muse',
+        name: 'Muse Runtime',
+        enabled: true,
+        capabilities: ['agent-runtime'],
+        config: { engineId: 'muse' },
+        status: 'ready',
+        prerequisites: [],
+      },
+      {
+        id: 'codex-runtime',
+        kind: 'agent',
+        type: 'codex',
+        name: 'Codex Runtime',
+        enabled: true,
+        capabilities: ['agent-runtime'],
+        config: { engineId: 'codex' },
         status: 'ready',
         prerequisites: [],
       },
@@ -1115,21 +1137,30 @@ describe('execution utils', () => {
       },
     ] as any;
 
-    // No built-in adapter declares 'steering' today — a real runtime
-    // connection without it must never be treated as steering-capable.
-    expect(sessionAdapterSupportsSteering('claude', connections)).toBe(false);
-    // A connection that does declare it (the seam's only way to flip the
-    // branch) is honored.
+    expect(sessionAdapterSupportsSteering('claude-runtime', connections)).toBe(
+      true,
+    );
+    expect(sessionAdapterSupportsSteering('codex-runtime', connections)).toBe(
+      true,
+    );
+    expect(sessionAdapterSupportsSteering('muse-runtime', connections)).toBe(
+      false,
+    );
+    // The live session's provider wins over the bound connection.
+    expect(
+      sessionAdapterSupportsSteering('muse-runtime', connections, 'claude'),
+    ).toBe(true);
+    expect(
+      sessionAdapterSupportsSteering('claude-runtime', connections, 'muse'),
+    ).toBe(false);
+    // A stale `capabilities: ['steering']` string is not authority.
     expect(
       sessionAdapterSupportsSteering('steering-preview-runtime', connections),
-    ).toBe(true);
-    // Absent connectionId or an id with no match both resolve false rather
-    // than throwing.
+    ).toBe(false);
     expect(sessionAdapterSupportsSteering(undefined, connections)).toBe(false);
     expect(sessionAdapterSupportsSteering('unknown-runtime', connections)).toBe(
       false,
     );
-    // Default (no connections supplied) never crashes and stays false.
-    expect(sessionAdapterSupportsSteering('claude')).toBe(false);
+    expect(sessionAdapterSupportsSteering('claude-runtime')).toBe(false);
   });
 });

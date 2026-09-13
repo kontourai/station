@@ -46,11 +46,20 @@ import {
   resolveCssImports,
 } from '../../../tests/helpers/css-cascade-fixture';
 
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({
     navigate: vi.fn(),
-  }),
-}));
+  });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 
 const isMobileMock = vi.fn(() => false);
 vi.mock('../hooks/useIsMobile', () => ({
@@ -181,6 +190,23 @@ describe.skipIf(!chromiumAvailable)(
         Math.abs(skeletonRowHeight - realRowHeight),
         `skeleton row ${skeletonRowHeight}px vs real row ${realRowHeight}px`,
       ).toBeLessThanOrEqual(2);
+    });
+
+    test('static loading has a visible status when reduced motion is enabled', async () => {
+      const page = await browser.newPage();
+      try {
+        await page.setContent(
+          buildFixtureHtml(renderListMarkup({ loading: true, items: [] }), css),
+        );
+        const label = page.locator('.skeleton-status-label');
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        expect(await label.isVisible()).toBe(false);
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        expect(await label.isVisible()).toBe(true);
+        expect(await label.textContent()).toMatch(/Loading/);
+      } finally {
+        await page.close();
+      }
     });
   },
 );

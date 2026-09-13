@@ -47,7 +47,7 @@ export const PROJECT_TASK_ROOM_LIMITS = Object.freeze({
   workerResponseMs: 5_000,
 });
 
-export interface ProjectTaskRoomCapabilityReceipt {
+interface ProjectTaskRoomCapabilityReceipt {
   receiptId: string;
   capability: ProjectTaskRoomGrantKind;
   scope: ProjectTaskRoomScope;
@@ -63,7 +63,7 @@ export interface ProjectTaskRoomCapabilityAuthority {
     required: ProjectTaskRoomGrantKind;
   }): Promise<ProjectTaskRoomCapabilityResolution>;
 }
-export type ProjectTaskRoomLinkResolution =
+type ProjectTaskRoomLinkResolution =
   | { kind: 'resolved'; link: ProjectTaskRoomResolvedLink }
   | { kind: 'unresolved' | 'unverified' | 'unavailable' };
 export interface ProjectTaskRoomLinkAuthority {
@@ -73,7 +73,7 @@ export interface ProjectTaskRoomLinkAuthority {
     scope: ProjectTaskRoomScope;
   }): Promise<ProjectTaskRoomLinkResolution>;
 }
-export type ProjectTaskRoomAgentResolution =
+type ProjectTaskRoomAgentResolution =
   | {
       kind: 'authorized';
       principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }>;
@@ -93,6 +93,13 @@ interface StorageAdapter {
   close(): Promise<ProjectTaskRoomCloseOutcome>;
 }
 export interface ProjectTaskRoomHistory extends ProjectTaskRoomAuthority {
+  readSourceSeal(input: {
+    grant: ProjectTaskRoomGrant<'history-read'>;
+  }): Promise<
+    | { kind: 'sealed'; seal: ProjectTaskRoomSourceSeal }
+    | { kind: 'unsealed' | 'denied' | 'unavailable' }
+  >;
+
   findByProposal(input: {
     grant: ProjectTaskRoomGrant<'history-read'>;
     proposalId: string;
@@ -251,7 +258,7 @@ function createProjectTaskRoomHistoryInternal(
           return deepCloneFreeze(outcome);
         }
         const { scope, policyRevision } = finalAuthorization.receipt;
-        const channelId = channelIdFor(scope);
+        const channelId = projectTaskRoomChannelId(scope);
         const stored = await totalStorage(
           storage,
           {
@@ -361,7 +368,9 @@ function createProjectTaskRoomHistoryInternal(
             const semantic = {
               schemaVersion: 'station.project-task-room-proposal-semantics/v1',
               scope: finalAuthorization.receipt.scope,
-              channelId: channelIdFor(finalAuthorization.receipt.scope),
+              channelId: projectTaskRoomChannelId(
+                finalAuthorization.receipt.scope,
+              ),
               epoch: 0,
               proposalId: intent.proposalId,
               occurredAt: intent.occurredAt,
@@ -482,7 +491,7 @@ function createProjectTaskRoomHistoryInternal(
         const stored = await totalStorage(storage, {
           type: 'read',
           scope: resolved.receipt.scope,
-          channelId: channelIdFor(resolved.receipt.scope),
+          channelId: projectTaskRoomChannelId(resolved.receipt.scope),
           ...(cursor ? { cursor } : {}),
           limit: Math.min(limit ?? 50, PROJECT_TASK_ROOM_LIMITS.pageRecords),
           pageBytes: PROJECT_TASK_ROOM_LIMITS.pageBytes - 4_096,
@@ -508,7 +517,7 @@ function createProjectTaskRoomHistoryInternal(
         else if (
           isReadStorage(stored, {
             scope: resolved.receipt.scope,
-            channelId: channelIdFor(resolved.receipt.scope),
+            channelId: projectTaskRoomChannelId(resolved.receipt.scope),
             cursor,
             receipt: resolved.receipt,
           })
@@ -523,6 +532,60 @@ function createProjectTaskRoomHistoryInternal(
       outcome.kind === 'available' ? outcome.records.length : undefined,
     );
     return deepCloneFreeze(outcome);
+  }
+
+  async function readSourceSeal({
+    grant,
+  }: Parameters<ProjectTaskRoomHistory['readSourceSeal']>[0]): ReturnType<
+    ProjectTaskRoomHistory['readSourceSeal']
+  > {
+    const operationGeneration = generation;
+    if (closed) return { kind: 'unavailable' };
+    const resolved = await resolveAuthorized(grant, 'history-read');
+    if (!active(operationGeneration)) return { kind: 'unavailable' };
+    if (resolved.kind !== 'granted') return { kind: 'denied' };
+    const stored = await totalStorage(storage, {
+      type: 'read-source-seal',
+      scope: resolved.receipt.scope,
+      channelId: projectTaskRoomChannelId(resolved.receipt.scope),
+    });
+    const delivery = await resolveAuthorized(
+      grant,
+      'history-read',
+      resolved.receipt,
+    );
+    if (!active(operationGeneration)) return { kind: 'unavailable' };
+    if (delivery.kind !== 'granted') return { kind: 'denied' };
+    if (
+      isPlainOwn(stored, ['kind']) &&
+      ['unsealed', 'denied', 'unavailable'].includes(stored.kind as string)
+    )
+      return stored as { kind: 'unsealed' | 'denied' | 'unavailable' };
+    if (
+      !isPlainOwn(stored, ['kind', 'seal']) ||
+      stored.kind !== 'sealed' ||
+      !isPlainOwn(stored.seal, [
+        'operationId',
+        'sourceHomeRef',
+        'targetHomeRef',
+        'checkpoint',
+        'workingStateDigest',
+      ]) ||
+      !id(stored.seal.operationId) ||
+      !id(stored.seal.sourceHomeRef) ||
+      !id(stored.seal.targetHomeRef) ||
+      stored.seal.sourceHomeRef === stored.seal.targetHomeRef ||
+      typeof stored.seal.workingStateDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(stored.seal.workingStateDigest) ||
+      !validCheckpoint(stored.seal.checkpoint) ||
+      stored.seal.checkpoint.channelId !==
+        projectTaskRoomChannelId(resolved.receipt.scope)
+    )
+      return { kind: 'unavailable' };
+    return deepCloneFreeze(stored) as {
+      kind: 'sealed';
+      seal: ProjectTaskRoomSourceSeal;
+    };
   }
 
   async function sealSource({
@@ -554,7 +617,7 @@ function createProjectTaskRoomHistoryInternal(
       {
         type: 'seal-source',
         scope: resolved.receipt.scope,
-        channelId: channelIdFor(resolved.receipt.scope),
+        channelId: projectTaskRoomChannelId(resolved.receipt.scope),
         policyRevision: resolved.receipt.policyRevision,
         authorizationId: resolved.receipt.receiptId,
         operationId,
@@ -593,12 +656,16 @@ function createProjectTaskRoomHistoryInternal(
         'sourceHomeRef',
         'targetHomeRef',
         'checkpoint',
+        'workingStateDigest',
       ]) ||
       stored.seal.operationId !== operationId ||
       stored.seal.sourceHomeRef !== sourceHomeRef ||
       stored.seal.targetHomeRef !== targetHomeRef ||
+      typeof stored.seal.workingStateDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(stored.seal.workingStateDigest) ||
       !validCheckpoint(stored.seal.checkpoint) ||
-      stored.seal.checkpoint.channelId !== channelIdFor(resolved.receipt.scope)
+      stored.seal.checkpoint.channelId !==
+        projectTaskRoomChannelId(resolved.receipt.scope)
     )
       return { kind: 'unavailable' };
     const delivery = await resolveAuthorized(
@@ -628,7 +695,7 @@ function createProjectTaskRoomHistoryInternal(
     const located = await totalStorage(storage, {
       type: 'locate-proposal',
       scope: resolved.receipt.scope,
-      channelId: channelIdFor(resolved.receipt.scope),
+      channelId: projectTaskRoomChannelId(resolved.receipt.scope),
       proposalId,
     });
     if (
@@ -680,6 +747,7 @@ function createProjectTaskRoomHistoryInternal(
     append,
     read,
     sealSource,
+    readSourceSeal,
     findByProposal,
     close,
     dispose,
@@ -1628,7 +1696,7 @@ function isWellFormed(value: string) {
     value,
   );
 }
-function channelIdFor(scope: ProjectTaskRoomScope) {
+export function projectTaskRoomChannelId(scope: ProjectTaskRoomScope) {
   return `project-task:${sha(`${scope.projectId}\u0000${scope.taskId}`)}`;
 }
 function sha(value: string) {

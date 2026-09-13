@@ -10,6 +10,7 @@ import {
   capturePluginRuntimeArtifact,
   type PluginRuntimeArtifact,
 } from '../../services/plugins/plugin-runtime-artifact.js';
+import { errorMessage } from '../../utils/error-message.js';
 
 interface RuntimeLogger {
   debug: (message: string, meta?: Record<string, unknown>) => void;
@@ -58,7 +59,7 @@ export async function loadRuntimePluginPrompts(
         context.logger.warn(
           'Skipped invalid plugin prompts during prompt load',
           {
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
             plugin: name,
           },
         );

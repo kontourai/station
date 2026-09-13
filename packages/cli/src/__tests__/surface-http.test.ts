@@ -79,6 +79,8 @@ describe('CLI surface commands over HTTP', () => {
       },
     ] as any[],
     scheduleJobs: [] as any[],
+    /** #1536 R8: the query the CLI's `schedule preview` actually sends. */
+    previewQueries: [] as string[],
     reviewRequests: [] as any[],
     schedulerRunFails: false,
     monitoringEvents: [{ type: 'event', value: 'historical' }],
@@ -393,6 +395,7 @@ describe('CLI surface commands over HTTP', () => {
         method === 'GET' &&
         url.pathname === '/scheduler/jobs/preview-schedule'
       ) {
+        state.previewQueries.push(url.search);
         sendJson(200, { success: true, data: ['2026-04-19T00:00:00Z'] });
         return;
       }
@@ -834,6 +837,7 @@ describe('CLI surface commands over HTTP', () => {
       },
     ];
     state.scheduleJobs = [];
+    state.previewQueries = [];
     state.reviewRequests = [];
     state.schedulerRunFails = false;
     state.monitoringEvents = [{ type: 'event', value: 'historical' }];
@@ -960,6 +964,16 @@ describe('CLI surface commands over HTTP', () => {
       'preview',
       '0 9 * * *',
       '1',
+      `--api-base=${apiBase}`,
+    ]);
+    // #1536 R8: an operator could not express the zone at all, so a preview of a
+    // ZONED job named different instants from the ones it fires at.
+    await runCli([
+      'schedule',
+      'preview',
+      '0 8 * * 1-5',
+      '3',
+      '--timezone=Australia/Brisbane',
       `--api-base=${apiBase}`,
     ]);
     await runCli([
@@ -1095,6 +1109,10 @@ describe('CLI surface commands over HTTP', () => {
     expect(state.acpConnections).toHaveLength(1);
     expect(state.voiceSessions).toHaveLength(0);
     expect(state.scheduleJobs).toHaveLength(1);
+    // Omitted stays omitted — the server treats an unzoned schedule as UTC and
+    // the CLI must not substitute a default of its own.
+    expect(state.previewQueries[0]).not.toContain('timezone');
+    expect(state.previewQueries[1]).toContain('timezone=Australia%2FBrisbane');
     expect(state.reviewRequests).toEqual([
       expect.objectContaining({
         mode: 'initial',

@@ -212,6 +212,107 @@ with no recoverable failure evidence. Counts remain the canonical failure
 tally — `recoveredFailures` is corroborating identity, never an independent
 count source.
 
+When the RUNNER stops a lane rather than a check failing it, the receipt
+records the runner's own final word in `terminal.infrastructureCause`
+(station#1827). Two channels feed it, in this order: the payload of the
+structured owner-final line ci:fast prints before it returns its
+infrastructure exit code, and otherwise the message of whatever rejected the
+execution — on every lane, not only ci:fast. Both were previously computed and
+dropped on the ordinary reporting path.
+
+The second channel is a catch-all, and its provenance is weaker than the
+first, so do not read the field as "the child said this". It is most often the
+owned runner's own diagnosis (a surviving owned process, an unreadable
+capture, a spawn failure), but it also carries a harness assertion raised
+while the child was being adopted, or an error from an injected phase runner —
+cases where the stopping command never spoke at all. What the field does
+assert is that the verification runner recorded this as its reason for
+stopping, rather than a scan picking a line out of the lane's output. Every
+rendering says it that way for the same reason.
+
+What is never recorded is the fixed "ended with an infrastructure error"
+sentence `reportExecution` synthesizes when neither channel spoke: that is
+prose about the absence of a declaration, not a declaration.
+
+Both the producer and the schema bind the field to `infrastructure_error`, the
+one status it explains — a receipt cannot carry an infrastructure explanation
+for a lane that reached a verdict.
+
+**Read its absence narrowly.** The field is present when an
+`infrastructure_error` receipt carried a recovered runner declaration. Absent,
+it says only that: no declaration was recorded on this receipt. It is not
+evidence that the runner made none. A run stopped by the coordinator's
+deadline is classified `timed_out` before the runner's own classification is
+consulted, so a declaration can exist and go unrecorded — deliberately, since
+the reconcile path reports a timeout-specific cause there and never reads this
+one, and admitting it on both would put the two paths back into disagreement.
+
+The value is derived **once**, by `normalizeDeclaredCause` in
+`scripts/lib/verification-reporter.mjs`, and `reportExecution` hands that one
+string to both the summary and the receipt. Re-deriving it is what made the
+two artifacts disagree in the first place. It is called once, and nothing
+downstream re-applies it: the function is not idempotent — its convergence
+test accepts a value the redactor would still append a marker character to —
+so a consumer that re-derived would move its copy away from the receipt's,
+which is what happened twice before this was settled.
+
+**That function is the redaction boundary for this value.** Neither channel is
+redacted upstream, and the result lands in a receipt CI uploads as an
+artifact, so it runs three steps for three different classes: strip terminal
+escapes first (a secret split by one is not a token the redactor can see);
+redact the **complete** text before any bound (an encoded JSON layer has to be
+parseable, and half of one matches nothing — bounding first leaked a whole
+`apiKey` value); then bound, trim, and redact **again** (the redactor's
+`$`-anchored partial-token rules only fire on the string's real end, so a
+token the bound left partial is invisible until after the cut). Redaction can
+lengthen what it rewrites, so the last two steps repeat until the value stops
+changing — every cut makes a new end. They stop on either of two conditions:
+the whole step leaving the value untouched, or redaction changing nothing
+outside a redaction marker. The second stops on a value that is deliberately
+not a fixed point, which is why the function is not idempotent and why no
+consumer re-applies it. A value neither condition can reach is refused rather
+than recorded.
+
+Two limits on what that boundary is worth, both real and neither closed here.
+
+It removes what `scripts/lib/verification-redaction.mjs` matches, and nothing
+else. One gap in that shared redactor is known and filed as **#1835**: its
+value matcher is greedy, so a nested key is shielded behind a non-secret outer
+key whose value match consumes it. It is pre-existing and shared with the
+stdout and stderr redaction on `main`, which independent verification showed
+leaks the same class identically — the boundary here is not what introduced
+it, and not where it gets fixed.
+
+And redacting before the bound **widens what is eligible** for the receipt.
+Redaction shortens what it rewrites, so bytes past the cap in the input can be
+pulled inside it — where bounding first would have discarded them
+unconditionally. For the #1835 class that is a regression against a
+bound-first order, measured on a line whose secret sits at offset 533: a
+bound-first order persists 320 bytes without it, this order persists 400 bytes
+with it. The order is kept because in aggregate it leaks less (3,421 against
+4,153 across the reviewer's sweep) and closes the encoded-JSON classes
+entirely. It is a trade that was made, not one that was avoided.
+
+The schema's `maxLength: 512` counts **code points**, so it is a looser outer
+wall that a byte-bounded value can never reach; where the two differ, the byte
+bound is the binding one.
+
+`schemaVersion` stays 3, and that is a deliberate trade rather than a free
+addition. `terminal` is `additionalProperties: false`, so an older checkout's
+validator accepts the version and then rejects the document: a reader that
+ignores the field is unaffected, a reader that **validates** the receipt is
+not. Every in-tree validation site fails closed — the three reuse/join sites
+in `scripts/lib/verification-coordinator.mjs` return `null` or throw, the
+retention guard in `scripts/lib/verification-reporter.mjs` marks the receipt
+protected-and-ambiguous rather than collectable, and
+`validateChangedVerificationReceipt` in `scripts/run-changed-verification.mjs`
+returns the rejection as an error. None of them can round a rejected receipt
+up to a pass, so an older checkout's worst case is a redundant re-run, and
+receipts are worktree-scoped rather than shared across checkouts. Do not read
+the `causalExcerpts` precedent below as covering this: that addition is
+explicitly justified by those fields living OUTSIDE the validated receipt,
+which is not true here.
+
 The terminal status vocabulary is closed. `failed`, `infrastructure_error`,
 `canceled`, `timed_out`, `rejected`, `parser_error`, and `provisional` never pass.
 `rejected` means the bounded host-wide completion-waiter queue declined the
@@ -485,7 +586,7 @@ coordinator, so this addition needed no `schemaVersion` bump and does not
 change the receipt's request-identity or pass/fail contract.
 
 `causalExcerpts` is a **lower bound on distinct observed failures, not a
-certified complete list**, and it draws from exactly two sources — a reader
+certified complete list**, and it draws from exactly three sources — a reader
 needs to be able to tell which one produced a given receipt's entries:
 
 1. **The ordinary case.** Every entry is a failure-shaped excerpt that
@@ -508,6 +609,33 @@ needs to be able to tell which one produced a given receipt's entries:
    still true to what is actually known (there is exactly one identified
    cause, the reporting break itself), but it is a claim ABOUT the reporting
    pipeline, not a claim about the underlying command's output.
+3. **The runner-declared case** (station#1827). On an `infrastructure_error`
+   whose runner named its own reason for stopping — ci:fast's owner-final
+   budget line, or the owned runner's own error message — that reason is
+   `causalExcerpts[0]` and `firstCausalExcerpt`, ahead of anything the scan
+   found. It is not synthesized: the declaration was written to the run's own
+   stderr, or raised by the runner about its own stop. What distinguishes it
+   from case 1 is not where the bytes came from but how they were selected —
+   structurally, from a channel the runner owns, rather than by matching a
+   diagnostic shape. The scanned excerpts are still reported, ranked after it.
+
+   The summary says which case it is in `summary.infrastructureCause`: present
+   means the head excerpt beside it is a declaration. Its value is that same
+   head excerpt, so the two can never describe one declaration differently.
+   Whenever the marker is present those two and the receipt's
+   `terminal.infrastructureCause` are the **same bytes**, because nothing
+   recomputes them: the marker only survives the summary's byte budget when
+   the excerpt was not cut, and the bounded envelope copies the value into
+   both of its fields verbatim rather than re-deriving it. When the marker is
+   absent, the excerpt may be a budget-truncated prefix that the envelope
+   re-redacts, and no such claim is made about it.
+
+   The marker is additive and lowest-priority in that budget, so a very tight
+   cap omits it — which understates confidence rather than overstating it.
+   It is deliberately **not** re-stamped from the receipt anywhere: it is a
+   claim about the excerpt beside it, so a rendering with no summary (a
+   `reused` or `joined` disposition, which has no excerpts at all) carries no
+   marker either.
 
 Case 2 is identifiable in the summary itself: it always also carries a
 `reconcileNote` field (the same bounded diagnostic text `causalExcerpts`

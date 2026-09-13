@@ -26,12 +26,9 @@ describe('approvalModeKnobSupported', () => {
 });
 
 describe('adapterDefaultApprovalMode', () => {
-  test('codex defaults to never (full access) — its actual pre-#727 hardcoded behavior', () => {
-    expect(adapterDefaultApprovalMode('codex')).toBe('never');
-  });
-
-  test('claude defaults to ask — its actual pre-#727 default permission mode', () => {
-    expect(adapterDefaultApprovalMode('claude')).toBe('ask');
+  test('claude and codex no longer guess Ask/Never — inherit the engine config (station#1950)', () => {
+    expect(adapterDefaultApprovalMode('codex')).toBeUndefined();
+    expect(adapterDefaultApprovalMode('claude')).toBeUndefined();
   });
 
   test('no-knob or unknown runtimes have no known adapter default', () => {
@@ -178,22 +175,19 @@ describe('resolveEffectiveApprovalMode', () => {
     });
   });
 
-  test('#727 review item 2 (CRITICAL): an untouched Codex connection reads as never/full-access, not the connection-default placeholder', () => {
+  test('an untouched Claude or Codex connection does not invent Ask/Never (station#1950)', () => {
     expect(
       resolveEffectiveApprovalMode({ engineConnectionId: 'codex' }),
     ).toEqual({
-      mode: 'never',
-      label: 'Never ask (full access) — default',
+      mode: 'connection-default',
+      label: 'Connection default',
       source: 'adapter default',
     });
-  });
-
-  test('an untouched Claude connection reads as ask, not the connection-default placeholder', () => {
     expect(
       resolveEffectiveApprovalMode({ engineConnectionId: 'claude' }),
     ).toEqual({
-      mode: 'ask',
-      label: 'Ask first — default',
+      mode: 'connection-default',
+      label: 'Connection default',
       source: 'adapter default',
     });
   });
@@ -221,8 +215,8 @@ describe('resolveEffectiveApprovalMode', () => {
         connectionDefault: 'also-not-real',
       }),
     ).toEqual({
-      mode: 'never',
-      label: 'Never ask (full access) — default',
+      mode: 'connection-default',
+      label: 'Connection default',
       source: 'adapter default',
     });
   });

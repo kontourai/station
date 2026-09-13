@@ -160,7 +160,7 @@ export function bareControlToolName(toolName: string): string {
   return toolName;
 }
 
-export type ControlToolClass = 'read-only' | 'mutating';
+type ControlToolClass = 'read-only' | 'mutating';
 
 /**
  * Classify a station-control tool name (prefixed or bare). Unknown names

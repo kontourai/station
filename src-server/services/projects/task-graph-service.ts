@@ -42,7 +42,10 @@ import type {
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
 import { looksLikeWorkflowTaskSlugRef } from '@kontourai/station-contracts/workflow';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  type FileMutationLock,
+} from '@kontourai/station-shared/lifecycle-events';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import {
   graphLinkCreatedTotal,
@@ -54,6 +57,7 @@ import {
   taskWorkspaceBindingTotal,
   taskWorkspaceOpenTotal,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { execGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
 import type {
@@ -113,7 +117,7 @@ type PersistedTaskAnswerNarrativePin = {
 };
 
 /** Internal only: routes obtain this from the association owner, never clients. */
-export type TaskAnswerNarrativePinCapture = {
+type TaskAnswerNarrativePinCapture = {
   associationRevision?: number;
   isCurrent(): boolean;
 };
@@ -197,20 +201,13 @@ class TaskDispatchAdmissionError extends Error {
   }
 }
 
-// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
-// so a contended acquisition yields the event loop; sync test fakes remain
-// assignable (awaiting a non-promise is a no-op).
-type TaskGraphMutationLock = (
-  lockPath: string,
-) => (() => void | Promise<void>) | Promise<() => void | Promise<void>>;
-
 /**
  * The graph is an authoritative lifecycle record. A syntactically valid JSON
  * value with an invented field or a missing dispatch invariant is not an older
  * shape to repair: it is an unreadable graph and must remain untouched for
  * inspection.
  */
-export class TaskGraphStoreShapeError extends Error {
+class TaskGraphStoreShapeError extends Error {
   constructor(
     readonly filePath: string,
     readonly problems: readonly string[],
@@ -261,7 +258,7 @@ interface TaskGraphServiceDeps {
   workflowSidecarReader?: Pick<WorkflowSidecarService, 'readState'>;
   logger?: TaskGraphServiceLogger;
   /** Injectable only to make cross-instance contention deterministic in tests. */
-  acquireMutationLock?: TaskGraphMutationLock;
+  acquireMutationLock?: FileMutationLock;
 }
 
 /** Concrete integrations captured at the TaskDispatcher composition Seam. */
@@ -1406,7 +1403,7 @@ export function readTaskGraphForIsolatedSearch(
 export class TaskGraphService {
   private readonly storePath: string;
   private readonly store: JsonFileStore<TaskGraphStoreData>;
-  private readonly acquireMutationLock: TaskGraphMutationLock;
+  private readonly acquireMutationLock: FileMutationLock;
   private readonly projectService?: Pick<ProjectService, 'getProject'>;
   /**
    * archive#1501, seam S4. Captured with `projectService` at this
@@ -1499,7 +1496,7 @@ export class TaskGraphService {
       this.logger?.warn('Could not read workflow sidecar for dispatch', {
         taskId: task.id,
         taskSlug: ref,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return undefined;
     }
@@ -2198,6 +2195,34 @@ export class TaskGraphService {
       kind,
       source_surface: sourceSurface,
       outcome,
+    });
+  }
+
+  /** Read-only proof of a completed association, never a reservation or retry. */
+  readCompletedDispatchForRecovery(sessionId: string):
+    | {
+        task: TaskRecord;
+        dispatch: TaskDispatchRecord;
+        links: RelationGraphLink[];
+      }
+    | undefined {
+    const data = this.readStoreView();
+    const matches = data.dispatches.filter(
+      (dispatch) => dispatch.sessionId === sessionId,
+    );
+    if (matches.length !== 1) return undefined;
+    const dispatch = matches[0];
+    const task = data.tasks.find((task) => task.id === dispatch.taskId);
+    if (!task || task.dispatchReservation || task.sessionId !== sessionId)
+      return undefined;
+    return structuredClone({
+      task,
+      dispatch,
+      links: data.links.filter(
+        (link) =>
+          (link.sourceType === 'task' && link.sourceId === task.id) ||
+          (link.targetType === 'task' && link.targetId === task.id),
+      ),
     });
   }
 
@@ -3352,11 +3377,7 @@ export class TaskGraphService {
         artifactRoot: context.artifactRoot,
         subjectId: context.subjectId,
         actor: context.actor,
-        reason: `dispatch failed after claim: ${
-          originalError instanceof Error
-            ? originalError.message
-            : String(originalError)
-        }`,
+        reason: `dispatch failed after claim: ${errorMessage(originalError)}`,
       });
       taskAssignmentClaimTotal.add(1, {
         operation: 'release',
@@ -3376,10 +3397,7 @@ export class TaskGraphService {
       );
       return { kind: 'indeterminate', reason: result.reason };
     } catch (releaseError) {
-      const reason =
-        releaseError instanceof Error
-          ? releaseError.message
-          : String(releaseError);
+      const reason = errorMessage(releaseError);
       this.logger?.warn('compensateFailedDispatchClaim threw unexpectedly', {
         taskId: task.id,
         sessionId,
@@ -3509,7 +3527,7 @@ export class TaskGraphService {
     } catch (error) {
       this.logger?.warn('releaseClaimForSession failed unexpectedly', {
         sessionId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -3534,7 +3552,7 @@ export class TaskGraphService {
     } catch (error) {
       this.logger?.warn('releaseClaimForTask failed unexpectedly', {
         taskId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -3666,7 +3684,7 @@ export class TaskGraphService {
       }
     } catch (error) {
       this.logger?.warn('reconcileStaleAssignmentClaims failed unexpectedly', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
     return { releasedSubjects: released };

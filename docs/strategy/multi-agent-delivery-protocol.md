@@ -67,9 +67,10 @@ model always (review found what verification could not, on every branch).
 
 ### A red proves nothing until you read it — and neither does a green
 
-An uncaught injection is one failure mode. A *caught* one has five, and a sixth
-turns the same mechanism into a false green. Every one of them satisfies a
-sentinel. All six were observed live:
+An uncaught injection is one failure mode. A *caught* one has five, and two
+more turn the same mechanism into a false green — one where the subject never
+ran, one where it was never in the corpus. Every one of them satisfies a
+sentinel. All seven were observed live:
 
 1. **The patch never applied.** The transform error surfaces as a failure and
    reads as a catch. Confirm the injection is in the file (`grep`) before
@@ -106,8 +107,19 @@ sentinel. All six were observed live:
    at all. When the same gate later ran in a proper worktree, it did fail — but
    the first red was worth nothing, and believing it would have attributed
    someone else's break to the wrong cause.
+7. **The green was about a corpus that did not contain the subject.** (6)'s
+   mirror, and the same `git ls-files` from the other side: a gate scoped that
+   way cannot see an untracked file, so on any change that ADDS one, a
+   pre-`git add` green is evidence about a corpus the new file was not in.
+   `scripts/mobile-css-ratchet.mjs` was reported green on a new stylesheet and
+   was red the moment it was staged — same bytes, PASS untracked and FAIL
+   tracked. What makes this one dangerous is the contrast with its neighbours:
+   `verification:policy:gate` announces its own blindness (`include non-tracked
+   test file`) while the ratchet is simply silent, so silence read as success.
+   **Run `git ls-files`-scoped gates after staging**, and treat any gate that
+   discovers its own inputs as unrun until its subject is in the index.
 
-The rule that covers all six: **read the output, not the colour** — including
+The rule that covers all seven: **read the output, not the colour** — including
 when the colour is green.
 
 ### A count is not a reading
@@ -291,11 +303,41 @@ completion lane's parent capture, which folds every phase's output behind a
 phase sequence stops at the first non-passing phase, the failing phase is
 always the last region.
 
-When the excerpt came from stderr the receipt says so, in `causeStream`. Its
-**absence is the stronger claim**: the excerpt was scoped to the step that
-failed. Severity is ranked too — an error outranks a warning above it — after
-two blind spots that made most errors invisible to the matcher entirely
-(biome's ` FIXABLE ` tag, and format diagnostics that carry no `line:col`).
+Two fields say how the excerpt was chosen. Between them a reader usually does
+not have to infer it from a silence — but the declared-cause field is additive
+and lowest priority in the summary's byte budget, so a tight enough cap
+renders an excerpt with neither field present. No such cap was reachable at
+the production one, so treat this as a caveat on the pair rather than a hole
+anyone has walked into.
+
+`causeStream` qualifies a SCANNED excerpt: present (`stderr`) means the
+excerpt was ranked off a stream with no step markers rather than attributed
+to the failing step. Among scanned excerpts its **absence is the stronger
+claim** — the excerpt was scoped to the step that failed.
+
+`infrastructureCause` (station#1827) says the excerpt was not scanned at all.
+On an `infrastructure_error` where the verification runner recorded its own
+reason for stopping, that reason is the head excerpt and this field carries
+it. A declaration is not a scan result, so it deliberately sets no
+`causeStream`: the sentence that field renders — "picked by severity and
+position" — would be false for it. The two are mutually exclusive because one
+computation decides both, in `summarizeVerificationOutput`, so `causeStream`'s
+absence can be read against `infrastructureCause`'s presence.
+
+Both are fields of the bounded **summary** the CLI prints and the CI
+annotation renders, and both reach every rendering from there — neither is
+re-stamped from anywhere else, which is what keeps the pair consistent. The
+**receipt** is a separate artifact: it records `terminal.infrastructureCause`
+as the durable full-length record and carries no `causeStream` at all. Where
+a rendering shows the declared cause — as the marker, as the excerpt, or as the
+head of the excerpt list the annotations are built from — it shows the same
+bytes the receipt holds, because each of those three surfaces copies the one
+derived value rather than deriving its own. A rendering with no summary carries
+no marker at all.
+
+Severity is ranked too — an error outranks a warning above it — after two
+blind spots that made most errors invisible to the matcher entirely (biome's
+` FIXABLE ` tag, and format diagnostics that carry no `line:col`).
 
 `failingStep` is omitted rather than guessed: on a truncated capture the last
 header names a step that finished fine, and under `canceled`/`timed_out`

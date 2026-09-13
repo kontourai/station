@@ -126,3 +126,58 @@ export function inspectRequestEvent(
     openedAt: event.createdAt,
   };
 }
+
+/** An input answer cannot reuse the approval/permission decision channel. */
+export function inputRequestReference(
+  request: RequestOpenedEvent,
+  expectedThreadId: string,
+): AttentionRequestReference | undefined {
+  if (request.requestType !== 'input' || request.threadId !== expectedThreadId)
+    return undefined;
+  if (
+    [request.threadId, request.requestId, request.eventId].some(
+      (value) =>
+        typeof value !== 'string' ||
+        !value.trim() ||
+        value.length > ATTENTION_REQUEST_ID_MAX_CHARS,
+    )
+  )
+    return undefined;
+  return {
+    threadId: request.threadId,
+    requestId: request.requestId,
+    requestEventId: request.eventId,
+  };
+}
+
+export function readCurrentInputRequest(
+  store: Pick<EventStore, 'readCurrentRequestEvent'> | undefined,
+  reference: AttentionRequestReference,
+  provider?: string,
+): RequestOpenedEvent | null {
+  if (!store) return null;
+  try {
+    const current = store.readCurrentRequestEvent(
+      reference.threadId,
+      reference.requestId,
+    );
+    if (current.state !== 'found') return null;
+    const event = current.event.payload;
+    if (
+      event.method !== 'request.opened' ||
+      current.event.method !== event.method ||
+      event.eventId !== current.event.id ||
+      event.eventId !== reference.requestEventId ||
+      event.threadId !== reference.threadId ||
+      current.event.threadId !== reference.threadId ||
+      event.requestId !== reference.requestId ||
+      event.provider !== current.event.provider ||
+      (provider !== undefined && event.provider !== provider) ||
+      !inputRequestReference(event, reference.threadId)
+    )
+      return null;
+    return event;
+  } catch {
+    return null;
+  }
+}

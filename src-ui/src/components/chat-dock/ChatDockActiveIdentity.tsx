@@ -1,3 +1,4 @@
+import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
@@ -8,7 +9,11 @@ import { FlowGatedChip } from '../flow/FlowGatedChip';
 import { AgentIcon } from '../icons/AgentIcon';
 
 interface ChatDockActiveIdentityProps {
-  session: ChatSession;
+  session: Pick<ChatSession, 'id' | 'title'> &
+    Partial<Pick<ChatSession, 'agentSlug' | 'agentName' | 'flowRun'>>;
+  originLabel?: string;
+  originProvider?: string;
+  onDetails?: () => void;
   agent?: AgentData;
   /**
    * Human label for the model this chat runs, from
@@ -45,13 +50,16 @@ export function ChatDockActiveIdentity({
   session,
   agent,
   modelLabel,
+  originLabel,
+  originProvider,
+  onDetails,
   onClose,
 }: ChatDockActiveIdentityProps) {
   const closeTabShortcut = useShortcutDisplay('dock.closeTab');
 
   const engine = agent
     ? agentEngineDescriptor({
-        slug: session.agentSlug,
+        slug: session.agentSlug ?? agent.slug,
         name: agent.name,
         source: agent.source,
         engineId: agent.engineId,
@@ -73,7 +81,7 @@ export function ChatDockActiveIdentity({
   // disambiguates two identically-named connections. The redundancy being
   // removed is the name, so the narrower fix then is to blank
   // `engine.name` and keep the model, not to null the descriptor.
-  const agentName = agent?.name ?? session.agentName;
+  const agentName = agent?.name ?? session.agentName ?? 'Conversation';
   const engineChip =
     engine && agentName && engine.name.toLowerCase() === agentName.toLowerCase()
       ? null
@@ -88,24 +96,27 @@ export function ChatDockActiveIdentity({
     name: agentName,
     slug: session.agentSlug,
     icon: agent?.icon,
+    engineId: parseEngineId(originProvider),
   };
   // One muted token, not a pill plus a span: `engineChipLabel` already joins an
   // engine with its own model ("OpenCode · GLM-4.7"), and the model this chat
   // actually runs joins on with the same separator. Empty when neither is
   // known, so the row names nothing it cannot derive.
-  const engineTrail = [engineChipLabel(engineChip), modelLabel]
-    .filter(Boolean)
-    .join(' · ');
+  const engineTrail =
+    originLabel ??
+    [engineChipLabel(engineChip), modelLabel].filter(Boolean).join(' · ');
 
   return (
     <div className="chat-dock__active-identity">
-      <AgentIcon
-        agent={iconSubject}
-        size={20}
-        className="chat-dock__active-identity-avatar"
-      />
+      {!originLabel && (
+        <AgentIcon
+          agent={iconSubject}
+          size={20}
+          className="chat-dock__active-identity-avatar"
+        />
+      )}
       <div className="chat-dock__active-identity-text">
-        {agentName && (
+        {agentName && !originLabel && (
           <strong className="chat-dock__active-identity-agent">
             {agentName}
           </strong>
@@ -121,13 +132,25 @@ export function ChatDockActiveIdentity({
         </span>
         {engineTrail && (
           <span
-            className="chat-dock__active-identity-engine"
+            className={`chat-dock__active-identity-engine${originLabel ? ' chat-dock__active-identity-origin' : ''}`}
             title={engineTrail}
           >
+            {originLabel && <AgentIcon agent={iconSubject} size={18} />}
             {engineTrail}
           </span>
         )}
       </div>
+      {onDetails && (
+        <button
+          type="button"
+          className="chat-dock__active-identity-close"
+          onClick={onDetails}
+          aria-label="Conversation details"
+          title="Conversation details"
+        >
+          <span aria-hidden="true">⋯</span>
+        </button>
+      )}
       {session.flowRun && <FlowGatedChip binding={session.flowRun} />}
       {/* #1536 F: "Copy ID" was a 44px labelled button inside the identity
           row, competing with the title for the same pixels. It is a row of the

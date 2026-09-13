@@ -89,6 +89,9 @@ export function describeDeviceScope(scope: string): string {
   if (scopeSetsMatch(scope, PAIRING_SCOPE_PRESETS.inference)) {
     return 'Fleet inference';
   }
+  if (scopeSetsMatch(scope, PAIRING_SCOPE_PRESETS['home-transfer'])) {
+    return 'Home transfer';
+  }
   return parsePairingScope(scope) !== null ? 'Custom access' : scope;
 }
 

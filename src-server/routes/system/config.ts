@@ -35,6 +35,7 @@ import {
   LogLevelEditService,
 } from '../../services/config/log-level-edit-service.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import { defaultTerminalShell } from '../../services/terminal/terminal-shells.js';
 import { configOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -246,11 +247,29 @@ export function createConfigRoutes(
       const pluginFrameOrigin = getPluginFrameOrigin?.();
       const managedChatOrchestrationEnabled =
         getManagedChatOrchestrationEnabled?.() === true;
+      // #1582 D9: what a terminal would start here with nothing configured,
+      // derived from the resolver a spawn actually walks rather than a
+      // hard-coded hint the Settings input would print on every host. Same
+      // injected-into-GET-/app-only, never-in-the-update-schema pattern as the
+      // frame origins above.
+      const terminalShellDefault = defaultTerminalShell({
+        platform: process.platform,
+        env: process.env,
+      });
       const injected: Record<string, string> = {};
       if (frameOrigin) injected.mcpUiFrameOrigin = 'MCP_UI_FRAME_PORT';
       if (pluginFrameOrigin) injected.pluginFrameOrigin = 'MCP_UI_FRAME_PORT';
       if (managedChatOrchestrationEnabled) {
         injected.managedChatOrchestration = 'STATION_FEATURES';
+      }
+      // Only claimed as environment-sourced when the environment is what
+      // supplied it; a platform fallback is nobody's setting.
+      if (terminalShellDefault?.source === 'env') {
+        injected.defaultTerminalShell =
+          process.platform === 'win32' &&
+          terminalShellDefault.shell === process.env.COMSPEC
+            ? 'COMSPEC'
+            : 'SHELL';
       }
       return c.json({
         success: true,
@@ -260,6 +279,9 @@ export function createConfigRoutes(
           ...(pluginFrameOrigin ? { pluginFrameOrigin } : {}),
           ...(managedChatOrchestrationEnabled
             ? { managedChatOrchestration: true }
+            : {}),
+          ...(terminalShellDefault
+            ? { defaultTerminalShell: terminalShellDefault.shell }
             : {}),
         },
         provenance: buildAppConfigProvenance(config, { injected }),

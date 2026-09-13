@@ -22,6 +22,14 @@ import { StationRuntime } from '../station-runtime.js';
 
 function harness() {
   const runtime = Object.create(StationRuntime.prototype) as any;
+  // The loader verifies the selected package generation through the store's
+  // admission journal on every reload; a harness with no store would fail
+  // closed, so it carries a journal that observes an empty selection.
+  runtime.orchestrationEventStore = {
+    createPackageMcpAdmissionJournal: () => ({
+      selectedInstallations: () => ({ state: 'observed', installations: [] }),
+    }),
+  };
   runtime.agentConfigurationRevision = 0;
   runtime.agentConfigurationPersistenceRevision = 0;
   runtime.agentConfigurationMutationQueue = Promise.resolve();

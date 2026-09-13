@@ -565,4 +565,78 @@ describe('AcpToolUpdateSupervisor', () => {
     ).toHaveLength(2);
     vi.useRealTimers();
   });
+
+  /**
+   * station#1569 (item 4): the session ending is not a cancellation. Dispose
+   * used to run `cancelAll`, so every open ACP call ended `cancelled` — a
+   * claim that someone stopped it — where the only observed facts are that no
+   * result arrived and that nobody can say whether the tool ran.
+   */
+  describe('session end settles open calls as unresolved (station#1569 item 4)', () => {
+    test('dispose publishes unresolved, not cancelled, for every open call', () => {
+      const { events, supervisor } = harness();
+      supervisor.acceptStarted({
+        toolCallId: 'open-1',
+        name: 'shell',
+        hasName: true,
+      });
+      supervisor.acceptStarted({ toolCallId: 'open-2' });
+
+      supervisor.dispose();
+
+      const terminals = events.filter(
+        (event) => event.method === 'tool.completed',
+      );
+      expect(terminals).toHaveLength(2);
+      expect(terminals[0]).toMatchObject({
+        toolCallId: 'open-1',
+        toolName: 'shell',
+        status: 'unresolved',
+        output:
+          'No result was reported before the session ended; whether the tool ran is unknown.',
+      });
+      expect(terminals[1]).toMatchObject({
+        toolCallId: 'open-2',
+        status: 'unresolved',
+      });
+      expect(
+        terminals.some(
+          (event) => (event as { status?: string }).status === 'cancelled',
+        ),
+      ).toBe(false);
+    });
+
+    test('an interrupt still cancels — only session end is unresolved', () => {
+      // The discriminating control: `cancelAll` is the interrupt path
+      // (`cancelTurn`), where someone really did stop the turn.
+      const { events, supervisor } = harness();
+      supervisor.acceptStarted({ toolCallId: 'open-1' });
+
+      supervisor.cancelAll();
+
+      expect(events.at(-1)).toMatchObject({
+        method: 'tool.completed',
+        status: 'cancelled',
+      });
+    });
+
+    test('a call that already reported is not settled again', () => {
+      const { events, supervisor } = harness();
+      supervisor.acceptStarted({ toolCallId: 'done' });
+      supervisor.acceptUpdate({
+        toolCallId: 'done',
+        status: 'completed',
+        content: text('ok'),
+        hasContent: true,
+      });
+
+      supervisor.dispose();
+
+      const terminals = events.filter(
+        (event) => event.method === 'tool.completed',
+      );
+      expect(terminals).toHaveLength(1);
+      expect(terminals[0]).toMatchObject({ status: 'success' });
+    });
+  });
 });

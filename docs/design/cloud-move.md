@@ -95,6 +95,34 @@ expiry, replay refusal and revocation. Automatic bootstrap remains outside this
 initial path; [#1513](https://github.com/kontourai/station/issues/1513) tracks the
 remaining identity integration and browser acceptance requirements.
 
+## Target identity checks
+
+`station cloud verify-target` uses the SDK's `verifyCloudMoveTarget` to
+observe an explicitly enrolled target through the existing credential owner.
+It requires stable boot identity across discovery, bounds response bodies,
+and refuses missing enrollment and redirects. Its observation is not an
+activation receipt; the coordinator still needs to bind it to a transfer.
+
+The existing [SSH worker probe](../../src-server/services/ssh/openssh-worker-probe.ts)
+reads discovery and boot identity from the selected remote loopback port through
+an authenticated SSH connection. Both requests reject HTTP redirects and share
+a ten-second request deadline. An operator must configure the actual Station
+listener; a redirecting web frontend is not accepted as that listener.
+
+The server-side SSH worker currently sends no Station application credential.
+A 401 or 403 therefore reports `station-authentication-required` and does not
+trigger managed launch. SSH access alone does not enroll that worker. Use an
+enrolled Station API connection for authenticated preparation; the
+[native SSH launcher](ssh-launched-environments.md) separately starts or reuses
+a process and completes the normal pairing exchange. Its remote install uses
+`dependencies:ci`, including the pinned pnpm lifecycle. Automatic credential
+enrollment for the server-side worker remains unimplemented.
+
+The worker's boot identity identifies an answering process. It does not prove
+persistent home ownership or grant transfer authority. The move coordinator must
+still bind a verified target to the transfer operation and recheck it before
+activation; these checks do not implement that coordinator.
+
 ## Remaining implementation sequence
 
 The [channel home authority design](channel-home-authority.md) specifies the

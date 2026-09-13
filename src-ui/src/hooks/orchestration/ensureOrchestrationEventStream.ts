@@ -1,9 +1,17 @@
-import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import { type FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
 import { handleOrchestrationEvent } from './eventHandlers';
+import {
+  recordReplayConnection,
+  recordReplaySnapshot,
+} from './replay/capture-tap';
 import { createStreamCursorTracker } from './resumeCursor';
 import { applyOrchestrationSnapshot } from './snapshotHandlers';
+import { setStreamConnectionState } from './streamConnectionState';
 import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
 
 const activeSources = new Map<string, FetchSseConnection>();
@@ -89,6 +97,7 @@ export function ensureOrchestrationEventStream(
   // `onTerminal` ever tears the whole stream down and a fresh
   // `ensureOrchestrationEventStream(apiBase)` call starts a new one.
   let hasReceivedSnapshot = false;
+  let receiving = false;
   const authenticatedStream = fetchSSE(`${apiBase}/api/orchestration/events`, {
     authentication: 'required',
     // archive#1848: a ceiling equal to the initial delay is not a backoff
@@ -102,11 +111,20 @@ export function ensureOrchestrationEventStream(
     retryDelayMs: 2000,
     maxRetryDelayMs: 30_000,
     onMessage: (raw) => {
-      if (raw.event === 'orchestration:snapshot') {
+      if (!receiving) {
+        recordReplayConnection(apiBase, 'receiving');
+        setStreamConnectionState(apiBase, 'receiving');
+        receiving = true;
+      }
+      if (raw.event === ORCHESTRATION_STREAM_CAUGHT_UP_EVENT) {
+        setStreamConnectionState(apiBase, 'caught-up');
+        recordReplayConnection(apiBase, 'caught-up');
+      } else if (raw.event === 'orchestration:snapshot') {
         // A snapshot always replaces local state — adopt its cursor
         // unconditionally rather than gating it through `admit`.
         cursor.adopt(raw.id);
         const payload = JSON.parse(raw.data) as OrchestrationSnapshotPayload;
+        recordReplaySnapshot(apiBase, payload, hasReceivedSnapshot);
         applyOrchestrationSnapshot(payload, {
           apiBase,
           isReconnectFallback: hasReceivedSnapshot,
@@ -123,8 +141,14 @@ export function ensureOrchestrationEventStream(
         const payload = JSON.parse(raw.data) as {
           event: OrchestrationEvent;
           provenance?: unknown;
+          conversation?: import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding;
         };
-        handleOrchestrationEvent(apiBase, payload.event, payload.provenance);
+        handleOrchestrationEvent(
+          apiBase,
+          payload.event,
+          payload.provenance,
+          payload.conversation,
+        );
         refreshSessionReadModelOnTerminal(queryClient, payload.event);
       } else if (
         raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
@@ -143,7 +167,11 @@ export function ensureOrchestrationEventStream(
     // backoff window create a second stream while this one is still live and
     // scheduled to reconnect. Both streams then replay and apply the same
     // orchestration events.
-    onError: () => {},
+    onError: () => {
+      receiving = false;
+      if (setStreamConnectionState(apiBase, 'interrupted'))
+        recordReplayConnection(apiBase, 'interrupted');
+    },
     // archive#1094: a TERMINAL (401/403) failure now parks
     // this stream indefinitely waiting for an explicit wake instead of
     // giving up — `onError` alone would leave it an orphan: no longer
@@ -157,6 +185,8 @@ export function ensureOrchestrationEventStream(
     // immediately after invoking this callback, so the stream never even
     // reaches the wake-registry registration below.
     onTerminal: () => {
+      recordReplayConnection(apiBase, 'closed');
+      setStreamConnectionState(apiBase, 'closed');
       authenticatedStream.close();
       activeSources.delete(apiBase);
     },

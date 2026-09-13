@@ -31,6 +31,7 @@
  * claude-skills-materialization.ts's containment machinery must for a
  * real workspace cwd.
  */
+
 import {
   readdir as nodeReaddir,
   rm as nodeRm,
@@ -38,6 +39,7 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
+import { errorMessage } from '../../utils/error-message.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 
 const SKILL_OVERLAYS_DIRNAME = 'claude-skill-overlays';
@@ -46,7 +48,7 @@ const SKILL_OVERLAYS_DIRNAME = 'claude-skill-overlays';
 type OverlayLogger = any;
 
 /** Injectable for tests -- defaults to real node:fs/promises. */
-export interface SkillOverlayFsPort {
+interface SkillOverlayFsPort {
   readdir: (path: string) => Promise<string[]>;
   /** null on ENOENT or any other stat failure -- never throws. */
   mtimeMs: (path: string) => Promise<number | null>;
@@ -118,7 +120,7 @@ export async function removeSkillOverlayDir(
     dir = skillOverlayDirFor(sessionId, homeDir);
   } catch (error) {
     logger.warn?.(
-      `Claude skills overlay cleanup: refusing to remove anything (${error instanceof Error ? error.message : String(error)}).`,
+      `Claude skills overlay cleanup: refusing to remove anything (${errorMessage(error)}).`,
     );
     return;
   }
@@ -126,12 +128,12 @@ export async function removeSkillOverlayDir(
     await fs.rmRecursive(dir);
   } catch (error) {
     logger.warn?.(
-      `Claude skills overlay cleanup: failed to remove '${dir}': ${error instanceof Error ? error.message : String(error)}`,
+      `Claude skills overlay cleanup: failed to remove '${dir}': ${errorMessage(error)}`,
     );
   }
 }
 
-export interface SweepStaleSkillOverlaysInput {
+interface SweepStaleSkillOverlaysInput {
   /** true for a session id that must never be swept -- the caller's live session set. */
   isLiveSessionId: (sessionId: string) => boolean;
   /**
@@ -141,8 +143,12 @@ export interface SweepStaleSkillOverlaysInput {
    * removal), so this grace window is generous rather than racing a
    * still-starting session the way the shorter, contention-driven
    * sweepStaleManifests grace window does for a SHARED workspace cwd
-   * (an overlay directory is never shared between sessions, so there is no
-   * equivalent race to guard against -- only whether this session is still live).
+   * (an overlay directory is never shared between two DIFFERENT session ids,
+   * so there is no equivalent race to guard against -- only whether this
+   * session is still live). It IS shared across a restart on the same
+   * session id, since the path is derived from that id alone: stopSession
+   * skips its own cleanup when the thread has been retaken (station#1573),
+   * and this sweep's isLiveSessionId check covers the same case here.
    */
   staleAfterMs?: number;
   homeDir?: string;
@@ -151,7 +157,7 @@ export interface SweepStaleSkillOverlaysInput {
   now?: () => number;
 }
 
-export interface SweepStaleSkillOverlaysResult {
+interface SweepStaleSkillOverlaysResult {
   swept: string[];
   skippedLive: string[];
   skippedRecent: string[];
@@ -208,7 +214,7 @@ export async function sweepStaleSkillOverlays(
       swept.push(entry);
     } catch (error) {
       logger.warn?.(
-        `Claude skills overlay sweep: failed to remove '${dir}': ${error instanceof Error ? error.message : String(error)}`,
+        `Claude skills overlay sweep: failed to remove '${dir}': ${errorMessage(error)}`,
       );
     }
   }

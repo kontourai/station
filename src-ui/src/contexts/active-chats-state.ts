@@ -198,6 +198,19 @@ export type ChatBackgroundTask = {
   description?: string;
   subagentType?: string;
   backgrounded?: boolean;
+  /**
+   * Nesting depth reported by the provider: 1 for a top-level spawn, N+1 for
+   * one spawned inside a depth-N agent. Absent when the provider reports no
+   * depth, which is not the same claim as depth 1.
+   */
+  spawnDepth?: number;
+  /**
+   * station#1877: the EXECUTION SESSION thread that reported this subagent,
+   * which is what the engine adapter keys its sessions by. The store groups
+   * tasks under the owning chat's thread, and the two are not the same id —
+   * addressing a task-scoped stop needs this one.
+   */
+  sessionThreadId?: string;
 };
 
 /**
@@ -402,6 +415,8 @@ export type ChatUIState = {
    * queue with no explanation and no way to act on it.
    */
   queuedMessageFailure?: {
+    /** Local queue review required after an execution binding change. */
+    reviewReason?: 'execution-binding-changed';
     message: string;
     /** The server's own refusal code, when it supplied one. */
     code?: string;
@@ -429,9 +444,27 @@ export type ChatUIState = {
   activityHint?: ChatActivityHint;
   backgroundTasks?: ChatBackgroundTask[];
   liveUsage?: ChatLiveUsage;
+  /**
+   * Synthetic event-replay occupant of this store key. Lineage ids stay
+   * unset so live SSE cannot fuzzy-match the source thread into it.
+   */
+  replay?: ChatReplayState;
 };
 
 export type ActiveChatsMap = Record<string, ChatUIState>;
+
+export type ChatReplayState = {
+  elapsedMs?: number;
+  connectionPhase?:
+    | 'unknown'
+    | 'receiving'
+    | 'caught-up'
+    | 'interrupted'
+    | 'closed';
+  connectionElapsedMs?: number;
+  sourceThreadId: string;
+  tapeEventCount: number;
+};
 
 export type ActiveChatMetadata = {
   agentSlug: string;
@@ -439,6 +472,9 @@ export type ActiveChatMetadata = {
   title: string;
   conversationId?: string;
   currentSessionId?: string;
+  /** Present only on a synthetic event-replay chat. Never persisted. */
+  replay?: ChatReplayState;
+  conversationOpenPending?: boolean;
   projectSlug?: string;
   projectName?: string;
   executionMode?: ExecutionMode;
@@ -521,6 +557,8 @@ export type PersistedActiveChat = {
    */
   queuedMessages?: string[];
   queuedMessageFailure?: {
+    /** Local queue review required after an execution binding change. */
+    reviewReason?: 'execution-binding-changed';
     message: string;
     code?: string;
     at: number;
@@ -718,59 +756,103 @@ export function activeChatDurableId(
   return chat?.conversationId ? chat.conversationId : sessionId;
 }
 
+/**
+ * Whether a chat is DURABLE — whether anything about it outlives a reload.
+ *
+ * A chat is promoted to a conversation by its first successful turn, and a
+ * chat holding unsent records has a durable record of its own even before that
+ * (archive#3706). A chat with neither is a draft the store admits to its live
+ * map and never writes: the next load rehydrates only what `serializeActiveChats`
+ * put in storage, so such a chat simply is not there any more.
+ *
+ * Exported because it is half of the answer to "what counts as open work" —
+ * see `activeChatHasWork` below.
+ */
+export function isDurableActiveChat(chat: {
+  conversationId?: string;
+  unsentMessages?: unknown[];
+  replay?: unknown;
+}): boolean {
+  if (chat.replay) return false;
+  return Boolean(chat.conversationId || chat.unsentMessages?.length);
+}
+
+/**
+ * Whether a chat is WORK — whether anything has been put into it.
+ *
+ * #1582 B9: a chat created and never typed into counted as "1 open chat" and
+ * produced a "Continue most recent work" card, and a reload made both
+ * disappear. It was a draft the store admits to its live map and never writes.
+ * The count and the card read the raw map; only the write path applied a
+ * predicate, so the two surfaces disagreed about the same chat.
+ *
+ * Durability is the larger half and the reason the two are defined together:
+ * a chat that survives a reload is obviously work. The second clause covers
+ * the window durability alone would misreport — between the user pressing send
+ * and the dispatch receipt arriving, a first turn has messages but no
+ * conversation id yet (`useActiveChatSessionMessaging` assigns it from the
+ * receipt). Counting that chat as nothing would blink a live turn out of the
+ * sidebar and back. Everything else a chat can hold mid-turn (a queued
+ * follow-up, a streaming reply) implies a sent message, so `messages` is the
+ * whole of it; an unsent draft in the composer is deliberately NOT work, on
+ * the same evidence B9 rests on — it does not survive a reload either.
+ */
+export function activeChatHasWork(chat: {
+  conversationId?: string;
+  unsentMessages?: unknown[];
+  messages?: unknown[];
+}): boolean {
+  return isDurableActiveChat(chat) || Boolean(chat.messages?.length);
+}
+
 export function serializeActiveChats(
   chats: ActiveChatsMap,
 ): PersistedActiveChat[] {
-  return (
-    Object.entries(chats)
-      // A chat holding unsent records is persisted even before conversation
-      // promotion — the record's only durable copy must not depend on timing
-      // (archive#3706).
-      .filter(([, chat]) => chat.conversationId || chat.unsentMessages?.length)
-      .map(([sessionId, chat]) => ({
-        sessionId,
-        conversationId: chat.conversationId,
-        currentSessionId: chat.currentSessionId,
-        agentSlug: chat.agentSlug!,
-        queuedMessages: chat.queuedMessages || [],
-        ...(chat.queuedMessageFailure
-          ? { queuedMessageFailure: chat.queuedMessageFailure }
-          : {}),
-        ...(chat.unsentMessages?.length
-          ? { unsentMessages: chat.unsentMessages }
-          : {}),
-        createdAt: chat.createdAt,
-        title: chat.title,
-        model: chat.model,
-        modelSource: chat.modelSource,
-        requestedModel: chat.requestedModel,
-        requestedModelSource: chat.requestedModelSource,
-        requestedProviderOptions: chat.requestedProviderOptions,
-        defaultModel: chat.defaultModel,
-        defaultModelSource: chat.defaultModelSource,
-        projectSlug: chat.projectSlug,
-        projectName: chat.projectName,
-        executionMode: chat.executionMode,
-        executionScope: chat.executionScope,
-        agentConnectionId: chat.agentConnectionId,
-        providerId: chat.providerId,
-        defaultProviderId: chat.defaultProviderId,
-        provider: chat.provider,
-        providerOptions: chat.providerOptions || {},
-        orchestrationSessionStarted: chat.orchestrationSessionStarted || false,
-        orchestrationProvider: chat.orchestrationProvider,
-        orchestrationModel: chat.orchestrationModel,
-        orchestrationStatus: chat.orchestrationStatus,
-        sessionAutoApprove: chat.sessionAutoApprove || [],
-        // archive#1292: ephemeral notices are intentionally excluded from the
-        // persisted shape — see the doc comment on PersistedActiveChat.
-        inputHistory: chat.inputHistory || [],
-        currentModeId: chat.currentModeId,
-        planArtifact: chat.planArtifact || null,
-        flowRun: chat.flowRun || null,
-        attachmentStages: chat.attachmentStages || [],
-      }))
-  );
+  return Object.entries(chats)
+    .filter(([, chat]) => isDurableActiveChat(chat))
+    .map(([sessionId, chat]) => ({
+      sessionId,
+      conversationId: chat.conversationId,
+      currentSessionId: chat.currentSessionId,
+      agentSlug: chat.agentSlug!,
+      queuedMessages: chat.queuedMessages || [],
+      ...(chat.queuedMessageFailure
+        ? { queuedMessageFailure: chat.queuedMessageFailure }
+        : {}),
+      ...(chat.unsentMessages?.length
+        ? { unsentMessages: chat.unsentMessages }
+        : {}),
+      createdAt: chat.createdAt,
+      title: chat.title,
+      model: chat.model,
+      modelSource: chat.modelSource,
+      requestedModel: chat.requestedModel,
+      requestedModelSource: chat.requestedModelSource,
+      requestedProviderOptions: chat.requestedProviderOptions,
+      defaultModel: chat.defaultModel,
+      defaultModelSource: chat.defaultModelSource,
+      projectSlug: chat.projectSlug,
+      projectName: chat.projectName,
+      executionMode: chat.executionMode,
+      executionScope: chat.executionScope,
+      agentConnectionId: chat.agentConnectionId,
+      providerId: chat.providerId,
+      defaultProviderId: chat.defaultProviderId,
+      provider: chat.provider,
+      providerOptions: chat.providerOptions || {},
+      orchestrationSessionStarted: chat.orchestrationSessionStarted || false,
+      orchestrationProvider: chat.orchestrationProvider,
+      orchestrationModel: chat.orchestrationModel,
+      orchestrationStatus: chat.orchestrationStatus,
+      sessionAutoApprove: chat.sessionAutoApprove || [],
+      // archive#1292: ephemeral notices are intentionally excluded from the
+      // persisted shape — see the doc comment on PersistedActiveChat.
+      inputHistory: chat.inputHistory || [],
+      currentModeId: chat.currentModeId,
+      planArtifact: chat.planArtifact || null,
+      flowRun: chat.flowRun || null,
+      attachmentStages: chat.attachmentStages || [],
+    }));
 }
 
 /**

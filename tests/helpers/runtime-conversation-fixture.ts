@@ -29,6 +29,15 @@ export async function mockRuntimeConversation(
     const data: ConversationOpenResolution = {
       status: 'resolved',
       currentSessionId: input.id,
+      execution: {
+        sessionId: input.id,
+        agentId: agentId(input.agentSlug),
+        provider: input.provider,
+        ...(input.provider === 'station-agent'
+          ? {}
+          : { engineConnectionId: input.provider }),
+        model: input.model,
+      },
       conversation: {
         id: input.id,
         source: 'runtime',

@@ -31,6 +31,16 @@ import {
 } from '../../services/plugins/plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from '../../services/plugins/plugin-incarnation.js';
 import {
+  assertPluginNameSegment,
+  capturePersistedAgentOwnership,
+  ensureCanonicalRegistryInstallAliases,
+  installPluginFromSource,
+  removePluginOwnedIntegrations,
+  resolvePluginRegistryInstall,
+  synchronizePluginAgentDefinitions,
+  uninstallInstalledPlugin,
+} from '../../services/plugins/plugin-install-transaction.js';
+import {
   captureLocalPluginInstallation,
   reconcileLocalPluginInstallations,
 } from '../../services/plugins/plugin-installation-local.js';
@@ -46,6 +56,11 @@ import {
   observePluginGrantRevisions,
   rebindGrantsAfterContentChange,
 } from '../../services/plugins/plugin-permissions.js';
+import {
+  type PluginPublicServerQuiescence,
+  quiesceAllPluginPublicServerModules,
+  quiescePluginPublicServerModule,
+} from '../../services/plugins/plugin-public-server.js';
 import { pluginUpdates } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
@@ -57,22 +72,7 @@ import {
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
-import {
-  assertPluginNameSegment,
-  capturePersistedAgentOwnership,
-  ensureCanonicalRegistryInstallAliases,
-  installPluginFromSource,
-  removePluginOwnedIntegrations,
-  resolvePluginRegistryInstall,
-  synchronizePluginAgentDefinitions,
-  uninstallInstalledPlugin,
-} from './plugin-install-shared.js';
 import { loadPluginProviders } from './plugin-loader.js';
-import {
-  type PluginPublicServerQuiescence,
-  quiesceAllPluginPublicServerModules,
-  quiescePluginPublicServerModule,
-} from './plugin-public-server.js';
 
 interface PluginLifecycleRouteDeps {
   installationHost?: PluginInstallationHost;

@@ -14,6 +14,7 @@ import {
   fsyncSync,
   openSync,
   type RmOptions,
+  renameSync,
   rmSync,
   type Stats,
 } from 'node:fs';
@@ -64,4 +65,35 @@ export function rmDirSyncRetrying(path: string, options?: RmOptions): void {
     retryDelay: process.platform === 'win32' ? 200 : 0,
     ...options,
   });
+}
+
+/** Preserve atomic replacement when a Windows reader briefly holds the target.
+ * Never unlink the destination. Permanent faults still throw, after at most
+ * 75ms of waiting; POSIX failures are propagated immediately. */
+export function renameFileSyncRetrying(
+  source: string,
+  destination: string,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      renameSync(source, destination);
+      return;
+    } catch (error) {
+      if (
+        platform !== 'win32' ||
+        attempt === 4 ||
+        !['EPERM', 'EACCES', 'EBUSY'].includes(
+          (error as NodeJS.ErrnoException).code ?? '',
+        )
+      )
+        throw error;
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        5 * 2 ** attempt,
+      );
+    }
+  }
 }

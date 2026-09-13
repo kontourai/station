@@ -1,5 +1,6 @@
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
+import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type {
   ConversationContextBoundaryProjection,
@@ -20,6 +21,7 @@ import { apiErrorMessage } from './api-error-message';
 import { ChatHttpError } from './chatHttpError';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 export interface ForegroundMessageInput {
+  expectedInputRequest?: AttentionRequestReference;
   target: Omit<ExecutionTarget, 'environment'> & {
     environment?: EnvironmentRef;
   };

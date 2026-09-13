@@ -115,7 +115,7 @@ export interface SyncStats {
   linksSkippedDangling: number;
 }
 
-export interface SyncOptions {
+interface SyncOptions {
   rootId: string;
   store: KnowledgeStoreProvider;
   driver: Neo4jDriverLike;

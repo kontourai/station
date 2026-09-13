@@ -68,11 +68,11 @@ interface StoredSubmission {
   unavailableLenses?: string[];
 }
 
-export interface ReviewProjectWorkspaceResolver {
+interface ReviewProjectWorkspaceResolver {
   workspace(projectSlug: string): string | undefined;
 }
 
-export interface FileReviewReceiptStoreOptions {
+interface FileReviewReceiptStoreOptions {
   /** Protected evidence is never pruned; admission fails at this bound. */
   maxReceiptsPerProject?: number;
   /** Station-owned private directory for cross-process mutation capabilities. */

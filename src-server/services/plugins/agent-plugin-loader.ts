@@ -41,6 +41,7 @@ import {
   validateSkillContent,
 } from 'agent-skills-ts-sdk';
 import Ajv2020, { type ValidateFunction } from 'ajv/dist/2020.js';
+import { isRecord } from '../../utils/is-record.js';
 import type { CanonicalSkillSource } from '../flow/flow-agents-skills-source.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
@@ -57,7 +58,7 @@ const WINDOWS_RESERVED_ENV = new Set(['plugin_root', 'plugin_data']);
 const PLUGIN_DATA_PLACEHOLDER = '$' + '{PLUGIN_DATA}';
 const HTTP_HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 
-export type AgentPluginLoadReportCode =
+type AgentPluginLoadReportCode =
   | 'component-invalid'
   | 'duplicate-plugin-name'
   | 'manifest-invalid'
@@ -76,13 +77,13 @@ export interface AgentPluginLoadReport {
   message: string;
 }
 
-export interface LoadedAgentPluginSkill {
+interface LoadedAgentPluginSkill {
   name: string;
   directory: string;
   manifestPath: string;
 }
 
-export interface LoadedAgentPlugin {
+interface LoadedAgentPlugin {
   root: string;
   dataRoot: string;
   manifest: AgentPluginManifestV1;
@@ -99,7 +100,7 @@ import {
   pluginActivationCompositionPermit,
 } from './plugin-activation-composition.js';
 
-export interface AgentPluginLoaderOptions {
+interface AgentPluginLoaderOptions {
   /** Station's runtime home, which owns installed packages and persistent data. */
   projectHomeDir: string;
   /** Injectable for tests and packaged distributions; schemas are never fetched. */
@@ -112,7 +113,7 @@ export interface AgentPluginLoaderOptions {
   composition?: PluginActivationComposition;
 }
 
-export type AgentPluginLoadOutcome =
+type AgentPluginLoadOutcome =
   | { ok: true; plugin: LoadedAgentPlugin }
   | { ok: false; reports: AgentPluginLoadReport[] };
 
@@ -125,7 +126,7 @@ interface AgentPluginValidators {
 const validatorCache = new Map<string, AgentPluginValidators>();
 
 /** Source modules and bundled dist-server assets both sit beside a shipped schemas tree. */
-export function resolveAgentPluginSchemaRoot(
+function resolveAgentPluginSchemaRoot(
   moduleUrl: string = import.meta.url,
 ): string {
   const moduleDir = dirname(fileURLToPath(moduleUrl));
@@ -169,15 +170,11 @@ function validatorsFor(schemaRoot: string): AgentPluginValidators {
   return compiled;
 }
 
-export interface AgentPluginLoadOptions {
+interface AgentPluginLoadOptions {
   /** False for staged install validation; persistent data is never created pre-consent. */
   provisionData?: boolean;
   /** Already-read manifest bytes at a caller-owned containment boundary. */
   manifestDocument?: unknown;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isInside(parent: string, child: string): boolean {
@@ -188,7 +185,7 @@ function isInside(parent: string, child: string): boolean {
   );
 }
 
-export function resolveAgentPluginDataDirectory(
+function resolveAgentPluginDataDirectory(
   projectHomeDir: string,
   pluginName: string,
   { provision = false }: { provision?: boolean } = {},

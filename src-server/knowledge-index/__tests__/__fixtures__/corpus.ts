@@ -84,7 +84,7 @@ function tokenize(text: string): string[] {
  * construct query vectors/text deterministically without going through the async
  * `embed()` wrapper when convenient.
  */
-export function embedText(text: string, dim = DIM): number[] {
+function embedText(text: string, dim = DIM): number[] {
   const tokens = tokenize(text);
   if (tokens.length === 0) return tokenVector(text, dim);
   const sum = new Array(dim).fill(0);
@@ -95,7 +95,7 @@ export function embedText(text: string, dim = DIM): number[] {
   return normalize(sum);
 }
 
-export class StubCorpusEmbedder implements IEmbeddingProvider {
+class StubCorpusEmbedder implements IEmbeddingProvider {
   readonly id = 'stub-corpus-embedder';
   readonly displayName =
     'Deterministic bag-of-words stub embedder (fixture corpus)';
@@ -118,7 +118,7 @@ export const stubEmbedder = new StubCorpusEmbedder(DIM);
 
 // ── Multi-topic fixture corpus (5 topics x 10 records = 50 chunks) ─────────
 
-export interface CorpusRecord {
+interface CorpusRecord {
   id: string;
   topic: string;
   text: string;

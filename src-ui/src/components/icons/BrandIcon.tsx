@@ -4,7 +4,7 @@ import { identiconHue } from '../../utils/identicon';
 import { getInitials } from '../../utils/layout';
 import './BrandIcon.css';
 
-export type BrandKey =
+type BrandKey =
   | 'station'
   | 'claude'
   | 'codex'
@@ -162,7 +162,7 @@ function Mark({ brand }: { brand: BrandKey }) {
   }
 }
 
-export interface BrandIconProps {
+interface BrandIconProps {
   name: string;
   id?: string;
   engineId?: EngineId;

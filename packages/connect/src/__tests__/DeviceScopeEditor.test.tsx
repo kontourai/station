@@ -15,7 +15,8 @@ import {
  *
  * The model these pin: the base ladder is ORCHESTRATION access (with a real
  * "none" rung), and everything that composes freely with it — fleet
- * inference, and the two operator-promotion grants — is a capability. An
+ * inference, home transfer, and the two operator-promotion grants — is a
+ * capability. An
  * earlier version modelled inference as a base rung, which made valid MIXED
  * scopes unrepresentable and silently dropped tokens on Apply.
  */
@@ -93,6 +94,24 @@ test('a MIXED inference scope survives an unrelated edit (review MEDIUM)', () =>
   );
 });
 
+test('a home-transfer scope survives an unrelated orchestration edit', () => {
+  const onApply = openEditor('orchestration:read home:transfer');
+  expect(
+    (
+      screen.getByRole('checkbox', {
+        name: /Home transfer/,
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+
+  fireEvent.click(screen.getByRole('radio', { name: /Delegation/ }));
+  apply();
+  expect(onApply).toHaveBeenCalledWith(
+    ['orchestration:read', 'orchestration:operate', 'home:transfer'],
+    'orchestration:read home:transfer',
+  );
+});
+
 test('a pure fleet-inference device holds no orchestration access, and keeps it that way', () => {
   const onApply = openEditor('inference:invoke');
   expect(
@@ -158,10 +177,14 @@ test('the derivations agree with the contracts vocabulary', () => {
   // to the none rung — never the widest, which would make the first Apply a
   // silent widening.
   expect(closestBasePreset('inference:invoke')).toBeNull();
+  expect(closestBasePreset('home:transfer')).toBeNull();
   expect(closestBasePreset('legacy-unparseable')).toBeNull();
 
   expect(
     scopeSelectionTokens('delegation', new Set(['access:approve'])),
   ).toEqual(['orchestration:read', 'orchestration:operate', 'access:approve']);
   expect(scopeSelectionTokens(null, new Set())).toEqual([]);
+  expect(scopeSelectionTokens(null, new Set(['home:transfer']))).toEqual([
+    'home:transfer',
+  ]);
 });

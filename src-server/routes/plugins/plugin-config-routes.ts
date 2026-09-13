@@ -14,6 +14,7 @@ import { Hono, type MiddlewareHandler } from 'hono';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import { withPluginContentLock } from '../../services/plugins/plugin-content-integrity.js';
+import { assertPluginNameSegment } from '../../services/plugins/plugin-install-transaction.js';
 import {
   capturePluginRuntimeArtifact,
   type PluginRuntimeArtifact,
@@ -30,7 +31,6 @@ import {
   pluginSettingsSchema,
   validate,
 } from '../schemas/schemas.js';
-import { assertPluginNameSegment } from './plugin-install-shared.js';
 
 interface PluginConfigRouteDeps {
   packageMcpJournal?: PackageMcpAdmissionJournal;

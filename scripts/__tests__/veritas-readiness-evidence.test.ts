@@ -3,7 +3,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { classifyReadinessEvidence } from '../veritas-readiness-evidence.mjs';
+import {
+  classifyReadinessEvidence,
+  resolveEvidenceCheckFailure,
+} from '../veritas-readiness-evidence.mjs';
 
 const wrapper = 'scripts/veritas-readiness-evidence.mjs';
 
@@ -50,6 +53,89 @@ describe('Station Veritas readiness evidence boundary', () => {
         },
       }),
     ).toEqual({ status: 'FAIL', exitCode: 1, reason: 'readiness-failed' });
+  });
+
+  test('derives the failure of a non-required check the engine only warns about', () => {
+    // Veritas 1.6.0 records an explicit command's nonzero exit in the
+    // per-check results without promoting it to evidenceCheckFailure.
+    const explicit = {
+      id: 'explicit-command-node-e-process-exit-2',
+      runner: 'bash',
+      label: 'node -e "process.exit(2)"',
+      passed: false,
+      exitCode: 2,
+      signal: null,
+    };
+    const required = {
+      id: 'repo-governance',
+      runner: 'bash',
+      label: 'npm run proof:repo-governance',
+      passed: true,
+      exitCode: 0,
+      signal: null,
+    };
+    expect(
+      resolveEvidenceCheckFailure({
+        evidenceCheckFailure: null,
+        evidenceCheckResults: [required, explicit],
+      }),
+    ).toEqual({
+      phase: 'evidence-check',
+      reason: 'failed',
+      id: explicit.id,
+      runner: 'bash',
+      label: explicit.label,
+      message: 'Evidence Check command exited with 2',
+      exitCode: 2,
+    });
+    expect(
+      resolveEvidenceCheckFailure({
+        evidenceCheckFailure: null,
+        evidenceCheckResults: [required],
+      }),
+    ).toBeNull();
+    expect(
+      resolveEvidenceCheckFailure({
+        evidenceCheckFailure: null,
+        evidenceCheckResults: [],
+      }),
+    ).toBeNull();
+    expect(
+      resolveEvidenceCheckFailure({
+        evidenceCheckFailure: null,
+        evidenceCheckResults: [
+          { ...explicit, exitCode: null, signal: 'SIGKILL' },
+        ],
+      }),
+    ).toEqual({
+      phase: 'evidence-check',
+      reason: 'failed',
+      id: explicit.id,
+      runner: 'bash',
+      label: explicit.label,
+      message: 'Evidence Check command exited with SIGKILL',
+    });
+  });
+
+  test('keeps the engine-reported required failure ahead of a later explicit one', () => {
+    const engineFailure = {
+      phase: 'evidence-check',
+      reason: 'failed',
+      id: 'repo-governance',
+      runner: 'bash',
+      label: 'npm run proof:repo-governance',
+      message: 'Evidence Check command exited with 1',
+      exitCode: 1,
+    };
+    expect(
+      resolveEvidenceCheckFailure({
+        evidenceCheckFailure: engineFailure,
+        evidenceCheckResults: [
+          { id: 'repo-governance', passed: false, exitCode: 1 },
+          { id: 'explicit', passed: false, exitCode: 2 },
+        ],
+      }),
+    ).toBe(engineFailure);
   });
 
   test('keeps a nested NOT_VERIFIED evidence check as JSON exit 2', () => {

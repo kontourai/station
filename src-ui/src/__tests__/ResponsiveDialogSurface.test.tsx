@@ -64,8 +64,9 @@ describe('ResponsiveDialogSurface', () => {
     const viewport = setMobileViewport(true);
     const initialFocusRef = { current: null as HTMLInputElement | null };
 
-    const { container } = render(
+    render(
       <ResponsiveDialogSurface
+        layer="dialog"
         ariaLabel="Phone picker"
         initialFocusRef={initialFocusRef}
         initialFocusPolicy="desktop"
@@ -84,7 +85,7 @@ describe('ResponsiveDialogSurface', () => {
     viewport.offsetTop = 12;
     viewport.dispatchEvent(new Event('resize'));
     await waitFor(() => {
-      const overlay = container.querySelector<HTMLElement>(
+      const overlay = document.querySelector<HTMLElement>(
         '.responsive-surface-overlay',
       )!;
       expect(
@@ -100,8 +101,9 @@ describe('ResponsiveDialogSurface', () => {
     setMobileViewport(false);
     const onClose = vi.fn();
     const initialFocusRef = { current: null as HTMLInputElement | null };
-    const { container } = render(
+    render(
       <ResponsiveDialogSurface
+        layer="dialog"
         ariaLabel="Desktop picker"
         initialFocusRef={initialFocusRef}
         initialFocusPolicy="desktop"
@@ -123,7 +125,7 @@ describe('ResponsiveDialogSurface', () => {
     expect(onClose).toHaveBeenCalledOnce();
 
     fireEvent.pointerDown(
-      container.querySelector<HTMLElement>('.responsive-surface-overlay')!,
+      document.querySelector<HTMLElement>('.responsive-surface-overlay')!,
     );
     expect(onClose).toHaveBeenCalledTimes(2);
   });
@@ -133,6 +135,7 @@ describe('ResponsiveDialogSurface', () => {
     const onClose = vi.fn();
     render(
       <ResponsiveDialogSurface
+        layer="dialog"
         ariaLabel="Destructive confirmation"
         role="alertdialog"
         onClose={onClose}
@@ -169,6 +172,7 @@ describe('ResponsiveDialogSurface', () => {
           </button>
           {open && (
             <ResponsiveDialogSurface
+              layer="dialog"
               ariaLabel="Details"
               onClose={() => setOpen(false)}
             >
@@ -210,6 +214,7 @@ describe('ResponsiveDialogSurface', () => {
           </button>
           {open && (
             <ResponsiveDialogSurface
+              layer="dialog"
               ariaLabel="Restoring picker"
               initialFocusRef={inputRef}
               initialFocusPolicy="desktop"
@@ -266,6 +271,7 @@ describe('ResponsiveDialogSurface', () => {
         </div>
         {confirming && (
           <ResponsiveDialogSurface
+            layer="dialog"
             ariaLabel="Confirm delete"
             initialFocusPolicy="always"
             onClose={() => setConfirming(null)}
@@ -348,6 +354,7 @@ describe('ResponsiveDialogSurface', () => {
           </button>
           {confirming && (
             <ResponsiveDialogSurface
+              layer="dialog"
               ariaLabel="Confirm delete"
               initialFocusPolicy="always"
               onClose={() => setConfirming(false)}
@@ -413,6 +420,7 @@ describe('ResponsiveDialogSurface', () => {
           </div>
           {confirming && (
             <ResponsiveDialogSurface
+              layer="dialog"
               ariaLabel="Confirm delete"
               initialFocusPolicy="always"
               onClose={() => setConfirming(null)}
@@ -431,6 +439,7 @@ describe('ResponsiveDialogSurface', () => {
           )}
           {renaming && (
             <ResponsiveDialogSurface
+              layer="dialog"
               ariaLabel="Rename what is left"
               initialFocusPolicy="always"
               initialFocusRef={renameRef}
@@ -474,7 +483,7 @@ describe('ResponsiveDialogSurface', () => {
   test('keeps a system blocker non-dismissible and its actions on the shared row contract', () => {
     setMobileViewport(true);
     const onClose = vi.fn();
-    const { container } = render(
+    render(
       <ResponsiveDialogSurface
         ariaLabel="Installing plugin"
         dismissible={false}
@@ -488,12 +497,12 @@ describe('ResponsiveDialogSurface', () => {
       </ResponsiveDialogSurface>,
     );
 
-    const overlay = container.querySelector<HTMLElement>(
+    const overlay = document.querySelector<HTMLElement>(
       '.responsive-surface-overlay',
     )!;
     expect(overlay.dataset.responsiveLayer).toBe('system');
     expect(
-      container
+      document
         .querySelector('.feature-actions')
         ?.classList.contains('responsive-surface-actions'),
     ).toBe(true);
@@ -510,6 +519,7 @@ describe('ResponsiveDialogSurface', () => {
       const [open, setOpen] = useState(true);
       return open ? (
         <ResponsiveDialogSurface
+          layer="dialog"
           ariaLabel="History picker"
           onClose={() => setOpen(false)}
         >
@@ -542,6 +552,7 @@ describe('ResponsiveDialogSurface', () => {
       if (!outerOpen) return <p>All closed</p>;
       return (
         <ResponsiveDialogSurface
+          layer="dialog"
           ariaLabel="Outer dialog"
           onClose={() => setOuterOpen(false)}
         >
@@ -550,6 +561,7 @@ describe('ResponsiveDialogSurface', () => {
           </button>
           {innerOpen && (
             <ResponsiveDialogSurface
+              layer="dialog"
               ariaLabel="Inner dialog"
               onClose={() => setInnerOpen(false)}
             >
@@ -583,6 +595,7 @@ describe('ResponsiveDialogSurface', () => {
       const [open, setOpen] = useState(true);
       return open ? (
         <ResponsiveDialogSurface
+          layer="dialog"
           ariaLabel="Close picker"
           onClose={() => setOpen(false)}
         >
@@ -610,6 +623,7 @@ describe('ResponsiveDialogSurface', () => {
       const [open, setOpen] = useState(true);
       return open ? (
         <ResponsiveDialogSurface
+          layer="dialog"
           ariaLabel="Steady picker"
           onClose={() => setOpen(false)}
         >
@@ -645,6 +659,7 @@ describe('ResponsiveDialogSurface', () => {
       const [open, setOpen] = useState(true);
       return open ? (
         <ResponsiveDialogSurface
+          layer="dialog"
           ariaLabel="Param picker"
           onClose={() => setOpen(false)}
         >
@@ -706,6 +721,7 @@ describe('ResponsiveDialogSurface', () => {
       const [open, setOpen] = useState(true);
       return open ? (
         <ResponsiveDialogSurface
+          layer="dialog"
           ariaLabel="Back picker"
           onClose={() => setOpen(false)}
         >
@@ -749,6 +765,7 @@ describe('ResponsiveDialogSurface', () => {
       const [open, setOpen] = useState(true);
       return open ? (
         <ResponsiveDialogSurface
+          layer="dialog"
           ariaLabel="Navigating picker"
           onClose={() => setOpen(false)}
         >
@@ -774,7 +791,11 @@ describe('ResponsiveDialogSurface', () => {
 
     render(
       <StrictMode>
-        <ResponsiveDialogSurface ariaLabel="Strict picker" onClose={vi.fn()}>
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="Strict picker"
+          onClose={vi.fn()}
+        >
           <p>Stable</p>
         </ResponsiveDialogSurface>
       </StrictMode>,
@@ -790,6 +811,7 @@ describe('ResponsiveDialogSurface', () => {
 
     render(
       <ResponsiveDialogSurface
+        layer="dialog"
         ariaLabel="Route picker"
         historyMode="route"
         onClose={vi.fn()}
@@ -813,8 +835,9 @@ describe('ResponsiveDialogSurface', () => {
       value: 1440,
     });
 
-    const { container } = render(
+    render(
       <ResponsiveDialogSurface
+        layer="dialog"
         ariaLabel="Anchored picker"
         anchorRef={{ current: anchor }}
         onClose={vi.fn()}
@@ -823,7 +846,7 @@ describe('ResponsiveDialogSurface', () => {
       </ResponsiveDialogSurface>,
     );
 
-    const overlay = container.querySelector<HTMLElement>(
+    const overlay = document.querySelector<HTMLElement>(
       '.responsive-surface-overlay',
     )!;
     expect(
@@ -852,8 +875,9 @@ describe('ResponsiveDialogSurface', () => {
     anchor.getBoundingClientRect = () =>
       ({ top, left: 40, right: 120, bottom: top + 32 }) as DOMRect;
 
-    const { container } = render(
+    render(
       <ResponsiveDialogSurface
+        layer="dialog"
         ariaLabel="Live-anchored picker"
         anchorRef={{ current: anchor }}
         onClose={vi.fn()}
@@ -861,7 +885,7 @@ describe('ResponsiveDialogSurface', () => {
         <p>Anchored</p>
       </ResponsiveDialogSurface>,
     );
-    const overlay = container.querySelector<HTMLElement>(
+    const overlay = document.querySelector<HTMLElement>(
       '.responsive-surface-overlay',
     )!;
     expect(overlay.style.getPropertyValue('--responsive-anchor-top')).toBe(
@@ -891,8 +915,9 @@ describe('ResponsiveDialogSurface', () => {
     const anchor = document.createElement('button');
     document.body.appendChild(anchor);
 
-    const { container } = render(
+    render(
       <ResponsiveDialogSurface
+        layer="dialog"
         ariaLabel="Sheet picker"
         anchorRef={{ current: anchor }}
         onClose={vi.fn()}
@@ -901,7 +926,7 @@ describe('ResponsiveDialogSurface', () => {
       </ResponsiveDialogSurface>,
     );
 
-    const overlay = container.querySelector<HTMLElement>(
+    const overlay = document.querySelector<HTMLElement>(
       '.responsive-surface-overlay',
     )!;
     expect(

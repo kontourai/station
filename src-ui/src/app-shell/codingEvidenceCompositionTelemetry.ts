@@ -1,6 +1,6 @@
 import type { CodingEvidenceCompositionReceipt } from '@kontourai/station-contracts/workspace-coding-evidence-composition';
 
-export type CodingEvidenceCompositionTrack = (
+type CodingEvidenceCompositionTrack = (
   event: string,
   properties: Record<string, string | number>,
 ) => void;

@@ -5,14 +5,14 @@ import {
   type WorkspacePaneHostNode,
 } from '@kontourai/station-contracts/workspace-pane-host';
 
-export interface CompactWorkspacePaneTab {
+interface CompactWorkspacePaneTab {
   instanceId: WorkspacePaneInstanceId;
   selected: boolean;
   compatible: boolean;
   mount: boolean;
 }
 
-export interface CompactWorkspacePaneProjection {
+interface CompactWorkspacePaneProjection {
   tabs: readonly CompactWorkspacePaneTab[];
   activeInstanceId: WorkspacePaneInstanceId;
   /** One element at most: compact mode never leaves hidden desktop renderer DOM mounted. */

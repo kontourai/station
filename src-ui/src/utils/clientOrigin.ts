@@ -5,7 +5,7 @@ import type {
 } from '@kontourai/station-contracts/client-origin';
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 
-export type ClientOriginActorDisplay =
+type ClientOriginActorDisplay =
   | {
       kind: 'device';
       deviceId: string;

@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { type Browser, expect, type Page, test } from '@playwright/test';
 import {
@@ -19,6 +19,7 @@ import {
   performanceReportReceipt,
   referenceEvaluatorExitFailure,
 } from '../scripts/interactive-workspace-performance.mjs';
+import { INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS } from '../scripts/verification-lanes.mjs';
 import { WORK_BOARD_200_PIN_MIX } from '../src-ui/src/performance/work-board-performance-bridge';
 import { readE2EOperatorCredential } from './helpers/e2e-operator-credential';
 import {
@@ -32,6 +33,7 @@ import {
   startStation,
   stopStation,
 } from './helpers/live-station-task';
+import { referenceBrowserProvisioningOwner } from './helpers/reference-browser-lifecycle';
 
 const execFileAsync = promisify(execFile);
 const IMPLEMENTED_FIXTURES = [
@@ -235,14 +237,25 @@ async function runFixtureTarget(input: {
     process.platform === 'win32'
       ? `\\\\.\\pipe\\station-performance-${randomUUID().replaceAll('-', '')}`
       : join(input.controlParent, `${fixtureName.slice(0, 4)}.sock`);
+  // A failed action can outlive its target home, which the next fixture
+  // replaces. Keep the server log beside the retained measurement evidence.
+  const referenceLogRoot = process.env.STATION_PERFORMANCE_REPORT_OUTPUT
+    ? dirname(resolve(process.env.STATION_PERFORMANCE_REPORT_OUTPUT))
+    : input.fixtureRoot;
+  mkdirSync(referenceLogRoot, { recursive: true, mode: 0o700 });
   const bootstrapToken = await startStation(live, true, {
     performanceReference: true,
+    logFile: join(referenceLogRoot, `${fixtureName}-station.log`),
     taskRoomControlSocket: controlSocket,
   });
   const context = await input.browser.newContext();
   const page = await context.newPage();
   const removeTelemetryDialogHandler =
     await installTelemetryDialogDismissal(page);
+  const provisioning = referenceBrowserProvisioningOwner(
+    context,
+    removeTelemetryDialogHandler,
+  );
   let succeeded = false;
   try {
     await page.goto(`${live.ui}/#station-ui-bootstrap=${bootstrapToken}`);
@@ -368,46 +381,49 @@ async function runFixtureTarget(input: {
       ? await seedAndOpenWorkBoard(page, live, 'performance-reference')
       : `${live.ui}/tasks/${encodeURIComponent(taskId)}?station-performance-reference=interactive-workspace-v3`;
     let exitCode = 0;
-    try {
-      await execFileAsync(
-        process.execPath,
-        [
-          'scripts/interactive-workspace-performance.mjs',
-          '--mode=reference',
-          `--config=${configPath}`,
-          `--output=${reportPath}`,
-          '--json',
-        ],
-        {
-          cwd: process.cwd(),
-          env: {
-            ...process.env,
-            STATION_PERFORMANCE_UI_URL: target,
-            STATION_PERFORMANCE_UI_BUILD_DIR: `dist-ui-${live.instance}`,
-            STATION_PERFORMANCE_STORAGE_STATE: storageState,
-            STATION_PERFORMANCE_CONTROL_SOCKET: controlSocket,
-            STATION_PERFORMANCE_PEER_STORAGE_STATE: peerStorageState,
-            STATION_PERFORMANCE_RETAINED_TASK_ID: taskId,
-            STATION_PERFORMANCE_REMOTE_TASK_ID: taskId,
-            STATION_PERFORMANCE_COLLABORATION_TASK_ID: taskId,
-            STATION_PERFORMANCE_FILE_TASK_ID: taskId,
-            STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT: rawBridgePath,
+    await provisioning.run(async () => {
+      try {
+        await execFileAsync(
+          process.execPath,
+          [
+            'scripts/interactive-workspace-performance.mjs',
+            '--mode=reference',
+            `--config=${configPath}`,
+            `--output=${reportPath}`,
+            '--json',
+          ],
+          {
+            cwd: process.cwd(),
+            windowsHide: true,
+            env: {
+              ...process.env,
+              STATION_PERFORMANCE_UI_URL: target,
+              STATION_PERFORMANCE_UI_BUILD_DIR: `dist-ui-${live.instance}`,
+              STATION_PERFORMANCE_STORAGE_STATE: storageState,
+              STATION_PERFORMANCE_CONTROL_SOCKET: controlSocket,
+              STATION_PERFORMANCE_PEER_STORAGE_STATE: peerStorageState,
+              STATION_PERFORMANCE_RETAINED_TASK_ID: taskId,
+              STATION_PERFORMANCE_REMOTE_TASK_ID: taskId,
+              STATION_PERFORMANCE_COLLABORATION_TASK_ID: taskId,
+              STATION_PERFORMANCE_FILE_TASK_ID: taskId,
+              STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT: rawBridgePath,
+            },
+            timeout:
+              input.fixture.id === 'work-board-one-hour-v1'
+                ? WORK_BOARD_ONE_HOUR_REFERENCE_TIMEOUT_MS
+                : input.fixture.id === ONE_HOUR_FIXTURE
+                  ? ONE_HOUR_REFERENCE_TIMEOUT_MS
+                  : 2_700_000,
+            maxBuffer: 10 * 1024 * 1024,
           },
-          timeout:
-            input.fixture.id === 'work-board-one-hour-v1'
-              ? WORK_BOARD_ONE_HOUR_REFERENCE_TIMEOUT_MS
-              : input.fixture.id === ONE_HOUR_FIXTURE
-                ? ONE_HOUR_REFERENCE_TIMEOUT_MS
-                : 2_700_000,
-          maxBuffer: 10 * 1024 * 1024,
-        },
-      );
-    } catch (error) {
-      exitCode =
-        error && typeof error === 'object' && 'code' in error
-          ? Number(error.code)
-          : -1;
-    }
+        );
+      } catch (error) {
+        exitCode =
+          error && typeof error === 'object' && 'code' in error
+            ? Number(error.code)
+            : -1;
+      }
+    });
     const report = JSON.parse(
       readFileSync(reportPath, 'utf8'),
     ) as FixtureReport;
@@ -424,6 +440,18 @@ async function runFixtureTarget(input: {
           readFileSync(rawBridgePath),
           { mode: 0o600 },
         );
+    }
+    if (retainedReport) {
+      for (const extension of ['png', 'txt', 'json']) {
+        const name = `${input.fixture.id}-failure.${extension}`;
+        const diagnostic = join(dirname(rawBridgePath), name);
+        if (existsSync(diagnostic))
+          writeFileSync(
+            join(dirname(retainedReport), name),
+            readFileSync(diagnostic),
+            { mode: 0o600 },
+          );
+      }
     }
     const receipt = performanceReportReceipt(report);
     // Artifact storage can be unavailable independently of the product run.
@@ -448,11 +476,13 @@ async function runFixtureTarget(input: {
       report,
     };
   } finally {
-    await removeTelemetryDialogHandler();
-    await context.close();
-    if (!succeeded) {
-      await stopStation(live).catch(() => {});
-      rmSync(live.home, { recursive: true, force: true });
+    try {
+      await provisioning.close();
+    } finally {
+      if (!succeeded) {
+        await stopStation(live).catch(() => {});
+        rmSync(live.home, { recursive: true, force: true });
+      }
     }
   }
 }
@@ -461,10 +491,10 @@ test.describe
   .serial('Interactive workspace production bridge (#2892)', () => {
     test.setTimeout(
       ONE_HOUR_REFERENCE_ENABLED
-        ? 90 * 60 * 1000
+        ? INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS.oneHour
         : WORK_BOARD_REFERENCE_ENABLED
-          ? 80 * 60 * 1000
-          : 3_300_000,
+          ? INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS.workBoard
+          : INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS.default,
     );
 
     test('executes isolated real Station targets and aggregates one build receipt', async ({

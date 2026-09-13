@@ -1721,6 +1721,120 @@ describe('CodexAdapter', () => {
     ).toHaveLength(1);
   });
 
+  test('steerTurn sends app-server turn/steer on the open turn', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => processHandle!,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    const startSessionPromise = adapter.startSession({
+      provider: 'codex',
+      threadId: 'thread-steer',
+      cwd: '/tmp/project',
+      modelId: 'gpt-5-codex',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-steer', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-steer', {
+      id: '2',
+      result: { thread: { id: 'codex-thread-steer' }, model: 'gpt-5-codex' },
+    });
+    await withTimeout(startSessionPromise, 'startSession');
+    await flushIo();
+
+    const sendTurnPromise = adapter.sendTurn({
+      threadId: 'thread-steer',
+      input: 'run the tests',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-steer', {
+      id: '3',
+      result: { turn: { id: 'turn-steer-1' } },
+    });
+    await withTimeout(sendTurnPromise, 'sendTurn');
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await nextEvent(iterator, 'turn.started');
+
+    const steerPromise = adapter.steerTurn(
+      'thread-steer',
+      'focus on failing tests',
+      'turn-steer-1',
+    );
+    await flushIo();
+    const record = (adapter as any).transport.requireSession('thread-steer');
+    const pendingIds = [
+      ...(record.pendingRpcRequests as Map<string, unknown>).keys(),
+    ];
+    expect(pendingIds).toHaveLength(1);
+    writeServerMessage(adapter, 'thread-steer', {
+      id: pendingIds[0],
+      result: { turnId: 'turn-steer-1' },
+    });
+    await withTimeout(steerPromise, 'steerTurn');
+
+    const steerRequest = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'turn/steer');
+    expect(steerRequest?.params).toEqual({
+      threadId: 'codex-thread-steer',
+      input: [
+        {
+          type: 'text',
+          text: 'focus on failing tests',
+          text_elements: [],
+        },
+      ],
+      expectedTurnId: 'turn-steer-1',
+    });
+    await expect(
+      nextEvent(iterator, 'steer turn.started'),
+    ).resolves.toMatchObject({
+      method: 'turn.started',
+      turnId: 'turn-steer-1',
+      prompt: 'focus on failing tests',
+      inputKind: 'steer',
+    });
+    expect(record.activeTurnId).toBe('turn-steer-1');
+    await adapter.stopAll();
+  });
+
+  test('steerTurn maps a dead turn to ProviderTurnEndedError', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => processHandle!,
+    });
+    const startSessionPromise = adapter.startSession({
+      provider: 'codex',
+      threadId: 'thread-steer-ended',
+      cwd: '/tmp/project',
+      modelId: 'gpt-5-codex',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-steer-ended', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-steer-ended', {
+      id: '2',
+      result: {
+        thread: { id: 'codex-thread-steer-ended' },
+        model: 'gpt-5-codex',
+      },
+    });
+    await withTimeout(startSessionPromise, 'startSession');
+    await expect(
+      adapter.steerTurn('thread-steer-ended', 'too late', 'missing-turn'),
+    ).rejects.toMatchObject({ name: 'ProviderTurnEndedError' });
+    await adapter.stopAll();
+  });
+
   // archive#3451 finding B1 (fix #2): mirrors claude-adapter.ts's and
   // acp-adapter.ts's own target-mismatch guard, which codex previously
   // lacked. Given an explicit turnId that does not match the CURRENT
@@ -3410,8 +3524,9 @@ describe('CodexAdapter', () => {
       sandbox: 'workspace-write',
     });
 
-    // First turn carries no override — falls back to the pre-existing
-    // hardcoded default rather than "remembering" the session-start mode.
+    // First turn carries no override — omit knobs so the thread keeps the
+    // engine/session policy rather than resetting to Station's old Never
+    // default (station#1950).
     const firstTurnPromise = adapter.sendTurn({
       threadId: 'thread-approval',
       input: 'first turn',
@@ -3443,14 +3558,43 @@ describe('CodexAdapter', () => {
       .map(parseLine)
       .filter((line) => line.method === 'turn/start');
     expect(turnStartCalls).toHaveLength(2);
-    expect(turnStartCalls[0].params).toMatchObject({
-      approvalPolicy: 'never',
-      sandbox: 'danger-full-access',
-    });
+    expect(turnStartCalls[0].params).not.toHaveProperty('approvalPolicy');
+    expect(turnStartCalls[0].params).not.toHaveProperty('sandbox');
     expect(turnStartCalls[1].params).toMatchObject({
       approvalPolicy: 'on-request',
       sandbox: 'workspace-write',
     });
+
+    await adapter.stopAll();
+  });
+
+  test('an absent approvalMode omits approvalPolicy/sandbox so Codex config applies (station#1950)', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({ processFactory: () => processHandle! });
+
+    const sessionPromise = adapter.startSession({
+      provider: 'codex',
+      threadId: 'thread-inherit-default',
+      cwd: '/tmp/project',
+      modelId: 'gpt-5-codex',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-inherit-default', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-inherit-default', {
+      id: '2',
+      result: { thread: { id: 'codex-thread-inherit' }, model: 'gpt-5-codex' },
+    });
+    await withTimeout(sessionPromise, 'startSession inherit default');
+
+    const threadStart = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'thread/start');
+    expect(threadStart.params).not.toHaveProperty('approvalPolicy');
+    expect(threadStart.params).not.toHaveProperty('sandbox');
 
     await adapter.stopAll();
   });
@@ -4223,4 +4367,72 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
 
     await adapter.stopAll();
   });
+});
+
+test('external adoption forks the native thread and records its distinct child before returning', async () => {
+  const process = new FakeCodexProcess();
+  const getAppHomeEnv = vi.fn(async () => ({ CODEX_HOME: '/wrong-profile' }));
+  const adapter = new CodexAdapter({
+    processFactory: () => process,
+    getAppHomeEnv,
+    resolveSourceHome: () => '/fixture/codex-home',
+  });
+  const affinity = { kind: 'codex-config-home', ref: 'a'.repeat(64) };
+  const sourceId = '0199a001-0000-7000-8000-000000000001';
+  const childId = '0199a001-0000-7000-8000-000000000002';
+  const onProviderChildCreated = vi.fn();
+  const pending = adapter.adoptSession(
+    {
+      provider: 'codex',
+      threadId: 'adopted-thread',
+      sourceSessionId: sourceId,
+      sourceAffinity: affinity,
+      sourceBoundary: {
+        kind: 'completed-turn',
+        providerTurnId: 'completed-one',
+        observedEventId: 'observed-one',
+      },
+      sourceKind: 'codex-rollout',
+      cwd: '/fixture/project',
+    },
+    { onProviderChildCreated, onProviderChildCreationStarted: () => {} },
+  );
+  await flushIo();
+  process.stdout.write(`${JSON.stringify({ id: '1', result: {} })}\n`);
+  await flushIo();
+  const call = process.stdin.lines
+    .map(parseLine)
+    .find((line) => line.method === 'thread/fork');
+  expect(call.params).toMatchObject({
+    threadId: sourceId,
+    lastTurnId: 'completed-one',
+    cwd: '/fixture/project',
+    ephemeral: false,
+  });
+  expect(getAppHomeEnv).not.toHaveBeenCalled();
+  process.stdout.write(
+    `${JSON.stringify({ id: '2', result: { thread: { id: childId, forkedFromId: sourceId, threadSource: 'station-adoption:adopted-thread', turns: [{ id: 'completed-one', status: 'completed', items: [] }] }, model: 'gpt-test', cwd: '/fixture/project', approvalPolicy: 'on-request', sandbox: { type: 'workspaceWrite' } } })}\n`,
+  );
+  expect(await pending).toMatchObject({
+    resumeCursor: { codexThreadId: childId, sourceAffinity: affinity },
+  });
+  expect(onProviderChildCreated).toHaveBeenCalledWith({
+    codexThreadId: childId,
+    sourceAffinity: affinity,
+  });
+  const cleanup = adapter.discardSession('adopted-thread', {
+    adoptionKey: 'adopted-thread',
+    sourceKind: 'codex-rollout',
+    sourceSessionId: sourceId,
+    sourceAffinity: affinity,
+    cwd: '/fixture/project',
+    createdAt: new Date().toISOString(),
+  });
+  await flushIo();
+  expect(process.stdin.lines.map(parseLine).at(-1)).toMatchObject({
+    method: 'thread/delete',
+    params: { threadId: childId },
+  });
+  process.stdout.write(`${JSON.stringify({ id: '3', result: {} })}\n`);
+  await cleanup;
 });

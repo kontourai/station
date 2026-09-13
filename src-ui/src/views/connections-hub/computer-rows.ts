@@ -22,11 +22,11 @@ import type {
 } from '@kontourai/station-sdk';
 
 /** What kind of relationship this Station has with the computer in the row. */
-export type ComputerKind = 'Paired device' | 'Station' | 'SSH';
+type ComputerKind = 'Paired device' | 'Station' | 'SSH';
 
-export type ComputerStateTone = 'ready' | 'warn' | 'error' | 'disabled';
+type ComputerStateTone = 'ready' | 'warn' | 'error' | 'disabled';
 
-export interface ComputerState {
+interface ComputerState {
   label: string;
   tone: ComputerStateTone;
   detail?: string;
@@ -47,7 +47,7 @@ export interface ComputerRowModel {
   removableManualEntryId?: string;
 }
 
-export const SSH_ENVIRONMENT_ID_PREFIX = 'ssh-environment:';
+const SSH_ENVIRONMENT_ID_PREFIX = 'ssh-environment:';
 const PAIRED_ID_PREFIX = 'paired:';
 
 /**
@@ -246,7 +246,7 @@ function endpointDetail(
   return addresses.join(' · ');
 }
 
-export interface ComputerRowInput {
+interface ComputerRowInput {
   /** Folded known environments (paired + manual + ssh-adapted). */
   environments: readonly KnownEnvironment[];
   /** The server's SSH environments, keyed for the rows folded from them. */

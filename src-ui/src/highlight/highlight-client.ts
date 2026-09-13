@@ -37,10 +37,15 @@
  * cache, so its init is the fast one.
  *
  * What it does NOT guarantee: that only closed blocks arrive. The streaming
- * layer splits an unclosed trailing fence out of the markdown before it is
- * rendered (components/chat/open-fence.ts) so a growing block is not
- * tokenized flush by flush, but that scanner has documented blind spots
- * (fences inside blockquotes, or indented 4+ spaces). Correctness survives —
+ * layer marks an unclosed trailing fence `provisionalReason: 'open-fence'`
+ * (components/chat/markdown-blocks.ts) and `MarkdownRenderer` renders such a
+ * block as bare source, so a growing block is not tokenized flush by flush.
+ * That is a scanner, not a parser, so a fence shape it does not model still
+ * reaches this cache flush by flush. (A second, narrower scanner —
+ * `components/chat/open-fence.ts`, whose blind spots were fences inside
+ * blockquotes or indented 4+ spaces — is deleted: it never had a caller, and
+ * the live path above models blockquote and list containers itself.)
+ * Correctness survives —
  * the key is content-addressed, so a partial result is never served for
  * different code — but the cost is not one wasted entry: `cache` below is
  * module-global and holds 300 entries for the whole page, so a blind-spot

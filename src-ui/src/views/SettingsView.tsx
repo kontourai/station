@@ -43,6 +43,7 @@ import { EnvironmentStatus } from './settings/EnvironmentStatus';
 import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
 import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
+import { LocalAccountsSection } from './settings/LocalAccountsSection';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
 import { SystemSection } from './settings/SystemSection';
@@ -121,7 +122,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     sidebarSections,
   } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
-  const { isMobile } = usePlatformProfile();
+  const { isMobile, isDesktop } = usePlatformProfile();
   const { locale } = useLocale();
 
   const [config, setConfig] = useState<AppConfig>(
@@ -160,7 +161,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const configJson = JSON.stringify(config);
   const baselineJson = JSON.stringify(savedConfig);
   const hasChanges = configJson !== baselineJson;
-  const { guard, DiscardModal } = useUnsavedGuard(hasChanges);
+  const { DiscardModal } = useUnsavedGuard(hasChanges);
   const highlightNotice = highlightAnnouncement ? (
     <div
       className="settings__highlight-notice"
@@ -222,6 +223,15 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       window.history.replaceState(window.history.state, '', url);
       setHighlightAnnouncement(
         formatSettingsMessage('unavailableMobile', locale),
+      );
+      return;
+    }
+    if (entry.conditional === 'desktop' && !isDesktop) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('highlight');
+      window.history.replaceState(window.history.state, '', url);
+      setHighlightAnnouncement(
+        formatSettingsMessage('unavailableDesktop', locale),
       );
       return;
     }
@@ -332,7 +342,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       if (pulseTimer !== undefined) window.clearTimeout(pulseTimer);
       pulsedTarget?.classList.remove('settings__highlight-pulse');
     };
-  }, [highlightRequest, isMobile, locale]);
+  }, [highlightRequest, isMobile, isDesktop, locale]);
 
   // Reconciling the server snapshot with the form is a question about *time*,
   // not about values: a just-invalidated query can still hold the pre-save
@@ -378,7 +388,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     setSavedConfig(merged);
   }, [baselineJson, configData, configJson, configUpdatedAt, savedConfig]);
 
-  useCloseShortcut(() => guard(onBack));
+  useCloseShortcut(onBack);
 
   const {
     errors: validationErrors,
@@ -626,6 +636,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 onChange={setConfig}
               />
               <UsageTelemetryDisclosure />
+              <LocalAccountsSection />
             </>
           )}
 
@@ -724,7 +735,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               onRegionChange={(value) =>
                 setConfig({ ...config, region: value })
               }
-              guard={guard}
             />
           )}
         </section>
@@ -853,7 +863,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           )}
 
           {sectionVisible('notifications') && (
-            <NotificationsSection apiBase={currentApiBase} guard={guard} />
+            <NotificationsSection apiBase={currentApiBase} />
           )}
 
           {sectionVisible('voice') && <VoiceFeaturesSection />}
@@ -896,7 +906,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               Saved to this Station — available from every device that connects
               to it.
             </p>
-            <KnowledgeStoreSection guard={guard} />
+            <KnowledgeStoreSection />
           </section>
         )}
       </div>

@@ -39,7 +39,7 @@ import {
 } from '../../runtime/conversation/receipt-chain.js';
 import { fleetServeReceiptsTotal } from '../../telemetry/metrics.js';
 
-export const FLEET_SERVE_RECEIPT_FILE = 'fleet-serve-receipts.ndjson';
+const FLEET_SERVE_RECEIPT_FILE = 'fleet-serve-receipts.ndjson';
 
 export type UnsealedFleetServeReceipt = Omit<
   FleetServeReceipt,

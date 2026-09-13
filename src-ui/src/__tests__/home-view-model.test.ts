@@ -339,8 +339,22 @@ describe('buildHomeWorkItems', () => {
           messages: [],
           status: 'error',
         },
-        missingA: { agentSlug: 'a', title: 'A', createdAt: 20, messages: [] },
-        missingB: { agentSlug: 'b', title: 'B', createdAt: 20, messages: [] },
+        // #1582 B9: a chat nothing has been put into is not open work at
+        // all, so the "no conversation id" case this test is about has to be
+        // a chat mid-first-turn — sent, not yet receipted — rather than an
+        // untouched draft.
+        missingA: {
+          agentSlug: 'a',
+          title: 'A',
+          createdAt: 20,
+          messages: [{ timestamp: 20 }],
+        },
+        missingB: {
+          agentSlug: 'b',
+          title: 'B',
+          createdAt: 20,
+          messages: [{ timestamp: 20 }],
+        },
         other: {
           conversationId: 'other',
           agentSlug: 'other',
@@ -709,7 +723,9 @@ describe('buildHomeWorkItems', () => {
       chats: {
         local: {
           agentSlug: 'codex',
-          messages: [],
+          // #1582 B9: a message-less, conversation-less chat is a draft and
+          // no longer reaches Home at all. This one is a real chat.
+          messages: [{ timestamp: 20 }],
         },
       } as any,
       agents: [],
@@ -1347,6 +1363,11 @@ describe('station#1795: a chat with no messages yet is not epoch-0', () => {
     const tasks = buildHomeWorkItems({
       chats: {
         fresh: {
+          // #1582 B9: the message-less chat that still reaches Home is the
+          // REHYDRATED one — messages are not persisted across a reload, but
+          // the conversation id is, so this is exactly the shape #1795
+          // reported. An untouched draft is no longer work at all.
+          conversationId: 'conversation-untouched',
           agentSlug: 'agent',
           title: 'Untouched chat',
           createdAt,
@@ -1373,6 +1394,7 @@ describe('station#1795: a chat with no messages yet is not epoch-0', () => {
     const tasks = buildHomeWorkItems({
       chats: {
         bare: {
+          conversationId: 'conversation-bare',
           agentSlug: 'agent',
           title: 'Bare chat',
         },
@@ -1900,4 +1922,58 @@ describe('identity slugs reach the rows that display them', () => {
     });
     expect(item.agentSlug).toBeUndefined();
   });
+});
+
+test('Open chats labels use the exact current child model instead of a persisted predecessor observation', () => {
+  const chats = {
+    tab: {
+      conversationId: 'conversation',
+      currentSessionId: 'claude-child',
+      agentSlug: 'claude',
+      agentName: 'Claude Code',
+      model: 'opus-current',
+      orchestrationModel: 'gpt-predecessor',
+      input: '',
+      attachments: [],
+      queuedMessages: [],
+      inputHistory: [],
+      hasUnread: false,
+    },
+  };
+  // Fully typed through a base summary, not cast: archive#1778 keeps the
+  // shape's required members enforced on every fixture.
+  const base: OrchestrationSessionSummary = {
+    threadId: 'conversation',
+    conversationId: 'conversation',
+    provider: 'codex',
+    status: 'ready',
+    controlMode: 'station-owned',
+    lifecycleState: 'needs_input',
+    pendingReview: false,
+    createdAt: '2026-09-06T00:00:00Z',
+    updatedAt: '2026-09-06T01:00:00Z',
+    isLoaded: true,
+    isPersisted: true,
+    answerability: { answerable: true },
+    eventCount: 1,
+  };
+  const sessions: OrchestrationSessionSummary[] = [
+    { ...base, model: 'gpt-newer-root-event' },
+    {
+      ...base,
+      threadId: 'claude-child',
+      provider: 'claude',
+      reportedModel: 'opus-reported',
+      model: 'opus-retained',
+      updatedAt: '2026-09-06T00:00:00Z',
+    },
+  ];
+  const [row] = buildActiveChatTaskItems({
+    chats,
+    agents: [],
+    sessions,
+    resolveModelLabel: (model) => model ?? 'Unknown',
+  });
+  expect(row?.model).toBe('opus-reported');
+  expect(row?.modelLabel).toBe('opus-reported');
 });

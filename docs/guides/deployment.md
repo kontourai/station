@@ -2,6 +2,11 @@
 
 ## Local Development
 
+Deployment describes how a Station instance is run and reached; it does not
+assign Project membership, room authority, or execution consent. See
+[Station topology](../design/station-topology.md) for the role/identity
+boundaries that deployments must preserve.
+
 ```bash
 ./station start                          # Auto-installs, builds, starts server + UI
 ./station start --clean --force          # Wipe and rebuild from scratch
@@ -190,6 +195,11 @@ npm run test:focused -- src-server/services/orchestration/__tests__/home-referen
 ```
 
 Offline restore does not fence another host or grant it execution authority.
+Each restore records a new recovery identity and the backup snapshot time in
+`station-home-recovery.json`; the CLI, JSON restore receipt and connected
+browser banner disclose recovery from a copy. The browser uses the current
+Station's status query and clears a prior host's notice when switching hosts. Retain that record when operating the recovered environment. It is
+provenance metadata, not proof of source shutdown or a transfer certificate.
 Keep one active writer by operational control; automatic cross-host handoff,
 witness-less fork presentation, and per-tenant recovery require separate
 verification before offering those guarantees to customers.
@@ -264,6 +274,10 @@ bodies, model options, tokens, and arbitrary same-name third-party MCP
 integrations cannot provide or read that context. Direct/internal session
 starts without a validated binding fail closed in hosted mode; personal mode
 continues to use its existing shared local MCP connection.
+
+That tenant is an exact deployment/customer authority selected from the request
+host. It is not a person, organization membership, account, or capability
+grant; see [Station topology](../design/station-topology.md).
 
 Lifecycle and background provider notifications are explicitly aggregate-safe:
 they observe provider status only, cannot issue tenant-scoped Station API calls,

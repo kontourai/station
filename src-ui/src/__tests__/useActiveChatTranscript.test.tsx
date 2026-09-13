@@ -22,7 +22,10 @@ const resetRecovery = vi.fn((apiBase: string, sessionId: string) => {
   recoveryBudget.delete(`${apiBase}\u0000${sessionId}`);
 });
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async () => ({
+  extractUIBlocks: (
+    await import('../../../packages/sdk/src/query-domains/uiBlocks')
+  ).extractUIBlocks,
   fetchSessionEventWindowCapability: (...args: unknown[]) =>
     fetchCapability(...args),
   claimSessionEventWindowCapabilityRecovery: (...args: unknown[]) =>
@@ -38,6 +41,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS: 60_000,
 }));
 
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 
 const baseSession = {
@@ -60,6 +64,288 @@ const event = (eventId: string, method: string, fields = {}) => ({
 });
 
 describe('useActiveChatTranscript', () => {
+  test('mounted replay retains settled rows without history or checkpoint requests', async () => {
+    const { registerReplayThread, unregisterReplayThread } = await import(
+      '../hooks/orchestration/replay/replay-registry'
+    );
+    const { SessionTapePlayer } = await import(
+      '../hooks/orchestration/replay/player'
+    );
+    const { tapeFromSessionEvents } = await import(
+      '../hooks/orchestration/replay/tape'
+    );
+    const replayId = registerReplayThread();
+    activeChatsStore.initChat(replayId, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Replay',
+      orchestrationSessionStarted: true,
+      replay: { sourceThreadId: 'thread-1', tapeEventCount: 2 },
+    });
+    const tape = tapeFromSessionEvents(
+      { threadId: 'thread-1', agentSlug: 'codex' },
+      [
+        event('evt1', 'turn.started', { turnId: 'turn-1', prompt: 'Hello' })
+          .event,
+        event('evt2', 'turn.completed', {
+          turnId: 'turn-1',
+          outputText: 'Recorded reply',
+        }).event,
+      ] as Parameters<typeof tapeFromSessionEvents>[1],
+    );
+    const player = new SessionTapePlayer(tape, replayId);
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const session = () =>
+      ({
+        ...baseSession,
+        ...activeChatsStore.getSnapshot()[replayId],
+        id: replayId,
+      }) as ChatSession;
+    const view = renderHook(({ chat }) => useActiveChatTranscript('', chat), {
+      initialProps: { chat: session() },
+    });
+    try {
+      act(() => {
+        player.step();
+        player.step();
+      });
+      view.rerender({ chat: session() });
+      expect(
+        view.result.current.messages.some(
+          (row) => row.content === 'Recorded reply',
+        ),
+      ).toBe(true);
+      expect(view.result.current.enabled).toBe(false);
+      expect(fetchCapability).not.toHaveBeenCalled();
+      expect(fetchConversationWindow).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+      act(() => {
+        player.back();
+      });
+      view.rerender({ chat: session() });
+      expect(
+        view.result.current.messages.some(
+          (row) => row.content === 'Recorded reply',
+        ),
+      ).toBe(false);
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(replayId);
+      unregisterReplayThread(replayId);
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('an incomplete history prefix cannot erase the completed live answer', async () => {
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 9314,
+      hasMore: true,
+      nextCursor: 'within-turn',
+      events: [
+        event('evt1', 'turn.started', {
+          turnId: 'large-turn',
+          prompt: 'Question',
+        }),
+        event('evt2', 'content.text-delta', {
+          turnId: 'large-turn',
+          itemId: 'commentary',
+          delta: 'I will investigate.',
+        }),
+      ],
+    });
+    const answer = {
+      id: 'live-final',
+      role: 'assistant' as const,
+      turnId: 'large-turn',
+      answerEligible: true,
+      content: 'The complete answer is saved.',
+      timestamp: 1786233603000,
+    };
+    const view = renderHook(() =>
+      useActiveChatTranscript('', { ...baseSession, messages: [answer] }),
+    );
+    await waitFor(() => expect(view.result.current.settled).toBe(true));
+    expect(
+      view.result.current.messages.filter((row) => row.role === 'assistant'),
+    ).toEqual([answer]);
+    view.unmount();
+  });
+
+  test('switching conversations never assigns the previous reader child to the new chat', async () => {
+    const parentId = 'reader-parent-tab';
+    const childId = 'reader-fork-tab';
+    for (const id of [parentId, childId])
+      activeChatsStore.initChat(id, {
+        agentSlug: 'claude',
+        agentName: 'Claude',
+        title: id,
+      });
+    activeChatsStore.updateChat(parentId, {
+      conversationId: 'parent-conversation',
+      currentSessionId: 'parent-execution',
+    });
+    activeChatsStore.updateChat(childId, {
+      conversationId: 'fork-conversation',
+      requestedModel: 'chosen-model',
+    });
+    let resolveFork!: (value: unknown) => void;
+    fetchWindow.mockImplementation((conversationId: string) =>
+      conversationId === 'parent-conversation'
+        ? Promise.resolve({
+            protocolVersion: 1,
+            currentSessionId: 'parent-execution',
+            watermark: 1,
+            hasMore: false,
+            events: [],
+          })
+        : new Promise((resolve) => {
+            resolveFork = resolve;
+          }),
+    );
+    const { result, rerender, unmount } = renderHook(
+      ({ session }) => useActiveChatTranscript('http://station.test', session),
+      {
+        initialProps: {
+          session: {
+            ...baseSession,
+            id: parentId,
+            conversationId: 'parent-conversation',
+            currentSessionId: 'parent-execution',
+          } as ChatSession,
+        },
+      },
+    );
+    try {
+      await waitFor(() =>
+        expect(result.current.currentSessionId).toBe('parent-execution'),
+      );
+      rerender({
+        session: {
+          ...baseSession,
+          id: childId,
+          conversationId: 'fork-conversation',
+          orchestrationSessionStarted: false,
+        } as ChatSession,
+      });
+      expect(
+        activeChatsStore.getSnapshot()[childId].currentSessionId,
+      ).toBeUndefined();
+      expect(activeChatsStore.getSnapshot()[childId].requestedModel).toBe(
+        'chosen-model',
+      );
+      rerender({
+        session: {
+          ...baseSession,
+          id: childId,
+          conversationId: 'fork-conversation',
+        } as ChatSession,
+      });
+      await waitFor(() => expect(resolveFork).toBeDefined());
+      await act(async () =>
+        resolveFork({
+          protocolVersion: 1,
+          currentSessionId: 'fork-execution',
+          watermark: 1,
+          hasMore: false,
+          events: [],
+        }),
+      );
+      expect(activeChatsStore.getSnapshot()[childId].currentSessionId).toBe(
+        'fork-execution',
+      );
+    } finally {
+      unmount();
+      activeChatsStore.removeChat(parentId);
+      activeChatsStore.removeChat(childId);
+    }
+  });
+
+  test('observing a new child schedules authoritative open once without clearing the draft', async () => {
+    const id = 'live-boundary-conversation';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Boundary',
+    });
+    activeChatsStore.updateChat(id, {
+      conversationId: id,
+      currentSessionId: 'old-child',
+      input: 'keep my draft',
+    });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [],
+      currentSessionId: 'new-child',
+    });
+    const session: ChatSession = {
+      ...baseSession,
+      id,
+      conversationId: id,
+      currentSessionId: 'old-child',
+    };
+    const { rerender, unmount } = renderHook(
+      ({ session }) => useActiveChatTranscript('http://station.test', session),
+      { initialProps: { session } },
+    );
+    await waitFor(() =>
+      expect(activeChatsStore.getSnapshot()[id]).toMatchObject({
+        currentSessionId: 'new-child',
+        conversationOpenPending: true,
+        input: 'keep my draft',
+      }),
+    );
+    activeChatsStore.updateChat(id, { conversationOpenPending: false });
+    rerender({ session: { ...session, currentSessionId: 'new-child' } });
+    expect(activeChatsStore.getSnapshot()[id].conversationOpenPending).toBe(
+      false,
+    );
+    unmount();
+    activeChatsStore.removeChat(id);
+  });
+
+  test('stale hook props cannot clear an already-adopted child stream', async () => {
+    const id = 'already-adopted-child';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'claude',
+      agentName: 'Claude',
+      title: 'Live',
+    });
+    activeChatsStore.updateChat(id, {
+      conversationId: id,
+      currentSessionId: 'new-child',
+      orchestrationTurnOpen: true,
+      openTurnId: 'new-turn',
+      streamingMessage: { role: 'assistant', content: 'new live answer' },
+    });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [],
+      currentSessionId: 'new-child',
+    });
+    const { unmount } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', {
+        ...baseSession,
+        id,
+        conversationId: id,
+        currentSessionId: 'old-child',
+      }),
+    );
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalled());
+    expect(activeChatsStore.getSnapshot()[id]).toMatchObject({
+      currentSessionId: 'new-child',
+      openTurnId: 'new-turn',
+      streamingMessage: { content: 'new live answer' },
+    });
+    unmount();
+    activeChatsStore.removeChat(id);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     recoveryBudget.clear();
@@ -71,6 +357,59 @@ describe('useActiveChatTranscript', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  /**
+   * #1582 E3/B6. The reader's `settled` is what lets a consumer tell "this
+   * conversation is empty" from "nobody has looked yet"; `loading` cannot,
+   * because it is false on both sides of the request. The chat dock reads it
+   * to decide whether "Start a conversation" is a claim it is entitled to
+   * make, so the PRODUCER needs its own coverage — a consumer test given
+   * `settled: false` proves the fold, never that anything ever sets it.
+   */
+  test('does not settle while the read is in flight', async () => {
+    // Never resolves: the reader has asked and has no answer, which is the
+    // exact state the empty "Start a conversation" placeholder used to render
+    // over.
+    fetchWindow.mockImplementation(() => new Promise(() => {}));
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(true));
+    expect(result.current.settled).toBe(false);
+    expect(result.current.messages).toEqual([]);
+  });
+
+  test('settles on an empty page — "no turns" is then a reading', async () => {
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [],
+    });
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    // Still empty — but now that is a reading, not an absence of one.
+    expect(result.current.messages).toEqual([]);
+  });
+
+  test('a failed read is still a reading', async () => {
+    fetchWindow.mockRejectedValue(new Error('transport down'));
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    // The consumer must stop waiting: an error is an answer, and leaving
+    // `settled` false here would hold the loading state forever.
+    expect(result.current.settled).toBe(true);
   });
 
   test('reads bounded REST pages only, keeps stable rows, and filters the global live leaf', async () => {
@@ -133,7 +472,7 @@ describe('useActiveChatTranscript', () => {
       2,
       'thread-1',
       'http://station.test',
-      { cursor: 'older', turnLimit: 20 },
+      { cursor: 'older', turnLimit: 20, direction: 'newest' },
       { signal: expect.any(AbortSignal) },
     );
   });
@@ -318,7 +657,13 @@ describe('useActiveChatTranscript', () => {
           toolCallId: 'same-call',
           toolName: 'shell',
           status: 'success',
-          output: 'done',
+          output: {
+            uiBlock: {
+              type: 'card',
+              title: 'Replay card',
+              body: 'Kept result',
+            },
+          },
         }),
         event('e3', 'turn.completed', {
           turnId: 'turn-1',
@@ -332,6 +677,17 @@ describe('useActiveChatTranscript', () => {
     await waitFor(() => expect(result.current.messages).toHaveLength(2));
     expect(result.current.messages[1]?.contentParts).toContainEqual(
       expect.objectContaining({ type: 'tool-invocation', sourceEventId: 'e2' }),
+    );
+    expect(result.current.messages[1]?.contentParts).toContainEqual(
+      expect.objectContaining({
+        type: 'ui-block',
+        toolCallId: 'same-call',
+        sourceEventId: 'e2',
+        uiBlock: expect.objectContaining({
+          id: 'e2-block-0',
+          title: 'Replay card',
+        }),
+      }),
     );
   });
 

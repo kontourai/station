@@ -20,7 +20,7 @@ export class KnowledgeObservationRefusal extends Error {
   }
 }
 
-export function observationAbsent(error: unknown): boolean {
+function observationAbsent(error: unknown): boolean {
   return (error as NodeJS.ErrnoException)?.code === 'ENOENT';
 }
 

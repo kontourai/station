@@ -26,13 +26,17 @@
 
 import type { DevicePresentation } from '@kontourai/station-contracts/system-status';
 
-export type HostActionReach = 'remote-safe' | 'host-hands';
+type HostActionReach = 'remote-safe' | 'host-hands';
 
 export type HostActionId =
   /** archive#3843 — the SSH creator's trust command (archive#3733's creator). */
   | 'ssh-trust-command'
-  /** archive#3843 — the first-run engines chapter's scan lede. */
+  /** archive#3843 — the first-run engines chapter's scan lede, where a row can be ticked. */
   | 'engine-scan'
+  /** #1536 A4 — the same list where every engine is ALREADY set up. */
+  | 'engine-scan-all-set'
+  /** #1536 A4 — the same list where no row can be ticked, and not all are set up. */
+  | 'engine-scan-none-selectable'
   /** archive#3843 — the first-run engines chapter's still-scanning line. */
   | 'engine-scan-pending'
   /** archive#3843 — an engine the scan did not find. */
@@ -40,9 +44,29 @@ export type HostActionId =
   /** archive#3843 — the Agents row's one fixing verb, accessibly named. */
   | 'agent-engine-setup'
   /** archive#3843 — the Developer surface's redacted log read. */
-  | 'developer-logs';
+  | 'developer-logs'
+  /**
+   * A connection whose engine needs its own login run. Distinct from
+   * `engine-missing`: that one is not installed, this one is installed and
+   * signed out, and telling a user to sign in to something that is not there
+   * is the defect this vocabulary exists to prevent.
+   */
+  | 'connection-sign-in'
+  /**
+   * A connection resolved through an ambient credential chain configured on
+   * the host's filesystem (AWS profiles, SSO caches, IMDS). There is no
+   * sign-in to perform and nothing to paste.
+   */
+  | 'connection-credentials'
+  /**
+   * A connection whose secret is pasted into Station and stored by Station.
+   * `remote-safe` because that genuinely works from anywhere -- the key box
+   * already posts to the host today -- so the affordance stays and only the
+   * machine that will hold the key is named.
+   */
+  | 'connection-api-key';
 
-export interface HostActionCopyEntry {
+interface HostActionCopyEntry {
   reach: HostActionReach;
   /** What the person sitting at the host machine reads. */
   host: string;
@@ -65,6 +89,25 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     paired: (hostName) =>
       `Station found these on ${hostName}, the computer it runs on. Pick the ones you use and Station sets up an agent for each — you can change them later.`,
   },
+  'engine-scan-all-set': {
+    // #1536 A4: the "pick" lede stood above three rows that all read
+    // "Ready — Already set up as …", with nothing to tick — a verb with no
+    // control under it. This says what happened instead of asking for an act
+    // that is already done.
+    reach: 'host-hands',
+    host: 'Station found these on this machine and set each one up. Nothing to pick here — you can change them later.',
+    paired: (hostName) =>
+      `Station found these on ${hostName}, the computer it runs on, and set each one up. Nothing to pick here — you can change them later.`,
+  },
+  'engine-scan-none-selectable': {
+    // Not all set up, but none tickable either. Deliberately claims nothing
+    // about WHY — each row carries its own reason, and this lede must not
+    // summarise a mix of them into one sentence that is wrong for some.
+    reach: 'host-hands',
+    host: 'Station found these on this machine. None can be set up from here right now — each row says why.',
+    paired: (hostName) =>
+      `Station found these on ${hostName}, the computer it runs on. None can be set up from here right now — each row says why.`,
+  },
   'engine-scan-pending': {
     reach: 'host-hands',
     host: 'Looking for agent CLIs on this machine…',
@@ -79,6 +122,30 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     host: 'Not found on this machine.',
     paired: (hostName) =>
       `Not found on ${hostName}. Agent CLIs run on that computer, so it has to be installed there.`,
+  },
+  'connection-sign-in': {
+    // The engine's own login runs on the host and writes to the credential
+    // store there. Nothing a browser on another device can do reaches it.
+    reach: 'host-hands',
+    host: 'Sign in to finish connecting.',
+    paired: (hostName) =>
+      `Sign in on ${hostName}. The engine keeps its own credentials on that computer, so the login has to run there.`,
+  },
+  'connection-credentials': {
+    reach: 'host-hands',
+    host: 'Configure credentials to finish connecting.',
+    paired: (hostName) =>
+      `Configure credentials on ${hostName}. Station reads them from that computer's own credential chain.`,
+  },
+  'connection-api-key': {
+    reach: 'remote-safe',
+    // Empty host branch: on the host there is no second machine to name, and
+    // the key box below says everything else. The paired branch names the
+    // machine that will hold the key, because "where does this secret go" is
+    // the question a person types one into a phone with.
+    host: '',
+    paired: (hostName) =>
+      `The key is saved on ${hostName}, the computer Station runs on. It is never sent back to this device.`,
   },
   'agent-engine-setup': {
     // Setting up an engine sends you to Connections, which a paired device

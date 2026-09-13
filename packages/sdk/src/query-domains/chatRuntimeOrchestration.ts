@@ -23,6 +23,8 @@ import {
   discoverDelegationOptions as discoverDelegationOptionsClient,
   type InterruptDelegatedTaskInput,
   interruptDelegatedTask as interruptDelegatedTaskClient,
+  type ProviderTaskStopResult,
+  stopProviderTask as stopProviderTaskClient,
 } from '../client/delegations';
 import {
   continueExecutionMessage,
@@ -112,7 +114,7 @@ export class AdoptSessionError extends Error {
 export async function fetchOrchestrationSessionEventWindow(
   threadId: string,
   apiBase?: string,
-  input?: { cursor?: string; turnLimit?: number },
+  input?: { cursor?: string; turnLimit?: number; direction?: 'newest' },
   opts?: ClientRequestOptions,
 ): Promise<OrchestrationSessionEventWindow> {
   const page =
@@ -131,7 +133,7 @@ export async function fetchOrchestrationSessionEventWindow(
 export async function fetchOrchestrationConversationEventWindow(
   conversationId: string,
   apiBase?: string,
-  input?: { cursor?: string; turnLimit?: number },
+  input?: { cursor?: string; turnLimit?: number; direction?: 'newest' },
   opts?: ClientRequestOptions,
 ): Promise<OrchestrationConversationEventWindow> {
   const page =
@@ -274,6 +276,30 @@ export async function interruptOrchestrationDelegatedTask(
   const resolvedApiBase = await resolveApiBase(input.apiBase);
   const { apiBase: _apiBase, taskId, ...body } = input;
   return interruptDelegatedTaskClient(resolvedApiBase, taskId, body);
+}
+
+export interface StopProviderTaskInput {
+  threadId: string;
+  taskId: string;
+}
+
+/**
+ * station#1877: stop one provider-reported subagent. Distinct from
+ * `useInterruptDelegatedTaskMutation`, which targets a Station delegate — a
+ * task with its own session — rather than an engine's own subagent.
+ */
+export async function stopOrchestrationProviderTask(
+  input: StopProviderTaskInput & { apiBase?: string },
+): Promise<ProviderTaskStopResult> {
+  const resolvedApiBase = await resolveApiBase(input.apiBase);
+  return stopProviderTaskClient(resolvedApiBase, input.threadId, input.taskId);
+}
+
+export function useStopProviderTaskMutation(apiBase?: string) {
+  return useMutation({
+    mutationFn: (input: StopProviderTaskInput) =>
+      stopOrchestrationProviderTask({ ...input, apiBase }),
+  });
 }
 
 export function useInterruptDelegatedTaskMutation(apiBase?: string) {
@@ -908,6 +934,7 @@ export function useOrchestrationSessionsQuery(
       staleTime: config?.staleTime ?? orchestrationQueries.sessions().staleTime,
       gcTime: config?.gcTime,
       enabled: config?.enabled,
+      refetchInterval: config?.refetchInterval,
     },
   );
 }

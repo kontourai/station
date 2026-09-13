@@ -78,6 +78,7 @@ vi.mock('../contexts/NavigationContext', () => ({
 }));
 
 import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
+import { toastStore } from '../contexts/ToastContext';
 import { NotificationsPage } from '../pages/NotificationsPage';
 
 function renderPage() {
@@ -102,6 +103,34 @@ function renderPage() {
       ),
   };
 }
+
+test('a dismissed app error remains readable in Notifications without replaying its action', () => {
+  const retry = vi.fn();
+  const id = toastStore.show(
+    'Could not connect to this Station.',
+    undefined,
+    0,
+    [{ label: 'Retry expired request', onClick: retry }],
+    undefined,
+    'error',
+  );
+  toastStore.dismiss(id);
+  const view = renderPage();
+  try {
+    const history = screen.getByRole('region', { name: 'Recent app messages' });
+    expect(
+      within(history).getByText('Could not connect to this Station.'),
+    ).toBeTruthy();
+    expect(within(history).getByText('Error')).toBeTruthy();
+    expect(
+      within(history).queryByRole('button', { name: 'Retry expired request' }),
+    ).toBeNull();
+    expect(retry).not.toHaveBeenCalled();
+  } finally {
+    view.unmount();
+    toastStore.clearHistory();
+  }
+});
 
 /**
  * The number the header bell renders, derived exactly as `HeaderActions` does
@@ -379,9 +408,7 @@ describe('NotificationsPage', () => {
     // what this page still owns is its sections and their empty copy.
     expect(screen.getByText('All caught up')).toBeTruthy();
     expect(
-      screen.getByText(
-        'Nothing needs you right now, and there is no activity yet.',
-      ),
+      screen.getByText('Nothing needs your attention right now.'),
     ).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Dismiss all attention items' }),
@@ -597,9 +624,12 @@ describe('NotificationsPage', () => {
       ],
     };
 
-    renderPage();
+    const view = renderPage();
 
     fireEvent.click(screen.getByText('Dismiss all attention items'));
+    expect(screen.getByRole('dialog').textContent).toContain(
+      'Dismiss 1 item needing attention? Activity stays.',
+    );
     fireEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Dismiss all attention items',
@@ -617,6 +647,16 @@ describe('NotificationsPage', () => {
       'setup-incomplete:model-connection:station',
       expect.anything(),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    attention = { pendingCount: 1, items: [attention.items[1]!] };
+    view.refresh();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Dismiss all attention items',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 
   test('bulk dismissal confirms and dismisses only attention items', async () => {

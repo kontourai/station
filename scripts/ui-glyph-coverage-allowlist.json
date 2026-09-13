@@ -1,0 +1,333 @@
+{
+  "$comment": "Codepoints the UI draws that no bundled font subset covers, and the written disposition for each. Derived and enforced by scripts/ui-glyph-coverage-ratchet.mjs (#1649); see that file's header for what the gate proves and what it does not. An entry permits host font fallback for one codepoint. It does not assert the glyph renders anywhere.",
+  "categories": {
+    "keycap": {
+      "reason": "macOS modifier symbols. Every surface that draws one routes through formatShortcutChord in KeyboardShortcutsContext, which emits these only when the platform is macOS and spells the chord Ctrl+/Shift+/Alt+ everywhere else. macOS always has a font for them, so the fallback is to a font that is always present. A hardcoded Mac keycap on Windows or Linux is a false label rather than a typography problem, which is why the three sites that had one were fixed rather than listed here."
+    },
+    "icon": {
+      "reason": "Symbol characters used as icons: chevrons, status marks and one-off pictograms drawn as text and styled with font-size and color. This is the debt category, not a decision. #1704 replaces them with real icons and shrinks this list; nothing here is endorsed, it is recorded so that adding a new one is a deliberate act.",
+      "issue": "#1704"
+    },
+    "prose": {
+      "reason": "Arrow characters inside user-facing sentences and labels — \"Open Connections → Models\", \"← Back\". An arrow is the right thing to draw there and an icon would be wrong; the question they raise is a copy question, not an icon question. Explicitly out of scope for #1704."
+    },
+    "emoji": {
+      "reason": "Emoji, and the variation selector that puts a character into emoji presentation. Every platform draws emoji from its own emoji font and none of them would come from a bundled Latin subset under any subsetting decision. Universal, correct, and not re-litigated."
+    },
+    "pseudo-locale": {
+      "reason": "The fullwidth brackets that wrap every string in the development-only pseudo locale (src-ui/src/i18n/pseudo.ts). Their whole purpose is to look unlike the surrounding UI so an untranslated or truncated string is visible at a glance; host fallback is not a defect here, and covering them in a bundled subset would work against what they are for."
+    }
+  },
+  "codepoints": [
+    {
+      "codepoint": "U+21E7",
+      "character": "⇧",
+      "category": "keycap"
+    },
+    {
+      "codepoint": "U+2303",
+      "character": "⌃",
+      "category": "keycap"
+    },
+    {
+      "codepoint": "U+2318",
+      "character": "⌘",
+      "category": "keycap"
+    },
+    {
+      "codepoint": "U+2325",
+      "character": "⌥",
+      "category": "keycap",
+      "note": "Also drawn as the Settings > Developer tools section pictogram (SettingsView.tsx), which is an icon use of a keycap symbol rather than a chord — #1704 owns replacing it."
+    },
+    {
+      "codepoint": "U+2197",
+      "character": "↗",
+      "category": "icon",
+      "note": "The marker on a link that leaves the app."
+    },
+    {
+      "codepoint": "U+21BB",
+      "character": "↻",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+22EE",
+      "character": "⋮",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+22EF",
+      "character": "⋯",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+2302",
+      "character": "⌂",
+      "category": "icon",
+      "note": "The project sidebar Home affordance."
+    },
+    {
+      "codepoint": "U+2304",
+      "character": "⌄",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+2328",
+      "character": "⌨",
+      "category": "icon",
+      "note": "The Settings > Keyboard shortcuts section pictogram."
+    },
+    {
+      "codepoint": "U+23F1",
+      "character": "⏱",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+23F9",
+      "character": "⏹",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25A0",
+      "character": "■",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25A6",
+      "character": "▦",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25B2",
+      "character": "▲",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25B4",
+      "character": "▴",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25B6",
+      "character": "▶",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25B8",
+      "character": "▸",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25BC",
+      "character": "▼",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25BE",
+      "character": "▾",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25C6",
+      "character": "◆",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25C7",
+      "character": "◇",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25C9",
+      "character": "◉",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25CB",
+      "character": "○",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25CF",
+      "character": "●",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25D0",
+      "character": "◐",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+25EB",
+      "character": "◫",
+      "category": "icon",
+      "note": "The Settings > Diagnostics section pictogram."
+    },
+    {
+      "codepoint": "U+2605",
+      "character": "★",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+2606",
+      "character": "☆",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+2697",
+      "character": "⚗",
+      "category": "icon",
+      "note": "The Settings > Feature previews section pictogram."
+    },
+    {
+      "codepoint": "U+2699",
+      "character": "⚙",
+      "category": "icon",
+      "note": "The Settings > Station configuration section pictogram."
+    },
+    {
+      "codepoint": "U+26AF",
+      "character": "⚯",
+      "category": "icon",
+      "note": "The Settings > Shared answers section pictogram."
+    },
+    {
+      "codepoint": "U+2713",
+      "character": "✓",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+2715",
+      "character": "✕",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+27F3",
+      "character": "⟳",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+29C9",
+      "character": "⧉",
+      "category": "icon"
+    },
+    {
+      "codepoint": "U+2190",
+      "character": "←",
+      "category": "prose"
+    },
+    {
+      "codepoint": "U+2192",
+      "character": "→",
+      "category": "prose"
+    },
+    {
+      "codepoint": "U+26A0",
+      "character": "⚠",
+      "category": "emoji",
+      "note": "One occurrence, and it is parsed rather than drawn: a regex in chatErrorTranslation.ts matching a warning emoji the server produced."
+    },
+    {
+      "codepoint": "U+FE0F",
+      "character": "️",
+      "category": "emoji",
+      "note": "Not a glyph of its own — the variation selector that puts the preceding character into emoji presentation."
+    },
+    {
+      "codepoint": "U+1F310",
+      "character": "🌐",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F389",
+      "character": "🎉",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F3A8",
+      "character": "🎨",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F3C6",
+      "character": "🏆",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4B0",
+      "character": "💰",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4C1",
+      "character": "📁",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4C8",
+      "character": "📈",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4CA",
+      "character": "📊",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4DA",
+      "character": "📚",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4F1",
+      "character": "📱",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F50C",
+      "character": "🔌",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F512",
+      "character": "🔒",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F680",
+      "character": "🚀",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F6E0",
+      "character": "🛠",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F916",
+      "character": "🤖",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F9E9",
+      "character": "🧩",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F9EA",
+      "character": "🧪",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+FF3B",
+      "character": "［",
+      "category": "pseudo-locale"
+    },
+    {
+      "codepoint": "U+FF3D",
+      "character": "］",
+      "category": "pseudo-locale"
+    }
+  ]
+}

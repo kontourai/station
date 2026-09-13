@@ -4,7 +4,7 @@ import {
   type OperationalEventEnvelope,
 } from '@kontourai/station-contracts/operational-event';
 
-export type RuntimeLifecyclePhase = 'ready' | 'stopping';
+type RuntimeLifecyclePhase = 'ready' | 'stopping';
 
 export function createRuntimeLifecycleOperationalEvent(input: {
   phase: RuntimeLifecyclePhase;

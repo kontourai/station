@@ -13,7 +13,7 @@ export interface CommandFrecencyEntry {
   lastUsedAt: number;
 }
 
-export const COMMAND_FRECENCY_MAX_ENTRIES = 100;
+const COMMAND_FRECENCY_MAX_ENTRIES = 100;
 export const COMMAND_FRECENCY_MAX_COUNT = 20;
 export const COMMAND_FRECENCY_MAX_BOOST = 12;
 const DECAY_WINDOW_MS = 28 * 24 * 60 * 60 * 1000;

@@ -305,7 +305,9 @@ export function ACPConnectionConfirmStage({
         Connect <strong>{entry.name}</strong> to this Station?
       </p>
       <ul className="acp-add-dialog__confirm-list">
-        <li>Saves a connection to {entry.name} on this computer.</li>
+        <li>
+          Saves a connection to {entry.name} on the computer Station runs on.
+        </li>
         <li>Adds an agent named {entry.name} to your Agents list.</li>
         <li>
           Runs <code>{entry.command}</code> to check whether it is ready.
@@ -431,7 +433,7 @@ export function ACPConnectionSetupStatus({
 */}
               {reason.phase === 'spawn' ||
               reason.phase === 'workspace preparation'
-                ? 'Station could not start this engine’s command. Install it and make it runnable on this computer, then check it again.'
+                ? 'Station could not start this engine’s command. Install it and make it runnable on the computer Station runs on, then check it again.'
                 : 'The command started but did not finish connecting. Resolve what it reported above in the engine itself, then check it again.'}
             </span>
           </>

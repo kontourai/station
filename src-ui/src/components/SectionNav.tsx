@@ -45,7 +45,7 @@ export interface SectionNavItem {
   dividerAfter?: boolean;
 }
 
-export interface SectionNavProps {
+interface SectionNavProps {
   items: readonly SectionNavItem[];
   activeKey: string;
   onNavigate: (key: string) => void;

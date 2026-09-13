@@ -23,7 +23,6 @@ export function PluginManagementView({
   const {
     addLayoutToProjects,
     addPluginLayout,
-    apiBase,
     assigningLayout,
     changelogData,
     changelogExpanded,
@@ -223,7 +222,6 @@ export function PluginManagementView({
       />
 
       <PluginModalStack
-        apiBase={apiBase}
         showInstallModal={showInstallModal}
         showFolderPicker={showFolderPicker}
         previewData={previewData}

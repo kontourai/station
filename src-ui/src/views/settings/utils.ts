@@ -113,7 +113,7 @@ function migrateSharedDeviceRoot(raw: unknown): Partial<DeviceSettings> {
   }
 }
 
-export interface SettingsExportPayloadV2 {
+interface SettingsExportPayloadV2 {
   version: 2;
   /** Registry-driven S1/S2 config (`APP_SETTINGS_REGISTRY` keys only). */
   station: Partial<AppConfig>;
@@ -148,7 +148,7 @@ const PRIOR_KEY_TO_DEFINITION = new Map(
   ).map((definition) => [definition.priorStorageKey as string, definition]),
 );
 
-export interface ParsedSettingsImport {
+interface ParsedSettingsImport {
   serverConfig: Partial<AppConfig>;
   /**
    * Registered device-setting keys present in the file whose value failed

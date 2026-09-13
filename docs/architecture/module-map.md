@@ -19,6 +19,8 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 | Module | Intent | Primary source |
 | --- | --- | --- |
+| [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
+| [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
 | [WorkspacePaneHostContributions](#workspacepanehostcontributions) | Bind package-level Pane-host actions and explicit Agent selection without treating Pane requirements as routing authority. | `src-server/services/plugins/workspace-pane-host-contributions.ts` |
@@ -43,7 +45,9 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [LocalSkillMutationAuthority and SetupImportEffectJournal](#localskillmutationauthority-and-setupimporteffectjournal) | Serialize every local Skill mutation and retain each reviewed import effect through recovery. | `src-server/services/agents/skill-service.ts`, `src-server/services/setup/existing-agent-setup-import.ts` |
 | [AgentPluginLoader](#agentpluginloader) | Consume one installed Agent Plugins package without copying portable components or widening failure boundaries. | `src-server/services/plugins/agent-plugin-loader.ts` |
 | [StationHomeArchive](#stationhomearchive) | Validate, back up, and atomically restore one inactive Station home. | `packages/shared/src/station-home-archive.ts` |
+| [StationHomeRecoveryPreflight](#stationhomerecoverypreflight) | Observe bounded recovery metadata without granting mutation or execution authority. | `packages/shared/src/station-home-recovery-preflight.ts` |
 | [ProjectFileTransactions](#projectfiletransactions) | Serialize Project lifecycle and nested record mutations under exact revision capabilities. | `src-server/domain/project-file-transactions.ts` |
+| [ProjectIdentity](#projectidentity) | Prepare and attach portable identity while preserving receiver-local Project identity. | `src-server/services/projects/project-identity-service.ts` |
 | [KnowledgeFileTransactions](#knowledgefiletransactions) | Publish one multi-file knowledge mutation with durable rollback and exact conflict detection. | `src-server/knowledge-store/adapters/shared/file-transactions.ts` |
 | [SharedWorkingState](#sharedworkingstate) | Converge one authorized text document through versioned causal operations and bounded resync. | `src-server/domain/shared-working-state.ts` |
 | [LiveWorkSession](#liveworksession) | Project bounded, separately authorized ephemeral work presence for one exact Project/Task/surface/session. | `src-server/domain/live-work-session.ts` |
@@ -67,6 +71,67 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [SchedulerLedger and BuiltinScheduler](#schedulerledger-and-builtinscheduler) | Own scheduled-job state, occurrence receipts, and safe unattended execution. | `src-server/services/scheduling/scheduler-ledger.ts` |
 | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) | Dispatch a task while keeping graph state and orchestration detail local. | `src-server/services/projects/task-dispatcher.ts` |
 | [StationInstanceReconciler](#stationinstancereconciler) | Observe and converge one installed Station instance safely. | `packages/cli/src/commands/station-instance-reconciler.ts` |
+
+## DeploymentAuthentication
+
+`ApplicationSessionService` owns the proof-bound continuation store and current
+provider-session/Device composition. `application-session-routes.ts` exposes its
+bounded control surface, and `application-session-runtime.ts` installs it before
+request admission. `account-response-guard.ts` rechecks delivery with zero
+prefetch. The SDK application-session client owns key/proof construction; a relay
+only carries the authenticated encrypted request/response stream. Provider hooks
+resolve private session references; no virtual response installs a browser cookie.
+
+**Intent and Interface.** The public `deployment-authentication` contract lets an
+operator supply a versioned authentication module at startup. Its factory receives
+the selected Station identity, public origin, fixed authentication base path and
+private state directory. It declares exact account cookies and operation paths;
+Project plugins and requests cannot install an authority. Verified issuer/subject
+pairs produce bounded stable principals; contact and display fields grant no access.
+
+**Implementation and callers.** `deployment-authentication-loader.ts` validates
+explicit startup configuration and storage custody. `DeploymentAuthenticationService`
+validates provider results, bounds waits, rejects expired/malformed credentials and
+keeps request identity through bounded-body replacement. `runtime-http.ts` composes
+this before personal-device admission, while `runtime-routes.ts` refuses conflicting
+verified people and supplies the actual account principal to existing execution and
+room authority. `deployment-authentication-routes.ts` owns the narrow login/self
+surface, its origin/body/attempt bounds and declared-operation dispatch. Account
+authentication does not bypass device scope or implement Project membership.
+
+`local-account-runtime.ts` composes the built-in username/password provider,
+private persistent signing authority and real Project enrollment eligibility.
+`local-account-administration-routes.ts` exposes operator-only account disabling,
+session revocation and recovery links. `ProjectMembershipService` holds the
+current local Project revision while `ProjectMembershipStore` atomically manages
+scoped members, invitation acceptance and ownership transfer. The SDK's
+`project-access`, `local-accounts` and `account-authentication` subpaths serve
+the Project/admin controls and the separate browser account entry. Account
+entry does not mount personal connection providers or persisted Project caches.
+
+**Evidence and limits.** External-module HTTP fixtures and the real runtime
+principal-composition suite exercise refusal and identity propagation. They do not
+prove a production identity provider, email delivery, visual design or physical
+two-human acceptance. See [deployment authentication](../guides/deployment-authentication.md)
+for the operator contract and the remaining account/member delivery boundaries.
+
+## VirtualApplicationIngress
+
+**Intent and Interface.** A trusted connector receives the protected Station
+application through `StationRuntimeOptions.virtualApplication` only after
+startup completes. Its Fetch-compatible dispatcher and retirement signal do not
+supply account, Device or Project authority. The canonical Station origin is
+fixed at composition time; the connector supplies actual client Origin and the
+existing scoped credentials inside its authenticated encrypted channel.
+
+**Implementation and callers.** `services/connections/virtual-application.ts`
+under `src-server` constructs fresh Requests, refuses cookie and proxy authority,
+limits open response custody, and fences late or streaming delivery.
+`runtime/bootstrap/station-runtime.ts` captures the already protected Hono app
+at route composition, publishes after initialization, and retires it at
+replacement or shutdown. No Node socket metadata is synthesized. See
+[protected application dispatch](../design/connection-broker.md#protected-application-dispatch)
+for lifecycle, limits and the remaining encrypted-path acceptance.
 
 ## AgentPluginLoader
 
@@ -107,7 +172,7 @@ loader into `SkillService` and `ConfigLoader`; the shared MCP transport consumes
 the projected cwd and headers. Directory/git install validates recognized
 packages through the same loader while the legacy parser remains an explicit
 #346 fallback. Behavioral and real-child-process evidence lives in
-`agent-plugin-loader.test.ts`, `plugin-install-shared.test.ts`, and
+`agent-plugin-loader.test.ts`, `plugin-install-transaction.test.ts`, and
 `mcp-v2.test.ts`. **Do not reintroduce:** recursive Agent Plugin Skill discovery,
 copied MCP snapshots, schema fetching, whole-plugin failure for an invalid
 Skill/server, or placeholder expansion in commands/URLs/headers.
@@ -460,7 +525,7 @@ ownership, or an implicit change to completed-session behavior.
 
 **Contract.** One client turn has one owner across restart and concurrent SQLite connections. A contending caller either waits for the resolved turn or observes unresolved contention. A claim latches its exact transition: after a durable write fault the same transition may retry, while a changed transition or double success is rejected. This is a short-lifetime deduplication protocol, not a reclaiming recovery lease.
 
-**Seam, Implementation, callers, and tests.** `EventStore` composes its private SQLite coordinator into the Module; orchestration callers receive only the Interface. `src-server/services/orchestration/__tests__/turn-deduplicator.test.ts` uses real temporary SQLite for ownership, restart, and fault behaviour. The separate `/chat` facade retains its own `EventStore` chat-turn family because it owns conversation-id replay, bounded retention, and direct-route compatibility; it is not a second TurnDeduplicator caller family. **Do not reintroduce:** a process-local map, raw `(threadId, clientTurnId)` updates, a reclaiming recovery protocol, or a generic ledger wrapper around the retained chat-turn facade.
+**Seam, Implementation, callers, and tests.** `EventStore` composes its private `src-server/services/orchestration/sqlite-turn-dedup-persistence.ts` coordinator into the Module; orchestration callers receive only the Interface. `src-server/services/orchestration/__tests__/turn-deduplicator.test.ts` uses real temporary SQLite for ownership, restart, and fault behaviour. The separate `/chat` facade retains its own `EventStore` chat-turn family because it owns conversation-id replay, bounded retention, and direct-route compatibility; it is not a second TurnDeduplicator caller family. **Do not reintroduce:** a process-local map, raw `(threadId, clientTurnId)` updates, a reclaiming recovery protocol, or a generic ledger wrapper around the retained chat-turn facade.
 
 ## AdoptionLedger
 
@@ -468,7 +533,7 @@ ownership, or an implicit change to completed-session behavior.
 
 **Contract.** Pending reservations may record Flow facts, then advance once to forking. Provider cursor is write-once except an identical retry. Commit needs forking, provider cursor, complete Flow facts, and matching child/event facts; it atomically persists the child and receipt while removing the reservation. Rollback is terminal; only there may both cleanup facts be recorded before removal. Ownership loss and invalid transitions are typed outcomes. A durable Adapter failure keeps the exact capability retryable; snapshots cannot forge or alter its owner token.
 
-**Seam, Implementation, callers, and tests.** `EventStore` composes the private SQLite coordinator. `AttachedSessionFollowService` and orchestration adoption paths consume the Interface. Real SQLite contention, restart, fault, legal-transition, and atomicity proofs are in `src-server/services/orchestration/__tests__/adoption-ledger.test.ts` and attached-session/orchestration suites. **Do not reintroduce:** EventStore forwarding methods, unrestricted merge/update operations, caller-supplied ownership tokens, or split commit writes.
+**Seam, Implementation, callers, and tests.** `EventStore` composes the private `src-server/services/orchestration/sqlite-adoption-persistence.ts` coordinator, injecting the child-session and command-receipt writes its atomic commit performs. `AttachedSessionFollowService` and orchestration adoption paths consume the Interface. Real SQLite contention, restart, fault, legal-transition, and atomicity proofs are in `src-server/services/orchestration/__tests__/adoption-ledger.test.ts` and attached-session/orchestration suites. **Do not reintroduce:** EventStore forwarding methods, unrestricted merge/update operations, caller-supplied ownership tokens, or split commit writes.
 
 ## RecoveryLedger and private CredentialApplicationFactory/Handle
 
@@ -522,7 +587,7 @@ ownership, or an implicit change to completed-session behavior.
 
 **Intent and Interface.** `writeJsonFile(path, value, options)` publishes one complete bounded JSON value, while `mutateJsonFile(path, fallback, update, options)` performs one serialized read/derive/publish transaction. `publishJsonFileWithOwnedLock(path, value, options)` is the narrow atomic-publication Seam for a composed transaction that already owns a broader integration capability; it never reacquires a second path lock. The update callback is deliberately synchronous and never receives the lock capability. `IStorageAdapter` exposes Promise-returning mutations so every service, route, migration, and startup caller awaits durable completion or a bounded ownership failure.
 
-**Contract.** Every server-side JSON mutation acquires `acquireFileMutationLockAsync`, re-reads authoritative bytes only after ownership, stages a same-directory private file, syncs it, and atomically renames it before releasing ownership. Optimistic fingerprint writes retain exact conflict behavior; read-modify-write stores use `mutateJsonFile` so two Station processes cannot lose independent updates. Integration configuration and its secret store use fixed integration-then-credential lock ordering, publish secret material before its reference-bearing configuration, and remove retired secrets only after configuration publication. CLI portability import awaits the same credential and integration authorities, so API, CLI, and MCP cannot disagree about durable completion. Constructors may validate or project a missing document as empty, but never busy-wait on a synchronous production lock.
+**Contract.** Every server-side JSON mutation that goes through `writeJsonFile`/`mutateJsonFile` acquires `acquireFileMutationLockAsync`, re-reads authoritative bytes only after ownership, stages a same-directory private file, syncs it, and atomically renames it before releasing ownership. `publishJsonFileWithOwnedLock` acquires nothing by design, and two server callers reach it without a file lock: the memory adapter's conversation documents, whose read-modify-write is serialized by the adapter's own per-conversation in-process queue, and the usage-telemetry disclosure receipt, a whole-value publish that reads nothing — a concurrent writer there can only produce last-rename-wins between two individually complete documents, never a lost update and never a torn file. That is the test a lock-free caller must pass: either it publishes a whole value it did not derive from the file, or it serializes its own read-modify-write. The name says "owned lock" because every other caller holds one, not because the Seam checks. Session-summary sidecars publish through the same Seam under `${path}.mutation`: regeneration is a whole-value publish, but `dismiss`/`show` derive from the file, so all three take the capability and read inside it. Anything that fails the test belongs on `writeJsonFile`; a read-modify-write whose "no change" case must not create a document cannot use `mutateJsonFile` (which publishes whatever the updater returns, so the fallback would create the document) and instead acquires the capability itself and publishes conditionally under it — session-summary composes that with this Seam, while `SshEnvironmentProfileStore` (its own descriptor writer) and `NotificationService` (`JsonFileStore`) are precedents for the shape rather than for this Seam. `delete` takes the same capability as its coordinate's publishers, so an unlink cannot land between a conditional mutation's read and its publish. Optimistic fingerprint writes retain exact conflict behavior; read-modify-write stores use `mutateJsonFile` so two Station processes cannot lose independent updates. Integration configuration and its secret store use fixed integration-then-credential lock ordering, publish secret material before its reference-bearing configuration, and remove retired secrets only after configuration publication. CLI portability import awaits the same credential and integration authorities, so API, CLI, and MCP cannot disagree about durable completion. Constructors may validate or project a missing document as empty, but never busy-wait on a synchronous production lock.
 
 **Seam, Implementation, callers, and tests.** `FileStorageAdapter`, project/layout/provider/template/knowledge-root/conversation/document services, integration configuration, OAuth/MCP credential persistence, and CLI portability import are callers. Contention and preservation evidence lives in `src-server/services/__tests__/store-async-lock-cutover.test.ts`, `src-server/domain/__tests__/config-loader-storage.process.test.ts`, and the file-storage/provider/credential/portability suites. The source ratchet rejects synchronous lock acquisition anywhere in production `src-server`. **Do not reintroduce:** synchronous `acquireFileMutationLock` in server production, caller-owned read-modify-write, an async updater while ownership is held, publishing a secret reference before secret material, fire-and-forget storage mutation, or a separate CLI credential mutation protocol.
 
@@ -559,13 +624,54 @@ isolation. See the [operator recovery drill](../guides/deployment.md#offline-hom
 
 This is not a live-home backup, immutable forensic snapshot, migration, restore, owner-exclusion capability, or hostile-filesystem containment proof. It reuses the archive owner's private staging/sync/cleanup mechanics, never invokes SQLite checkpointing, ordinary store constructors, enrollment or runtime startup, and has no CLI/apply caller. Failed staging is cleaned where possible; interrupted or post-rename failures may retain an inert artifact, never a bootable home. Later consumption must revalidate exact staged bytes and acquire its own real authorization; this plan grants none. Disposable directory tests in `station-home-recovery-candidate.test.ts` exercise the actual archive entry point, unchanged payloads, privacy/bounds, non-bootability, destination conflicts, and injected staging faults. #1391/#1388 physical recovery remain open.
 
+## StationHomeRecoveryPreflight
+
+**Intent and Interface.** `inspectStationHomeRecovery({homeDir})` produces a redacted, bounded selected-field inventory through `station home recovery-plan`. The CLI requires an explicit home and bypasses lifecycle argument paths that create temporary homes, as well as keyring setup. Schema and Engine/Agent reference observations are separate from unopened historical, credential, grant, scheduler and plugin payloads.
+
+**Contract.** No bootstrap, lease acquisition, archive, migration, write or process launch. Exact IDs are compared without alias inference. Unclassified stores, malformed selected metadata, observed path changes, unsafe links and bounds failures remain visible. PID-zero observations never prove birth identity or legacy owner exclusion. The report is non-atomic and always carries `applyAllowed: false`; it is not a recovery receipt or future apply token. History preservation is not permission to resume or execute. No original payload is quarantined or rewritten.
+
+**Seam, callers and tests.** The shared implementation reuses runtime-home admission and bounded no-follow file reads from the schema owner, but never calls schema ensure. The CLI lifecycle wrapper and dispatcher return the same report. Shared fault fixtures exercise links, replacements, unknowns, identity collisions, limits and unopened payloads; the actual CLI test checks no writes, child processes, keyring setup or temp-home creation. Future backup/conversion/publication work stays with the existing archive, schema and lifecycle owners. **Do not reintroduce:** marker-only v1 upgrades, global Engine ID replacement, normal store constructors in inspection, raw errors/credentials in output, or observation-as-authorization.
+
 ## ProjectFileTransactions
+
+Portable attachment uses `createProjectWithManifest`: the initial Project and
+identity are prepared outside the visible catalog and their directory is
+published once under the Project mutation lock. Existing or orphaned destination
+directories are not overwritten. Known post-publication faults preserve the
+applied result. `project-identity-service.test.ts` exercises visibility, retries,
+faults, input capture and real checkout resolution through the filesystem owner.
 
 **Intent and Interface.** `ProjectFileTransactions` is the single lifecycle authority for a Project tree. Callers create a Project, read a `ProjectStoredFileRevision<T>` or `StoredFileRevision<T>`, or request an intent-shaped nested record upsert/delete. A Project revision exposes only its validated value and exact `replace`/`remove`/`createLayout` capabilities; callers never receive a lock path, fingerprint, temporary path, callback-under-lock, or generic filesystem transaction.
 
 **Contract.** One Station-owned, project-keyed lock outside the deletable Project tree orders create, update, delete, Layout, conversation, and document mutations across processes. Reads runtime-validate strict persisted schemas; only `ENOENT` means absent. Every revision snapshots its input, admits one exact transition synchronously, joins a concurrent duplicate intent without publishing twice, and rejects a different intent. Replace and remove compare the exact observed fingerprint after ownership. Layout creation is issued only by the Project revision whose validated agent scope, workspace, and namespace facts produced it, so a concurrent Project change conflicts before any Layout effect. Project deletion atomically renames the entire tree out of service before best-effort trash cleanup, so a nested writer ordered before deletion cannot resurrect it and one ordered after deletion is refused. Publication uses the shared same-directory sync-and-rename Adapter. A post-commit fault is classified by exact readback, and observer or cleanup failure cannot turn a committed effect into a retryable result.
 
 **Seam, Implementation, callers, and tests.** `FileStorageAdapter` composes one authority and exposes intent-shaped `IStorageAdapter` revisions to `ProjectService`, knowledge-namespace mutation, and Project routes. Plugin namespace convergence completes idempotently before catalog Layout creation; the subsequent Project revision binds every Project-dependent Layout decision. HTTP maps only typed absence to 404, exact conflicts to stable 409, and corrupt or unavailable storage to stable 5xx copy without filesystem diagnostics. Layout creation adds server-owned identity and timestamps before persistence. Real child-process ordering, same-capability concurrency, stale Project/Layout revisions, post-commit, strict-schema, non-file, and missing-file proofs live in `src-server/domain/__tests__/project-file-transactions.process.test.ts`, `file-storage-schemas.test.ts`, and the Project route/service suites. **Do not reintroduce:** route- or service-owned read/merge/save, direct recursive Project deletion, Layout-local lock files, permissive `JSON.parse` casts at persisted boundaries, treating schema or I/O errors as empty or 404, raw storage paths in API errors, caller-controlled callbacks under lifecycle ownership, or nested record writes outside the Project lifecycle lock.
+
+## ProjectIdentity
+
+**Intent and Interface.** `ProjectIdentityService` exposes explicit read,
+preparation and attachment operations over the runtime's existing Project,
+manifest and storage owners. `ProjectPortableIdentity` is the closed public
+identity/reference snapshot; `ProjectIdentityAssociation` names its portable ID
+and the receiver's distinct local ID and slug. Existing Project IDs and history
+are preserved.
+
+**Contract.** Reads do not backfill. Explicit preparation uses the current
+Project-revision admission and creates only a missing sidecar. Attachment
+validates its snapshot and any selected local directory, then requires atomic
+Project/manifest creation from the storage adapter. Existing mismatched identity
+or configuration is a conflict; unknown versions/fields, unavailable stores and
+unverifiable directories are named refusals. A same remote or slug is not
+membership, execution consent, a room locator or a history-merge instruction.
+
+**Seams, callers and evidence.** Project routes inject the runtime-pinned stores
+and checkout reader; no second store is constructed behind a route. The SDK's
+React-free client methods validate responses and capture the original attachment
+request before asynchronous work. `project-identity-service.test.ts` covers
+real Git checkouts, real filesystem publication/faults, conflicts and the HTTP
+surface; `client-project-identity.test.ts` covers the public wire consumer and
+incompatible/changed responses. Physical multi-machine and independent-human
+acceptance remain separate from these tests.
 
 ## KnowledgeFileTransactions
 
@@ -627,7 +733,7 @@ facts, insertion-order IDs, authority inferred from replay, or restored liveness
 
 Ephemeral room input has a closed schema, exact scope, server-owned monotonic generation+bound epoch, sequence, TTL, UTF-8/count bounds, duplicate refusal, and O(1) oversized-array rejection. Missing/malformed current stream authority masks the live projection as stale; an authenticated old packet is merely ignored. Stable principal identity is actor ID+kind; session/run are mutable presence correlations but immutable on each accepted attribution receipt. Resulting room capacity applies transactionally and quiet expiry removes principals safely. Followable views resolve through a separate exact target projection authority. The controller binds the authority revision, re-resolves before/after host join/navigation, and refuses active watch or navigation when authority changes mid-effect. Pane watch remains `off|active|paused` with explicit unwatch and local exit. The editing capability maps authoritative cursor boundaries through the same private pending operation batches into `displayText` coordinates or suppresses them. The React projection uses one synchronized aria-hidden pre overlay, sharing textarea font/line/scroll layout and one document copy for all range marks; coincident carets merge stable actor IDs and screen readers receive a bounded count.
 
-**Seam, Implementation, callers, and tests.** `src-shared/collaborative-editor-pane.ts` is the deep pure controller/privacy/validation locality; `src-server/domain/shared-working-state-editing.ts` owns atom-aware edit planning; `src-ui/src/workspace-panes/CollaborativeEditorPane.tsx` is the thin host-neutral projection. The shipped Task workspace retains the narrower browser-security Adapter: `ProjectTaskRoomRuntime` owns private operations, per-subscriber authority projection, ephemeral cursor bounds, and SQLite settlement; the route emits only the closed browser DTO and prioritizes exact-order document delivery over queued ephemeral room projections without moving the immediate currentness check; the SDK owns exact opaque edit receipts plus the one SSE connection and synchronously offers parsed accepted documents to the mounted host before normalizing that same object into its query cache; `ProjectTaskRoomProvider`, `TaskRoomEditorPane`, and `ProjectTaskRoomPresence` project that authority without creating a client operation factory or second room. Gaps, duplicates, malformed events, terminal streams, and Task changes retain the authoritative recovery/currentness path. Adversarial tests cover private batch settlement/retry, dynamic revocation secret masking, deferred duplicate and large release, solo editing/recovery, revision fencing, server-owned room generations, symmetric subscriber projection, cursor TTL/rate/capacity and exact revision binding, principal run change/kind equivocation, cross-document target movement, direct #2889 convergence, keyboard/selection, and reduced motion. Real two-browser acceptance is `tests/project-task-room-collaboration.spec.ts`. **Do not reintroduce:** editor-local CRDT/OT/LWW logic, client-owned authority, exported pending payload, opaque-epoch freshness guesses, JSON metadata equivocation, per-cursor document copies, caller-asserted revision verification, local paths, capability conflation, durable chat/history ownership, host placement policy, or renderer-specific transport.
+**Seam, Implementation, callers, and tests.** `src-shared/collaborative-editor-pane.ts` is the deep pure controller/privacy/validation locality and `src-server/domain/shared-working-state-editing.ts` owns atom-aware edit planning. There is no renderer projection of this controller. A host-neutral projection component existed under `src-ui/src/workspace-panes/`, but no pane host, catalog entry or lazy route ever mounted it, and it has been deleted rather than left as a surface the product does not reach. The shipped Task workspace retains the narrower browser-security Adapter: `ProjectTaskRoomRuntime` owns private operations, per-subscriber authority projection, ephemeral cursor bounds, and SQLite settlement; the route emits only the closed browser DTO and prioritizes exact-order document delivery over queued ephemeral room projections without moving the immediate currentness check; the SDK owns exact opaque edit receipts plus the one SSE connection and synchronously offers parsed accepted documents to the mounted host before normalizing that same object into its query cache; `ProjectTaskRoomProvider`, `TaskRoomEditorPane`, and `ProjectTaskRoomPresence` project that authority without creating a client operation factory or second room. Gaps, duplicates, malformed events, terminal streams, and Task changes retain the authoritative recovery/currentness path. Adversarial tests cover private batch settlement/retry, dynamic revocation secret masking, deferred duplicate and large release, solo editing/recovery, revision fencing, server-owned room generations, symmetric subscriber projection, cursor TTL/rate/capacity and exact revision binding, principal run change/kind equivocation, cross-document target movement, direct #2889 convergence, keyboard/selection, and reduced motion. Real two-browser acceptance is `tests/project-task-room-collaboration.spec.ts`. **Do not reintroduce:** editor-local CRDT/OT/LWW logic, client-owned authority, exported pending payload, opaque-epoch freshness guesses, JSON metadata equivocation, per-cursor document copies, caller-asserted revision verification, local paths, capability conflation, durable chat/history ownership, host placement policy, or renderer-specific transport.
 
 ## SharedWorkingStateEditingCapability
 
@@ -697,11 +803,11 @@ Ephemeral room input has a closed schema, exact scope, server-owned monotonic ge
 
 ## LearningReviewProjection
 
-**Intent and Interface.** `@kontourai/station-contracts/learning-review` describes one read-only owner projection from source feedback or receipt through candidate, evaluation, decision, active revision, effect observations, supersession, and retirement. Every available identity remains an opaque owner reference. Top-level `not-captured`, `restricted`, `unavailable`, `unsupported-version`, and `corrupt` outcomes carry no projection or protected owner identity; partial stage gaps carry no stage value. The UI-ready `learningReviewViewModel()` preserves the seven-stage order and supplies honest presentation states without fetching or mutating owner data.
+**Intent and Interface.** `@kontourai/station-contracts/learning-review` describes one read-only owner projection from source feedback or receipt through candidate, evaluation, decision, active revision, effect observations, supersession, and retirement. Every available identity remains an opaque owner reference. Top-level `not-captured`, `restricted`, `unavailable`, `unsupported-version`, and `corrupt` outcomes carry no projection or protected owner identity; partial stage gaps carry no stage value. The UI-ready `learningReviewViewModel()` preserved the seven-stage order and supplied honest presentation states without fetching or mutating owner data; it has since been deleted (see below), so no view model of this projection currently ships.
 
 **Contract.** Approval does not imply activation: only an owner-issued activation record with `status: active` plus an explicit `not-retired` record presents current activity. A later retirement ends current activity while preserving that historical activation stage, while any retirement gap leaves current activity unknown. Effect is derived solely from explicit owner observations; an empty observation set is `not-observed`, supporting plus counter evidence is mixed, and any unresolved observation keeps the conclusion unresolved. Partial `corrupt` and `unsupported-version` stages remain distinct from owner unavailability. Retirement requires its own owner record and preserves the historical source, candidate, decision, and active-revision references. Exact per-turn contribution disclosures link a Turn owner reference to the exact active learning revision; Station infers no relationship from text similarity. Promotion, rejection, rollback, editing, and retirement remain absent until an owner publishes typed intents and decision receipts.
 
-**Seam, Implementation, callers, and tests.** The current Flow Agents package publishes a CLI-generated, explicitly non-authoritative workflow-learning projection containing source refs, outcome, routing, and correction data, but its stable `console-contract` subpath does not export that learning shape. The portable Kit observability contract declares a `learning` projection kind while leaving its data owner-defined. No installed Knowledge Kit contract supplies candidate revisions, evaluation, activation, effect, or retirement records. The full lifecycle projection still has no runtime mutation consumer. A separate source-only observation route/query/dialog can inspect actual canonical records without inventing the missing lifecycle fields. Contract and pure view-model tests live in `packages/contracts/src/__tests__/learning-review.test.ts` and `src-ui/src/views/learning-review/__tests__/learningReviewViewModel.test.ts`. The next slice requires an owner-published, runtime-validated projection or Adapter with the complete identity and access-state semantics above. **Do not reintroduce:** a Station learning ledger, inferred promotion, success from zero observations, protected identity in restricted/unavailable outcomes, or consumer-owned replicas of upstream learning schemas.
+**Seam, Implementation, callers, and tests.** The current Flow Agents package publishes a CLI-generated, explicitly non-authoritative workflow-learning projection containing source refs, outcome, routing, and correction data, but its stable `console-contract` subpath does not export that learning shape. The portable Kit observability contract declares a `learning` projection kind while leaving its data owner-defined. No installed Knowledge Kit contract supplies candidate revisions, evaluation, activation, effect, or retirement records. The full lifecycle projection still has no runtime mutation consumer. A separate source-only observation route/query/dialog can inspect actual canonical records without inventing the missing lifecycle fields. Contract tests live in `packages/contracts/src/__tests__/learning-review.test.ts`. The UI-ready view model described above was implemented once under `src-ui/src/views/learning-review/`, acquired no caller while the runtime projection stayed absent, and has been deleted; the next slice reintroduces it against a real projection rather than ahead of one. The next slice requires an owner-published, runtime-validated projection or Adapter with the complete identity and access-state semantics above. **Do not reintroduce:** a Station learning ledger, inferred promotion, success from zero observations, protected identity in restricted/unavailable outcomes, or consumer-owned replicas of upstream learning schemas.
 ## PluginCompositionModule
 
 **Intent and Interface.** `createPluginCompositionModule()` accepts one named Project- or Agent-scoped profile and publishes a generation only after every selected contribution has been authorized and staged. Contribution-instance identity binds profile, scope, plugin, contribution, and local instance while configuration has a separate content digest, so reconfiguration preserves identity without sharing state across scopes. `inspect(scope)` projects active, pending, failed, and explicitly shadowed contributions without exposing staged handles or disposer authority.
@@ -964,6 +1070,12 @@ real host control surface.
 
 ## Cloud move preparation
 
+The private [planned home transfer store](../../src-server/services/orchestration/planned-home-transfer-store.ts)
+owns conditional decision persistence for a future centrally served authority.
+It does not authenticate homes, issue leases or activate execution; the
+[channel home authority design](../design/channel-home-authority.md) owns those
+remaining integration requirements.
+
 `@kontourai/station-contracts/cloud-move` owns the public preview shape.
 `@kontourai/station-shared/cloud-move` owns bounded read-only setup inventory and
 explicit provider selection. The AWS adapter in `packages/shared/src/cloud-aws-ec2.ts`
@@ -985,3 +1097,88 @@ validation do not establish AWS provisioning or application readiness.
 **Seams and adapters.** Typed engine and runtime-conversation factories in `tests/helpers` describe the backend fixture. `fixture-audit.ts` owns unknown-request failure at test teardown. `journey-profile.ts` instruments the real browser through CDP and the React commit hook; it adds no production endpoint. `run-test-mutations.mjs` reuses `lib/owned-process.mjs`, records exact replacement bytes, and restores only its own changes. The existing E2E runner owns app lifecycle and ports.
 
 **Evidence.** Policy known-bad/control tests, factory-to-execution binding tests, mutation restoration/verdict tests, profile schema tests, and the measured browser journeys exercise these interfaces. Do not copy the fixture defaults into a new catch-all router, replace the process owner, or treat a static PASS as behavioral coverage.
+
+## Monitoring history and Agent catalog reads
+
+`RuntimeEventLog.queryEvents` owns a bounded metadata index of actual per-file
+timestamp ranges. The first observation reads a file; later disjoint queries
+skip unchanged files. Each request checks inode, size, and nanosecond change
+metadata. Appends/replacements invalidate bounds, and backfill is never pruned
+by filename date. This is not a persistent payload cache. Missing history is
+empty; other filesystem failures propagate to the request boundary.
+
+`AgentService.getAgentCatalog` owns the registered/store-only catalog assembly
+used by both the Agent route and boot aggregation. `ConfigLoader.readAgentCatalog`
+reads each definition once for that request, retaining its metadata and spec
+through projection. Subsequent requests read afresh; no process-wide spec cache
+supplies authorization or availability.
+
+Monitoring's store owns chronological ordering and the retained window. The
+view preserves that order when filtering; native disclosures defer tool payload
+construction until expansion. The SDK window response retains truncation so the
+view discloses that local search covers loaded events only.
+
+## Transport and diagnostic leaf modules
+
+`packages/shared/src/mcp-connection.ts` owns transport construction and MCP
+negotiation. Local custody imports that leaf; `mcp.ts` keeps the published
+factory exports and connection collection manager. The factory no longer imports
+its own custody owner through a facade.
+
+Foreground and queued chat messages share `dispatchForeground` for target/model
+and attachment mapping. It calls the SDK client directly. Queue completion no
+longer imports a React hook that initializes the same SSE event graph.
+
+Release variant definitions live in `scripts/lib/release-variants.mjs`, shared
+by inventory and SBOM validation without an inventory/SBOM import cycle.
+
+The native login-shell PATH observation owns a process group, nonblocking output,
+a five-second deadline, and a 64 KiB output budget. Its framed PATH value excludes
+startup banners. Native sidecar error details retain at most 64 KiB and 16 lines,
+including after lossy UTF-8 decoding; an I/O error stops the reader.
+
+## MobileDeviceHost
+
+**Owner:** `src-server/services/mobile-device/mobile-device-host.ts`.
+**Contract:** `packages/contracts/src/mobile-device.ts`. The personal runtime
+composes an explicitly configured loopback helper adapter; hosted tenant
+execution does not mount it. `src-server/routes/mobile-device.ts` publishes
+inventory and explicit single-frame captures only after current request
+authorization, with the screenshot leaf requiring terminal authority. The
+helper adapter owns target validation, fresh membership checks, redirect refusal,
+response/deadline bounds and image metadata; it launches no processes and
+forwards no generic routes. `packages/sdk/src/mobile-device.ts` validates
+responses and preserves the selected Station's HTTP authority. The Device pane
+and control/lifecycle service are separate follow-ups; the API does not infer
+app identity from a screen or live readiness from a snapshot.
+
+**Evidence:** `src-server/services/mobile-device/__tests__/mobile-device-host.test.ts`,
+`src-server/routes/__tests__/mobile-device.routes.test.ts`, and
+`packages/sdk/src/__tests__/mobile-device.test.ts`. See the
+[operator guide](../guides/mobile-device-workspace.md).
+
+
+## Project session directory
+
+`createProjectSessionDirectoryResolver` in
+`src-server/services/projects/project-session-directory.ts` composes the
+existing manifest and live resource resolver for new engine starts. Runtime
+initialization installs it in OrchestrationService; recovery awaits it only
+when the recorded session has no cwd. Bound resources return their local path;
+only a directory-less organizational Project may default without a checkout.
+Missing, drifted, ambiguous and unverifiable resources stop before engine
+invocation. The caller retains path containment and owned-worktree admission.
+Real Git/binding-to-engine tests live in `orchestration-service.test.ts`.
+Resolution is an observation, not a filesystem lease or a compute grant.
+
+### Optional local-account OIDC
+
+`local-account-oidc.ts` reads bounded operator configuration and secret references.
+The local account provider composes pinned Better Auth OAuth verification,
+server-controlled invitation state and the existing private session/administration
+owners. The descriptor, SDK and account entry view expose configured browser
+choices alongside passwords. Failed issuer establishment disables the external
+choice and its callback without granting authority or changing local passwords.
+The real HTTP issuer fixture in `local-account-oidc.test.ts` exercises verified
+identity, callback faults and local operation during issuer unavailability.
+

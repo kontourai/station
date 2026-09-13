@@ -45,6 +45,7 @@ export function LearningSourceDialog({
     current && query.data?.state === 'observed' ? query.data : undefined;
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       ariaLabel="Learning source"
       onClose={onClose}
       overlayClassName="learning-source-overlay"

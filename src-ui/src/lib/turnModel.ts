@@ -15,7 +15,7 @@
  * composer is eager, the dispatcher is not, and importing the dispatcher for
  * this one function hoisted it into the entry chunk for +301 gzipped bytes.
  */
-export type ResolvedTurnModel =
+type ResolvedTurnModel =
   | { kind: 'override'; modelId: string }
   /** No override goes on the wire; the engine keeps whatever it retained. */
   | { kind: 'engine-selected' };

@@ -287,13 +287,13 @@ export interface PluginOverrideConfig {
 export type PluginOverrides = Record<string, PluginOverrideConfig>;
 
 export interface ConflictInfo {
-  type: 'agent' | 'workspace' | 'pane' | 'provider' | 'tool';
+  type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
   existingSource?: string;
 }
 
 export interface PluginComponent {
-  type: 'agent' | 'workspace' | 'pane' | 'provider' | 'tool';
+  type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
   detail?: string;
   conflict?: ConflictInfo;

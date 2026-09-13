@@ -127,12 +127,17 @@ import {
   isSelectionAmbiguityOnly,
   PROJECT_MANIFEST_SCHEMA_VERSION,
   type ProjectManifest,
+  type ProjectPortableIdentity,
   type ProjectRepoResource,
   validateProjectManifest,
 } from '@kontourai/station-contracts/project-identity';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
+import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { projectManifestBackfills } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
+import { isRecord } from '../../utils/is-record.js';
+import { createLogger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
   type CheckoutRemoteReader,
@@ -143,6 +148,8 @@ import {
   ProjectBindingsStore,
 } from './project-binding-store.js';
 
+const logger = createLogger({ name: 'project-manifest-store' });
+
 export const PROJECT_MANIFEST_FILENAME = 'manifest.json';
 
 /**
@@ -150,14 +157,7 @@ export const PROJECT_MANIFEST_FILENAME = 'manifest.json';
  * — see decision 1. Everything omitted here is joined from `project.json` (or
  * the layout store) at read time.
  */
-export interface ProjectManifestRecord {
-  schemaVersion: typeof PROJECT_MANIFEST_SCHEMA_VERSION;
-  /** Portable, opaque, generated once. Never machine- or path-derived (§3.2). */
-  id: string;
-  repos: ProjectRepoResource[];
-  createdAt: string;
-  updatedAt: string;
-}
+export type ProjectManifestRecord = ProjectPortableIdentity;
 
 export class ProjectManifestSchemaVersionError extends Error {
   constructor(
@@ -225,15 +225,11 @@ export interface ProjectManifestStoreOptions {
   readRemotes?: CheckoutRemoteReader;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function validateManifestRecord(
   value: unknown,
   filePath: string,
 ): ProjectManifestRecord {
-  if (!isPlainObject(value)) {
+  if (!isRecord(value)) {
     throw new ProjectManifestUnreadableError(filePath, ['must be an object']);
   }
   // Gate FIRST: a version this Station does not know is refused by name, never
@@ -381,7 +377,7 @@ export class ProjectManifestStore {
       // downgrade the project to the legacy path and then attempt a backfill
       // that can never succeed.
       throw new ProjectManifestUnreadableError(filePath, [
-        `not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+        `not valid JSON: ${errorMessage(error)}`,
       ]);
     }
     return validateManifestRecord(raw, filePath);
@@ -488,13 +484,13 @@ export class ProjectManifestStore {
     }
 
     const now = new Date().toISOString();
-    const candidate: ProjectManifestRecord = {
+    const candidate = parseProjectPortableIdentity({
       schemaVersion: PROJECT_MANIFEST_SCHEMA_VERSION,
       id: `prj_${randomUUID()}`,
       repos: derived.repos,
       createdAt: now,
       updatedAt: now,
-    };
+    });
     const filePath = this.manifestPath(project.slug);
     try {
       writeManifestRecordExclusively(
@@ -525,8 +521,13 @@ export class ProjectManifestStore {
         adopted: divergent ? 'divergent' : 'identical',
       });
       if (divergent) {
-        console.warn(
-          `Project manifest backfill adopted an existing sidecar whose resources CONTRADICT this derivation: ${filePath}\n  adopted: ${adoptedFingerprints.join('; ') || '(none)'}\n  derived: ${derivedFingerprints.join('; ') || '(none)'}`,
+        logger.warn(
+          'Project manifest backfill adopted an existing sidecar whose resources CONTRADICT this derivation',
+          {
+            filePath,
+            adopted: adoptedFingerprints.join('; ') || '(none)',
+            derived: derivedFingerprints.join('; ') || '(none)',
+          },
         );
       }
       return { outcome: 'adopted-existing', record: winner };

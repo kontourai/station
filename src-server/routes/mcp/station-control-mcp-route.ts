@@ -115,7 +115,7 @@ function extractBearerToken(header: string | undefined): string | undefined {
   return match?.[1];
 }
 
-export interface StationControlMcpRouteOptions {
+interface StationControlMcpRouteOptions {
   /** THIS running instance's actually-bound HTTP port — never read from
    * `process.env.PORT`/`STATION_PORT` (see this module's header comment
    * for why those are unreliable). Required so the in-process tool calls
