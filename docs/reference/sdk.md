@@ -2443,3 +2443,11 @@ types, and `MobileDeviceRequestError` with an HTTP status. Both use the existing
 capture refuses mismatched targets and returns a timestamped PNG, not stream
 readiness or foreground-app provenance. See [Mobile device inspection](../guides/mobile-device-workspace.md)
 for host setup, access scopes, limits, and the web/desktop integration boundary.
+
+
+`parseProjectPortableIdentity(value)` on
+`@kontourai/station-sdk/project-identity` validates imported portable snapshots
+using the same closed rules as identity response reads. The CLI's identity and
+attachment commands consume it before calling the existing `attachProject` API.
+Unknown fields and local binding data are refused; receiver authorization and
+live checkout validation remain at the receiving Station.

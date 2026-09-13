@@ -6,6 +6,7 @@ import {
   type ProjectAttachRequest,
   type ProjectAttachResult,
   type ProjectIdentityView,
+  type ProjectPortableIdentity,
   validateProjectManifest,
 } from '@kontourai/station-contracts/project-identity';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
@@ -15,29 +16,19 @@ function identityObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function readProjectIdentityView(
+/** Validate a portable snapshot without importing local paths, grants or unknown fields. */
+export function parseProjectPortableIdentity(
   value: unknown,
-  slug: string,
-): ProjectIdentityView {
-  const message =
-    'This client cannot validate the Project identity returned by this Station.';
+): ProjectPortableIdentity {
+  const message = 'Invalid or unsupported portable Project identity.';
   if (
     !identityObject(value) ||
-    !identityObject(value.identity) ||
-    !identityObject(value.association)
-  )
-    throw new Error(message);
-  const record = value.identity;
-  const association = value.association;
-  if (
-    Object.keys(record).some(
+    Object.keys(value).some(
       (key) => !Object.keys(PROJECT_PORTABLE_IDENTITY_FIELDS).includes(key),
-    ) ||
-    association.localProjectSlug !== slug ||
-    typeof association.localProjectId !== 'string' ||
-    !association.localProjectId.trim()
+    )
   )
     throw new Error(message);
+  const record = value;
   const parsed = validateProjectManifest({
     ...record,
     name: 'Portable Project',
@@ -47,8 +38,7 @@ function readProjectIdentityView(
     integrations: [],
     layouts: [],
   });
-  if (!parsed.ok || association.portableProjectId !== parsed.manifest.id)
-    throw new Error(message);
+  if (!parsed.ok) throw new Error(message);
   for (const repo of parsed.manifest.repos) {
     const fields =
       repo.kind === 'git'
@@ -65,10 +55,35 @@ function readProjectIdentityView(
       throw new Error(message);
   }
   const { schemaVersion, id, repos, createdAt, updatedAt } = parsed.manifest;
+  return { schemaVersion, id, repos, createdAt, updatedAt };
+}
+
+function readProjectIdentityView(
+  value: unknown,
+  slug: string,
+): ProjectIdentityView {
+  const message =
+    'This client cannot validate the Project identity returned by this Station.';
+  if (!identityObject(value) || !identityObject(value.association))
+    throw new Error(message);
+  const association = value.association;
+  let identity: ProjectPortableIdentity;
+  try {
+    identity = parseProjectPortableIdentity(value.identity);
+  } catch {
+    throw new Error(message);
+  }
+  if (
+    association.localProjectSlug !== slug ||
+    typeof association.localProjectId !== 'string' ||
+    !association.localProjectId.trim() ||
+    association.portableProjectId !== identity.id
+  )
+    throw new Error(message);
   return {
-    identity: { schemaVersion, id, repos, createdAt, updatedAt },
+    identity,
     association: {
-      portableProjectId: id,
+      portableProjectId: identity.id,
       localProjectId: association.localProjectId,
       localProjectSlug: slug,
     },
