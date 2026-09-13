@@ -100,7 +100,9 @@ test.describe('Core Update Flow', () => {
     });
 
     await page.goto('/settings');
-    await page.getByRole('button', { name: /Check for Updates/ }).click();
+    await page
+      .getByRole('button', { name: /Check for server updates/ })
+      .click();
 
     // Should show the update button with commit count
     await expect(
@@ -175,7 +177,9 @@ test.describe('Core Update Flow', () => {
     });
 
     await page.goto('/settings');
-    await page.getByRole('button', { name: /Check for Updates/ }).click();
+    await page
+      .getByRole('button', { name: /Check for server updates/ })
+      .click();
     await expect(
       page.getByRole('button', { name: /Update \(3 commits behind\)/ }),
     ).toBeVisible({ timeout: 10000 });
@@ -214,7 +218,9 @@ test.describe('Core Update Flow', () => {
     });
 
     await page.goto('/settings');
-    await page.getByRole('button', { name: /Check for Updates/ }).click();
+    await page
+      .getByRole('button', { name: /Check for server updates/ })
+      .click();
     await expect(page.getByText('Up to date')).toBeVisible({
       timeout: 10000,
     });

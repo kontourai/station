@@ -1139,6 +1139,19 @@ app identity from a screen or live readiness from a snapshot.
 [operator guide](../guides/mobile-device-workspace.md).
 
 
+## Project session directory
+
+`createProjectSessionDirectoryResolver` in
+`src-server/services/projects/project-session-directory.ts` composes the
+existing manifest and live resource resolver for new engine starts. Runtime
+initialization installs it in OrchestrationService; recovery awaits it only
+when the recorded session has no cwd. Bound resources return their local path;
+only a directory-less organizational Project may default without a checkout.
+Missing, drifted, ambiguous and unverifiable resources stop before engine
+invocation. The caller retains path containment and owned-worktree admission.
+Real Git/binding-to-engine tests live in `orchestration-service.test.ts`.
+Resolution is an observation, not a filesystem lease or a compute grant.
+
 ### Optional local-account OIDC
 
 `local-account-oidc.ts` reads bounded operator configuration and secret references.
@@ -1149,3 +1162,4 @@ choices alongside passwords. Failed issuer establishment disables the external
 choice and its callback without granting authority or changing local passwords.
 The real HTTP issuer fixture in `local-account-oidc.test.ts` exercises verified
 identity, callback faults and local operation during issuer unavailability.
+
