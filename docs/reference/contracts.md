@@ -43,6 +43,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/session-inventory` | Closed Session inventory rows, gaps, and current-answer Basis projection |
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
 | `@kontourai/station-contracts/scheduler` | Scheduler jobs, stats, capabilities, notifications |
+| `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, and update-provenance issue codes |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
@@ -158,3 +159,19 @@ Host/device IDs are descriptive and carry no credentials, paths, or execution
 authority. A capture is one observed frame, not stream health or app/build
 identity. Runtime validation belongs to the helper, route, and SDK boundaries;
 see [Mobile device inspection](../guides/mobile-device-workspace.md).
+
+## System status and update provenance
+
+`@kontourai/station-contracts/system-status` owns `DevicePresentation`
+(the request-bound host/paired projection), `SystemRuntimeIdentity`
+(the answering server's `instanceId`/`bootId`/`sha` triple with an optional
+`shaSource` label), `SystemIdentityResponse` (that triple plus an optional
+`devicePresentation`), and `UpdateProvenanceIssue` (`missing` or
+`invalid-stamp`). All three identity fields are required for an identity:
+a server that cannot prove the whole triple reports unavailable rather than
+serving a partial answer. `shaSource` names what computed `sha` — a
+checkout-derived value is labeled, never presented as the build's identity.
+`UpdateProvenanceIssue` is a typed reason minted by the server's install
+provenance resolver; consumers render from the code and never re-parse it out
+of prose. Runtime parsing of these shapes lives at the route and SDK
+boundaries, not in this package.

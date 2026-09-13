@@ -615,6 +615,7 @@ export {
   requestCoreUpdateStatus,
   requestPluginRecoveryPreview,
   requestPluginRegistryInstallAction,
+  requestSystemIdentity,
   requestSystemStatus,
   rescanAnalytics,
   resetUsageStats,

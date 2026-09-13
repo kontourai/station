@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
+import type { UpdateProvenanceIssue } from '@kontourai/station-contracts/system-status';
 import { resolveGitInfo } from '@kontourai/station-shared/git';
 import { execGit } from '../../utils/git-exec.js';
 
@@ -81,7 +82,18 @@ export type InstallProvenance =
       sha: string;
     }
   | ({ installKind: 'desktop-bundle'; stampPath: string } & NightlySourceStamp)
-  | { installKind: 'unknown'; detail: string };
+  | {
+      installKind: 'unknown';
+      detail: string;
+      /**
+       * The machine-readable why, rendered from — never re-parsed out of
+       * `detail` text. `missing`: no stamp and no recognized checkout server
+       * layout. `invalid-stamp`: a stamp file exists but fails the shape the
+       * nightly installer writes, so the install cannot even say which
+       * channel it tracks.
+       */
+      reason: UpdateProvenanceIssue;
+    };
 
 /**
  * Fail-closed stamp reader: anything that does not match the shape the nightly
@@ -172,6 +184,7 @@ export function resolveInstallProvenance(
       return {
         installKind: 'unknown',
         detail: `a build stamp exists at ${stampPath} but is malformed`,
+        reason: 'invalid-stamp',
       };
     }
     const parent = dirname(dir);
@@ -197,6 +210,7 @@ export function resolveInstallProvenance(
     return {
       installKind: 'unknown',
       detail: `the server at ${moduleDir} is inside git checkout ${git.gitRoot} but not at that checkout's server layout, and no ${NIGHTLY_SOURCE_STAMP_FILENAME} build stamp is present`,
+      reason: 'missing',
     };
   } catch {
     // Not a checkout either.
@@ -205,6 +219,7 @@ export function resolveInstallProvenance(
   return {
     installKind: 'unknown',
     detail: `no git checkout and no ${NIGHTLY_SOURCE_STAMP_FILENAME} build stamp near ${moduleDir}`,
+    reason: 'missing',
   };
 }
 

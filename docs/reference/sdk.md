@@ -2340,6 +2340,33 @@ cached recovery notice across API-base changes; refresh the selected Station
 before projecting it as current. The record exposes no filesystem path or
 backup manifest contents.
 
+## Update status diagnostics
+
+`requestCoreUpdateStatus(apiBase?, signal?)` validates `GET
+/api/system/core-update` responses instead of casting them. Alongside the
+existing fields, `CoreUpdateStatus` carries four optional diagnostics:
+`serverIdentity` (the answering server's identity triple, from
+`@kontourai/station-contracts/system-status`), `provenanceIssue`
+(`'missing' | 'invalid-stamp'`, the typed reason the server's install
+provenance resolver minted), `technicalDetail` (the provenance detail or
+caught comparison diagnostic — filesystem paths live here, not in
+`message`), and `selfUpdateUnavailableReason` (why a desktop bundle refuses
+git-based self-update). The parser rejects a non-boolean `updateAvailable`
+and malformed supplied counts, normalizes a malformed identity or an unknown
+provenance code to unavailable (`null` — an unknown code never reads as
+`'missing'`), accepts responses from older servers that omit the new fields
+entirely, and never infers `applyMethod` from `updateAvailable`. A non-ok
+HTTP status throws a `StationHttpError` before the body can read as success;
+a genuine `error` field still throws a plain `Error` with the server's
+message.
+
+`requestSystemIdentity(apiBase, signal?)` reads `GET /api/system/identity`
+through the same rules: a complete identity triple is required, optional
+`shaSource` and `devicePresentation` metadata is dropped when malformed, and
+the 503 `identity_unavailable` branch surfaces as a `StationHttpError` with
+its status preserved. Every export is re-exported from
+`@kontourai/station-sdk` and `@kontourai/station-sdk/queries`.
+
 ## Saved answer quotations
 
 `getAssistantQuoteSource(apiBase, sessionId, turnId, options)` from
