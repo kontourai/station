@@ -346,6 +346,7 @@
     "google-auth-library": "^11.0.2",
     "hono": "^4.13.5",
     "idb-keyval": "^6.3.0",
+    "jose": "6.2.4",
     "js-yaml": "^5.4.1",
     "jsonc-parser": "3.3.1",
     "neo4j-driver": "^6.2.0",
@@ -360,8 +361,7 @@
     "web-push": "3.6.7",
     "ws": "^8.21.3",
     "zod": "^4.5.4",
-    "zod-to-json-schema": "^3.25.2",
-    "jose": "6.2.12"
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@ai-sdk/provider": "^3.0.15",
