@@ -9279,7 +9279,15 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
       var(--chat-visual-viewport-height, 100dvh) -
       var(--safe-top)
     );
-    z-index: calc(var(--layer-sticky) + 1);
+    z-index: var(--layer-dock);
+  }
+
+  /* This short-window chat fills the work area just like a maximized dock.
+     Passive notices yield to its input; explicit system blockers retain
+     BannerHost's higher layer and their repair controls. */
+  .app__main:has(> .chat-dock--bottom:not(.is-collapsed):not(.is-dragging))
+  > .banner-host:not(.banner-host--critical-chrome) {
+    z-index: var(--layer-notice);
   }
 
   .app__main > .chat-dock--bottom .chat-input {
