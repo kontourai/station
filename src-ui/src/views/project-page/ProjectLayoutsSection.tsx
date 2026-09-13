@@ -118,6 +118,7 @@ export function ProjectAddLayoutModal({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabelledBy="project-add-layout-title"
       overlayClassName="project-page__modal-overlay"

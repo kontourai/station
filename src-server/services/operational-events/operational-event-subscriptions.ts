@@ -10,14 +10,14 @@ import type {
   OperationalEventDeliveryTransition,
 } from './operational-event-delivery.js';
 
-export type OperationalEventSubscriberClass =
+type OperationalEventSubscriberClass =
   | 'built-in'
   | 'trusted-plugin'
   | 'sandboxed-plugin'
   | 'analytics'
   | 'flow-kit';
 
-export type OperationalEventSubscriptionPurpose =
+type OperationalEventSubscriptionPurpose =
   | 'ui-projection'
   | 'plugin-observation'
   | 'analytics'
@@ -35,7 +35,7 @@ export interface OperationalEventSubscriptionDeclaration {
   requiredScopes: readonly OperationalEventScope[];
 }
 
-export type OperationalEventSubscriptionProjection = OperationalEventProjection;
+type OperationalEventSubscriptionProjection = OperationalEventProjection;
 
 export type OperationalEventSubscriptionAuthorization =
   | {
@@ -52,7 +52,7 @@ export interface OperationalEventSubscriptionAuthorizer {
   ): OperationalEventSubscriptionAuthorization;
 }
 
-export interface OperationalEventSubscriberAdapter {
+interface OperationalEventSubscriberAdapter {
   observe(input: {
     projection: OperationalEventSubscriptionProjection;
     idempotencyKey: string;
@@ -80,7 +80,7 @@ export type OperationalEventSubscriptionCloseOutcome =
   | { kind: 'closed' }
   | { kind: 'pending' | 'unavailable' };
 
-export type OperationalEventSubscriptionOpenOutcome =
+type OperationalEventSubscriptionOpenOutcome =
   | { kind: 'opened'; subscription: OperationalEventSubscription }
   | { kind: 'denied' | 'invalid' | 'conflict' | 'capacity' | 'unavailable' };
 

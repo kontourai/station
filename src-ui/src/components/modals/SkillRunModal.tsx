@@ -69,6 +69,7 @@ export function SkillRunModal({
   // follow the component tree.
   return createPortal(
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onCancel}
       ariaLabelledBy="skill-run-modal-title"
       overlayClassName="modal-overlay"

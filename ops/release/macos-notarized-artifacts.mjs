@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
+import { redactVerificationOutput } from '../../scripts/lib/verification-redaction.mjs';
 import {
   EMBEDDED_MACHO_SEALING_DEADLINE_MS,
   sealEmbeddedMacosMachOBounded,
@@ -41,6 +42,19 @@ export const DMG_CREATION_COMMAND_TIMEOUT_MS =
   LARGE_ARTIFACT_COMMAND_TIMEOUT_MS;
 export const COMMAND_TERMINATION_GRACE_MS = 10 * 1000;
 export const MAX_RETRY_ATTEMPTS = 2;
+// `hdiutil create` on hosted macOS runners intermittently exits nonzero under
+// I/O contention (an overlapped notarization upload, attach/detach races)
+// while the identical invocation succeeds moments later. That is the only
+// release phase with a bounded, program-scoped retry; it is deliberately
+// separate from the transport-classified timestamp/notary retry above.
+export const DMG_CREATION_MAX_ATTEMPTS = 3;
+export const DMG_CREATION_RETRY_BACKOFF_MS = Object.freeze([
+  5 * 1000,
+  15 * 1000,
+]);
+// A terminal command failure carries a bounded, single-line tail of its
+// diagnostics so the hosted log names the cause, not only the phase.
+export const MAX_COMMAND_FAILURE_EXCERPT_CHARS = 300;
 // Standalone callers retain a bounded relative deadline. Hosted release passes
 // an absolute epoch recorded at the start of its 120-minute job instead.
 export const MACOS_NOTARIZED_ARTIFACTS_DEADLINE_MS = 100 * 60 * 1000;
@@ -133,6 +147,29 @@ if (!Array.isArray(args) || !Number.isSafeInteger(graceMs) || graceMs < 0) {
 }
 `;
 
+/**
+ * Reduces captured command output to one bounded line for a terminal failure
+ * message: control characters and runs of whitespace collapse, only the tail
+ * survives, and the shared token redactor runs over what remains. The full
+ * bounded streams stay on the error object; this is what the hosted log sees.
+ */
+export function commandFailureExcerpt(
+  stderr,
+  stdout,
+  maxChars = MAX_COMMAND_FAILURE_EXCERPT_CHARS,
+) {
+  const source = [stderr, stdout].find(
+    (stream) => typeof stream === 'string' && stream.trim() !== '',
+  );
+  if (source === undefined) return '';
+  const collapsed = source.replace(/[\p{Cc}\s]+/gu, ' ').trim();
+  const tail =
+    collapsed.length > maxChars
+      ? `…${collapsed.slice(collapsed.length - maxChars)}`
+      : collapsed;
+  return redactVerificationOutput(tail);
+}
+
 export class ReleaseCommandError extends Error {
   constructor({
     phase,
@@ -147,7 +184,19 @@ export class ReleaseCommandError extends Error {
     const detail = timedOut
       ? `timed out during ${phase}`
       : `failed during ${phase}`;
-    super(`${program} ${detail}.`);
+    const outcome = outputTruncated
+      ? ' (output exceeded the capture limit)'
+      : Number.isInteger(status)
+        ? ` (exit status ${status})`
+        : typeof signal === 'string'
+          ? ` (${signal})`
+          : '';
+    const excerpt = commandFailureExcerpt(stderr, stdout);
+    super(
+      excerpt === ''
+        ? `${program} ${detail}${outcome}.`
+        : `${program} ${detail}${outcome}: ${excerpt}`,
+    );
     this.name = 'ReleaseCommandError';
     this.phase = phase;
     this.program = program;
@@ -390,6 +439,55 @@ export async function retryRetryableTransportFailure(
   throw new Error('Release retry loop exhausted unexpectedly.');
 }
 
+/**
+ * Only a nonzero `hdiutil create` exit is retried. A timeout already consumed
+ * the phase budget and terminated a process group; an overflowed capture is a
+ * bound the release refuses to relax; anything that is not a bounded release
+ * command failure (deadline exhaustion, spawn refusal, a plain error) is not a
+ * transient tool outcome. The transport retry's diagnostic regex is not used
+ * here because hdiutil's contention failures carry no stable text.
+ */
+export function isRetryableDmgCreationFailure(error) {
+  return (
+    error instanceof ReleaseCommandError &&
+    error.program === 'hdiutil' &&
+    error.phase === 'DMG creation' &&
+    error.timedOut !== true &&
+    error.outputTruncated !== true
+  );
+}
+
+export async function retryTransientDmgCreationFailure(
+  operation,
+  { logger, sleep, discardPartialOutput, remainingMs },
+) {
+  const warn = loggerMethod(logger, 'warn');
+  for (let attempt = 1; attempt <= DMG_CREATION_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isRetryableDmgCreationFailure(error)) throw error;
+      // Every nonzero exit discards the image, including the last: a partial
+      // image must neither survive the terminal failure nor be mistaken for
+      // the output of the next attempt.
+      discardPartialOutput();
+      if (attempt === DMG_CREATION_MAX_ATTEMPTS) throw error;
+      const backoffMs = DMG_CREATION_RETRY_BACKOFF_MS[attempt - 1];
+      const label = `[macOS release] DMG creation: hdiutil attempt ${attempt}/${DMG_CREATION_MAX_ATTEMPTS} failed`;
+      // The next attempt still needs its own cleanup grace after the backoff;
+      // rethrow the informative hdiutil failure rather than sleeping into the
+      // deadline error the command wrapper would raise instead.
+      if (remainingMs() - backoffMs <= COMMAND_TERMINATION_GRACE_MS) {
+        warn(`${label}; the release deadline leaves no room to retry.`);
+        throw error;
+      }
+      warn(`${label}; retrying in ${backoffMs / 1000}s.`);
+      await sleep(backoffMs);
+    }
+  }
+  throw new Error('DMG creation retry loop exhausted unexpectedly.');
+}
+
 function captured(value) {
   return typeof value === 'string'
     ? { status: 0, stdout: value, stderr: '' }
@@ -589,6 +687,12 @@ async function submit(command, file, key, keyId, issuer, logger) {
 export async function createMacosNotarizedArtifacts(options, injected = {}) {
   const logger = injected.logger ?? console;
   const now = injected.now ?? Date.now;
+  const sleep =
+    injected.sleep ??
+    ((ms) =>
+      new Promise((resolve) => {
+        setTimeout(resolve, ms);
+      }));
   const relativeDeadlineMs =
     injected.deadlineMs ?? MACOS_NOTARIZED_ARTIFACTS_DEADLINE_MS;
   if (
@@ -871,21 +975,30 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
       [app, join(dmgRoot, appName)],
       LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
     );
-    await command(
-      'DMG creation',
-      'hdiutil',
-      [
-        'create',
-        '-volname',
-        'Station',
-        '-srcfolder',
-        dmgRoot,
-        '-ov',
-        '-format',
-        'UDZO',
-        dmg,
-      ],
-      LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
+    await retryTransientDmgCreationFailure(
+      () =>
+        command(
+          'DMG creation',
+          'hdiutil',
+          [
+            'create',
+            '-volname',
+            'Station',
+            '-srcfolder',
+            dmgRoot,
+            '-ov',
+            '-format',
+            'UDZO',
+            dmg,
+          ],
+          LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
+        ),
+      {
+        logger,
+        sleep,
+        discardPartialOutput: () => fs.rmSync(dmg, { force: true }),
+        remainingMs: () => deadlineAt - now(),
+      },
     );
     const dmgSigningArgs = ['--force', '--sign', identity, '--timestamp', dmg];
     await retryRetryableTransportFailure(

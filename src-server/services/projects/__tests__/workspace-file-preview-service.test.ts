@@ -7,6 +7,7 @@ import {
   openSync,
   readSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -308,6 +309,42 @@ describe('WorkspaceFilePreviewService', () => {
       { status: 'unreadable' },
     );
     rmSync(outside, { recursive: true, force: true });
+  });
+
+  test('reads previews and downloads without a kernel no-follow flag and refuses a post-open replacement', () => {
+    writeFileSync(join(workspace, 'safe.txt'), 'safe');
+    writeFileSync(join(workspace, 'safe.pdf'), '%PDF-safe');
+    const fallback = new WorkspaceFilePreviewService({
+      ...realFsPort(),
+      noFollow: 0,
+    });
+    expect(fallback.preview(workspace, { path: 'safe.txt' })).toMatchObject({
+      status: 'ready',
+      content: 'safe',
+    });
+    expect(fallback.download(workspace, { path: 'safe.pdf' })?.bytes).toEqual(
+      Buffer.from('%PDF-safe'),
+    );
+    for (const path of ['safe.txt', 'safe.pdf']) {
+      const source = join(workspace, path);
+      const replacement = join(workspace, 'replacement');
+      writeFileSync(replacement, 'different');
+      const raced = new WorkspaceFilePreviewService({
+        ...realFsPort(),
+        noFollow: 0,
+        open: (target, flags) => {
+          expect(flags).toBe(0);
+          const fd = openSync(target, flags);
+          renameSync(replacement, source);
+          return fd;
+        },
+      });
+      if (path.endsWith('.txt'))
+        expect(raced.preview(workspace, { path })).toMatchObject({
+          status: 'unreadable',
+        });
+      else expect(raced.download(workspace, { path })).toBeNull();
+    }
   });
 
   test('keeps the read bounded when the opened file grows after fstat', () => {

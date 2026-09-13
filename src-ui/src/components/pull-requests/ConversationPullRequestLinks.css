@@ -1,0 +1,51 @@
+@import "../editor-controls.css";
+
+.conversation-pr-links,
+.conversation-pr-links li > div:first-child,
+.conversation-pr-links__form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.conversation-pr-links strong,
+.conversation-pr-links span {
+  overflow-wrap: anywhere;
+}
+.conversation-pr-links header,
+.conversation-pr-links__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.conversation-pr-links header {
+  justify-content: space-between;
+}
+.conversation-pr-links ul {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+.conversation-pr-links li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+}
+.conversation-pr-links li > div:first-child {
+  flex: 1 1 220px;
+}
+.conversation-pr-links__form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+.conversation-pr-links__actions > *,
+.conversation-pr-links__form button {
+  min-height: 44px;
+}

@@ -32,7 +32,7 @@ const DEFAULT_MAX_UNAUTHENTICATED_CONNECTIONS = 64;
 const DEFAULT_MAX_UNAUTHENTICATED_CONNECTIONS_PER_PEER = 8;
 const logger = createLogger({ name: 'terminal-websocket' });
 
-export interface TerminalWebSocketAuthOptions {
+interface TerminalWebSocketAuthOptions {
   classifyPeer?: (address: string | undefined) => RuntimePeerClass;
   verifyCredential: (credential: string) => boolean | Promise<boolean>;
   authTimeoutMs?: number;
@@ -248,7 +248,7 @@ export class TerminalWebSocketServer {
       try {
         msg = JSON.parse(raw.toString());
       } catch (e) {
-        console.debug('Failed to parse WebSocket message:', e);
+        logger.debug('Failed to parse WebSocket message', { error: e });
         ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
         return;
       }

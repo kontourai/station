@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
+import { installNodeHttpCompatibility } from './packages/shared/src/node-http-compat.mjs';
 import { buildE2EBrowserStorageState } from './tests/helpers/e2e-browser-storage-state';
+import { PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS } from './tests/helpers/playwright-test-timeout';
+
+installNodeHttpCompatibility();
 
 const baseURL = process.env.PW_BASE_URL || 'http://localhost:3000';
 const runnerOwned = process.env.STATION_E2E_RUNNER === '1';
@@ -16,9 +20,12 @@ export default defineConfig({
   // Each run-e2e-suite invocation supplies an instance-scoped root. The
   // default root preserves direct local Playwright usage.
   outputDir: process.env.STATION_E2E_OUTPUT_DIR || 'test-results',
-  timeout: 30_000,
+  timeout: PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS,
   use: {
     baseURL,
+    // Missing controls should fail independently of a live-provider test's
+    // much longer execution budget. Slower actions can opt in explicitly.
+    actionTimeout: 15_000,
     headless: true,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
@@ -55,6 +62,9 @@ export default defineConfig({
             '--hide-scrollbars',
             '--disable-partial-raster',
             '--disable-skia-runtime-opts',
+            // Keep SVG edge blending on one raster path. Repeated hosted
+            // captures otherwise differed by one RGB unit on icon edges.
+            '--disable-gpu-rasterization',
             '--use-gl=angle',
             '--use-angle=swiftshader',
           ],

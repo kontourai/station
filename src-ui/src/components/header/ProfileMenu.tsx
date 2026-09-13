@@ -1,0 +1,167 @@
+import { type ReactNode, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { useMenuFocus } from '../../hooks/useMenuFocus';
+import { QuestionGlyph, SettingsGlyph } from '../icons/Glyph';
+import './HeaderMenu.css';
+
+/**
+ * The avatar's menu (#1552 D1).
+ *
+ * The toolbar's right side carried five controls — connection, notifications,
+ * avatar, help, settings — three of which were unlabelled glyphs of different
+ * weights, and two of which (help, settings) are things you reach for a handful
+ * of times a day rather than continuously. The row is four now: Layout, the
+ * status dot, Notifications, and this avatar; help and settings are rows here.
+ *
+ * The chords are untouched. `app.settings` is registered globally in `App.tsx`,
+ * not by the control that used to render the gear, so ⌘, still toggles Settings
+ * with this menu closed — which is why the row shows the chord in its tooltip
+ * rather than implying the menu is the only route. Help has never had one.
+ *
+ * `role="menu"` with `menuitem` rows, so `useMenuFocus` gives it arrow-key
+ * roving focus (that hook derives the behaviour from the role, deliberately —
+ * see its own note) plus focus entry and focus return.
+ *
+ * ESCAPE IS THIS COMPONENT'S OWN, and the first draft of this docblock claimed
+ * `useMenuFocus` supplied it. It does not: the hook dismisses on FOCUSOUT, and
+ * pressing Escape moves focus nowhere, so the menu stayed open under a
+ * screenshot that was supposed to show it closed. `RegionToolbarControls` and
+ * `ChatDockHeaderMoreMenu` each carry the same listener for the same reason.
+ * Capturing, so a key pressed while focus sits on a row still reaches it.
+ */
+export function ProfileMenu({
+  isOpen,
+  isProfileActive,
+  isSettingsActive,
+  settingsShortcut,
+  userInitials,
+  onClose,
+  onOpenProfile,
+  onOpenHelp,
+  onToggleSettings,
+}: {
+  isOpen: boolean;
+  isProfileActive: boolean;
+  isSettingsActive: boolean;
+  settingsShortcut: string;
+  userInitials: string;
+  onClose: () => void;
+  onOpenProfile: () => void;
+  onOpenHelp: () => void;
+  onToggleSettings: () => void;
+}) {
+  const menuRef = useMenuFocus<HTMLDivElement>(isOpen, onClose);
+  /**
+   * Close when the breakpoint takes this menu's TRIGGER away.
+   *
+   * The avatar lives in `.app-toolbar__action--secondary`, which the mobile
+   * query hides (archive#3311 demoted the profile into the `⋯` menu there), but
+   * this panel is portalled to `document.body` — so a resize across the
+   * breakpoint left it floating over the app with nothing on screen that could
+   * have opened it and no trigger to return focus to. `RegionToolbarControls`
+   * guards its own branch changes the same way (#1552 review L4).
+   *
+   * `useIsMobile` is the same `MOBILE_MEDIA_QUERY` that CSS rule matches on, so
+   * this cannot drift from the breakpoint that actually hides the avatar.
+   */
+  const isMobile = useIsMobile();
+  useEffect(() => {
+    if (isOpen && isMobile) onClose();
+  }, [isOpen, isMobile, onClose]);
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      // Stopped so the same press does not also reach a surface behind this
+      // menu — the shell has several document-level Escape handlers.
+      event.stopPropagation();
+      onClose();
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [isOpen, onClose]);
+  if (!isOpen) return null;
+
+  const row = (
+    key: string,
+    label: string,
+    glyph: ReactNode,
+    onSelect: () => void,
+    extra?: { title?: string; checked?: boolean },
+  ) => (
+    <button
+      key={key}
+      type="button"
+      className="menu-row"
+      role="menuitem"
+      {...(extra?.title ? { title: extra.title } : {})}
+      {...(extra?.checked ? { 'aria-current': 'page' as const } : {})}
+      onClick={() => {
+        onClose();
+        onSelect();
+      }}
+    >
+      <span className="menu-row__glyph" aria-hidden="true">
+        {glyph}
+      </span>
+      {label}
+    </button>
+  );
+
+  // Portalled for the same reason as every other header menu: the toolbar is a
+  // stacking context at `--layer-navigation` on mobile and `.app-toolbar__actions`
+  // holds its size, so a menu rendered inside it cannot appear over the fixed
+  // chrome below.
+  return createPortal(
+    <>
+      <button
+        type="button"
+        // A pointer convenience, not a tab stop — as a tab stop it sits
+        // immediately before the menu in document order, so Shift+Tab off the
+        // first row landed on it and `useMenuFocus`'s focusout closed the menu.
+        tabIndex={-1}
+        className="header-menu__dismiss-backdrop"
+        aria-label="Close profile menu"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 'calc(var(--layer-navigation) - 1)',
+        }}
+        onClick={onClose}
+      />
+      <div
+        ref={menuRef}
+        className="menu-surface app-toolbar__profile-menu"
+        role="menu"
+        aria-label="Profile and settings"
+        tabIndex={-1}
+      >
+        {row(
+          'profile',
+          'Profile',
+          <span className="app-toolbar__overflow-initials">
+            {userInitials}
+          </span>,
+          onOpenProfile,
+          { checked: isProfileActive },
+        )}
+        {row('help', 'Ask Station for help', <QuestionGlyph />, onOpenHelp)}
+        {row(
+          'settings',
+          'Open settings',
+          <SettingsGlyph />,
+          onToggleSettings,
+          // The chord in the tooltip, not in the label: the row is one route to
+          // Settings and ⌘, is the other, and a keycap printed in a menu row
+          // reads as part of the command's name.
+          {
+            title: `Open settings (${settingsShortcut})`,
+            checked: isSettingsActive,
+          },
+        )}
+      </div>
+    </>,
+    document.body,
+  );
+}

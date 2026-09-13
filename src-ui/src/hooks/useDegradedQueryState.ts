@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
  */
 export const DEGRADED_QUERY_TIMEOUT_MS = 8_000;
 
-export type DegradedQueryState = 'loading' | 'degraded' | 'settled';
+type DegradedQueryState = 'loading' | 'degraded' | 'settled';
 
 export function useDegradedQueryState({
   isPending,

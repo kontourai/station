@@ -37,10 +37,10 @@ export interface DockMoreAction {
 }
 
 const MENU_GAP_PX = 6;
-/** `.dock-placement-menu__item`'s height, which every row in this menu takes. */
+/** `.menu-row`'s height, which every row in this menu takes. */
 const MENU_ROW_PX = 32;
-/** `.dock-placement-menu`'s `padding: var(--space-1)`, top and bottom. */
-const MENU_PADDING_PX = 4;
+/** `.menu-surface`'s `padding: var(--space-3)`, top and bottom. */
+const MENU_PADDING_PX = 12;
 /**
  * Room needed to open downward — derived from the rows this menu is actually
  * about to render, not from a constant that pins a row count some later change
@@ -253,7 +253,7 @@ export function ChatDockHeaderMoreMenu({
               />
               <div
                 ref={menuRef}
-                className="dock-placement-menu chat-dock__more-menu"
+                className="menu-surface dock-placement-menu chat-dock__more-menu"
                 role="menu"
                 aria-label="More dock actions"
                 tabIndex={-1}
@@ -263,7 +263,7 @@ export function ChatDockHeaderMoreMenu({
                   <button
                     key={action.key}
                     type="button"
-                    className="dock-placement-menu__item"
+                    className="menu-row"
                     disabled={action.disabled}
                     {...(action.checked === undefined
                       ? { role: 'menuitem' as const }
@@ -284,6 +284,11 @@ export function ChatDockHeaderMoreMenu({
                       if (trigger) action.onSelect(trigger);
                     }}
                   >
+                    {/* The glyph slot every `.menu-row` reserves. These rows
+                        carry no glyph today, and reserving it anyway is what
+                        keeps their labels on the same x as the rows of the
+                        header's own menus (#1552 D4). */}
+                    <span className="menu-row__glyph" aria-hidden="true" />
                     {action.label}
                   </button>
                 ))}

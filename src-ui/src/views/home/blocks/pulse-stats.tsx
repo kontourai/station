@@ -4,7 +4,7 @@
  */
 import type { useHomeWorkLanes } from '../useHomeWorkLanes';
 
-export interface PulseStat {
+interface PulseStat {
   label: string;
   value: number;
   /**

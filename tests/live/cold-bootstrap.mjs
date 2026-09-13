@@ -120,7 +120,10 @@ try {
   navigationStartedAt = Date.now();
   await page.goto(printedUrl, { waitUntil: 'commit' });
   await page
-    .getByRole('button', { name: 'I understand' })
+    // #1600: the modal's primary action names the decision it makes. Keeping the
+    // state the host is already in writes only the receipt, which is the POST
+    // this measurement waits for.
+    .getByRole('button', { name: /^Keep usage telemetry (on|off)$/ })
     .click({ timeout: 20_000 });
   await writeResponse;
   await bootResponse;

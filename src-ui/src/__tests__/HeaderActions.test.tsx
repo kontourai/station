@@ -85,6 +85,9 @@ function renderHeader(onToggleNotifications = vi.fn()) {
       showHelp={false}
       showNotifications={false}
       showOverflow={false}
+      showProfileMenu={false}
+      onCloseProfileMenu={vi.fn()}
+      onToggleProfileMenu={vi.fn()}
       userInitials="ST"
       onCloseHelp={vi.fn()}
       onCloseNotifications={vi.fn()}
@@ -92,7 +95,7 @@ function renderHeader(onToggleNotifications = vi.fn()) {
       onHelpPrompt={vi.fn()}
       onOpenConnections={vi.fn()}
       onOpenProfile={vi.fn()}
-      onToggleHelp={vi.fn()}
+      onOpenHelp={vi.fn()}
       onToggleNotifications={onToggleNotifications}
       onToggleSettings={vi.fn()}
       onToggleOverflow={vi.fn()}
@@ -137,16 +140,31 @@ describe('HeaderActions attention badge', () => {
     expect(screen.queryByText('0')).toBeNull();
   });
 
+  /**
+   * Discovered from the DOM rather than from a list of names: the list said
+   * ['Notifications', 'Ask Station for help'] and #1552 D1 moved the second into
+   * the avatar's menu, which would have left this test naming a control that no
+   * longer exists — or, worse, quietly checking one. The claim is about every
+   * glyph-bearing control in this row, so the row is what it enumerates.
+   */
   test('keeps icon-only button SVGs decorative because their buttons are named', () => {
     renderHeader();
 
-    for (const name of ['Notifications', 'Ask Station for help']) {
+    const glyphButtons = [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        '.app-toolbar__actions button',
+      ),
+    ].filter((button) => button.querySelector('svg'));
+    // A precondition, not decoration: an empty inventory would pass the loop.
+    expect(glyphButtons.length).toBeGreaterThan(1);
+    for (const button of glyphButtons) {
       expect(
-        screen
-          .getByRole('button', { name })
-          .querySelector('svg')
-          ?.getAttribute('aria-hidden'),
-      ).toBe('true');
+        button.getAttribute('aria-label'),
+        `${button.className} has a glyph and no accessible name`,
+      ).toBeTruthy();
+      for (const svg of button.querySelectorAll('svg')) {
+        expect(svg.getAttribute('aria-hidden')).toBe('true');
+      }
     }
   });
 });
@@ -201,15 +219,12 @@ describe('HeaderActions — self-describing connection surface', () => {
     expect(button.textContent).toContain('Default');
   });
 
-  test('a sidecar-qualified connection keeps the full chip — "App only" is news', () => {
+  test('a healthy sidecar keeps lifetime in its accessible name without permanent chrome', () => {
     bundledStatus = { ownership: 'sidecar' };
     const button = renderConnButton();
-
-    expect(button.classList).not.toContain('app-toolbar__conn--compact');
-    expect(button.textContent).toContain('Connected');
-    expect(screen.getByTestId('desktop-sidecar-indicator').textContent).toBe(
-      'App only',
-    );
+    expect(button.classList).toContain('app-toolbar__conn--compact');
+    expect(button.getAttribute('aria-label')).toContain('App only');
+    expect(screen.queryByTestId('desktop-sidecar-indicator')).toBeNull();
   });
 
   // The one invariant that keeps this component's visible wording and
@@ -453,28 +468,15 @@ describe('HeaderActions — desktop sidecar state', () => {
     pendingApprovalRecord = null;
   });
 
-  test('qualifies the connection identity with App only rather than replacing it', () => {
-    // The sidecar describes the locally supervised bundled server; the
-    // identity names the Station the connection points at. They are
-    // independent facts, and a desktop app supervising its sidecar while
-    // pointed at a remote Station must not render the sidecar's name in
-    // place of that Station's.
+  test('keeps sidecar lifetime and connection identity available in the compact tooltip', () => {
     savedConnections = [{ ...SAVED_STATION, name: 'Kontour' }];
     bundledStatus = { ownership: 'sidecar' };
     const button = renderConnButton();
-    expect(screen.getByTestId('desktop-sidecar-indicator').textContent).toBe(
-      'App only',
-    );
-    expect(button.textContent).toContain('Kontour');
+    expect(screen.queryByTestId('desktop-sidecar-indicator')).toBeNull();
     expect(button.getAttribute('aria-label')).toBe(
       'Manage Stations — Connected · Kontour · App only',
     );
-    // The button's own title is archive#3297's control name; the sidecar's
-    // lifetime explanation moved onto the note it describes.
-    expect(button.title).toBe('Manage Stations');
-    expect(screen.getByTestId('desktop-sidecar-indicator').title).toBe(
-      'Runs while the Station app is open',
-    );
+    expect(button.title).toBe(button.getAttribute('aria-label'));
   });
 
   test('does not show the App only indicator for an attached service', () => {
@@ -567,8 +569,10 @@ describe('HeaderActions — connection state precedence', () => {
   test('connected outranks idle, and names the connection it reached', () => {
     connectionStatus = 'connected';
     const button = renderConnButton();
-    expect(button.textContent).toContain('Connected');
-    expect(button.textContent).toContain('Station on this device');
+    expect(button.getAttribute('aria-label')).toContain('Connected');
+    expect(button.getAttribute('aria-label')).toContain(
+      'Station on this device',
+    );
     expect(button.className).toContain('app-toolbar__conn--connected');
   });
 

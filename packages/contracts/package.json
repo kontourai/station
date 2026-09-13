@@ -25,6 +25,8 @@
     "LICENSE"
   ],
   "exports": {
+    "./connection-proof": "./src/connection-proof.ts",
+    "./mobile-device": "./src/mobile-device.ts",
     ".": "./src/index.ts",
     "./acp": "./src/acp.ts",
     "./agent-capability-profile": "./src/agent-capability-profile.ts",
@@ -39,6 +41,7 @@
     "./attention": "./src/attention.ts",
     "./action-operation": "./src/action-operation.ts",
     "./auth": "./src/auth.ts",
+    "./deployment-authentication": "./src/deployment-authentication.ts",
     "./board": "./src/board.ts",
     "./catalog": "./src/catalog.ts",
     "./channel-assurance": "./src/channel-assurance.ts",
@@ -90,6 +93,7 @@
     "./plugin": "./src/plugin.ts",
     "./plugin-foreground-work": "./src/plugin-foreground-work.ts",
     "./project": "./src/project.ts",
+    "./project-membership": "./src/project-membership.ts",
     "./project-identity": "./src/project-identity.ts",
     "./project-task-room": "./src/project-task-room.ts",
     "./project-task-room-browser": "./src/project-task-room-browser.ts",
@@ -143,6 +147,7 @@
     "./ui-block": "./src/ui-block.ts",
     "./work-item-provider": "./src/work-item-provider.ts",
     "./pull-request-provider": "./src/pull-request-provider.ts",
+    "./conversation-pull-request-links": "./src/conversation-pull-request-links.ts",
     "./workflow": "./src/workflow.ts",
     "./work-reference": "./src/work-reference.ts",
     "./starter-work": "./src/starter-work.ts",
@@ -164,6 +169,8 @@
     "./workspace-file-preview": "./src/workspace-file-preview.ts",
     "./workspace-isolation": "./src/workspace-isolation.ts",
     "./cloud-move": "./src/cloud-move.ts",
+    "./local-accounts": "./src/local-accounts.ts",
+    "./application-session": "./src/application-session.ts",
     "./registry-trust": "./src/registry-trust.ts"
   },
   "dependencies": {

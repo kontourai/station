@@ -25,6 +25,7 @@ import { ApprovalRegistry } from '../../../services/approvals/approval-registry.
 import { buildKnowledgeRagContextDetailed } from '../../../services/knowledge/knowledge-context.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { streamPrimaryAgentChat } from '../chat-primary-stream.js';
+import type { ChatMessage } from '../chat-request-preparation.js';
 import { prepareChatRequest } from '../chat-request-preparation.js';
 
 /**
@@ -58,9 +59,9 @@ const SEARCH_RESULTS = [
 const GUIDELINES_TEXT =
   '<feedback_profile>\nreinforce: be terse\n</feedback_profile>';
 
-function knowledgeService(options: { hit: boolean }) {
+function knowledgeService(options: { hit: boolean; projectRules?: string }) {
   return {
-    getInjectContext: vi.fn(async () => null),
+    getInjectContext: vi.fn(async () => options.projectRules ?? null),
     getRAGContextDetailed: vi.fn(async () =>
       options.hit
         ? buildKnowledgeRagContextDetailed(SEARCH_RESULTS, 0.25)
@@ -72,6 +73,7 @@ function knowledgeService(options: { hit: boolean }) {
 function buildCtx(options: {
   hit: boolean;
   guidelines: boolean;
+  projectRules?: string;
   memoryAdapter: Record<string, unknown>;
 }) {
   return {
@@ -93,7 +95,10 @@ function buildCtx(options: {
           ? { text: GUIDELINES_TEXT, reinforce: 1, avoid: 0 }
           : null,
     },
-    knowledgeService: knowledgeService({ hit: options.hit }),
+    knowledgeService: knowledgeService({
+      hit: options.hit,
+      projectRules: options.projectRules,
+    }),
     storageAdapter: { getProject: () => undefined },
     activeAgents: new Map(),
     providerService: {
@@ -129,15 +134,16 @@ async function* emptyStream() {
 async function dispatchChatTurn(options: {
   hit: boolean;
   guidelines: boolean;
+  projectRules?: string;
   /**
    * The message shape sent. `attachment-only` is the array-shaped user
    * message with a file part and NO text part — what an uncaptioned
-   * attachment produces, and the shape both `/chat` composers silently drop
-   * their whole block for (archive#2649 review fix HIGH-1).
+   * attachment produces. Context is model-facing and must not become an
+   * authored caption.
    */
   shape?: 'text' | 'attachment-only';
   ambientContext?: string;
-}): Promise<{ body: string; modelInput: unknown }> {
+}): Promise<{ body: string; modelInput: unknown; authoredInput: unknown }> {
   const conversations = new Map<string, { id: string; title?: string }>();
   const memoryAdapter = {
     getConversation: vi.fn(async (id: string) => conversations.get(id) ?? null),
@@ -209,7 +215,7 @@ async function dispatchChatTurn(options: {
   const response = await app.request('/chat', { method: 'POST' });
   const body = await response.text();
   expect(streamText).toHaveBeenCalledTimes(1);
-  return { body, modelInput };
+  return { body, modelInput, authoredInput: chatInput };
 }
 
 /**
@@ -362,40 +368,40 @@ describe('per-turn context injection, route → adapter → provenance envelope 
     ).toBeGreaterThan(0);
   });
 
-  // archive#2649 review fix (HIGH-1). The defect this test exists for:
-  // knowledge/project-rules/guidelines were recorded from composition
-  // INTENT, but `applyCombinedContextToInput` drops the whole block for an
-  // array-shaped message with no text part. A user sending an uncaptioned
-  // screenshot in a project with inject docs and guidelines got a card
-  // reading "Project rules (~N tokens) - Guidelines: 2 reinforce / 1 avoid"
-  // for a model that received neither.
-  test('an uncaptioned attachment records NOTHING, because the composers dropped everything they built', async () => {
-    const { body, modelInput } = await dispatchChatTurn({
+  test('an uncaptioned attachment receives configured context and records only the applied blocks', async () => {
+    const { body, modelInput, authoredInput } = await dispatchChatTurn({
       hit: true,
       guidelines: true,
       shape: 'attachment-only',
+      projectRules: 'Project rule: preserve audit logs.',
     });
-
-    // Ground truth first: the model genuinely received none of it.
-    const serializedInput = JSON.stringify(modelInput);
-    expect(serializedInput).not.toContain('<project_knowledge>');
-    expect(serializedInput).not.toContain(GUIDELINES_TEXT);
-    expect(serializedInput).not.toContain('Deploys run from main.');
-
+    expect(Array.isArray(modelInput)).toBe(true);
+    const modelText = (modelInput as ChatMessage[])
+      .flatMap((message) => message.parts ?? [])
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text ?? '')
+      .join('\n');
+    expect(modelText).toContain('Project rule: preserve audit logs.');
+    expect(modelText).toContain(GUIDELINES_TEXT);
+    expect(modelText).not.toContain('Deploys run from main.');
+    expect(JSON.stringify(authoredInput)).not.toContain('Project rule:');
+    expect(
+      (authoredInput as ChatMessage[])[0].parts?.map((part) => part.type),
+    ).toEqual(['file']);
     const { envelope } = await foldDispatchedTurn(body);
-    // An empty record - "no Station-composed context reached the model" -
-    // and specifically NOT the blocks that were composed and thrown away.
     expect(envelope.contextInjection).toMatchObject({
       state: 'observed',
-      value: {},
+      value: {
+        projectRules: { approxTokens: expect.any(Number) },
+        guidelines: { reinforce: 1, avoid: 0 },
+      },
     });
     const record =
       envelope.contextInjection?.state === 'observed'
         ? envelope.contextInjection.value
         : undefined;
-    for (const block of ['knowledge', 'projectRules', 'guidelines'] as const) {
-      expect(record).not.toHaveProperty(block);
-    }
+    // No text query was available for RAG; do not invent a retrieval receipt.
+    expect(record).not.toHaveProperty('knowledge');
   });
 
   // archive#2649 review fix (MEDIUM-1): ambient context is Station-composed

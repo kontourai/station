@@ -18,9 +18,11 @@ export function QRDisplay({ url, size = 160, label }: QRDisplayProps) {
   useEffect(() => {
     if (!canvasRef.current || !url) return;
     const canvas = canvasRef.current;
+    let cancelled = false;
 
     // Dynamic import so bundlers can tree-shake if unused
     import('qrcode').then((QRCode) => {
+      if (cancelled) return;
       QRCode.toCanvas(canvas, url, {
         width: size,
         margin: QR_MARGIN,
@@ -29,6 +31,9 @@ export function QRDisplay({ url, size = 160, label }: QRDisplayProps) {
         // Ignore render errors
       });
     });
+    return () => {
+      cancelled = true;
+    };
   }, [url, size]);
 
   return (

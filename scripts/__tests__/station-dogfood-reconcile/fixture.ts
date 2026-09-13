@@ -58,7 +58,7 @@ afterEach(async () => {
 // only this OS integration boundary requires Darwin and /bin/zsh semantics.
 export const macosInstallerTest = process.platform === 'darwin' ? it : it.skip;
 
-export type FakeOptions = {
+type FakeOptions = {
   active?: boolean;
   buildFailure?: boolean;
   billing?:
@@ -122,14 +122,14 @@ export type FixtureConfig = {
   tailnetUrl: string;
 };
 
-export type FixtureCommandCall = {
+type FixtureCommandCall = {
   command: string;
   args: string[];
   cwd?: string;
   env?: NodeJS.ProcessEnv;
 };
 
-export type FixtureCommandResult = {
+type FixtureCommandResult = {
   status: number;
   stdout: string;
   stderr: string;
@@ -137,7 +137,7 @@ export type FixtureCommandResult = {
 
 type ListenerName = 'api' | 'terminal' | 'voice' | 'ui';
 
-export interface ReconcileFixtureCapabilities {
+interface ReconcileFixtureCapabilities {
   calls: FixtureCommandCall[];
   config: FixtureConfig;
   forceStartStates: unknown[];

@@ -22,7 +22,7 @@ export type PluginBudget = {
   reset: () => void;
 };
 
-export function createPluginBudget({
+function createPluginBudget({
   burst,
   refillMs,
 }: {

@@ -1,12 +1,15 @@
 /** @vitest-environment jsdom */
 
+import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { describe, expect, test } from 'vitest';
 import {
   rendererGateFromPluginRegistryLoadStatus,
   resolveWorkspacePaneCatalogPresentation,
+  workspacePaneRendererFactsPending,
 } from '../resolvedWorkspacePaneCatalog';
+import { presentWorkspacePaneAvailability } from '../workspacePaneAvailabilityPresentation';
 import { selectClientWorkspacePaneRenderer } from '../workspacePaneRendererSelection';
 
 const profile = {
@@ -604,5 +607,176 @@ describe('direct plugin Pane occurrences (station#3543)', () => {
         hasTrustedPluginLayout: () => true,
       }),
     ).toMatchObject({ state: 'unavailable' });
+  });
+
+  /**
+   * #1536 H1. A renderer that is not registered YET is indistinguishable, to
+   * the resolver, from one that is gone — so on every cold load each plugin
+   * pane spent 3–10 seconds reporting "Temporarily unavailable", an outage
+   * report for a page that was merely still loading.
+   */
+  describe('unsettled renderer facts', () => {
+    const plugin = {
+      id: 'plugin:review:remote',
+      name: 'Remote review',
+      renderer: { kind: 'plugin-component', name: 'remote-review' },
+      placement: { supportedRegions: ['main'] },
+      modes: [{ id: 'default' }],
+      provenance: { origin: 'plugin', pluginId: 'review' },
+      lifecycle: { stage: 'stable' },
+    } as unknown as WorkspacePaneDescriptor;
+
+    const snapshot = (descriptors: WorkspacePaneDescriptor[]) =>
+      ({
+        descriptors,
+        instances: [],
+        availability: descriptors.map((entry) => ({
+          descriptorId: entry.id,
+          input: { rollout: 'available', distribution: 'enabled' },
+          availability: {
+            state: 'temporarily-unavailable',
+            reason: { code: 'renderer-missing', source: 'renderer' },
+          },
+        })),
+      }) as any;
+
+    test('marks an unselected renderer pending while the client facts are still arriving', () => {
+      const result = resolveWorkspacePaneCatalogPresentation(
+        snapshot([plugin]),
+        profile,
+        undefined,
+        true,
+        false,
+        null,
+        true,
+      );
+
+      expect(result.entries[0]).toMatchObject({
+        clientRendererPresence: 'missing',
+        rendererResolution: 'pending',
+      });
+    });
+
+    test('claims nothing pending once those facts have settled', () => {
+      const result = resolveWorkspacePaneCatalogPresentation(
+        snapshot([plugin]),
+        profile,
+        undefined,
+        true,
+        false,
+        null,
+        false,
+      );
+
+      expect(result.entries[0]).not.toHaveProperty('rendererResolution');
+    });
+
+    test('never marks a built-in pending: nothing about its renderer is still arriving', () => {
+      const builtin = descriptor('not-in-the-canonical-registry');
+      const result = resolveWorkspacePaneCatalogPresentation(
+        snapshot([builtin]),
+        profile,
+        undefined,
+        true,
+        false,
+        null,
+        true,
+      );
+
+      // A built-in absent from the canonical registry is absent, full stop —
+      // no bundle and no config flag can make it appear, so "Loading…" would
+      // be a promise nothing is going to keep.
+      expect(result.entries[0]).toMatchObject({
+        clientRendererPresence: 'missing',
+      });
+      expect(result.entries[0]).not.toHaveProperty('rendererResolution');
+    });
+
+    /**
+     * #1536 H1-1: this predicate was `config === null`, and `useConfig()`
+     * returns null for a FAILED read exactly as it does for one in flight. With
+     * the app's `retry: 1` / no-refetch defaults a failed `/api/config` never
+     * retries itself, so every plugin pane would have said "Loading…" forever
+     * — with the "Check again" action withheld, because a pending presentation
+     * drops it.
+     */
+    describe('whether the client facts have settled', () => {
+      test.each([
+        ['a bundle is still arriving', true, false, false, true],
+        [
+          'config is in flight with nothing readable',
+          false,
+          false,
+          false,
+          true,
+        ],
+        ['config ANSWERED WITH AN ERROR', false, false, true, false],
+        ['config is readable', false, true, true, false],
+        ['a restored config is being revalidated', false, true, false, false],
+      ] as const)(
+        'is %s → pending %o',
+        (_label, pluginRegistryLoading, configLoaded, configSettled, pending) => {
+          expect(
+            workspacePaneRendererFactsPending({
+              pluginRegistryLoading,
+              configLoaded,
+              configSettled,
+            }),
+          ).toBe(pending);
+        },
+      );
+
+      test('a settled config failure keeps the real reason AND its retry action', () => {
+        // The whole point of not calling a failure "pending": the reader gets
+        // something to do about it.
+        const presentation = presentWorkspacePaneAvailability(
+          {
+            state: 'temporarily-unavailable',
+            reason: { code: 'renderer-missing', source: 'renderer' },
+            action: { type: 'retry', code: 'retry-availability-check' },
+          },
+          undefined,
+          workspacePaneRendererFactsPending({
+            pluginRegistryLoading: false,
+            configLoaded: false,
+            configSettled: true,
+          })
+            ? 'pending'
+            : undefined,
+        );
+
+        expect(presentation.pending).toBeUndefined();
+        expect(presentation.stateLabel).toBe('Temporarily unavailable');
+        expect(presentation.actionLabel).toBe('Check again');
+      });
+    });
+
+    test('leaves a pane whose renderer DID resolve alone, however slow a sibling bundle is', () => {
+      const builtin = WORKSPACE_ACTIVITY_PANE_DESCRIPTOR;
+      // Guard: this fixture only proves anything while the builtin's renderer
+      // really does select. If that stops being true the assertion below
+      // becomes vacuous.
+      expect(
+        selectClientWorkspacePaneRenderer(builtin, { mcpAppsEnabled: true })
+          .state,
+      ).toBe('selected');
+
+      const result = resolveWorkspacePaneCatalogPresentation(
+        snapshot([builtin, plugin]),
+        profile,
+        undefined,
+        true,
+        false,
+        null,
+        true,
+      );
+
+      expect(
+        result.entries.find((entry) => entry.descriptor.id === builtin.id),
+      ).not.toHaveProperty('rendererResolution');
+      expect(
+        result.entries.find((entry) => entry.descriptor.id === plugin.id),
+      ).toHaveProperty('rendererResolution', 'pending');
+    });
   });
 });

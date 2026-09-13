@@ -75,7 +75,20 @@ export interface CodexSessionRecord {
   lastSessionState: 'idle' | 'running' | 'errored';
   turnOutput: Map<string, string>;
   toolNames: Map<string, string>;
-  toolStarted: Set<string>;
+  /**
+   * `itemId → { toolName, turnId }` for tool items whose `tool.started` has
+   * been published and whose completion has not arrived. Doubles as the
+   * completion guard (an unknown id is ignored) and, since station#1569
+   * (item 4), as what the session-end settle iterates: an entry still here
+   * when the SESSION ends can never report, and is published as
+   * `tool.completed` status `'unresolved'` on the turn that ISSUED it.
+   *
+   * `turnId` is captured at start rather than read from `activeTurnId` at
+   * settle time. Codex serialises turns today, so the two agree — but one is
+   * the fact and the other is a coincidence of the current concurrency
+   * model.
+   */
+  openToolCalls: Map<string, { toolName: string; turnId: string }>;
   /**
    * Private quota-cache routing identity, resolved when this app-server
    * process starts. It must never be copied into runtime events.
@@ -93,4 +106,13 @@ export interface CodexSessionRecord {
    */
   stopped: boolean;
   terminationPromise?: Promise<void>;
+  /** Total raw stdout bytes accepted while a bounded adoption/recovery phase is active. */
+  stdoutIngressLimit?: {
+    maxBytes: number;
+    observedBytes: number;
+    exceeded: boolean;
+  };
+  /** Forked cumulative usage includes source history and is withheld until a durable baseline exists. */
+  withholdCumulativeUsage?: boolean;
+  cumulativeUsageWithheldWarningPublished?: boolean;
 }

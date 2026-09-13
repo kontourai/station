@@ -91,6 +91,15 @@ describe('BannerHost collapsed stack', () => {
     ).toMatch(/banner-host__item--critical-chrome/);
   });
 
+  /**
+   * #920's property, re-pinned after #1132 removed the cap's
+   * `--critical-chrome` modifier: `BannerHost.css` now raises EVERY cap in a
+   * critical-chrome host over a maximized dock, so the narrower marker had no
+   * reader left. What still has to hold — and is what the CSS keys on — is the
+   * pair: the HOST is marked (so its cap crosses and the hidden critical
+   * source stays discoverable) while the ordinary card in FRONT of it is not
+   * (so #919's reachable dock header survives).
+   */
   test('uses the cap as the critical indicator without elevating an ordinary front notice', () => {
     act(() => {
       bannerStore.present({
@@ -116,9 +125,15 @@ describe('BannerHost collapsed stack', () => {
       /banner-host__item--critical-chrome/,
     );
     expect(screen.queryByText('Automatic work is paused')).toBeNull();
-    expect(screen.getByTestId('banner-stack-cap').className).toMatch(
-      /banner-host__cap--critical-chrome/,
+    expect(screen.getByTestId('banner-host').className).toMatch(
+      /banner-host--critical-chrome/,
     );
+    // The cap is present and carries no elevation marker of its own: the host
+    // class above is the whole selector, so a cap that had to opt in
+    // separately would be a second place for this to be got wrong.
+    const cap = screen.getByTestId('banner-stack-cap');
+    expect(cap).toBeTruthy();
+    expect(cap.className).not.toMatch(/critical-chrome/);
   });
 
   test('renders only the front banner plus a severity-tinted cap', () => {

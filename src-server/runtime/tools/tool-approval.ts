@@ -88,7 +88,7 @@ function reservedBuiltinServerForTool(toolName: string): string | null {
  * with no binding to which MCP server actually runs), so it is NOT trustworthy
  * for a privileged decision.
  */
-export type ExternalToolNameProvenance = 'authentic' | 'self-reported';
+type ExternalToolNameProvenance = 'authentic' | 'self-reported';
 
 /**
  * `isAutoApproved` for an external-engine tool call: checks the raw

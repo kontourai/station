@@ -349,19 +349,7 @@ export function VoiceFeaturesSection() {
   );
 }
 
-/**
- * `guard` is `SettingsView.tsx`'s own `useUnsavedGuard` guard (
- * finding, 1) — the "View the notifications inbox" cross-link
- * below must route through it like every other navigation trigger on a page
- * with dirty state.
- */
-export function NotificationsSection({
-  apiBase,
-  guard,
-}: {
-  apiBase: string;
-  guard: (callback: () => void) => void;
-}) {
+export function NotificationsSection({ apiBase }: { apiBase: string }) {
   const { navigate } = useNavigation();
   const { settings: featureSettings, toggle: toggleFeature } =
     useFeatureSettings();
@@ -393,7 +381,7 @@ export function NotificationsSection({
         <button
           type="button"
           className="button button--link settings__notifications-inbox-link"
-          onClick={() => guard(() => navigate('/notifications'))}
+          onClick={() => navigate('/notifications')}
         >
           View the notifications inbox
         </button>

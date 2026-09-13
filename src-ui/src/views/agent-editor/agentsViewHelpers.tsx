@@ -85,7 +85,9 @@ export function buildAgentsViewItems(
           {engineChipLabel(engine) !== agent.name && (
             <EngineChip engine={engine} />
           )}
-          {readinessKnown && <AgentReadinessCell agent={agent} part="status" />}
+          {readinessKnown && (
+            <AgentReadinessCell agent={agent} part="status" compact />
+          )}
         </>
       ),
       section: isEngineProvenanceAgent(agent)

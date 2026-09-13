@@ -683,22 +683,6 @@
   }
 }
 
-.guidance-navigation {
-  border-bottom: 1px solid var(--border-primary);
-  padding: 0.75rem 1rem 0.6rem;
-}
-
-.guidance-navigation .page__tabs {
-  margin-bottom: 0.45rem;
-}
-
-.guidance-navigation__description {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  line-height: 1.45;
-}
-
 /* A tab strip that is the first thing inside a FLUSH page-frame body (the
    frame drops the body inset for the split pane below it, but a tab strip is
    page furniture and lines up with the title). */

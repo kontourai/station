@@ -21,5 +21,6 @@ export function composeTaskDispatcher(
     adapters.remoteSessions,
     adapters.telemetry,
     liveWorkPublisher,
+    adapters.execution,
   );
 }

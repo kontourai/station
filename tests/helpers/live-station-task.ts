@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { expect, type Page } from '@playwright/test';
 import {
@@ -70,6 +70,7 @@ async function runCommand(
     env: options.env,
     timeout: options.timeoutMs ?? 120_000,
     maxBuffer: 10 * 1024 * 1024,
+    windowsHide: true,
   });
   return { stdout: String(stdout), stderr: String(stderr) };
 }
@@ -104,6 +105,9 @@ export async function startStation(
   options: {
     taskRoomControlSocket?: string;
     performanceReference?: boolean;
+    runtimeFramework?: 'voltagent' | 'strands';
+    deterministicReadiness?: boolean;
+    logFile?: string;
   } = {},
 ): Promise<string> {
   const args = [
@@ -114,6 +118,7 @@ export async function startStation(
     `--port=${live.serverPort}`,
     `--ui-port=${live.uiPort}`,
   ];
+  if (options.logFile) args.push(`--log=${options.logFile}`);
   if (clean) args.splice(3, 0, '--clean');
   const startup = await runCommand(...stationCommand(args), {
     // The diagnostic production UI is intentionally a distinct tree-shaken
@@ -122,10 +127,23 @@ export async function startStation(
     timeoutMs: options.performanceReference ? 300_000 : 120_000,
     env: {
       ...process.env,
-      PATH: `${NODE_BIN}:${process.env.PATH ?? ''}`,
+      PATH: `${NODE_BIN}${delimiter}${process.env.PATH ?? ''}`,
       STATION_ROOT: stationRootForLiveHome(live.home),
       STATION_HOME: live.home,
-      STATION_E2E_SYSTEM_STATUS_READY: '1',
+      STATION_E2E_SYSTEM_STATUS_READY:
+        options.deterministicReadiness === false ? undefined : '1',
+      ...(options.runtimeFramework
+        ? {
+            STATION_FEATURES: [
+              ...(process.env.STATION_FEATURES ?? '')
+                .split(',')
+                .filter((feature) => feature && feature !== 'strands-runtime'),
+              ...(options.runtimeFramework === 'strands'
+                ? ['strands-runtime']
+                : []),
+            ].join(','),
+          }
+        : {}),
       ...(options.performanceReference
         ? {
             STATION_PERFORMANCE_REFERENCE: '1',
@@ -187,8 +205,8 @@ export async function publishTaskRoomAgentEdit(
       callback();
     };
     socket.on('connect', () => {
-      socket.end(
-        `${JSON.stringify({ command: 'publish-agent-edit', ...input })}\n`,
+      socket.write(
+        `${JSON.stringify({ protocol: 'station.task-room-control/v1', request: { command: 'publish-agent-edit', ...input } })}\n`,
       );
     });
     socket.on('data', (chunk: Buffer) => {
@@ -236,7 +254,7 @@ export async function stopStation(live: LiveStation): Promise<void> {
   await runCommand(...stationCommand(args), {
     env: {
       ...process.env,
-      PATH: `${NODE_BIN}:${process.env.PATH ?? ''}`,
+      PATH: `${NODE_BIN}${delimiter}${process.env.PATH ?? ''}`,
       STATION_ROOT: stationRootForLiveHome(live.home),
       STATION_HOME: live.home,
     },
@@ -327,9 +345,16 @@ export async function createTaskFromProject(
     success: true,
     data: { isRepo: true, branch },
   });
-  await expect(
-    page.getByText(`⎇ ${branch}`, { exact: true }).first(),
-  ).toBeVisible({ timeout: 15_000 });
+  const branchLabel = page.locator(
+    '.project-page__git-section .project-page__section-label',
+  );
+  await expect(branchLabel).toBeVisible({ timeout: 15_000 });
+  // The branch icon is an SVG, not part of the label's text contract.
+  const escapedBranch = branch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await expect(branchLabel).toHaveText(
+    new RegExp(`^\\s*${escapedBranch}(?:\\s*·.*)?\\s*$`),
+    { timeout: 15_000 },
+  );
   await page.getByLabel('Task title').fill(title);
   await page.getByRole('button', { name: 'Add task' }).click();
   await page.waitForURL(/\/tasks\//, { timeout: 15_000 });

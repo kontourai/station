@@ -52,7 +52,7 @@ vi.mock('../../../providers/registries/registry.js', () => {
   };
 });
 
-vi.mock('../plugin-install-shared.js', () => ({
+vi.mock('../../../services/plugins/plugin-install-transaction.js', () => ({
   installPluginFromSource: vi.fn().mockResolvedValue({
     success: true,
     plugin: {
@@ -107,7 +107,7 @@ const {
   readRegistryPluginAvailability,
   resolvePluginRegistryInstall,
   uninstallInstalledPlugin,
-} = await import('../plugin-install-shared.js');
+} = await import('../../../services/plugins/plugin-install-transaction.js');
 
 function setup(
   layoutCatalog?: InstanceType<typeof DistributionProfileService>,

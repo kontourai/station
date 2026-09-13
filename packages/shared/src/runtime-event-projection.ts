@@ -176,6 +176,29 @@ export function projectRuntimeEventsToMessages(
     { part: MessagePart; turnKey: string | undefined }
   >();
   /**
+   * station#1569 (H1): rows settled `unresolved`, kept settleable.
+   *
+   * `unresolved` is the one terminal that says NO OUTCOME WILL ARRIVE while
+   * an outcome still can: the adapter publishes it when a session ends with
+   * the call open, and `claude-adapter.ts`'s stop grace can elapse while the
+   * SDK is still holding the real `tool_result`, which then drains and is
+   * published for the same call id (`claude-adapter-events.ts`'s
+   * `settledToolCalls`). Retiring the slot the way a `success`/`error`/
+   * `cancelled` terminal does left the reader with TWO rows for one call —
+   * the standing `unresolved` and the real result — and the batch header
+   * then counted the stale one as "with no result" for a call that
+   * succeeded.
+   *
+   * Same `{ part, turnKey }` shape and same turn rule as the carried map
+   * above: the part is the SAME object already inside an emitted message, so
+   * superseding mutates the row in place, and a completion naming a
+   * DIFFERENT turn never lands on it.
+   */
+  const unresolvedToolsByCallId = new Map<
+    string,
+    { part: MessagePart; turnKey: string | undefined }
+  >();
+  /**
    * station#1558: `turnKey` → index in `messages` of the assistant message
    * emitted for that turn, so a late completion with no matching start can
    * still be appended to the turn its own `turnId` names rather than to the
@@ -344,6 +367,32 @@ export function projectRuntimeEventsToMessages(
   for (const ev of events) {
     switch (ev.method) {
       case 'turn.started': {
+        if (ev.inputKind === 'steer') {
+          // Same open turn: append the user row and keep buffering the
+          // in-flight assistant. Emitting here would split the answer
+          // around the steer and leave a turn.started with no terminal.
+          turnAnchorEventId = ev.eventId;
+          stamp(ev.createdAt);
+          const steerParts: MessagePart[] = [];
+          if (ev.prompt) steerParts.push({ type: 'text', text: ev.prompt });
+          for (const attachment of ev.attachments ?? []) {
+            steerParts.push({
+              type: 'file',
+              ...(attachment.dataUrl === undefined
+                ? {}
+                : { url: attachment.dataUrl }),
+              ...(attachment.blobRef === undefined
+                ? {}
+                : { blobRef: attachment.blobRef }),
+              mediaType: attachment.mimeType,
+              name: attachment.name,
+            });
+          }
+          if (steerParts.length > 0) {
+            pushMessage('user', steerParts, 'steer');
+          }
+          break;
+        }
         if (turnOpen) emitAssistantTurn();
         turnOpen = true;
         turnIdentity = ev.turnId;
@@ -410,6 +459,61 @@ export function projectRuntimeEventsToMessages(
         break;
       }
       case 'tool.started': {
+        // station#1586 (fix round, A): a start belongs to the turn it NAMES,
+        // the same rule `tool.completed` already applies. Position-folding it
+        // put a late start — one for a turn whose message was already emitted
+        // — into whichever turn happens to be open, so a reload disagreed
+        // with the live view (`streamHandlers.ts`'s `handleToolStartedEvent`,
+        // fix round M1) about which turn ran the tool.
+        //
+        // Deliberately BEFORE `turnOpen`/`turnSessionId`/the flushes: a late
+        // start is not activity on the open turn, and marking that turn open
+        // (or flushing its buffers around a row it does not own) is the same
+        // misattribution by another route.
+        const startNamedTurnKey =
+          ev.turnId === undefined ? undefined : turnKey(ev.threadId, ev.turnId);
+        const startCurrentTurnKey = turnKey(
+          turnSessionId ?? ev.threadId,
+          turnIdentity,
+        );
+        const startNamedTurnIndex =
+          startNamedTurnKey === undefined ||
+          startNamedTurnKey === startCurrentTurnKey
+            ? undefined
+            : assistantMessageIndexByTurn.get(startNamedTurnKey);
+        if (startNamedTurnIndex !== undefined) {
+          // The named turn's row is already emitted, so the part goes onto it
+          // and is registered as CARRIED — the same slot an open call gets
+          // when its turn ends. That is what makes the completion resolve
+          // there: `tool.completed` consults `toolsByCallId` (this turn)
+          // first, so registering it there would let the OPEN turn claim a
+          // row that belongs to an earlier one.
+          const lateEntry = carriedToolsByCallId.get(ev.toolCallId);
+          const lateExisting =
+            lateEntry && lateEntry.turnKey === startNamedTurnKey
+              ? lateEntry.part
+              : undefined;
+          if (lateExisting) {
+            // Same upsert-by-call-id rule as the ordinary path below.
+            if (ev.toolName !== undefined) lateExisting.toolName = ev.toolName;
+            if (ev.arguments !== undefined) lateExisting.args = ev.arguments;
+            lateExisting.state = 'call';
+            break;
+          }
+          const latePart: MessagePart = {
+            type: 'tool-invocation',
+            toolCallId: ev.toolCallId,
+            toolName: ev.toolName,
+            args: ev.arguments,
+            state: 'call',
+          };
+          messages[startNamedTurnIndex]!.parts.push(latePart);
+          carriedToolsByCallId.set(ev.toolCallId, {
+            part: latePart,
+            turnKey: startNamedTurnKey,
+          });
+          break;
+        }
         turnSessionId ??= ev.threadId;
         turnOpen = true;
         flushText();
@@ -489,24 +593,52 @@ export function projectRuntimeEventsToMessages(
         // mismatch: there is no competing claim to honour, and rejecting it
         // would strand every row projected from events that carry no turn id
         // at all.
+        const settleableTurn = (rowTurnKey: string | undefined) =>
+          namedTurnKey === undefined ||
+          rowTurnKey === undefined ||
+          rowTurnKey === namedTurnKey;
         const carried =
-          carriedEntry &&
-          (namedTurnKey === undefined ||
-            carriedEntry.turnKey === undefined ||
-            carriedEntry.turnKey === namedTurnKey)
+          carriedEntry && settleableTurn(carriedEntry.turnKey)
             ? carriedEntry.part
             : undefined;
+        // station#1569 (H1): consulted after both live maps — a call still
+        // open anywhere outranks one already settled `unresolved`, which is
+        // only reachable at all because that terminal is explicitly not
+        // final (see `unresolvedToolsByCallId`).
+        const supersededEntry =
+          toolsByCallId.has(ev.toolCallId) || carried
+            ? undefined
+            : unresolvedToolsByCallId.get(ev.toolCallId);
+        const superseded =
+          supersededEntry && settleableTurn(supersededEntry.turnKey)
+            ? supersededEntry.part
+            : undefined;
         const existing =
-          completed ?? toolsByCallId.get(ev.toolCallId) ?? carried;
+          completed ??
+          toolsByCallId.get(ev.toolCallId) ??
+          carried ??
+          superseded;
         if (existing) {
-          if (ev.toolName !== undefined) existing.toolName = ev.toolName;
+          // Imported result records may omit the name and normalize to "tool".
+          // Keep the actual invocation name instead of erasing its identity.
+          if (
+            ev.toolName !== undefined &&
+            (ev.toolName !== 'tool' || !existing.toolName)
+          ) {
+            existing.toolName = ev.toolName;
+          }
           existing.state = derivedState;
           existing.output = ev.output;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
           existing.error = ev.error;
           existing.sourceEventId = ev.eventId;
           existing.cancelled = isCancelled;
+          // A superseded `unresolved` row must not keep Station's own "no
+          // result was reported" sentence as the body of a call that now
+          // has a real outcome — a terminal with no text (empty or
+          // image-only content) still replaces it (station#1569 review D1).
           if (text !== undefined) existing.result = text;
+          else if (existing === superseded) delete existing.result;
           existing.isError = isError;
           // Overrides any earlier call-time approvalStatus (e.g. an
           // optimistic 'auto-approved') — Station's own policy can deny a
@@ -517,6 +649,19 @@ export function projectRuntimeEventsToMessages(
           // A terminal settles this call slot. A later terminal reusing the
           // same call id must become a distinct durable result, not overwrite
           // this sourceEventId.
+          //
+          // station#1569 (H1): with ONE exception, recorded below.
+          // `unresolved` is not a result — it is the admission that no result
+          // arrived — so the real one, when it turns up for the same call, is
+          // that row's outcome rather than a second durable result. The rule
+          // above keeps holding for `success`/`error`/`cancelled`, which are
+          // outcomes and which a later terminal must never overwrite.
+          const rowTurnKey =
+            existing === carried
+              ? carriedEntry?.turnKey
+              : existing === superseded
+                ? supersededEntry?.turnKey
+                : turnKey(turnSessionId, turnIdentity);
           if (!completed) {
             // Fix round (M3/L12): retire only the slot this terminal actually
             // settled. Clearing both used to evict an earlier turn's carried
@@ -525,9 +670,17 @@ export function projectRuntimeEventsToMessages(
             // and left the first row reading "running" forever.
             if (existing === carried) {
               carriedToolsByCallId.delete(ev.toolCallId);
+            } else if (existing === superseded) {
+              unresolvedToolsByCallId.delete(ev.toolCallId);
             } else {
               toolsByCallId.delete(ev.toolCallId);
             }
+          }
+          if (isUnresolved) {
+            unresolvedToolsByCallId.set(ev.toolCallId, {
+              part: existing,
+              turnKey: rowTurnKey,
+            });
           }
         } else {
           // Completion without a captured start (replay gap) — still surface it.
@@ -567,6 +720,18 @@ export function projectRuntimeEventsToMessages(
             flushText();
             flushReasoning();
             parts.push(part);
+          }
+          // station#1569 (H1): a start-less `unresolved` row is settleable
+          // too. The row is on the turn the event named when there was one,
+          // otherwise on the open turn this fold just pushed it into.
+          if (isUnresolved) {
+            unresolvedToolsByCallId.set(ev.toolCallId, {
+              part,
+              turnKey:
+                namedTurnIndex !== undefined
+                  ? namedTurnKey
+                  : turnKey(turnSessionId, turnIdentity),
+            });
           }
         }
         break;
@@ -647,7 +812,14 @@ export function projectRuntimeEventsToMessages(
         // Fall back to the authoritative outputText only if no text was streamed.
         const hasText =
           Boolean(textBuf) || parts.some((p) => p.type === 'text');
-        if (!hasText && ev.outputText) textBuf = ev.outputText;
+        if (
+          ev.outputText &&
+          (!hasText ||
+            (textBuf &&
+              (ev.outputText.startsWith(textBuf) ||
+                ev.outputText.endsWith(textBuf))))
+        )
+          textBuf = ev.outputText;
         emitAssistantTurn();
         break;
       }

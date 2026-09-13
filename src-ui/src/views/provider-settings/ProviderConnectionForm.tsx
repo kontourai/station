@@ -1,7 +1,11 @@
 import { useAwsProfilesQuery } from '@kontourai/station-sdk';
 import { Fragment, useId, useMemo } from 'react';
+import { Button } from '../../components/Button';
+import { ConnectionReadinessNotice } from '../../components/connections/ConnectionReadinessNotice';
 import { CheckGlyph, CloseGlyph } from '../../components/icons/Glyph';
+import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
+import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import {
   modelPreferenceKey,
   updateModelPickerPreferences,
@@ -174,6 +178,24 @@ export function ProviderConnectionForm({
           Number.MAX_SAFE_INTEGER),
     );
   }, [modelOptions, modelPreferences.order, selectedProviderId]);
+  const listedModelKeys = new Set(
+    selectedProviderId
+      ? orderedModels.map((model) =>
+          modelPreferenceKey(selectedProviderId, model.id),
+        )
+      : [],
+  );
+  const hiddenModelCount = [...listedModelKeys].filter((key) =>
+    modelPreferences.hidden.includes(key),
+  ).length;
+  const setListedVisibility = (hidden: boolean) => {
+    updateModelPickerPreferences((current) => ({
+      ...current,
+      hidden: hidden
+        ? [...current.hidden, ...listedModelKeys]
+        : current.hidden.filter((key) => !listedModelKeys.has(key)),
+    }));
+  };
   const apiKeyConfigured = form.config.apiKeyConfigured === true;
 
   /*
@@ -185,6 +207,7 @@ export function ProviderConnectionForm({
    * check still said Not checked. This is the same resolver the hub cards and
    * the list rail read, fed the server's own readiness evidence.
    */
+  const devicePresentation = useDevicePresentation();
   const presentation = resolveProviderPresentation({
     id: selectedProviderId ?? 'new',
     kind: 'model',
@@ -326,17 +349,24 @@ export function ProviderConnectionForm({
       {/* An unreachable endpoint carries a reason the
           operator needs just as much as a refusal does — "Station could not
           reach this provider" with what it tried, not a silent card. */}
-      {!isNew &&
-        (form.readinessEvidence?.check?.status === 'failed' ||
-          form.readinessEvidence?.check?.status === 'unreachable') && (
-          <div className="provider-detail__notice" role="status">
-            <strong>{presentation.readiness}</strong>
-            <span>{form.readinessEvidence.summary}</span>
-            {form.readinessEvidence.action && (
-              <span>{form.readinessEvidence.action}</span>
-            )}
-          </div>
-        )}
+      {/*
+          Every not-ready state, not only a refused or unreachable check. This
+          page surfaced a notice ONLY for those two, so a connection with no key
+          saved -- the most common reason it cannot be used -- said nothing at
+          all, while the engine page named the prerequisite, its remedy and the
+          machine. One notice now, so how much help a user gets does not depend
+          on which page they happen to be standing on.
+      */}
+      {!isNew && presentation.readiness !== 'Ready' && (
+        <ConnectionReadinessNotice
+          readiness={presentation.readiness}
+          detail={presentation.detail}
+          kind="model"
+          prerequisites={form.prerequisites}
+          evidence={form.readinessEvidence}
+          devicePresentation={devicePresentation}
+        />
+      )}
 
       {selectedProviderId && orderedModels.length > 0 && (
         <section className="provider-detail__models">
@@ -344,6 +374,28 @@ export function ProviderConnectionForm({
             <h3>Models</h3>
             <p>Choose favorites, order, and visibility for this device.</p>
           </div>
+          <ResponsiveSurfaceActions className="provider-detail__model-bulk">
+            <Button
+              disabled={hiddenModelCount === listedModelKeys.size}
+              onClick={() => setListedVisibility(true)}
+            >
+              Hide all ({listedModelKeys.size})
+            </Button>
+            <Button
+              disabled={hiddenModelCount === 0}
+              onClick={() => setListedVisibility(false)}
+            >
+              Show all ({listedModelKeys.size})
+            </Button>
+            <span role="status">
+              {listedModelKeys.size - hiddenModelCount} of{' '}
+              {listedModelKeys.size} visible
+            </span>
+          </ResponsiveSurfaceActions>
+          <p>
+            Applies to the listed models, including favorites and custom
+            entries.
+          </p>
           <div className="provider-detail__model-list">
             {orderedModels.map((model, index) => {
               const key = modelPreferenceKey(selectedProviderId, model.id);
@@ -671,8 +723,8 @@ export function ProviderConnectionForm({
                   label="AWS profiles will appear here"
                   description={
                     awsProfilesQuery.data?.available === false
-                      ? "An AWS config file wasn't found on this computer."
-                      : 'Add named profiles to ~/.aws/config on this computer to choose one.'
+                      ? "An AWS config file wasn't found on the computer Station runs on."
+                      : 'Add named profiles to ~/.aws/config on the computer Station runs on to choose one.'
                   }
                 />
               )}

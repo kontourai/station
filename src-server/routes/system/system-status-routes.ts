@@ -34,7 +34,10 @@ import {
 } from '../../telemetry/metrics.js';
 import { raceWithSignal } from '../../utils/bounded-async.js';
 import { detectCliOnPath } from '../../utils/cli-detection.js';
-import { readBuildProvenance } from './build-provenance.js';
+import {
+  readBuildProvenance,
+  readSystemRuntimeIdentity,
+} from './build-provenance.js';
 import { resolveDevicePresentation } from './device-presentation.js';
 import type {
   CapabilityState,
@@ -757,7 +760,8 @@ function buildSystemRecommendation(input: {
 // chat-readiness for an external engine comes from
 // `resolveExternalEngineReadiness` (CLI resolvable AND authenticated), never
 // from this alone. Shared with native-engine adoption (archive#1575) so both agree
-// on what "installed" means.
+// on what "installed" means. Cancellation and the reason there is no ceiling
+// live with the calls, in `cliPresence` below.
 const whichCmd = detectCliOnPath;
 
 function createStatusDiscoveryCache(deps: SystemStatusDeps) {
@@ -782,6 +786,29 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         return false;
       }
     };
+    /**
+     * The CLI-presence probes, on this refresh's own controller
+     * (station#1815).
+     *
+     * `booleanProbe` already abandons a late answer, so before this the
+     * `which` child outlived the answer nobody would read; the signal is what
+     * ends it. That is the whole of what this line changes.
+     *
+     * No `timeoutMs`: a ceiling of its own would add a SECOND way for these
+     * fields to report "not installed" without a locator having said so, on
+     * a surface that drives the first-run launcher.
+     *
+     * It does not add a first one. `booleanProbe` already commits `false`
+     * when the refresh budget expires, and the snapshot below caches that for
+     * `STATUS_PREREQUISITES_CACHE_TTL_MS` — the same class of flap
+     * `reconcileExternalEngineReadiness` exists to absorb for the field
+     * beside these, and which these three have no equivalent for. That is
+     * pre-existing and is tracked in station#1832; it is recorded here so
+     * this comment is not read as a claim that these fields only ever report
+     * an observed absence.
+     */
+    const cliPresence = (command: string) =>
+      whichCmd(command, { signal: controller.signal });
 
     refreshPromise = (async () => {
       const runtimeConnectionState = await raceWithSignal(
@@ -806,12 +833,12 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         developerServices,
       ] = await Promise.all([
         booleanProbe(checkBedrockCredentials()),
-        booleanProbe(whichCmd('kiro-cli')),
+        booleanProbe(cliPresence('kiro-cli')),
         booleanProbe(
           deps.checkOllamaAvailability?.() ?? Promise.resolve(false),
         ),
-        booleanProbe(whichCmd('codex')),
-        booleanProbe(whichCmd('claude')),
+        booleanProbe(cliPresence('codex')),
+        booleanProbe(cliPresence('claude')),
         resolveExternalEngineReadiness(
           undefined,
           controller.signal,
@@ -946,22 +973,25 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
   });
 
   app.get('/identity', (c) => {
-    const build = readBuildProvenance();
+    // The SAME derivation the core-update diagnostics read — one identity
+    // rule, shared (update-ux PR2), never two implementations that can
+    // disagree about what counts as an identity.
+    const identity = readSystemRuntimeIdentity();
     systemOps.add(1, { op: 'get_identity' });
     // Identity stays fail-closed even though `readBuildProvenance` is now
     // partial (archive#1085): remote probes (openssh-worker-probe) treat this
     // triple as proof of *which* Station answered, so a partial answer is not
     // an identity and must not be served as one.
-    if (!build?.fullSha || !build.instanceId || !build.bootId) {
+    if (!identity) {
       return c.json({ ready: false, status: 'identity_unavailable' }, 503);
     }
     return c.json({
-      instanceId: build.instanceId,
-      sha: build.fullSha,
-      // Names what computed `sha`: a checkout-derived value must not read
-      // as the build's identity on the probe surface either.
-      ...(build.shaSource ? { shaSource: build.shaSource } : {}),
-      bootId: build.bootId,
+      ...identity,
+      // The same request-bound projection /status serves, repeated so an
+      // identity probe can present host-hands affordances without a second
+      // status request (station#3843 §1 doctrine: derived once per request,
+      // from the locality the auth boundary bound).
+      devicePresentation: resolveDevicePresentation(c.req.raw),
     });
   });
 
@@ -971,6 +1001,7 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
     // deterministic E2E payload cannot answer a different device class from
     // the real one.
     const devicePresentation = resolveDevicePresentation(c.req.raw);
+    const homeRecovery = deps.getHomeRecovery?.();
     const e2eReady = process.env.STATION_E2E_SYSTEM_STATUS_READY === '1';
     const e2eFirstRun = process.env.STATION_E2E_FIRST_RUN === '1';
     const build = e2eReady ? E2E_BUILD_PROVENANCE : readBuildProvenance();
@@ -988,6 +1019,7 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
         },
       });
       return c.json({
+        ...(homeRecovery ? { homeRecovery } : {}),
         prerequisites: [],
         prerequisitesState: 'ready',
         acp: {
@@ -1158,6 +1190,7 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
       source: 'system-status',
     });
     return c.json({
+      ...(homeRecovery ? { homeRecovery } : {}),
       prerequisites,
       prerequisitesState: discovery.state,
       acp: {

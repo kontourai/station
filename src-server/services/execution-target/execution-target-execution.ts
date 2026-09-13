@@ -3,6 +3,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
+import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConversationContextBoundaryProjection } from '@kontourai/station-contracts/conversation-context-boundary';
@@ -27,6 +28,7 @@ import type {
   WorkspaceIsolationConfig,
   WorktreeSessionMetadata,
 } from '@kontourai/station-contracts/workspace-isolation';
+import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {
@@ -61,6 +63,7 @@ async function provisionProjectWorktree(
 }
 
 export interface ForegroundMessageInput {
+  expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;
   conversationId?: string;
@@ -117,7 +120,7 @@ const conversationHandoffLaunchCapabilityBrand = Symbol(
   'conversationHandoffLaunchCapability',
 );
 
-export type ConversationHandoffLaunchCapability = Readonly<{
+type ConversationHandoffLaunchCapability = Readonly<{
   conversationId: string;
   predecessorSessionId: string;
   sessionId: string;
@@ -132,7 +135,7 @@ export type ConversationHandoffLaunchCapability = Readonly<{
  * The handoff authority calls this only after target readiness and durable
  * reservation succeed.  It is intentionally not a boolean escape hatch.
  */
-export function createConversationHandoffLaunchCapability(
+function createConversationHandoffLaunchCapability(
   input: Omit<
     ConversationHandoffLaunchCapability,
     typeof conversationHandoffLaunchCapabilityBrand
@@ -145,7 +148,7 @@ export function createConversationHandoffLaunchCapability(
 }
 
 const conversationHandoffIntentBrand = Symbol('conversationHandoffIntent');
-export type ConversationHandoffIntent = Readonly<{
+type ConversationHandoffIntent = Readonly<{
   idempotencyKey: string;
   [conversationHandoffIntentBrand]: true;
 }>;
@@ -259,6 +262,14 @@ export class ContinuationWorkspaceError extends Error {
 
 export interface ExecutionTargetExecutionDependencies
   extends ExecutionTargetResolverDependencies {
+  /** Private local owner: native prompt history supplies its own authorized lineage. */
+  nativeMemoryOwnsTranscript?: boolean;
+  /** Request-bound authorization for shared personal conversations; never caller input. */
+  canContinueConversation?: (
+    access: EnvironmentAccess,
+    conversationId: string,
+    userId: string,
+  ) => boolean;
   readSessionBinding: (
     access: EnvironmentAccess,
     sessionId: string,
@@ -289,6 +300,8 @@ export interface ExecutionTargetExecutionDependencies
     startRequired: boolean;
     /** Server-owned cursor copied only from the predecessor Session. */
     resumeCursor?: unknown;
+    /** Concrete model observed on the same-engine predecessor. */
+    resumeModel?: string;
     /** Bounded provider-neutral transcript fallback when no cursor exists. */
     transcriptSeed?: string;
     /** Explicit one-shot context policy, never inferred from a restart. */
@@ -420,7 +433,16 @@ export async function executeForegroundMessage(
   if (
     binding &&
     (binding.environmentId !== resolved.access.environmentId ||
-      (binding.userId !== undefined && binding.userId !== input.userId))
+      (binding.userId !== undefined &&
+        binding.userId !== input.userId &&
+        !(
+          input.userId !== undefined &&
+          deps.canContinueConversation?.(
+            resolved.access,
+            conversationId,
+            input.userId,
+          )
+        )))
   ) {
     throw new Error(
       'The requested conversation belongs to a different Environment, Agent, or Station user',
@@ -535,6 +557,23 @@ export async function executeForegroundMessage(
         )
       : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
+  const resumeModel =
+    continuation && 'resumeModel' in continuation
+      ? continuation.resumeModel
+      : undefined;
+  // Continuing through a native cursor or a transcript-seeded fresh process
+  // must retain the model. Check the capability for the actual launch path;
+  // cursorless engines such as Muse support start overrides, not resume.
+  const modelLaunch = deps.getProviderAdapter(resolved.provider)?.metadata
+    .modelLaunch;
+  const inheritResumeModel =
+    resumeModel &&
+    !input.target.model?.override?.trim() &&
+    resolved.modelLaunchPlan.kind === 'engine-selected' &&
+    (continuation?.resumeCursor !== undefined
+      ? modelLaunch?.overrideAtResume
+      : modelLaunch?.overrideAtStart) === true;
+  const startModelId = inheritResumeModel ? resumeModel : resolved.modelId;
   const conversationProjectSlug =
     binding?.projectSlug ??
     (resolved.workspace?.kind === 'project'
@@ -601,7 +640,7 @@ export async function executeForegroundMessage(
         ...(conversationWorkspaceIsolation
           ? { workspaceIsolation: conversationWorkspaceIsolation }
           : {}),
-        ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
+        ...(startModelId ? { modelId: startModelId } : {}),
         ...(continuation?.resumeCursor !== undefined
           ? { resumeCursor: continuation.resumeCursor }
           : {}),
@@ -739,7 +778,7 @@ export async function executeForegroundMessage(
                 updatedAt: new Date().toISOString(),
               },
             },
-            `Cold session start is accepted but boundary settlement is indeterminate: ${error instanceof Error ? error.message : String(error)}`,
+            `Cold session start is accepted but boundary settlement is indeterminate: ${errorMessage(error)}`,
           );
         }
       }
@@ -769,10 +808,7 @@ export async function executeForegroundMessage(
             terminalState: 'cancelled',
           });
         } catch (cleanupError) {
-          const cleanupMessage =
-            cleanupError instanceof Error
-              ? cleanupError.message
-              : String(cleanupError);
+          const cleanupMessage = errorMessage(cleanupError);
           const message = `LEAKED WORKTREE: session start failed and compensating cleanup failed; manual cleanup is required for path=${worktree.path} branch=${worktree.branch} repo=${worktree.repoPath}: ${cleanupMessage}`;
           const leakFields = {
             worktreePath: worktree.path,
@@ -800,15 +836,22 @@ export async function executeForegroundMessage(
         clientTurnId: effectiveClientTurnId ?? '',
       })
     : input.attachments;
+  const transcriptSeed =
+    resolved.provider === 'station-agent' && deps.nativeMemoryOwnsTranscript
+      ? undefined
+      : continuation?.transcriptSeed;
   const turn = await deps.sendTurn(
     resolved.access,
     {
       threadId: sessionId,
       input: message,
+      ...(input.expectedInputRequest
+        ? { expectedInputRequest: input.expectedInputRequest }
+        : {}),
       ...(attachments ? { attachments } : {}),
-      ...(continuation?.transcriptSeed || input.ambientContext
+      ...(transcriptSeed || input.ambientContext
         ? {
-            ambientContext: [continuation?.transcriptSeed, input.ambientContext]
+            ambientContext: [transcriptSeed, input.ambientContext]
               .filter(
                 (value): value is string =>
                   typeof value === 'string' && value.trim().length > 0,

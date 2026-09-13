@@ -1,9 +1,83 @@
 /* ── DetailHeader — shared sticky header for detail panels ── */
 
+/*
+ * #1666: the actions take a second row when they can no longer sit beside the
+ * identity, at any width, rather than starving it.
+ *
+ * `__left` is a flex child with `min-width: 0` — the idiom that lets `__title`
+ * ellipsize. But `min-width: 0` also removes the child's automatic min-content
+ * floor, so against a `flex-shrink: 0` actions block it absorbed the entire
+ * shortfall and was driven to ZERO instead of truncating. Measured on
+ * Developer -> Telemetry, whose actions are intrinsically 452px: at a 600px
+ * region the identity was 76px and the subtitle wrapped one word per line down
+ * six lines; at 500px both reached 0px.
+ *
+ * The `@media (min-width: 769px) and (max-width: 1180px)` block below already
+ * arranges the right outcome, but it cannot fire here: a media query sees the
+ * VIEWPORT, while this header's width is set by its REGION. A docked pane
+ * narrows the main region inside a 1440px window, so the query never matched
+ * however narrow the header got. `ChatDockActiveIdentity.overflow.test.tsx`
+ * records the same class on the dock ("a 280px side dock lives in a 1456px
+ * window").
+ *
+ * So the wrap becomes unconditional, and CONTENT decides where it happens:
+ * `__left` keeps `flex-basis: auto`, so its flex base size is its own
+ * max-content, and the actions move to their own row exactly when they and a
+ * legible identity can no longer share one. Two consequences are the reason it
+ * is written this way rather than as a chosen length:
+ *
+ *   - A flex child on a line with room for its base size is never shrunk, so
+ *     the identity cannot be starved at all — it gets its content width or it
+ *     gets its own row. That is the defect above, closed by construction.
+ *   - `flex-basis` sizes the MAIN axis, so a length here would be a width only
+ *     while this header is a row. Both blocks below stack it into a column,
+ *     where a 20rem basis measured as 320px of HEIGHT: a 23px identity in a
+ *     405px phone header, on every consumer. A length basis is correct only
+ *     with a reset in each stacking rule — a coupling this stylesheet cannot
+ *     enforce on the next one added.
+ *
+ * That second point removes one coupling and leaves another, so it is worth
+ * being exact: `auto` needs no basis reset anywhere, but the unconditional
+ * wrap still makes a stacked header a multi-line COLUMN container, and the
+ * <= 640px block below pins `flex-wrap: nowrap` for exactly that reason —
+ * removing it puts a 470px identity in a 390px region. Any future rule that
+ * stacks this header owes the same pin. The coupling moved; it did not vanish.
+ *
+ * What must NOT enter that base size is the subtitle. A wrap means the
+ * identity and the actions cannot share a row; it must not mean the subtitle
+ * would like more width. While the subtitle contributed its own content width,
+ * the header took a second row purely to widen a subtitle that then wrapped to
+ * the same line count anyway. Swept on a 4px grid from a 520px to a 1000px
+ * region, across five subtitle lengths and two action clusters — 1210 samples:
+ * 217 of them were taller than origin/main, every one by exactly 61px, every
+ * one with identical subtitle line count, nothing clipped and nothing
+ * overflowing. The same sweep against this rule measures 0. That is the
+ * complaint #1678 makes about the tablet band — a wrap decided by something
+ * other than whether the identity and the actions can share a row — arriving
+ * on every consumer instead of one viewport band, so `__subtitle` takes
+ * `contain: inline-size`: its inline size stops depending on its text, so it
+ * contributes nothing to the wrap decision and still fills whatever width the
+ * identity ends up with.
+ *
+ * The base size is therefore the TITLE's, and the title is `nowrap` with no
+ * maximum — so it is NOT bounded, and the wrap point moves with title length.
+ * That is the intended reading: a header wraps when its own title and its
+ * actions stop fitting. The subtitle's 62ch cap bounds how wide the subtitle
+ * RENDERS, and no longer has anything to do with where the wrap happens.
+ *
+ * `min-width: 0` deliberately STAYS: it is what makes a title too long for its
+ * row ellipsize rather than take its own content width. Removing it at a 500px
+ * region leaves a 396px title UNCLIPPED in a 470px identity — 18px past this
+ * header's 452px content box, though still inside the region — so what catches
+ * it is the ellipsis going missing, not an overflow measurement. The
+ * region-overflow figures elsewhere in this file belong to the phone block's
+ * `flex-wrap` pin below, not to this declaration.
+ */
 .detail-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 24px;
   padding: 16px 24px;
   border-bottom: 1px solid var(--border-primary);
@@ -19,11 +93,17 @@
   align-items: center;
   gap: 12px;
   min-width: 0;
-  flex: 1;
+  /* Grow into spare room, shrink when alone on a row, and let content set the
+     base size — see the wrap note above for why the basis is not a length. */
+  flex: 1 1 auto;
 }
 
 .detail-header__identity {
   min-width: 0;
+  /* Fill whatever `__left` resolves to. Without this the identity would stay
+     at its own base size — which, with the subtitle contained below, is the
+     title's width, leaving the subtitle to wrap inside it. */
+  flex-grow: 1;
 }
 
 .detail-header__icon {
@@ -82,6 +162,10 @@
 
 .detail-header__subtitle {
   max-width: 62ch;
+  /* Keeps the subtitle out of the header's wrap decision — see the note at the
+     top of this file. Inline-axis containment only: the height is still its
+     text's, and the width is still whatever the identity gives it. */
+  contain: inline-size;
   font-size: 0.8125rem;
   line-height: 1.45;
   color: var(--text-muted);
@@ -104,10 +188,6 @@
    of squeezing the title down to one character. This is shared detail chrome,
    so every SplitPaneLayout consumer gets the same intermediate contract. */
 @media (min-width: 769px) and (max-width: 1180px) {
-  .detail-header {
-    flex-wrap: wrap;
-  }
-
   .detail-header__left {
     flex-basis: 100%;
   }
@@ -126,6 +206,12 @@
   .detail-header {
     align-items: stretch;
     flex-direction: column;
+    /* This block stacks the header, and `flex-wrap: wrap` on a COLUMN
+       container wraps into additional COLUMNS rather than rows — which sized
+       the identity to its content and pushed it past the phone viewport (a
+       396px title overflowed a 390px screen to 470px). The row wrap above is
+       for row direction only. */
+    flex-wrap: nowrap;
     gap: 12px;
     padding: 14px 16px;
   }

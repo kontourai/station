@@ -21,24 +21,31 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
+| `@kontourai/station-contracts/application-session` | Device-bound account continuations, explicit capabilities, public proof keys and challenge/credential projections; no Device or Project grant |
+| `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
+| `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
 | `@kontourai/station-contracts/config` | App config and template variables |
+| `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates |
+| `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes |
 | `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts, install outcomes and current permission status |
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes |
 | `@kontourai/station-contracts/project` | Project config and metadata |
+| `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, single-use or verified-email invitations and administration projections |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types |
 | `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses |
 | `@kontourai/station-contracts/runtime-events` | Runtime event stream payloads |
 | `@kontourai/station-contracts/session-inventory` | Closed Session inventory rows, gaps, and current-answer Basis projection |
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
 | `@kontourai/station-contracts/scheduler` | Scheduler jobs, stats, capabilities, notifications |
+| `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, and update-provenance issue codes |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
@@ -91,9 +98,27 @@ built-in scheduler now emits.
 
 ## Compatibility
 
+`conversation-pull-request-links` defines exact provider, host, repository, and
+native-ref identities for Conversation links. Explicit links, branch-derived
+associations, and Task-kept declarations retain distinct `source` values.
+Provider refresh results carry an observation time and either current state or
+an explicit unsupported/unavailable reason. `PullRequest.headSha` and
+`baseSha` are optional because a provider that omits exact revisions must not
+be presented as current by inference.
+
 `@kontourai/station-shared` still re-exports many of these types so older code can compile during convergence. That is a compatibility layer, not the canonical ownership model. New code should import the owning `@kontourai/station-contracts/*` module directly.
 
 Server-only provider interfaces now live directly in `src-server/providers/provider-interfaces.ts`, `src-server/providers/provider-contracts.ts`, and `src-server/providers/llm/model-provider-types.ts`. The old `src-server/providers/types.ts` barrel was removed during convergence.
+
+### Conversation measurements
+
+Per-model rows in `ConversationStatsResponse.modelStats` use optional token,
+context, and cost measurements, matching the conversation-level response.
+`turns` and `toolCalls` remain required counts. Clients that previously required
+every model measurement must handle absence as unreported, distinct from a
+measured zero. The server projects the stored null cost marker to an omitted
+wire field; supplied null, negative, or non-finite wire measurements remain
+invalid under `parseConversationStatsResponse` in the `runtime` subpath.
 
 ### Source-only learning inspection
 
@@ -104,3 +129,58 @@ It supplies no candidate kind, deployment scope, owner projection identity,
 promotion verdict, or effect result. Generic record `active` is not learning
 activation. All restricted/unavailable/refused outcomes omit source identity.
 The full `LearningReviewProjection` lifecycle contract is unchanged.
+
+`OrchestrationQuoteSource` on the orchestration subpath is the versioned,
+bounded exact-answer quotation read: Session, turn, message, text and SHA-256
+text revision. It conveys no authorization grant or evidence verdict. The
+quote-source HTTP route checks current read authority before and after owner
+I/O and refuses oversized text instead of returning an incomplete source.
+
+`PullRequestReviewSnapshot` on `pull-request-provider` binds provider-supplied
+review content to an observed head/base pair and timestamp. Diff availability
+and discussion completeness are explicit; a provider diff is not a claim that
+all binary or oversized content was returned. Optional provider methods preserve
+compatibility with adapters that do not implement in-app review.
+`PullRequestReviewInput.expectedHeadSha` binds approvals to the inspected head.
+`PullRequestReviewOutcome` distinguishes confirmed acknowledgements from refused
+and indeterminate attempts. A forge review is not a Station gate verdict.
+`PullRequestMergeInput.expectedHeadSha` optionally constrains merge admission to
+the inspected revision; review-origin merges observe the resulting provider state.
+
+`AttentionInputReplyContext` on the attention subpath projects one exact open
+input request's reply binding and declared file/image transport. `needs_input`
+items may carry `inputReference`; approval/permission references keep their
+separate meaning. `OrchestrationSendTurnInput.expectedInputRequest` is a
+ constraint, not a grant, and is removed before the adapter receives input.
+
+## Mobile device inspection
+
+`@kontourai/station-contracts/mobile-device` owns `MobileDeviceTarget`,
+`MobileDeviceSummary`, `MobileDeviceInventory`, and `MobileDeviceCapture`.
+Host/device IDs are descriptive and carry no credentials, paths, or execution
+authority. A capture is one observed frame, not stream health or app/build
+identity. Runtime validation belongs to the helper, route, and SDK boundaries;
+see [Mobile device inspection](../guides/mobile-device-workspace.md).
+
+## System status and update provenance
+
+`@kontourai/station-contracts/system-status` owns `DevicePresentation`
+(the request-bound host/paired projection), `SystemRuntimeIdentity`
+(the answering server's `instanceId`/`bootId`/`sha` triple with an optional
+`shaSource` label), `SystemIdentityResponse` (that triple plus an optional
+`devicePresentation`), and `UpdateProvenanceIssue` (`missing` or
+`invalid-stamp`). All three identity fields are required for an identity:
+a server that cannot prove the whole triple reports unavailable rather than
+serving a partial answer. `shaSource` names what computed `sha` — a
+checkout-derived value is labeled, never presented as the build's identity.
+`UpdateProvenanceIssue` is a typed reason minted by the server's install
+provenance resolver; consumers render from the code and never re-parse it out
+of prose. Runtime parsing of these shapes lives at the route and SDK
+boundaries, not in this package.
+
+The deployment authentication descriptor's optional `externalLogins` lists
+operator-configured browser identity choices, their declared POST begin-login
+paths and availability. These are presentation/capability facts, not identity
+claims, Device grants or Project membership. Secret references and provider
+configuration remain private to Station's operator composition.
+

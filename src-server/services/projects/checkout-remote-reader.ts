@@ -44,6 +44,7 @@
 
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { errorMessage } from '../../utils/error-message.js';
 import { execGit } from '../../utils/git-exec.js';
 
 export interface CheckoutRemote {
@@ -156,7 +157,7 @@ export const readCheckoutRemotes: CheckoutRemoteReader = async (
     }));
   } catch (error) {
     const code = (error as { code?: unknown }).code;
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     // A timed-out read was KILLED, so it never reported an exit code at all —
     // it must not fall through to the exit-128 branch and be mistaken for
     // "git refused". Naming the timeout explicitly is the difference between

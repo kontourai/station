@@ -7,8 +7,10 @@ import {
   formatSkillStatsSummary,
   formCommandWord,
   formVariables,
+  SKILLS_SUBTITLE,
   type SkillForm,
   skillDetailToForm,
+  skillSourceLabel,
 } from '../views/skills/skill-view-utils';
 
 function form(overrides: Partial<SkillForm> = {}): SkillForm {
@@ -99,12 +101,16 @@ describe('formatSkillStatsSummary', () => {
 });
 
 describe('the skills list', () => {
+  // `origin` is what `/api/system/skills` sends beside `source` for a skill in
+  // `<home>/skills`; a fixture carrying only `source` describes no real
+  // response and would exercise the unrecorded branch by accident.
   const skills = [
-    { name: 'plain-skill', installed: true, source: 'local' },
+    { name: 'plain-skill', installed: true, source: 'local', origin: 'user' },
     {
       name: 'release-check',
       installed: true,
       source: 'local',
+      origin: 'user',
       command: { enabled: true, global: true },
       stats: { runs: 2, successes: 2, failures: 0, qualityScore: 100 },
     },
@@ -119,13 +125,72 @@ describe('the skills list', () => {
 
   test('rows carry the command word and the run count', () => {
     expect(buildSkillListItems(skills)).toEqual([
-      { id: 'plain-skill', name: 'plain-skill', subtitle: '' },
+      {
+        id: 'plain-skill',
+        name: 'plain-skill',
+        subtitle: '',
+        source: 'This machine',
+      },
       {
         id: 'release-check',
         name: 'release-check',
         subtitle: '/release-check · 2 runs · 100% success',
+        source: 'This machine',
       },
     ]);
+  });
+
+  // #1582 D6. The chip and the band both read `source`, so this is the one
+  // derivation both surfaces depend on. Every origin the contract defines has a
+  // label, and an origin the listing does not carry says so instead of being
+  // absorbed into "This machine".
+  test('names the root each skill was loaded from, and names the gap', () => {
+    expect(skillSourceLabel('package')).toBe('Built in');
+    expect(skillSourceLabel('user')).toBe('This machine');
+    expect(skillSourceLabel('project')).toBe('This workspace');
+    expect(skillSourceLabel('registry')).toBe('Registry');
+    expect(skillSourceLabel('plugin')).toBe('Plugin');
+    expect(skillSourceLabel('migrated-playbook')).toBe('Migrated playbook');
+    expect(skillSourceLabel(undefined)).toBe('Source unrecorded');
+  });
+
+  // The pane emits a band header whenever `section` changes, so a row order
+  // that interleaves sources emits the same header repeatedly. Input order is
+  // deliberately worst-case: built-in first, and two `user` rows split by a
+  // `project` row.
+  test('orders rows so each source band is contiguous, user roots first', () => {
+    const mixed = [
+      { name: 'built-a', installed: true, origin: 'package' },
+      { name: 'mine-a', installed: true, origin: 'user' },
+      { name: 'ours-a', installed: true, origin: 'project' },
+      { name: 'mine-b', installed: true, origin: 'user' },
+      { name: 'built-b', installed: true, origin: 'package' },
+      { name: 'nowhere', installed: true },
+    ] as any[];
+    const rows = buildSkillListItems(mixed);
+    expect(rows.map((row) => row.name)).toEqual([
+      'ours-a',
+      'mine-a',
+      'mine-b',
+      'built-a',
+      'built-b',
+      'nowhere',
+    ]);
+    // Contiguity is the property, stated as such rather than implied by the
+    // order above: a band label may not reappear once a different one has
+    // started, because that is when the pane emits a duplicate header.
+    const bands = rows.map((row) => row.source);
+    const started: string[] = [];
+    for (const [index, band] of bands.entries()) {
+      if (bands[index - 1] === band) continue;
+      expect(started).not.toContain(band);
+      started.push(band);
+    }
+  });
+
+  test('the list subtitle no longer calls every loaded skill a workspace skill', () => {
+    expect(SKILLS_SUBTITLE).not.toContain('workspace skills');
+    expect(SKILLS_SUBTITLE).toContain('grouped by where it came from');
   });
 });
 

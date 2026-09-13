@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { DEMO_LAYOUT_PREVIEW } from './fixtures/plugin-preview';
 import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
 import { dismissSetupLauncher } from './helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
@@ -27,14 +28,6 @@ async function mockStationIdentity(page: Page) {
       },
     }),
   );
-}
-
-async function forceClick(page: Page, selector: string) {
-  await page
-    .locator(selector)
-    .evaluate((el) =>
-      el.dispatchEvent(new MouseEvent('click', { bubbles: true })),
-    );
 }
 
 async function mockRegistry(page: Page) {
@@ -201,6 +194,19 @@ async function mockRegistry(page: Page) {
     });
   }
 
+  await page.route('**/api/plugins/preview', (route) => {
+    const { registryId } = route.request().postDataJSON();
+    return route.fulfill({
+      json:
+        registryId === 'project-planner'
+          ? { valid: false, code: 'registry-plugin-not-found' }
+          : DEMO_LAYOUT_PREVIEW,
+    });
+  });
+  await page.route('**/api/plugins/reload', (route) =>
+    route.fulfill({ json: { success: true } }),
+  );
+
   return { catalog, installCalls, installed, layoutStates };
 }
 
@@ -284,7 +290,7 @@ test.describe('Registry page', () => {
     await page.goto('/registry');
     await page.waitForSelector('.page__tab', { timeout: 15_000 });
 
-    await forceClick(page, '.page__tab:has-text("Skills")');
+    await page.getByRole('tab', { name: 'Skills', exact: true }).click();
     await page.getByRole('button', { name: /Prompt Toolkit/i }).click();
 
     await expect(page.getByTestId('registry-detail')).toContainText(
@@ -363,6 +369,9 @@ test.describe('Registry page', () => {
         .getByTestId('registry-detail')
         .getByRole('button', { name: entry.install })
         .click();
+      if (entry.tab === 'Plugins') {
+        await page.getByRole('button', { name: 'Confirm Install' }).click();
+      }
       await expect(page.getByText(`Installed ${entry.item}`)).toBeVisible();
       await expect(
         page

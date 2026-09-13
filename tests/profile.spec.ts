@@ -175,13 +175,13 @@ test.describe('Profile Page', () => {
     await setupRoutes(page);
   });
 
-  test('navigates to profile via header button', async ({ page }) => {
+  test('navigates to profile via the header avatar menu', async ({ page }) => {
     await page.goto('/');
-    const profileBtn = page.getByRole('button', {
-      name: 'Profile',
-      exact: true,
-    });
-    await profileBtn.click();
+    // #1552 D1: the avatar opens a menu (Profile / Ask Station for help / Open
+    // settings) rather than navigating straight to the profile. Profile leads
+    // it, so the destination is one press further and is now named.
+    await page.getByRole('button', { name: 'Profile and settings' }).click();
+    await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
     await expect(page).toHaveURL(/\/profile/);
     await expect(page.locator('.profile-page')).toBeVisible();
   });
@@ -386,12 +386,24 @@ test.describe('Profile Page', () => {
   });
 
   test('loading state appears before data loads', async ({ page }) => {
-    // Delay the usage response
+    let release!: () => void;
+    const responseGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     await page.route('**/api/analytics/usage*', async (route) => {
-      await new Promise((r) => setTimeout(r, 2000));
+      await responseGate;
       await route.fulfill({ json: { data: MOCK_USAGE } });
     });
     await page.goto('/profile');
-    await expect(page.getByText('Loading profile...')).toBeVisible();
+    try {
+      await expect(
+        page.getByRole('status', { name: 'Loading profile', exact: true }),
+      ).toBeVisible();
+    } finally {
+      release();
+    }
+    await expect(
+      page.getByRole('heading', { name: 'Usage Statistics', exact: true }),
+    ).toBeVisible();
   });
 });

@@ -21,11 +21,11 @@ import type {
   FieldworkReviewedSourceRef,
 } from '@kontourai/surface/basis';
 import { buildReviewedSourceBasisContribution } from '@kontourai/surface/basis';
-import { acquirePluginReviewedSourcesModule } from '../../routes/plugins/plugin-public-server.js';
 import type { Logger } from '../../utils/logger.js';
 import type { SessionAnswerBasisQueryOutcome } from '../orchestration/session-query-module.js';
 import type { PackageMcpAdmissionJournal } from '../plugins/package-mcp-admission.js';
 import { readPluginGrantState } from '../plugins/plugin-permissions.js';
+import { acquirePluginReviewedSourcesModule } from '../plugins/plugin-public-server.js';
 import {
   capturePluginRuntimeArtifact,
   type PluginRuntimeArtifact,

@@ -97,6 +97,16 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/FileTreePanel.css': 'presentation',
     'src-ui/src/components/coding-layout/PullRequestsPanel.css': 'presentation',
     'src-ui/src/components/coding-layout/PullRequestsPanel.tsx': 'git-review',
+    'src-ui/src/components/coding-layout/PullRequestReviewPanel.css':
+      'presentation',
+    'src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx':
+      'git-review',
+    'src-ui/src/components/coding-layout/PullRequestDependencyStacks.css':
+      'presentation',
+    'src-ui/src/components/coding-layout/PullRequestDependencyStacks.tsx':
+      'git-review',
+    'src-ui/src/components/coding-layout/pull-request-dependency-stacks.ts':
+      'git-review',
     'src-ui/src/components/coding-layout/TerminalPanel.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/activeRepo.ts': 'git-review',
@@ -106,7 +116,6 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/planSession.ts': 'task-plan',
     'src-ui/src/components/coding-layout/terminalSelectionHandoff.ts':
       'chat-handoff',
-    'src-ui/src/components/coding-layout/treeSnap.ts': 'presentation',
     'src-ui/src/components/coding-layout/types.ts': 'private-contract',
     'src-ui/src/components/coding-layout/utils.ts': 'presentation',
     'src-ui/src/components/modals/NewChatModal.tsx': 'chat-handoff',

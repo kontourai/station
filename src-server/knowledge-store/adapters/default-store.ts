@@ -81,7 +81,7 @@ const logger = createLogger({ name: 'knowledge-store:kit-default-store' });
 
 export type { ReindexResult };
 
-export interface KitDefaultStoreOptions {
+interface KitDefaultStoreOptions {
   storeRoot: string;
 }
 

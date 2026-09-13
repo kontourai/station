@@ -665,16 +665,19 @@ describe('runCoreCommand', () => {
         sseResponse([
           {
             threadId: 'thread-1',
+            turnId: 'turn-1',
             method: 'content.text-delta',
             delta: 'Hello',
           },
           {
             threadId: 'thread-1',
+            turnId: 'turn-1',
             method: 'content.text-delta',
             delta: ' world',
           },
           {
             threadId: 'thread-1',
+            turnId: 'turn-1',
             method: 'turn.completed',
             finishReason: 'stop',
           },
@@ -742,6 +745,7 @@ describe('runCoreCommand', () => {
         sseResponse([
           {
             threadId: 'thread-1',
+            turnId: 'turn-1',
             method: 'turn.completed',
             finishReason: 'stop',
           },

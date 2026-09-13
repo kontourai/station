@@ -5,10 +5,10 @@ import {
 import { toWorkspacePaneStateKey } from '@kontourai/station-contracts/workspace-pane';
 import type { WorkspacePaneHostOpenPreparation } from './WorkspacePaneHostOpenContext';
 
-export const BROWSER_PREVIEW_PANE_STATE_STORAGE_PREFIX =
+const BROWSER_PREVIEW_PANE_STATE_STORAGE_PREFIX =
   'station:browser-preview-pane-state:v1';
-export const MAX_BROWSER_PREVIEW_PANE_STATE_BYTES = 4 * 1024;
-export const MAX_BROWSER_PREVIEW_PANE_STATE_ENTRIES = 12;
+const MAX_BROWSER_PREVIEW_PANE_STATE_BYTES = 4 * 1024;
+const MAX_BROWSER_PREVIEW_PANE_STATE_ENTRIES = 12;
 
 const utf8 = new TextEncoder();
 
@@ -20,7 +20,7 @@ export interface BrowserPreviewPaneStateStorage {
   key?(index: number): string | null;
 }
 
-export function browserPreviewPaneStateStorageKey(stateKey: string): string {
+function browserPreviewPaneStateStorageKey(stateKey: string): string {
   return `${BROWSER_PREVIEW_PANE_STATE_STORAGE_PREFIX}:${encodeURIComponent(toWorkspacePaneStateKey(stateKey))}`;
 }
 

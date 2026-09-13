@@ -36,8 +36,8 @@ describe('enrolment command composition', () => {
     expect(enrolmentHomeEnv('codex', '/p')).toEqual({ CODEX_HOME: '/p' });
   });
 
-  // Station delegates the login; it does not implement OAuth and must never
-  // put a credential in the environment it hands the CLI.
+  // The login is the engine's own; Station must never put a credential in the
+  // environment it hands the CLI.
   test("runs the engine's own login and injects only the config-home override", () => {
     for (const engine of ['claude', 'codex'] as const) {
       const composed = enrolmentCommand(engine, '/profile');

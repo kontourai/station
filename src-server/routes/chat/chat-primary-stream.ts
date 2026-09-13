@@ -16,6 +16,7 @@ import {
   type NativeForegroundRelayCompanion,
   runWithNativeForegroundRelay,
 } from '../../runtime/conversation/native-foreground-invocation.js';
+import type { NativeMemoryHistoryCompanion } from '../../runtime/conversation/native-memory-history.js';
 import * as StreamOrchestrator from '../../runtime/conversation/stream-orchestrator.js';
 import { stripOutputDeclarationHandles } from '../../runtime/native-output-declaration.js';
 import {
@@ -115,6 +116,7 @@ interface StreamPrimaryAgentChatArgs {
   nativeForeground?: NativeForegroundRelayCompanion;
   nativeWorkspace?: NativeExecutionWorkspace;
   nativeRuntimeAgent?: unknown;
+  nativeMemory?: NativeMemoryHistoryCompanion;
 }
 
 export function logDebugChatImages(
@@ -172,6 +174,7 @@ export function streamPrimaryAgentChat({
   nativeForeground,
   nativeWorkspace,
   nativeRuntimeAgent,
+  nativeMemory,
 }: StreamPrimaryAgentChatArgs): Response {
   c.header('Content-Type', 'text/event-stream');
   c.header('Cache-Control', 'no-cache');
@@ -746,7 +749,11 @@ export function streamPrimaryAgentChat({
         : withForeground();
     const correlated = () =>
       turnCorrelation
-        ? runWithAuthorizedTurnCorrelation(turnCorrelation, withWorkspace)
+        ? runWithAuthorizedTurnCorrelation(
+            turnCorrelation,
+            withWorkspace,
+            nativeMemory,
+          )
         : withWorkspace();
     return nativeOutputGrant
       ? runWithNativeOutputTurnContext(nativeOutputGrant, async () => {

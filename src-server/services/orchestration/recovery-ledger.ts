@@ -16,7 +16,7 @@ export type RecoveryIntentInput = Omit<
 >;
 
 /** Caller-visible state deliberately excludes settlement credentials. */
-export type RecoveryIntentSnapshot = Readonly<ConnectionRecoveryIntent>;
+type RecoveryIntentSnapshot = Readonly<ConnectionRecoveryIntent>;
 
 /** Private SQLite record; opaque dispatch identities never cross the Interface. */
 type RecoveryIntentRecord = ConnectionRecoveryIntent & {
@@ -94,7 +94,7 @@ export interface RecoveryLedger {
  * attempt key stays in this closure; the credential Adapter may use it only
  * while executing the supplied exact operation.
  */
-export interface RecoveryCredentialStartupHandle {
+interface RecoveryCredentialStartupHandle {
   readonly intent: RecoveryIntentSnapshot;
   inspect(): Promise<RecoveryCredentialReceiptOutcome>;
   settle(
@@ -116,7 +116,7 @@ export type RecoveryCredentialReceiptOutcome = {
 };
 
 /** Private composition Adapter: the opaque key never crosses RecoveryLedger's Interface. */
-export interface RecoveryCredentialStartupOperations {
+interface RecoveryCredentialStartupOperations {
   inspect(input: {
     provider: string;
     recoveryFingerprint: string;

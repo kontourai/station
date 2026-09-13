@@ -97,54 +97,76 @@ describe('VoltAgentFramework', () => {
     }
   });
 
-  test('supports openai-compatible managed model connections', async () => {
-    const server = await startOpenAICompatServer({
-      responseText: 'compat-managed-ok',
-    });
-    servers.push(server);
+  test.each([
+    { agentId: 'reviewer', hookOwner: 'reviewer' },
+    { agentId: 'station', hookOwner: 'default' },
+    { agentId: undefined, hookOwner: 'compat-agent' },
+  ])(
+    'runs managed models with the correct temporary Agent hook owner: $hookOwner',
+    async ({ agentId, hookOwner }) => {
+      const server = await startOpenAICompatServer({
+        responseText: 'compat-managed-ok',
+      });
+      servers.push(server);
 
-    const framework = new VoltAgentFramework();
-    const model = await framework.createModel(
-      {
-        execution: {
-          modelConnectionId: 'compat-main',
-          modelId: 'gpt-4.1',
-        },
-      } as any,
-      {
-        appConfig: {
-          defaultModel: 'unused-default',
-          defaultLLMProvider: 'compat-main',
-        },
-        projectHomeDir: '/tmp/project',
-        listProviderConnections: () =>
-          [
-            {
-              id: 'compat-main',
-              type: 'openai-compat',
-              enabled: true,
-              capabilities: ['llm'],
-              name: 'Compat',
-              config: {
-                baseUrl: server.url,
-                apiKey: 'test-key',
-                defaultModel: 'gpt-4.1',
+      const framework = new VoltAgentFramework();
+      const model = await framework.createModel(
+        {
+          execution: {
+            modelConnectionId: 'compat-main',
+            modelId: 'gpt-4.1',
+          },
+        } as any,
+        {
+          appConfig: {
+            defaultModel: 'unused-default',
+            defaultLLMProvider: 'compat-main',
+          },
+          projectHomeDir: '/tmp/project',
+          listProviderConnections: () =>
+            [
+              {
+                id: 'compat-main',
+                type: 'openai-compat',
+                enabled: true,
+                capabilities: ['llm'],
+                name: 'Compat',
+                config: {
+                  baseUrl: server.url,
+                  apiKey: 'test-key',
+                  defaultModel: 'gpt-4.1',
+                },
               },
-            },
-          ] as any,
-      } as any,
-    );
+            ] as any,
+        } as any,
+      );
 
-    const agent = await framework.createTempAgent({
-      name: 'compat-agent',
-      instructions: 'Be concise.',
-      model,
-      tools: [],
-    });
-    const result = await agent.generateText('hello');
+      const afterInvocation = vi.fn();
+      const agent = await framework.createTempAgent({
+        agentId,
+        name: 'compat-agent',
+        instructions: 'Be concise.',
+        model,
+        tools: [],
+        hooks: { afterInvocation },
+      });
+      const result = await agent.generateText('hello', {
+        conversationId: `temp-owner-${hookOwner}`,
+        userId: 'owner-user',
+      });
 
-    expect(result.text).toContain('compat-managed-ok');
-  });
+      expect(result.text).toContain('compat-managed-ok');
+      expect(afterInvocation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          invocation: expect.objectContaining({
+            agentSlug: hookOwner,
+            conversationId: `temp-owner-${hookOwner}`,
+            userId: 'owner-user',
+          }),
+        }),
+      );
+    },
+  );
 
   // archive#1834 scheduler-seam regression, exercised through the REAL path:
   // the default agent is built via createTempAgent, and every unattended

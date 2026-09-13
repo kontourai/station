@@ -63,11 +63,31 @@ describe('DesktopUpdateLaunchCheck', () => {
     expect(bannerStore.getSnapshot()).toHaveLength(0);
   });
 
+  test('releases an available update returned after the launcher unmounts', async () => {
+    let resolveCheck!: (value: unknown) => void;
+    check.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCheck = resolve;
+      }),
+    );
+    const close = vi.fn();
+    const view = renderWithChrome();
+    await waitFor(() => expect(check).toHaveBeenCalledOnce());
+    view.unmount();
+    resolveCheck({ version: 'late', downloadAndInstall, close });
+    await waitFor(() => expect(close).toHaveBeenCalledOnce());
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
+  });
+
   test('presents the banner with the version when an update is available', async () => {
-    check.mockResolvedValue({ version: '2026.8.28', downloadAndInstall });
+    check.mockResolvedValue({
+      version: '2026.8.28',
+      downloadAndInstall,
+      close: vi.fn(),
+    });
     renderWithChrome();
     expect((await screen.findByRole('status')).textContent).toContain(
-      'Station 2026.8.28 is available.',
+      'Desktop app version 2026.8.28 is available.',
     );
   });
 
@@ -96,11 +116,17 @@ describe('DesktopUpdateLaunchCheck', () => {
     relaunch.mockImplementation(async () => {
       calls.push('relaunch');
     });
-    check.mockResolvedValue({ version: '2026.8.28', downloadAndInstall });
+    check.mockResolvedValue({
+      version: '2026.8.28',
+      downloadAndInstall,
+      close: vi.fn(),
+    });
     renderWithChrome();
 
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Install and restart' }),
+      await screen.findByRole('button', {
+        name: 'Install desktop app update and restart',
+      }),
     );
 
     await waitFor(() => expect(relaunch).toHaveBeenCalledOnce());
@@ -109,11 +135,17 @@ describe('DesktopUpdateLaunchCheck', () => {
 
   test('shows an honest error state when install fails', async () => {
     downloadAndInstall.mockRejectedValue(new Error('signature check failed'));
-    check.mockResolvedValue({ version: '2026.8.28', downloadAndInstall });
+    check.mockResolvedValue({
+      version: '2026.8.28',
+      downloadAndInstall,
+      close: vi.fn(),
+    });
     renderWithChrome();
 
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Install and restart' }),
+      await screen.findByRole('button', {
+        name: 'Install desktop app update and restart',
+      }),
     );
 
     // Two banners now stack (the update-available notice and the new
@@ -132,7 +164,7 @@ describe('DesktopUpdateLaunchCheck', () => {
     // The update-available banner stays up alongside the error — the update
     // is still there even though the last install attempt failed.
     expect(within(host).getByRole('status').textContent).toContain(
-      'Station 2026.8.28 is available.',
+      'Desktop app version 2026.8.28 is available.',
     );
   });
 
@@ -145,11 +177,17 @@ describe('DesktopUpdateLaunchCheck', () => {
     // presented nothing, durably across restarts: install-attempted=1,
     // failureBannerShown=false, no way back short of clearing storage.
     downloadAndInstall.mockRejectedValue(new Error('signature check failed'));
-    check.mockResolvedValue({ version: '2026.8.28', downloadAndInstall });
+    check.mockResolvedValue({
+      version: '2026.8.28',
+      downloadAndInstall,
+      close: vi.fn(),
+    });
     renderWithChrome();
 
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Install and restart' }),
+      await screen.findByRole('button', {
+        name: 'Install desktop app update and restart',
+      }),
     );
     await waitFor(() => expect(downloadAndInstall).toHaveBeenCalledOnce());
     await waitFor(() =>
@@ -178,7 +216,9 @@ describe('DesktopUpdateLaunchCheck', () => {
 
     // Retry — the same underlying failure, the same message.
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Install and restart' }),
+      await screen.findByRole('button', {
+        name: 'Install desktop app update and restart',
+      }),
     );
     await waitFor(() => expect(downloadAndInstall).toHaveBeenCalledTimes(2));
 

@@ -642,6 +642,9 @@ const { data } = useApiQuery(['my-key'], () => fetch('/api/custom').then(r => r.
 
 Mutation hook with optional cache invalidation on success.
 
+If the success callback throws after the request completes, the caller receives
+that error and the configured caches are still invalidated.
+
 ```tsx
 const mutation = useApiMutation(
   (vars) => fetch('/api/save', { method: 'POST', body: JSON.stringify(vars) }).then(r => r.json()),
@@ -822,6 +825,154 @@ Fetches ACP slash-command definitions for an ACP-backed agent.
 Fetches live ACP slash-command autocomplete options.
 
 ---
+
+## Portable Project identity
+
+The React-free `@kontourai/station-sdk/project-identity` entry point exports
+`getProjectIdentity`, `prepareProjectIdentity`, and `attachProject`. Each takes
+an explicit Station API base and `ClientRequestOptions`; pass the authenticated
+request scope and credential options for that particular Station. Identity reads
+use the Project family's read permission; preparation and attachment require its
+operate permission. These operations do not grant remote access or membership.
+
+`parseProjectPortableIdentity(value)` on
+`@kontourai/station-sdk/project-identity` validates imported portable snapshots
+using the same closed rules as identity response reads. The CLI's identity and
+attachment commands consume it before calling the existing `attachProject` API.
+Unknown fields and local binding data are refused; receiver authorization and
+live checkout validation remain at the receiving Station.
+
+`getProjectIdentity(apiBase, slug, options)` reads an existing portable identity
+without writing. A legacy Project with no identity returns an error until
+`prepareProjectIdentity` explicitly derives one. The local Project ID remains
+unchanged. A `ProjectPortableIdentity` snapshot contains the portable ID,
+repository references and timestamps; it contains no checkout path or grant.
+
+```ts
+import {
+  attachProject,
+  prepareProjectIdentity,
+} from '@kontourai/station-sdk/project-identity';
+import type { ClientRequestOptions } from '@kontourai/station-sdk/client';
+
+async function attachProjectOnStation(
+  source: { apiBase: string; slug: string; options: ClientRequestOptions },
+  destination: { apiBase: string; options: ClientRequestOptions },
+) {
+  const { identity } = await prepareProjectIdentity(
+    source.apiBase, source.slug, source.options,
+  );
+  return attachProject(destination.apiBase, {
+    name: 'Example',
+    slug: 'example',
+    workingDirectory: '/srv/projects/example',
+    identity,
+  }, destination.options);
+}
+```
+
+The destination directory must already exist on that Station and satisfy the
+primary resource. Attachment does not clone, synchronize files, copy credentials
+or move a room's authority. The server publishes the new local Project and its
+identity together; the result distinguishes `created` from an unchanged
+`existing` attachment. Its association contains the shared `portableProjectId`
+and the receiver-owned `localProjectId`/`localProjectSlug`.
+
+A same-slug Project with different identity or configuration is a conflict; a
+matching Git remote never merges existing Projects or private history. Changed
+configuration needs its existing explicit update/bind operation. Multiple local
+names are not an automatic execution-selection policy. A timed-out write may
+have committed: inspect the requested local association before deciding on a new
+operation. A read cannot recreate a deleted Project.
+
+The SDK validates the returned version, resource shape and association and
+captures attachment input before asynchronous work. An incompatible or older
+server produces an error, never an ordinary local-creation fallback. The full
+portable target picker, shared-member authorization and cross-machine execution
+admission remain separate consumers of this identity API.
+
+## Project access administration and account entry
+
+For a verified virtual transport, `@kontourai/station-sdk/application-session`
+exports `createApplicationSessionKey`, `ApplicationSessionClient` and the low-level
+proof builder. Keep the non-extractable key in dedicated credential custody, never
+in a Project manifest or ordinary query cache. Pass the actual client origin, the
+verified Station id and the existing scoped Device transport:
+
+```ts
+import { ApplicationSessionClient, createApplicationSessionKey } from '@kontourai/station-sdk/application-session';
+
+const key = await createApplicationSessionKey();
+const accounts = new ApplicationSessionClient(apiBase, verifiedStationId, clientOrigin, deviceRequestOptions, key);
+const continuation = await accounts.establish({ username, password });
+const accountHeaders = await accounts.headers(continuation, { method: 'GET', url: requestUrl });
+// Send with the SAME Device request scope and authenticated encrypted transport.
+// accounts.renew(continuation) preserves authorityKey; accounts.revoke signs out.
+```
+
+Calling `establish()` without credentials uses native HTTPS cookie exchange;
+virtual-only login requires its separately advertised provider capability. The
+relay forwards headers/body and respects response backpressure; it does not own
+account cookies, proof verification or membership logic. See the
+[application-session protocol](../guides/deployment-authentication.md#application-sessions-over-virtual-transports)
+for expiry, origin, replay and revocation behavior.
+
+`@kontourai/station-sdk/project-access-client` exports `getProjectAccess` and
+`changeProjectAccess`. Both take the selected Station API base, local Project
+slug and explicit `ClientRequestOptions`. Reads return the acting principal,
+exact Station/local/portable Project scope, members and invitations. Commands
+enable sharing, invite or revoke invitations, change a member, or transfer
+ownership. Capture the returned scope and member revision for writes; do not
+reconstruct authority from a slug or email. Enabling requires the expected local
+Project ID and current Station operator authority.
+
+`@kontourai/station-sdk/project-access` also exports `useProjectAccess(slug,
+requestScope)`. Its query keys include the selected Station and authority, and
+its mutations capture that scope before asynchronous work. Do not persist
+administrative projections or invitation tokens in application caches. Project
+administration grants no Station settings, device or compute authority.
+
+`@kontourai/station-sdk/account-authentication` exports
+`getAccountAuthentication(apiBase)`, `getAccountSession(apiBase)` and
+`runAccountOperation(apiBase, endpoint, body, invitation?)`. These use the fixed
+account namespace with account cookies and explicitly omit ambient operator
+bearers. Use the account page's own browser origin. A session read returns
+`null` for an unauthenticated account; an unavailable or incompatible service
+remains an error. Choose operations from the provider descriptor; the optional
+invitation argument is registration eligibility, not authentication or membership.
+The [deployment authentication guide](../guides/deployment-authentication.md)
+defines the provider interface and separate invitation-acceptance operation.
+
+`getAccountAuthentication` on `@kontourai/station-sdk/account-authentication`
+may return `externalLogins` alongside the primary password or redirect login.
+Each choice supplies `id`, `displayName`, a declared Station `startPath`, and an
+optional `available` flag. A false flag means the configured choice is unavailable.
+To begin, call `runAccountOperation(apiBase, choice.startPath, {}, invitation)`;
+the successful operation returns `{ url }` for browser navigation. Keep the
+invitation in its dedicated header and validate the returned destination before
+navigation. Never attach a personal/operator credential to this account operation.
+
+Station chooses provider/callback/return parameters from operator configuration;
+clients cannot supply arbitrary OAuth parameters. See the [deployment guide](../guides/deployment-authentication.md#optional-oidc-choices-with-local-accounts)
+for configuration, callback verification and the independent Device continuation.
+
+The same account-authentication entry exports `getProjectInvitationPreview(apiBase,
+token)`. It uses a POST body, validates the minimal Project/inviter/role projection,
+and rejects incompatible role/action combinations. Keep the proof out of query
+cache keys and persisted data. Preview success does not authenticate a person,
+consume the invitation or grant membership.
+
+An invitation command's `email: null` explicitly creates a single-use link for
+any authenticated holder. A string restricts acceptance to that verified email;
+do not silently omit or clear a requested restriction. The descriptor may select
+`username-password` login so local account registration needs no email service.
+
+`@kontourai/station-sdk/local-accounts` exports `getLocalAccounts(apiBase,
+options)` and `changeLocalAccount(apiBase, accountId, action, options)` for current
+Station operators. Actions disable/enable sign-in, revoke sessions or create a
+one-time recovery link. Capture the selected Station request scope, require
+explicit confirmation and keep recovery links out of persisted caches. External
+providers return a guidance projection instead of local account controls.
 
 ## Plugin Query Hooks
 
@@ -1729,6 +1880,69 @@ knowledgeQueries.namespaces(projectSlug)             // GET /api/projects/:slug/
 
 ---
 
+## Conversation history windows
+
+`fetchOrchestrationConversationEventWindow(conversationId, apiBase,
+{ direction: 'newest', turnLimit: 10 })` prioritizes the latest events of the
+selected turns, so a completed answer is available before a long tool-progress
+history. The returned events remain in chronological order. Pass the opaque
+`nextCursor` back to load preceding events, then preceding turns; merge by
+event id and sequence. A turn-start anchor may repeat across pages.
+
+The opt-in reader retains the existing 150-event and response-byte bounds.
+Terminal message payloads can use up to 48,000 bytes within the bounded window;
+larger payloads still carry an explicit `elided` marker and must not be presented
+as complete. Tool-result previews retain their smaller allowance. Cursor mode
+is preserved across requests; existing forward cursors keep their old behavior.
+Older servers that do not implement `direction` retain their legacy ordering.
+Live delivery remains owned by the orchestration SSE stream.
+
+The session-scoped `fetchOrchestrationSessionEventWindow` accepts the same
+option for conversations without a multi-session lineage.
+
+## Feedback analysis
+
+Use `useFeedbackRatingsQuery`, `useFeedbackGuidelinesQuery`, and
+`useFeedbackStatusQuery` to read the selected Station's feedback. Saving or
+removing a rating through the SDK invalidates all three views. Use
+`useAnalyzeFeedbackMutation` to request analysis and
+`useClearFeedbackAnalysisMutation` to clear derived results while keeping ratings.
+
+Analysis requests share one active job. Re-rating, removing feedback, clearing
+analysis, or stopping the service prevents older model results from being
+published. Existing model calls settle before queued work starts. Unchanged
+summary prompts reuse their cached result; changed inputs are not identified by
+rating count alone. Invalid model output remains an error rather than being
+saved as analyzed feedback.
+
+`POST /api/feedback/analyze` accepts an omitted body or an optional JSON object
+with `maxReinforce` and `maxAvoid`, each an integer from 1 to 50. It returns 400
+for invalid options or JSON, 413 for a body over 4 KiB, and 503 when analysis is
+not configured. The SDK's analysis mutation uses the omitted-body form.
+
+`POST /api/feedback/test` runs an isolated sample through the analyzer and
+guideline formatter. Its response includes `isolated: true`; it does not edit
+saved ratings or the profile used in conversations. It does not establish the
+integrity of the saved feedback file.
+
+## Monitoring event windows
+
+`fetchMonitoringEventWindow(start, end, signal, { limit: 1000 })` returns
+`{ events, truncated }` from the historical monitoring route. Bounded viewers
+must disclose truncation and that local filters apply only to loaded rows.
+Narrow the time interval to inspect older activity. For older peers that omit
+the flag, a full limited window is conservatively marked truncated.
+
+`fetchMonitoringEvents(start, end, signal, filters)` retains its array return
+shape and no default limit for existing export callers. Both functions reject
+failed or malformed reads instead of reporting an empty history.
+
+API-base initialization wakes pending callers when configuration is published,
+with the existing 500 ms failure bound; later reads observe the latest configured
+base. Best-effort SDK telemetry retains at most 1,000 events per flush interval
+and drops additional events in that interval. Flushes are single-flight with a
+five-second request timeout. It is not an accounting ledger.
+
 ## Telemetry
 
 ### `telemetry`
@@ -2108,3 +2322,202 @@ Response commands preserve their existing receipts. An event mismatch or lost
 request authority is a refusal to act, requiring fresh inspection rather than a
 blind mutation retry. Requests without canonical approval/permission evidence
 keep their ordinary Session or notification fallback.
+
+## Cloud target observation
+
+`verifyCloudMoveTarget(apiBase, options?)` from
+`@kontourai/station-sdk/client` powers `station cloud verify-target`. Use an
+explicit Station origin and its enrolled credential resolver, or pass
+`credential` with its matching `credentialOrigin`. UI callers should also pass
+the connection's `requestScope` so an authority change invalidates the read.
+
+The function returns a `CloudMoveTargetObservation` only when discovery is
+bracketed by matching instance, boot and build identities. The observation
+contains no secrets and always reports `executionAuthorityTransferred: false`
+and `executionResumeAvailable: false`. It is process reachability evidence,
+not persistent home identity, a compatibility certification or a transfer grant.
+
+The shared GET transport supports opt-in `requireCredential`, `redirect: 'error'`
+and `maxResponseBytes` options. The probe requires SDK-owned matching bearer
+attachment or a current authenticated native transport binding. It refuses
+redirects, limits each body to 4 KiB and uses a shared 15-second deadline. Existing callers retain their current defaults.
+
+### Restored conversation execution
+
+A resolved conversation-open response may include `execution`, an observation
+of the exact authorized current Session: Agent, engine provider, recorded
+engine connection when known, and separately reported/retained versus accepted
+model identities. This is distinct from inventory labels and mutable Agent
+defaults. The read refuses a lineage change across its awaited work instead of
+combining one child's labels with another child's transcript. No resume cursor
+or credential data is exposed.
+
+After a child changes, the composer refreshes this execution identity and drops
+predecessor model controls and local approval state. Draft text remains; queued
+messages require review. A same-child unsent model choice waits for current
+capability evidence and is retained only when supported. If an older server
+cannot establish a changed child's execution binding, the transcript remains
+available while sending stays unavailable. Open-chat labels prefer the exact
+current Session's reported/retained model rather than a persisted predecessor.
+
+For native chats, the engine observation is separate from the LLM provider
+selection. A retained unsent choice must match its own currently available model
+connection, not an engine-connection identifier or another provider's identical
+model name. The initial accepted Session launch plan is not presented as proof
+of the connection used by a later turn. Unknown current-provider provenance
+stays unknown rather than being reconstructed from Agent defaults.
+
+## Home recovery disclosure
+
+`SystemStatus.homeRecovery` is an optional, host-scoped disclosure returned by
+system-status queries. `recovered-from-copy` includes `recoveryId`,
+`snapshotCreatedAt`, and `authorityTransferred: false`. `not-restored` means
+this home has no recovery record; `unavailable` means its record could not be
+verified. Older servers may omit the field. None of these values grants
+execution authority or proves a witnessed channel transfer. Do not reuse a
+cached recovery notice across API-base changes; refresh the selected Station
+before projecting it as current. The record exposes no filesystem path or
+backup manifest contents.
+
+## Update status diagnostics
+
+`requestCoreUpdateStatus(apiBase?, signal?)` validates `GET
+/api/system/core-update` responses instead of casting them. Alongside the
+existing fields, `CoreUpdateStatus` carries four optional diagnostics:
+`serverIdentity` (the answering server's identity triple, from
+`@kontourai/station-contracts/system-status`), `provenanceIssue`
+(`'missing' | 'invalid-stamp'`, the typed reason the server's install
+provenance resolver minted), `technicalDetail` (the provenance detail or
+caught comparison diagnostic — filesystem paths live here, not in
+`message`), and `selfUpdateUnavailableReason` (why a desktop bundle refuses
+git-based self-update). The parser rejects a non-boolean `updateAvailable`
+and malformed supplied counts, normalizes a malformed identity or an unknown
+provenance code to unavailable (`null` — an unknown code never reads as
+`'missing'`), accepts responses from older servers that omit the new fields
+entirely, and never infers `applyMethod` from `updateAvailable`. A non-ok
+HTTP status throws a `StationHttpError` before the body can read as success;
+a genuine `error` field still throws a plain `Error` with the server's
+message.
+
+`requestSystemIdentity(apiBase, signal?)` reads `GET /api/system/identity`
+through the same rules: a complete identity triple is required, optional
+`shaSource` and `devicePresentation` metadata is dropped when malformed, and
+the 503 `identity_unavailable` branch surfaces as a `StationHttpError` with
+its status preserved. Every export is re-exported from
+`@kontourai/station-sdk` and `@kontourai/station-sdk/queries`.
+
+`useCoreUpdateStatusQuery(apiBase, config?, scope?)` accepts an optional third
+`CoreUpdateStatusScope` argument: `{ scopeKey?, assertCurrent? }`. When
+`scopeKey` is present it joins the query key, so a cached comparison captured
+for one connection (or one answering boot) can never be served to another.
+`assertCurrent` is checked immediately before the request is issued and again
+after it resolves — throwing rejects the fetch, so an obsolete or superseded
+scope's completion never resolves as current data. Both fields are
+secret-free: credentials and credential-evidence objects must never enter a
+query key or these callbacks. Existing two-argument callers are unaffected.
+
+## Saved answer quotations
+
+`getAssistantQuoteSource(apiBase, sessionId, turnId, options)` from
+`@kontourai/station-sdk/quote-source` reads a bounded completed answer through
+`GET /api/orchestration/sessions/:sessionId/turns/:turnId/quote-source`.
+Pass the host-captured `requestScope` and an abort signal. The result is
+`OrchestrationQuoteSource`: exact Session/turn/message identifiers, source text,
+and a SHA-256 text revision. Reads recheck current access and do not load the
+whole Session. Missing and denied answers are indistinguishable; an oversized
+answer is refused. A text revision detects changes, not evidence standing.
+
+The Station composer retains up to three selected excerpts with its existing
+local draft. Sending serializes the user's copied text and source references
+into the ordinary user message; it creates no capability or trust grant.
+Inspecting a saved reference reads its original answer under current access
+on the selected Station. No network request is made to an origin supplied by
+an untrusted quote link. The saved quotation and a changed current source
+remain visibly distinct.
+
+## In-app pull-request review
+
+`@kontourai/station-sdk/pull-request-review` exports `getPullRequestReview`,
+`submitPullRequestReview`, and `mergeReviewedPullRequest`. Pass an explicit
+Station API base, a `PullRequestReviewTarget` (provider, host, repository owner
+and name, native ref, and resolving Project context), and the host-captured
+`requestScope`. Repository identity never comes from a display URL.
+
+Review reads validate the returned exact target and revision. Approvals and
+review-origin merges carry the inspected head SHA to the provider. The provider
+CLI owns forge authentication; Station does not store forge credentials.
+Confirmed review acknowledgements include the observed actor. GitLab ordinary
+comments are not commit-bound; their acknowledgements omit `headSha`.
+
+Retain a draft after an indeterminate response and inspect current provider
+state before another submission. A missing or unverifiable acknowledgement is
+not a safe automatic-retry signal. Unsupported review adapters return an
+explicit unavailable result. Diff bytes and discussion are bounded and may be
+partial; the response says which content could not be supplied.
+
+## Conversation pull-request links
+
+`@kontourai/station-sdk/conversation-pull-request-links` reads, links, and
+unlinks exact pull-request identities for one Conversation. Each call requires
+the selected Station API base and captured `requestScope`. A link is persisted
+only after the provider resolves the exact provider, host, repository owner,
+repository name, and native ref under current authorization.
+
+Reads refresh every identity and return `observedAt` plus current,
+unsupported, or unavailable state. Clients should mark an old cached
+observation stale and require refresh before review or other actions. Explicit
+unlink changes only the Conversation association; it never changes the pull
+request or deletes Task-kept provenance.
+## Files in answers to input requests
+
+`getInputReplyContext(apiBase, reference, options)` from
+`@kontourai/station-sdk/input-reply` resolves the exact open input event to its
+Agent, Conversation and declared attachment transport capabilities. It does not
+turn an approval or permission request into a text-answer operation.
+
+Use `sendExecutionMessage` with that exact current-Station target and
+`expectedInputRequest: reference`. The foreground route checks the binding, and
+the orchestration owner checks the same open event again before adapter input.
+Opaque `attachmentRefs` use the existing current-host staging path; retries
+retain the same `clientTurnId` and payload after an uncertain response. Pass the
+captured host `requestScope` to each read, staging operation and send.
+
+## Mobile device inspection
+
+The opt-in `@kontourai/station-sdk/mobile-device` subpath exports
+`fetchMobileDeviceInventory(apiBase, options?)` and
+`captureMobileDevice(apiBase, target, options?)`, the shared inventory/target/capture
+types, and `MobileDeviceRequestError` with an HTTP status. Both use the existing
+`ClientRequestOptions` credential and origin boundary. Responses are validated;
+capture refuses mismatched targets and returns a timestamped PNG, not stream
+readiness or foreground-app provenance. See [Mobile device inspection](../guides/mobile-device-workspace.md)
+for host setup, access scopes, limits, and the web/desktop integration boundary.
+
+## Experimental encrypted-channel transport consumer
+
+`@kontourai/station-connect/application-channel` supplies a Fetch-shaped adapter
+for the SDK's existing host credential/transport resolver. It accepts a fixed
+Station origin, a connection lifetime signal, an owner-provided authenticated
+channel opener and a current endpoint-trust check. It does not resolve a person,
+issue a Device grant or sign an account continuation. The existing
+`ApplicationSessionClient` owns those proof headers, and the Station still
+verifies them.
+
+This adapter is opt-in and currently qualified by the
+[local SDK framing fixture](../guides/local-collaboration-lab.md#sdk-application-framing-over-the-encrypted-channel),
+with explicit request/frame bounds and a separate full-runtime acceptance gap.
+Configure the Device credential on the host resolver for channel calls. Passing
+`credential` together with `credentialOrigin` as per-call options deliberately
+bypasses that resolver and uses direct HTTP; an `ApplicationSessionClient` on
+this transport instead uses the configured resolver with `requireCredential`.
+The adapter retains explicit SDK headers separately from a browser `Request`,
+whose header guard removes `Origin` in anticipation of a later HTTP network step.
+The encrypted browser fixture checks that the original client Origin reaches
+the receiver.
+
+Connection owners must retain ordinary SDK authority guards and the selected
+account's request scope, bound channel counts/lifetimes, and close the transport
+when its endpoint trust retires. Transport readiness alone does not partition
+account or Project data. An
+uncertain dispatched mutation must not be retried automatically.
+

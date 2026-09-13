@@ -50,10 +50,10 @@ const MAX_PER_TASK = 100;
 const OPAQUE_ID_MAX_BYTES = MAX_TASK_REFERENCE_TARGET_LENGTH;
 
 export class TaskAnswerSupportUnavailableError extends Error {}
-export class TaskAnswerSupportNotFoundError extends Error {}
+class TaskAnswerSupportNotFoundError extends Error {}
 export class TaskAnswerSupportConflictError extends Error {}
 
-export type AuthorizedAnswerAnchor = {
+type AuthorizedAnswerAnchor = {
   taskId: string;
   referenceId: string;
   projectSlug: string;
@@ -62,7 +62,7 @@ export type AuthorizedAnswerAnchor = {
   binding: StationAnswerBinding;
 };
 
-export interface AnswerAnchorReader {
+interface AnswerAnchorReader {
   authorize(
     taskId: string,
     referenceId: string,
@@ -70,8 +70,8 @@ export interface AnswerAnchorReader {
   ): Promise<AuthorizedAnswerAnchor | 'not-found' | 'unavailable'>;
 }
 
-export type BundleChoice = { id: string };
-export type ClaimChoice = { id: string };
+type BundleChoice = { id: string };
+type ClaimChoice = { id: string };
 /** Server response adds Surface's published card shape without widening contracts. */
 export type TaskAnswerSupportStandingWithCard =
   | { state: 'unassessed' }
@@ -99,7 +99,7 @@ type ClaimRead =
         | 'unavailable';
     };
 
-export interface ProjectTrustReportReader {
+interface ProjectTrustReportReader {
   listBundles(projectSlug: string): Promise<BundleChoice[]>;
   listClaims(
     projectSlug: string,
@@ -122,10 +122,9 @@ export interface ProjectTrustReportReader {
 export const PERSONAL_PROJECT_TRUST_CAPABILITY = Object.freeze({
   kind: 'personal-project-trust' as const,
 });
-export type PersonalProjectTrustCapability =
-  typeof PERSONAL_PROJECT_TRUST_CAPABILITY;
+type PersonalProjectTrustCapability = typeof PERSONAL_PROJECT_TRUST_CAPABILITY;
 /** Narrow deterministic observation seam for replacement-race contract tests. */
-export interface TrustBundleReadObservation {
+interface TrustBundleReadObservation {
   beforeRead?(path: string): void;
   afterOpen?(path: string): void;
   afterRead?(path: string): void;

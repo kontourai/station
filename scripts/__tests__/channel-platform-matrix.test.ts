@@ -153,8 +153,10 @@ describe('cross-platform release channel matrix', () => {
       ).size,
     ).toBe(3);
     expect(digest(icon('development'))).not.toBe(digest(icon('stable')));
+    // iosIconSource is the committed asset-catalog set the TestFlight
+    // workflow copies over gen/apple after `tauri ios init` (#1776).
     const iosIcons = ['stable', 'beta', 'nightly'].map((channel) =>
-      resolve(root, matrix[channel].iosIconSource),
+      resolve(root, matrix[channel].iosIconSource, 'AppIcon-512@2x.png'),
     );
     expect(iosIcons.every((path) => readFileSync(path).length > 0)).toBe(true);
     expect(new Set(iosIcons.map(digest)).size).toBe(3);

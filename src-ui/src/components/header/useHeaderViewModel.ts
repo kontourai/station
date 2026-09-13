@@ -5,7 +5,7 @@ import { getPathForView } from '../../app-shell/routing';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigation } from '../../contexts/NavigationContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useLaunchChat } from '../../hooks/useActiveChatSessions';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
@@ -28,7 +28,7 @@ export function useHeaderViewModel({
   onNavigate,
 }: UseHeaderViewModelOptions) {
   const settingsShortcut = useShortcutDisplay('app.settings');
-  const { navigate } = useNavigation();
+  const { navigate } = useNavigationActions();
   // #928 C2a: the brand link means Home BY NAME, so it reveals the Home
   // surface (placed in `main`; the model navigates to `/`) rather than
   // navigating to `/` and showing whatever surface occupies `main`.
@@ -43,6 +43,8 @@ export function useHeaderViewModel({
   const [showHelp, setShowHelp] = useState(false);
   const [showOverflow, setShowOverflow] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  /** #1552 D1: the avatar's menu, which carries Profile, Help and Settings. */
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const helpPrompts = getHelpPrompts(currentView);
   const breadcrumb = getHeaderBreadcrumb(currentView);
@@ -101,15 +103,25 @@ export function useHeaderViewModel({
     showHelp,
     showNotifications,
     showOverflow,
+    showProfileMenu,
     userInitials,
     closeHelp: () => setShowHelp(false),
     closeNotifications: () => setShowNotifications(false),
     closeOverflow: () => setShowOverflow(false),
+    closeProfileMenu: () => setShowProfileMenu(false),
     handleHelpPrompt,
     openConnectionModal: openConnectionsModal,
-    toggleHelp: () => setShowHelp((current) => !current),
+    /**
+     * OPEN, not toggle. Both remaining callers are menu ROWS ("Ask Station for
+     * help" in the avatar menu and in the `⋯` overflow), and a row that toggles
+     * closes an already-open help menu instead of showing it — the press then
+     * reads as doing nothing (#1552 review L3). The toolbar button that made a
+     * toggle the right shape was removed in D1.
+     */
+    openHelp: () => setShowHelp(true),
     toggleNotifications: () => setShowNotifications((current) => !current),
     toggleOverflow: () => setShowOverflow((current) => !current),
+    toggleProfileMenu: () => setShowProfileMenu((current) => !current),
     goHome: () => showSurface('home'),
     openProfile: () => {
       if (currentView?.type === 'profile') {

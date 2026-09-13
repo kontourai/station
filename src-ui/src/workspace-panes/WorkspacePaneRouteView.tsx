@@ -25,6 +25,21 @@ import {
   resolveClientTrustedPluginLayout,
   selectClientWorkspacePaneRenderer,
 } from './workspacePaneRendererSelection';
+// This route renders the shared project-surface frame (`project-page` /
+// `project-page__inner`), and it is its OWN lazily loaded chunk — so it
+// imports the stylesheet that defines that frame rather than inheriting the
+// project page's chunk. #1636: without this a direct load of a pane's URL
+// rendered it edge to edge with no padding, while arriving from the project
+// page looked right.
+//
+// The frame root also carries `data-workspace-pane-route`, which replaces the
+// `project-page__workspace-pane-route` class this route used to emit. That
+// class had no rule in any stylesheet in the repo and never had one: it is a
+// hook for tests and for the Tauri shell's diagnostics, not a style contract.
+// Spelling a hook as a `project-page__*` BEM element promises a rule in the
+// project page's stylesheet — which is precisely the confusion that let the
+// three REAL borrowed classes above go unnoticed — so it says what it is.
+import '../views/project-page-frame.css';
 
 type McpResourceFailure = {
   descriptorId: string;
@@ -279,7 +294,8 @@ export function WorkspacePaneRouteView({
   ) {
     return (
       <section
-        className="project-page project-page__workspace-pane-route"
+        className="project-page"
+        data-workspace-pane-route=""
         aria-label={entry.descriptor.name}
       >
         <div className="project-page__inner">
@@ -309,7 +325,8 @@ export function WorkspacePaneRouteView({
   ) {
     return (
       <section
-        className="project-page project-page__workspace-pane-route"
+        className="project-page"
+        data-workspace-pane-route=""
         aria-label={entry.descriptor.name}
       >
         <div className="project-page__inner">
@@ -385,7 +402,8 @@ export function WorkspacePaneRouteView({
     }
     return (
       <section
-        className="project-page project-page__workspace-pane-route"
+        className="project-page"
+        data-workspace-pane-route=""
         aria-label={entry.descriptor.name}
       >
         <div className="project-page__inner">
@@ -434,7 +452,8 @@ export function WorkspacePaneRouteView({
 
   return (
     <section
-      className="project-page project-page__workspace-pane-route"
+      className="project-page"
+      data-workspace-pane-route=""
       aria-labelledby="workspace-pane-route-title"
     >
       <div className="project-page__inner">

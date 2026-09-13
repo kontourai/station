@@ -116,13 +116,33 @@ into the authoritative document query in the same ingress turn; a gap,
 duplicate, or malformed envelope still forces the no-cache document read.
 
 The reference workflow now provisions its own temporary Station home, exact
-checkout build, six dedicated Project/Task documents, and two independently
-paired browser authorities. Every implemented fixture receives a fresh
+checkout build, six dedicated Project/Task documents, an owner browser, and a
+separately paired peer browser. Every implemented fixture receives a fresh
 authenticated browser context and its own Task/surface; the adapter closes that
 context before proceeding, so a terminal stream or backlog in one fixture
 cannot contaminate the next. The collaboration fixture drives shipped
 leave/join/announce and cursor controls from the peer while the owner records
-server-identity-bound participant and cursor layout commits. The file fixture
+server-identity-bound participant and cursor layout commits.
+
+The [provisioning browser owner](../../tests/helpers/reference-browser-lifecycle.ts)
+releases its page handlers and closes its context after target preparation and
+credential-state capture, before the adapter starts. Final cleanup reuses that
+same close operation. This leaves the owner and peer as the collaboration
+workload's two live browser contexts; a hidden provisioning Task page would add
+its own room subscription and heartbeat traffic.
+
+The [production collaboration loop](../../src-ui/src/performance/interactive-workspace-performance-bridge.ts)
+retains a 4,000 ms settling wait **after every completed cycle**, including the
+five warmups and the final measured cycle. The next cycle starts after that
+wait; this is post-cycle settling, not a fixed arrival schedule. The existing
+presence-to-cursor timing marks and 150 ms p95 bound are unchanged. A complete
+five-warmup/100-sample run therefore spends at least 420 seconds in these waits,
+in addition to setup and measured work. The in-process UI unit-test mode omits
+the wait and does not establish reference wall time. Production admission
+limits still apply to commands and charged reads; a refused command remains a
+fixture failure rather than a trigger to retry or change pacing.
+
+The file fixture
 rebuilds the deterministic 199,999-byte, 100,000-line corpus for every cold
 phase, fetches it through the project-bound FilePreview, scrolls that real
 surface, and renders the real DiffPanel. The reconnect fixture seeds exactly

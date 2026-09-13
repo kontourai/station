@@ -21,19 +21,21 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
+  ENGINE_TURN_FAILED_CODE,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type TenantExecutionContext,
   tenantExecutionContextFromSession,
 } from '@kontourai/station-contracts/tenancy';
-import type { SessionLifecycleState } from '../../../packages/contracts/src/session-lifecycle.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
 import type { EventStore } from './event-store.js';
@@ -48,6 +50,10 @@ import {
   nextTurnIdentityAnchor,
   projectSessionLifecycle,
 } from './session-lifecycle-service.js';
+import {
+  SESSION_START_INDETERMINATE_CODE,
+  SessionStartIndeterminateError,
+} from './session-turn-boundary.js';
 
 const ATTACHED_SESSION_PROJECT_SLUG_MAX_LENGTH = 512;
 /** archive#1462: bounds the candidate list replayed out of event metadata. */
@@ -221,23 +227,18 @@ export function projectOrchestrationEventToReadModel(options: {
       };
       break;
     case 'runtime.error':
-      // archive#1827: a `runtime.error` carrying this code is a provider
-      // adapter's STRUCTURED report that the underlying engine binding this
-      // session holds can never resume — not a generic/possibly-transient
-      // failure. Marking the session `dead` (never `closed`) is the whole
-      // fix: `closed` would run `markSessionClosed` below, which NULLs
-      // `resumeCursor` — the exact archive#1090 data loss this must not
-      // repeat — and every OTHER `runtime.error` (no code, or a different
-      // code, e.g. `SESSION_RECOVERY_FAILED_CODE`) intentionally changes
-      // nothing here, preserving archive#1090's contract byte-for-byte: a
-      // recoverable failure keeps its `status` untouched by this event and
-      // stays in the recovery set.
+      // Explicit missing-binding evidence is distinct from a failed turn.
+      // Neither outcome closes the durable conversation or erases its last
+      // reported cursor. A generic turn failure remains error/unknown, not
+      // dead or ready. Other legacy/config errors keep their existing policy.
       nextSession =
         event.code === ENGINE_SESSION_BINDING_DEAD_CODE
           ? { ...baseSession, status: 'dead', updatedAt: event.createdAt }
-          : existing
-            ? { ...existing, updatedAt: event.createdAt }
-            : null;
+          : event.code === ENGINE_TURN_FAILED_CODE
+            ? { ...baseSession, status: 'error', updatedAt: event.createdAt }
+            : existing
+              ? { ...existing, updatedAt: event.createdAt }
+              : null;
       break;
     default:
       nextSession = existing
@@ -282,6 +283,18 @@ export function buildOrchestrationSessionSummary(options: {
   answerability: SessionAnswerabilityObservation;
   /** Process-local watchdog observation; never reconstructed from event time. */
   turnProgress?: TurnProgressObservation;
+  /**
+   * The CONVERSATION's first prompted turn, supplied only when this thread is a
+   * continuation child (`EventStore.conversationRootFirstPromptedTurn`).
+   *
+   * #1536 B4: a continuation mints a new thread, so `events` here begin at the
+   * SECOND thing the person said — and `displayTitle` renamed the conversation
+   * on every turn, on every surface that titles a session from it. Passed as an
+   * event rather than a string so it goes through `extractDisplayTitle` like
+   * any other: one normalization, so a child and its root cannot render the
+   * same prompt two different ways.
+   */
+  conversationFirstPromptedTurn?: CanonicalRuntimeEvent;
 }): OrchestrationSessionSummary {
   const base = options.loaded ?? options.persisted;
   if (!base) {
@@ -297,7 +310,12 @@ export function buildOrchestrationSessionSummary(options: {
   const modelLaunchPlan = extractModelLaunchPlan(events);
   const reportedModel = extractReportedModel(events);
   const conversationIdentity = extractConversationIdentity(events);
-  const displayTitle = extractDisplayTitle(events) ?? delegation?.title;
+  const displayTitle =
+    (options.conversationFirstPromptedTurn
+      ? extractDisplayTitle([options.conversationFirstPromptedTurn])
+      : undefined) ??
+    extractDisplayTitle(events) ??
+    delegation?.title;
   const turnOrigin = extractTurnOrigin(events);
   const controlMode = base.controlMode ?? 'station-owned';
   const {
@@ -1058,6 +1076,11 @@ function recoveryFailureEventId(threadId: string, message: string): string {
  * spawned 36 seconds after boot for conversations nobody had opened.
  */
 export interface RecoveredSessionStartOptions {
+  /** Production composition joins the same durable start/turn authority. */
+  invokeSessionStart?: (
+    threadId: string,
+    invoke: () => Promise<ProviderSession>,
+  ) => Promise<ProviderSession>;
   eventStore?: EventStore;
   assertAdapterReady: (
     adapter: ProviderAdapterShape,
@@ -1121,7 +1144,7 @@ export interface RecoveredSessionStartOptions {
    */
   resolveSessionCwd?: (
     input: ProviderSessionStartInput,
-  ) => ProviderSessionStartInput;
+  ) => ProviderSessionStartInput | Promise<ProviderSessionStartInput>;
   /**
    * Shared model boundary supplied by OrchestrationService. It is invoked
    * before readiness or any adapter callback, including recovery.
@@ -1186,7 +1209,7 @@ export async function startRecoveredOrchestrationSession(options: {
       metadata: recoveredMetadata,
     };
     if (deps.resolveSessionCwd) {
-      startInput = deps.resolveSessionCwd(startInput);
+      startInput = await deps.resolveSessionCwd(startInput);
     }
     startInput =
       deps.prepareModelLaunch?.(adapter, startInput, session.model) ??
@@ -1211,7 +1234,7 @@ export async function startRecoveredOrchestrationSession(options: {
           {
             provider: session.provider,
             threadId: session.threadId,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           },
         );
       }
@@ -1226,7 +1249,12 @@ export async function startRecoveredOrchestrationSession(options: {
     try {
       recovered = await withTenantExecutionContext(
         startInput.tenantExecutionContext,
-        () => adapter.startSession(startInput),
+        () =>
+          deps.invokeSessionStart
+            ? deps.invokeSessionStart(startInput.threadId, () =>
+                adapter.startSession(startInput),
+              )
+            : adapter.startSession(startInput),
       );
     } finally {
       admissionLease?.release();
@@ -1247,7 +1275,7 @@ export async function startRecoveredOrchestrationSession(options: {
     deps.eventStore?.upsertSession(nextSession);
     return nextSession;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     deps.logger.warn('Failed to recover provider session', {
       provider: session.provider,
       threadId: session.threadId,
@@ -1272,8 +1300,11 @@ export async function startRecoveredOrchestrationSession(options: {
           createdAt: failedAt,
           method: 'runtime.error',
           severity: 'error',
-          code: SESSION_RECOVERY_FAILED_CODE,
-          retriable: true,
+          code:
+            error instanceof SessionStartIndeterminateError
+              ? SESSION_START_INDETERMINATE_CODE
+              : SESSION_RECOVERY_FAILED_CODE,
+          retriable: !(error instanceof SessionStartIndeterminateError),
           message: `This conversation could not be reopened: ${message}`,
         },
         (warnMessage, meta) => deps.logger.warn(warnMessage, meta),
@@ -1404,7 +1435,7 @@ export async function recoverOrchestrationSessions(options: {
         {
           provider: session.provider,
           threadId: session.threadId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         },
       );
     }

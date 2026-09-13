@@ -18,6 +18,7 @@ import {
   awaitSettlementWithin,
   raceWithSignal,
 } from '../../utils/bounded-async.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   type ProviderAdapterShape,
   setProviderAdapterRegistrationProvenance,
@@ -47,6 +48,8 @@ import type {
 } from '../provider-interfaces.js';
 import { PROVIDER_TYPE_META } from '../provider-interfaces.js';
 import { createIntegrationRegistryProvider } from './integration-registry-provider.js';
+
+const logger = createLogger({ name: 'provider-registry' });
 
 // ── Generic Store ──────────────────────────────────────
 
@@ -266,7 +269,7 @@ function commitProviderAdapterLaunchabilityRevision(): void {
     try {
       listener(providerAdapterLaunchabilityRevision);
     } catch {
-      console.debug('Provider adapter launchability listener failed.');
+      logger.debug('Provider adapter launchability listener failed.');
     }
   }
 }
@@ -515,22 +518,6 @@ function registerPreparedInto(
   const byWorkspace = targetStore.get(registration.type) ?? new Map();
   byWorkspace.set(workspace, entry);
   targetStore.set(registration.type, byWorkspace);
-}
-
-export async function registerPreparedPluginProviders(
-  registrations: PreparedPluginProviderRegistration[],
-): Promise<void> {
-  const sources = new Set(
-    registrations.map((registration) => registration.source),
-  );
-  if (sources.size > 1) {
-    throw new Error(
-      'Incremental plugin provider registration requires one source generation.',
-    );
-  }
-  const source = sources.values().next().value;
-  if (!source) return;
-  await replacePluginProvidersForSource(source, registrations);
 }
 
 async function replacePluginProvidersForSourceInsideMutation(
@@ -831,19 +818,11 @@ export function createProviderAdapterRegistry(
 
 // ── Auth ───────────────────────────────────────────────
 
-export function registerAuthProvider(provider: IAuthProvider) {
-  registerProvider('auth', provider);
-}
-
 export function getAuthProvider(): IAuthProvider {
   return getProvider<IAuthProvider>('auth') ?? new DefaultAuthProvider();
 }
 
 // ── User Identity ──────────────────────────────────────
-
-export function registerUserIdentityProvider(provider: IUserIdentityProvider) {
-  registerProvider('userIdentity', provider);
-}
 
 export function getUserIdentityProvider(): IUserIdentityProvider {
   return (
@@ -853,12 +832,6 @@ export function getUserIdentityProvider(): IUserIdentityProvider {
 }
 
 // ── User Directory ─────────────────────────────────────
-
-export function registerUserDirectoryProvider(
-  provider: IUserDirectoryProvider,
-) {
-  registerProvider('userDirectory', provider);
-}
 
 export function getUserDirectoryProvider(): IUserDirectoryProvider {
   return (
@@ -939,8 +912,6 @@ export function registerPluginRegistryProvider(
   registerProvider('pluginRegistry', provider, { source });
 }
 
-// Accessed via dynamic import() namespace in plugin-install-shared.
-// fallow-ignore-next-line unused-export
 export function getPluginRegistryProviders(): {
   provider: IPluginRegistryProvider;
   source: string;

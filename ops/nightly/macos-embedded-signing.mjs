@@ -307,18 +307,24 @@ export async function sealEmbeddedMacosMachOBounded(
   if (typeof run !== 'function')
     throw new Error('A bounded embedded Mach-O command runner is required.');
   if (!Number.isFinite(deadlineMs) || deadlineMs <= 0)
-    throw new Error('Embedded Mach-O sealing deadline must be a positive bound.');
+    throw new Error(
+      'Embedded Mach-O sealing deadline must be a positive bound.',
+    );
   const deadlineAt = now() + deadlineMs;
   const withinDeadline = (phase, program, args, options = {}) => {
     const remainingMs = deadlineAt - now();
     if (!Number.isFinite(remainingMs) || remainingMs <= 0)
-      throw new Error('Embedded Mach-O sealing exceeded its aggregate deadline.');
+      throw new Error(
+        'Embedded Mach-O sealing exceeded its aggregate deadline.',
+      );
     return run(phase, program, args, { ...options, timeoutMs: remainingMs });
   };
   const withinSignDeadline = (phase, program, args, options = {}) => {
     const remainingMs = deadlineAt - now();
     if (!Number.isFinite(remainingMs) || remainingMs <= 0)
-      throw new Error('Embedded Mach-O sealing exceeded its aggregate deadline.');
+      throw new Error(
+        'Embedded Mach-O sealing exceeded its aggregate deadline.',
+      );
     return sign(phase, program, args, { ...options, timeoutMs: remainingMs });
   };
   const root = resolve(app, 'Contents/Resources/node_modules');
@@ -327,7 +333,9 @@ export async function sealEmbeddedMacosMachOBounded(
   const canonicalApp = realpath(app);
   const canonicalRoot = realpath(root);
   if (!within(canonicalApp, canonicalRoot))
-    throw new Error('Embedded Mach-O dependency root escaped the staged candidate.');
+    throw new Error(
+      'Embedded Mach-O dependency root escaped the staged candidate.',
+    );
   const symlinks = (
     await boundedMustSucceed(
       withinDeadline,
@@ -356,7 +364,9 @@ export async function sealEmbeddedMacosMachOBounded(
   for (const file of inventory) {
     const canonicalFile = realpath(file);
     if (!within(canonicalRoot, canonicalFile))
-      throw new Error('Embedded Mach-O inventory escaped the staged candidate.');
+      throw new Error(
+        'Embedded Mach-O inventory escaped the staged candidate.',
+      );
     if (/[\u0000-\u001f\u007f]/.test(canonicalFile))
       throw new Error('Embedded Mach-O path contains a control character.');
     if (!magic(canonicalFile)) continue;
@@ -430,7 +440,9 @@ export async function sealEmbeddedMacosMachOBounded(
         continue;
       }
       if (details.status !== 0)
-        throw new Error('Could not inspect embedded Mach-O signature metadata.');
+        throw new Error(
+          'Could not inspect embedded Mach-O signature metadata.',
+        );
       const developerId = await boundedProbe(
         withinDeadline,
         `embedded Mach-O ${label}: inspect ${architecture} Developer ID requirement`,

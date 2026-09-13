@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { contrastRatio } from './helpers/color-contrast';
 import {
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
@@ -151,10 +152,10 @@ async function seedCommonRoutes(page: Page, opts: { withChat?: boolean } = {}) {
   );
 }
 
-async function selectWorkspacePane(page: Page, descriptorId: string) {
+async function selectWorkspacePane(page: Page, tabName: string) {
   const tab = page
-    .getByRole('tablist', { name: 'Workspace panes' })
-    .getByRole('tab', { name: descriptorId, exact: true });
+    .getByRole('region', { name: 'Workspace panes', exact: true })
+    .getByRole('tab', { name: tabName, exact: true });
   await tab.click();
   await expect(tab).toHaveAttribute('aria-selected', 'true');
 }
@@ -169,7 +170,7 @@ test.describe('Coding Layout Inspector — expanded (a tool configured)', () => 
   test('defaults expanded and renders the workflow plan on the Plan tab', async ({
     page,
   }) => {
-    await selectWorkspacePane(page, 'pane:builtin:evidence:plan');
+    await selectWorkspacePane(page, 'Plan');
     const planPanel = page.locator('.workflow-plan-panel');
     await expect(planPanel.getByText('Workflow plan')).toBeVisible();
     await expect(
@@ -181,61 +182,40 @@ test.describe('Coding Layout Inspector — expanded (a tool configured)', () => 
   test('switches to the Readiness tab and shows the verdict', async ({
     page,
   }) => {
-    await selectWorkspacePane(page, 'pane:builtin:evidence:readiness');
+    await selectWorkspacePane(page, 'Readiness');
     await expect(page.getByText('Merge readiness')).toBeVisible();
     await expect(page.getByText('Not ready')).toBeVisible();
     // Inactive panes remain mounted for state continuity but are not visible.
     await expect(page.locator('.workflow-plan-panel')).toBeHidden();
   });
 
-  test('verdict StatusBadge uses the tone contrast color (not muted)', async ({
-    page,
-  }) => {
-    // Regression for the Console Kit `.status`/`.tone-*` source-order bug: the
-    // `.status` base set `color: var(--k-text-muted)` declared after the tone
-    // rules, so it clobbered the tone's contrast color — rendering a
-    // low-contrast badge (light-grey text on a saturated tone background). The
-    // verdict text must resolve to the tone's `--k-brand-contrast`, not muted.
-    await selectWorkspacePane(page, 'pane:builtin:evidence:readiness');
+  test('verdict StatusBadge has readable contrast', async ({ page }) => {
+    await selectWorkspacePane(page, 'Readiness');
     const verdict = page.locator('.status.tone-negative').first();
     await expect(verdict).toBeVisible();
-    const { color, contrast, muted } = await verdict.evaluate((el) => {
-      const cs = getComputedStyle(el);
-      const probe = (name: string) => {
-        const d = document.createElement('span');
-        d.style.color = `var(${name})`;
-        el.appendChild(d);
-        const v = getComputedStyle(d).color;
-        el.removeChild(d);
-        return v;
-      };
-      return {
-        color: cs.color,
-        contrast: probe('--k-brand-contrast'),
-        muted: probe('--k-text-muted'),
-      };
-    });
-    expect(color).toBe(contrast);
-    expect(color).not.toBe(muted);
+    expect(await contrastRatio(verdict)).toBeGreaterThanOrEqual(4.5);
   });
 
   test('hosts coding and inspector surfaces as independently selectable panes', async ({
     page,
   }) => {
-    const tabs = page.getByRole('tablist', { name: 'Workspace panes' });
+    const tabs = page.getByRole('region', {
+      name: 'Workspace panes',
+      exact: true,
+    });
     await expect(
-      tabs.getByRole('tab', { name: 'pane:builtin:code:coding', exact: true }),
+      tabs.getByRole('tab', { name: 'Coding', exact: true }),
     ).toHaveAttribute('aria-selected', 'true');
-    await selectWorkspacePane(page, 'pane:builtin:evidence:plan');
+    await selectWorkspacePane(page, 'Plan');
     await expect(page.locator('.workflow-plan-panel')).toBeVisible();
   });
 
   test('switches between inspector panes without duplicating either surface', async ({
     page,
   }) => {
-    await selectWorkspacePane(page, 'pane:builtin:evidence:plan');
+    await selectWorkspacePane(page, 'Plan');
     await expect(page.locator('.workflow-plan-panel')).toBeVisible();
-    await selectWorkspacePane(page, 'pane:builtin:evidence:readiness');
+    await selectWorkspacePane(page, 'Readiness');
     await expect(page.getByText('Merge readiness')).toBeVisible();
     await expect(page.locator('.workflow-plan-panel')).toHaveCount(1);
   });
@@ -243,7 +223,7 @@ test.describe('Coding Layout Inspector — expanded (a tool configured)', () => 
   test('surfaces runtime approval state on the plan panel', async ({
     page,
   }) => {
-    await selectWorkspacePane(page, 'pane:builtin:evidence:plan');
+    await selectWorkspacePane(page, 'Plan');
     const planPanel = page.locator('.workflow-plan-panel');
     await waitForMockOrchestrationSse(page);
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
@@ -290,7 +270,7 @@ test.describe('Coding Layout Inspector — setup CTA (not configured)', () => {
     // Seed without a chat plan artifact so the Plan tab shows the empty CTA.
     await page.goto('/projects/dev/layouts/code');
 
-    await selectWorkspacePane(page, 'pane:builtin:evidence:plan');
+    await selectWorkspacePane(page, 'Plan');
     await expect(page.getByText('No delivery flow')).toBeVisible();
     await page.getByRole('button', { name: 'Add a delivery flow' }).click();
 
@@ -312,7 +292,7 @@ test.describe('Coding Layout Inspector — setup CTA (not configured)', () => {
     });
     await page.goto('/projects/dev/layouts/code');
 
-    await selectWorkspacePane(page, 'pane:builtin:evidence:plan');
+    await selectWorkspacePane(page, 'Plan');
     await expect(page.getByText('No delivery flow')).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Add a delivery flow' }),
@@ -366,7 +346,10 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
   }) => {
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
 
-    const surfaces = page.getByRole('tablist', { name: 'Workspace panes' });
+    const surfaces = page.getByRole('region', {
+      name: 'Workspace panes',
+      exact: true,
+    });
     await expect(surfaces).toBeVisible();
     const dock = page.locator('#chat-dock');
     if (
@@ -382,7 +365,7 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
       await expect(dock).not.toHaveClass(/is-maximized/);
     }
     const work = surfaces.getByRole('tab', {
-      name: 'pane:builtin:code:coding',
+      name: 'Coding',
       exact: true,
     });
     await expect(work).toHaveAttribute('aria-selected', 'true');
@@ -394,19 +377,23 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
 
     await surfaces
       .getByRole('tab', {
-        name: 'pane:builtin:coding:file-browser',
+        name: 'Files',
         exact: true,
       })
       .click();
     await expect(page.getByText('README.md', { exact: true })).toBeVisible();
-    const readme = page.getByRole('button', { name: 'README.md' });
+    const readme = page
+      .getByRole('region', { name: 'File tree', exact: true })
+      .getByRole('button', { name: /README\.md$/ });
     await readme.click();
-    await expect(readme).toHaveClass(/file-tree-row--selected/);
+    await expect(
+      page.getByText('State stays here.', { exact: false }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: 'Back to pane tabs' }).click();
     await surfaces
       .getByRole('tab', {
-        name: 'pane:builtin:evidence:plan',
+        name: 'Plan',
         exact: true,
       })
       .click();
@@ -415,15 +402,17 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
     await page.getByRole('button', { name: 'Back to pane tabs' }).click();
     await surfaces
       .getByRole('tab', {
-        name: 'pane:builtin:coding:file-browser',
+        name: 'File Preview — README.md',
         exact: true,
       })
       .click();
-    await expect(readme).toHaveClass(/file-tree-row--selected/);
+    await expect(
+      page.getByText('State stays here.', { exact: false }),
+    ).toBeVisible();
     await page.getByRole('button', { name: 'Back to pane tabs' }).click();
     await surfaces
       .getByRole('tab', {
-        name: 'pane:builtin:coding:terminal',
+        name: 'Terminal',
         exact: true,
       })
       .click();

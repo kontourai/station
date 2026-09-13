@@ -1,3 +1,4 @@
+import { httpDevelopmentOrigin } from '@kontourai/station-connect';
 import type { NativePairingExchangeTransport } from '@kontourai/station-connect/device-pairing';
 import { invoke } from '@tauri-apps/api/core';
 import { readNativeCommandError } from './nativeCommandError';
@@ -89,6 +90,7 @@ export const nativePairingExchangeTransport: NativePairingExchangeTransport =
         invoke<NativePairingEnvelope>('station_native_pairing_exchange', {
           request: {
             endpoint: input.endpoint,
+            developmentHttpOrigin: httpDevelopmentOrigin(input.endpoint),
             offerId: input.offerId,
             proof: input.proof,
             requestId: input.requestId,

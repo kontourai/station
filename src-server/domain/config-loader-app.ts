@@ -192,12 +192,12 @@ export async function observeAppConfigFile(
   return value as Record<string, unknown>;
 }
 
-export interface AppConfigFileMutationOptions {
+interface AppConfigFileMutationOptions {
   expectedSourceSignature?: string | null;
 }
 
 /** An active, module-issued capability for one app-config mutation lock. */
-export type AppConfigMutationAuthority = object;
+type AppConfigMutationAuthority = object;
 
 const activeAppConfigMutationAuthorities = new WeakSet<object>();
 

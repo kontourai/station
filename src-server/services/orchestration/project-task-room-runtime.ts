@@ -4,6 +4,7 @@
  * authenticated request on each operation.
  */
 import { createHash, randomUUID } from 'node:crypto';
+import type { HomeTransferClosingSeal } from '@kontourai/station-contracts/cloud-move';
 import {
   LIVE_ACTIVITY_MAX_PARTICIPANTS,
   LIVE_ACTIVITY_MAX_ROOMS,
@@ -56,16 +57,18 @@ import type {
   ProjectTaskRoomHistory,
   ProjectTaskRoomLinkAuthority,
 } from './project-task-room-history.js';
+import { projectTaskRoomChannelId } from './project-task-room-history.js';
 import type { ProjectTaskRoomRevisionEvidencePort } from './project-task-room-revision-evidence-bridge.js';
 import type { ProjectTaskRoomWorkingState } from './project-task-room-working-state.js';
 import { createOrchestrationRunId } from './run-projection.js';
 
 type RecoverableRoomHistory = ProjectTaskRoomAuthority &
-  Partial<Pick<ProjectTaskRoomHistory, 'findByProposal'>>;
+  Partial<Pick<ProjectTaskRoomHistory, 'findByProposal' | 'readSourceSeal'>>;
 type BrowserCapability = 'discover' | 'history-read' | 'message-write';
 type RoomCapability =
   | BrowserCapability
   | 'lifecycle-append'
+  | 'home-transfer'
   | 'revision-link'
   | 'agent-publish';
 // Room policy is deliberately independent from mutable Task projection fields
@@ -118,7 +121,7 @@ export interface ProjectTaskRoomRequestAuthority {
     request: Request,
   ): Promise<RequestPrincipal | { readonly kind: 'revoked' | 'unavailable' }>;
 }
-export interface ProjectTaskRoomRuntimeDeps {
+interface ProjectTaskRoomRuntimeDeps {
   readonly taskGraph: Pick<
     { readTaskView(taskId: string): TaskRecord | null },
     'readTaskView'
@@ -242,9 +245,52 @@ interface PendingAgentLifecycle {
   readonly authorizationReceiptId: string;
 }
 
-export type ProjectTaskRoomRuntimeOutcome<T> =
+type ProjectTaskRoomRuntimeOutcome<T> =
   | T
   | { readonly kind: 'not-found' | 'unavailable' };
+
+type ProjectTaskRoomInspectionOutcome =
+  | {
+      readonly kind: 'available';
+      readonly taskId: string;
+      readonly channelId: string;
+    }
+  | { readonly kind: 'not-found' | 'denied' | 'unavailable' };
+
+type ProjectTaskRoomSourceSealObservationOutcome =
+  | { readonly kind: 'sealed'; readonly seal: HomeTransferClosingSeal }
+  | {
+      readonly kind:
+        | 'unsealed'
+        | 'denied'
+        | 'not-found'
+        | 'unavailable'
+        | 'conflict';
+    };
+
+type LiveCommandInput = {
+  taskId: string;
+  request: Request;
+  command:
+    | 'join'
+    | 'heartbeat'
+    | 'announce'
+    | 'depart'
+    | 'watch'
+    | 'follow'
+    | 'stop'
+    | 'typing'
+    | 'cursor'
+    | 'finish';
+  requestId?: string;
+  paneId?: string;
+  targetActorId?: string;
+  active?: boolean;
+  generation?: string;
+  workingRevision?: string;
+  selection?: { anchor: number; focus: number };
+  outcome?: 'completed' | 'failed' | 'cancelled';
+};
 
 export class ProjectTaskRoomRuntime {
   readonly #deps: ProjectTaskRoomRuntimeDeps;
@@ -256,6 +302,7 @@ export class ProjectTaskRoomRuntime {
   readonly #activeLiveRecovery = new Set<string>();
   readonly #history: RecoverableRoomHistory;
   readonly #live = new Map<string, LiveRoomEntry>();
+  readonly #liveStateChains = new Map<string, Promise<void>>();
   readonly #recovery = new Map<string, Promise<boolean>>();
   readonly #subscribers = new Map<string, Set<RoomSubscriber>>();
   /**
@@ -282,36 +329,16 @@ export class ProjectTaskRoomRuntime {
 
   /** Server-only ingress after Task/Session association; no browser DTO enters here. */
   async prepareAgentStarted(result: TaskDispatchResult): Promise<void> {
-    await this.#persistAgentLifecycle({
-      taskId: result.task.id,
-      sessionId: result.session.threadId,
-      provider: result.session.provider,
-      outcome: 'started',
-      dispatchId: `task-association:${result.task.id}:${result.session.threadId}`,
-      occurredAt: result.task.dispatchedAt ?? result.dispatch.createdAt,
-      authorizationReceiptId: agentLifecycleReceiptId(
-        result.task.id,
-        result.session.threadId,
-        'started',
-      ),
-    });
+    const lifecycle = agentStartedLifecycle(result);
+    if (!lifecycle) return;
+    if ((await this.#persistAgentLifecycle(lifecycle)) !== 'stored')
+      throw new Error('Agent lifecycle publication could not be stored');
   }
 
   /** Server-only ingress after Task/Session association; no browser DTO enters here. */
   async publishAgentStarted(result: TaskDispatchResult): Promise<void> {
-    const lifecycle: PendingAgentLifecycle = {
-      taskId: result.task.id,
-      sessionId: result.session.threadId,
-      provider: result.session.provider,
-      outcome: 'started',
-      dispatchId: `task-association:${result.task.id}:${result.session.threadId}`,
-      occurredAt: result.task.dispatchedAt ?? result.dispatch.createdAt,
-      authorizationReceiptId: agentLifecycleReceiptId(
-        result.task.id,
-        result.session.threadId,
-        'started',
-      ),
-    };
+    const lifecycle = agentStartedLifecycle(result);
+    if (!lifecycle) return;
     await this.#persistAgentLifecycle(lifecycle);
     await this.#publishAgentLifecycle(lifecycle);
   }
@@ -677,6 +704,138 @@ export class ProjectTaskRoomRuntime {
       ...opened,
       revisionLinksAvailable: this.#deps.revisionEvidence?.available() === true,
     } as typeof opened & { readonly revisionLinksAvailable: boolean };
+  }
+
+  /**
+   * Resolve the exact current room identity for transfer coordination without
+   * opening the room or touching its history, publication, or live state.
+   */
+  async inspectTransferRoom(input: {
+    taskId: string;
+    request: Request;
+  }): Promise<ProjectTaskRoomInspectionOutcome> {
+    if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+    if (!this.#scope(input.taskId)) return { kind: 'not-found' };
+    const grant = await this.#issue(
+      input.taskId,
+      input.request,
+      'home-transfer',
+    );
+    if (!grant) {
+      if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+      return this.#scope(input.taskId)
+        ? { kind: 'denied' }
+        : { kind: 'not-found' };
+    }
+    try {
+      const resolved = await this.#resolveGrant(grant, 'home-transfer');
+      if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+      if (resolved.kind !== 'granted') {
+        return this.#scope(input.taskId)
+          ? { kind: resolved.kind === 'unavailable' ? 'unavailable' : 'denied' }
+          : { kind: 'not-found' };
+      }
+      const currentScope = this.#scope(input.taskId);
+      if (!currentScope || !sameScope(currentScope, resolved.receipt.scope))
+        return { kind: 'not-found' };
+      return {
+        kind: 'available',
+        taskId: resolved.receipt.scope.taskId,
+        channelId: projectTaskRoomChannelId(resolved.receipt.scope),
+      };
+    } catch {
+      return { kind: 'unavailable' };
+    } finally {
+      this.#issued.delete(grant.opaqueToken);
+    }
+  }
+
+  /** Observe an existing source seal without opening or mutating either room. */
+  async readTransferSourceSeal(input: {
+    taskId: string;
+    request: Request;
+    channelId: string;
+    operationId: string;
+    sourceHomeRef: string;
+    targetHomeRef: string;
+  }): Promise<ProjectTaskRoomSourceSealObservationOutcome> {
+    if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+    const initialScope = this.#scope(input.taskId);
+    if (!initialScope) return { kind: 'not-found' };
+    const grant = await this.#issue(
+      input.taskId,
+      input.request,
+      'history-read',
+    );
+    if (!grant) {
+      if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+      return this.#scope(input.taskId)
+        ? { kind: 'denied' }
+        : { kind: 'not-found' };
+    }
+    try {
+      const admission = await this.#resolveGrant(grant, 'history-read');
+      if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+      if (admission.kind !== 'granted')
+        return {
+          kind:
+            admission.kind === 'unavailable'
+              ? 'unavailable'
+              : admission.kind === 'not-found'
+                ? 'not-found'
+                : 'denied',
+        };
+      const admittedScope = this.#scope(input.taskId);
+      if (!admittedScope) return { kind: 'not-found' };
+      if (
+        !sameScope(admission.receipt.scope, initialScope) ||
+        !sameScope(admittedScope, initialScope) ||
+        projectTaskRoomChannelId(admittedScope) !== input.channelId
+      )
+        return { kind: 'conflict' };
+      if (!this.#history.readSourceSeal) return { kind: 'unavailable' };
+      const observed = await this.#history.readSourceSeal({ grant });
+      if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+      const currentScope = this.#scope(input.taskId);
+      if (!currentScope) return { kind: 'not-found' };
+      if (
+        !sameScope(currentScope, initialScope) ||
+        projectTaskRoomChannelId(currentScope) !== input.channelId
+      )
+        return { kind: 'conflict' };
+      const delivery = await this.#resolveGrant(grant, 'history-read');
+      if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+      const finalScope = this.#scope(input.taskId);
+      if (!finalScope) return { kind: 'not-found' };
+      if (delivery.kind !== 'granted')
+        return {
+          kind:
+            delivery.kind === 'unavailable'
+              ? 'unavailable'
+              : delivery.kind === 'not-found'
+                ? 'not-found'
+                : 'denied',
+        };
+      if (
+        !sameScope(finalScope, currentScope) ||
+        !sameScope(delivery.receipt.scope, finalScope) ||
+        projectTaskRoomChannelId(finalScope) !== input.channelId
+      )
+        return { kind: 'conflict' };
+      if (observed.kind !== 'sealed') return observed;
+      if (
+        observed.seal.operationId !== input.operationId ||
+        observed.seal.sourceHomeRef !== input.sourceHomeRef ||
+        observed.seal.targetHomeRef !== input.targetHomeRef ||
+        observed.seal.checkpoint.channelId !== input.channelId
+      )
+        return { kind: 'conflict' };
+      return observed;
+    } catch {
+      return { kind: 'unavailable' };
+    } finally {
+      this.#issued.delete(grant.opaqueToken);
+    }
   }
 
   async history(input: {
@@ -1087,21 +1246,6 @@ export class ProjectTaskRoomRuntime {
     };
   }
 
-  async persistRecovery(input: {
-    taskId: string;
-    request: Request;
-    generation: string;
-    value: unknown;
-  }) {
-    const scope = await this.#authorizedDocument(input.taskId, input.request);
-    if (!scope) return 'unavailable' as const;
-    return this.#deps.working.recovery({
-      scope,
-      generation: input.generation,
-      value: input.value,
-    });
-  }
-
   async recovery(input: { taskId: string; request: Request }) {
     const scope = await this.#authorizedDocument(input.taskId, input.request);
     const principal = scope ? await this.#principal(input.request) : undefined;
@@ -1124,29 +1268,34 @@ export class ProjectTaskRoomRuntime {
   }
 
   /** Closed browser vocabulary; identity and exact room scope remain server-derived. */
-  async live(input: {
-    taskId: string;
-    request: Request;
-    command:
-      | 'join'
-      | 'heartbeat'
-      | 'announce'
-      | 'depart'
-      | 'watch'
-      | 'follow'
-      | 'stop'
-      | 'typing'
-      | 'cursor'
-      | 'finish';
-    requestId?: string;
-    paneId?: string;
-    targetActorId?: string;
-    active?: boolean;
-    generation?: string;
-    workingRevision?: string;
-    selection?: { anchor: number; focus: number };
-    outcome?: 'completed' | 'failed' | 'cancelled';
-  }) {
+  #serializeLiveState<T>(
+    taskId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const prior = this.#liveStateChains.get(taskId) ?? Promise.resolve();
+    const result = prior.then(operation);
+    const settled = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.#liveStateChains.set(taskId, settled);
+    void settled.then(() => {
+      if (this.#liveStateChains.get(taskId) === settled)
+        this.#liveStateChains.delete(taskId);
+    });
+    return result;
+  }
+
+  live(input: LiveCommandInput) {
+    // Prepared, armed, and settled images belong to one request. Another
+    // command must not checkpoint its prepared intents or advance its clock.
+    return this.#serializeLiveState(input.taskId, () =>
+      this.#applyLiveCommand(input),
+    );
+  }
+
+  async #applyLiveCommand(input: LiveCommandInput) {
+    if (this.#closed) return { kind: 'unavailable' } as const;
     const document = await this.#authorizedDocument(
       input.taskId,
       input.request,
@@ -1445,7 +1594,16 @@ export class ProjectTaskRoomRuntime {
     return event;
   }
 
-  async subscribe(input: {
+  subscribe(input: {
+    taskId: string;
+    request: Request;
+    emit: (event: unknown) => void;
+    after?: string;
+  }) {
+    return this.#serializeLiveState(input.taskId, () => this.#subscribe(input));
+  }
+
+  async #subscribe(input: {
     taskId: string;
     request: Request;
     emit: (event: unknown) => void;
@@ -1529,7 +1687,13 @@ export class ProjectTaskRoomRuntime {
    * its recovery image, and republishes the resulting live projection under
    * the subscriber's still-current paired-device authority.
    */
-  async subscriptionCadence(input: { taskId: string; request: Request }) {
+  subscriptionCadence(input: { taskId: string; request: Request }) {
+    return this.#serializeLiveState(input.taskId, () =>
+      this.#applySubscriptionCadence(input),
+    );
+  }
+
+  async #applySubscriptionCadence(input: { taskId: string; request: Request }) {
     const document = await this.#authorizedDocument(
       input.taskId,
       input.request,
@@ -1636,28 +1800,32 @@ export class ProjectTaskRoomRuntime {
         })
       )
         continue;
-      // Recheck at the exact read boundary. The prior async task/document and
-      // principal reads prove nothing about a credential revoked while they
-      // were in flight.
-      if (
-        !(await this.#sameAuthorizedDocument(
-          entry.room.scope.taskId,
-          input.request,
-          document,
-          principal,
-        ))
-      )
-        continue;
-      authorizedRooms += 1;
-      const live = this.#liveSnapshot(
-        entry,
-        {
-          actorId: actorIdFor(principal),
-          scope: entry.room.scope,
-          capabilities: new Set(['read']),
+      const live = await this.#serializeLiveState(
+        entry.room.scope.taskId,
+        async () => {
+          // Authority and clock belong to the actual read, after any queued work.
+          if (
+            !(await this.#sameAuthorizedDocument(
+              entry.room.scope.taskId,
+              input.request,
+              document,
+              principal,
+            ))
+          )
+            return undefined;
+          return this.#liveSnapshot(
+            entry,
+            {
+              actorId: actorIdFor(principal),
+              scope: entry.room.scope,
+              capabilities: new Set(['read']),
+            },
+            Date.now(),
+          );
         },
-        observedAt,
       );
+      if (!live) continue;
+      authorizedRooms += 1;
       if (live.outcome !== 'available') continue;
       const visibleByActor = new Map(
         live.snapshot.participants.map((participant) => [
@@ -1733,6 +1901,9 @@ export class ProjectTaskRoomRuntime {
 
   async close() {
     this.#closed = true;
+    // Closing the ports settles outstanding I/O; waiting for it here first
+    // would deadlock a queued request against the shutdown that releases it.
+    this.#liveStateChains.clear();
     this.#issued.clear();
     this.#plans.clear();
     this.#recovery.clear();
@@ -1755,11 +1926,11 @@ export class ProjectTaskRoomRuntime {
 
   async #persistAgentLifecycle(
     lifecycle: PendingAgentLifecycle,
-  ): Promise<void> {
-    if (this.#closed || this.#deps.hosted?.()) return;
+  ): Promise<'stored' | 'unavailable'> {
+    if (this.#closed || this.#deps.hosted?.()) return 'unavailable';
     const scope = this.#scope(lifecycle.taskId);
-    if (!scope) return;
-    await this.#deps.working.agentLifecycle({
+    if (!scope) return 'unavailable';
+    return this.#deps.working.agentLifecycle({
       scope: { ...scope, documentId: documentIdFor(scope) },
       intentId: `agent:${lifecycle.outcome}:${lifecycle.sessionId}`,
       value: lifecycle,
@@ -2107,8 +2278,8 @@ export class ProjectTaskRoomRuntime {
     )
       return { outcome: 'invalid' };
     const live = input.entry.room.snapshot(input.authorization, input.now);
+    if (live.outcome !== 'available') return live;
     if (
-      live.outcome !== 'available' ||
       !live.snapshot.participants.some(
         (participant) => participant.actor.actorId === input.actorId,
       )
@@ -2381,7 +2552,23 @@ export class ProjectTaskRoomRuntime {
     }
     if (!subscribers.size) this.#subscribers.delete(documentKey(document));
   }
-  async #subscriberEvent(
+  #subscriberEvent(
+    document: { projectId: string; taskId: string; documentId: string },
+    request: Request,
+    event: unknown,
+  ) {
+    const project = () =>
+      this.#projectSubscriberEvent(document, request, event);
+    // Document delivery remains independent; only mutable live projections
+    // must wait for a prepared/armed material transition to settle.
+    return event &&
+      typeof event === 'object' &&
+      (event as { type?: unknown }).type === 'live'
+      ? this.#serializeLiveState(document.taskId, project)
+      : project();
+  }
+
+  async #projectSubscriberEvent(
     document: { projectId: string; taskId: string; documentId: string },
     request: Request,
     event: unknown,
@@ -3252,4 +3439,24 @@ function authorizationEpoch(policyRevision: string) {
     .digest()
     .readUInt32BE(0);
   return value === 0 ? 1 : value;
+}
+
+function agentStartedLifecycle(
+  result: TaskDispatchResult,
+): PendingAgentLifecycle | undefined {
+  // A Task without an Agent has no agent-start publication to manufacture.
+  if (!result.task.agentId) return undefined;
+  return {
+    taskId: result.task.id,
+    sessionId: result.session.threadId,
+    provider: result.session.provider,
+    outcome: 'started',
+    dispatchId: `task-association:${result.task.id}:${result.session.threadId}`,
+    occurredAt: result.task.dispatchedAt ?? result.dispatch.createdAt,
+    authorizationReceiptId: agentLifecycleReceiptId(
+      result.task.id,
+      result.session.threadId,
+      'started',
+    ),
+  };
 }

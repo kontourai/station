@@ -18,6 +18,7 @@ business rules in your application and use a documented Station boundary.
 | Call Station from another application | [API reference](../reference/api.md), [SDK reference](../reference/sdk.md), [contracts](../reference/contracts.md) | Exact client/server versions, authenticated request, expected result, and a refused unauthorized request |
 | Add a workspace experience or tool | [Build your first plugin](build-your-first-plugin.md), [plugin guide](plugins.md) | Installed example, declared permissions, successful use, revocation, and removal behavior |
 | Automate an operator workflow | [CLI reference](../reference/cli.md) | Exact command, exit status, retry behavior, and redacted output |
+| Supply deployment account authentication | [Authentication adapters](deployment-authentication.md) | Exact provider contract, current session verification, refusal and revocation evidence; Project membership remains separate |
 | Run a private environment | [Deployment](deployment.md), [private-cloud design](../design/private-cloud-environment.md) | Runtime identity, persistence across replacement, and restore evidence for your environment |
 | Build or extend Station | [Development](development.md), [example catalog](../../examples/README.md), [testing](testing.md) | Focused executable example and relevant checks |
 

@@ -188,7 +188,7 @@ export type PluginInstallConsent =
       caller: string;
     };
 
-export type PluginConsentRefusalReason =
+type PluginConsentRefusalReason =
   | 'undisclosed-permissions'
   | 'undisclosed-contributions'
   | 'permissions'

@@ -1,15 +1,17 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
+import { basename, resolve } from 'node:path';
+import { expect } from '@playwright/test';
 import {
-  ensureChatDockOpen,
-  waitForDispatchThroughCapacityRetries,
+  openChatWithAgent,
   waitForSeededAgent,
 } from './helpers/agents-journey';
 import {
   type AuthenticatedE2ERequest,
-  expect,
-  test,
+  createAuthenticatedE2ERequest,
 } from './helpers/authenticated-request';
 import { monitorBrowserHealth } from './helpers/browser-health';
+import { test } from './helpers/fixture-audit';
 import {
   closeFixtureServer,
   startOllamaFixture,
@@ -27,23 +29,10 @@ import {
  * evidence is the captured request body, not the response text. Both turns'
  * distinct prompts and the (identical) reply render in the transcript too.
  *
- * RED BY DESIGN, proving #574: turn 2's captured request is missing
- * turn 1's exchange entirely for this Station/model-engine agent. Quarantined
- * in tests/e2e-manifest.mjs so this doesn't red
- * verify:e2e:full — it re-enters a running bucket once #574 is fixed.
- *
- * The mechanism: `conversation-lineage.ts`'s
- * `continuationLaunchContext` — it OMITS `transcriptSeed` (the prior-turn
- * text a resumed session would otherwise be re-primed with) whenever the
- * session already carries a `resumeCursor` for the SAME execution identity,
- * on the assumption that the provider's own resume mechanism remembers the
- * prior turns via that cursor instead. For this Station/model-engine agent
- * path, that assumption doesn't hold: VoltAgent's own memory is keyed on the
- * SESSION id, and turn 2 dispatches under a NEWLY MINTED session id (not the
- * one the cursor/history belongs to) — so VoltAgent's memory lookup for that
- * new id finds nothing, and neither mechanism (the omitted transcriptSeed,
- * nor VoltAgent's session-keyed memory) actually carries turn 1's exchange
- * into turn 2's request. #574 has the full trace.
+ * Regression for #574: Station's metadata-only resume cursor cannot stand
+ * in for prompt history when the next turn owns a new execution Session.
+ * Native history must reach the model through its authorized memory owner;
+ * prior user/assistant roles and structured native records stay intact.
  */
 
 const FIXTURE_CONNECTION_ID = 'e2e-multi-turn-context-fixture';
@@ -115,7 +104,8 @@ test.describe('Multi-turn context retention', () => {
   let suspended: LlmConnection[] = [];
   let seededAgentSlug = '';
 
-  test.afterEach(async ({ authenticatedRequest }) => {
+  test.afterEach(async ({ request }) => {
+    const authenticatedRequest = createAuthenticatedE2ERequest(request);
     if (seededAgentSlug) {
       await authenticatedRequest.delete(
         `/agents/${encodeURIComponent(seededAgentSlug)}`,
@@ -136,9 +126,10 @@ test.describe('Multi-turn context retention', () => {
 
   test('a second real turn carries the first turn as context in its request body', async ({
     page,
-    authenticatedRequest,
+    request,
     baseURL,
   }) => {
+    const authenticatedRequest = createAuthenticatedE2ERequest(request);
     test.setTimeout(300_000);
     if (!baseURL) throw new Error('Playwright baseURL is required');
     const browserHealth = await monitorBrowserHealth(page);
@@ -146,9 +137,20 @@ test.describe('Multi-turn context retention', () => {
     suspended = await enabledLlmConnections(authenticatedRequest);
     await setConnectionsEnabled(authenticatedRequest, suspended, false);
     const chatRequests: CapturedChatBody[] = [];
+    const evidenceRoot = resolve(
+      '.kontourai/native-context-browser',
+      basename(process.env.STATION_E2E_OUTPUT_DIR ?? 'manual'),
+    );
+    mkdirSync(evidenceRoot, { recursive: true });
     const fixture = await startOllamaFixture(
       FIXTURE_MODEL,
-      (body) => chatRequests.push(body as CapturedChatBody),
+      (body) => {
+        chatRequests.push(body as CapturedChatBody);
+        writeFileSync(
+          resolve(evidenceRoot, 'model-requests.json'),
+          JSON.stringify(chatRequests, null, 2),
+        );
+      },
       FIXTURE_REPLY,
     );
     fixtureServer = fixture.server;
@@ -171,10 +173,11 @@ test.describe('Multi-turn context retention', () => {
     expect(connectionCreated.ok()).toBe(true);
 
     const agentSlug = `e2e-multi-turn-context-${Date.now()}`;
+    const agentName = `E2E Multi-turn Context ${Date.now()}`;
     const agentCreated = await authenticatedRequest.post('/agents', {
       data: {
         slug: agentSlug,
-        name: `E2E Multi-turn Context ${Date.now()}`,
+        name: agentName,
         prompt: 'Answer in one short sentence.',
       },
     });
@@ -182,20 +185,8 @@ test.describe('Multi-turn context retention', () => {
     seededAgentSlug = agentSlug;
     await waitForSeededAgent(authenticatedRequest, agentSlug);
 
-    await page.goto(baseURL);
-    await expect(
-      page.getByRole('button', { name: 'Station home' }),
-    ).toBeVisible({ timeout: 20_000 });
-    await page.evaluate(() =>
-      window.dispatchEvent(new Event('station:open-new-chat')),
-    );
-    const agentRow = page.locator(
-      `.new-chat-modal__agent[data-agent-slug="${agentSlug}"]`,
-    );
-    await expect(agentRow).toBeVisible({ timeout: 20_000 });
-    await agentRow.click();
-
-    await ensureChatDockOpen(page);
+    await page.goto(new URL(`/agents/${agentSlug}`, baseURL).href);
+    await openChatWithAgent(page, agentName);
 
     const composer = page.getByPlaceholder('Type a message...');
     const transcript = page.getByRole('log', {
@@ -205,25 +196,55 @@ test.describe('Multi-turn context retention', () => {
     // Turn 1.
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await composer.fill(TURN_1_TEXT);
+    const firstDispatch = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/orchestration/chat' &&
+        response.request().method() === 'POST' &&
+        response.status() === 200,
+    );
     await page.getByRole('button', { name: 'Send', exact: true }).click();
-    await waitForDispatchThroughCapacityRetries(page, chatRequests, 1);
+    const firstHandle = (await (await firstDispatch).json()).data;
+    expect(typeof firstHandle?.sessionId).toBe('string');
+    expect(typeof firstHandle?.providerTurnId).toBe('string');
     await expect(
       transcript.getByText(FIXTURE_REPLY, { exact: true }).first(),
     ).toBeVisible({ timeout: 20_000 });
-    // Deterministic settle: the reply TEXT can paint before the turn's
-    // server-side completion/persistence settles (the read a second turn's
-    // context assembly depends on) — wait for the per-turn provenance
-    // control that only renders once the turn is fully finalized, not just
-    // streamed, before sending the next turn.
-    await expect(
-      transcript.getByRole('button', { name: /^Share this answer/ }).first(),
-    ).toBeVisible({ timeout: 20_000 });
+    // A rendered response or menu control is not terminal evidence.
+    // Read the exact persisted provider turn before asking its follow-up.
+    await expect
+      .poll(
+        async () => {
+          const response = await authenticatedRequest.get(
+            `/api/orchestration/sessions/${encodeURIComponent(firstHandle.sessionId)}/events`,
+          );
+          expect(response.ok()).toBe(true);
+          const body = await response.json();
+          return body.data.some(
+            (event: { method?: string; turnId?: string }) =>
+              event.method === 'turn.completed' &&
+              event.turnId === firstHandle.providerTurnId,
+          );
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
 
     // Turn 2.
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await composer.fill(TURN_2_TEXT);
     await page.getByRole('button', { name: 'Send', exact: true }).click();
-    await waitForDispatchThroughCapacityRetries(page, chatRequests, 2);
+    await expect
+      .poll(
+        () =>
+          chatRequests.some((body) => {
+            const lastUser = body.messages
+              ?.filter((message) => message.role === 'user')
+              .at(-1);
+            return messageText(lastUser).trim().endsWith(TURN_2_TEXT);
+          }),
+        { timeout: 30_000 },
+      )
+      .toBe(true);
 
     // Both turns render.
     await expect(
@@ -238,7 +259,13 @@ test.describe('Multi-turn context retention', () => {
 
     // The load-bearing proof: turn 2's OWN request body carried turn 1's
     // exchange — a live server-side context read, not a client-side replay.
-    const secondTurnBody = chatRequests[1];
+    const secondTurnBody = chatRequests.find((body) =>
+      messageText(
+        body.messages?.filter((message) => message.role === 'user').at(-1),
+      )
+        .trim()
+        .endsWith(TURN_2_TEXT),
+    );
     expect(
       secondTurnBody,
       'a second turn request must have been captured',

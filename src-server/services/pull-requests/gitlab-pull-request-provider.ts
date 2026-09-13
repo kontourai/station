@@ -10,9 +10,15 @@ import type {
   PullRequestRepositoryContext,
   PullRequestRepositoryIdentityContext,
   PullRequestResult,
+  PullRequestReviewInput,
+  PullRequestWriteAdmission,
 } from '@kontourai/station-contracts/pull-request-provider';
 import { execGitContextCommand } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
+import {
+  readPullRequestReview,
+  writePullRequestReview,
+} from './pull-request-review.js';
 
 type PullRequestProviderRequestContext =
   | PullRequestRepositoryContext
@@ -135,6 +141,10 @@ export function normalizeGitLabMergeRequest(
     },
     sourceBranch: value.source_branch,
     targetBranch: value.target_branch,
+    ...(typeof value.sha === 'string' ? { headSha: value.sha } : {}),
+    ...(typeof value.diff_refs?.base_sha === 'string'
+      ? { baseSha: value.diff_refs.base_sha }
+      : {}),
     commits: Number(value.commits_count ?? value.commits?.length ?? 0),
     reviewStatus: value.detailed_merge_status ?? 'NONE',
     comments: Number(value.user_notes_count ?? value.notes?.length ?? 0),
@@ -357,6 +367,56 @@ export class GitLabPullRequestProvider implements IPullRequestProvider {
     }
   }
 
+  async getReviewSnapshot(c: PullRequestRepositoryContext, ref: string) {
+    const availability = await this.getAvailability(c);
+    if (!availability.available) return { ...availability, available: false };
+    try {
+      const data = await readPullRequestReview(
+        'gitlab',
+        this.getHost(c),
+        c,
+        ref,
+        (args) => this.glab(args, c),
+        normalizeGitLabMergeRequest,
+      );
+      return { ...availability, data };
+    } catch (error) {
+      return {
+        ...availability,
+        available: false,
+        reason: error instanceof Error ? error.message : 'Review unavailable',
+      };
+    }
+  }
+  async submitReview(
+    c: PullRequestRepositoryContext,
+    ref: string,
+    input: PullRequestReviewInput,
+    admission?: PullRequestWriteAdmission,
+  ) {
+    const availability = await this.getAvailability(c);
+    if (
+      !availability.available ||
+      !availability.effectiveCapabilities[input.action]
+    )
+      return {
+        ...availability,
+        available: false,
+        reason: 'This review capability is unavailable.',
+      };
+    return {
+      ...availability,
+      data: await writePullRequestReview(
+        'gitlab',
+        this.getHost(c),
+        c,
+        ref,
+        input,
+        (args) => this.glab(args, c),
+        admission,
+      ),
+    };
+  }
   async listPullRequests(c: PullRequestRepositoryContext, q: any) {
     return this.call(c, [
       'mr',
@@ -452,6 +512,7 @@ export class GitLabPullRequestProvider implements IPullRequestProvider {
     c: PullRequestRepositoryContext,
     ref: string,
     input: PullRequestMergeInput,
+    admission?: PullRequestWriteAdmission,
   ): Promise<PullRequestResult<PullRequestMergeResult>> {
     const availability = await this.getAvailability(c);
     if (!availability.available) return availability;
@@ -464,6 +525,14 @@ export class GitLabPullRequestProvider implements IPullRequestProvider {
         },
       };
     }
+    if (admission?.isCurrent() === false)
+      return {
+        ...availability,
+        data: {
+          status: 'refused',
+          reason: 'Station access changed before merge admission.',
+        },
+      };
     try {
       await this.glab(
         [
@@ -476,10 +545,11 @@ export class GitLabPullRequestProvider implements IPullRequestProvider {
           ...(input.method === 'rebase' ? ['--rebase'] : []),
           ...(input.autoMerge ? ['--auto-merge'] : ['--auto-merge=false']),
           '--yes',
+          ...(input.expectedHeadSha ? ['--sha', input.expectedHeadSha] : []),
         ],
         c,
       );
-      if (input.autoMerge) {
+      if (input.autoMerge || input.expectedHeadSha) {
         let observation: any;
         try {
           observation = JSON.parse(
@@ -561,7 +631,9 @@ export class GitLabPullRequestProvider implements IPullRequestProvider {
             : 'GitLab refused the merge';
       return {
         ...availability,
-        data: { status: 'refused', reason },
+        data: input.expectedHeadSha
+          ? { status: 'indeterminate', reason, observed: null }
+          : { status: 'refused', reason },
       };
     }
   }

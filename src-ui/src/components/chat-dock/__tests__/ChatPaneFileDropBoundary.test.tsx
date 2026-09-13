@@ -117,7 +117,7 @@ describe('ChatPaneFileDropBoundary', () => {
     );
 
     expect(chatDock).toMatch(
-      /enabled=\{isChatPaneFileDropEnabled\(\{\s*hasAttachmentOwner: activeSessionForHook !== null,\s*isPaneOpen,\s*isCollapsedDragPreview,\s*\}\)\}/,
+      /enabled=\{isChatPaneFileDropEnabled\(\{\s*hasAttachmentOwner:\s*!importedSessionId && activeSessionForHook !== null,\s*isPaneOpen,\s*isCollapsedDragPreview,\s*\}\)\}/,
     );
   });
 });

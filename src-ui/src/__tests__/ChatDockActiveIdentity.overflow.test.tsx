@@ -203,8 +203,8 @@ describe.skipIf(!chromiumAvailable)(
       }
     }
 
-    // Measured, not chosen: with this fixture nothing clips at 700 and wider,
-    // the token alone clips at 600, and the title joins it below ~520.
+    // Pixel containment is independent of the host's font metrics. The separate
+    // first-clipping test measures its threshold using the rendered font.
     test.each([700, 600, 420, 260])(
       'nothing overprints at %ipx: the row is ordered left to right and stays inside its host',
       async (width) => {
@@ -220,26 +220,77 @@ describe.skipIf(!chromiumAvailable)(
     );
 
     test('a dock with room for the whole row truncates neither part', async () => {
-      const { title, engine } = await measure(700);
+      const { title, engine } = await measure(850);
 
       expect(title.clipped).toBe(false);
       expect(engine.clipped).toBe(false);
     });
 
-    test('the engine/model token is the first thing to give way', async () => {
-      const { title, engine } = await measure(600);
-
-      expect(
-        engine.clipped,
-        'the engine token should be the one truncating first',
-      ).toBe(true);
-      expect(title.clipped, 'the title should still fit at this width').toBe(
-        false,
-      );
-      // The reported symptom was a title reduced to about one character. Here
-      // it holds most of the row.
-      expect(title.width).toBeGreaterThan(300);
-    });
+    test.each([
+      ['application', ''],
+      ['Arial', 'Arial, sans-serif'],
+      ['monospace', 'monospace'],
+    ])(
+      'the engine/model token gives way first with %s font metrics',
+      async (_label, fontFamily) => {
+        const page = await browser.newPage({
+          viewport: { width: 1600, height: 200 },
+        });
+        try {
+          await page.setContent(fixtureHtml(markup(), 1600));
+          const measured = await page.evaluate(async (family) => {
+            document.body.style.fontFamily = family;
+            await document.fonts.ready;
+            const host = document.querySelector<HTMLElement>('.chat-dock');
+            const title = document.querySelector<HTMLElement>(
+              '.chat-dock__active-identity-title',
+            );
+            const engine = document.querySelector<HTMLElement>(
+              '.chat-dock__active-identity-engine',
+            );
+            if (!host || !title || !engine) throw new Error('missing identity');
+            const read = (width: number) => {
+              host.style.width = `${width}px`;
+              return {
+                width,
+                titleClipped: title.scrollWidth > title.clientWidth + 1,
+                engineClipped: engine.scrollWidth > engine.clientWidth + 1,
+                titleWidth: title.getBoundingClientRect().width,
+              };
+            };
+            let narrow = 260;
+            let wide = 1600;
+            const full = read(wide);
+            if (full.titleClipped || full.engineClipped)
+              throw new Error('wide fixture must fit before measuring shrink');
+            const squeezed = read(narrow);
+            if (!squeezed.titleClipped && !squeezed.engineClipped)
+              throw new Error('narrow fixture must exercise truncation');
+            // Find the FIRST clipping pixel, regardless of installed fonts.
+            // Looking for any later engine-only band could hide title-first
+            // clipping; this brackets the transition from no clipping at all.
+            while (wide - narrow > 1) {
+              const middle = Math.floor((wide + narrow) / 2);
+              const state = read(middle);
+              if (state.titleClipped || state.engineClipped) narrow = middle;
+              else wide = middle;
+            }
+            return { before: read(wide), first: read(narrow) };
+          }, fontFamily);
+          expect(measured.before).toMatchObject({
+            titleClipped: false,
+            engineClipped: false,
+          });
+          expect(measured.first).toMatchObject({
+            titleClipped: false,
+            engineClipped: true,
+          });
+          expect(measured.first.titleWidth).toBeGreaterThan(300);
+        } finally {
+          await page.close();
+        }
+      },
+    );
 
     /**
      * Squeezed past that, the parts that are not the row's subject stop at their
@@ -255,15 +306,21 @@ describe.skipIf(!chromiumAvailable)(
      * WHAT HOLDS, and what does not:
      *  - the engine/model token never drops below 48px (a legible prefix and a
      *    hover target for its `title`) and the agent's name never below 40px;
-     *  - at 320px and wider the conversation title keeps ~9 glyphs or more;
-     *  - at the 280px floor it holds ~5. That is the disclosed limit of a
+     *  - at 320px and wider the conversation title keeps 64px or more, and at the
+     *    280px floor 32px. #1552 D3 raised the title from 11px to 14px, so those
+     *    same pixel floors now hold FEWER characters than the glyph counts this
+     *    comment used to quote — a deliberate trade (the row's subject is legible
+     *    at a glance in the common case; the narrowest side dock gives up
+     *    characters it was already short of). The pixel floors are what the
+     *    distribution actually guarantees, so they are what is asserted.
+     *  - That is the disclosed limit of a
      *    CSS-only distribution: the floors cannot be conditional on the DOCK's
      *    width, because a media query sees the viewport (a 280px side dock lives
      *    in a 1456px window) and a container query would need `container-type`
      *    on a flex item that has to stay content-sized. Tapering them properly
      *    belongs to the header-composition pass, not here.
-     * Before this round the same measurement read 21px at 320 and 5px at 280 —
-     * a title of one or two characters, which is the defect this arc opened on.
+     * Before #1536 F the same measurement read 21px at 320 and 5px at 280 — a
+     * title of one or two characters, which is the defect that arc opened on.
      */
     test.each([
       [520, 180],

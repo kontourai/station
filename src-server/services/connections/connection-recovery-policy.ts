@@ -31,7 +31,7 @@ export type CredentialRecoverySelectionRefusalReason =
   | 'same_profile'
   | 'unsupported';
 
-export type CredentialRecoveryCandidateSelection =
+type CredentialRecoveryCandidateSelection =
   | { outcome: 'selected'; candidateProfileRef: string }
   | {
       outcome: 'refused';

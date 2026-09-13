@@ -30,6 +30,7 @@ const state = {
   detailFetching: false,
   detailError: undefined as unknown,
   toolsFailed: false,
+  toolsPending: false,
   toolsError: undefined as unknown,
   toolsFailureReason: undefined as unknown,
   catalogReconciling: false,
@@ -43,9 +44,8 @@ const select = vi.fn((slug: string) => {
 });
 const navigate = vi.fn();
 
-// Every query result is a STABLE reference. A fresh array per render feeds
-// `useEffect([agentTools])` a new identity every pass, which sets state, which
-// re-renders — the hook loops until the worker runs out of memory.
+// Resolved queries retain their data identity across renders. Pending tools
+// also exercise the real query's undefined data state below.
 const CONNECTIONS = [
   {
     id: 'claude',
@@ -96,7 +96,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useAgentToolsQuery: (...args: unknown[]) => {
     useAgentToolsQuery(...args);
     return {
-      data: EMPTY,
+      data: state.toolsPending ? undefined : EMPTY,
       isError: state.toolsFailed,
       error: state.toolsError,
       failureReason: state.toolsFailureReason,
@@ -164,6 +164,7 @@ beforeEach(() => {
   state.detailFetching = false;
   state.detailError = undefined;
   state.toolsFailed = false;
+  state.toolsPending = false;
   state.toolsError = undefined;
   state.toolsFailureReason = undefined;
   state.catalogReconciling = false;
@@ -174,7 +175,7 @@ beforeEach(() => {
     .mockResolvedValue({ data: { slug: 'claude-code' }, created: true });
   select.mockClear();
   navigate.mockClear();
-  useAgentToolsQuery.mockClear();
+  useAgentToolsQuery.mockReset();
 });
 
 afterEach(() => {
@@ -203,6 +204,25 @@ function render() {
   }
   return rendered;
 }
+
+test('a pending tools query does not prevent fresh agent detail from becoming editable', () => {
+  state.selectedId = 'writer';
+  state.detail = agent({ slug: 'writer', name: 'Writer' });
+  state.toolsPending = true;
+  let renders = 0;
+  // Bound the old render loop so this regression fails without exhausting the
+  // worker. A real pending or disabled query supplies undefined, not [].
+  useAgentToolsQuery.mockImplementation(() => {
+    if (++renders > 40) throw new Error('Agent editor render loop');
+  });
+
+  const { result, rerender } = render();
+  expect(result.current.form.name).toBe('Writer');
+  expect(result.current.isLoading).toBe(false);
+  expect(result.current.integrationTools).toEqual({});
+  rerender();
+  expect(result.current.form.name).toBe('Writer');
+});
 
 describe('AC5 — a created Agent is in the list and selected, with no reload', () => {
   test('shows the authored-agent empty state beneath engine-only rows', () => {

@@ -1,31 +1,34 @@
+import { errorMessage } from '../../utils/error-message.js';
 import type { ModelCatalogRequest } from '../llm/model-provider-types.js';
 
 export const DEFAULT_MODEL_CATALOG_MAX_ENTRIES = 1000;
 export const DEFAULT_MODEL_CATALOG_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_MODEL_CATALOG_MAX_PAGES = 32;
 
-export interface CatalogByteBudget {
+interface CatalogByteBudget {
   remainingBytes: number;
 }
 
 export function catalogLimit(options?: ModelCatalogRequest): number {
-  return Math.max(
-    1,
-    Math.min(
-      options?.maxEntries ?? DEFAULT_MODEL_CATALOG_MAX_ENTRIES,
-      DEFAULT_MODEL_CATALOG_MAX_ENTRIES,
-    ),
+  return catalogRequestLimit(
+    options?.maxEntries,
+    DEFAULT_MODEL_CATALOG_MAX_ENTRIES,
   );
 }
 
-export function catalogResponseByteLimit(
-  options?: ModelCatalogRequest,
+function catalogRequestLimit(
+  requested: number | undefined,
+  maximum: number,
 ): number {
   return Math.max(
     1,
-    Math.min(
-      options?.maxResponseBytes ?? DEFAULT_MODEL_CATALOG_MAX_RESPONSE_BYTES,
-      DEFAULT_MODEL_CATALOG_MAX_RESPONSE_BYTES,
+    Math.floor(
+      Math.min(
+        typeof requested === 'number' && !Number.isNaN(requested)
+          ? requested
+          : maximum,
+        maximum,
+      ),
     ),
   );
 }
@@ -33,7 +36,12 @@ export function catalogResponseByteLimit(
 export function createCatalogByteBudget(
   options?: ModelCatalogRequest,
 ): CatalogByteBudget {
-  return { remainingBytes: catalogResponseByteLimit(options) };
+  return {
+    remainingBytes: catalogRequestLimit(
+      options?.maxResponseBytes,
+      DEFAULT_MODEL_CATALOG_MAX_RESPONSE_BYTES,
+    ),
+  };
 }
 
 /**
@@ -98,9 +106,7 @@ function parseCatalogJson(text: string): unknown {
     return JSON.parse(text);
   } catch (error) {
     throw new ModelCatalogShapeError(
-      `Model catalog response is not JSON: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Model catalog response is not JSON: ${errorMessage(error)}`,
     );
   }
 }
@@ -115,10 +121,16 @@ export async function readBoundedJson(
     throw new ModelCatalogHttpError(response.status);
   }
 
-  const maxBytes = Math.min(
-    catalogResponseByteLimit(options),
-    budget?.remainingBytes ?? Number.POSITIVE_INFINITY,
-  );
+  const maxBytes =
+    budget && !Number.isFinite(budget.remainingBytes)
+      ? 0
+      : Math.min(
+          catalogRequestLimit(
+            options?.maxResponseBytes,
+            DEFAULT_MODEL_CATALOG_MAX_RESPONSE_BYTES,
+          ),
+          budget?.remainingBytes ?? Number.POSITIVE_INFINITY,
+        );
   if (maxBytes < 1) {
     await response.body?.cancel();
     throw new ModelCatalogShapeError(

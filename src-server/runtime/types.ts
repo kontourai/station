@@ -94,7 +94,7 @@ export interface ITool {
 
 // ── Memory ─────────────────────────────────────────────
 
-export interface IConversation {
+interface IConversation {
   id: string;
   resourceId: string;
   userId: string;
@@ -459,6 +459,8 @@ export interface IAgentFramework {
 
   /** Create a lightweight agent for one-shot invocations (no persistence) */
   createTempAgent(opts: {
+    /** Canonical Agent owning optional prompt history; never inferred from display name. */
+    agentId?: string;
     name: string;
     instructions: string | (() => string);
     model: any;

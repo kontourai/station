@@ -234,6 +234,71 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     return join(root, 'orchestration.sqlite');
   }
 
+  test.each(['session-start', 'task-dispatch'] as const)(
+    'startup banners cannot retire unresolved %s effects',
+    async (purpose) => {
+      const path = databasePath();
+      const threadId = `unresolved-${purpose}`;
+      const dying = new EventStore(path);
+      dying.appendEvent(
+        sessionStartedEvent({
+          threadId,
+          provider: 'station-agent',
+          agentSlug: 'demo-agent',
+          userId: 'owner-user',
+        }),
+      );
+      const authority = dying.sessionTurnBoundaryAuthority();
+      const owned =
+        purpose === 'session-start'
+          ? authority.claimSessionStart(threadId, '2026-08-16T00:00:01.000Z')
+          : authority.claimTaskDispatch(threadId, '2026-08-16T00:00:01.000Z');
+      if (owned.kind !== 'owner') throw new Error('Expected effect admission');
+      if ('beginEffects' in owned.claim)
+        owned.claim.beginEffects('2026-08-16T00:00:02.000Z');
+      else owned.claim.beginInvocation('2026-08-16T00:00:02.000Z');
+      dying.close();
+      const booted = new EventStore(path);
+      stores.push(booted);
+      const records = booted
+        .sessionTurnBoundaryAuthority()
+        .reconcile('2026-08-16T00:00:03.000Z');
+      if (records.kind !== 'available')
+        throw new Error('Expected recovery records');
+      const record = records.interrupted.find(
+        (item) => item.threadId === threadId,
+      );
+      if (!record) throw new Error('Expected unresolved effect record');
+      const adapter = fakeMemoryAdapter({
+        conventionalUserId: 'agent:demo-agent',
+      });
+      const service = new OrchestrationService({
+        adapterRegistry: createRegistry(),
+        eventBus: new EventBus(),
+        eventStore: booted,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        memoryAdapters: new Map([['demo-agent', adapter]]),
+      });
+      await (service as any).interruptedTurns.consume();
+      expect(adapter.addMessage).not.toHaveBeenCalled();
+      // Also exercise the final storage fence with a stale/misrouted banner receipt.
+      booted.resolveInterruptedTurnBoundary({
+        boundaryId: record.boundaryId,
+        ownerId: record.ownerId,
+        state: 'indeterminate',
+      });
+      expect(
+        booted.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
+      ).toEqual({ kind: 'available', active: true });
+      booted.close();
+      const rebooted = new EventStore(path);
+      stores.push(rebooted);
+      expect(
+        rebooted.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
+      ).toEqual({ kind: 'available', active: true });
+    },
+  );
+
   test('boots after a crash and banners a FileMemory-occupied session (Station engine) as needs-input', async () => {
     const path = databasePath();
     const eventStore = bootAfterCrash({

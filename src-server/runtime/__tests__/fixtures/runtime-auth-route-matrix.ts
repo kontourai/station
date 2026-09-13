@@ -1,4 +1,4 @@
-export interface RuntimeAuthRouteCase {
+interface RuntimeAuthRouteCase {
   name: string;
   method: 'GET' | 'POST';
   path: string;
@@ -33,6 +33,13 @@ export const RUNTIME_AUTH_ROUTE_MATRIX: readonly RuntimeAuthRouteCase[] = [
     method: 'GET',
     path: '/api/system/liveness',
     kind: 'public',
+    scopeMapped: true,
+  },
+  {
+    name: 'system status and home recovery disclosure',
+    method: 'GET',
+    path: '/api/system/status',
+    kind: 'protected',
     scopeMapped: true,
   },
   {

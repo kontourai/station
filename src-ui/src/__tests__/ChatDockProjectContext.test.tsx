@@ -178,9 +178,16 @@ describe('ChatDockProjectContext', () => {
     // #765 F8's sentence, kept — it was `HomeFolderLabel`'s own tooltip before —
     // and now scoped to the state it is actually true of: nothing is bound, so
     // a chat here really does start in the home folder.
-    expect(
-      screen.getByRole('button', { name: 'No project' }).getAttribute('title'),
-    ).toBe('~ (no project folder set — chats start in your home folder)');
+    //
+    // #1552 D3 dropped the visible "No project" label (a name for the absence of
+    // a name, in a monospace family nothing else in the bar uses) and kept the
+    // BUTTON, which is station#1803 part 3's whole point. So the row now says
+    // nothing and the tooltip says both what the control does and what F8 wrote.
+    const badge = screen.getByRole('button', { name: 'Choose a project' });
+    expect(badge.getAttribute('title')).toBe(
+      'Choose a project — ~ (no project folder set — chats start in your home folder)',
+    );
+    expect(badge.textContent).toBe('');
   });
 });
 
@@ -191,7 +198,7 @@ describe('ChatDockProjectContext', () => {
 // omits the row for that case; this pins the component's own contract for
 // rendering it with a null projectSlug.
 describe('ChatDockProjectContext — no bound project (station#1803 part 3)', () => {
-  test('renders "No project" as the badge and keeps it switchable when projectSlug/projectName are both null', async () => {
+  test('renders no project LABEL but keeps the badge switchable when projectSlug/projectName are both null', async () => {
     const onSelectProject = vi.fn();
     render(
       <ChatDockProjectContext
@@ -204,8 +211,12 @@ describe('ChatDockProjectContext — no bound project (station#1803 part 3)', ()
       />,
     );
 
-    const badge = screen.getByRole('button', { name: 'No project' });
+    // #1552 D3: the glyph alone, named for what pressing it does. The affordance
+    // is the part station#1803 part 3 requires — a chat with no project is the one
+    // most likely to need the picker — and it survives the label's removal.
+    const badge = screen.getByRole('button', { name: 'Choose a project' });
     expect(badge.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(badge.textContent).toBe('');
 
     fireEvent.click(badge);
     await screen.findByRole('dialog', { name: 'Switch project' });
@@ -225,7 +236,7 @@ describe('ChatDockProjectContext — no bound project (station#1803 part 3)', ()
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'No project' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Choose a project' }));
     await screen.findByRole('dialog', { name: 'Switch project' });
     expect(screen.queryByText('Current')).toBeNull();
   });

@@ -92,7 +92,10 @@ beforeEach(() => {
 test('names the plugin as not yet installed, and offers Install rather than Approve', async () => {
   ask();
 
-  expect(await screen.findByText('Install this plugin?')).toBeTruthy();
+  expect(
+    await screen.findByRole('dialog', { name: 'Install this plugin?' }),
+  ).toBeTruthy();
+  expect(screen.getByText('Install this plugin?')).toBeTruthy();
   expect(
     screen.getByText(/has not been installed yet\. Installing it requires:/),
   ).toBeTruthy();
@@ -138,7 +141,10 @@ test('declining resolves false and reaches no server surface', async () => {
 test('renders the pre-install copy when the only pending permission is trusted', async () => {
   const results = ask(TRUSTED_ONLY);
 
-  expect(await screen.findByText('Install this plugin?')).toBeTruthy();
+  expect(
+    await screen.findByRole('dialog', { name: 'Install this plugin?' }),
+  ).toBeTruthy();
+  expect(screen.getByText('Install this plugin?')).toBeTruthy();
   expect(
     screen.getByText(/has not been installed yet\. Installing it requires:/),
   ).toBeTruthy();
@@ -152,6 +158,16 @@ test('renders the pre-install copy when the only pending permission is trusted',
   await waitFor(() => expect(results).toEqual([true]));
   // Approving an install decision grants nothing — least of all the trusted
   // tier this prompt just said it cannot decide.
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test('Escape denies the pending decision without granting permission', async () => {
+  const results = ask();
+  fireEvent.keyDown(
+    await screen.findByRole('dialog', { name: 'Install this plugin?' }),
+    { key: 'Escape' },
+  );
+  await waitFor(() => expect(results).toEqual([false]));
   expect(fetchMock).not.toHaveBeenCalled();
 });
 

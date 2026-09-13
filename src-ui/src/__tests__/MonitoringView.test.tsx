@@ -164,6 +164,7 @@ vi.mock('../contexts/MonitoringContext', async (importOriginal) => ({
         'gen_ai.tool.call.result': { ok: true },
       },
     ],
+    historyTruncated: true,
     connectionStatus: 'connected',
     isLoading: false,
     clearEvents: vi.fn(),
@@ -377,4 +378,9 @@ describe('MonitoringView tool-result copy (station#3341)', () => {
     );
     expect(showToastMock).not.toHaveBeenCalledWith(COPY_TOAST_SUCCESS);
   });
+});
+
+test('the mounted monitoring view discloses the loaded-window search boundary', () => {
+  render(<MonitoringViewWithBoundary />);
+  expect(screen.getByText(/Showing the latest 1,000 events/)).toBeTruthy();
 });

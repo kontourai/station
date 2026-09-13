@@ -127,9 +127,7 @@ function urlForms(value: string): string[] {
 }
 
 /** Every rendering of this connection's secrets that a message might contain. */
-export function connectionSecretEchoes(
-  config: Record<string, unknown>,
-): string[] {
+function connectionSecretEchoes(config: Record<string, unknown>): string[] {
   const leaves: Array<{ key: string; value: string }> = [];
   collectStringLeaves(config, leaves);
 

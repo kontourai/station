@@ -1,7 +1,10 @@
 import type React from 'react';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { toastStore } from '../../contexts/ToastContext';
-import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
+import {
+  useShortcutDisplay,
+  useShortcutDisplayLookup,
+} from '../../hooks/useKeyboardShortcut';
 import type { DockMode } from '../../types';
 import { isSessionExecutionActive } from '../../utils/execution';
 import { LazyBoundary } from '../LazyBoundary';
@@ -135,8 +138,19 @@ interface ChatDockHeaderProps {
   shellMaximized: boolean;
   /** Registered visibility shortcut for the shell's surface. */
   surfaceShortcutId?: string;
-  /** Registered title for a non-Chat shell's visibility action. */
-  surfaceTitle?: string;
+  /**
+   * The registered title of the surface this shell holds
+   * (`REGION_SURFACE_REGISTRY`), which names the visibility control: "Hide
+   * Chat", "Show Activity".
+   *
+   * REQUIRED, since #1386. It was optional with a `dock region` fallback, and
+   * the one shell that never passed it was Chat's own — so the surface every
+   * user meets first was the only one whose control said "Hide dock region"
+   * while Activity's said "Hide Activity". A fallback naming a thing no
+   * registry entry produces is a label nothing derives; the type is what stops
+   * the next shell inheriting it.
+   */
+  surfaceTitle: string;
   /** Whether this shell offers the maximize control (any dock occupant, #928 slice iii). */
   canMaximize?: boolean;
   /**
@@ -187,12 +201,13 @@ export function ChatDockHeader({
   const isDockMaximized = shellMaximized;
   const toggleDockShortcut = useShortcutDisplay(surfaceShortcutId);
   const registeredMaximizeShortcut = useShortcutDisplay('dock.maximize');
+  // One hook for a variable number of per-session rows: `useShortcutDisplay`
+  // is a hook and cannot be called inside the activity map.
+  const shortcutDisplay = useShortcutDisplayLookup();
   const maximizeShortcut = showMaximizeShortcut
     ? registeredMaximizeShortcut
     : '';
-  const visibilityLabel = surfaceTitle
-    ? `${isDockOpen ? 'Hide' : 'Show'} ${surfaceTitle}`
-    : `${isDockOpen ? 'Hide' : 'Show'} dock region`;
+  const visibilityLabel = `${isDockOpen ? 'Hide' : 'Show'} ${surfaceTitle}`;
   const side =
     effectiveDockSlotPlacement === 'bottom' ? null : effectiveDockSlotPlacement;
   const activeSessions = (chatControls?.sessions ?? []).filter((s) =>
@@ -419,8 +434,19 @@ export function ChatDockHeader({
                     <span className="chat-dock__activity-label">
                       {session.title}
                     </span>
+                    {/*
+                      `dock.session1`…`dock.session9` are Cmd-N on macOS and
+                      Ctrl-N everywhere else; the literal `⌘{n}` that used to
+                      sit here named a chord no Windows or Linux user could
+                      press (#1649). `getDisplay` returns '' for a session
+                      index nothing has registered, and
+                      `.chat-dock__subtitle:empty` hides the badge rather than
+                      drawing an empty keycap.
+                    */}
                     {idx < 9 && (
-                      <span className="chat-dock__subtitle">⌘{idx + 1}</span>
+                      <span className="chat-dock__subtitle">
+                        {shortcutDisplay(`dock.session${idx + 1}`)}
+                      </span>
                     )}
                   </button>
                 );
@@ -429,6 +455,7 @@ export function ChatDockHeader({
           </div>
         )}
         {chatControls &&
+          (!chatIdentity || chatControls.sessions.length > 0) &&
           (chatControls.sessions.length === 0 ? (
             !isDockOpen ? (
               // #800: this read "Start a chat" and carried a pointer cursor,

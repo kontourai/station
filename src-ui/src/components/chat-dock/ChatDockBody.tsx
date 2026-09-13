@@ -1,7 +1,6 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
-import type { SteerTurnResult } from '@kontourai/station-contracts/orchestration';
 import {
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
@@ -19,19 +18,23 @@ import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
-import { conversationCanMutate } from '../../contexts/conversation-open-policy';
-import { useNavigation } from '../../contexts/NavigationContext';
+import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
+import { useMessageContextContext } from '../../contexts/MessageContextContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
 import { drainQueuedMessageOnTurnCompleted } from '../../hooks/orchestration/queueDrain';
+import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
 import { useActiveChatTranscript } from '../../hooks/orchestration/useActiveChatTranscript';
+import { useChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
+import { useACPConnections } from '../../hooks/useACPConnections';
+import type { useChatInput } from '../../hooks/useChatInput';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
-import { useMessageContext } from '../../hooks/useMessageContext';
 import { useShareReceiver } from '../../hooks/useShareReceiver';
-import type { SlashCommand } from '../../hooks/useSlashCommands';
 import { useSTT } from '../../hooks/useSTT';
 import { useTTS } from '../../hooks/useTTS';
+import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
-import type { ApprovalMode } from '../../utils/approvalMode';
+import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
   formatChatErrorDisplay,
@@ -41,7 +44,10 @@ import {
   elidedHistoryNoticeText,
   summarizeElidedReasons,
 } from '../../utils/elidedHistory';
-import { isSessionExecutionActive } from '../../utils/execution';
+import {
+  isSessionExecutionActive,
+  sessionAdapterSupportsSteering,
+} from '../../utils/execution';
 import type {
   ModelProviderOption,
   SelectableModel,
@@ -54,6 +60,7 @@ import {
   sessionFailureText,
   transcriptCarriesFailureText,
 } from '../../utils/sessionFailure';
+import { steerRefusalMessage } from '../../utils/steerTurn';
 import { ChatEmptyState } from '../chat/ChatEmptyState';
 import { ChatInputArea } from '../chat/ChatInputArea';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
@@ -64,7 +71,7 @@ import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
 import { LazyBoundary } from '../LazyBoundary';
 import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
-import { ErrorState, SkeletonList } from '../state';
+import { ErrorState, SkeletonBlock, SkeletonList } from '../state';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 import {
   type RetryAttachment,
@@ -87,6 +94,16 @@ const loadOutboundQueuedMessages = () =>
 const loadConversationOpenRecoveryNotice = () =>
   import('./ConversationOpenRecoveryNotice').then((module) => ({
     default: module.ConversationOpenRecoveryNotice,
+  }));
+
+const loadReplayTransport = () =>
+  import('../chat/ReplayTransport').then(({ ReplayTransport }) => ({
+    default: ReplayTransport,
+  }));
+
+const loadSourceQuoteDrafts = () =>
+  import('../chat/SourceQuoteDrafts').then((module) => ({
+    default: module.SourceQuoteDrafts,
   }));
 
 const loadQueuedMessages = () =>
@@ -161,55 +178,7 @@ interface ChatDockBodyProps {
   /** Re-resolves the exact durable conversation identity, never an Agent guess. */
   onRetryConversationOpen?: () => void | Promise<void>;
   onForkFromTurn?: (source: ForkTurnSource) => void;
-  chatInput: {
-    input: string;
-    attachments: FileAttachment[];
-    attachmentStages: import('../../types').ComposerAttachmentStageSnapshot[];
-    sendBlockedReason?: string;
-    textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-    currentModel: string | undefined;
-    canModelSelect: boolean;
-    modelSelectionReason?: string;
-    modelsStale?: boolean;
-    modelQuery: string | null;
-    commandQuery: string | null;
-    slashCommands: SlashCommand[];
-    handleInputChange: (value: string) => void;
-    handleSend: (
-      overrideText?: string,
-      overrideAttachments?: FileAttachment[],
-      options?: { ambientContext?: string },
-    ) => Promise<void>;
-    handleCancel: () => void;
-    handleClearInput: () => void;
-    handleAddAttachments: (files: FileAttachment[]) => void;
-    selectAttachmentFiles: (files: File[]) => Promise<void>;
-    attachmentError: string | null;
-    retryAttachmentStage: (id: string) => void | Promise<void>;
-    cancelAttachmentStage: (id: string) => void | Promise<void>;
-    replaceAttachmentFile: (id: string, files: File[]) => void | Promise<void>;
-    handleRemoveAttachment: (id: string) => void;
-    handleClearAttachments: () => void;
-    handleModelSelect: (model: SelectableModel) => void;
-    handleModelReset: () => void;
-    handleModelClose: () => void;
-    handleModelOpen: () => void;
-    handleModelRuntimeOptionChange: (
-      key: string,
-      value: string | number | boolean | undefined,
-    ) => void;
-    handleApprovalModeChange: (mode: ApprovalMode) => void;
-    handleCommandSelect: (command: SlashCommand) => Promise<void>;
-    handleCommandClose: () => void;
-    handleHistoryUp: () => void;
-    handleHistoryDown: () => void;
-    handleRestorePortableDraft: (
-      text: string,
-      attachments: FileAttachment[],
-    ) => void;
-    updateFromInput: (value: string) => void;
-    closeAll: () => void;
-  };
+  chatInput: ReturnType<typeof useChatInput>;
   setShowStatsPanel: (show: boolean) => void;
 }
 
@@ -253,38 +222,6 @@ export function findPrecedingUserTurn(
   return null;
 }
 
-/**
- * The system-message copy for every `steerOrchestrationTurn` outcome OTHER
- * than `'steered'` (that one is a success — `onSteer` returns `true` for it
- * without ever calling this).
- *
- * station#4075 stage 2 review round 2: this used to be a two-way ternary
- * (`unsupported-engine` vs. a catch-all "the turn ended before the steer
- * could be sent") — the additive-enum trap. Adding `'concurrent-steer'` to
- * `SteerTurnResult` fell into that catch-all and told the user the turn had
- * ENDED, which is false: the turn is still live, another steer just won the
- * race. Exhaustive `switch` with NO `default` case that returns a value —
- * the `never`-check in the (genuinely unreachable) fallback is what makes a
- * FUTURE outcome addition a compile error here instead of silent wrong copy
- * (the same idiom as `views/settings/registry-row.tsx`).
- */
-export function steerRefusalMessage(
-  result: Exclude<SteerTurnResult, { outcome: 'steered' }>,
-): string {
-  switch (result.outcome) {
-    case 'unsupported-engine':
-      return `${result.engineName} does not support mid-turn steering.`;
-    case 'no-active-turn':
-      return 'The turn ended before the steer could be sent.';
-    case 'concurrent-steer':
-      return 'Another steer is in progress — try again in a moment.';
-    default: {
-      const exhaustive: never = result;
-      return exhaustive;
-    }
-  }
-}
-
 export function ChatDockBody({
   activeSession,
   activeOrchestrationSession,
@@ -318,9 +255,19 @@ export function ChatDockBody({
   const { apiBase } = useApiBase();
   const { updateChat, clearEphemeralMessages, addEphemeralMessage } =
     useActiveChatActions();
-  const { navigate } = useNavigation();
+  const { navigate } = useNavigationActions();
   const { user } = useAuth();
   const { activeConnection } = useConnections();
+  const { data: acpConnections = [] } = useACPConnections();
+  const advertisedAcpSession = useMemo(
+    () =>
+      advertisedAcpSessionModesFromConnection(
+        acpConnections.find(
+          (connection) => connection.id === activeSession.agentConnectionId,
+        ),
+      ),
+    [acpConnections, activeSession.agentConnectionId],
+  );
   // Stable across renders unless the saved Station or accountable display name
   // changes, preserving ChatMessageList's memoization.
   const owner = useMemo(
@@ -339,9 +286,47 @@ export function ChatDockBody({
   const { settings } = useFeatureSettings();
   const stt = useSTT();
   const tts = useTTS();
-  const { getComposedContext } = useMessageContext();
+  const { getComposedContext } = useMessageContextContext();
+  // A reopened conversation retains the admission decision that opened this
+  // tab. Provider/model availability today cannot convert a recovery view
+  // into a writable continuation of a different child session.
+  const openPhase = conversationOpenPhase(activeSession);
+  // Split deliberately. `resolvingOpen` blocks the same writes `readOnlyOpen`
+  // does — you cannot send into a conversation whose continuation is unproven —
+  // but it is the only one of the two that may not claim anything is wrong
+  // (#1582 E3/B6).
+  const readOnlyOpen = openPhase === 'read-only';
+  const busyOpen = openPhase === 'busy';
+  const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
-  const forkFromTurn = onForkFromTurn;
+  const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
+  /*
+   * One transitional state for the whole conversation, from the two things
+   * that are actually still in flight after a reload: the conversation-open
+   * point-read (`resolvingOpen`, seeded by `hydrateActiveChats` for every
+   * persisted chat with a conversation id) and the transcript's first read
+   * (`settled`). Before #1582 E3/B6 these produced a red "is read-only" alert,
+   * an empty "Start a conversation" placeholder and a second red line under
+   * the composer — three contradictory claims about a healthy conversation.
+   */
+  const conversationLoading =
+    resolvingOpen || (transcript.enabled && !transcript.settled);
+  /*
+   * The wait is BOUNDED but not short: both reads go through the SDK client,
+   * whose `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` is 30_000, so a resolution that
+   * never lands settles into the read-only verdict in at most ~30s rather than
+   * hanging. That is long enough that the composer being disabled with no way
+   * out would be its own defect, so the control row below keeps "Start new
+   * chat" reachable for the whole window (review L1). Retry deliberately does
+   * not appear: retrying a read that is still in flight is what the resolver is
+   * already doing.
+   *
+   * The ROW is what scopes that control to the wait, so the button carries no
+   * second copy of the condition. It had one, and an injection that made it
+   * unconditional stayed green — a guard nothing can reach reads as a
+   * guarantee and is not one.
+   */
+  const forkFromTurn = activeSession.replay ? undefined : onForkFromTurn;
   const renderedSession = useMemo(
     () =>
       transcript.enabled
@@ -388,9 +373,22 @@ export function ChatDockBody({
   // not in it) may claim that; the read's own pending and failed states are
   // rendered as themselves below.
   const claimsServerSession =
-    activeSession.orchestrationSessionStarted === true;
+    activeSession.orchestrationSessionStarted === true &&
+    !isReplayThread(activeSession.id);
+  // The inventory can omit an unloaded child. An authorized point-read of
+  // this exact child is stronger evidence than absence from that list.
+  const openResolution = activeSession.conversationOpenState;
+  const currentChildKnown =
+    openResolution?.status === 'resolved' &&
+    openResolution.currentSessionId ===
+      (activeSession.currentSessionId ??
+        activeSession.conversationId ??
+        activeSession.id);
   const sessionRecordMissing =
-    claimsServerSession && activeOrchestrationSessionRead === 'absent';
+    claimsServerSession &&
+    activeOrchestrationSessionRead === 'absent' &&
+    !activeSession.conversationOpenPending &&
+    !currentChildKnown;
   const sessionRecordPending =
     claimsServerSession && activeOrchestrationSessionRead === 'pending';
   const sessionRecordUnreadable =
@@ -432,26 +430,35 @@ export function ChatDockBody({
    * indistinguishable from a turn that never carried them — and from a blob
    * retention had reclaimed. `elided` is the read's own report of which
    * budget fired, so this counts events the read actually withheld rather
-   * than inferring anything from what is missing, and keeps the two reasons
-   * apart in the copy.
+   * than inferring anything from what is missing. Tool-detail reductions stay
+   * in session diagnostics; they must not add a banner above an otherwise
+   * complete conversation.
    */
   const elidedHistoryText = useMemo(
     () =>
       elidedHistoryNoticeText(
         summarizeElidedReasons(
-          transcript.events.map((sequenced) => sequenced.elided),
+          transcript.events
+            .filter(
+              (item) =>
+                item.event.method !== 'tool.progress' &&
+                item.event.method !== 'tool.started' &&
+                item.event.method !== 'tool.completed' &&
+                item.event.method !== 'token-usage.updated',
+            )
+            .map((sequenced) => sequenced.elided),
         ),
       ),
     [transcript.events],
   );
   const historyElisionNotice = elidedHistoryText ? (
-    <div
+    <details
       className="history-elided chat-dock__history-elided"
-      role="status"
       data-testid="chat-dock-history-elided"
     >
+      <summary>Some recorded details are omitted</summary>
       {elidedHistoryText}
-    </div>
+    </details>
   ) : undefined;
   const historyFailureNotice = historyFailure ? (
     <div className="session-history-error" role="alert">
@@ -504,11 +511,27 @@ export function ChatDockBody({
     );
     return chatInput.handleSend(undefined, undefined, { ambientContext });
   }, [getComposedContext, chatInput]);
+  const handleQueueFollowUp = useCallback((): Promise<void> => {
+    const ambientContext = ambientContextForSend(
+      getComposedContext(),
+      chatInput.input,
+    );
+    return chatInput.handleSend(undefined, undefined, {
+      ambientContext,
+      queueOnBusy: true,
+    });
+  }, [getComposedContext, chatInput]);
+  const busyFollowUp =
+    isTurnInFlight(activeSession) &&
+    sessionAdapterSupportsSteering(
+      activeSession.agentConnectionId,
+      [],
+      activeSession.orchestrationProvider,
+    ) &&
+    chatInput.attachments.length === 0
+      ? 'steer'
+      : 'queue';
   const isExecutionActive = isSessionExecutionActive(activeSession);
-  // A reopened conversation retains the admission decision that opened this
-  // tab. Provider/model availability today cannot convert a recovery view
-  // into a writable continuation of a different child session.
-  const readOnlyOpen = !conversationCanMutate(activeSession);
 
   // TTS readback when streaming ends
   const prevStatusRef = useRef(isExecutionActive);
@@ -730,20 +753,25 @@ export function ChatDockBody({
             messageKey={`${activeSession.id}-msg-${idx}`}
             content={displayContent}
             action={
-              translation?.terminalSession && onNewChat && retryTurn
-                ? {
-                    label: 'New chat',
-                    onClick: () => void runRecoveredTurn(retryTurn, onNewChat),
-                  }
-                : canRetry && retryTurn
+              activeSession.replay
+                ? undefined
+                : translation?.terminalSession && onNewChat && retryTurn
                   ? {
-                      label: 'Send again',
+                      label: 'New chat',
                       onClick: () =>
-                        void runRecoveredTurn(retryTurn, (text, attachments) =>
-                          sendRef.current(text, attachments),
-                        ),
+                        void runRecoveredTurn(retryTurn, onNewChat),
                     }
-                  : undefined
+                  : canRetry && retryTurn
+                    ? {
+                        label: 'Send again',
+                        onClick: () =>
+                          void runRecoveredTurn(
+                            retryTurn,
+                            (text, attachments) =>
+                              sendRef.current(text, attachments),
+                          ),
+                      }
+                    : undefined
             }
           />
         );
@@ -755,6 +783,7 @@ export function ChatDockBody({
       chatFontSize,
       removingMessages,
       activeSession.id,
+      activeSession.replay,
       activeSession.messages,
       chatInput.input,
       clearEphemeralMessages,
@@ -779,7 +808,6 @@ export function ChatDockBody({
         />
       )}
       {historyFailure && transcript.messages.length > 0 && historyFailureNotice}
-      {historyElisionNotice}
       {sessionRecordPending && (
         <SkeletonList count={1} label="Reading this session's record" />
       )}
@@ -834,12 +862,23 @@ export function ChatDockBody({
          * the reason nothing can be sent.
          */
         <div className="chat-messages chat-messages--empty" role="status">
-          {historyFailureNotice ?? (
-            <ChatEmptyState
-              agentSlug={renderedSession.agentSlug}
-              agentName={renderedSession.agentName}
-            />
-          )}
+          {historyElisionNotice}
+          {historyFailureNotice ??
+            (conversationLoading ? (
+              /*
+               * "Start a conversation" is a CLAIM that this chat has none, and
+               * a transcript read that has not landed has established nothing.
+               * It rendered here for ~1.7s on every reload of a conversation
+               * that had turns in it (#1582 E3/B6). The skeleton keeps the flex
+               * fill this slot exists for while saying only what is known.
+               */
+              <SkeletonList count={4} label="Loading conversation" />
+            ) : (
+              <ChatEmptyState
+                agentSlug={renderedSession.agentSlug}
+                agentName={renderedSession.agentName}
+              />
+            ))}
         </div>
       )}
       {transcript.messages.length > 0 && (
@@ -854,6 +893,11 @@ export function ChatDockBody({
             showToolDetails,
             renderOverride,
             emptyState: historyFailureNotice,
+            historyNotice: historyElisionNotice,
+            hasOlderMessages: transcript.enabled && transcript.hasMore,
+            historyLoading: transcript.loading,
+            suppressActivity: Boolean(streamStatus),
+            onLoadOlder: transcript.loadOlder,
             onOpenBackgroundTasks,
             owner,
             accountableHuman,
@@ -864,15 +908,24 @@ export function ChatDockBody({
           }}
         />
       )}
-      {transcript.enabled && transcript.hasMore && (
-        <div className="session-history-controls">
-          <button
-            type="button"
-            className="button button--secondary session-history-controls__more"
-            onClick={() => void transcript.loadOlder()}
-          >
-            Load earlier events
-          </button>
+      {streamStatus && (
+        <div
+          className="chat-stream-status"
+          role="status"
+          data-chat-stream-status={activeSession.id}
+          title="Live updates are paused; the remote request may still be running."
+        >
+          <span>{streamStatus.label}</span>
+          {streamStatus.blocked && (
+            <button
+              type="button"
+              className="button button--secondary"
+              disabled={Boolean(activeSession.replay)}
+              onClick={() => openConnectionsModal({ mode: 'request-access' })}
+            >
+              Repair connection
+            </button>
+          )}
         </div>
       )}
       {activeSession.unsentMessages?.length ? (
@@ -899,7 +952,11 @@ export function ChatDockBody({
             // engine) otherwise sits there with no way to send it — the same
             // drain, on demand.
             onRetry: () =>
-              drainQueuedMessageOnTurnCompleted(apiBase, activeSession.id),
+              drainQueuedMessageOnTurnCompleted(
+                apiBase,
+                activeSession.id,
+                true,
+              ),
             canSteer:
               isExecutionActive &&
               !!activeSession.orchestrationProvider &&
@@ -1066,6 +1123,54 @@ export function ChatDockBody({
             )}
           </div>
         )}
+      {/*
+        The transitional state, in the repo's one loading vocabulary
+        (`state-primitives-ratchet`: name the wait in a skeleton's `label`,
+        never a new sentence). It replaces the red "is read-only" alert this
+        phase used to paint: nothing has gone wrong — `hydrateActiveChats`
+        seeds the pending phase on every reload of a chat with a conversation
+        id, so this is the ordinary path (#1582 E3/B6).
+
+        It renders only when the transcript already has messages: with an empty
+        transcript the filler above carries the same wait, and two skeletons
+        for one wait is the multiplicity this change exists to remove.
+
+        A SIBLING of the control row below, not a child of it. Inside
+        `.session-history-controls` (`display: flex; justify-content: center`)
+        the skeleton becomes a shrink-to-fit flex item, and `.skeleton--block`
+        is `width: 100%` OF that item — it measured 2px wide in Chrome against
+        600px here, and jsdom, which lays nothing out, called both green
+        (delta-review M1).
+      */}
+      {conversationLoading && transcript.messages.length > 0 ? (
+        <SkeletonBlock count={1} label="Loading conversation" />
+      ) : null}
+      {/*
+        The one way out of the wait. `.session-history-controls` is this pane's
+        existing control row (archive#3386 already widened it past "buttons
+        only"), reused rather than given a class of its own — the entry
+        stylesheet is at its budget ceiling to the byte.
+
+        `!readOnlyOpen` because the read-only recovery notice below carries its
+        own "Start new chat": a reload whose point-read lands `unavailable`
+        BEFORE the transcript's first read satisfies both conditions at once,
+        and rendered the control twice (delta-review L1).
+      */}
+      {conversationLoading && !readOnlyOpen ? (
+        <div className="session-history-controls">
+          {onNewChat ? (
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() =>
+                void Promise.resolve(onNewChat()).catch(surfaceRecoveryFailure)
+              }
+            >
+              Start new chat
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {readOnlyOpen ? (
         <LazyBoundary
           load={loadConversationOpenRecoveryNotice}
@@ -1073,10 +1178,8 @@ export function ChatDockBody({
             title:
               activeSession.conversationOpenState?.conversation.title ??
               activeSession.title,
-            state: activeSession.conversationOpenPending
-              ? 'resolving'
-              : activeSession.conversationOpenState?.status ===
-                  'missing-session'
+            state:
+              activeSession.conversationOpenState?.status === 'missing-session'
                 ? 'missing-session'
                 : 'unavailable',
             onRetry: onRetryConversationOpen
@@ -1144,96 +1247,142 @@ export function ChatDockBody({
             .
           </div>
         )}
-      <ChatInputArea
-        sessionId={activeSession.id}
-        input={chatInput.input}
-        attachments={chatInput.attachments}
-        textareaRef={chatInput.textareaRef}
-        disabled={!agent || readOnlyOpen}
-        isSending={isExecutionActive}
-        turnInFlight={isTurnInFlight(activeSession)}
-        stopPending={!!activeSession.stopPending}
-        modelSupportsAttachments={modelSupportsAttachments}
-        fileAttachmentsSupported={fileAttachmentsSupported}
-        modelProviderLabel={modelProviderLabel}
-        modelProviders={modelProviders}
-        currentProviderId={activeSession.providerId}
-        fontSize={chatFontSize}
-        dockHeight={dockHeight}
-        currentModel={chatInput.currentModel}
-        currentModelSource={
-          activeSession.requestedModel === null
-            ? (activeSession.defaultModelSource ?? 'agent default')
-            : (activeSession.requestedModelSource ?? activeSession.modelSource)
-        }
-        canModelSelect={chatInput.canModelSelect}
-        modelSelectionReason={chatInput.modelSelectionReason}
-        modelsStale={chatInput.modelsStale}
-        modelsLoading={modelsLoading}
-        agentDefaultModel={agentDefaultModelId}
-        defaultModelSource={activeSession.defaultModelSource}
-        availableModels={availableModels}
-        modelQuery={chatInput.modelQuery}
-        agentConnectionId={activeSession.agentConnectionId}
-        modelRuntimeOptions={
-          activeSession.requestedProviderOptions ??
-          activeSession.providerOptions
-        }
-        secondaryActions={readOnlyOpen ? undefined : secondaryActions}
-        agentLabel={
-          agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
-        }
-        onOpenAgentHandoff={
-          onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff
-        }
-        agentHandoffTriggerRef={agentHandoffTriggerRef}
-        agentHandoffDisabled={secondaryActions?.handoffDisabled}
-        agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
-        executionMode={activeSession.executionMode}
-        approvalModeConnectionDefault={connectionApprovalModeDefault}
-        toolPolicyDelivery={toolPolicyDelivery}
-        lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
-        commandQuery={chatInput.commandQuery}
-        slashCommands={chatInput.slashCommands}
-        onInputChange={chatInput.handleInputChange}
-        onSend={handleSendWithContext}
-        onCancel={chatInput.handleCancel}
-        onClearInput={chatInput.handleClearInput}
-        selectAttachmentFiles={chatInput.selectAttachmentFiles}
-        attachmentError={chatInput.attachmentError}
-        attachmentStages={chatInput.attachmentStages}
-        sendBlockedReason={
-          readOnlyOpen
-            ? 'This conversation is available read-only. Retry resolution or start a new chat.'
-            : chatInput.sendBlockedReason
-        }
-        onRetryAttachmentStage={chatInput.retryAttachmentStage}
-        onCancelAttachmentStage={chatInput.cancelAttachmentStage}
-        onReplaceAttachmentFile={chatInput.replaceAttachmentFile}
-        onRemoveAttachment={chatInput.handleRemoveAttachment}
-        onClearAttachments={chatInput.handleClearAttachments}
-        onModelSelect={chatInput.handleModelSelect}
-        onModelReset={chatInput.handleModelReset}
-        onModelClose={chatInput.handleModelClose}
-        onModelOpen={chatInput.handleModelOpen}
-        onModelRuntimeOptionChange={chatInput.handleModelRuntimeOptionChange}
-        onApprovalModeChange={chatInput.handleApprovalModeChange}
-        onCommandSelect={chatInput.handleCommandSelect}
-        onCommandClose={chatInput.handleCommandClose}
-        onHistoryUp={chatInput.handleHistoryUp}
-        onHistoryDown={chatInput.handleHistoryDown}
-        onRestorePortableDraft={chatInput.handleRestorePortableDraft}
-        updateFromInput={chatInput.updateFromInput}
-        closeAll={chatInput.closeAll}
-        voiceState={stt.state}
-        voiceSupported={stt.supported}
-        voiceUnsupportedReason={stt.unsupportedReason}
-        voiceError={stt.errorMessage}
-        onVoiceStart={() => stt.startListening()}
-        onVoiceStop={() => stt.stopListening()}
-        workspaceRefused={workspaceRefused}
-        onStartNewChat={onNewChat}
-      />
+      {activeSession.replay ? (
+        <LazyBoundary
+          load={loadReplayTransport}
+          pending={null}
+          componentProps={{ sessionId: activeSession.id }}
+        />
+      ) : (
+        <>
+          {chatInput.quotes.length > 0 && (
+            <LazyBoundary
+              load={loadSourceQuoteDrafts}
+              componentProps={{
+                origin: apiBase,
+                quotes: chatInput.quotes,
+                onRemove: chatInput.removeQuote,
+              }}
+              pending={
+                <SkeletonList count={1} label="Loading quoted context" />
+              }
+            />
+          )}
+          <ChatInputArea
+            hasQuotedContext={chatInput.quotes.length > 0}
+            draftText={chatInput.quotedDraftText}
+            quoteContext={chatInput.quotes}
+            sessionId={activeSession.id}
+            input={chatInput.input}
+            attachments={chatInput.attachments}
+            textareaRef={chatInput.textareaRef}
+            disabled={!agent || readOnlyOpen || resolvingOpen || busyOpen}
+            isSending={isExecutionActive}
+            turnInFlight={isTurnInFlight(activeSession)}
+            busyFollowUp={busyFollowUp}
+            onQueueFollowUp={handleQueueFollowUp}
+            stopPending={!!activeSession.stopPending}
+            modelSupportsAttachments={modelSupportsAttachments}
+            fileAttachmentsSupported={fileAttachmentsSupported}
+            modelProviderLabel={modelProviderLabel}
+            modelProviders={modelProviders}
+            currentProviderId={activeSession.providerId}
+            fontSize={chatFontSize}
+            dockHeight={dockHeight}
+            currentModel={chatInput.currentModel}
+            currentModelSource={
+              activeSession.requestedModel === null
+                ? (activeSession.defaultModelSource ?? 'agent default')
+                : (activeSession.requestedModelSource ??
+                  activeSession.modelSource)
+            }
+            canModelSelect={chatInput.canModelSelect}
+            modelSelectionReason={chatInput.modelSelectionReason}
+            modelsStale={chatInput.modelsStale}
+            modelsLoading={modelsLoading}
+            agentDefaultModel={agentDefaultModelId}
+            defaultModelSource={activeSession.defaultModelSource}
+            availableModels={availableModels}
+            modelQuery={chatInput.modelQuery}
+            agentConnectionId={activeSession.agentConnectionId}
+            modelRuntimeOptions={
+              activeSession.requestedProviderOptions ??
+              activeSession.providerOptions
+            }
+            secondaryActions={
+              readOnlyOpen || resolvingOpen || busyOpen
+                ? undefined
+                : secondaryActions
+            }
+            agentLabel={
+              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
+            }
+            onOpenAgentHandoff={
+              onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff
+            }
+            agentHandoffTriggerRef={agentHandoffTriggerRef}
+            agentHandoffDisabled={secondaryActions?.handoffDisabled}
+            agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
+            executionMode={activeSession.executionMode}
+            approvalModeConnectionDefault={connectionApprovalModeDefault}
+            toolPolicyDelivery={toolPolicyDelivery}
+            lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+            acpSessionModes={advertisedAcpSession.modes}
+            acpCurrentModeId={
+              activeSession.currentModeId ?? advertisedAcpSession.currentModeId
+            }
+            commandQuery={chatInput.commandQuery}
+            slashCommands={chatInput.slashCommands}
+            onInputChange={chatInput.handleInputChange}
+            onSend={handleSendWithContext}
+            onCancel={chatInput.handleCancel}
+            onClearInput={chatInput.handleClearInput}
+            selectAttachmentFiles={chatInput.selectAttachmentFiles}
+            attachmentError={chatInput.attachmentError}
+            attachmentStages={chatInput.attachmentStages}
+            sendBlockedReason={
+              readOnlyOpen
+                ? 'This conversation is available read-only. Retry resolution or start a new chat.'
+                : resolvingOpen || busyOpen
+                  ? // The banner above already says this; repeating the SENTENCE
+                    // under the composer is what made one ordinary reload read as
+                    // three separate problems. `undefined` leaves the composer
+                    // quietly disabled.
+                    undefined
+                  : chatInput.sendBlockedReason
+            }
+            onRetryAttachmentStage={chatInput.retryAttachmentStage}
+            onCancelAttachmentStage={chatInput.cancelAttachmentStage}
+            onReplaceAttachmentFile={chatInput.replaceAttachmentFile}
+            onRemoveAttachment={chatInput.handleRemoveAttachment}
+            onClearAttachments={chatInput.handleClearAttachments}
+            onModelSelect={chatInput.handleModelSelect}
+            onModelReset={chatInput.handleModelReset}
+            onModelClose={chatInput.handleModelClose}
+            onModelOpen={chatInput.handleModelOpen}
+            onModelRuntimeOptionChange={
+              chatInput.handleModelRuntimeOptionChange
+            }
+            onApprovalModeChange={chatInput.handleApprovalModeChange}
+            onAcpSessionModeChange={chatInput.handleAcpSessionModeChange}
+            onCommandSelect={chatInput.handleCommandSelect}
+            onCommandClose={chatInput.handleCommandClose}
+            onHistoryUp={chatInput.handleHistoryUp}
+            onHistoryDown={chatInput.handleHistoryDown}
+            onRestorePortableDraft={chatInput.handleRestorePortableDraft}
+            updateFromInput={chatInput.updateFromInput}
+            closeAll={chatInput.closeAll}
+            voiceState={stt.state}
+            voiceSupported={stt.supported}
+            voiceUnsupportedReason={stt.unsupportedReason}
+            voiceError={stt.errorMessage}
+            onVoiceStart={() => stt.startListening()}
+            onVoiceStop={() => stt.stopListening()}
+            workspaceRefused={workspaceRefused}
+            onStartNewChat={onNewChat}
+          />
+        </>
+      )}
     </>
   );
 }

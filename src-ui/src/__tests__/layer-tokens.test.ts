@@ -24,12 +24,10 @@ const UI_SRC = join(__dirname, '..');
  * The dock launcher band and nested new-chat model picker use local values
  * below 100 inside their owning stacking contexts.
  * - attachment-menu opens above dialog-level overlays from inside them.
- * - image-preview-modal is a lightbox that must beat every dialog.
  * Migrating one means designing its slot, not just swapping the number.
  */
 const BASELINE: ReadonlyArray<{ file: string; value: number }> = [
   { file: 'index.css', value: 10000 }, // .attachment-menu — opens above dialog-level overlays from inside them; needs a slot decision, not a renumber
-  { file: 'index.css', value: 20000 }, // .image-preview-modal — global lightbox above every dialog; slot decision pending
 ];
 
 function chromeScaleRawSites(): Array<{ file: string; value: number }> {

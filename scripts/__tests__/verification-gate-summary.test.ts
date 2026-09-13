@@ -46,14 +46,28 @@ function verdictDocument({
   counts,
   passed,
   extraSummary = {},
+  infrastructureCause,
+  receiptInfrastructureCause,
 }: {
   stdout: string;
   stderr?: string;
   status: string;
-  exitCode: number;
+  exitCode: number | null;
   counts: Record<string, number>;
   passed: boolean;
   extraSummary?: Record<string, unknown>;
+  /**
+   * station#1827: threaded into BOTH real producers the way `reportExecution`
+   * threads it -- the summarizer's option and the receipt's terminal -- so the
+   * fixture cannot show a marker the pipeline would not have produced.
+   */
+  infrastructureCause?: string;
+  /**
+   * station#1827: a cause the RECEIPT records while the summary does not --
+   * the reconcile path's shape. It exists to prove the renderer reads the
+   * summary, so a document in that shape cannot be built by accident.
+   */
+  receiptInfrastructureCause?: string;
 }): string {
   const summary = summarizeVerificationOutput({
     stdout,
@@ -61,6 +75,7 @@ function verdictDocument({
     terminal: { status, exitCode, truncated: false },
     counts,
     cleanup,
+    ...(infrastructureCause ? { infrastructureCause } : {}),
     maxBytes: 4096,
   });
   const rendered = renderBounded({
@@ -68,7 +83,17 @@ function verdictDocument({
     request: { key: requestKey, laneId: 'full-regression' },
     summary,
     receipt: {
-      terminal: { status, exitCode, passed },
+      terminal: {
+        status,
+        exitCode,
+        passed,
+        ...(infrastructureCause || receiptInfrastructureCause
+          ? {
+              infrastructureCause:
+                infrastructureCause ?? receiptInfrastructureCause,
+            }
+          : {}),
+      },
       counts,
       cleanup,
       artifacts: [],
@@ -114,6 +139,46 @@ function runSummary(
     summary = '';
   }
   return { status: result.status, stdout: result.stdout ?? '', summary };
+}
+
+/**
+ * The prose between the "Causal excerpts" heading and the fenced block, which
+ * is the caveat that qualifies the excerpts (station#1827 round-4 review, H1).
+ *
+ * Reading it out of the page is what makes the assertions about it properties
+ * rather than page-wide phrase searches: a sentence rendered somewhere else,
+ * or a reworded restatement of the same claim, cannot satisfy them.
+ */
+function causalExcerptCaveat(summary: string): string {
+  const lines = summary.split('\n');
+  const heading = lines.findIndex((line) =>
+    line.startsWith('### Causal excerpts'),
+  );
+  if (heading < 0) return '';
+  const fence = lines.findIndex(
+    (line, index) => index > heading && line.startsWith('```'),
+  );
+  return lines
+    .slice(heading + 1, fence < 0 ? undefined : fence)
+    .join('\n')
+    .trim();
+}
+
+/** The excerpt lines inside that fenced block, in rendered order. */
+function causalExcerptBlock(summary: string): string[] {
+  const lines = summary.split('\n');
+  const heading = lines.findIndex((line) =>
+    line.startsWith('### Causal excerpts'),
+  );
+  if (heading < 0) return [];
+  const open = lines.findIndex(
+    (line, index) => index > heading && line.startsWith('```'),
+  );
+  if (open < 0) return [];
+  const close = lines.findIndex(
+    (line, index) => index > open && line.startsWith('```'),
+  );
+  return lines.slice(open + 1, close < 0 ? undefined : close);
 }
 
 function errorAnnotations(stdout: string): string[] {
@@ -629,6 +694,144 @@ describe('verification gate summary', () => {
     expect(summary).toContain('✅ passed');
     expect(summary).toContain('Terminal status: `completed`');
     expect(summary).toContain('Disposition: `reused`');
+  });
+
+  // station#1827 review item 7. `causeStream` is deliberately withheld for a
+  // runner-declared cause -- its sentence says the excerpt "was picked by
+  // severity and position", which nothing did -- and withholding it left this
+  // renderer showing a declaration byte-identically to a scan guess. Both
+  // producers are the real ones, so the marker reaching the page proves the
+  // whole thread: summarizer option -> summary field -> bounded envelope ->
+  // rendered caveat.
+  test('says a causal excerpt was declared by the runner, not picked out of the output (station#1827)', () => {
+    const root = workspace();
+    const capture = join(root, 'ci-fast.stdout.log');
+    // The decoy the scan WOULD choose. Without it in the capture the summary
+    // would carry the declaration by default, and the test would prove nothing
+    // about precedence or about which sentence is rendered.
+    const stoppedLog = [
+      '> @kontourai/station-core@0.0.0 ci:fast',
+      '> node scripts/run-ci-fast.mjs',
+      '          Error: observer failed',
+    ].join('\n');
+    writeFileSync(
+      capture,
+      capturedStdout(
+        stoppedLog,
+        verdictDocument({
+          stdout: stoppedLog,
+          status: 'infrastructure_error',
+          exitCode: null,
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 1,
+          },
+          passed: false,
+          infrastructureCause: 'ci:fast exceeded its 12-minute feedback budget',
+        }),
+      ),
+    );
+
+    const { status, stdout, summary } = runSummary(root, [
+      '--stdout-file',
+      capture,
+    ]);
+
+    // This reporter never changes the gate step's own verdict, in either
+    // direction, and the new field must not start.
+    expect(status).toBe(0);
+    expect(summary).toContain('Causal excerpts');
+
+    // The fixture is only discriminating if the block really does hold BOTH
+    // provenances. Assert that before asserting anything about the caveat.
+    const block = causalExcerptBlock(summary);
+    expect(block[0]).toContain(
+      'ci:fast exceeded its 12-minute feedback budget',
+    );
+    expect(block.slice(1).join('\n')).toContain('Error: observer failed');
+
+    // Round-4 review, H1: these were phrase pins over the WHOLE page, so a
+    // reworded restatement of the same falsehood passed them -- and one of
+    // them forbade the scoping whose absence was the defect. They are now
+    // properties of the caveat paragraph itself, read from between the
+    // heading and the fenced block, so nothing elsewhere on the page can
+    // satisfy them.
+    const caveat = causalExcerptCaveat(summary);
+    // Scoped to the head, because the entry below it is a scan result and
+    // "not selected from the lane's output" is false of that one.
+    expect(caveat).toMatch(/first excerpt/i);
+    // And the rest are accounted for rather than left under the claim.
+    expect(caveat).toMatch(/scan/i);
+    // The provenance it may assert is the runner layer, never the stopping
+    // command: the other channel is whatever rejected the execution, a
+    // harness assertion or an injected phase runner included.
+    expect(caveat).not.toMatch(/naming its own reason|stopping component/i);
+    // The scanned-excerpt caveat would be false here, and its absence is now
+    // a positive statement rather than the silence it used to be.
+    expect(caveat).not.toMatch(/severity and position/i);
+    expect(errorAnnotations(stdout).join('\n')).toContain(
+      'ci:fast exceeded its 12-minute feedback budget',
+    );
+  });
+
+  // station#1827 fix round 2, L3. The first round's sentence ended "Any
+  // excerpts after it were found by the scan", which is false on the reconcile
+  // path: there the second excerpt is the `reconcileNote` reportExecution
+  // synthesized about its OWN failure. Two things stop that being rendered now
+  // -- the clause is gone, and the marker comes from the summary, which the
+  // reconcile path never sets. This pins the second, with a document shaped
+  // exactly as that path emits one.
+  test('renders no declared-cause sentence for a reporting-pipeline failure (station#1827)', () => {
+    const root = workspace();
+    const capture = join(root, 'ci-fast.stdout.log');
+    const reconcileLog = [
+      '> @kontourai/station-core@0.0.0 ci:fast',
+      '> node scripts/run-ci-fast.mjs',
+    ].join('\n');
+    writeFileSync(
+      capture,
+      capturedStdout(
+        reconcileLog,
+        verdictDocument({
+          stdout: reconcileLog,
+          status: 'infrastructure_error',
+          exitCode: null,
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 1,
+          },
+          passed: false,
+          // The receipt DOES record the declaration on this path; the summary
+          // deliberately does not carry the marker, and the summary is what
+          // this renderer reads.
+          receiptInfrastructureCause:
+            'ci:fast exceeded its 12-minute feedback budget',
+          extraSummary: {
+            firstCausalExcerpt:
+              'verification execution infrastructure error: ci:fast exceeded its 12-minute feedback budget',
+            causalExcerpts: [
+              'verification execution infrastructure error: ci:fast exceeded its 12-minute feedback budget',
+              'verification reporting failed: required attachment unavailable: changed-test-diagnostics (missing)',
+            ],
+            reconcileNote:
+              'verification reporting failed: required attachment unavailable: changed-test-diagnostics (missing)',
+          },
+        }),
+      ),
+    );
+
+    const { status, summary } = runSummary(root, ['--stdout-file', capture]);
+
+    expect(status).toBe(0);
+    expect(summary).toContain('Causal excerpts');
+    expect(summary).toContain('verification reporting failed');
+    // Neither caveat applies here, and the first round rendered one of them.
+    expect(summary).not.toContain('Recorded by the verification runner');
+    expect(summary).not.toContain('picked by severity and position');
   });
 
   // GitHub reads `%0A` as one newline; a cut landing inside it leaves a bare

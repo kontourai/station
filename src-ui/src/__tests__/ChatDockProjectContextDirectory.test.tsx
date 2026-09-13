@@ -41,8 +41,10 @@ function renderRow(
   );
   return {
     row: document.querySelector('.chat-dock__project-context') as HTMLElement,
+    // #1552 D3: with no project bound the chip carries no visible label, so its
+    // accessible name is what pressing it does.
     badge: screen.getByRole('button', {
-      name: project.name ?? 'No project',
+      name: project.name ?? 'Choose a project',
     }),
   };
 }
@@ -58,8 +60,11 @@ describe('ChatDockProjectContext directory (station#1146)', () => {
   test('says so plainly when there is no project, and therefore no folder', () => {
     const { badge } = renderRow(null, { slug: null, name: null });
 
+    // The sentence survives #1552 D3's removal of the visible "No project"
+    // label, prefixed by what the control does — dropping the label must not
+    // drop the only answer to "so where do my chats run?".
     expect(badge.getAttribute('title')).toBe(
-      '~ (no project folder set — chats start in your home folder)',
+      'Choose a project — ~ (no project folder set — chats start in your home folder)',
     );
     expect(badge.getAttribute('title')).not.toContain('defaults to home');
   });

@@ -10,6 +10,7 @@ import './telemetry.js';
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
 import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
 import { writeBootRecord } from './routes/system/boot-history.js';
 import { captureBuildProvenance } from './routes/system/build-provenance.js';
@@ -40,6 +41,7 @@ import { createLogger, resolveLogLevel } from './utils/logger.js';
 import { resolveHomeDir } from './utils/paths.js';
 
 assertSupportedNodeVersion();
+installNodeHttpCompatibility();
 
 // Capture process identity before normal boot can mutate its environment or
 // baked banner state. Crash records and diagnostics bundles share this value.

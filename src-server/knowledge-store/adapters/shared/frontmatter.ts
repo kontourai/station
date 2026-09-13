@@ -12,7 +12,7 @@
 // runtime.
 import { dump, type LoadOptions, load } from 'js-yaml';
 
-export interface ParsedMarkdown {
+interface ParsedMarkdown {
   meta: Record<string, unknown>;
   body: string;
 }

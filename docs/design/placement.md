@@ -84,7 +84,7 @@ every other route. Four rules make it a region rather than a special case
   own, #1420): a dock occupant's region is hidden or shown, and a surface
   occupying `main` is moved to its default dock region — visible, Home left in
   `main` — so the folded menu offers `Move Activity to the dock` there rather
-  than a `Show Activity` that would reveal it where it already is. This holds
+  than a `Show Activity in the dock` that would reveal it where it already is. This holds
   from ANY route and never navigates (owner decision, review round 1): on
   `/settings` the chord shows Activity in the dock beside Settings rather than
   hijacking navigation to `/`, and `main` empties to Home behind the routed

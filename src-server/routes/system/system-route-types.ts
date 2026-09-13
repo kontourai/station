@@ -3,6 +3,7 @@ import type {
   EngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
+import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
 import type { TerminalCapability } from '@kontourai/station-shared/terminal-capability';
 import type { DeploymentCapabilities } from '../../capabilities/deployment-capabilities.js';
 import type { ManagedChatBinding } from '../../runtime/plugins/runtime-provider-resolution.js';
@@ -11,6 +12,7 @@ import type { RuntimeResourcePostureProbe } from '../../services/infra/resource-
 import type { BootHistoryRecord } from './boot-history.js';
 
 export interface SystemStatusDeps {
+  getHomeRecovery?: () => HomeRecoveryDisclosure;
   getBootHistory?: () => Promise<{
     records: BootHistoryRecord[];
     currentUptimeSeconds: number;

@@ -54,7 +54,7 @@ export interface RegistrySupplyChainPolicy {
   readonly trustedEd25519Keys: Readonly<Record<string, string>>;
 }
 
-export type RegistryPackageRefusalReason =
+type RegistryPackageRefusalReason =
   | 'invalid-claim'
   | 'unsigned-package'
   | 'untrusted-signing-key'
@@ -62,14 +62,14 @@ export type RegistryPackageRefusalReason =
   | 'content-mismatch'
   | 'pin-mismatch';
 
-export interface VerifiedRegistryPackage {
+interface VerifiedRegistryPackage {
   readonly claim: RegistryPackageClaim;
   readonly verification: RegistrySupplyChainPinRecord['verification'];
   /** Existing installer must rebind grants before loading replacement code. */
   readonly invalidateExistingGrants: boolean;
 }
 
-export type RegistryPackageVerification =
+type RegistryPackageVerification =
   | { readonly kind: 'verified'; readonly package: VerifiedRegistryPackage }
   | {
       readonly kind: 'refused';

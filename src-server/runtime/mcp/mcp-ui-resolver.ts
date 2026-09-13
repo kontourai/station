@@ -8,6 +8,7 @@ import {
   mcpUiRenderPermissionChecks,
   mcpUiResolveTotal,
 } from '../../telemetry/metrics.js';
+import { isRecord } from '../../utils/is-record.js';
 import { extractMCPAppsToolMetadata } from './mcp-apps-metadata.js';
 
 interface MCPUIResolverService {
@@ -208,10 +209,6 @@ function stringField(
 ): string | undefined {
   const value = record?.[key];
   return typeof value === 'string' ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 export type { MCPToolUIResolutionStatus };

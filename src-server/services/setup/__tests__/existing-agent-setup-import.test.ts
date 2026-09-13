@@ -25,6 +25,10 @@ import {
 } from '@kontourai/station-shared/setup-import-bounds';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  deleteSkillPackageAt,
+  saveSkillConfigIn,
+} from '../../../domain/config-loader-storage.js';
+import {
   ExistingAgentSetupImportModule,
   SetupImportError,
 } from '../existing-agent-setup-import.js';
@@ -91,6 +95,14 @@ async function fixture() {
       JSON.parse(
         readFileSync(join(project, 'skills', name, 'skill.json'), 'utf8'),
       ),
+    // The REAL directory-addressed pair (#1619), not an imitation of it: the
+    // containment they assert is the floor beneath every write, and a stub
+    // that only wrote a file would let this suite certify a write that escapes
+    // its root (review: test power).
+    saveSkillIn: async (directory: string, value: unknown) =>
+      saveSkillConfigIn(project, directory, value as never),
+    deleteSkillAt: async (name: string, directory: string) =>
+      deleteSkillPackageAt(project, name, directory),
     deleteSkill: async (name: string) =>
       rmSync(join(project, 'skills', name), { recursive: true, force: true }),
     listSkills: async () => [],
@@ -148,6 +160,14 @@ function serviceFor(
         throw error;
       }
       return JSON.parse(readFileSync(path, 'utf8'));
+    },
+    saveSkillIn: async (directory: string, value: unknown) => {
+      await saveSkillConfigIn(project, directory, value as never);
+      if (faults.saveAfterWrite) throw new Error('injected after skill.json');
+    },
+    deleteSkillAt: async (name: string, directory: string) => {
+      if (faults.deleteFails) throw new Error('injected compensation failure');
+      await deleteSkillPackageAt(project, name, directory);
     },
     deleteSkill: async (name: string) => {
       if (faults.deleteFails) throw new Error('injected compensation failure');

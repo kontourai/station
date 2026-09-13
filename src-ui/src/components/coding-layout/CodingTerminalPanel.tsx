@@ -208,10 +208,17 @@ export function CodingTerminalPanel({
             // the tooltip was fiction. If the shortcut ever gets registered,
             // withShortcutHint reports it from the registry instead of a
             // hardcoded string that can lie.
+            //
+            // The visible `⌃J` keycap was the same fiction and outlived the
+            // tooltip's removal: no shortcut registers `j` with any modifier,
+            // so the chord fails on macOS too — it is not a platform bug to
+            // route through `formatShortcutChord`, it is a chord that does not
+            // exist. Removed rather than reformatted (#1649). Restore it by
+            // registering the shortcut and reading the registry, never by
+            // typing the keycap back in.
             title={`${terminalOpen ? 'Hide' : 'Show'} terminal`}
           >
-            {terminalOpen ? '▾ Hide' : '▴ Show'}{' '}
-            <span className="coding-layout__terminal-shortcut">⌃J</span>
+            {terminalOpen ? '▾ Hide' : '▴ Show'}
           </button>
         )}
       </div>

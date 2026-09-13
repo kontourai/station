@@ -4,13 +4,13 @@
  * that registry is build/handshake support, while these facts are an operator
  * or distribution's runtime contract with its clients.
  */
-export const DEPLOYMENT_CAPABILITY_IDS = ['web-push', 'scheduler'] as const;
+const DEPLOYMENT_CAPABILITY_IDS = ['web-push', 'scheduler'] as const;
 
 export type DeploymentCapabilityId = (typeof DEPLOYMENT_CAPABILITY_IDS)[number];
 
 export type DeploymentCapabilityState = 'supported' | 'unsupported' | 'unknown';
 
-export interface DeploymentCapability {
+interface DeploymentCapability {
   state: DeploymentCapabilityState;
 }
 

@@ -18,6 +18,9 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 
 const { createConfigRoutes } = await import('../config.js');
 const { ConfigLoader } = await import('../../../domain/config-loader.js');
+const { defaultTerminalShell } = await import(
+  '../../../services/terminal/terminal-shells.js'
+);
 
 function createMockConfigLoader(
   initial: Record<string, any> = {
@@ -218,6 +221,35 @@ describe('Config Routes', () => {
     );
     const body = await json(await app.request('/app'));
     expect('mcpUiFrameOrigin' in body.data).toBe(false);
+  });
+
+  // #1582 D9: the Settings "Terminal shell" input had no hint at all, and a
+  // hard-coded one would be wrong on any host whose SHELL differs. The value
+  // is derived from the same resolver a terminal spawn walks, and it is the
+  // DEFAULT (what happens if the field is left empty) — never the configured
+  // value, which the input renders itself.
+  test('GET /app reports the shell this host would try when terminalShell is unset', async () => {
+    const loader = createMockConfigLoader({ terminalShell: '/usr/bin/nu' });
+    const app = createConfigRoutes(loader as any, mockLogger);
+    const body = await json(await app.request('/app'));
+    // Pinned independently of the derivation, or the assertion moves with it:
+    // on a host that sets SHELL that is the answer, and on one that does not
+    // it is the platform's own first fallback.
+    const expected =
+      process.env.SHELL ??
+      (process.platform === 'win32'
+        ? (process.env.COMSPEC ?? 'C:\\Program Files\\Git\\bin\\bash.exe')
+        : '/bin/zsh');
+    expect(body.data.defaultTerminalShell).toBe(expected);
+    // ...and it agrees with the resolver a spawn walks, which is the point.
+    expect(body.data.defaultTerminalShell).toBe(
+      defaultTerminalShell({ platform: process.platform, env: process.env })
+        ?.shell,
+    );
+    // The configured value is reported separately and must not become the
+    // default it is an override of.
+    expect(body.data.terminalShell).toBe('/usr/bin/nu');
+    expect(body.data.defaultTerminalShell).not.toBe('/usr/bin/nu');
   });
 
   test('GET /app injects the runtime-only pluginFrameOrigin', async () => {

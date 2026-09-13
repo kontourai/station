@@ -118,6 +118,24 @@ export function boundedControlResult(result) {
         ...(result.receipt.terminal?.indeterminate === true
           ? { indeterminate: true }
           : {}),
+        // station#1827 fix round 2: NOT stamped from the receipt, unlike the
+        // two fields above, and the difference is the point.
+        //
+        // `passed` and `indeterminate` are verdict facts the summary shapes
+        // omit, so the receipt is their only source. This one is a claim
+        // ABOUT THE EXCERPT beside it -- "the head excerpt is a declaration,
+        // not a scan result" -- so it is only true of a summary that has that
+        // excerpt. Stamping it from the receipt broke that twice: it
+        // overwrote the summarizer's truncation-aligned copy with the full
+        // one, so a 67-byte excerpt rendered beside a 347-byte marker of the
+        // same declaration; and on a `reused`/`joined` disposition, where
+        // there is no summary and therefore no excerpts at all, it stamped a
+        // marker qualifying nothing.
+        //
+        // The summary's own field is therefore the only source -- it arrives
+        // through the spread above and is deliberately not re-stamped here --
+        // and its absence means what it says: this rendering has no declared
+        // cause to qualify. The receipt keeps the durable record either way.
       },
     };
   if (Array.isArray(result?.jobs)) {
@@ -350,6 +368,18 @@ function tailFallback(bounded, stdoutTail) {
             // supports, exactly the trade the reporter refuses at its own cap.
             ...(bounded.summary?.causeStream
               ? { causeStream: bounded.summary.causeStream }
+              : {}),
+            // station#1827: the same rule for the positive marker. This
+            // repeats the excerpt's own bytes, which is the one place in this
+            // envelope that costs the tail something real (at most
+            // DECLARED_CAUSE_BYTE_CAP, against an 8 KiB cap that the tail
+            // then shrinks to fit). It is still the right trade for exactly
+            // the reason the caveat above is: an excerpt carried without the
+            // field that says how it was selected reads as a scanned guess,
+            // and a truncated document is where a reader is least able to go
+            // look for themselves.
+            ...(typeof bounded.summary?.infrastructureCause === 'string'
+              ? { infrastructureCause: bounded.summary.infrastructureCause }
               : {}),
           }
         : {}),

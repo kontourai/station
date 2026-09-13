@@ -19,7 +19,7 @@ import {
 } from '../../lib/serverHealth';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { useBundledServerStatus } from '../../platform/useBundledServerStatus';
-import { SettingsGlyph } from '../icons/Glyph';
+import { BellGlyph, SettingsGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import type { HeaderHelpPrompt } from './utils';
 
@@ -58,6 +58,15 @@ const loadHelpMenu = () =>
   import('./HelpMenu').then((m) => ({ default: m.HelpMenu }));
 const loadOverflowMenu = () =>
   import('./OverflowMenu').then((m) => ({ default: m.OverflowMenu }));
+/**
+ * #1552 D1's avatar menu, deferred on the same grounds as the two above: its
+ * first statement is `if (!isOpen) return null` and its only pre-return hook
+ * (`useMenuFocus`) already returns early while closed, so mounting it on open
+ * leaves the rendered output identical and keeps its markup — and the two
+ * glyphs it pulls — out of the first-paint chunk.
+ */
+const loadProfileMenu = () =>
+  import('./ProfileMenu').then((m) => ({ default: m.ProfileMenu }));
 
 interface HeaderActionsProps {
   currentViewType?: string;
@@ -66,17 +75,21 @@ interface HeaderActionsProps {
   showHelp: boolean;
   showNotifications: boolean;
   showOverflow: boolean;
+  showProfileMenu: boolean;
   userInitials: string;
   onCloseHelp: () => void;
   onCloseNotifications: () => void;
   onCloseOverflow: () => void;
+  onCloseProfileMenu: () => void;
   onHelpPrompt: (prompt: string) => void;
   onOpenConnections: () => void;
   onOpenProfile: () => void;
-  onToggleHelp: () => void;
+  /** Opens the help menu. Never a toggle — see `openHelp` in the view model. */
+  onOpenHelp: () => void;
   onToggleNotifications: () => void;
   onToggleSettings: () => void;
   onToggleOverflow: () => void;
+  onToggleProfileMenu: () => void;
   onViewAllNotifications: () => void;
 }
 
@@ -87,17 +100,20 @@ export function HeaderActions({
   showHelp,
   showNotifications,
   showOverflow,
+  showProfileMenu,
   userInitials,
   onCloseHelp,
   onCloseNotifications,
   onCloseOverflow,
+  onCloseProfileMenu,
   onHelpPrompt,
   onOpenConnections,
   onOpenProfile,
-  onToggleHelp,
+  onOpenHelp,
   onToggleNotifications,
   onToggleSettings,
   onToggleOverflow,
+  onToggleProfileMenu,
   onViewAllNotifications,
 }: HeaderActionsProps) {
   const { activeConnection, connections } = useConnections();
@@ -251,8 +267,8 @@ export function HeaderActions({
   //     not `hasRealSavedConnection`, is the right count here — an injected
   //     host connection (`cli-base`, `managed-loopback`) is not a "real saved
   //     host" but IS a second thing this chip could be pointed at.
-  //   not a sidecar: "App only" qualifies the server's lifetime — news the
-  //     user has no other route to on this surface.
+  //   Sidecar lifetime remains in the tooltip and accessible name; it does
+  //   not need a permanent banner beside a healthy single connection.
   //   an identity to fall back on: the collapsed form promises "Connected ·
   //     <name>" in its tooltip and accessible name, so it is only taken when
   //     there is a name to put there.
@@ -262,7 +278,6 @@ export function HeaderActions({
   const compactConn =
     connState === 'connected' &&
     (connections ?? []).length <= 1 &&
-    !isSidecar &&
     Boolean(connIdentity);
 
   return (
@@ -375,23 +390,40 @@ export function HeaderActions({
           title={notificationLabel}
           aria-label={`${notificationLabel}${notificationBadge ? ` (${notificationBadge.label})` : ''}`}
         >
-          <svg
-            aria-hidden="true"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-          </svg>
+          {/* #1552 D1: the shared `Glyph` family, not a hand-rolled `strokeWidth:
+              2` SVG. This row's three glyphs were drawn at three weights (2 here
+              and on the retired help button, 1.5 on the region control, 1.8 in
+              `Glyph`); routing them through the one factory is what makes the
+              weight a single decision rather than three. */}
+          <BellGlyph />
           {notificationBadge && (
+            /* #1132: capped at "9+", because this badge is an in-flow flex
+               child of a `flex-shrink: 0` row (`.app-toolbar__actions`), so
+               its content width is row width. `min-width: 18px; padding: 0 5px`
+               (chat.css) is a FLOOR, not a ceiling: measured in a real
+               Chromium page with the real stylesheets, the badge renders 18px
+               at one digit, 23.91px at "99", 28.59px at three digits and
+               35.58px at four — and every pixel past 18 pushes `Open settings`
+               closer to the viewport edge, which is the whole subject of
+               #1132. Capping bounds it at the two-character worst case
+               ("9+" measures 23.80px, just inside "99"), which is what makes
+               the breakpoint in chat.css a derived bound rather than an
+               assumption about how many notifications a person has.
+
+               The exact count is not lost: it is in this button's accessible
+               name (`${notificationLabel} (${notificationBadge.label})` above,
+               "N need attention"), and the panel the button opens lists them.
+               What the cap does cost: above nine, the visible "9+" is no
+               longer a substring of that name, where the uncapped count was.
+               The NAME — "Notifications" — still is, and the badge reads as a
+               status indicator rather than as the control's label, so the
+               speech-input pairing WCAG 2.5.3 asks for still holds on the
+               label itself.
+               Capped HERE rather than in `destination-registry.ts` because it
+               is this ROW that has no room — `DestinationBadge.count` stays
+               the true count for any surface that can afford to print it. */
             <span className="app-toolbar__notification-badge">
-              {notificationBadge.count}
+              {notificationBadge.count > 9 ? '9+' : notificationBadge.count}
             </span>
           )}
         </button>
@@ -410,43 +442,44 @@ export function HeaderActions({
 
       {/* archive#3311: secondary on mobile — the profile moves into the ⋯
           overflow menu there, freeing the toolbar slot the connection
-          status now occupies. */}
+          status now occupies.
+
+          #1552 D1: on a fine pointer it is a MENU trigger. "Ask Station for
+          help" and "Open settings" were two more unlabelled glyphs in this row;
+          they are rows of that menu now, and the row is four controls —
+          Layout, the status dot, Notifications, this. Profile itself is the
+          menu's first row, so the destination the button used to navigate to
+          straight away is still one press plus one row away, and is now
+          named. */}
       <div className="app-toolbar__action--secondary">
         <button
           type="button"
-          className={`app-toolbar__icon-btn ${currentViewType === 'profile' ? 'is-active' : ''}`}
-          onClick={onOpenProfile}
-          title="Profile"
-          aria-label="Profile"
+          className={`app-toolbar__icon-btn ${currentViewType === 'profile' || showProfileMenu ? 'is-active' : ''}`}
+          onClick={onToggleProfileMenu}
+          title="Profile and settings"
+          aria-label="Profile and settings"
+          aria-haspopup="menu"
+          aria-expanded={showProfileMenu}
         >
           {userInitials}
         </button>
-      </div>
-
-      <div className="app-toolbar__action--secondary">
-        <button
-          type="button"
-          className={`app-toolbar__icon-btn app-toolbar__icon-btn--help ${showHelp ? 'is-active' : ''}`}
-          onClick={onToggleHelp}
-          title="Ask Station for help"
-          aria-label="Ask Station for help"
-        >
-          <svg
-            aria-hidden="true"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
-        </button>
+        {showProfileMenu && (
+          <LazyBoundary
+            load={loadProfileMenu}
+            componentProps={{
+              isOpen: showProfileMenu,
+              isProfileActive: currentViewType === 'profile',
+              isSettingsActive: currentViewType === 'settings',
+              settingsShortcut,
+              userInitials,
+              onClose: onCloseProfileMenu,
+              onOpenProfile,
+              onOpenHelp,
+              onToggleSettings,
+            }}
+            pending={null}
+          />
+        )}
       </div>
 
       {showHelp && (
@@ -480,7 +513,7 @@ export function HeaderActions({
               userInitials,
               onClose: onCloseOverflow,
               onOpenConnections,
-              onOpenHelp: onToggleHelp,
+              onOpenHelp,
               onOpenProfile,
             }}
             pending={null}
@@ -488,15 +521,21 @@ export function HeaderActions({
         )}
       </div>
 
-      <button
-        type="button"
-        className={`app-toolbar__icon-btn ${currentViewType === 'settings' ? 'is-active' : ''}`}
-        onClick={onToggleSettings}
-        title={`Settings (${settingsShortcut})`}
-        aria-label="Open settings"
-      >
-        <SettingsGlyph />
-      </button>
+      {/* Phone only since #1552 D1 — see `.app-toolbar__action--compact-only` in
+          chat.css for why the fine-pointer row can drop it and a phone cannot:
+          the avatar that carries the Settings row is itself `--secondary` there,
+          so a phone has no avatar menu, and this gear is its route. */}
+      <div className="app-toolbar__action--compact-only">
+        <button
+          type="button"
+          className={`app-toolbar__icon-btn ${currentViewType === 'settings' ? 'is-active' : ''}`}
+          onClick={onToggleSettings}
+          title={`Settings (${settingsShortcut})`}
+          aria-label="Open settings"
+        >
+          <SettingsGlyph />
+        </button>
+      </div>
     </div>
   );
 }

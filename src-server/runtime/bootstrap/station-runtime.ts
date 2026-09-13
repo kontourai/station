@@ -1,3 +1,18 @@
+import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
+import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
+import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
+import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
+import {
+  type LoadedDeploymentAuthentication,
+  loadDeploymentAuthentication,
+  readDeploymentAuthenticationConfiguration,
+} from '../../services/identity/deployment-authentication-loader.js';
+import {
+  type LoadedLocalAccounts,
+  type LocalAccountConfiguration,
+  loadLocalAccounts,
+  readLocalAccountConfiguration,
+} from '../../services/identity/local-account-runtime.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -12,6 +27,9 @@ import {
   createLocalRegistryTrustPolicyAuthority,
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
+import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
+import { awaitSettlementWithin } from '../../utils/bounded-async.js';
+import { errorMessage } from '../../utils/error-message.js';
 /**
  * VoltAgent runtime integration for Station
  * Handles dynamic agent loading, switching, and MCP tool management
@@ -95,6 +113,10 @@ import { ApprovalGuardianService } from '../../services/approvals/approval-guard
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
+import {
+  type VirtualApplication,
+  VirtualApplicationIngress,
+} from '../../services/connections/virtual-application.js';
 import { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import { AssignmentClaimService } from '../../services/evidence/assignment-claim-service.js';
 import type { ConsoleBridgeService } from '../../services/evidence/console-bridge-service.js';
@@ -230,6 +252,7 @@ export async function loadStablePreToolPolicySpec(options: {
   return { spec, revision };
 }
 
+import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
 import { adoptDetectedNativeEngines } from './native-engine-adoption.js';
 import { isHostedTenantExecutionRequired } from './runtime-tenant-context.js';
 
@@ -274,6 +297,61 @@ const AGENT_CONFIGURATION_ACTIVATION_DEADLINE_MS = 10_000;
 const AGENT_CONFIGURATION_SHUTDOWN_DRAIN_GRACE_MS = 5_000;
 
 /**
+ * How long shutdown waits for the aborted native-engine adoption window
+ * (station#1815).
+ *
+ * Two things this number is NOT, both of which earlier revisions of this
+ * comment claimed it was.
+ *
+ * It is not a wedge threshold. The window's remaining work is an
+ * agent-registry write; `saveRegistry` takes two file mutation locks in
+ * sequence, each with a 10 s admission deadline of its own
+ * (`lifecycle-events.ts` `acquireGen`), inside a load-CAS-save loop that
+ * retries up to 8 times — and each of those iterations re-enters
+ * `loadOrCreateAgentRegistry`, which has an 8-attempt loop of its own. The
+ * #1815 reviewer measured a completely healthy adoption against ONE ordinary
+ * lock holder at 10_000 ms. So expiry cannot
+ * mean "wedged" and is not reported as such — see
+ * `settleNativeEngineAdoption`.
+ *
+ * Nor is it "the time this process has". There is no such quantity. The
+ * graces Station actually runs under span three orders of magnitude, and the
+ * primary desktop product gives the tightest of the non-zero ones:
+ *
+ *   `station stop` on Windows  0 s  (`taskkill /F /T`, no graceful phase)
+ *   Desktop quit               1 s  (`terminate_desktop_child`, 20 x 50 ms)
+ *   `station stop` on Unix     5 s  (`killProcessTree`)
+ *   systemd                   30 s  (`TimeoutStopSec`)
+ *   launchd                  600 s  (`ExitTimeOut`)
+ *   a bare SIGTERM       unbounded
+ *
+ * `station-runtime-adoption-lease.test.ts` reads those numbers from their
+ * own sources and pins which of them can reach the disclosure below, so the
+ * list above cannot quietly stop being true.
+ *
+ * WHICH SUPERVISORS SEE THE DISCLOSURE. The grace starts at SIGTERM and this
+ * wait is deliberately last, so reaching `settleNativeEngineAdoption`'s
+ * warning needs `grace > budget` strictly — and even that is only necessary,
+ * not sufficient, because teardown consumes an unmeasured part of the grace
+ * first. `station stop` on Unix gives exactly this budget, so the kill always
+ * lands inside the wait: an operator who stops Station during a contended
+ * adoption write gets the lease correctly withheld and NO line saying why.
+ * That leaves systemd, launchd and a bare signal as the only supervisors
+ * under which the disclosure can appear. An earlier revision of this comment
+ * claimed the Unix stop as one of them; it never was.
+ *
+ * What the number IS, then: not a wedge threshold, not "the time this process
+ * has", and not a disclosure guarantee. It is large enough that the
+ * uncontended write — the overwhelmingly common one, milliseconds against a
+ * home this process can write — always finishes, so an ordinary shutdown
+ * releases the lease properly; and small enough that an unsupervised caller
+ * is not blocked on a wedged writer indefinitely. Its relationship to the
+ * supervisor graces is a mismatch this constant cannot fix, and raising it
+ * would only move which supervisors kill the process mid-wait.
+ */
+export const NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS = 5_000;
+
+/**
  * The configuration generation a reload prepared against. Every publication
  * gate re-captures it and refuses to commit if any component moved — see
  * `assertAgentConfigurationRevisions`.
@@ -286,7 +364,6 @@ interface AgentConfigurationGeneration {
   activationEpoch?: number;
 }
 
-import { disposeAllPluginPublicServerModules } from '../../routes/plugins/plugin-public-server.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
 import {
@@ -298,6 +375,7 @@ import {
   createMCPToolProvenanceGeneration,
   type MCPToolProvenanceGeneration,
 } from '../../services/orchestration/mcp-tool-provenance.js';
+import { disposeAllPluginPublicServerModules } from '../../services/plugins/plugin-public-server.js';
 import {
   createRuntimeSearch,
   type RuntimeSearch,
@@ -381,6 +459,15 @@ type PersistedAgentReloadTarget =
   | { kind: 'managed'; metadata: any; spec: AgentSpec };
 
 export interface StationRuntimeOptions {
+  /** Trusted connector composition; no virtual listener is enabled by default. */
+  virtualApplication?: {
+    origin: string;
+    ready: (application: VirtualApplication) => void;
+  };
+
+  projectSharing?: boolean;
+  authentication?: DeploymentAuthenticationConfiguration;
+  localAccounts?: LocalAccountConfiguration;
   pluginInstallationHost?: PluginInstallationHost;
   projectHomeDir?: string;
   port?: number;
@@ -399,6 +486,19 @@ export interface StationRuntimeOptions {
  * Manages VoltAgent instances with dynamic agent loading
  */
 export class StationRuntime {
+  private readonly virtualApplicationConfiguration?: StationRuntimeOptions['virtualApplication'];
+  private readonly virtualApplicationLifetime = new AbortController();
+  private virtualApplication?: VirtualApplicationIngress;
+
+  private readonly projectSharingEnabled: boolean;
+  private projectMembership?: ReturnType<typeof createProjectMembershipRuntime>;
+  private readonly authenticationConfiguration?: DeploymentAuthenticationConfiguration;
+  private deploymentAuthentication?: LoadedDeploymentAuthentication;
+  private readonly localAccountConfiguration?: LocalAccountConfiguration;
+  private localAccounts?: LoadedLocalAccounts;
+  private applicationSessions?: ReturnType<
+    typeof createApplicationSessionRuntime
+  >;
   private readonly pluginInstallationHost: PluginInstallationHost;
   private configLoader: ConfigLoader;
   private appConfig!: AppConfig;
@@ -524,6 +624,35 @@ export class StationRuntime {
   private reconciliationChurnWindowStartMs = 0;
   private reconciliationChurnCount = 0;
   private readonly nativeEngineAdoptionAbort = new AbortController();
+  /**
+   * The in-flight adoption window, held so shutdown can wait for it
+   * (station#1815).
+   *
+   * Aborting the signal above ends the retry SCHEDULE. It says nothing about
+   * a PATH probe or an agent-registry write already running, and this runtime
+   * owns the home's runtime lease until shutdown releases it — so releasing
+   * on the abort alone handed the home away with a writer still live. Live
+   * symptom (#1791): `STATION_HOME_RESET_REQUIRED` and `ENOENT: rename` out
+   * of the adoption, minutes after the case that started it had ended.
+   */
+  private nativeEngineAdoptionSettled?: Promise<unknown>;
+  /**
+   * station#1586 (item 6, fix round M2): aborted on shutdown so the boot-time
+   * prerequisite priming settles instead of outliving the runtime, exactly
+   * like the adoption window beside it.
+   *
+   * What it bounds is the PRIMING, not the child process. `ClaudeAdapter`
+   * deliberately does not forward a caller's signal into its shared
+   * `--version` probe (one caller abandoning readiness must not abort an
+   * observation another is awaiting — see `versionProbe`'s comment), so a
+   * probe already spawned still runs to `runCliCommand`'s own 10s ceiling.
+   * Nor does it cut a prime already under way: the signal is read once,
+   * before the first await, and the adapter drops it on the way to
+   * `runCommand`. What it does, exactly and only, is prevent a prime from
+   * STARTING after shutdown. Killing the child, or interrupting a prime in
+   * flight, would need a change in the adapter's shared-probe contract.
+   */
+  private readonly enginePrerequisitePrimingAbort = new AbortController();
   private configurationSourceUnsubscribers: Array<() => void> = [];
   private schedulerService?: SchedulerService;
   private kitLifecycleReady: Promise<void> = Promise.resolve();
@@ -545,8 +674,12 @@ export class StationRuntime {
   private port: number;
   private host?: string;
   private approvalRegistry: ApprovalRegistry;
+  private readonly claudeTranscriptSource = new ClaudeTranscriptSessionSource();
+  private readonly codexRolloutSource = new CodexRolloutSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
+    resolveSourceHome: (affinity) =>
+      this.claudeTranscriptSource.resolveSourceHome(affinity),
     resolvePreToolPolicy: (input) =>
       this.resolveExternalPreToolPolicy(input, 'authentic'),
     // Skills materialization opt-in (docs/design/connections-onboarding.md
@@ -608,7 +741,7 @@ export class StationRuntime {
           );
         }
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-          `App home profile: failed to resolve the claude app-home env; continuing with the global Claude Code config: ${error instanceof Error ? error.message : String(error)}`,
+          `App home profile: failed to resolve the claude app-home env; continuing with the global Claude Code config: ${errorMessage(error)}`,
         );
         return undefined;
       }
@@ -635,6 +768,8 @@ export class StationRuntime {
     },
   });
   private codexAdapter = new CodexAdapter({
+    resolveSourceHome: (affinity) =>
+      this.codexRolloutSource.resolveSourceHome(affinity),
     // App-home profile opt-in (archive#896 wave 2, agent-engine-unification.md
     // §6.1's overlay model, channel 2) — mirrors claudeAdapter's
     // getAppHomeEnv closure above; codex has no `getProvideSkills` analog
@@ -670,7 +805,7 @@ export class StationRuntime {
           );
         }
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-          `App home profile: failed to resolve the codex app-home env; continuing with the global Codex config: ${error instanceof Error ? error.message : String(error)}`,
+          `App home profile: failed to resolve the codex app-home env; continuing with the global Codex config: ${errorMessage(error)}`,
         );
         return undefined;
       }
@@ -857,6 +992,37 @@ export class StationRuntime {
   }
 
   constructor(options: StationRuntimeOptions = {}) {
+    this.virtualApplicationConfiguration = options.virtualApplication
+      ? { ...options.virtualApplication }
+      : undefined;
+
+    const configuredSharing = process.env.STATION_PROJECT_SHARING;
+    if (
+      configuredSharing !== undefined &&
+      configuredSharing !== '0' &&
+      configuredSharing !== '1'
+    )
+      throw new Error('STATION_PROJECT_SHARING must be 0 or 1.');
+    this.projectSharingEnabled =
+      options.projectSharing ?? configuredSharing === '1';
+    this.localAccountConfiguration = structuredClone(
+      options.localAccounts ?? readLocalAccountConfiguration(process.env),
+    );
+    if (
+      this.localAccountConfiguration &&
+      (!this.projectSharingEnabled ||
+        options.authentication ||
+        process.env.STATION_AUTHENTICATION_MODULE)
+    )
+      throw new Error(
+        'Local accounts require Project sharing and cannot be combined with an authentication module.',
+      );
+    this.authenticationConfiguration = structuredClone(
+      options.authentication ??
+        (this.localAccountConfiguration
+          ? undefined
+          : readDeploymentAuthenticationConfiguration(process.env)),
+    );
     const projectHomeDir = options.projectHomeDir || resolveHomeDir();
     // archive#3217, and it has to be HERE rather than in `index.ts`: the
     // pre-boot hooks `index.ts` runs are not on every entry point's path, so
@@ -949,17 +1115,6 @@ export class StationRuntime {
       this.orchestrationEventStore = openedEventStore = new EventStore(
         orchestrationDatabasePath,
       );
-      this.registryTrustPolicyAuthority =
-        createLocalRegistryTrustPolicyAuthority(
-          projectHomeDir,
-          this.orchestrationEventStore.createRegistryTrustPolicyDecisions(),
-        );
-      this.pluginInstallationHost =
-        options.pluginInstallationHost ??
-        createLocalPluginInstallationHost(
-          join(projectHomeDir, 'plugins'),
-          this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
-        );
       this.operationalEventPublisher =
         this.orchestrationEventStore.createOperationalEventPublisher({
           appended: ({ journalSequence, event }) => {
@@ -1009,6 +1164,20 @@ export class StationRuntime {
         this.logger,
       );
       this.bindFleetConsumerProbesPreview();
+      // Journal consumers wire after the quarantine notice: the runtime must
+      // report a recorded corruption before anything asks the store for more
+      // than its publisher.
+      this.registryTrustPolicyAuthority =
+        createLocalRegistryTrustPolicyAuthority(
+          projectHomeDir,
+          this.orchestrationEventStore.createRegistryTrustPolicyDecisions(),
+        );
+      this.pluginInstallationHost =
+        options.pluginInstallationHost ??
+        createLocalPluginInstallationHost(
+          join(projectHomeDir, 'plugins'),
+          this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
+        );
       this.pluginOperationalEventSubscriptions =
         createPluginOperationalEventSubscriptionService({
           packageMcpJournal:
@@ -1169,7 +1338,7 @@ export class StationRuntime {
               'Failed to release assignment claim on session exit',
               {
                 sessionId: event.sessionId,
-                error: error instanceof Error ? error.message : String(error),
+                error: errorMessage(error),
               },
             );
           });
@@ -1220,7 +1389,7 @@ export class StationRuntime {
           .catch((error) => {
             this.logger.warn('Failed to finalize worktree on session exit', {
               sessionId,
-              error: error instanceof Error ? error.message : String(error),
+              error: errorMessage(error),
             });
           });
       });
@@ -1247,7 +1416,7 @@ export class StationRuntime {
         })
         .catch((error) => {
           this.logger.warn('Startup assignment-claim reconciliation failed', {
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
         });
 
@@ -1713,6 +1882,19 @@ export class StationRuntime {
       this.agentConfigurationActivationDeadlineMs ??
       AGENT_CONFIGURATION_ACTIVATION_DEADLINE_MS
     );
+  }
+
+  /**
+   * The settle budget, as a method for the same reason as `drainGraceMs`
+   * below: a prototype-built test double has no constructor-initialized
+   * fields, so a default carried on a FIELD would need an `??` fallback that
+   * nothing running against a real runtime can ever reach — an unreachable
+   * branch, and a default no test could bind. A method lives on the
+   * prototype, so the double and the runtime read the same one and a test
+   * that does not override it is exercising the shipped value.
+   */
+  private nativeEngineAdoptionSettleBudgetMs(): number {
+    return NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS;
   }
 
   private drainGraceMs(): number {
@@ -2618,9 +2800,17 @@ export class StationRuntime {
   private captureSelectedPackageFingerprint(
     composition?: PluginActivationComposition,
   ): string | null {
+    // No store, or a store without the admission journal, cannot say what is
+    // selected; that is the same unverifiable set as a corrupt journal, so it
+    // fails closed rather than manufacturing an empty fingerprint.
+    if (
+      typeof this.orchestrationEventStore?.createPackageMcpAdmissionJournal !==
+      'function'
+    )
+      return null;
     try {
       const journal =
-        this.orchestrationEventStore?.createPackageMcpAdmissionJournal();
+        this.orchestrationEventStore.createPackageMcpAdmissionJournal();
       const selected = journal?.selectedInstallations();
       if (
         selected?.state !== 'observed' ||
@@ -2958,10 +3148,28 @@ export class StationRuntime {
    * (archive#1019's `custom-writer not found` cross-test contamination).
    */
   async initialize(): Promise<void> {
+    if (this.virtualApplicationConfiguration)
+      this.virtualApplicationLifetime.signal.throwIfAborted();
+    this.virtualApplication?.stop();
+    const virtualApplication = this.virtualApplicationConfiguration
+      ? new VirtualApplicationIngress(
+          this.virtualApplicationConfiguration.origin,
+        )
+      : undefined;
+    this.virtualApplication = virtualApplication;
     const inFlight = this.runInitialize();
     this.initializeInFlight = inFlight;
     try {
-      return await inFlight;
+      await inFlight;
+      if (virtualApplication) {
+        this.virtualApplicationLifetime.signal.throwIfAborted();
+        this.virtualApplicationConfiguration!.ready(
+          virtualApplication.activate(),
+        );
+      }
+    } catch (error) {
+      virtualApplication?.stop();
+      throw error;
     } finally {
       if (this.initializeInFlight === inFlight) {
         this.initializeInFlight = null;
@@ -2977,6 +3185,48 @@ export class StationRuntime {
     // state prevents any listener from being configured.
     const identity = await this.environmentSecurityService.initialize();
     this.stationEnvironmentId = identity.environmentId;
+    if (this.projectSharingEnabled && !this.projectMembership) {
+      this.projectMembership = createProjectMembershipRuntime(
+        this.configLoader.getProjectHomeDir(),
+        identity.environmentId,
+        this.storageAdapter,
+      );
+    }
+    if (this.localAccountConfiguration && !this.deploymentAuthentication) {
+      if (!this.projectMembership)
+        throw new Error(
+          'Local account enrollment requires Project membership.',
+        );
+      this.localAccounts = await loadLocalAccounts(
+        this.localAccountConfiguration,
+        {
+          stationId: identity.environmentId,
+          homeDirectory: this.configLoader.getProjectHomeDir(),
+        },
+        this.projectMembership.service,
+      );
+      this.deploymentAuthentication = this.localAccounts;
+    } else if (
+      this.authenticationConfiguration &&
+      !this.deploymentAuthentication
+    ) {
+      this.deploymentAuthentication = await loadDeploymentAuthentication(
+        this.authenticationConfiguration,
+        {
+          stationId: identity.environmentId,
+          homeDirectory: this.configLoader.getProjectHomeDir(),
+        },
+      );
+    }
+    if (this.deploymentAuthentication && !this.applicationSessions) {
+      this.applicationSessions = createApplicationSessionRuntime(
+        this.configLoader.getProjectHomeDir(),
+        identity.environmentId,
+        this.deploymentAuthentication,
+        (credential) =>
+          this.environmentSecurityService.identifyDevice(credential),
+      );
+    }
     const packageProjections = await this.pluginInstallationHost.reconcile();
     if (packageProjections.status === 'pending')
       this.logger.warn('Plugin catalog projection remains pending', {
@@ -2999,6 +3249,10 @@ export class StationRuntime {
       // revision-fenced agent-construction phase inside initializeRuntime.
       initialized = await initializeRuntime(
         createRuntimeInitializationDeps({
+          attachedSessionSources: [
+            this.claudeTranscriptSource,
+            this.codexRolloutSource,
+          ],
           port: this.port,
           host: this.host,
           logger: this.logger,
@@ -3071,7 +3325,10 @@ export class StationRuntime {
           ollamaAdapter: this.ollamaAdapter,
           createVoltAgentInstance: async (slug) =>
             this.createVoltAgentInstance(slug),
-          configureRoutes: (app: any) => this.configureRoutes(app),
+          configureRoutes: (app: any) => {
+            this.configureRoutes(app);
+            this.virtualApplication?.bind(app);
+          },
           reloadAgents: async () => this.reloadAgents(),
           captureAgentConfigurationRevisions: () =>
             this.captureAgentConfigurationRevisions(),
@@ -3136,8 +3393,13 @@ export class StationRuntime {
                 resolveProjectWorkspace: this.resolveTaskDispatchWorkspace,
               },
               {
-                prepareAgentStarted: (result) =>
-                  this.projectTaskRoomRuntime?.prepareAgentStarted(result),
+                prepareAgentStarted: (result) => {
+                  if (!this.projectTaskRoomRuntime)
+                    throw new Error('Task room publication is not ready');
+                  return this.projectTaskRoomRuntime.prepareAgentStarted(
+                    result,
+                  );
+                },
                 // Route composition assigns this property before any user can
                 // dispatch. Read it lazily so construction order cannot invent
                 // a room or turn a provider start into a retryable failure.
@@ -3234,11 +3496,39 @@ export class StationRuntime {
     // under load, and a lost race must not strand the registry empty. The
     // catalog reads the registry live, so adopted agents appear on the next
     // /api/agents request without a reload.
-    void adoptDetectedNativeEngines({
+    // Retained rather than discarded (station#1815): shutdown releases this
+    // home's runtime lease, and it may only do that once this window's last
+    // registry write has finished or been cancelled.
+    this.nativeEngineAdoptionSettled = adoptDetectedNativeEngines({
       configLoader: this.configLoader,
       logger: this.logger,
       timers: this.timers,
       signal: this.nativeEngineAdoptionAbort.signal,
+    }).catch((error: unknown) => {
+      // Documented never to throw. If it ever does, the rejection is observed
+      // HERE, where it can be attributed, rather than surfacing unowned on
+      // some later tick against whatever is running then.
+      this.logger.warn('Native engine adoption window failed', {
+        error: errorMessage(error),
+      });
+    });
+
+    // station#1586 (item 6): warm the Claude executable resolution and its
+    // `claude --version` probe now, instead of inside whichever session
+    // happens to be the first in this process. Readiness is otherwise
+    // resolved only by the `/status` route, so a user who starts a session
+    // before any surface fetched status paid the probe's 10s ceiling in their
+    // first turn. Fire-and-forget, like the adoption above: the probe is
+    // memoized per `command + args`, so a session starting while this is
+    // still in flight awaits the same probe rather than spawning a second.
+    //
+    // Signalled like the adoption above (station#1586 M2). Read
+    // `enginePrerequisitePrimingAbort`'s doc for what that does and does not
+    // stop: it bounds this priming, not a probe child already spawned.
+    void primeEnginePrerequisites({
+      adapters: [this.claudeAdapter],
+      logger: this.logger,
+      signal: this.enginePrerequisitePrimingAbort.signal,
     });
   }
 
@@ -3522,6 +3812,10 @@ export class StationRuntime {
       kitLifecycleReady,
       projectTaskRoomRuntime,
     } = configureRuntimeRoutes({
+      projectMembership: this.projectMembership?.service,
+      deploymentAuthentication: this.deploymentAuthentication,
+      localAccounts: this.localAccounts,
+      applicationSessions: this.applicationSessions,
       app,
       logger: this.logger,
       eventBus: this.eventBus,
@@ -4009,6 +4303,9 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    this.virtualApplicationLifetime?.abort();
+    this.virtualApplication?.stop();
+
     this.searchAdmissionStopped = true;
     this.runtimeSearch?.stop();
     // Settle any pending native-engine adoption window before timers are
@@ -4016,6 +4313,10 @@ export class StationRuntime {
     // Optional-chained: prototype-built test doubles (Object.create) have no
     // constructor-initialized fields, and shutdown must never throw for them.
     this.nativeEngineAdoptionAbort?.abort();
+    // Same moment, same reason (station#1586 M2), same optional chaining for
+    // prototype-built doubles: the boot-time prerequisite priming must settle
+    // rather than outlive the runtime.
+    this.enginePrerequisitePrimingAbort?.abort();
     // Early, before the shutdown-promise guard: a store probe in flight is a child process, and
     // `gracefulShutdown` ends in `process.exit`. Same optional-chaining
     // reason as the line above — prototype-built doubles have no fields.
@@ -4044,6 +4345,25 @@ export class StationRuntime {
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
+    try {
+      this.applicationSessions?.close();
+      this.applicationSessions = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      this.projectMembership?.close();
+      this.projectMembership = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      await this.deploymentAuthentication?.service.close();
+      this.deploymentAuthentication = undefined;
+      this.localAccounts = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
     if (this.runtimeSearch) {
       const retirement = await this.runtimeSearch.close();
       if (retirement.state !== 'closed')
@@ -4106,7 +4426,11 @@ export class StationRuntime {
         terminalService: this.terminalService,
         monitoringEmitter: this.monitoringEmitter,
         sshEnvironmentService: this.sshEnvironmentService,
-        configLoader: this.configLoader,
+        // Deliberately not handed over (station#1815): this loader is the
+        // adoption window's write handle, so it is disposed below, after the
+        // window has settled — never in the middle of teardown while a
+        // registry write may still be running through it.
+        configLoader: undefined,
         optionalNetworkShutdownTasks,
       });
     } catch (error) {
@@ -4170,11 +4494,33 @@ export class StationRuntime {
     } catch (error) {
       failures.push(error);
     }
-    if (failures.length === 0) {
+    // LAST, and only here (station#1815). Everything above is teardown the
+    // adoption window cannot affect and which must happen whether or not the
+    // window settles — `station stop` SIGKILLs 5 s after SIGTERM, and while
+    // this wait sat at the TOP of teardown a stop inside the adoption window
+    // meant none of it ran at all. The two steps that DO depend on the window
+    // are the two below, so they are the only ones behind the wait.
+    //
+    // One dependency in the other direction, which an earlier version of this
+    // comment claimed away (round-4 verifier): `shutdownRuntimeServices`
+    // above CLEARS `this.timers`, the same array the adoption window pushes
+    // its inter-attempt timer into. That is a no-op today only because
+    // `shutdown()` aborts the window before any of this is reached and the
+    // window's own abort listener clears its timer, so the array holds an
+    // already-cleared handle. Move or drop that abort and every shutdown
+    // burns the whole budget and reports the window as still running.
+    if (await this.settleNativeEngineAdoption()) {
       try {
-        this.stationHomeRuntimeLease?.release();
+        await this.configLoader.dispose();
       } catch (error) {
         failures.push(error);
+      }
+      if (failures.length === 0) {
+        try {
+          this.stationHomeRuntimeLease?.release();
+        } catch (error) {
+          failures.push(error);
+        }
       }
     }
     if (failures.length === 1) throw failures[0];
@@ -4184,6 +4530,51 @@ export class StationRuntime {
         'Runtime shutdown cleanup was incomplete.',
       );
     }
+  }
+
+  /**
+   * Wait for the aborted native-engine adoption window to finish.
+   *
+   * True when it did; false when the budget ran out first, which is a
+   * DISCLOSED outcome and not a failure. An earlier revision made it one, on
+   * the argument that expiry meant a wedged writer. That argument was wrong:
+   * the write can legitimately outlast any budget this shutdown can claim
+   * (see `NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS`), so reporting expiry as
+   * a failure would have made an ordinary contended write exit non-zero —
+   * station#1814's shape, on the shutdown path.
+   *
+   * What expiry costs, exactly: the loader is left open and the home runtime
+   * lease is left held, because both are claims this runtime can no longer
+   * make. Retention is narrower than the symptom it is often mistaken for.
+   * It stops `acquireStationHomeMaintenanceLease` admitting a backup or
+   * restore in the seconds before this process exits. It does NOT stop the
+   * writer — nothing here can — so a caller that removes this home the moment
+   * `shutdown()` resolves can still see the write land on top of it, which is
+   * the `ENOENT: rename` from #1791. The lease is a statement about
+   * ownership, not a fence around the writer.
+   */
+  private async settleNativeEngineAdoption(): Promise<boolean> {
+    const pending = this.nativeEngineAdoptionSettled;
+    if (!pending) return true;
+    const budgetMs = this.nativeEngineAdoptionSettleBudgetMs();
+    if (await awaitSettlementWithin(pending, budgetMs)) return true;
+    this.logger?.warn?.(
+      'Native engine adoption was still running when shutdown ran out of ' +
+        'time for it; the Station home runtime lease and the configuration ' +
+        'loader were left in place because a registry write may still be ' +
+        'using them. This is contention or a wedge — from here the two are ' +
+        'indistinguishable — and the lease record is reaped by the next ' +
+        'lease scan after this process is gone.',
+      {
+        budgetMs,
+        // Which home, on a host running several instances. Both are already
+        // resolved by this point; neither is derived here.
+        homeDir: this.configLoader?.getProjectHomeDir?.(),
+        environmentId: this.stationEnvironmentId ?? undefined,
+        leaseOwnerId: this.stationHomeRuntimeLease?.ownerId,
+      },
+    );
+    return false;
   }
 
   private recordRuntimeLifecycle(phase: 'ready' | 'stopping'): void {

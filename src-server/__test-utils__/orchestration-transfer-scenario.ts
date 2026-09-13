@@ -9,10 +9,8 @@ export const ORCHESTRATION_TRANSFER_PHASE_NAMES = Object.freeze([
   'fallback',
 ] as const);
 
-export type OrchestrationTransferScenario =
-  | 'external-engine'
-  | 'station-native';
-export type OrchestrationTransferPhaseName =
+type OrchestrationTransferScenario = 'external-engine' | 'station-native';
+type OrchestrationTransferPhaseName =
   (typeof ORCHESTRATION_TRANSFER_PHASE_NAMES)[number];
 
 interface TransferAttempt {
@@ -25,7 +23,7 @@ interface TransferAttempt {
   abortedByClient?: boolean;
 }
 
-export interface MeasuredTransferPhase {
+interface MeasuredTransferPhase {
   scenario: OrchestrationTransferScenario;
   name: OrchestrationTransferPhaseName;
   wireBytes: number;
@@ -62,7 +60,7 @@ interface Budget {
   frames: number;
 }
 
-export interface MeasureOrchestrationTransferOptions {
+interface MeasureOrchestrationTransferOptions {
   source: ScenarioSource;
   baseUrl: string;
   store: {

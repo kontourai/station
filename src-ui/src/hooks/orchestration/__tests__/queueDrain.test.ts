@@ -30,7 +30,10 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
       return { ...actual, activeChatsStore: store };
     });
 
-    vi.doMock('../../useOrchestration', () => ({
+    vi.doMock('@kontourai/station-sdk/client', async () => ({
+      ...(await vi.importActual<typeof import('@kontourai/station-sdk/client')>(
+        '@kontourai/station-sdk/client',
+      )),
       sendExecutionMessage: (...args: unknown[]) =>
         sendExecutionMessageMock(...args),
     }));
@@ -55,8 +58,9 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.doUnmock('../../../contexts/active-chats-store');
-    vi.doUnmock('../../useOrchestration');
+    vi.doUnmock('@kontourai/station-sdk/client');
     vi.doUnmock('@kontourai/station-sdk');
+    vi.doUnmock('../../../lib/foregroundMessageDispatch');
     vi.resetModules();
     vi.useRealTimers();
   });
@@ -64,6 +68,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
   test('is a no-op when the queue is empty', async () => {
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(200);
+    await vi.dynamicImportSettled();
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
   });
 
@@ -75,6 +80,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(200);
+    await vi.dynamicImportSettled();
 
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
     expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
@@ -90,6 +96,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(200);
+    await vi.dynamicImportSettled();
 
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
     expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
@@ -104,11 +111,31 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     // before the delayed mutation/provider boundary.
     activeChatsStore.updateChat(threadId, { conversationOpenFailed: true });
     await vi.advanceTimersByTimeAsync(200);
+    await vi.dynamicImportSettled();
 
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
     expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
       'race head',
     ]);
+  });
+
+  test('retains queued text when the lazy send module cannot load', async () => {
+    vi.doMock('../../../lib/foregroundMessageDispatch', () => {
+      throw new Error('Send chunk unavailable');
+    });
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['first', 'second'],
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[threadId]).toMatchObject({
+      queuedMessages: ['first', 'second'],
+      queuedMessageFailure: {
+        message: expect.stringContaining('error when mocking a module'),
+      },
+    });
   });
 
   test('pops the head synchronously, then dispatches the canonical Agent target after the settle delay', async () => {
@@ -127,11 +154,12 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
 
     expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
     expect(sendExecutionMessageMock).toHaveBeenCalledWith(
+      'http://api.test',
       expect.objectContaining({
-        apiBase: 'http://api.test',
         target: {
           agent: 'claude',
           workspace: { kind: 'project', projectSlug: 'station' },
@@ -139,11 +167,15 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
         conversationId: threadId,
         message: 'first',
       }),
+      { signal: undefined },
     );
-    expect(sendExecutionMessageMock.mock.calls[0][0].target).not.toHaveProperty(
+    expect(sendExecutionMessageMock.mock.calls[0][1].target).not.toHaveProperty(
       'environment',
     );
     const state = activeChatsStore.getSnapshot()[threadId];
+    expect(sendExecutionMessageMock.mock.calls[0][1].clientTurnId).toBe(
+      state.messages?.[state.messages.length - 1].clientId,
+    );
     expect(state.status).toBe('sending');
     expect(state.messages?.[state.messages.length - 1]).toMatchObject({
       role: 'user',
@@ -165,6 +197,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
 
     const afterFailure = activeChatsStore.getSnapshot()[threadId];
     expect(afterFailure.status).toBe('error');
@@ -181,6 +214,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     // a duplicate bubble.
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
 
     const afterRetry = activeChatsStore.getSnapshot()[threadId];
     expect(
@@ -201,6 +235,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
 
     const afterFailure = activeChatsStore.getSnapshot()[threadId];
     // archive#3706: a permanent queue refusal is not an error
@@ -238,6 +273,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     sendExecutionMessageMock.mockClear();
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(200);
+    await vi.dynamicImportSettled();
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
   });
 
@@ -261,6 +297,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
 
     const afterFailure = activeChatsStore.getSnapshot()[threadId];
     expect(afterFailure.status).toBe('idle');
@@ -296,6 +333,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
 
     const afterFailure = activeChatsStore.getSnapshot()[threadId];
     expect(afterFailure.queuedMessages).toEqual(['transient message']);
@@ -313,6 +351,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     );
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
 
     activeChatsStore.updateChat(threadId, {
       queuedMessages: ['second refused'],
@@ -322,6 +361,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     );
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
 
     const records = activeChatsStore.getSnapshot()[threadId].unsentMessages;
     expect(records?.map((record) => record.content)).toEqual([
@@ -346,6 +386,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
 
     const afterFailure = activeChatsStore.getSnapshot()[threadId];
     expect(afterFailure.status).toBe('error');
@@ -369,6 +410,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
 
     const afterFailure = activeChatsStore.getSnapshot()[threadId];
     expect(afterFailure.queuedMessages).toEqual(['keep this follow-up']);
@@ -397,6 +439,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
 
     const afterFailure = activeChatsStore.getSnapshot()[threadId];
     expect(afterFailure.queuedMessages).toEqual(['keep this follow-up']);
@@ -425,8 +468,9 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
 
-    const sent = sendExecutionMessageMock.mock.calls.at(-1)?.[0];
+    const sent = sendExecutionMessageMock.mock.calls.at(-1)?.[1];
     expect(sent.target.workspace).toBeUndefined();
     expect(sent.target.environment).toEqual({ kind: 'current' });
     //.and the user is told the follow-up did not go into the project.
@@ -449,6 +493,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
 
     expect(
       activeChatsStore.getSnapshot()[threadId].queuedMessageFailure,
@@ -473,6 +518,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
       drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
       await vi.advanceTimersByTimeAsync(100);
+      await vi.dynamicImportSettled();
 
       const afterFailure = activeChatsStore.getSnapshot()[threadId];
       expect(afterFailure.status).toBe('error');
@@ -493,6 +539,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
 
     const afterFailure = activeChatsStore.getSnapshot()[threadId];
     expect(afterFailure.queuedMessages).toEqual(['auth-blocked message']);
@@ -503,6 +550,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
       drainQueuedMessageOnTurnCompleted('http://api.test', 'missing-thread'),
     ).not.toThrow();
     await vi.advanceTimersByTimeAsync(200);
+    await vi.dynamicImportSettled();
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
   });
 });

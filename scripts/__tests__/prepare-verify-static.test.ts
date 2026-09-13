@@ -150,13 +150,17 @@ describe('verify:static workspace bootstrap', () => {
     expect(commands.indexOf('npm run dependency-drift:gate')).toBeGreaterThan(
       commands.indexOf('node scripts/node-runtime-contract.mjs'),
     );
-    expect(
-      commands.findIndex((command: string) =>
-        command.startsWith('npx biome check'),
-      ),
-    ).toBeGreaterThan(commands.indexOf('npm run dependency-drift:gate'));
     expect(commands.indexOf('npm run prepare:verify-static')).toBeGreaterThan(
       commands.indexOf('npm run dependency-drift:gate'),
     );
+    // This chain no longer carries a `biome check` of its own. Every file it
+    // used to name sits under a `lint:check` root, and `lint:check` runs in
+    // the same `verify:static:raw` chain — so ordering a second biome pass
+    // against the drift gate was ordering a duplicate. Asserted as an absence
+    // rather than deleted silently: a re-added inline pass here would be the
+    // duplication coming back.
+    expect(
+      commands.filter((command: string) => command.includes('biome check')),
+    ).toEqual([]);
   });
 });

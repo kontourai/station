@@ -4,7 +4,6 @@
  * files, and embeds only Fieldwork's protected review application.
  */
 
-import { execSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -12,7 +11,10 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
 import { resolveE2EApiBase } from './helpers/e2e-target';
-import { installPluginWithConsent } from './helpers/install-plugin';
+import {
+  buildExamplePlugin,
+  installPluginWithConsent,
+} from './helpers/install-plugin';
 
 const __filename = fileURLToPath(import.meta.url);
 const PROJECT_DIR = join(dirname(__filename), '..');
@@ -72,10 +74,7 @@ test.describe('Fieldwork Review plugin', () => {
   // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo.
   test.beforeAll(async ({}, testInfo) => {
     testInfo.setTimeout(150_000);
-    execSync('npx tsx ../../packages/cli/src/cli.ts plugin build', {
-      cwd: PLUGIN_DIR,
-      timeout: 120_000,
-    });
+    buildExamplePlugin(PLUGIN_DIR, 120_000);
     await removePlugin();
     await removeProject();
 
@@ -113,10 +112,10 @@ test.describe('Fieldwork Review plugin', () => {
     await page.goto('/plugins');
     await page.getByText('Fieldwork Review', { exact: true }).click();
     await page
-      .getByRole('button', { name: /Review Permissions \(1\)/ })
+      .getByRole('button', { name: 'Review request', exact: true })
       .click();
     await expect(
-      page.getByText('plugin.server', { exact: true }),
+      page.getByRole('dialog').getByText('plugin.server', { exact: true }),
     ).toBeVisible();
 
     const popupPromise = page.waitForEvent('popup');
@@ -151,6 +150,9 @@ test.describe('Fieldwork Review plugin', () => {
   test('launches confined project files and embeds the protected review surface responsively', async ({
     page,
   }) => {
+    // Cold plugin loading, run creation, and review startup each retain their
+    // action deadline; the complete journey must outlive their combined work.
+    test.setTimeout(90_000);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/projects/${PROJECT_SLUG}/layouts/fieldwork-review`);
     await expect(page.getByTestId('fieldwork-review')).toBeVisible({

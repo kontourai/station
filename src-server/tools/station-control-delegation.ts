@@ -73,6 +73,7 @@ import {
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
+import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
   delegatedTaskFollowUps,
   delegatedTaskInterrupts,
@@ -93,6 +94,35 @@ interface ApiEnvelope<T> {
   receipt?: unknown;
   receiptStatus?: unknown;
   session?: unknown;
+}
+
+/** A local execution view uses the same binding owner as engine admission. */
+async function readExecutionProject(
+  access: EnvironmentAccess,
+  slug: string,
+  orchestrationService: OrchestrationService,
+) {
+  const project = (await getProject(
+    access.apiBase,
+    slug,
+    access.requestOptions,
+  )) as
+    | {
+        workingDirectory?: string;
+        defaultWorkspaceIsolation?: 'shared' | 'worktree';
+      }
+    | undefined;
+  if (
+    !project ||
+    access.kind !== 'current' ||
+    !orchestrationService.resolveProjectSessionDirectory
+  )
+    return project;
+  return {
+    ...project,
+    workingDirectory:
+      await orchestrationService.resolveProjectSessionDirectory(slug),
+  };
 }
 
 interface StationHandshake {
@@ -3093,11 +3123,8 @@ export async function delegateTask(
       )) as ExecutionTargetAgentView,
     getConnection: async (access, id) =>
       readConnection(access as DelegationTarget, id),
-    getProject: async (access, slug) =>
-      (await getProject(access.apiBase, slug, access.requestOptions)) as {
-        workingDirectory?: string;
-        defaultWorkspaceIsolation?: 'shared' | 'worktree';
-      },
+    getProject: (access, slug) =>
+      readExecutionProject(access, slug, orchestrationService),
     getProviderAdapter: (provider) =>
       orchestrationService.getProviderAdapter(provider),
   } satisfies Parameters<typeof resolveExecutionTarget>[1];
@@ -3192,6 +3219,11 @@ export async function delegateTask(
             environmentName: target.environmentName,
             taskId: sessionId,
             ...(project?.slug ? { projectSlug: project.slug } : {}),
+            // Preserve the resolved creation policy for continuation. The
+            // current Project default cannot certify an earlier launch.
+            ...(resolved.workspace?.kind === 'project'
+              ? { workspaceIsolation: resolved.workspace.workspaceIsolation }
+              : {}),
             // archive#1463: record the resolved project join on every Agent.
             ...(project?.slugJoin ? { projectSlugJoin: project.slugJoin } : {}),
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
@@ -3215,7 +3247,7 @@ export async function delegateTask(
     );
     if (started.status === 'indeterminate') {
       throw new Error(
-        `${started.message} Session ${started.session.threadId} may already be running; do not retry automatically.`,
+        `${started.message} Session ${started.session?.threadId ?? sessionId} may already be running; do not retry automatically.`,
       );
     }
     if (started.status !== 'accepted') {
@@ -3401,14 +3433,7 @@ export async function executeExecutionTargetMessage(
           throw new ForegroundInvocationUnavailableError();
         return structuredClone(capturedProject);
       }
-      return (await getProject(
-        access.apiBase,
-        slug,
-        access.requestOptions,
-      )) as {
-        workingDirectory?: string;
-        defaultWorkspaceIsolation?: 'shared' | 'worktree';
-      };
+      return readExecutionProject(access, slug, orchestrationService);
     },
     getProviderAdapter: (provider) =>
       orchestrationService.getProviderAdapter(provider),
@@ -3432,6 +3457,15 @@ export async function executeExecutionTargetMessage(
             ),
         }
       : {}),
+    canContinueConversation: (
+      access: EnvironmentAccess,
+      conversationId: string,
+      userId: string,
+    ) =>
+      access.kind === 'current' &&
+      readAuthority.mode === 'personal' &&
+      readAuthority.userId === userId &&
+      orchestrationService.canUserReadSession(conversationId, readAuthority),
     readSessionBinding: async (
       _access: EnvironmentAccess,
       sessionId: string,
@@ -3687,6 +3721,8 @@ export async function executeExecutionTargetMessage(
         },
       );
       if (started.status === 'indeterminate') {
+        if (!started.session)
+          throw new SessionStartIndeterminateError(started, started.message);
         throw new ForegroundMessageIndeterminateError(
           {
             code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
@@ -3708,6 +3744,8 @@ export async function executeExecutionTargetMessage(
         sessionId: started.session.threadId,
       };
     },
+    nativeMemoryOwnsTranscript:
+      orchestrationService.supportsNativeMemoryContinuity?.() === true,
     sendTurn: async (_access: EnvironmentAccess, turnInput, context) => {
       const command = { type: 'sendTurn' as const, input: turnInput };
       const dispatchContext = dispatchContextForAuthority(
@@ -3719,11 +3757,15 @@ export async function executeExecutionTargetMessage(
         ? await orchestrationService.dispatchWithReceipt(
             command,
             dispatchContext,
-            { foregroundInvocationAdmission: admission },
+            {
+              foregroundInvocationAdmission: admission,
+              nativeMemoryReadAuthority: readAuthority,
+            },
           )
         : await orchestrationService.dispatchWithReceipt(
             command,
             dispatchContext,
+            { nativeMemoryReadAuthority: readAuthority },
           );
       if (!dispatched.result || !('turnId' in dispatched.result)) {
         throw new ForegroundMessageTurnIdentityUnavailableError(
