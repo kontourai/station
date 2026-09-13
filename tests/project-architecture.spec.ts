@@ -918,9 +918,13 @@ test.describe('ChatDock', () => {
       page.locator('.workspace-pane-host', { has: page.locator('.chat-dock') }),
       'the chromeless host must contribute no element around the dock',
     ).toHaveCount(0);
+    // #2046 2b: a region's tab strip is the region bar's, and it renders
+    // only for a region holding two or more panes. The default dock holds
+    // Chat alone, so there is still no strip here — the pane's own toolbar
+    // is worth more than the pane's name (#1064).
     await expect(
       page.locator('.chat-dock').getByRole('tablist'),
-      'a chromeless host has no tab strip',
+      'a one-pane region renders no tab strip',
     ).toHaveCount(0);
     // And the dock is still where the shell put it: a DIRECT child of the
     // main region, which is what those combinators require.
