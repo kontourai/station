@@ -1,5 +1,68 @@
 # @kontourai/station-sdk
 
+## 0.8.0
+
+### Minor Changes
+
+- 4f19d35: Add a Device-bound, proof-of-possession account-session continuation for virtual
+  transports. Keep provider sessions server-owned, enforce current revocation and
+  response delivery, and preserve independent Device credentials on account refusal.
+- 058376c: Expose exact input-request reply context and a guarded foreground reply constraint. Reuse scoped attachment staging for file and image answers.
+- e4d61c8: Expose monitoring event windows with explicit truncation, retain the existing array API, and reject malformed history responses. Avoid opening the live stream when querying all history.
+- b8417e5: Add bounded newest-first conversation history hydration and recover complete terminal text from a retained suffix. Expose full saved Station addresses and host-owned native profile editing without forwarding credentials to a changed origin.
+- 7ef36cc: Add enrolled cloud target verification with stable boot observation, redirect refusal, bounded responses and no execution authority transfer.
+- a8bbc67: Add exact Conversation pull-request links and provider-observed revision fields.
+- 1344781: Record recovery-from-copy provenance atomically with an offline home restore. Show the snapshot time and explicit absence of transferred execution authority in CLI and JSON output, and expose a bounded read-only recovery-record reader.
+  
+  Expose a host-scoped system-status disclosure and show a persistent browser recovery notice with snapshot time and explicit authority limits.
+- eb1fd17: Add host-neutral mobile device inventory and single-frame capture contracts, with an authenticated SDK subpath that validates the selected target. Honor optional response byte ceilings for JSON POST responses as well as GET requests.
+- a777b37: Add typed portable Project identity snapshots and explicit receiver-local associations, with SDK methods to read, prepare and attach an identity. Reject incompatible responses and preserve the requested association through asynchronous work.
+  
+  Attachment publishes a new local Project and its imported identity together without changing existing Project history, copying paths into shared identity, or granting membership or execution authority.
+- 4d38391: Add scoped Project membership and invitation administration, built-in local
+  username account entry and operator account/session recovery controls. Keep
+  account authentication, Project membership and device/compute grants independent.
+- 44c019b: Add bounded pull-request review snapshots, exact-head review outcomes, and a scoped review client. Merge inputs may carry the reviewed head SHA as a provider precondition.
+- be60151: Expose a bounded, currently authorized answer quotation source with exact Session, turn, message and text-revision identity.
+
+### Patch Changes
+
+- e4d61c8: Wake API initialization readers directly, bound diagnostic telemetry, and separate MCP transport construction from custody while preserving the published API.
+  
+  Align plugin preview component and conflict kinds with the emitted layout contract and share those types with server and UI producers.
+  
+  Canonicalize newly allocated temporary homes before admission so read-only source observation shares the writer home identity.
+- ecfa545: Invalidate feedback guidelines and status after ratings are saved or removed, so clients refresh derived preferences and pending-analysis state.
+  
+  Preserve configured cache invalidations when a successful mutation's observer throws, while keeping that observer failure visible to its caller.
+- Updated dependencies [4f19d35]
+- Updated dependencies [058376c]
+- Updated dependencies [e172b3d]
+- Updated dependencies [b8417e5]
+- Updated dependencies [4aca094]
+- Updated dependencies [7ef36cc]
+- Updated dependencies [e4d61c8]
+- Updated dependencies [8d785cf]
+- Updated dependencies [a8bbc67]
+- Updated dependencies [c3bf345]
+- Updated dependencies [96290b2]
+- Updated dependencies [f6f9497]
+- Updated dependencies [1344781]
+- Updated dependencies [eb1fd17]
+- Updated dependencies [2f941ba]
+- Updated dependencies [4e39225]
+- Updated dependencies [d209461]
+- Updated dependencies [a777b37]
+- Updated dependencies [ce6ec59]
+- Updated dependencies [4d38391]
+- Updated dependencies [44c019b]
+- Updated dependencies [0d75052]
+- Updated dependencies [9ccd6e4]
+- Updated dependencies [be60151]
+- Updated dependencies [0c3d60e]
+  - @kontourai/station-contracts@0.8.0
+  - @kontourai/station-shared@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes
