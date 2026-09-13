@@ -114,8 +114,9 @@ export function CoreUpdateLaunchCheck({
     enabled:
       !isMobile &&
       (!isDesktop ||
-        (context.identitySettled &&
+        (context.identityReady &&
           !context.nativeObservationPending &&
+          !context.claimedOwnerUnresolved &&
           context.kind !== 'embedded-sidecar')),
     staleTime: 5 * 60 * 1000,
   });

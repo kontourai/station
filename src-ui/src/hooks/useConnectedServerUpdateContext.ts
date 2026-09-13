@@ -16,6 +16,7 @@ import {
   type EstablishedServerKind,
   resolveEstablishedServerKind,
   selectedAccessIsDirectHttp,
+  selectionClaimsNativeOwner,
 } from '../views/settings/serverUpdateIdentity';
 
 export type ServerReachability = 'connected' | 'checking' | 'unavailable';
@@ -47,6 +48,20 @@ export interface ConnectedServerUpdateContext {
    * subscription that never delivers keeps the check off, deliberately.
    */
   nativeObservationPending: boolean;
+  /**
+   * The selected connection CLAIMS the observed native owner (matching
+   * instance ids on both sides) but the correlation could not establish it —
+   * kind is unresolved while an owner claim is in force: an observed but
+   * not-yet-running sidecar, a wrong boot, a mismatched endpoint. The source
+   * check holds while this is true; firing it would probe a server the
+   * correlation cannot name. Truth table of the hold:
+   * - claims owner + unresolved → held (this flag);
+   * - no owner claim (paired/remote) → never held by this flag, enabled or
+   *   held by the other inputs only;
+   * - established kinds (embedded-sidecar / installed-local-service) → not
+   *   unresolved, never held.
+   */
+  claimedOwnerUnresolved: boolean;
   /** True only while the captured selection and native binding remain current. */
   isCurrent: () => boolean;
 }
@@ -301,6 +316,15 @@ export function useConnectedServerUpdateContext(
     profile.supervisesBundledServer &&
     nativeStatus === null;
 
+  const selection = activeConnection
+    ? {
+        ownerId: activeConnection.ownerId,
+        sshForward: activeConnection.sshForward,
+        selectedAccessIsDirectHttp:
+          selectedAccessIsDirectHttp(activeConnection),
+      }
+    : null;
+
   const kind = resolveEstablishedServerKind({
     scopeCurrent,
     nativeBindingCurrent,
@@ -309,15 +333,15 @@ export function useConnectedServerUpdateContext(
     isDesktop: profile.isDesktop,
     nativeStatus,
     apiBase,
-    selection: activeConnection
-      ? {
-          ownerId: activeConnection.ownerId,
-          sshForward: activeConnection.sshForward,
-          selectedAccessIsDirectHttp:
-            selectedAccessIsDirectHttp(activeConnection),
-        }
-      : null,
+    selection,
   });
+
+  // R2 hold: the selection claims the observed native owner but correlation
+  // left it unresolved — the source check must not fire at a server the
+  // correlation cannot name.
+  const claimedOwnerUnresolved =
+    kind === 'unresolved' &&
+    selectionClaimsNativeOwner(selection, nativeStatus);
 
   return {
     scopeKey,
@@ -329,6 +353,7 @@ export function useConnectedServerUpdateContext(
     identitySettled,
     identityReady,
     nativeObservationPending,
+    claimedOwnerUnresolved,
     isCurrent,
   };
 }

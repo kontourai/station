@@ -30,6 +30,7 @@ const connectedServerContext = vi.hoisted(() => ({
     identitySettled: true,
     identityReady: true,
     nativeObservationPending: false,
+    claimedOwnerUnresolved: false,
     isCurrent: () => true,
   },
 }));
@@ -75,6 +76,7 @@ describe('CoreUpdateLaunchCheck', () => {
       identitySettled: true,
       identityReady: true,
       nativeObservationPending: false,
+      claimedOwnerUnresolved: false,
     };
     useCoreUpdateStatusQuery.mockClear();
     useCoreUpdateStatusQuery.mockImplementation(() => ({
@@ -172,6 +174,30 @@ describe('CoreUpdateLaunchCheck', () => {
     expect(bannerStore.getSnapshot()).toHaveLength(0);
   });
 
+  test('does not query the source when identity errored, even with a running observed sidecar', () => {
+    // Desktop shell, an observed running sidecar, but the identity request
+    // FAILED (503): settled but never ready. The gate must read
+    // identityReady — reverting to identitySettled re-enables the source
+    // query against a server the correlation could not name.
+    isDesktop = true;
+    connectedServerContext.current = {
+      ...connectedServerContext.current,
+      kind: 'unresolved',
+      identitySettled: true,
+      identityReady: false,
+      nativeObservationPending: false,
+      claimedOwnerUnresolved: false,
+    };
+
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+
+    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
+      'http://station.test',
+      expect.objectContaining({ enabled: false }),
+    );
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
+  });
+
   test('holds the desktop source query while a native observation is still pending', () => {
     isDesktop = true;
     connectedServerContext.current = {
@@ -227,6 +253,7 @@ describe('CoreUpdateLaunchCheck', () => {
     connectedServerContext.current = {
       ...connectedServerContext.current,
       identitySettled: false,
+      identityReady: false,
     };
 
     renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);

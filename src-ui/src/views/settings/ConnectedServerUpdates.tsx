@@ -97,14 +97,17 @@ export function ConnectedServerUpdates() {
     <div>
       <ServerIdentitySummary context={context} />
       {/* Fail-closed enablement: identity SUCCESS (not merely settled), no
-        pending native observation on a supervising desktop, and a connected
-        server. An identity error or a not-yet-delivered native snapshot
-        keeps the automatic source check off. */}
+        pending native observation on a supervising desktop, no unresolved
+        claim on the observed native owner, and a connected server. An
+        identity error, a not-yet-delivered native snapshot, or a claimed
+        owner the correlation could not establish each keep the automatic
+        source check off. */}
       <CoreUpdateCheck
         apiBase={context.apiBase}
         enabled={
           context.identityReady &&
           !context.nativeObservationPending &&
+          !context.claimedOwnerUnresolved &&
           context.reachability === 'connected'
         }
       />

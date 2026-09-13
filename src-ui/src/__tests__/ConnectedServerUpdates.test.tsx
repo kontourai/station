@@ -632,7 +632,7 @@ describe('ConnectedServerUpdates', () => {
     ).toHaveLength(0);
   });
 
-  it('does not render the built-in copy while the observed sidecar is only starting', async () => {
+  it('does not render the built-in copy while the observed sidecar is only starting, and holds the source check', async () => {
     await renderHarness({
       bundledStatus: sidecarStatus({ phase: 'starting' }),
     });
@@ -644,6 +644,60 @@ describe('ConnectedServerUpdates', () => {
     expect(
       screen.queryByText('Built-in server — updated with this desktop app.'),
     ).toBeNull();
+    // The selection claims the observed owner and correlation has not
+    // established it: the automatic source check stays off.
+    expect(context?.claimedOwnerUnresolved).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(
+      transportCalls.filter((url) => url.includes('/api/system/core-update')),
+    ).toHaveLength(0);
+  });
+
+  it('holds the check for a claimed-but-unestablished owner and keeps it on for a resolved paired server', async () => {
+    // Truth table, claimed side: matching owner ids but a wrong boot leaves
+    // kind unresolved — the check must not fire at the unnamed server.
+    const first = await renderHarness({
+      bundledStatus: sidecarStatus({ bootId: 'boot-2' }),
+    });
+    await waitConnected();
+    await waitIdentitySettled();
+    expect(context?.claimedOwnerUnresolved).toBe(true);
+    expect(
+      await screen.findByText('Server update method unknown.'),
+    ).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(
+      transportCalls.filter((url) => url.includes('/api/system/core-update')),
+    ).toHaveLength(0);
+    first.view.unmount();
+
+    // Truth table, unclaimed side: a paired connection claims NO native
+    // owner, so the hold must not apply — the resolved server keeps its
+    // automatic check.
+    await renderHarness({
+      store: PAIRED_STORE,
+      profileOverrides: { supervisesBundledServer: false },
+      identity: () =>
+        identityResponseFor({
+          instanceId: 'remote-instance',
+          bootId: 'remote-boot',
+          devicePresentation: {
+            deviceClass: 'paired',
+            hostName: 'Office host',
+          },
+        }),
+    });
+    await waitConnected();
+    await waitIdentitySettled();
+    expect(context?.claimedOwnerUnresolved).toBe(false);
+    expect(
+      await screen.findByText('Server on station.example.test:8444.'),
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        transportCalls.some((url) => url.includes('/api/system/core-update')),
+      ).toBe(true),
+    );
   });
 
   it('renders a neutral checking line, not the unavailable copy, while the connection is being checked', async () => {
