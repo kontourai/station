@@ -119,6 +119,13 @@ function Assert-Trust([string]$Path, [bool]$Directory, [bool]$ExecutionSafe) {
   if ($rule.IdentityReference.Value -ne $sid.Value -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or (($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::FullControl) -ne [Security.AccessControl.FileSystemRights]::FullControl)) { throw "Station trust ACL permits an unrelated principal: $Path" }
 }
 $operation = [string]$request.operation; foreach ($target in @($request.targets)) { $directory = [string]$target.kind -eq 'directory'; $executionSafe = [string]$target.policy -eq 'execution-safe'; $path = [string]$target.path; if ($operation -eq 'ensure') { if (-not (Test-Path -LiteralPath $path)) { if (-not $directory) { throw "Station trust file does not exist: $path" }; [void][IO.Directory]::CreateDirectory($path) }; Set-Trust $path $directory } elseif ($operation -eq 'verify') { if (-not (Test-Path -LiteralPath $path)) { throw "Station trust path does not exist: $path" }; Assert-Trust $path $directory $executionSafe } else { throw 'invalid Station trust operation' } }
+# Complete the same verification pass before returning from an ensure request.
+# Keeping both phases in this process avoids a second PowerShell startup.
+if ($operation -eq 'ensure') {
+  foreach ($target in @($request.targets)) {
+    Assert-Trust ([string]$target.path) ([string]$target.kind -eq 'directory') $false
+  }
+}
 [Console]::Out.Write('{"trusted":true}')
 "#;
 
@@ -170,8 +177,7 @@ pub fn ensure(paths: &[(TrustKind, &Path)]) -> Result<(), String> {
         .iter()
         .map(|(kind, path)| (*kind, TrustPolicy::CurrentUserOnly, *path))
         .collect::<Vec<_>>();
-    invoke("ensure", &paths)?;
-    invoke("verify", &paths)
+    invoke("ensure", &paths)
 }
 
 pub fn verify(paths: &[(TrustKind, &Path)]) -> Result<(), String> {

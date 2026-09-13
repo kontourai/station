@@ -63,7 +63,24 @@ try {
     Assert-Trusted (Native-Trust 'verify' $path $kind)
     if ($kind -eq 'file' -and (Get-Content $path) -ne 'preserve payload') { throw 'ACL hardening changed file contents' }
   }
-  @{result='PASSED';sourceSha256=$sourceHash;unelevated=$true;directory=$true;file=$true;rejectsUnrelatedAccess=$true} | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ProofRoot 'receipt.json')
+  # An ensure response itself must reject ACLs that were not hardened. This
+  # injected no-op setter leaves the deliberately loose file unchanged, so
+  # only the ensure request's own verification can catch it.
+  $phase = 'ensure-verifies-postcondition'
+  $path = Join-Path $ProofRoot 'file'
+  $acl = Get-Acl $path
+  $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new('S-1-1-0'), [Security.AccessControl.FileSystemRights]::Read, [Security.AccessControl.AccessControlType]::Allow))
+  [IO.File]::SetAccessControl($path, $acl)
+  $originalProgram = $program
+  $setter = 'function Set-Trust([string]$Path, [bool]$Directory) {'
+  if (-not $program.Contains($setter)) { throw 'Native trust setter fixture anchor changed' }
+  try {
+    $program = $program.Replace($setter, $setter + ' return;')
+    if ((Native-Trust 'ensure' $path 'file').exitCode -eq 0) { throw 'Ensure accepted a failed ACL postcondition' }
+  } finally { $program = $originalProgram }
+  Assert-Trusted (Native-Trust 'ensure' $path 'file')
+  Assert-Trusted (Native-Trust 'verify' $path 'file')
+  @{result='PASSED';sourceSha256=$sourceHash;unelevated=$true;directory=$true;file=$true;rejectsUnrelatedAccess=$true;ensureVerifiesPostcondition=$true} | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ProofRoot 'receipt.json')
 } catch {
   @{result='FAILED';phase=$phase;sourceSha256=$sourceHash;failure=$_.Exception.Message} | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ProofRoot 'receipt.json')
   throw
