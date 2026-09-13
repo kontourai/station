@@ -21,13 +21,15 @@ app the separate `io.kontourai.station.dev.instance` identifier and matching
 retains Station's privacy descriptions and its pairing association when the
 Xcode project is regenerated.
 
-The simulator artifact receives ad-hoc signing with its own application and
-keychain-access-group entitlements. A linker-only signature cannot persist
-credentials in the iOS protected store. The signing helper checks both the
-app metadata and Mach-O simulator platform before signing; it refuses device
-or non-development artifacts. This requires no distribution certificate and
-does not produce a device, TestFlight, or App Store package. The command prints
-the resulting `.app` path. Archive that app to upload it to a device workspace.
+The build embeds the simulator's application and private keychain group in
+the executable's `__TEXT,__entitlements` section using simulator-only linker
+settings. These iOS rights must not be put in the macOS code signature of the
+simulator process. The verifier reads the actual section bytes, checks the
+app identity, pairing scheme, and simulator platform, then seals resources
+with an ordinary ad-hoc signature. It refuses device or non-development
+artifacts. This requires no distribution certificate and does not produce a
+device, TestFlight, or App Store package. The command prints the resulting
+`.app` path. Archive that app to upload it to a device workspace.
 
 ## What can run today
 
