@@ -1,6 +1,7 @@
 import {
   getAccountAuthentication,
   getAccountSession,
+  getProjectInvitationPreview,
   runAccountOperation,
 } from '@kontourai/station-sdk/account-authentication';
 import {
@@ -10,7 +11,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { PageFrame } from '../../components/page-frame';
 import { ErrorState, SkeletonList } from '../../components/state';
@@ -54,6 +55,7 @@ export function AccountEntryView({
   const [notice, setNotice] = useState<string>();
   const [error, setError] = useState<string>();
   const [joined, setJoined] = useState(false);
+  const entryId = useId();
   const descriptor = useQuery({
     queryKey: ['account', apiBase, 'provider'],
     queryFn: () => getAccountAuthentication(apiBase),
@@ -68,6 +70,16 @@ export function AccountEntryView({
     gcTime: 0,
     refetchOnWindowFocus: true,
   });
+  const preview = useQuery({
+    queryKey: ['account', apiBase, 'invitation', entryId],
+    queryFn: () => getProjectInvitationPreview(apiBase, invitation!),
+    enabled: descriptor.isSuccess && !!invitation && mode !== 'reset',
+    retry: false,
+    gcTime: 0,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+  const invitationView = preview.isSuccess ? preview.data : undefined;
   const mutation = useMutation({
     gcTime: 0,
     mutationFn: (input: {
@@ -212,13 +224,37 @@ export function AccountEntryView({
               : mode === 'reset'
                 ? 'Choose a new password'
                 : invitation
-                  ? 'Join your Project'
+                  ? invitationView
+                    ? `Join ${invitationView.projectName}`
+                    : 'Join your Project'
                   : 'Sign in to Station',
             subtitle: `${descriptor.data?.displayName ?? 'Your Station account'} · ${new URL(apiBase).host}`,
             width: 'narrow',
             body: 'flow',
           }}
         >
+          {invitationView && invitation && mode !== 'reset' && (
+            <div className="account-entry__invitation">
+              <p>
+                {invitationView.inviterName} invited you as a{' '}
+                <strong>
+                  {invitationView.role === 'admin'
+                    ? 'Project admin'
+                    : invitationView.role}
+                </strong>
+                .
+              </p>
+              <p>
+                Expires {new Date(invitationView.expiresAt).toLocaleString()}.
+              </p>
+              {invitationView.recipientEmail && (
+                <p>
+                  Use an account with the verified email{' '}
+                  <strong>{invitationView.recipientEmail}</strong>.
+                </p>
+              )}
+            </div>
+          )}
           {descriptor.isPending ? (
             <SkeletonList count={2} />
           ) : descriptor.isError ? (
@@ -228,6 +264,18 @@ export function AccountEntryView({
               action={
                 <Button onClick={() => void descriptor.refetch()}>
                   Try again
+                </Button>
+              }
+            />
+          ) : invitation && mode !== 'reset' && preview.isPending ? (
+            <SkeletonList count={2} label="Checking invitation" />
+          ) : invitation && mode !== 'reset' && preview.isError ? (
+            <ErrorState
+              title="Invitation unavailable"
+              description="This link may have expired, been accepted or been cancelled. Ask the inviter for a new link, or try again if this Station is unavailable."
+              action={
+                <Button onClick={() => void preview.refetch()}>
+                  Check invitation again
                 </Button>
               }
             />
