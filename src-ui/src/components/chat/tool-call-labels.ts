@@ -192,10 +192,7 @@ function firstLine(value: string): string {
  * ACP engine's unstringified pass-through — see archive#3559) is shown as
  * its truncated first line rather than dropped, so a shell command stays
  * visible in the collapsed row on that path too. */
-export function extractTarget(
-  kind: ToolCallKind,
-  args: unknown,
-): string | null {
+function extractTarget(kind: ToolCallKind, args: unknown): string | null {
   if (typeof args === 'string') {
     return args.trim() ? truncate(firstLine(args)) : null;
   }

@@ -88,6 +88,11 @@ export function ToolCallBatch<P extends ToolCallLike>({
           <span className="tool-call-batch__pulse" aria-hidden="true" />
         )}
         <span className="tool-call-batch__label">{group.summary}</span>
+        {group.inProgress && (
+          <span className="tool-call-batch__count">
+            {group.calls.length} tools
+          </span>
+        )}
         {/* A collapsed batch must disclose failure without being opened
             (station#2652 redesign) — the summary alone would bury it. */}
         {group.failedCount > 0 && (
@@ -143,7 +148,11 @@ export function ToolCallBatch<P extends ToolCallLike>({
       )}
       {!isOpen &&
         group.calls
-          .filter((call) => call.awaitingApproval)
+          .filter(
+            (call) =>
+              call.awaitingApproval ||
+              (group.awaitingApprovalCount > 0 && call.inProgress),
+          )
           .map((call) => (
             <div
               key={call.part.toolCallId ?? `awaiting:${call.index}`}

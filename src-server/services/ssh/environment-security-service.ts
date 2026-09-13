@@ -322,6 +322,23 @@ export class EnvironmentSecurityService {
    * Web Push subscription routes require this — not verifyCredential — to
    * enforce that only a paired device can subscribe.
    */
+  canSharePersonalConversation(requesterId: string, ownerId: string): boolean {
+    return (
+      this.#devicePairingService?.canSharePersonalConversation(
+        requesterId,
+        ownerId,
+      ) ?? false
+    );
+  }
+
+  personalConversationOwnerIds(
+    requesterId: string,
+  ): readonly string[] | undefined {
+    return this.#devicePairingService?.personalConversationOwnerIds(
+      requesterId,
+    );
+  }
+
   identifyDevice(candidate: string): PairedDevice | null {
     return this.#devicePairingService?.identifyDevice(candidate) ?? null;
   }

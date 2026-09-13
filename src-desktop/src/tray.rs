@@ -29,11 +29,20 @@ const STATION_TRAY_ICON: &[u8] = include_bytes!("../icons/icon.png");
 const BETA_TRAY_ICON: &[u8] = include_bytes!("../icons/beta/icon.png");
 const NIGHTLY_TRAY_ICON: &[u8] = include_bytes!("../icons/nightly/icon.png");
 const DEV_TRAY_ICON: &[u8] = include_bytes!("../icons/dev/icon.png");
+/// The installed-service browser fallback opens the service's own fixed
+/// settings destination; the renderer destinations are closed enum members
+/// and never build URLs here.
 const CORE_UPDATE_SETTINGS_PATH: &str = "/settings?view=system&highlight=core-app-updates";
 const TRAY_NAVIGATION_EVENT: &str = "station://tray-navigation";
 const TRAY_NAVIGATION_TTL: Duration = Duration::from_secs(30);
-const UPDATE_SETTINGS_ID: &str = "tray-updates";
-const UPDATE_SETTINGS_LABEL: &str = "Update settings…";
+const DESKTOP_UPDATE_SETTINGS_ID: &str = "tray-desktop-updates";
+const DESKTOP_UPDATE_SETTINGS_LABEL: &str = "Desktop app updates…";
+const SERVER_UPDATE_SETTINGS_ID: &str = "tray-server-updates";
+const SERVER_UPDATE_SETTINGS_LABEL: &str = "Connected server updates…";
+/// Shown only while the server item is its installed-service browser
+/// fallback, so a click that opens the service's own UI never implies it
+/// follows the renderer's selected connection.
+const SERVICE_UPDATE_FALLBACK_LABEL: &str = "Installed service updates…";
 
 #[derive(Clone)]
 struct TrayState {
@@ -44,7 +53,8 @@ struct TrayState {
     connections: MenuItem<Wry>,
     connected_clients: MenuItem<Wry>,
     access_requests: MenuItem<Wry>,
-    updates: MenuItem<Wry>,
+    desktop_updates: MenuItem<Wry>,
+    server_updates: MenuItem<Wry>,
     open_ui: MenuItem<Wry>,
     service_action: MenuItem<Wry>,
     status: MenuItem<Wry>,
@@ -178,7 +188,9 @@ pub(crate) fn shutdown(app: &AppHandle) {
 pub fn init(app: &AppHandle) -> tauri::Result<()> {
     let product_name = tray_product_name(app);
     let identity_text = tray_identity(app, &product_name);
-    let build_text = local_client_build_label(app).unwrap_or_else(|| "Build: unavailable".into());
+    let build_text = local_client_build_label(app)
+        .map(|built_at| format!("Desktop app build: {built_at}"))
+        .unwrap_or_else(|| "Desktop app build: unavailable".into());
     let icon_bytes = tray_icon_bytes(packaged_channel(app));
     let identity = MenuItem::with_id(
         app,
@@ -190,7 +202,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     let backend = MenuItem::with_id(
         app,
         "tray-backend",
-        "Backend: unavailable",
+        "Local server: unavailable",
         false,
         None::<&str>,
     )?;
@@ -238,7 +250,8 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     )?;
     let access_requests = MenuItem::with_id(app, "tray-access-requests", "Pending access requests: 0", false, None::<&str>)?;
     app.manage(crate::local_access_watch::LocalAccessWatch::default());
-    let updates = update_settings_menu_item(app)?;
+    let desktop_updates = update_settings_menu_item(app, TrayUpdateMenuItem::Desktop)?;
+    let server_updates = update_settings_menu_item(app, TrayUpdateMenuItem::Server)?;
     let service_action = MenuItem::with_id(
         app,
         "tray-service-action",
@@ -265,7 +278,8 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         .item(&connections)
         .item(&connected_clients)
         .item(&access_requests)
-        .item(&updates)
+        .item(&desktop_updates)
+        .item(&server_updates)
         // A paired-devices tray command needs a native-to-webview route with a
         // fixed `initialPanel=devices`. The existing station:// association is
         // intentionally limited to reviewed pairing payloads, so do not turn
@@ -286,7 +300,8 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
             "tray-connections" => open_station_connections(app),
             "tray-connected-clients" => open_paired_devices(app),
             "tray-access-requests" => crate::local_access_watch::review_next(app),
-            "tray-updates" => open_core_update_settings(app),
+            DESKTOP_UPDATE_SETTINGS_ID => open_desktop_update_settings(app),
+            SERVER_UPDATE_SETTINGS_ID => open_server_update_settings(app),
             "tray-service-action" => run_contextual_service_action(app),
             "tray-quit" => {
                 // The durable per-user service intentionally outlives Desktop.
@@ -306,7 +321,8 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         connections,
         connected_clients,
         access_requests,
-        updates,
+        desktop_updates,
+        server_updates,
         open_ui,
         service_action,
         status,
@@ -348,22 +364,42 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct UpdateSettingsMenuItemSpec {
+struct UpdateMenuItemSpec {
     id: &'static str,
     label: &'static str,
     enabled: bool,
 }
 
-fn update_settings_menu_item_spec() -> UpdateSettingsMenuItemSpec {
-    UpdateSettingsMenuItemSpec {
-        id: UPDATE_SETTINGS_ID,
-        label: UPDATE_SETTINGS_LABEL,
-        enabled: false,
+/// The closed set of update items the tray can construct. Menu code selects a
+/// member; no caller can supply an arbitrary id, label, or destination.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TrayUpdateMenuItem {
+    Desktop,
+    Server,
+}
+
+impl TrayUpdateMenuItem {
+    fn spec(self) -> UpdateMenuItemSpec {
+        match self {
+            Self::Desktop => UpdateMenuItemSpec {
+                id: DESKTOP_UPDATE_SETTINGS_ID,
+                label: DESKTOP_UPDATE_SETTINGS_LABEL,
+                enabled: false,
+            },
+            Self::Server => UpdateMenuItemSpec {
+                id: SERVER_UPDATE_SETTINGS_ID,
+                label: SERVER_UPDATE_SETTINGS_LABEL,
+                enabled: false,
+            },
+        }
     }
 }
 
-fn update_settings_menu_item<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<MenuItem<R>> {
-    let spec = update_settings_menu_item_spec();
+fn update_settings_menu_item<R: Runtime, M: Manager<R>>(
+    manager: &M,
+    item: TrayUpdateMenuItem,
+) -> tauri::Result<MenuItem<R>> {
+    let spec = item.spec();
     MenuItem::with_id(
         manager,
         spec.id,
@@ -465,6 +501,9 @@ struct PrimaryHealthModel {
     api_docs_text: String,
     api_docs_enabled: bool,
     navigation_enabled: bool,
+    desktop_updates_enabled: bool,
+    server_updates_text: String,
+    server_updates_enabled: bool,
     service_action_text: &'static str,
     service_action_enabled: bool,
     tooltip: String,
@@ -491,7 +530,17 @@ impl PrimaryHealthTarget for NativePrimaryHealthTarget<'_> {
             "Paired devices",
             model.navigation_enabled,
         );
-        set_menu_item_enabled(&state.updates, "Update settings", model.navigation_enabled);
+        set_menu_item_enabled(
+            &state.desktop_updates,
+            "Desktop app updates",
+            model.desktop_updates_enabled,
+        );
+        let _ = state.server_updates.set_text(model.server_updates_text);
+        set_menu_item_enabled(
+            &state.server_updates,
+            "Connected server updates",
+            model.server_updates_enabled,
+        );
         let _ = state.service_action.set_text(model.service_action_text);
         set_menu_item_enabled(
             &state.service_action,
@@ -519,6 +568,14 @@ fn apply_primary_health(
         main_window_ready,
         cfg!(target_os = "macos"),
     );
+    // Update enablement is its own derivation: the desktop item follows the
+    // renderer's startup-readiness admission, never backend reachability.
+    // TWIN of the click-time admission re-derivation in
+    // `native_renderer_admitted`: keep the predicates identical — a divergence
+    // makes the item clickable while the click no-ops.
+    let renderer_admitted = main_window_available && main_window_ready;
+    let desktop_route = desktop_update_route(renderer_admitted);
+    let server_route = server_update_route(renderer_admitted, &snapshot);
     target.apply(PrimaryHealthModel {
         status_text: format!("Status: {}", snapshot.health.label()),
         backend_text: snapshot.label.clone(),
@@ -527,6 +584,9 @@ fn apply_primary_health(
         api_docs_text: snapshot.api_docs_label,
         api_docs_enabled: destinations.api_docs,
         navigation_enabled: destinations.navigation,
+        desktop_updates_enabled: desktop_route == TrayUpdateRoute::NativeRenderer,
+        server_updates_text: server_updates_label(server_route).into(),
+        server_updates_enabled: server_route != TrayUpdateRoute::Unavailable,
         service_action_text: snapshot.action.label,
         service_action_enabled: snapshot.action.enabled,
         tooltip: tray_tooltip(identity_text, &snapshot.label, snapshot.health),
@@ -548,7 +608,7 @@ fn apply_connected_clients(state: &TrayState, connected_clients: String) {
 /// issuing any service command.
 fn apply_poller_failure_ui(state: &TrayState) {
     let _ = state.status.set_text("Status: unavailable");
-    let _ = state.backend.set_text("Backend: unavailable");
+    let _ = state.backend.set_text("Local server: unavailable");
     let _ = state.open_ui.set_text("Station UI unavailable");
     set_menu_item_enabled(&state.open_ui, "Open Station UI", false);
     let _ = state.api_docs.set_text("API docs unavailable");
@@ -558,7 +618,11 @@ fn apply_poller_failure_ui(state: &TrayState) {
         .connected_clients
         .set_text("Paired devices: unavailable");
     set_menu_item_enabled(&state.connected_clients, "Paired devices", false);
-    set_menu_item_enabled(&state.updates, "Update settings", false);
+    set_menu_item_enabled(&state.desktop_updates, "Desktop app updates", false);
+    let _ = state
+        .server_updates
+        .set_text(SERVER_UPDATE_SETTINGS_LABEL);
+    set_menu_item_enabled(&state.server_updates, "Connected server updates", false);
     let _ = state.service_action.set_text("Service unavailable");
     set_menu_item_enabled(&state.service_action, "Service action", false);
     let _ = state.tray.set_tooltip(Some(tray_tooltip(
@@ -591,6 +655,10 @@ struct TrayBackendSnapshot {
     ui_label: String,
     api_origin: Option<String>,
     api_docs_url: Option<String>,
+    /// The fixed installed-service settings URL, present only for a trusted
+    /// service whose origin survives validation. This is the server item's
+    /// browser fallback target; it is never a desktop-update destination.
+    server_updates_url: Option<String>,
     ui_available: bool,
     action: ContextualServiceAction,
 }
@@ -662,7 +730,14 @@ struct TrayContext {
 pub(crate) enum TrayNavigationDestination {
     Connections,
     PairedDevices,
+    /// Compatibility alias for the pre-split single update destination. The
+    /// renderer maps it to the same server card as `serverUpdates`; nothing
+    /// in this host constructs it anymore, but the closed wire contract
+    /// keeps accepting and serializing it.
+    #[allow(dead_code)]
     CoreUpdates,
+    DesktopUpdates,
+    ServerUpdates,
 }
 
 fn trusted_service_manifest<'a>(
@@ -744,13 +819,14 @@ fn tray_backend_snapshot(
             kind: TrayBackendKind::Service,
             health,
             label: format!(
-                "Backend: local service {}",
+                "Local server: installed service {}",
                 safe_instance(&manifest.instance_id)
             ),
             api_docs_label,
             ui_label,
             api_origin,
             api_docs_url,
+            server_updates_url: station_core_update_url(manifest).ok(),
             ui_available,
             action,
         };
@@ -759,8 +835,8 @@ fn tray_backend_snapshot(
     if sidecar_is_current(status, owner) {
         let health = status_health(status);
         let label = match status.port.and_then(display_port) {
-            Some(_) => "Backend: built-in".into(),
-            None => "Backend: built-in · API unavailable".into(),
+            Some(_) => "Local server: built into desktop app".into(),
+            None => "Local server: built into desktop app · API unavailable".into(),
         };
         let api_origin = status
             .api_base
@@ -781,6 +857,7 @@ fn tray_backend_snapshot(
             ui_label: "Show Station UI (desktop app)".into(),
             api_origin,
             api_docs_url,
+            server_updates_url: None,
             ui_available: true,
             action: ContextualServiceAction {
                 label: "Built-in service",
@@ -798,11 +875,12 @@ fn tray_backend_snapshot(
     TrayBackendSnapshot {
         kind: TrayBackendKind::Unavailable,
         health,
-        label: "Backend: unavailable".into(),
+        label: "Local server: unavailable".into(),
         api_docs_label: "API docs unavailable".into(),
         ui_label: "Station UI unavailable".into(),
         api_origin: None,
         api_docs_url: None,
+        server_updates_url: None,
         ui_available: false,
         action: contextual_service_action(health, None),
     }
@@ -813,8 +891,8 @@ fn contextual_service_action(
     action: Option<ServiceAction>,
 ) -> ContextualServiceAction {
     let label = match (health, action) {
-        (_, Some(ServiceAction::Start)) => "Start service",
-        (_, Some(ServiceAction::Stop)) => "Stop service",
+        (_, Some(ServiceAction::Start)) => "Start installed service",
+        (_, Some(ServiceAction::Stop)) => "Stop installed service",
         (_, None) if health == ServiceHealth::Unhealthy => "Service unhealthy",
         (_, None) => "Service unavailable",
     };
@@ -878,7 +956,7 @@ fn compact_utc_build_label(value: &str) -> Option<String> {
     {
         return None;
     }
-    Some(format!("Built {} UTC", &value[..19].replace('T', " ")))
+    Some(value[..19].replace('T', " ") + " UTC")
 }
 
 fn valid_calendar_utc(value: &str) -> bool {
@@ -982,15 +1060,137 @@ fn open_paired_devices(app: &AppHandle) {
     );
 }
 
-fn open_core_update_settings(app: &AppHandle) {
-    // This intentionally promises only navigation. The connected Station's
-    // CoreUpdateCheck and the native desktop updater are different mechanisms;
-    // opening this fixed settings destination does not check the desktop app.
-    open_station_destination(
-        app,
-        TrayNavigationDestination::CoreUpdates,
-        station_core_update_url,
+/// The route an update destination takes. These variants are the whole
+/// contract: a tray update click either navigates the native renderer or
+/// opens the trusted installed service's fixed browser destination, and
+/// nothing else.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TrayUpdateRoute {
+    NativeRenderer,
+    InstalledServiceBrowser,
+    Unavailable,
+}
+
+/// Desktop update settings live only in the packaged app's own renderer: the
+/// signed Tauri updater owns desktop release availability, and its settings
+/// card has no browser home. Admission is the renderer's own startup
+/// readiness — never server reachability, which says nothing about whether
+/// this desktop app can reach its own UI.
+fn desktop_update_route(renderer_admitted: bool) -> TrayUpdateRoute {
+    if renderer_admitted {
+        TrayUpdateRoute::NativeRenderer
+    } else {
+        TrayUpdateRoute::Unavailable
+    }
+}
+
+/// The connected server's card lives in whichever renderer owns the selected
+/// connection, so the native renderer is used whenever it is admitted. Only
+/// when no usable native renderer exists may the already-supported trusted
+/// installed-service browser fallback open instead.
+fn server_update_route(
+    renderer_admitted: bool,
+    snapshot: &TrayBackendSnapshot,
+) -> TrayUpdateRoute {
+    if renderer_admitted {
+        return TrayUpdateRoute::NativeRenderer;
+    }
+    let backend_reachable = matches!(
+        snapshot.health,
+        ServiceHealth::Running | ServiceHealth::Unhealthy
     );
+    if snapshot.kind == TrayBackendKind::Service
+        && backend_reachable
+        && snapshot.server_updates_url.is_some()
+    {
+        TrayUpdateRoute::InstalledServiceBrowser
+    } else {
+        TrayUpdateRoute::Unavailable
+    }
+}
+
+fn server_updates_label(route: TrayUpdateRoute) -> &'static str {
+    match route {
+        TrayUpdateRoute::InstalledServiceBrowser => SERVICE_UPDATE_FALLBACK_LABEL,
+        TrayUpdateRoute::NativeRenderer | TrayUpdateRoute::Unavailable => {
+            SERVER_UPDATE_SETTINGS_LABEL
+        }
+    }
+}
+
+/// The renderer the tray may navigate: the main webview window must exist and
+/// its startup-readiness admission must have completed. A protected window is
+/// never forced visible here.
+///
+/// TWIN of the poller enablement derivation in `apply_primary_health`: keep
+/// the predicates identical — a divergence makes the item clickable while the
+/// click no-ops (or greyed out while a click would have worked).
+fn native_renderer_admitted(app: &AppHandle) -> bool {
+    app.get_webview_window("main").is_some() && crate::main_window_activation_available(app)
+}
+
+fn open_desktop_update_settings(app: &AppHandle) {
+    // The desktop updater's settings exist only in this packaged app's own
+    // renderer. There is deliberately no browser fallback: the connected
+    // server's update check is a different mechanism, and the opener is never
+    // asked to open a desktop-update destination.
+    match desktop_update_route(native_renderer_admitted(app)) {
+        TrayUpdateRoute::NativeRenderer => {
+            navigate_native_renderer(app, TrayNavigationDestination::DesktopUpdates)
+        }
+        TrayUpdateRoute::InstalledServiceBrowser | TrayUpdateRoute::Unavailable => {
+            log::warn!("Station tray could not open desktop update settings: no admitted native renderer")
+        }
+    }
+}
+
+fn open_server_update_settings(app: &AppHandle) {
+    let context = tray_context(app);
+    match server_update_route(native_renderer_admitted(app), &context.snapshot) {
+        TrayUpdateRoute::NativeRenderer => {
+            navigate_native_renderer(app, TrayNavigationDestination::ServerUpdates)
+        }
+        TrayUpdateRoute::InstalledServiceBrowser => {
+            let Some(url) = context.snapshot.server_updates_url.clone() else {
+                log::warn!(
+                    "Station tray could not open installed service updates: no trusted service destination"
+                );
+                return;
+            };
+            if let Err(error) = app.opener().open_url(url, None::<&str>) {
+                log::error!(
+                    "Station tray could not open installed service updates: native opener rejected the destination: {error}"
+                );
+            }
+        }
+        TrayUpdateRoute::Unavailable => {
+            log::warn!(
+                "Station tray could not open server update settings: no admitted native renderer or trusted installed service"
+            )
+        }
+    }
+}
+
+/// The shared native leg of both update destinations: focus (never recreate or
+/// force) the main window, queue the destination for replay, and emit the
+/// tray-navigation event the renderer's canonical navigate consumes.
+fn navigate_native_renderer(app: &AppHandle, destination: TrayNavigationDestination) {
+    match focus_station_window(app, false) {
+        Ok((label, revealed)) => {
+            queue_tray_navigation(app, destination);
+            if let Err(error) = app.emit_to(label, TRAY_NAVIGATION_EVENT, destination) {
+                log::error!("Station tray could not navigate to {destination:?}: {error}");
+            }
+            if !revealed {
+                log::info!(
+                    "Station tray deferred {destination:?} until main-window startup readiness completes"
+                );
+            }
+        }
+        Err(error) => {
+            log::warn!("Station tray could not navigate to {destination:?}: {error}")
+        }
+    }
 }
 
 fn open_station_destination(
@@ -1852,10 +2052,33 @@ mod tests {
     fn local_build_row_accepts_only_a_real_canonical_utc_date() {
         assert_eq!(
             compact_utc_build_label("2026-08-30T12:34:56.000Z"),
-            Some("Built 2026-08-30 12:34:56 UTC".into())
+            Some("2026-08-30 12:34:56 UTC".into())
         );
         assert_eq!(compact_utc_build_label("2026-02-31T12:34:56.000Z"), None);
         assert_eq!(compact_utc_build_label("2026-08-30T12:34:56Z"), None);
+    }
+
+    #[test]
+    fn desktop_build_label_names_the_local_package_or_is_unavailable() {
+        let label = |manifest: Option<LocalClientBuildManifest>| match manifest {
+            Some(manifest) => compact_utc_build_label(&manifest.built_at)
+                .map(|built_at| format!("Desktop app build: {built_at}"))
+                .unwrap_or_else(|| "Desktop app build: unavailable".into()),
+            None => "Desktop app build: unavailable".into(),
+        };
+        assert_eq!(
+            label(Some(LocalClientBuildManifest {
+                built_at: "2026-08-30T12:34:56.000Z".into(),
+            })),
+            "Desktop app build: 2026-08-30 12:34:56 UTC"
+        );
+        assert_eq!(
+            label(Some(LocalClientBuildManifest {
+                built_at: "not-a-stamp".into(),
+            })),
+            "Desktop app build: unavailable"
+        );
+        assert_eq!(label(None), "Desktop app build: unavailable");
     }
 
     #[test]
@@ -1868,9 +2091,13 @@ mod tests {
             Some(&service),
             Some(ServiceHealth::Running),
         );
-        assert_eq!(service_snapshot.label, "Backend: local service alpha_1.2");
+        assert_eq!(service_snapshot.label, "Local server: installed service alpha_1.2");
         assert_eq!(service_snapshot.api_docs_label, "Open API docs (port 3141)");
         assert_eq!(service_snapshot.ui_label, "Open Station UI (port 3000)");
+        assert_eq!(
+            service_snapshot.server_updates_url.as_deref(),
+            Some("http://127.0.0.1:3000/settings?view=system&highlight=core-app-updates")
+        );
         assert_eq!(
             tray_backend_snapshot(
                 &status(ServerOwnership::Sidecar, Some(4310)),
@@ -1879,7 +2106,7 @@ mod tests {
                 None,
             )
             .label,
-            "Backend: built-in",
+            "Local server: built into desktop app",
         );
         assert_eq!(
             tray_backend_snapshot(
@@ -1889,7 +2116,7 @@ mod tests {
                 Some(ServiceHealth::Stopped),
             )
             .label,
-            "Backend: local service alpha_1.2",
+            "Local server: installed service alpha_1.2",
         );
         assert_eq!(
             tray_backend_snapshot(
@@ -1899,7 +2126,7 @@ mod tests {
                 None,
             )
             .label,
-            "Backend: built-in · API unavailable",
+            "Local server: built into desktop app · API unavailable",
         );
         assert_eq!(
             tray_backend_snapshot(
@@ -1909,7 +2136,7 @@ mod tests {
                 None,
             )
             .label,
-            "Backend: built-in · API unavailable",
+            "Local server: built into desktop app · API unavailable",
         );
         let zero_port_service = manifest_with("127.0.0.1", "alpha", 0, 3000);
         assert_eq!(
@@ -1920,7 +2147,18 @@ mod tests {
                 Some(ServiceHealth::Stopped),
             )
             .label,
-            "Backend: unavailable",
+            "Local server: unavailable",
+        );
+        assert_eq!(
+            tray_backend_snapshot(
+                &status(ServerOwnership::Service, Some(3141)),
+                &service_owner("alpha", 3141),
+                Some(&zero_port_service),
+                Some(ServiceHealth::Stopped),
+            )
+            .server_updates_url,
+            None,
+            "an untrusted zero-port manifest has no fallback URL",
         );
     }
 
@@ -1940,7 +2178,7 @@ mod tests {
                 Some(ServiceHealth::Running),
             )
             .label,
-            "Backend: local service custom",
+            "Local server: installed service custom",
         );
     }
 
@@ -2007,14 +2245,14 @@ mod tests {
         let running_snapshot =
             tray_backend_snapshot(&running, &DesktopOwnerSnapshot::Sidecar, None, None);
 
-        assert_eq!(starting_snapshot.label, "Backend: built-in");
+        assert_eq!(starting_snapshot.label, "Local server: built into desktop app");
         assert_eq!(
             starting_snapshot.api_docs_label,
             "Open API docs (port 38141)"
         );
         assert_eq!(starting_snapshot.ui_label, "Show Station UI (desktop app)");
         assert_eq!(starting_snapshot.health, ServiceHealth::Stopped);
-        assert_eq!(running_snapshot.label, "Backend: built-in");
+        assert_eq!(running_snapshot.label, "Local server: built into desktop app");
         assert_eq!(running_snapshot.health, ServiceHealth::Running);
         assert!(running_snapshot.can_open_ui());
         assert!(running_snapshot.can_open_api_docs());
@@ -2194,25 +2432,68 @@ mod tests {
     }
 
     #[test]
-    fn update_settings_menu_item_contract_is_portable() {
+    fn update_settings_menu_item_contracts_are_portable() {
         assert_eq!(
-            update_settings_menu_item_spec(),
-            UpdateSettingsMenuItemSpec {
-                id: "tray-updates",
-                label: "Update settings…",
+            TrayUpdateMenuItem::Desktop.spec(),
+            UpdateMenuItemSpec {
+                id: "tray-desktop-updates",
+                label: "Desktop app updates…",
                 enabled: false,
             }
+        );
+        assert_eq!(
+            TrayUpdateMenuItem::Server.spec(),
+            UpdateMenuItemSpec {
+                id: "tray-server-updates",
+                label: "Connected server updates…",
+                enabled: false,
+            }
+        );
+        assert_ne!(
+            TrayUpdateMenuItem::Desktop.spec(),
+            TrayUpdateMenuItem::Server.spec(),
+            "the two update destinations stay independently addressable"
+        );
+    }
+
+    #[test]
+    fn update_item_ids_are_single_sourced_between_spec_and_dispatch() {
+        // The on_menu_event match arms dispatch on these same consts, so a
+        // spec rename can no longer leave a literal match arm behind as a
+        // silent no-op click. The literal pin keeps the wire ids themselves
+        // from drifting unnoticed.
+        assert_eq!(DESKTOP_UPDATE_SETTINGS_ID, "tray-desktop-updates");
+        assert_eq!(SERVER_UPDATE_SETTINGS_ID, "tray-server-updates");
+        assert_eq!(
+            TrayUpdateMenuItem::Desktop.spec().id,
+            DESKTOP_UPDATE_SETTINGS_ID
+        );
+        assert_eq!(
+            TrayUpdateMenuItem::Server.spec().id,
+            SERVER_UPDATE_SETTINGS_ID
         );
     }
 
     #[test]
     #[cfg(target_os = "macos")]
-    fn constructed_update_menu_item_promises_settings_navigation() {
+    fn constructed_update_menu_items_promise_their_settings_navigation() {
         let app = tauri::test::mock_app();
-        let item = update_settings_menu_item(app.handle()).expect("update item");
-        assert_eq!(item.id().as_ref(), "tray-updates");
-        assert_eq!(item.text().expect("update item text"), "Update settings…");
-        assert!(!item.is_enabled().expect("update item enabled state"));
+        let desktop =
+            update_settings_menu_item(app.handle(), TrayUpdateMenuItem::Desktop).expect("desktop item");
+        assert_eq!(desktop.id().as_ref(), "tray-desktop-updates");
+        assert_eq!(
+            desktop.text().expect("desktop item text"),
+            "Desktop app updates…"
+        );
+        assert!(!desktop.is_enabled().expect("desktop item enabled state"));
+        let server =
+            update_settings_menu_item(app.handle(), TrayUpdateMenuItem::Server).expect("server item");
+        assert_eq!(server.id().as_ref(), "tray-server-updates");
+        assert_eq!(
+            server.text().expect("server item text"),
+            "Connected server updates…"
+        );
+        assert!(!server.is_enabled().expect("server item enabled state"));
     }
 
     #[test]
@@ -2235,17 +2516,168 @@ mod tests {
             target.0.lock().unwrap().clone().expect("applied model"),
             PrimaryHealthModel {
                 status_text: "Status: Running".into(),
-                backend_text: "Backend: built-in".into(),
+                backend_text: "Local server: built into desktop app".into(),
                 ui_text: "Show Station UI (desktop app)".into(),
                 ui_enabled: true,
                 api_docs_text: "Open API docs (port 4310)".into(),
                 api_docs_enabled: true,
                 navigation_enabled: false,
+                desktop_updates_enabled: false,
+                server_updates_text: "Connected server updates…".into(),
+                server_updates_enabled: false,
                 service_action_text: "Built-in service",
                 service_action_enabled: false,
-                tooltip: "Station vtest\nBackend: built-in\nHealth: Running".into(),
+                tooltip: "Station vtest\nLocal server: built into desktop app\nHealth: Running".into(),
             }
         );
+    }
+
+    #[test]
+    fn update_enablement_follows_component_ownership_not_backend_reachability() {
+        let admitted_renderer = |snapshot: &TrayBackendSnapshot| {
+            let renderer_admitted = true;
+            (
+                desktop_update_route(renderer_admitted),
+                server_update_route(renderer_admitted, snapshot),
+            )
+        };
+        let service_manifest = manifest("127.0.0.1");
+        let service = tray_backend_snapshot(
+            &status(ServerOwnership::Service, Some(3141)),
+            &service_owner("default", 3141),
+            Some(&service_manifest),
+            Some(ServiceHealth::Running),
+        );
+        let mut sidecar_status = status(ServerOwnership::Sidecar, Some(4310));
+        sidecar_status.phase = crate::bundled_server_state::ServerPhase::Running;
+        let sidecar =
+            tray_backend_snapshot(&sidecar_status, &DesktopOwnerSnapshot::Sidecar, None, None);
+        let unavailable = tray_backend_snapshot(
+            &status(ServerOwnership::None, None),
+            &DesktopOwnerSnapshot::Unavailable,
+            None,
+            None,
+        );
+        // An admitted renderer owns both destinations for service, sidecar and
+        // unavailable-backend snapshots alike.
+        for snapshot in [&service, &sidecar, &unavailable] {
+            assert_eq!(
+                admitted_renderer(snapshot),
+                (TrayUpdateRoute::NativeRenderer, TrayUpdateRoute::NativeRenderer),
+                "{:?} never changes an admitted renderer's destinations",
+                snapshot.kind
+            );
+        }
+        // The desktop destination is native-only: without an admitted renderer
+        // it is unavailable, and it never selects the external service URL.
+        assert_eq!(desktop_update_route(false), TrayUpdateRoute::Unavailable);
+        // The server destination keeps the trusted installed-service browser
+        // fallback for a reachable service with a validated URL...
+        assert_eq!(
+            server_update_route(false, &service),
+            TrayUpdateRoute::InstalledServiceBrowser
+        );
+        // ...and nothing else.
+        assert_eq!(
+            server_update_route(false, &sidecar),
+            TrayUpdateRoute::Unavailable
+        );
+        assert_eq!(
+            server_update_route(false, &unavailable),
+            TrayUpdateRoute::Unavailable
+        );
+        let stopped_service = tray_backend_snapshot(
+            &status(ServerOwnership::Service, Some(3141)),
+            &service_owner("default", 3141),
+            Some(&service_manifest),
+            Some(ServiceHealth::Stopped),
+        );
+        assert_eq!(
+            server_update_route(false, &stopped_service),
+            TrayUpdateRoute::Unavailable,
+            "a stopped service has no browser UI to open"
+        );
+        let untrusted_service = tray_backend_snapshot(
+            &status(ServerOwnership::Service, Some(3141)),
+            &service_owner("default", 3141),
+            Some(&manifest("station.internal")),
+            Some(ServiceHealth::Running),
+        );
+        assert_eq!(untrusted_service.server_updates_url, None);
+        assert_eq!(
+            server_update_route(false, &untrusted_service),
+            TrayUpdateRoute::Unavailable,
+            "an untrusted manifest refuses the browser fallback"
+        );
+    }
+
+    #[test]
+    fn server_updates_label_names_the_installed_service_only_for_the_browser_fallback() {
+        assert_eq!(
+            server_updates_label(TrayUpdateRoute::NativeRenderer),
+            "Connected server updates…"
+        );
+        assert_eq!(
+            server_updates_label(TrayUpdateRoute::InstalledServiceBrowser),
+            "Installed service updates…"
+        );
+        assert_eq!(
+            server_updates_label(TrayUpdateRoute::Unavailable),
+            "Connected server updates…"
+        );
+    }
+
+    #[test]
+    fn admitted_renderer_enables_desktop_updates_without_backend_health() {
+        #[derive(Default)]
+        struct RecordingTarget(Mutex<Option<PrimaryHealthModel>>);
+        impl PrimaryHealthTarget for RecordingTarget {
+            fn apply(&self, model: PrimaryHealthModel) {
+                *self.0.lock().unwrap() = Some(model);
+            }
+        }
+
+        // A failed backend with an admitted renderer: desktop updates stay
+        // available because the desktop app owns them, and the server item
+        // rides the renderer too — its card reports the disconnected server.
+        let unavailable = tray_backend_snapshot(
+            &status(ServerOwnership::None, None),
+            &DesktopOwnerSnapshot::Unavailable,
+            None,
+            None,
+        );
+        let target = RecordingTarget::default();
+        apply_primary_health(&target, "Station vtest", unavailable, true, true);
+        let model = target.0.lock().unwrap().clone().expect("applied model");
+        assert!(model.desktop_updates_enabled);
+        assert!(model.server_updates_enabled);
+        assert_eq!(model.server_updates_text, "Connected server updates…");
+        assert_eq!(model.navigation_enabled, false);
+
+        // The same admitted renderer with a healthy attached service keeps the
+        // renderer destination (not the browser fallback) for the server item.
+        let service_manifest = manifest("127.0.0.1");
+        let service = tray_backend_snapshot(
+            &status(ServerOwnership::Service, Some(3141)),
+            &service_owner("default", 3141),
+            Some(&service_manifest),
+            Some(ServiceHealth::Running),
+        );
+        let target = RecordingTarget::default();
+        apply_primary_health(&target, "Station vtest", service.clone(), true, true);
+        let model = target.0.lock().unwrap().clone().expect("applied model");
+        assert!(model.desktop_updates_enabled);
+        assert!(model.server_updates_enabled);
+        assert_eq!(model.server_updates_text, "Connected server updates…");
+
+        // Without the admitted renderer the healthy service falls back to the
+        // installed-service browser, and the label says so.
+        let target = RecordingTarget::default();
+        apply_primary_health(&target, "Station vtest", service.clone(), false, false);
+        let model = target.0.lock().unwrap().clone().expect("applied model");
+        assert!(!model.desktop_updates_enabled);
+        assert!(model.server_updates_enabled);
+        assert_eq!(model.server_updates_text, "Installed service updates…");
     }
 
     #[test]
@@ -2258,7 +2690,7 @@ mod tests {
         sidecar.phase = crate::bundled_server_state::ServerPhase::Running;
         let snapshot = tray_backend_snapshot(&sidecar, &DesktopOwnerSnapshot::Sidecar, None, None);
         assert_eq!(snapshot.kind, TrayBackendKind::Sidecar);
-        assert_eq!(snapshot.label, "Backend: built-in");
+        assert_eq!(snapshot.label, "Local server: built into desktop app");
         assert_eq!(snapshot.health, ServiceHealth::Running);
 
         let attached = manifest_with("127.0.0.1", "stable-service", 18_141, 18_000);
@@ -2277,7 +2709,7 @@ mod tests {
             Some(ServiceHealth::Running),
         );
         assert_eq!(ambiguous_snapshot.kind, TrayBackendKind::Unavailable);
-        assert_eq!(ambiguous_snapshot.label, "Backend: unavailable");
+        assert_eq!(ambiguous_snapshot.label, "Local server: unavailable");
     }
 
     #[test]
@@ -2521,7 +2953,7 @@ mod tests {
             )
             .action,
             ContextualServiceAction {
-                label: "Stop service",
+                label: "Stop installed service",
                 action: Some(ServiceAction::Stop),
                 enabled: true,
             }
@@ -2536,7 +2968,7 @@ mod tests {
             )
             .action,
             ContextualServiceAction {
-                label: "Start service",
+                label: "Start installed service",
                 action: Some(ServiceAction::Start),
                 enabled: true,
             }
@@ -2576,7 +3008,7 @@ mod tests {
                 Some(ServiceHealth::Running),
             );
             assert_eq!(snapshot.kind, TrayBackendKind::Unavailable);
-            assert_eq!(snapshot.label, "Backend: unavailable");
+            assert_eq!(snapshot.label, "Local server: unavailable");
             assert!(!snapshot.action.enabled);
         }
     }
@@ -2586,10 +3018,10 @@ mod tests {
         assert_eq!(
             tray_tooltip(
                 "Station Nightly v0.1.0-nightly.4",
-                "Backend: built-in",
+                "Local server: built into desktop app",
                 ServiceHealth::Running
             ),
-            "Station Nightly v0.1.0-nightly.4\nBackend: built-in\nHealth: Running"
+            "Station Nightly v0.1.0-nightly.4\nLocal server: built into desktop app\nHealth: Running"
         );
     }
 
@@ -2714,7 +3146,7 @@ mod tests {
     }
 
     #[test]
-    fn opens_updates_only_at_the_fixed_core_update_settings_path() {
+    fn opens_the_installed_service_fallback_only_at_the_fixed_core_update_path() {
         assert_eq!(
             station_core_update_url(&manifest("127.0.0.1")).unwrap(),
             "http://127.0.0.1:3000/settings?view=system&highlight=core-app-updates"
@@ -2730,11 +3162,20 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_value(TrayNavigationDestination::CoreUpdates).unwrap(),
-            "coreUpdates"
+            "coreUpdates",
+            "the pre-split destination stays a valid wire value for compatibility"
         );
         assert_eq!(
             serde_json::to_value(TrayNavigationDestination::PairedDevices).unwrap(),
             "pairedDevices"
+        );
+        assert_eq!(
+            serde_json::to_value(TrayNavigationDestination::DesktopUpdates).unwrap(),
+            "desktopUpdates"
+        );
+        assert_eq!(
+            serde_json::to_value(TrayNavigationDestination::ServerUpdates).unwrap(),
+            "serverUpdates"
         );
     }
 

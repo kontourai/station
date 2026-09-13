@@ -43,6 +43,7 @@ import { EnvironmentStatus } from './settings/EnvironmentStatus';
 import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
 import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
+import { LocalAccountsSection } from './settings/LocalAccountsSection';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
 import { SystemSection } from './settings/SystemSection';
@@ -121,7 +122,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     sidebarSections,
   } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
-  const { isMobile } = usePlatformProfile();
+  const { isMobile, isDesktop } = usePlatformProfile();
   const { locale } = useLocale();
 
   const [config, setConfig] = useState<AppConfig>(
@@ -222,6 +223,15 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       window.history.replaceState(window.history.state, '', url);
       setHighlightAnnouncement(
         formatSettingsMessage('unavailableMobile', locale),
+      );
+      return;
+    }
+    if (entry.conditional === 'desktop' && !isDesktop) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('highlight');
+      window.history.replaceState(window.history.state, '', url);
+      setHighlightAnnouncement(
+        formatSettingsMessage('unavailableDesktop', locale),
       );
       return;
     }
@@ -332,7 +342,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       if (pulseTimer !== undefined) window.clearTimeout(pulseTimer);
       pulsedTarget?.classList.remove('settings__highlight-pulse');
     };
-  }, [highlightRequest, isMobile, locale]);
+  }, [highlightRequest, isMobile, isDesktop, locale]);
 
   // Reconciling the server snapshot with the form is a question about *time*,
   // not about values: a just-invalidated query can still hold the pre-save
@@ -626,6 +636,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 onChange={setConfig}
               />
               <UsageTelemetryDisclosure />
+              <LocalAccountsSection />
             </>
           )}
 

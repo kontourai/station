@@ -595,7 +595,19 @@ export interface ConnectedClientProjection {
   transports: readonly ['events-sse'];
 }
 
+/** Explicit operator approval to recognize this device as a verified person.
+ * Separate from wire scopes and Project membership; valid only while its device
+ * grant is active. Historical requester provenance alone never creates it. */
+export interface DevicePrincipalBinding {
+  readonly provider: 'tailscale-serve';
+  readonly subject: string;
+  readonly approvedAt: number;
+  readonly approvalId: string;
+  readonly approvedBy: string;
+}
+
 export interface PairedDevice {
+  readonly principalBinding?: DevicePrincipalBinding;
   id: string;
   name: string;
   /**

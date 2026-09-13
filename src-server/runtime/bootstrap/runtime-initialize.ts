@@ -49,8 +49,7 @@ import {
   registerProviderAdapters,
   registerSkillRegistryProvider,
 } from '../../providers/registries/registry.js';
-import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
-import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
+import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import {
@@ -92,6 +91,7 @@ import {
 } from '../../services/orchestration/session-agent-resolution.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import { observeCwdShadow } from '../../services/projects/project-resource-shadow.js';
+import { createProjectSessionDirectoryResolver } from '../../services/projects/project-session-directory.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
@@ -141,6 +141,7 @@ import {
   scheduleRuntimePluginUpdateCheck,
   startRuntimeACPConnections,
 } from './runtime-background-tasks.js';
+import { withStationShutdownOwnership } from './runtime-signal-ownership.js';
 import {
   checkOllamaAvailability,
   prepareRuntimeStartup,
@@ -154,6 +155,7 @@ import { isManagedChatOrchestrationFeatureEnabled } from './station-features.js'
 type RuntimeFramework = VoltAgentFramework | StrandsFramework;
 
 export interface InitializeRuntimeDeps {
+  attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
   logger: Logger;
@@ -161,7 +163,10 @@ export interface InitializeRuntimeDeps {
   approvalRegistry: ApprovalRegistry;
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
-    'verifyCredential' | 'resolveGrantedScope'
+    | 'verifyCredential'
+    | 'resolveGrantedScope'
+    | 'canSharePersonalConversation'
+    | 'personalConversationOwnerIds'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -570,9 +575,24 @@ export async function initializeRuntime(
     // process's former OS alias. SessionAuthorization admits it only for the
     // request-derived home-possession local-operator principal.
     legacyPersonalOwner: getCachedUser().alias,
+    personalConversationAccess: {
+      canRead: (requesterId, ownerId) =>
+        deps.environmentSecurityService.canSharePersonalConversation(
+          requesterId,
+          ownerId,
+        ),
+      ownerIds: (requesterId) =>
+        deps.environmentSecurityService.personalConversationOwnerIds(
+          requesterId,
+        ),
+    },
     flowRunService,
     resourcePosture,
     listProjects: () => storageAdapter.listProjects(),
+    resolveProjectSessionDirectory: createProjectSessionDirectoryResolver(
+      configLoader.getProjectHomeDir(),
+      storageAdapter,
+    ),
     nativeDeclaredPullRequestResolver,
     // archive#1501: shadow `resolveProjectResource` against the
     // session-cwd seam over REAL traffic before slice 3c flips it. Dispatched
@@ -629,10 +649,8 @@ export async function initializeRuntime(
     homeDir: configLoader.getProjectHomeDir(),
   });
   const attachedSessionFollowService = new AttachedSessionFollowService({
-    sources: [
-      new ClaudeTranscriptSessionSource(),
-      new CodexRolloutSessionSource(),
-    ],
+    sources: deps.attachedSessionSources ?? [],
+    adapterRegistry: publicAdapterRegistry,
     eventStore: orchestrationEventStore,
     adoptionLedger,
     eventBus,
@@ -963,11 +981,14 @@ export async function initializeRuntime(
     };
   };
 
-  const voltAgent = new VoltAgent({
-    agents,
-    logger: logger as any,
-    server: trackedServerFactory,
-  });
+  const voltAgent = withStationShutdownOwnership(
+    () =>
+      new VoltAgent({
+        agents,
+        logger: logger as any,
+        server: trackedServerFactory,
+      }),
+  );
   onVoltAgentCreated(voltAgent);
   await voltAgent.ready;
   if (serverStartInvoked) await serverStartup;

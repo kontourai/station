@@ -1,13 +1,35 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { JsonFileStore } from '../../infra/json-store.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   feedbackOps: { add: vi.fn() },
 }));
 
 const { FeedbackService } = await import('../feedback-service.js');
+
+function signal() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+const ratingInput = {
+  agentSlug: 'a',
+  conversationId: 'race',
+  messageIndex: 0,
+  messagePreview: 'unchanged response',
+  rating: 'thumbs_up' as const,
+  reason: 'clear explanation',
+};
+const modelReply = (prompt: string, value = 'useful') =>
+  prompt.includes('JSON array')
+    ? JSON.stringify([{ index: 1, analysis: value }])
+    : JSON.stringify({ reinforce: [value], avoid: [] });
 
 describe('FeedbackService', () => {
   let dir: string;
@@ -20,6 +42,8 @@ describe('FeedbackService', () => {
 
   afterEach(() => {
     svc.stop();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -102,6 +126,224 @@ describe('FeedbackService', () => {
     const ratings = svc.getRatings();
     expect(ratings[0].analysis).toBeUndefined();
     expect(svc.getSummary()).toBeNull();
+  });
+
+  test.each(['mini', 'full'])(
+    'clearAnalysis fences a pending %s response',
+    async (phase) => {
+      svc.rateMessage(ratingInput);
+      const entered = signal();
+      const release = signal();
+      svc.setAnalyzeCallback(async (prompt) => {
+        if (prompt.includes('JSON array') === (phase === 'mini')) {
+          entered.resolve();
+          await release.promise;
+        }
+        return modelReply(prompt, 'obsolete');
+      });
+      const pending = svc.runAnalysisPipeline();
+      await entered.promise;
+      svc.clearAnalysis();
+      release.resolve();
+      await pending;
+      expect(svc.getSummary()).toBeNull();
+      expect(svc.getRatings()[0]?.analysis).toBeUndefined();
+      expect(svc.getRatings()[0]?.analyzedAt).toBeUndefined();
+    },
+  );
+
+  test('stop prevents late publication and a subsequent full model call', async () => {
+    svc.rateMessage(ratingInput);
+    const entered = signal();
+    const release = signal();
+    const analyze = vi.fn(async (prompt: string) => {
+      entered.resolve();
+      await release.promise;
+      return modelReply(prompt);
+    });
+    svc.setAnalyzeCallback(analyze);
+    const pending = svc.runAnalysisPipeline();
+    await entered.promise;
+    svc.stop();
+    release.resolve();
+    await pending;
+    expect(analyze).toHaveBeenCalledTimes(1);
+    expect(svc.getRatings()[0]?.analysis).toBeUndefined();
+    expect(svc.getSummary()).toBeNull();
+  });
+
+  test('a reason-only re-rating cannot inherit analysis of the previous reason', async () => {
+    svc.rateMessage(ratingInput);
+    const entered = signal();
+    const release = signal();
+    svc.setAnalyzeCallback(async (prompt) => {
+      entered.resolve();
+      await release.promise;
+      return modelReply(prompt, 'about the previous reason');
+    });
+    const pending = svc.runAnalysisPipeline();
+    await entered.promise;
+    svc.rateMessage({ ...ratingInput, reason: 'too terse' });
+    release.resolve();
+    await pending;
+    expect(svc.getRatings()[0]?.reason).toBe('too terse');
+    expect(svc.getRatings()[0]?.analysis).toBeUndefined();
+    expect(svc.getSummary()).toBeNull();
+  });
+
+  test('joins concurrent analysis requests instead of making duplicate model calls', async () => {
+    svc.rateMessage(ratingInput);
+    const entered = signal();
+    const release = signal();
+    const analyze = vi.fn(async (prompt: string) => {
+      entered.resolve();
+      await release.promise;
+      return modelReply(prompt);
+    });
+    svc.setAnalyzeCallback(analyze);
+    const first = svc.runAnalysisPipeline();
+    await entered.promise;
+    const second = svc.runAnalysisPipeline();
+    const blockedCalls = analyze.mock.calls.length;
+    release.resolve();
+    const results = await Promise.all([first, second]);
+    expect(blockedCalls).toBe(1);
+    expect(analyze).toHaveBeenCalledTimes(2);
+    expect(results[0]).toEqual(results[1]);
+  });
+
+  test('recomputes changed summary inputs even when the analyzed count is unchanged', async () => {
+    svc.rateMessage(ratingInput);
+    svc.setAnalyzeCallback(async (prompt) =>
+      modelReply(prompt, 'old preference'),
+    );
+    await svc.runAnalysisPipeline();
+    const file = join(dir, 'feedback', 'feedback.json');
+    const stored = JSON.parse(readFileSync(file, 'utf8'));
+    stored.ratings[0].analysis = 'different restored evidence';
+    writeFileSync(file, JSON.stringify(stored));
+    svc.stop();
+    svc = new FeedbackService(dir);
+    const analyze = vi.fn(
+      async () => '{"reinforce":["new preference"],"avoid":[]}',
+    );
+    svc.setAnalyzeCallback(analyze);
+    await svc.runAnalysisPipeline();
+    expect(analyze).toHaveBeenCalledTimes(1);
+    expect(svc.getSummary()?.reinforce).toEqual(['new preference']);
+  });
+
+  test('rejects malformed model summaries without persisting a broken profile', async () => {
+    svc.rateMessage(ratingInput);
+    svc.setAnalyzeCallback(async (prompt) =>
+      prompt.includes('JSON array')
+        ? modelReply(prompt)
+        : '{"reinforce":"not an array","avoid":[]}',
+    );
+    await expect(svc.runAnalysisPipeline()).rejects.toThrow();
+    expect(svc.getSummary()).toBeNull();
+    expect(svc.getBehaviorGuidelines()).toBe('');
+  });
+
+  test('rejects malformed rating analyses without marking the rating analyzed', async () => {
+    svc.rateMessage(ratingInput);
+    svc.setAnalyzeCallback(
+      async () => '[{"index":1,"analysis":{"invalid":true}}]',
+    );
+    await expect(svc.runAnalysisPipeline()).rejects.toThrow();
+    expect(svc.getRatings()[0]?.analysis).toBeUndefined();
+    expect(svc.getStatus().pendingAnalysis).toBe(1);
+  });
+
+  test('repeated start owns only one timer pair and stop clears both', () => {
+    vi.useFakeTimers();
+    svc.start();
+    svc.start();
+    svc.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test('status reports the scheduled tick and clears it when stopped', async () => {
+    vi.useFakeTimers();
+    const startedAt = Date.now();
+    svc.start();
+    expect(svc.getStatus().nextAnalysisAt).toBe(startedAt + 5000);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(svc.getStatus().nextAnalysisAt).toBe(startedAt + 10 * 60 * 1000);
+    svc.clearAnalysis();
+    expect(svc.getStatus().nextAnalysisAt).toBe(startedAt + 10 * 60 * 1000);
+    svc.stop();
+    expect(svc.getStatus().nextAnalysisAt).toBeNull();
+  });
+
+  test('reuses an unchanged summary without a model call or store rewrite', async () => {
+    svc.rateMessage(ratingInput);
+    const analyze = vi.fn(async (prompt: string) => modelReply(prompt));
+    svc.setAnalyzeCallback(analyze);
+    await svc.runAnalysisPipeline();
+    const write = vi.spyOn(JsonFileStore.prototype, 'write');
+    analyze.mockClear();
+    await svc.runAnalysisPipeline();
+    expect(analyze).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+    expect(svc.getSummary()?.reinforce).toEqual(['useful']);
+  });
+
+  test('a current request runs after a superseded model failure settles', async () => {
+    svc.rateMessage(ratingInput);
+    const entered = signal();
+    const release = signal();
+    const oldAnalyze = vi.fn(async () => {
+      entered.resolve();
+      await release.promise;
+      throw new Error('old model failed');
+    });
+    svc.setAnalyzeCallback(oldAnalyze);
+    const old = svc.runAnalysisPipeline();
+    await entered.promise;
+    svc.clearAnalysis();
+    const currentAnalyze = vi.fn(async (prompt: string) =>
+      modelReply(prompt, 'current'),
+    );
+    svc.setAnalyzeCallback(currentAnalyze);
+    const current = svc.runAnalysisPipeline();
+    expect(currentAnalyze).not.toHaveBeenCalled();
+    release.resolve();
+    await expect(old).resolves.toBeNull();
+    await expect(current).resolves.toMatchObject({ reinforce: ['current'] });
+    expect(currentAnalyze).toHaveBeenCalledTimes(2);
+    expect(svc.getStatus().isAnalyzing).toBe(false);
+  });
+
+  test('does not start queued model work after stop', async () => {
+    svc.rateMessage(ratingInput);
+    const analyze = vi.fn(async (prompt: string) => modelReply(prompt));
+    svc.setAnalyzeCallback(analyze);
+    const pending = svc.runAnalysisPipeline();
+    svc.stop();
+    await expect(pending).resolves.toBeNull();
+    expect(analyze).not.toHaveBeenCalled();
+  });
+
+  test('hides malformed stored derivatives while keeping their rating pending', () => {
+    svc.rateMessage(ratingInput);
+    const file = join(dir, 'feedback', 'feedback.json');
+    const data = JSON.parse(readFileSync(file, 'utf8'));
+    data.ratings[0].analysis = { invalid: true };
+    data.ratings[0].analyzedAt = new Date().toISOString();
+    data.summary = {
+      reinforce: 'broken',
+      avoid: [],
+      analyzedCount: 1,
+      updatedAt: new Date().toISOString(),
+    };
+    writeFileSync(file, JSON.stringify(data));
+    svc.stop();
+    svc = new FeedbackService(dir);
+    expect(svc.getSummary()).toBeNull();
+    expect(svc.getBehaviorGuidelines()).toBe('');
+    expect(svc.getRatings()[0]?.analysis).toBeUndefined();
+    expect(svc.getStatus().pendingAnalysis).toBe(1);
   });
 
   // archive#2900: analysis reads the store, awaits an LLM round-trip, then writes.

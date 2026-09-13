@@ -37,10 +37,13 @@ describe('engine capability matrix', () => {
     expect(externalSessionContinuationSupport('claude')).toEqual({
       state: 'native',
       basis: 'declared',
+      requiresSourceAffinity: true,
     });
-    expect(externalSessionContinuationSupport('codex')).toMatchObject({
+    expect(externalSessionContinuationSupport('codex')).toEqual({
       state: 'native',
       basis: 'declared',
+      requiresSourceAffinity: true,
+      boundary: 'completed-turn',
     });
     expect(externalSessionContinuationSupport('future-engine')).toMatchObject({
       state: 'unknown',

@@ -63,6 +63,7 @@ const cooperativeStop = {
 const interruptOrchestrationTurnMock = vi
   .fn()
   .mockResolvedValue(cooperativeStop);
+const steerOrchestrationTurnMock = vi.fn();
 // archive#1146: stable across renders so a test can assert WHICH query keys
 // were invalidated. A fresh `vi.fn` per `useInvalidateQuery` call records
 // nothing an assertion can reach.
@@ -83,6 +84,8 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     useInvalidateQuery: () => invalidateMock,
     interruptOrchestrationTurn: (...args: unknown[]) =>
       interruptOrchestrationTurnMock(...args),
+    steerOrchestrationTurn: (...args: unknown[]) =>
+      steerOrchestrationTurnMock(...args),
     isProvablyNotSent: actual.isProvablyNotSent,
   };
 });
@@ -175,6 +178,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     vi.clearAllMocks();
     outboundQueueMode.useActual = false;
     sendExecutionMessageMock.mockResolvedValue(successReceipt());
+    steerOrchestrationTurnMock.mockReset();
     activeChatsStore.initChat(sessionId, {
       agentSlug: 'codex',
       agentName: 'Codex',
@@ -1098,17 +1102,165 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   });
 
   it('queues a mid-turn message when the bound adapter cannot steer', async () => {
-    activeChatsStore.updateChat(sessionId, { status: 'sending' });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'muse',
+    });
     const { result } = renderHook(() => useSendMessage('http://api.test'));
 
     await act(async () => {
-      await result.current(sessionId, 'codex', sessionId, 'next');
+      await result.current(sessionId, 'muse', sessionId, 'next');
     });
 
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
     expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
       'next',
     ]);
+  });
+
+  it('steers a mid-turn message on Claude instead of queueing a new turn', async () => {
+    steerOrchestrationTurnMock.mockResolvedValueOnce({
+      outcome: 'steered',
+      threadId: 'exec-claude-1',
+      turnId: 'turn-open',
+    });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      currentSessionId: 'exec-claude-1',
+      openTurnId: 'turn-open',
+      streamingMessage: {
+        role: 'assistant',
+        content: 'partial answer',
+        contentParts: [{ type: 'text', content: 'partial answer' }],
+      },
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'course correct');
+    });
+
+    expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
+      threadId: 'exec-claude-1',
+      text: 'course correct',
+      turnId: 'turn-open',
+      apiBase: 'http://api.test',
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].streamingMessage?.content,
+    ).toBe('partial answer');
+  });
+
+  it('queues on a steering engine when queueOnBusy is requested', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'claude',
+        sessionId,
+        'wait for this turn',
+        undefined,
+        undefined,
+        undefined,
+        { queueOnBusy: true },
+      );
+    });
+
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
+      'wait for this turn',
+    ]);
+  });
+
+  it('steers a mid-turn message on Codex instead of queueing a new turn', async () => {
+    steerOrchestrationTurnMock.mockResolvedValueOnce({
+      outcome: 'steered',
+      threadId: 'exec-codex-1',
+      turnId: 'turn-open',
+    });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'codex',
+      currentSessionId: 'exec-codex-1',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', sessionId, 'focus on fails');
+    });
+
+    expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
+      threadId: 'exec-codex-1',
+      text: 'focus on fails',
+      turnId: 'turn-open',
+      apiBase: 'http://api.test',
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
+  });
+
+  it('queues a Claude follow-up that carries attachments (steer has no file channel)', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'with file', [
+        stagedAttachment,
+      ]);
+    });
+
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
+      'with file',
+    ]);
+  });
+
+  it('restores the draft when a steer is refused', async () => {
+    steerOrchestrationTurnMock.mockResolvedValueOnce({
+      outcome: 'no-active-turn',
+      threadId: sessionId,
+    });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'too late');
+    });
+
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId]).toMatchObject({
+      input: 'too late',
+      queuedMessages: [],
+    });
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].ephemeralMessages?.at(-1)
+        ?.content,
+    ).toBe('The turn ended before the steer could be sent.');
   });
 
   /**
@@ -1185,6 +1337,35 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       );
     });
 
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toEqual(
+      [],
+    );
+  });
+
+  it('does not steer a durable replay into the open Claude turn', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'claude',
+        undefined,
+        'durable replay only',
+        undefined,
+        undefined,
+        'existing-turn-id',
+        { skipInMemoryQueueOnBusy: true },
+      );
+    });
+
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
     expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toEqual(
       [],

@@ -25,6 +25,7 @@ import { useChatInput } from '../../hooks/useChatInput';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
+import { sessionAdapterSupportsSteering } from '../../utils/execution';
 import {
   accountableHumanFromUser,
   ownerAttributionFromStation,
@@ -280,6 +281,20 @@ export function ACPChatPanel({
         disabled={false}
         isSending={activeSession.status === 'sending'}
         turnInFlight={isTurnInFlight(activeSession)}
+        busyFollowUp={
+          isTurnInFlight(activeSession) &&
+          sessionAdapterSupportsSteering(
+            activeSession.agentConnectionId,
+            [],
+            activeSession.orchestrationProvider,
+          ) &&
+          chatInput.attachments.length === 0
+            ? 'steer'
+            : 'queue'
+        }
+        onQueueFollowUp={() =>
+          chatInput.handleSend(undefined, undefined, { queueOnBusy: true })
+        }
         modelSupportsAttachments={composerImageSupport.attachable}
         fileAttachmentsSupported={false}
         fontSize={13}

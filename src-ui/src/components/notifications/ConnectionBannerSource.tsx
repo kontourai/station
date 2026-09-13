@@ -19,6 +19,8 @@ import {
   BANNER_PRIORITY,
   bannerStore,
 } from '../../contexts/banner-store';
+import { recordReplayConnection } from '../../hooks/orchestration/replay/capture-tap';
+import { setStreamConnectionState } from '../../hooks/orchestration/streamConnectionState';
 import { checkHostCompatibility } from '../../lib/compatibility';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import {
@@ -51,7 +53,6 @@ const REMOVE_CONFIRM_TIMEOUT_MS = 5_000;
 const ARM_DEBOUNCE_MS = 300;
 
 // Guardrailed by proof:repo-governance.
-// fallow-ignore-next-line unused-export
 function isLoopbackEndpoint(url: string): boolean {
   try {
     const hostname = new URL(url).hostname;
@@ -67,7 +68,6 @@ function isLoopbackEndpoint(url: string): boolean {
 }
 
 // Guardrailed by proof:repo-governance.
-// fallow-ignore-next-line unused-export
 export function ConnectionBannerSource() {
   const { activeConnection, apiBase, removeConnection } = useConnections();
   const { isDesktop } = usePlatformProfile();
@@ -78,6 +78,11 @@ export function ConnectionBannerSource() {
       pollInterval: 10_000,
     });
   const endpoint = activeConnection?.url ?? apiBase;
+  useEffect(() => {
+    if (!blocked) return;
+    if (setStreamConnectionState(apiBase, 'closed'))
+      recordReplayConnection(apiBase, 'closed');
+  }, [apiBase, blocked]);
   // Two-step confirm for "Remove connection" (identity-mismatch banner,
   // below) — armed by a first tap, disarmed by a second tap performing the
   // removal, an explicit Cancel, a blur off the control, a timeout, or the

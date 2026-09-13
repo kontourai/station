@@ -14,6 +14,7 @@ import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
 import { useToolApproval } from '../../hooks/useToolApproval';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import type { ChatMessage, ChatSession } from '../../types';
+import type { SavedAnswerQuote } from '../../utils/answer-quotes';
 import { isTurnStreamLive } from '../../utils/execution';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -28,6 +29,7 @@ import {
 import type { ForkTurnSource } from './fork-turn-source';
 import { formatFormSubmission } from './formSubmission';
 import { MessageBubble, type MessageBubbleSession } from './MessageBubble';
+import { QuoteSelectionToolbar } from './QuoteSelectionToolbar';
 import { ReasoningSection } from './ReasoningSection';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { SessionSummaryCard } from './SessionSummaryCard';
@@ -54,6 +56,11 @@ interface ChatMessageListProps {
   /** Override rendering for specific messages. Return a ReactNode to replace default, or null to use MessageBubble. */
   renderOverride?: (msg: ChatMessage, idx: number) => React.ReactNode | null;
   emptyState?: React.ReactNode;
+  historyNotice?: React.ReactNode;
+  hasOlderMessages?: boolean;
+  historyLoading?: boolean;
+  suppressActivity?: boolean;
+  onLoadOlder?: () => Promise<void>;
   /**
    * archive#1301: when provided, the background-tasks banner below
    * becomes a real tap target opening the Background tasks sheet instead of
@@ -78,6 +85,7 @@ interface ChatMessageListProps {
    */
   hasSettingsEntryPoint?: boolean;
   onForkFromTurn?: (source: ForkTurnSource) => void;
+  onQuote?: (quote: SavedAnswerQuote) => void;
 }
 
 // Stable fallback so `agent || FALLBACK_AGENT` doesn't allocate a new object
@@ -115,11 +123,17 @@ function ChatMessageListComponent({
   showToolDetails,
   renderOverride,
   emptyState,
+  historyNotice,
+  hasOlderMessages,
+  historyLoading,
+  suppressActivity,
+  onLoadOlder,
   onOpenBackgroundTasks,
   owner,
   accountableHuman,
   hasSettingsEntryPoint,
   onForkFromTurn,
+  onQuote,
 }: ChatMessageListProps) {
   const agents = useAgents();
   const { apiBase } = useApiBase();
@@ -146,6 +160,7 @@ function ChatMessageListComponent({
   const [submittedBlockIds, setSubmittedBlockIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const loadingOlderRef = useRef(false);
   const previousTranscriptRows = useRef<readonly TranscriptRow[]>([]);
 
   // Dock snap changes are known synchronously by the parent. Handle that
@@ -166,7 +181,8 @@ function ChatMessageListComponent({
 
   const submitForm = useCallback(
     (submission: UIBlockFormSubmission) => {
-      if (submittedBlockIds.has(submission.blockId)) return;
+      if (activeSession.replay || submittedBlockIds.has(submission.blockId))
+        return;
       setSubmittedBlockIds((prev) => new Set(prev).add(submission.blockId));
       void sendMessage(
         activeSession.id,
@@ -181,12 +197,17 @@ function ChatMessageListComponent({
       activeSession.agentSlug,
       activeSession.conversationId,
       submittedBlockIds,
+      activeSession.replay,
     ],
   );
 
   const uiBlockActions = useMemo(
-    () => ({ submitForm, submittedBlockIds }),
-    [submitForm, submittedBlockIds],
+    () => ({
+      submitForm,
+      submittedBlockIds,
+      readOnly: Boolean(activeSession.replay),
+    }),
+    [submitForm, submittedBlockIds, activeSession.replay],
   );
 
   const messages = activeSession.messages || EMPTY_MESSAGES;
@@ -328,6 +349,23 @@ function ChatMessageListComponent({
     return () => observer.disconnect();
   }, []);
 
+  const loadOlder = async () => {
+    if (!onLoadOlder || historyLoading || loadingOlderRef.current) return;
+    loadingOlderRef.current = true;
+    const element = messagesContainerRef.current;
+    if (element) {
+      visibleAnchorRef.current = captureChatScrollAnchor(element);
+      isUserScrolledUpRef.current = true;
+      setIsUserScrolledUp(true);
+      setScrollAnchorVersion((version) => version + 1);
+    }
+    try {
+      await onLoadOlder();
+    } finally {
+      loadingOlderRef.current = false;
+    }
+  };
+
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
     const previousClientHeight = lastClientHeightRef.current;
@@ -352,6 +390,7 @@ function ChatMessageListComponent({
     // reader intent. Only wheel/touch/pointer input arms the next scroll.
     if (!userScrollIntentRef.current) return;
     userScrollIntentRef.current = false;
+    if (hasOlderMessages && target.scrollTop <= 96) void loadOlder();
     setScrollAnchorVersion((version) => version + 1);
     // Resize animations can emit a scroll event between two ResizeObserver
     // frames. Treat a small transient gap as still pinned so a dock/keyboard
@@ -433,7 +472,9 @@ function ChatMessageListComponent({
       showToolDetails={showToolDetails}
       onCopy={handleCopy}
       onForkFromTurn={onForkFromTurn}
-      onToolApproval={handleToolApproval as any}
+      onToolApproval={
+        activeSession.replay ? undefined : (handleToolApproval as any)
+      }
       anchorKey={messageAnchorKey(msg)}
       owner={owner}
       accountableHuman={accountableHuman}
@@ -457,6 +498,9 @@ function ChatMessageListComponent({
       <div
         className="chat-message-anchor"
         data-chat-message-key={row.id}
+        data-chat-turn-id={row.message.turnId}
+        data-chat-role={row.message.role}
+        data-chat-text-length={row.message.content?.length ?? 0}
         {...(messageId
           ? { id: `transcript-message-${encodeURIComponent(messageId)}` }
           : {})}
@@ -509,13 +553,13 @@ function ChatMessageListComponent({
   );
 
   const renderToolCall = useCallback(
-    (part: ChatContentPart, i: number, expanded = false) => (
+    (part: ChatContentPart, i: number) => (
       <ToolCallDisplay
         key={i}
         toolCall={part}
-        showDetails={expanded || showToolDetails}
+        showDetails={showToolDetails}
         onApprove={
-          part.needsApproval && part.approvalId
+          !activeSession.replay && part.needsApproval && part.approvalId
             ? (action) =>
                 handleToolApproval(
                   activeSession.id,
@@ -533,11 +577,19 @@ function ChatMessageListComponent({
       handleToolApproval,
       activeSession.id,
       activeSession.agentSlug,
+      activeSession.replay,
     ],
   );
 
   return (
     <UIBlockActionsContext.Provider value={uiBlockActions}>
+      {onQuote && !activeSession.replay && (
+        <QuoteSelectionToolbar
+          container={messagesContainerRef}
+          messages={messages}
+          onQuote={onQuote}
+        />
+      )}
       <SessionSummaryCard
         activeSession={activeSession}
         hasSettingsEntryPoint={hasSettingsEntryPoint}
@@ -547,6 +599,7 @@ function ChatMessageListComponent({
         ref={messagesContainerRef}
         role="log"
         aria-label="Conversation transcript"
+        data-chat-session-id={activeSession.id}
         aria-live="polite"
         style={{ fontSize: `${fontSize}px` }}
         onScroll={handleScroll}
@@ -556,10 +609,32 @@ function ChatMessageListComponent({
         onTouchMove={() => {
           userScrollIntentRef.current = true;
         }}
-        onPointerDown={() => {
+        onPointerDown={(event) => {
+          // Activating a control can move focus and dispatch a programmatic
+          // scroll. It is not a request to replace the reader's anchor.
+          if (
+            event.target instanceof Element &&
+            event.target.closest('button, a, input, select, textarea, summary')
+          )
+            return;
           userScrollIntentRef.current = true;
         }}
       >
+        {hasOlderMessages && (
+          <div className="session-history-controls">
+            <button
+              type="button"
+              className="button button--secondary session-history-controls__more"
+              disabled={historyLoading}
+              onClick={() => void loadOlder()}
+            >
+              {historyLoading
+                ? 'Loading earlier messages…'
+                : 'Earlier messages'}
+            </button>
+          </div>
+        )}
+        {historyNotice}
         {messages.length === 0 && !isStreaming ? (
           (emptyState ?? (
             <ChatEmptyState
@@ -600,6 +675,13 @@ function ChatMessageListComponent({
                   renderReasoning={renderReasoning}
                   renderToolCall={renderToolCall}
                   activityHint={activeSession.activityHint}
+                  elapsedMs={activeSession.replay?.elapsedMs}
+                  suppressActivity={suppressActivity}
+                  statusLabel={
+                    activeSession.orchestrationStatus === 'awaiting-approval'
+                      ? 'Waiting for approval'
+                      : undefined
+                  }
                   attributionAgent={streamingAttributionAgent}
                   owner={owner}
                   onContentChange={handleStreamingContentChange}

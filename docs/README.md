@@ -51,6 +51,7 @@ clearly mark the stale document.
 ## Repository Documentation
 
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
+- **[Mobile device inspection](guides/mobile-device-workspace.md)** — configure an explicit device host and capture native app screens through the authenticated API/SDK.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
 - **[Architecture](architecture/)** — current module boundaries and ownership.
 - **[Cloud move](design/cloud-move.md)** — setup preview, AWS preparation, and
@@ -78,6 +79,8 @@ clearly mark the stale document.
 - **[Conformance](conformance/)** — external-contract conformance notes.
 - **[Security](security/)** — security design notes; disclosure policy lives
   in [../SECURITY.md](../SECURITY.md).
+- **[Local collaboration lab](guides/local-collaboration-lab.md)** — free, isolated
+  transport/enrollment checks and explicit remaining collaboration acceptance.
 - **[Testing](testing/)** — supplementary testing records; the canonical
   guide is [guides/testing.md](guides/testing.md).
 - **[Third-party](third-party/)** — vendored/external integration notes.

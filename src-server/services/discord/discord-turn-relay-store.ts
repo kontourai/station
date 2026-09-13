@@ -25,7 +25,7 @@ function isRelay(value: unknown): value is DiscordTurnRelay {
   );
 }
 
-export function discordTurnRelayPath(homeDir: string): string {
+function discordTurnRelayPath(homeDir: string): string {
   return join(homeDir, 'runtime', FILE_NAME);
 }
 

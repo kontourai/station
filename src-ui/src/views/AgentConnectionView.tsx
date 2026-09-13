@@ -33,8 +33,8 @@ import {
 } from '@kontourai/station-sdk';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Checkbox } from '../components/Checkbox';
+import { ConnectionReadinessNotice } from '../components/connections/ConnectionReadinessNotice';
 import { DetailHeader } from '../components/DetailHeader';
-import { HostAction } from '../components/host-action/HostAction';
 import { BrandIcon } from '../components/icons/BrandIcon';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
@@ -50,6 +50,7 @@ import {
   useACPConnectionRegistry,
 } from '../hooks/useACPConnections';
 import { useDevicePresentation } from '../hooks/useDevicePresentation';
+import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import type { NavigationView } from '../types';
 import {
   capabilityLabel,
@@ -63,8 +64,6 @@ import {
 import { CredentialProfileEnrolment } from './CredentialProfileEnrolment';
 import {
   blockingPrerequisite,
-  hostActionIdForRemedy,
-  prerequisiteRemedy,
   resolveProviderPresentation,
 } from './provider-settings/providerCatalog';
 import './PluginManagementView.css';
@@ -140,7 +139,7 @@ export function AgentConnectionView({
     [acpRegistryEntries],
   );
   const onChooseCommand = (choice: ACPConnectionRegistryEntry | 'custom') =>
-    onNavigate({
+    guardedNavigate({
       type: 'connections-engine-new',
       providerId: choice === 'custom' ? 'custom' : choice.id,
     });
@@ -157,7 +156,12 @@ export function AgentConnectionView({
   );
 
   const [dirty, setDirty] = useState(false);
+  const { guard, DiscardModal } = useUnsavedGuard(dirty);
   const seededConnectionId = useRef<string | null>(null);
+
+  function guardedNavigate(view: NavigationView) {
+    guard(() => onNavigate(view));
+  }
 
   useEffect(() => {
     if (!runtime) {
@@ -363,11 +367,13 @@ export function AgentConnectionView({
       breadcrumbLinks={
         selectedRuntimeId
           ? {
-              connections: () => onNavigate({ type: 'connections' }),
+              connections: () => guardedNavigate({ type: 'connections' }),
               engines: () =>
-                onNavigate({ type: 'connections-engines' } as NavigationView),
+                guardedNavigate({
+                  type: 'connections-engines',
+                } as NavigationView),
             }
-          : { connections: () => onNavigate({ type: 'connections' }) }
+          : { connections: () => guardedNavigate({ type: 'connections' }) }
       }
       title="Engines"
       subtitle="Connect installed engines for chats and delegated work"
@@ -377,12 +383,13 @@ export function AgentConnectionView({
       items={items}
       selectedId={isAddRoute ? null : (selectedRuntimeId ?? null)}
       onSelect={(id) => {
+        if (id === selectedRuntimeId) return;
         setShowAddCatalog(false);
-        onNavigate({ type: 'connections-engine-edit', id });
+        guardedNavigate({ type: 'connections-engine-edit', id });
       }}
       onDeselect={() => {
         setShowAddCatalog(false);
-        onNavigate({ type: 'connections-engines' } as NavigationView);
+        guardedNavigate({ type: 'connections-engines' } as NavigationView);
       }}
       onSearch={setSearch}
       searchValue={search}
@@ -492,43 +499,13 @@ export function AgentConnectionView({
             </div>
 
             {providerPresentation?.readiness !== 'Ready' && (
-              <div className="provider-detail__notice" role="status">
-                <strong>{providerPresentation?.readiness}</strong>
-                <span>{providerPresentation?.detail}</span>
-                {/*
-                 * The one blocking prerequisite, said in the vocabulary of the
-                 * machine it is about. Everything here was already on the
-                 * wire: the server authored a description, an ordered install
-                 * guide and (where one exists) the exact command, and this
-                 * notice used to render the prerequisite's NAME and discard
-                 * all three -- leaving a bare noun that reads like a broken
-                 * link. The steps sit outside `HostAction` because they are
-                 * true for whoever is reading; only the sentence naming a
-                 * second machine is device-dependent.
-                 */}
-                {blocker && (
-                  <>
-                    <HostAction
-                      id={hostActionIdForRemedy(
-                        prerequisiteRemedy(blocker),
-                        'agent',
-                      )}
-                      presentation={devicePresentation}
-                      command={blocker.installGuide?.commands?.[0]}
-                    />
-                    <span className="provider-detail__notice-subject">
-                      {blocker.name}
-                    </span>
-                    {blocker.installGuide?.steps?.length ? (
-                      <ol className="provider-detail__notice-steps">
-                        {blocker.installGuide.steps.map((step) => (
-                          <li key={step}>{step}</li>
-                        ))}
-                      </ol>
-                    ) : null}
-                  </>
-                )}
-              </div>
+              <ConnectionReadinessNotice
+                readiness={providerPresentation?.readiness ?? ''}
+                detail={providerPresentation?.detail ?? ''}
+                kind="agent"
+                prerequisites={form.prerequisites}
+                devicePresentation={devicePresentation}
+              />
             )}
 
             <details className="provider-detail__advanced">
@@ -938,6 +915,7 @@ export function AgentConnectionView({
           label="Select an engine to review its status and setup."
         />
       )}
+      <DiscardModal />
     </SplitPaneLayout>
   );
 }

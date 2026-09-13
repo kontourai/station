@@ -191,6 +191,23 @@ describe.skipIf(!chromiumAvailable)(
         `skeleton row ${skeletonRowHeight}px vs real row ${realRowHeight}px`,
       ).toBeLessThanOrEqual(2);
     });
+
+    test('static loading has a visible status when reduced motion is enabled', async () => {
+      const page = await browser.newPage();
+      try {
+        await page.setContent(
+          buildFixtureHtml(renderListMarkup({ loading: true, items: [] }), css),
+        );
+        const label = page.locator('.skeleton-status-label');
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        expect(await label.isVisible()).toBe(false);
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        expect(await label.isVisible()).toBe(true);
+        expect(await label.textContent()).toMatch(/Loading/);
+      } finally {
+        await page.close();
+      }
+    });
   },
 );
 

@@ -3,6 +3,8 @@ import { setClientOriginResolver } from '@kontourai/station-sdk/client-origin';
 import React, { lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import { buildInfo } from './build-info';
+import { LazyBoundary } from './components/LazyBoundary';
+import { SkeletonBlock } from './components/state';
 import { installPluginSharedRuntime } from './core/pluginSharedRuntime';
 import { installVisualViewportInset } from './hooks/useMobileVisualViewport';
 import { installAndroidSafeArea } from './platform/androidSafeArea';
@@ -107,6 +109,13 @@ const loadPluginRegistryBootstrap = () =>
  * in a stranger's browser. The share page fetches once, holds nothing, and
  * stores nothing.
  */
+const isAccountPath = ['/account', '/account/join', '/account/reset'].includes(
+  window.location.pathname.replace(/\/$/, ''),
+);
+const loadAccountEntry = () =>
+  import('./views/account/AccountEntryView').then((module) => ({
+    default: module.AccountEntryPage,
+  }));
 const isSharedAnswerPath =
   window.location.pathname === ANSWER_SHARE_PERMALINK_PATH ||
   window.location.pathname === `${ANSWER_SHARE_PERMALINK_PATH}/`;
@@ -200,7 +209,7 @@ applyPersistedQueryGcTimeDefaults(queryClient);
 // that gating matters — a bare persistQueryClient call doesn't do it).
 const queryPersistOptions = buildPersistOptions();
 
-if (!isSharedAnswerPath && !isNativeShell) {
+if (!isSharedAnswerPath && !isAccountPath && !isNativeShell) {
   void import('../../packages/sdk/src/boot')
     .then(async ({ fetchAndSeedBootPayload }) => {
       // This joins LocalUiSessionGate's page-memoized resolution, including a
@@ -238,7 +247,16 @@ if (_bootAccent) applyAccentColor(document.documentElement, _bootAccent);
 
 function renderApp(): void {
   ReactDOM.createRoot(document.getElementById('root')!).render(
-    isSharedAnswerPath ? (
+    isAccountPath ? (
+      <React.StrictMode>
+        <NativeRendererMountCommit />
+        <LazyBoundary
+          load={loadAccountEntry}
+          componentProps={{ apiBase: window.location.origin }}
+          pending={<SkeletonBlock label="Loading sign-in" />}
+        />
+      </React.StrictMode>
+    ) : isSharedAnswerPath ? (
       <React.StrictMode>
         <NativeRendererMountCommit />
         {/* The boundary is eager (it must exist to catch the page's own chunk

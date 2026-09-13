@@ -900,6 +900,35 @@ describe('AgentConnectionView', () => {
     );
   });
 
+  test('selecting another engine while dirty asks before navigating', () => {
+    const muse = {
+      ...museMissingBinaryConnection(),
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+    agentConnections = [...DEFAULT_AGENT_CONNECTIONS, muse];
+    connectionQueryData = muse;
+    const onNavigate = vi.fn();
+
+    render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={onNavigate} />,
+    );
+
+    fireEvent.click(screen.getByText('Advanced'));
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'My Muse' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Codex/ }));
+
+    expect(screen.getByText('Unsaved Changes')).toBeTruthy();
+    expect(onNavigate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(onNavigate).toHaveBeenCalledWith({
+      type: 'connections-engine-edit',
+      id: 'codex',
+    });
+  });
+
   test('selecting a different engine re-seeds the form even after an edit', () => {
     connectionQueryData = museMissingBinaryConnection();
 

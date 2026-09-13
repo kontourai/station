@@ -170,7 +170,7 @@ interface StoredWorkspaceHomeRoleRecord {
  * wider eligibility policy) also reads null — the floor direction. An
  * unreadable or corrupt store throws {@link WorkspaceHomeRoleUnavailableError}.
  */
-export function readStoredWorkspaceHomeRole(
+function readStoredWorkspaceHomeRole(
   projectHomeDir: string,
 ): StoredWorkspaceHomeRoleRecord | null {
   const stored = homeRoleStore(projectHomeDir).read()[HOME_ROLE_STORE_KEY];

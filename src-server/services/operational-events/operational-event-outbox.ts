@@ -90,7 +90,7 @@ export interface OperationalEventOutboxCoordinator {
 }
 
 const DEFAULT_PAGE_LIMIT = 100;
-export const MAX_OPERATIONAL_EVENT_REPLAY_PAGE = 1_000;
+const MAX_OPERATIONAL_EVENT_REPLAY_PAGE = 1_000;
 
 function deliveryRejection(): OperationalEventDiagnostic {
   return {

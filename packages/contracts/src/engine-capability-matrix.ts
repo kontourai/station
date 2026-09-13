@@ -5,6 +5,7 @@ import {
   engineId as toEngineId,
 } from './agent-identity.js';
 import { engineDisplayLabel } from './engine-display.js';
+import type { AttachedSessionSourceMetadata } from './provider.js';
 
 /**
  * The honest, single-source capability
@@ -333,7 +334,12 @@ export interface EngineCapabilityMatrix {
   engineId: EngineId;
   /** Independent native child from an external transcript, never control of its original process. */
   externalSessionContinuation?:
-    | { state: 'native'; basis: 'declared' }
+    | {
+        state: 'native';
+        basis: 'declared';
+        boundary?: 'completed-turn';
+        requiresSourceAffinity?: boolean;
+      }
     | { state: 'unsupported'; reason: string };
   systemPrompt: CapabilityDelivery;
   /**
@@ -664,7 +670,11 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   claude: {
     engineId: toEngineId('claude'),
-    externalSessionContinuation: { state: 'native', basis: 'declared' },
+    externalSessionContinuation: {
+      state: 'native',
+      basis: 'declared',
+      requiresSourceAffinity: true,
+    },
     // systemPrompt deliverable via a per-session flag.
     systemPrompt: { state: 'session', channel: 'flag' },
     // The native flag channel above already delivers the authored prompt;
@@ -745,7 +755,12 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   codex: {
     engineId: toEngineId('codex'),
-    externalSessionContinuation: { state: 'native', basis: 'declared' },
+    externalSessionContinuation: {
+      state: 'native',
+      basis: 'declared',
+      requiresSourceAffinity: true,
+      boundary: 'completed-turn',
+    },
     // Evidence gate (docs/design/agent-engine-unification.md
     // §4.1/§6.1): `codex app-server generate-json-schema` against the
     // installed codex-cli 0.145.0 CONFIRMS `developerInstructions` as a
@@ -817,8 +832,8 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       channel: 'native-content',
       basis: 'declared',
     },
-    // codex app-server exposes turn/start and turn/interrupt, but no input/steer method for an active turn.
-    midTurnSteer: false,
+    // Codex app-server `turn/steer` appends input to the in-flight turn.
+    midTurnSteer: true,
     // Codex's core loop is command execution and patch application, and the
     // adapter's EVENT seam observes both identities: codex-adapter-events.ts
     // handles `item/commandExecution/requestApproval` and maps
@@ -998,8 +1013,11 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       channel: 'native-content',
       basis: 'runtime_observation',
     },
-    // ACP permits session/prompt and session/cancel; it defines no concurrent steer operation.
-    midTurnSteer: false,
+    // ACP has no protocol-level steer. The adapter still implements
+    // steerTurn: Kiro `_session/steer` and Grok `_x.ai/interject` when
+    // those extension methods exist, else T3-style cancel + re-prompt on
+    // the same Station turn id.
+    midTurnSteer: true,
     // A custom engine's toolbox is whatever the connected CLI brings; ACP
     // advertises protocol capabilities at initialize, not a tool inventory.
     subagentObservability: {
@@ -1407,10 +1425,13 @@ export function resolveBuiltinAgentEngineBinding(input: {
 }
 
 /** A declaration is product support, not permission or proof of current source readiness. */
-export function externalSessionContinuationSupport(
-  provider: string,
-):
-  | { state: 'native'; basis: 'declared' }
+export function externalSessionContinuationSupport(provider: string):
+  | {
+      state: 'native';
+      basis: 'declared';
+      boundary?: 'completed-turn';
+      requiresSourceAffinity?: boolean;
+    }
   | { state: 'unsupported' | 'unknown'; reason: string } {
   return (
     ENGINE_CAPABILITY_MATRICES[provider]?.externalSessionContinuation ?? {
@@ -1419,4 +1440,33 @@ export function externalSessionContinuationSupport(
         'Station has not established independent continuation support for this engine.',
     }
   );
+}
+
+/** Product availability only; the command owner revalidates source authority. */
+export function externalSessionContinuationAvailability(
+  provider: string,
+  source?: AttachedSessionSourceMetadata,
+): { enabled: boolean; reason?: string } {
+  const support = externalSessionContinuationSupport(provider);
+  if (support.state !== 'native')
+    return { enabled: false, reason: support.reason };
+  if (
+    support.requiresSourceAffinity &&
+    (!source?.affinity?.kind || !source.affinity.ref)
+  ) {
+    return {
+      enabled: false,
+      reason: 'Waiting for the source configuration to be verified.',
+    };
+  }
+  if (
+    support.boundary === 'completed-turn' &&
+    source?.completedBoundary?.kind !== 'completed-turn'
+  ) {
+    return {
+      enabled: false,
+      reason: 'No completed source turn is available for continuation.',
+    };
+  }
+  return { enabled: true };
 }

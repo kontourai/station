@@ -94,9 +94,7 @@ export function savedConnectionsToKnownEnvironments(
  * most recent attempt having failed with `authentication-failed` count as NOT
  * yet able to control the target.
  */
-export function isPairedConnectionAuthorized(
-  connection: SavedConnection,
-): boolean {
+function isPairedConnectionAuthorized(connection: SavedConnection): boolean {
   if (connection.lastError?.reason === 'authentication-failed') return false;
   return connection.credentialState !== 'required';
 }

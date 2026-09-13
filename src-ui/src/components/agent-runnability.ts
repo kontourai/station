@@ -62,7 +62,7 @@ export type AgentRunnability =
     };
 
 /** Spoken when a row is refused with nothing said about why. */
-export const AGENT_NOT_RUNNABLE_FALLBACK = 'Not currently runnable.';
+const AGENT_NOT_RUNNABLE_FALLBACK = 'Not currently runnable.';
 
 type RunnabilityAgent = Pick<
   AgentData,

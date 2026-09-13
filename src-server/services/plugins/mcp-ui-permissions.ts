@@ -27,9 +27,6 @@ import {
   GrantsStoreUnavailableError,
 } from './grants-file-store.js';
 
-/** Permission name carried in the tier model for completeness. */
-export const MCP_UI_RENDER_PERMISSION = 'mcp-ui.render';
-
 interface RenderGrantsFile {
   [serverId: string]: { renderAllowed: boolean };
 }

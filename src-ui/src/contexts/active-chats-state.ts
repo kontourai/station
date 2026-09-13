@@ -444,9 +444,27 @@ export type ChatUIState = {
   activityHint?: ChatActivityHint;
   backgroundTasks?: ChatBackgroundTask[];
   liveUsage?: ChatLiveUsage;
+  /**
+   * Synthetic event-replay occupant of this store key. Lineage ids stay
+   * unset so live SSE cannot fuzzy-match the source thread into it.
+   */
+  replay?: ChatReplayState;
 };
 
 export type ActiveChatsMap = Record<string, ChatUIState>;
+
+export type ChatReplayState = {
+  elapsedMs?: number;
+  connectionPhase?:
+    | 'unknown'
+    | 'receiving'
+    | 'caught-up'
+    | 'interrupted'
+    | 'closed';
+  connectionElapsedMs?: number;
+  sourceThreadId: string;
+  tapeEventCount: number;
+};
 
 export type ActiveChatMetadata = {
   agentSlug: string;
@@ -454,6 +472,8 @@ export type ActiveChatMetadata = {
   title: string;
   conversationId?: string;
   currentSessionId?: string;
+  /** Present only on a synthetic event-replay chat. Never persisted. */
+  replay?: ChatReplayState;
   conversationOpenPending?: boolean;
   projectSlug?: string;
   projectName?: string;
@@ -751,7 +771,9 @@ export function activeChatDurableId(
 export function isDurableActiveChat(chat: {
   conversationId?: string;
   unsentMessages?: unknown[];
+  replay?: unknown;
 }): boolean {
+  if (chat.replay) return false;
   return Boolean(chat.conversationId || chat.unsentMessages?.length);
 }
 

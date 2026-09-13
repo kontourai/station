@@ -8,6 +8,8 @@ import { isSessionExecutionActive } from '../../utils/execution';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../utils/sessionFailure';
 import { extractUIBlocks } from '../../utils/uiBlocks';
 import { upsertToolResultBlocks } from './messageParts';
+import { requestReplayHistory, useReplayHistory } from './replay/history';
+import { isReplayThread } from './replay/replay-registry';
 import { useSessionEventWindow } from './useSessionEventWindow';
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
@@ -85,14 +87,34 @@ function mergeTranscriptMessages(...groups: ChatMessage[][]): ChatMessage[] {
  * orchestration stream remains the only live authority.
  */
 export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
-  const enabled = Boolean(session.orchestrationSessionStarted);
-  const window = useSessionEventWindow(
+  // A replay has no server record. Its canonical fold owns the transcript;
+  // querying the synthetic ID would replace settled replay rows with an empty page.
+  const replay = isReplayThread(session.id);
+  const replayHistory = useReplayHistory(session.id);
+  const enabled = Boolean(
+    session.orchestrationSessionStarted && (!replay || replayHistory),
+  );
+  const serverWindow = useSessionEventWindow(
     apiBase,
     // The window is intentionally conversation-shaped: it aggregates lineage
     // for reload while each event itself still carries its child session id.
-    enabled ? (session.conversationId ?? session.id) : null,
+    enabled && !replay ? (session.conversationId ?? session.id) : null,
     session.orchestrationHistoryRevision,
     session.currentSessionId ?? session.id,
+  );
+  const window = useMemo(
+    () =>
+      replayHistory
+        ? {
+            ...replayHistory,
+            error: replayHistory.errorMessage
+              ? new Error(replayHistory.errorMessage)
+              : undefined,
+            loadOlder: () => requestReplayHistory(session.id),
+            reload: () => requestReplayHistory(session.id),
+          }
+        : serverWindow,
+    [replayHistory, serverWindow, session.id],
   );
   const checkpointRevision = session.orchestrationHistoryRevision ?? 0;
 
@@ -142,7 +164,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       ? changedFilesState.byTurn
       : EMPTY_CHANGED_FILES;
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || replay) {
       setChangedFilesState({ key: checkpointKey, byTurn: EMPTY_CHANGED_FILES });
       return;
     }
@@ -179,7 +201,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         }
       });
     return () => controller.abort();
-  }, [apiBase, checkpointKey, checkpointRevision, enabled, session.id]);
+  }, [apiBase, checkpointKey, checkpointRevision, enabled, replay, session.id]);
   const messages = useMemo(() => {
     if (!enabled) return session.messages;
     const agentBySessionId = new Map(
@@ -307,7 +329,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         (candidate, index) =>
           !claimedProjectedUsers.has(index) &&
           candidate.role === 'user' &&
-          candidate.content === message.content,
+          (message.turnId
+            ? candidate.turnId === message.turnId
+            : candidate.content === message.content),
       );
       if (match < 0) return true;
       claimedProjectedUsers.add(match);
@@ -410,6 +434,36 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         ],
       }),
     );
+    // A large turn can fill the first event page before its terminal record.
+    // Preserve the latest completed live answer until the read includes that
+    // turn's unelided completion. Never replace it with an unfinished prefix.
+    const latestLiveAnswer = [...session.messages]
+      .reverse()
+      .find(
+        (message) =>
+          message.role === 'assistant' &&
+          message.turnId &&
+          message.answerEligible !== undefined,
+      );
+    const retainedLiveAnswer =
+      latestLiveAnswer &&
+      !window.events.some(
+        ({ event, elided }) =>
+          ['turn.completed', 'runtime.error', 'turn.aborted'].includes(
+            event.method,
+          ) &&
+          event.turnId === latestLiveAnswer.turnId &&
+          !elided,
+      )
+        ? latestLiveAnswer
+        : undefined;
+    if (retainedLiveAnswer) {
+      visibleProjected = visibleProjected.filter(
+        (message) =>
+          message.role !== 'assistant' ||
+          message.turnId !== retainedLiveAnswer.turnId,
+      );
+    }
     // While the first bounded page is in flight, retain only local ephemeral
     // notices; persisted transcript rows never cause a full conversation read.
     return mergeTranscriptMessages(
@@ -421,6 +475,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         id: message.id ?? message.clientId,
       })),
       supplementalMessages,
+      retainedLiveAnswer ? [retainedLiveAnswer] : [],
     );
   }, [
     enabled,

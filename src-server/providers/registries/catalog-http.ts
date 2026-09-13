@@ -10,23 +10,25 @@ interface CatalogByteBudget {
 }
 
 export function catalogLimit(options?: ModelCatalogRequest): number {
-  return Math.max(
-    1,
-    Math.min(
-      options?.maxEntries ?? DEFAULT_MODEL_CATALOG_MAX_ENTRIES,
-      DEFAULT_MODEL_CATALOG_MAX_ENTRIES,
-    ),
+  return catalogRequestLimit(
+    options?.maxEntries,
+    DEFAULT_MODEL_CATALOG_MAX_ENTRIES,
   );
 }
 
-export function catalogResponseByteLimit(
-  options?: ModelCatalogRequest,
+function catalogRequestLimit(
+  requested: number | undefined,
+  maximum: number,
 ): number {
   return Math.max(
     1,
-    Math.min(
-      options?.maxResponseBytes ?? DEFAULT_MODEL_CATALOG_MAX_RESPONSE_BYTES,
-      DEFAULT_MODEL_CATALOG_MAX_RESPONSE_BYTES,
+    Math.floor(
+      Math.min(
+        typeof requested === 'number' && !Number.isNaN(requested)
+          ? requested
+          : maximum,
+        maximum,
+      ),
     ),
   );
 }
@@ -34,7 +36,12 @@ export function catalogResponseByteLimit(
 export function createCatalogByteBudget(
   options?: ModelCatalogRequest,
 ): CatalogByteBudget {
-  return { remainingBytes: catalogResponseByteLimit(options) };
+  return {
+    remainingBytes: catalogRequestLimit(
+      options?.maxResponseBytes,
+      DEFAULT_MODEL_CATALOG_MAX_RESPONSE_BYTES,
+    ),
+  };
 }
 
 /**
@@ -114,10 +121,16 @@ export async function readBoundedJson(
     throw new ModelCatalogHttpError(response.status);
   }
 
-  const maxBytes = Math.min(
-    catalogResponseByteLimit(options),
-    budget?.remainingBytes ?? Number.POSITIVE_INFINITY,
-  );
+  const maxBytes =
+    budget && !Number.isFinite(budget.remainingBytes)
+      ? 0
+      : Math.min(
+          catalogRequestLimit(
+            options?.maxResponseBytes,
+            DEFAULT_MODEL_CATALOG_MAX_RESPONSE_BYTES,
+          ),
+          budget?.remainingBytes ?? Number.POSITIVE_INFINITY,
+        );
   if (maxBytes < 1) {
     await response.body?.cancel();
     throw new ModelCatalogShapeError(

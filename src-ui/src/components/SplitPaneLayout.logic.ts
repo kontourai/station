@@ -25,7 +25,7 @@ export {
   splitPaneStorageKey,
 } from './split-pane-metrics';
 
-export const SPLIT_PANE_MOBILE_BREAKPOINT = 768;
+const SPLIT_PANE_MOBILE_BREAKPOINT = 768;
 
 export function serializeSplitPaneState(
   state: SplitPanePersistedState,

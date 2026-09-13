@@ -57,7 +57,7 @@ interface LayoutWorkingDirectoryShape {
 }
 
 /** True for the one layout type whose working directory is project-derived. */
-export function isCodingLayout(layout: LayoutWorkingDirectoryShape): boolean {
+function isCodingLayout(layout: LayoutWorkingDirectoryShape): boolean {
   return layout.type === 'coding';
 }
 

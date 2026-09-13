@@ -190,6 +190,7 @@ export function ConnectionManagerModalContent({
     reconcileHandshake,
     commitVerifiedPairing,
     makeDefaultProfile,
+    updateSharedProfile,
     getConnectionCredential,
     commitEndpointCandidate,
     failEndpointCandidate,
@@ -232,6 +233,11 @@ export function ConnectionManagerModalContent({
   const restorePairingCodeFocusRef = useRef(false);
   const [newName, setNewName] = useState('');
   const [newUrl, setNewUrl] = useState('');
+  const [editOriginal, setEditOriginal] = useState<SavedConnection | null>(
+    null,
+  );
+  const [editError, setEditError] = useState<string>();
+  const [editPending, setEditPending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editUrl, setEditUrl] = useState('');
@@ -670,20 +676,41 @@ export function ConnectionManagerModalContent({
     );
 
   const startEdit = (conn: SavedConnection) => {
+    setEditOriginal(conn);
+    setEditError(undefined);
     setEditingId(conn.id);
     setEditName(conn.name);
     setEditUrl(conn.url);
     setCredentialEntry('');
   };
 
-  const saveEdit = () => {
-    if (!editingId) return;
-    updateConnection(editingId, { name: editName, url: editUrl });
-    if (allowManualCredentials && credentialEntry.trim()) {
-      setCredential(editingId, credentialEntry);
+  const saveEdit = async () => {
+    if (!editingId || !editOriginal || editPending) return;
+    setEditPending(true);
+    setEditError(undefined);
+    try {
+      if (editingId.startsWith('station-profile:')) {
+        if (!updateSharedProfile)
+          throw new Error('This Station is read-only in this client.');
+        await updateSharedProfile({
+          connectionId: editingId,
+          expected: { name: editOriginal.name, url: editOriginal.url },
+          name: editName,
+          url: editUrl,
+        });
+      } else {
+        updateConnection(editingId, { name: editName, url: editUrl });
+        if (allowManualCredentials && credentialEntry.trim())
+          setCredential(editingId, credentialEntry);
+      }
+      setCredentialEntry('');
+      setEditingId(null);
+      setEditOriginal(null);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setEditPending(false);
     }
-    setCredentialEntry('');
-    setEditingId(null);
   };
 
   const statusForConn = (conn: SavedConnection) =>
@@ -943,7 +970,12 @@ export function ConnectionManagerModalContent({
               setCredentialEntry('');
             }}
             onConfirmEndpoint={confirmEndpoint}
-            onSaveEdit={saveEdit}
+            onSaveEdit={() => {
+              void saveEdit();
+            }}
+            canEditSharedProfiles={Boolean(updateSharedProfile)}
+            editError={editError}
+            editPending={editPending}
             onCancelEdit={() => {
               setEditingId(null);
               setCredentialEntry('');

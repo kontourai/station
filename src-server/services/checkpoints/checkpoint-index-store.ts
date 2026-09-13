@@ -28,7 +28,7 @@ const MAX_THREADS = 400;
  * record belongs to, which is the shape the bounds describe.
  */
 const INDEX_DIR_NAME = 'turn-checkpoints';
-export const EVICTED_INDEX_DIR_NAME = 'turn-checkpoints-evicted';
+const EVICTED_INDEX_DIR_NAME = 'turn-checkpoints-evicted';
 
 interface ThreadCheckpointFile {
   version: typeof STORE_VERSION;

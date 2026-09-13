@@ -1,8 +1,9 @@
-import { type ChildProcess, spawn } from 'node:child_process';
+import type { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import {
   allocateDevPorts,
   deriveDevInstanceAndHome,
@@ -15,6 +16,11 @@ import {
   resolveStationRoot,
   spawnedStationRoot,
 } from '../packages/shared/src/runtime-path-resolver.js';
+import {
+  executeOwnedCommand,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from './lib/owned-process.mjs';
 
 interface DesktopDevContract {
   readonly productName: string;
@@ -133,9 +139,79 @@ export function desktopDevTauriConfig(contract: DesktopDevContract) {
     },
   };
 }
-function onceExit(child: ChildProcess): Promise<number> {
-  return new Promise((done) => child.once('exit', (code) => done(code ?? 1)));
+/** The launcher settles complete process trees before releasing its config. */
+export async function runDesktopDevProcesses(
+  commands: readonly { executable: string; args: string[]; label: string }[],
+  options: {
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    signals?: Pick<EventEmitter, 'once' | 'removeListener'>;
+  },
+): Promise<number> {
+  const signals = options.signals ?? process;
+  const executions: ReturnType<typeof executeOwnedCommand>[] = [];
+  let interrupted!: (code: number) => void;
+  const signalExit = new Promise<number>((resolveExit) => {
+    interrupted = resolveExit;
+  });
+  const onInterrupt = () => interrupted(130);
+  const onTerminate = () => interrupted(143);
+  signals.once('SIGINT', onInterrupt);
+  signals.once('SIGTERM', onTerminate);
+  let startError: unknown;
+  let exitCode = 1;
+  try {
+    for (const command of commands)
+      executions.push(
+        executeOwnedCommand(
+          command.executable,
+          command.args,
+          undefined,
+          command.label,
+          {
+            cwd: options.cwd,
+            env: options.env,
+            stdio: 'inherit',
+            windowsHide: true,
+          },
+        ),
+      );
+    exitCode = await Promise.race([
+      signalExit,
+      ...executions.map(async (execution) => {
+        const result = await execution.completion;
+        return result.status ?? 1;
+      }),
+    ]);
+  } catch (error) {
+    startError = error;
+  }
+  {
+    const outcomes = await Promise.allSettled(
+      executions.map((execution) =>
+        terminateSuiteExecution(execution, {
+          processLabel: 'desktop development',
+          terminationGraceMs: 5000,
+          terminationForceMs: 5000,
+          waitForSuiteSettlement,
+        }),
+      ),
+    );
+    signals.removeListener('SIGINT', onInterrupt);
+    signals.removeListener('SIGTERM', onTerminate);
+    if (
+      outcomes.some(
+        (outcome) => outcome.status === 'rejected' || !outcome.value.settled,
+      )
+    )
+      throw new Error(
+        'Desktop development process cleanup is incomplete; temporary configuration was retained.',
+      );
+  }
+  if (startError) throw startError;
+  return exitCode;
 }
+
 async function main() {
   const cwd = resolve(process.cwd());
   const contract = await resolveDesktopDevContract({ cwd });
@@ -143,28 +219,39 @@ async function main() {
   const temp = mkdtempSync(join(tmpdir(), 'station-desktop-dev-'));
   const config = join(temp, 'tauri.dev.json');
   writeFileSync(config, `${JSON.stringify(desktopDevTauriConfig(contract))}\n`);
-  const vite = spawn(
-    'npx',
-    ['vite', 'dev', '--host', '127.0.0.1', '--port', String(contract.uiPort)],
-    { cwd, env, stdio: 'inherit' },
+  const require = createRequire(import.meta.url);
+  const vite = join(
+    dirname(require.resolve('vite/package.json')),
+    'bin/vite.js',
   );
-  const tauri = spawn('npx', ['tauri', 'dev', '--config', config], {
-    cwd,
-    env,
-    stdio: 'inherit',
-  });
-  const stop = () => {
-    if (!vite.killed) vite.kill('SIGTERM');
-    if (!tauri.killed) tauri.kill('SIGTERM');
-  };
-  process.once('SIGINT', stop);
-  process.once('SIGTERM', stop);
-  try {
-    process.exitCode = await Promise.race([onceExit(vite), onceExit(tauri)]);
-  } finally {
-    stop();
-    rmSync(temp, { recursive: true, force: true });
-  }
+  const tauri = join(
+    dirname(require.resolve('@tauri-apps/cli/package.json')),
+    'tauri.js',
+  );
+  process.exitCode = await runDesktopDevProcesses(
+    [
+      {
+        executable: process.execPath,
+        args: [
+          vite,
+          'dev',
+          '--host',
+          '127.0.0.1',
+          '--port',
+          String(contract.uiPort),
+          '--strictPort',
+        ],
+        label: 'desktop Vite',
+      },
+      {
+        executable: process.execPath,
+        args: [tauri, 'dev', '--config', config],
+        label: 'desktop Tauri',
+      },
+    ],
+    { cwd, env },
+  );
+  rmSync(temp, { recursive: true, force: true });
 }
 if (
   process.argv[1] &&

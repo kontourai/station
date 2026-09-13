@@ -57,16 +57,17 @@ if (( ${#devices} > 1 )) && [[ -z "${STATION_ANDROID_SERIAL:-}" ]]; then
 fi
 serial="${STATION_ANDROID_SERIAL:-${devices[1]}}"
 
-npm ci
+npm run dependencies:ci
 npm run build:ui
-npx tauri android init
+npx tauri android init --config src-desktop/tauri.android.dev.conf.json
 node scripts/apply-android-native-bootstrap.mjs
+node scripts/apply-android-pairing-scheme.mjs dev
 
 # The 16 KB page-alignment linker flags must ride RUSTFLAGS: an environment
 # RUSTFLAGS replaces target rustflags instead of merging with
 # src-desktop/.cargo/config.toml (see docs/guides/android-build.md).
 RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384' \
-  npx tauri android build -t aarch64 --debug --apk
+  npx tauri android build -t aarch64 --debug --apk --config src-desktop/tauri.android.dev.conf.json
 
 apk="$repo_root/src-desktop/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk"
 if [[ ! -f "$apk" ]]; then

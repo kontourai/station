@@ -1037,20 +1037,6 @@ export class ConfigLoader {
   }
 
   /**
-   * Check if tool exists
-   */
-  async toolExists(id: string): Promise<boolean> {
-    const path = join(
-      this.projectHomeDir,
-      'integrations',
-      id,
-      'integration.json',
-    );
-    if (existsSync(path)) return true;
-    return this.integrationSources.some((source) => source.loadIntegration(id));
-  }
-
-  /**
    * Set up file watcher for configuration changes
    */
   private setupFileWatcher(): void {

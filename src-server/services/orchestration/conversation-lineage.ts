@@ -977,20 +977,23 @@ function continuationLaunchContext(
   // transcript-seed fresh child instead of a start the adapter must refuse.
   // `undefined` keeps the cursor path for every provider this observation
   // cannot speak for.
-  return sameExecutionIdentity &&
+  const canResume =
+    sameExecutionIdentity &&
     detail.session.resumeCursor !== undefined &&
     cursorBackedByTranscript &&
     !cursorDisprovenByEngine &&
-    resumeSupported !== false
-    ? {
-        resumeCursor: detail.session.resumeCursor,
-        ...((detail.session.reportedModel ?? detail.session.model)
-          ? {
-              resumeModel: detail.session.reportedModel ?? detail.session.model,
-            }
-          : {}),
-      }
-    : { transcriptSeed: continuationTranscriptSeed(messages) };
+    resumeSupported !== false;
+  // A fresh process for the same engine still continues the user's model
+  // choice. A native cursor determines context delivery, not model selection.
+  const retainedModel = sameExecutionIdentity
+    ? (detail.session.reportedModel ?? detail.session.model)
+    : undefined;
+  return {
+    ...(retainedModel ? { resumeModel: retainedModel } : {}),
+    ...(canResume
+      ? { resumeCursor: detail.session.resumeCursor }
+      : { transcriptSeed: continuationTranscriptSeed(messages) }),
+  };
 }
 
 /**

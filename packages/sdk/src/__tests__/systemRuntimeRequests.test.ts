@@ -14,6 +14,8 @@ import {
   fetchFleetServeReceiptsForStation,
   fetchMonitoringMetrics,
   fetchServerCapabilities,
+  requestCoreUpdateStatus,
+  requestSystemIdentity,
   requestSystemStatus,
   verifyManagedRuntimeConnection,
 } from '../query-domains/systemRuntimeRequests';
@@ -349,6 +351,368 @@ describe('systemRuntimeRequests', () => {
     expect(new Headers(init.headers).get('Content-Type')).toBe(
       'application/json',
     );
+  });
+
+  describe('core-update status diagnostics (update-ux PR2)', () => {
+    const identity = {
+      instanceId: 'desktop',
+      bootId: '22222222-2222-4222-8222-222222222222',
+      sha: 'a'.repeat(40),
+      shaSource: 'build-stamp',
+    };
+
+    it('preserves valid diagnostics verbatim', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          installKind: 'unknown',
+          updateAvailable: false,
+          message: "This server's update provenance is invalid.",
+          serverIdentity: identity,
+          provenanceIssue: 'invalid-stamp',
+          technicalDetail: 'a build stamp exists at /b/x but is malformed',
+          selfUpdateUnavailableReason: null,
+        }),
+      } as Response);
+
+      const status = await requestCoreUpdateStatus('http://custom.test');
+      expect(status.serverIdentity).toEqual(identity);
+      expect(status.provenanceIssue).toBe('invalid-stamp');
+      expect(status.technicalDetail).toBe(
+        'a build stamp exists at /b/x but is malformed',
+      );
+      expect(status.selfUpdateUnavailableReason).toBeNull();
+      // Never inferred: applyMethod stays whatever the server said.
+      expect(status.applyMethod).toBeUndefined();
+    });
+
+    it('normalizes a legacy response with no diagnostics to explicit unavailability', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          installKind: 'source-checkout',
+          branch: 'main',
+          behind: 2,
+          ahead: 1,
+          updateAvailable: true,
+        }),
+      } as Response);
+
+      await expect(
+        requestCoreUpdateStatus('http://custom.test'),
+      ).resolves.toMatchObject({
+        updateAvailable: true,
+        behind: 2,
+        serverIdentity: null,
+        provenanceIssue: null,
+        technicalDetail: null,
+        selfUpdateUnavailableReason: null,
+      });
+    });
+
+    it('rejects a non-boolean updateAvailable instead of trusting it', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ updateAvailable: 'yes' }),
+      } as Response);
+
+      await expect(
+        requestCoreUpdateStatus('http://custom.test'),
+      ).rejects.toThrow('Core update status is unavailable');
+    });
+
+    it('rejects a malformed supplied count used for state derivation', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ updateAvailable: true, behind: 'three' }),
+      } as Response);
+
+      await expect(
+        requestCoreUpdateStatus('http://custom.test'),
+      ).rejects.toThrow('Core update status is unavailable');
+    });
+
+    it('normalizes a malformed serverIdentity to unavailable, never a partial identity', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          updateAvailable: false,
+          // sha missing: the load-bearing third of the triple.
+          serverIdentity: {
+            instanceId: 'desktop',
+            bootId: '22222222-2222-4222-8222-222222222222',
+          },
+        }),
+      } as Response);
+
+      const status = await requestCoreUpdateStatus('http://custom.test');
+      expect(status.serverIdentity).toBeNull();
+    });
+
+    it('an unknown provenance code stays unknown — it never becomes "missing"', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          updateAvailable: false,
+          provenanceIssue: 'quarantined-by-future-policy',
+        }),
+      } as Response);
+
+      const status = await requestCoreUpdateStatus('http://custom.test');
+      expect(status.provenanceIssue).toBeNull();
+    });
+
+    it('rejects HTTP 503/401 before parsing the body as success', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        json: async () => ({ ready: false, status: 'identity_unavailable' }),
+      } as Response);
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: async () => ({ error: 'Unauthorized' }),
+      } as Response);
+
+      for (const expected of [503, 401]) {
+        let caught: unknown;
+        try {
+          await requestCoreUpdateStatus('http://custom.test');
+        } catch (error) {
+          caught = error;
+        }
+        expect(caught).toBeInstanceOf(StationHttpError);
+        expect((caught as StationHttpError).status).toBe(expected);
+      }
+    });
+
+    it('forwards the caller abort signal to the fetch', async () => {
+      const controller = new AbortController();
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ updateAvailable: false }),
+      } as Response);
+
+      await requestCoreUpdateStatus('http://custom.test', controller.signal);
+      expect(fetch).toHaveBeenCalledWith(
+        'http://custom.test/api/system/core-update',
+        { signal: controller.signal },
+      );
+    });
+
+    it('still throws on a genuine error field, before any status is read', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ updateAvailable: false, error: 'boom' }),
+      } as Response);
+
+      await expect(
+        requestCoreUpdateStatus('http://custom.test'),
+      ).rejects.toThrow('boom');
+    });
+
+    it('throws the server error message alone, with no status fields at all', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ error: 'boom' }),
+      } as Response);
+
+      await expect(
+        requestCoreUpdateStatus('http://custom.test'),
+      ).rejects.toThrow('boom');
+    });
+
+    it.each([
+      ['noUpstream', 'yes'],
+      ['remoteUnreachable', 1],
+    ])(
+      'rejects a non-boolean %s used for state derivation (%p)',
+      async (field, supplied) => {
+        vi.mocked(fetch).mockResolvedValue({
+          ok: true,
+          json: async () => ({ updateAvailable: false, [field]: supplied }),
+        } as Response);
+
+        await expect(
+          requestCoreUpdateStatus('http://custom.test'),
+        ).rejects.toThrow('Core update status is unavailable');
+      },
+    );
+
+    it.each([
+      ['null body', null],
+      ['string body', 'x'],
+    ])(
+      'rejects a %s instead of reading it as a status',
+      async (_label, body) => {
+        vi.mocked(fetch).mockResolvedValue({
+          ok: true,
+          json: async () => body,
+        } as unknown as Response);
+
+        await expect(
+          requestCoreUpdateStatus('http://custom.test'),
+        ).rejects.toThrow('Core update status is unavailable');
+      },
+    );
+  });
+
+  describe('system identity (update-ux PR2)', () => {
+    it('reads a complete identity with its request-bound presentation', async () => {
+      const controller = new AbortController();
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          instanceId: 'phone-dogfood',
+          bootId: '11111111-1111-4111-8111-111111111111',
+          sha: 'abcdef0123456789abcdef0123456789abcdef01',
+          shaSource: 'checkout',
+          devicePresentation: { deviceClass: 'paired', hostName: 'kontour' },
+        }),
+      } as Response);
+
+      const identityResponse = await requestSystemIdentity(
+        'http://custom.test',
+        controller.signal,
+      );
+      expect(identityResponse).toEqual({
+        instanceId: 'phone-dogfood',
+        bootId: '11111111-1111-4111-8111-111111111111',
+        sha: 'abcdef0123456789abcdef0123456789abcdef01',
+        shaSource: 'checkout',
+        devicePresentation: { deviceClass: 'paired', hostName: 'kontour' },
+      });
+      expect(fetch).toHaveBeenCalledWith(
+        'http://custom.test/api/system/identity',
+        { signal: controller.signal },
+      );
+    });
+
+    it('accepts an older server that omits the optional presentation', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          instanceId: 'phone-dogfood',
+          bootId: '11111111-1111-4111-8111-111111111111',
+          sha: 'abcdef0123456789abcdef0123456789abcdef01',
+        }),
+      } as Response);
+
+      const identityResponse =
+        await requestSystemIdentity('http://custom.test');
+      expect(identityResponse.devicePresentation).toBeUndefined();
+      expect(identityResponse.instanceId).toBe('phone-dogfood');
+    });
+
+    it('rejects an incomplete identity triple rather than serving a partial identity', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          instanceId: 'phone-dogfood',
+          bootId: '11111111-1111-4111-8111-111111111111',
+          sha: 'not-a-sha',
+        }),
+      } as Response);
+
+      await expect(requestSystemIdentity('http://custom.test')).rejects.toThrow(
+        'System identity is unavailable',
+      );
+    });
+
+    it.each([
+      [
+        'instanceId',
+        {
+          bootId: '11111111-1111-4111-8111-111111111111',
+          sha: 'abcdef0123456789abcdef0123456789abcdef01',
+        },
+      ],
+      [
+        'bootId',
+        {
+          instanceId: 'phone-dogfood',
+          sha: 'abcdef0123456789abcdef0123456789abcdef01',
+        },
+      ],
+    ])('rejects a triple missing its %s leg', async (_leg, body) => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => body,
+      } as Response);
+
+      await expect(requestSystemIdentity('http://custom.test')).rejects.toThrow(
+        'System identity is unavailable',
+      );
+    });
+
+    it('drops a malformed shaSource label silently, keeping the identity', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          instanceId: 'phone-dogfood',
+          bootId: '11111111-1111-4111-8111-111111111111',
+          sha: 'abcdef0123456789abcdef0123456789abcdef01',
+          shaSource: 42,
+        }),
+      } as Response);
+
+      const identityResponse =
+        await requestSystemIdentity('http://custom.test');
+      // The triple survives; only the unproven label is gone — no throw, no
+      // fabricated shaSource.
+      expect(identityResponse.instanceId).toBe('phone-dogfood');
+      expect(identityResponse).not.toHaveProperty('shaSource');
+    });
+
+    it.each([
+      ['null body', null],
+      ['string body', 'x'],
+    ])(
+      'rejects a %s instead of reading it as an identity',
+      async (_label, body) => {
+        vi.mocked(fetch).mockResolvedValue({
+          ok: true,
+          json: async () => body,
+        } as unknown as Response);
+
+        await expect(
+          requestSystemIdentity('http://custom.test'),
+        ).rejects.toThrow('System identity is unavailable');
+      },
+    );
+
+    it('drops a malformed devicePresentation instead of projecting it', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          instanceId: 'phone-dogfood',
+          bootId: '11111111-1111-4111-8111-111111111111',
+          sha: 'abcdef0123456789abcdef0123456789abcdef01',
+          devicePresentation: { deviceClass: 'teleporter', hostName: '' },
+        }),
+      } as Response);
+
+      const identityResponse =
+        await requestSystemIdentity('http://custom.test');
+      expect(identityResponse.devicePresentation).toBeUndefined();
+    });
+
+    it('surfaces the 503 identity_unavailable branch as a preserved StationHttpError', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: async () => ({ ready: false, status: 'identity_unavailable' }),
+      } as Response);
+
+      let caught: unknown;
+      try {
+        await requestSystemIdentity('http://custom.test');
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(StationHttpError);
+      expect((caught as StationHttpError).status).toBe(503);
+    });
   });
 
   it('reads optional deployment capability facts without changing the endpoint', async () => {

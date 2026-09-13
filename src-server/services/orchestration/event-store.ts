@@ -1024,6 +1024,22 @@ function persistedRequestId(event: CanonicalRuntimeEvent): string | null {
   }
 }
 
+/** Cursor mode survives a reconnect or client upgrade; old cursors keep their order. */
+function requestsNewestWindow(options: {
+  cursor?: string;
+  direction?: 'newest';
+}): boolean {
+  if (!options.cursor) return options.direction === 'newest';
+  try {
+    return (
+      JSON.parse(Buffer.from(options.cursor, 'base64url').toString('utf8'))
+        ?.kind === 'newest-event-window-v1'
+    );
+  } catch {
+    return false;
+  }
+}
+
 interface EventWindowCursor {
   createdAt: string;
   turnId: string;
@@ -1167,7 +1183,10 @@ function sliceSnapshotText(value: unknown): { text: string; cut: boolean } {
  * From the client, a stripped payload and a payload that never had those
  * fields are the same bytes.
  */
-function snapshotEvent(event: PersistedRuntimeEvent): PersistedRuntimeEvent {
+function snapshotEvent(
+  event: PersistedRuntimeEvent,
+  maxBytes = SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+): PersistedRuntimeEvent {
   const payload = event.payload as unknown as Record<string, unknown>;
   let outputCut = false;
   let snapshotPayload = payload;
@@ -1240,10 +1259,7 @@ function snapshotEvent(event: PersistedRuntimeEvent): PersistedRuntimeEvent {
       ...(output ? { output: output.text } : {}),
     };
   }
-  if (
-    Buffer.byteLength(JSON.stringify(snapshotPayload)) <=
-    SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES
-  ) {
+  if (Buffer.byteLength(JSON.stringify(snapshotPayload)) <= maxBytes) {
     return {
       ...event,
       payload: snapshotPayload as unknown as CanonicalRuntimeEvent,
@@ -6145,10 +6161,188 @@ export class EventStore {
     };
   }
 
-  listEventWindowByTurn(
-    threadId: string,
+  /** A newest-first transport page, returned in canonical display order. */
+  private listNewestEventWindow(
+    threadIds: readonly string[],
     options: { cursor?: string; turnLimit: number },
   ): PersistedRuntimeEventWindow {
+    type Cursor = {
+      kind: 'newest-event-window-v1';
+      threadIds: string[];
+      watermark: number;
+      before: number;
+      rangeStart?: number;
+      olderTurnsRemain?: boolean;
+    };
+    let cursor: Cursor | undefined;
+    if (options.cursor) {
+      const value = JSON.parse(
+        Buffer.from(options.cursor, 'base64url').toString('utf8'),
+      );
+      if (
+        !value ||
+        value.kind !== 'newest-event-window-v1' ||
+        !Array.isArray(value.threadIds) ||
+        !value.threadIds.length ||
+        !value.threadIds.every(
+          (id: unknown, index: number) =>
+            typeof id === 'string' && id === threadIds[index],
+        ) ||
+        !Number.isSafeInteger(value.watermark) ||
+        value.watermark < 0 ||
+        !Number.isSafeInteger(value.before) ||
+        value.before < 1 ||
+        value.before > value.watermark + 1 ||
+        (value.rangeStart !== undefined &&
+          (!Number.isSafeInteger(value.rangeStart) ||
+            value.rangeStart < 1 ||
+            value.rangeStart >= value.before)) ||
+        (value.olderTurnsRemain !== undefined &&
+          typeof value.olderTurnsRemain !== 'boolean')
+      )
+        throw new Error('Invalid newest event window cursor');
+      cursor = value;
+    }
+    const ids = cursor?.threadIds ?? [...threadIds];
+    if (!ids.length || new Set(ids).size !== ids.length)
+      throw new Error('Invalid event window lineage');
+    const placeholders = ids.map(() => '?').join(', ');
+    this.db.exec('BEGIN');
+    try {
+      const watermark =
+        cursor?.watermark ??
+        (
+          this.db
+            .prepare(
+              `SELECT COALESCE(MAX(global_sequence), 0) AS head FROM orchestration_events WHERE thread_id IN (${placeholders})`,
+            )
+            .get(...ids) as { head: number }
+        ).head;
+      const before = cursor?.before ?? watermark + 1;
+      const starts =
+        cursor?.rangeStart !== undefined
+          ? []
+          : (this.db
+              .prepare(
+                `SELECT global_sequence FROM orchestration_events WHERE thread_id IN (${placeholders}) AND method = 'turn.started' AND turn_id IS NOT NULL AND global_sequence < ? ORDER BY global_sequence DESC LIMIT ?`,
+              )
+              .all(
+                ...ids,
+                before,
+                Math.min(50, Math.max(1, options.turnLimit)) + 1,
+              ) as Array<{ global_sequence: number }>);
+      const selected = starts.slice(
+        0,
+        Math.min(50, Math.max(1, options.turnLimit)),
+      );
+      const rangeStart = cursor?.rangeStart ?? selected.at(-1)?.global_sequence;
+      const olderTurnsRemain =
+        cursor?.rangeStart !== undefined
+          ? cursor.olderTurnsRemain === true
+          : starts.length > selected.length;
+      if (rangeStart === undefined) {
+        this.db.exec('COMMIT');
+        return { events: [], hasMore: false, watermark };
+      }
+      // One slot and 4 KiB are reserved for the first retained turn's prompt.
+      // The final reply is read before the progress flood, never after it.
+      const rows = this.db
+        .prepare(
+          `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence FROM orchestration_events WHERE thread_id IN (${placeholders}) AND global_sequence >= ? AND global_sequence < ? ORDER BY global_sequence DESC LIMIT ?`,
+        )
+        .all(
+          ...ids,
+          rangeStart,
+          before,
+          SESSION_EVENT_WINDOW_MAX_EVENTS,
+        ) as any[];
+      const events: PersistedRuntimeEvent[] = [];
+      let bytes = 0;
+      for (const row of rows.slice(0, SESSION_EVENT_WINDOW_MAX_EVENTS - 1)) {
+        const event = snapshotEvent(
+          mapPersistedEventRow(row),
+          row.method === 'turn.completed'
+            ? 48_000
+            : SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+        );
+        const size = Buffer.byteLength(
+          JSON.stringify({
+            sequence: event.globalSequence,
+            event: event.payload,
+          }),
+        );
+        if (
+          events.length &&
+          bytes + size > SESSION_EVENT_WINDOW_MAX_SERIALIZED_BYTES - 4_600
+        )
+          break;
+        events.push(event);
+        bytes += size;
+      }
+      const oldest = events.at(-1);
+      const moreInRange = rows.length > events.length;
+      if (
+        oldest?.turnId &&
+        !events.some(
+          (event) =>
+            event.method === 'turn.started' &&
+            event.threadId === oldest.threadId &&
+            event.turnId === oldest.turnId,
+        )
+      ) {
+        const anchor = this.db
+          .prepare(
+            `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence FROM orchestration_events WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started' AND global_sequence >= ? AND global_sequence < ? ORDER BY sequence ASC LIMIT 1`,
+          )
+          .get(
+            oldest.threadId,
+            oldest.turnId,
+            rangeStart,
+            oldest.globalSequence,
+          ) as any;
+        if (anchor) events.push(snapshotEvent(mapPersistedEventRow(anchor)));
+      }
+      const hasMore = moreInRange || olderTurnsRemain;
+      const next: Cursor | undefined =
+        hasMore && oldest
+          ? {
+              kind: 'newest-event-window-v1',
+              threadIds: ids,
+              watermark,
+              before: moreInRange ? oldest.globalSequence : rangeStart,
+              ...(moreInRange ? { rangeStart, olderTurnsRemain } : {}),
+            }
+          : undefined;
+      const result = {
+        events: events.reverse(),
+        hasMore,
+        ...(next
+          ? {
+              nextCursor: Buffer.from(JSON.stringify(next)).toString(
+                'base64url',
+              ),
+            }
+          : {}),
+        watermark,
+      };
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      try {
+        this.db.exec('ROLLBACK');
+      } catch {
+        /* preserve the read failure */
+      }
+      throw error;
+    }
+  }
+
+  listEventWindowByTurn(
+    threadId: string,
+    options: { cursor?: string; turnLimit: number; direction?: 'newest' },
+  ): PersistedRuntimeEventWindow {
+    if (requestsNewestWindow(options))
+      return this.listNewestEventWindow([threadId], options);
     const cursor = decodeEventWindowCursor(options.cursor, threadId);
     let windowResult: PersistedRuntimeEventWindow;
     this.db.exec('BEGIN');
@@ -6378,8 +6572,10 @@ export class EventStore {
    */
   listConversationEventWindowByTurn(
     threadIds: readonly string[],
-    options: { cursor?: string; turnLimit: number },
+    options: { cursor?: string; turnLimit: number; direction?: 'newest' },
   ): PersistedRuntimeEventWindow {
+    if (requestsNewestWindow(options))
+      return this.listNewestEventWindow(threadIds, options);
     const ids = [...threadIds];
     if (ids.length === 0 || new Set(ids).size !== ids.length) {
       throw new Error('Conversation event window lineage is invalid');

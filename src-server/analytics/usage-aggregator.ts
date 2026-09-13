@@ -301,32 +301,6 @@ export class UsageAggregator {
   }
 
   /**
-   * Read-only bridge for the usage-rollup module. Existing EventStore usage
-   * facts have no Station-observed ingestion timestamp, so this deliberately
-   * publishes one receipt per canonical folded session with `observedAt`
-   * absent and a legacy/unknown coverage result at the caller.
-   */
-  readLegacyUsageReceipts(stationId = 'local'): UsageReceipt[] | undefined {
-    const sessions = this.readOrchestrationSessionUsage();
-    if (sessions === undefined) return undefined;
-    return sessions.map(({ threadId, conversationId, usage }) => ({
-      id: `legacy-session:${threadId}`,
-      stationId,
-      provider: usage.provider ?? 'unattributed',
-      ...(usage.lastModelId ? { model: usage.lastModelId } : {}),
-      conversationId,
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      cacheReadTokens: usage.cacheReadTokens,
-      cacheWriteTokens: usage.cacheWriteTokens,
-      pricing: { status: 'unpriced' },
-      ...(usage.reportedCostUsd === undefined
-        ? {}
-        : { reportedCost: { amount: usage.reportedCostUsd, currency: 'USD' } }),
-    }));
-  }
-
-  /**
    * A usage rollup has a request authority, unlike the historic lifetime
    * stats projection. Prefer the authoritative event-store receipts when the
    * runtime provides them; the legacy fold remains visible but explicitly

@@ -206,7 +206,7 @@ declare global {
   }
 }
 
-export function interactiveWorkspaceReferenceModeEnabled(): boolean {
+function interactiveWorkspaceReferenceModeEnabled(): boolean {
   return (
     import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE === '1' &&
     new URLSearchParams(window.location.search).get(MODE_PARAM) === MODE_VALUE

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type {
+  PermissionMode,
   PermissionResult,
   PermissionUpdate,
   SDKMessage,
@@ -15,10 +16,12 @@ import type {
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderSession } from '../adapter-shape.js';
 import { reportedModelMetadata } from '../llm/effective-model-metadata.js';
+import { mapPermissionModeToApprovalMode } from './claude-approval-mode.js';
 import {
   classifyClaudeResultOutcome,
   claudeResultFailureText,
 } from './claude-result-outcome.js';
+import { claudeSourceResumeCursor } from './claude-resume-cursor.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /** A token figure is only usable when it is a finite, non-negative count. */
@@ -166,6 +169,9 @@ function claudeDeferredToolUse(
 
 export interface ClaudeMessageState {
   session: ProviderSession;
+  /** Live SDK permission mode; unset until Station sent one or init reported it. */
+  currentPermissionMode?: PermissionMode;
+  allowsBypassPermissions?: boolean;
   activeTurnId?: string;
   /**
    * The one local turn whose prompt has actually entered the SDK queue.
@@ -366,11 +372,23 @@ export function mapClaudeSdkMessage({
   const createdAt = new Date().toISOString();
 
   if (message.type === 'system' && message.subtype === 'init') {
-    record.session.resumeCursor = message.session_id;
+    const sourceCursor = claudeSourceResumeCursor(record.session.resumeCursor);
+    record.session.resumeCursor = sourceCursor
+      ? { ...sourceCursor, claudeSessionId: message.session_id }
+      : message.session_id;
     record.session.cwd = message.cwd;
     record.session.model = message.model;
     record.session.status = 'ready';
     record.session.updatedAt = createdAt;
+    if (message.permissionMode) {
+      record.currentPermissionMode = message.permissionMode;
+      if (message.permissionMode === 'bypassPermissions') {
+        record.allowsBypassPermissions = true;
+      }
+    }
+    const appliedApprovalMode = mapPermissionModeToApprovalMode(
+      message.permissionMode,
+    );
     publish({
       eventId: crypto.randomUUID(),
       provider,
@@ -380,6 +398,12 @@ export function mapClaudeSdkMessage({
       sessionId: record.session.threadId,
       model: message.model,
       cwd: message.cwd,
+      metadata: {
+        ...(message.permissionMode
+          ? { permissionMode: message.permissionMode }
+          : {}),
+        ...(appliedApprovalMode ? { approvalMode: appliedApprovalMode } : {}),
+      },
     });
     return;
   }

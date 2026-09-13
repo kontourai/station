@@ -127,10 +127,12 @@ import {
   isSelectionAmbiguityOnly,
   PROJECT_MANIFEST_SCHEMA_VERSION,
   type ProjectManifest,
+  type ProjectPortableIdentity,
   type ProjectRepoResource,
   validateProjectManifest,
 } from '@kontourai/station-contracts/project-identity';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
+import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { projectManifestBackfills } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
@@ -155,14 +157,7 @@ export const PROJECT_MANIFEST_FILENAME = 'manifest.json';
  * — see decision 1. Everything omitted here is joined from `project.json` (or
  * the layout store) at read time.
  */
-export interface ProjectManifestRecord {
-  schemaVersion: typeof PROJECT_MANIFEST_SCHEMA_VERSION;
-  /** Portable, opaque, generated once. Never machine- or path-derived (§3.2). */
-  id: string;
-  repos: ProjectRepoResource[];
-  createdAt: string;
-  updatedAt: string;
-}
+export type ProjectManifestRecord = ProjectPortableIdentity;
 
 export class ProjectManifestSchemaVersionError extends Error {
   constructor(
@@ -489,13 +484,13 @@ export class ProjectManifestStore {
     }
 
     const now = new Date().toISOString();
-    const candidate: ProjectManifestRecord = {
+    const candidate = parseProjectPortableIdentity({
       schemaVersion: PROJECT_MANIFEST_SCHEMA_VERSION,
       id: `prj_${randomUUID()}`,
       repos: derived.repos,
       createdAt: now,
       updatedAt: now,
-    };
+    });
     const filePath = this.manifestPath(project.slug);
     try {
       writeManifestRecordExclusively(

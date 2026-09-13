@@ -1,11 +1,23 @@
 export type TrayNavigationDestination =
   | 'connections'
   | 'pairedDevices'
-  | 'coreUpdates';
+  | 'coreUpdates'
+  | 'desktopUpdates'
+  | 'serverUpdates';
 
 type TrayNavigationTarget = {
   pathname: string;
   params?: Record<string, string | null>;
+};
+
+const DESKTOP_UPDATES_TARGET: TrayNavigationTarget = {
+  pathname: '/settings',
+  params: { view: 'system', highlight: 'desktop-app-updates' },
+};
+
+const SERVER_UPDATES_TARGET: TrayNavigationTarget = {
+  pathname: '/settings',
+  params: { view: 'system', highlight: 'core-app-updates' },
 };
 
 const DESTINATION_TARGETS: Record<
@@ -13,20 +25,25 @@ const DESTINATION_TARGETS: Record<
   TrayNavigationTarget
 > = {
   connections: { pathname: '/connections' },
-  coreUpdates: {
-    pathname: '/settings',
-    params: { view: 'system', highlight: 'core-app-updates' },
-  },
+  coreUpdates: SERVER_UPDATES_TARGET,
+  desktopUpdates: DESKTOP_UPDATES_TARGET,
+  serverUpdates: SERVER_UPDATES_TARGET,
 };
 
 /**
  * A closed native-tray navigation contract. Native code can only request the
- * two destinations represented here; it can never supply a path or query.
+ * destinations represented here; it can never supply a path or query.
+ * `coreUpdates` is the pre-split compatibility alias for the server card.
  */
 export function trayNavigationTarget(
   payload: unknown,
 ): TrayNavigationTarget | null {
-  if (payload === 'connections' || payload === 'coreUpdates') {
+  if (
+    payload === 'connections' ||
+    payload === 'coreUpdates' ||
+    payload === 'desktopUpdates' ||
+    payload === 'serverUpdates'
+  ) {
     return DESTINATION_TARGETS[payload];
   }
   return null;

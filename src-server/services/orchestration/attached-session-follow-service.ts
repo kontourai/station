@@ -6,6 +6,11 @@ import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
+import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
+import {
+  nativeSessionIdentityMatchesSource,
+  providerNativeSessionIdentity,
+} from '../../providers/provider-session-identity.js';
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
@@ -13,6 +18,10 @@ import type {
   AttachedSessionReadResult,
   AttachedSessionSource,
 } from '../../providers/sessions/attached-session-source.js';
+import {
+  isSessionSourceAffinity,
+  snapshotSessionSourceAffinity,
+} from '../../providers/sessions/session-source-affinity.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import {
   attachedSessionDiscovery,
@@ -24,6 +33,7 @@ import { expandTilde } from '../../utils/paths.js';
 import type { AdoptionLedger } from './adoption-ledger.js';
 import type { EventBus } from './event-bus.js';
 import type { EventStore } from './event-store.js';
+import { readCompletedSourceBoundary } from './external-session-continuation-context.js';
 
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
 const MIN_POLL_INTERVAL_MS = 250;
@@ -71,6 +81,7 @@ interface AttachedSessionCursorOwner {
   provider: string;
   sourceKind: string;
   sourceHandle: string;
+  affinity?: AttachedSessionDescriptor['affinity'];
   cursor: AttachedSessionCursor;
 }
 
@@ -186,6 +197,8 @@ interface AttachedSessionFollowServiceOptions {
   eventStore: EventStore;
   /** Adoption's composed Interface, used only for durable cursor ownership. */
   adoptionLedger?: AdoptionLedger;
+  /** Provider-owned projection of opaque cursors for duplicate suppression. */
+  adapterRegistry?: Pick<IProviderAdapterRegistry, 'get'>;
   eventBus: EventBus;
   /**
    * The raw project roots, straight off the project store. Still required:
@@ -312,14 +325,29 @@ export class AttachedSessionFollowService {
         outcome: discovered.outcome,
       });
       let followedSessions = 0;
-      for (const session of discovered.sessions) {
-        if (session.provider !== source.provider) {
+      for (const observed of discovered.sessions) {
+        if (
+          observed.provider !== source.provider ||
+          (observed.affinity !== undefined &&
+            !isSessionSourceAffinity(observed.affinity))
+        ) {
           attachedSessionDiscovery.add(1, {
             source: sourceLabel(source),
             outcome: 'rejected_candidate',
           });
           continue;
         }
+        const session: AttachedSessionDescriptor = Object.freeze({
+          provider: observed.provider,
+          sessionId: observed.sessionId,
+          threadId: observed.threadId,
+          cwd: observed.cwd,
+          createdAt: observed.createdAt,
+          sourceHandle: observed.sourceHandle,
+          ...(observed.affinity
+            ? { affinity: snapshotSessionSourceAffinity(observed.affinity) }
+            : {}),
+        });
         const attribution = resolveAttachedProjectRoot(
           session.cwd,
           projectRoots,
@@ -350,14 +378,26 @@ export class AttachedSessionFollowService {
     descriptor: AttachedSessionDescriptor,
     attribution: Exclude<AttachedProjectAttribution, { state: 'unattributed' }>,
   ): Promise<void> {
-    const state = this.followState(source, descriptor);
-    // archive#1997: one persisted-sessions snapshot for both the ownership
-    // check and the alias lookup — this ran up to four separate full
-    // `readSessions()` scans per followed session per 2s tick (two here, up
-    // to two more inside `followState` above), and every scan is synchronous
-    // sqlite + JSON parsing on the main thread. The two reads it replaces
-    // happened microseconds apart, so one snapshot is strictly consistent.
     const persistedSessions = this.options.eventStore.readSessions();
+    const persisted = persistedSessions.find(
+      (session) => session.threadId === descriptor.threadId,
+    );
+    // A stable Station thread id may outlive the configured source home (Claude
+    // derives it from the native session id). Never combine the old attachment
+    // with a newly discovered home under that same id. Legacy attachments with
+    // no affinity are allowed to migrate, but their cursor is not reusable, so
+    // the new source must replay from its beginning before gaining an affinity.
+    if (attachedSessionAffinityConflicts(persisted, descriptor)) {
+      attachedSessionDiscovery.add(1, {
+        source: sourceLabel(source),
+        outcome: 'rejected_candidate',
+      });
+      return;
+    }
+    const state = this.followState(source, descriptor, persistedSessions);
+    // archive#1997: one persisted-sessions snapshot for both the ownership
+    // check and the alias lookup. Every scan is synchronous sqlite + JSON
+    // parsing on the main thread, so the snapshot is passed into followState.
     if (this.isStationOwnedProviderCursor(descriptor, persistedSessions)) {
       const alias = persistedSessions.find(
         (session) => session.threadId === descriptor.threadId,
@@ -414,7 +454,11 @@ export class AttachedSessionFollowService {
     } catch {
       // Preserve an already durable cursor even when this observation fails.
       // A later successful poll can continue without replaying the source.
-      this.persistAttachedSession(source, descriptor, reusableCursor);
+      // In particular, do not grant a legacy attachment a newly discovered
+      // affinity until that source has completed one successful bounded read.
+      if (!persisted) {
+        this.persistAttachedSession(source, descriptor, reusableCursor);
+      }
       attachedSessionDiscovery.add(1, {
         source: sourceLabel(source),
         outcome: 'unknown_source',
@@ -462,6 +506,9 @@ export class AttachedSessionFollowService {
       provider: source.provider,
       sourceKind: source.kind,
       sourceHandle: descriptor.sourceHandle,
+      ...(descriptor.affinity
+        ? { affinity: snapshotSessionSourceAffinity(descriptor.affinity) }
+        : {}),
       cursor: read.cursor,
     });
   }
@@ -469,10 +516,10 @@ export class AttachedSessionFollowService {
   private followState(
     source: AttachedSessionSource,
     descriptor: AttachedSessionDescriptor,
+    persistedSessions: ProviderSession[],
   ): FollowState {
     const cached = this.followStates.get(descriptor.threadId);
     if (cached) {
-      const persistedSessions = this.options.eventStore.readSessions();
       if (this.isStationOwnedProviderCursor(descriptor, persistedSessions)) {
         const alias = persistedSessions.find(
           (session) => session.threadId === descriptor.threadId,
@@ -487,7 +534,6 @@ export class AttachedSessionFollowService {
       return cached;
     }
 
-    const persistedSessions = this.options.eventStore.readSessions();
     const persisted = persistedSessions.find(
       (session) => session.threadId === descriptor.threadId,
     );
@@ -548,16 +594,26 @@ export class AttachedSessionFollowService {
     descriptor: AttachedSessionDescriptor,
     sessions = this.options.eventStore.readSessions(),
   ): boolean {
-    return (
-      this.adoptionLedger.reservesProviderCursor(
-        descriptor.provider,
+    const adapter = this.options.adapterRegistry?.get(descriptor.provider);
+    const matchesDescriptor = (resumeCursor: unknown) =>
+      nativeSessionIdentityMatchesSource(
+        providerNativeSessionIdentity(adapter, resumeCursor),
         descriptor.sessionId,
-      ) ||
+        descriptor.affinity,
+      );
+    return (
+      this.adoptionLedger
+        .reservations()
+        .some(
+          (reservation) =>
+            reservation.provider === descriptor.provider &&
+            matchesDescriptor(reservation.providerResumeCursor),
+        ) ||
       sessions.some(
         (session) =>
           session.controlMode !== 'read-only-attached' &&
           session.provider === descriptor.provider &&
-          session.resumeCursor === descriptor.sessionId,
+          matchesDescriptor(session.resumeCursor),
       )
     );
   }
@@ -567,9 +623,21 @@ export class AttachedSessionFollowService {
     descriptor: AttachedSessionDescriptor,
     cursor?: AttachedSessionCursor,
   ): void {
+    const completedBoundary =
+      source.continuationBoundary === 'completed-turn'
+        ? readCompletedSourceBoundary(
+            this.options.eventStore,
+            descriptor.provider,
+            descriptor.threadId,
+          )
+        : undefined;
     const attached = {
       kind: source.kind,
+      ...(completedBoundary ? { completedBoundary } : {}),
       externalSessionId: descriptor.sessionId,
+      ...(descriptor.affinity
+        ? { affinity: snapshotSessionSourceAffinity(descriptor.affinity) }
+        : {}),
     };
     const session = {
       provider: descriptor.provider,
@@ -640,6 +708,10 @@ function restoredAttachedSessionCursors(
     record.provider !== descriptor.provider ||
     persisted.attachedSource?.kind !== source.kind ||
     record.sourceHandle !== descriptor.sourceHandle ||
+    !sameSessionSourceAffinity(
+      persisted.attachedSource?.affinity,
+      descriptor.affinity,
+    ) ||
     !validAttachedSessionCursor(record.cursor)
   ) {
     return cursors;
@@ -648,6 +720,9 @@ function restoredAttachedSessionCursors(
     provider: source.provider,
     sourceKind: source.kind,
     sourceHandle: descriptor.sourceHandle,
+    ...(descriptor.affinity
+      ? { affinity: snapshotSessionSourceAffinity(descriptor.affinity) }
+      : {}),
     cursor: record.cursor,
   });
   return cursors;
@@ -680,8 +755,28 @@ function cursorMatchesSource(
   return (
     cursor?.provider === source.provider &&
     cursor.sourceKind === source.kind &&
-    cursor.sourceHandle === descriptor.sourceHandle
+    cursor.sourceHandle === descriptor.sourceHandle &&
+    sameSessionSourceAffinity(cursor.affinity, descriptor.affinity)
   );
+}
+
+function attachedSessionAffinityConflicts(
+  persisted: ProviderSession | undefined,
+  descriptor: AttachedSessionDescriptor,
+): boolean {
+  const previous = persisted?.attachedSource?.affinity;
+  return Boolean(
+    persisted?.controlMode === 'read-only-attached' &&
+      previous &&
+      !sameSessionSourceAffinity(previous, descriptor.affinity),
+  );
+}
+
+function sameSessionSourceAffinity(
+  left: AttachedSessionDescriptor['affinity'],
+  right: AttachedSessionDescriptor['affinity'],
+): boolean {
+  return left?.kind === right?.kind && left?.ref === right?.ref;
 }
 
 function validAttachedSessionCursor(

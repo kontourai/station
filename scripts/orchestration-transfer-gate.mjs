@@ -96,8 +96,15 @@ function exactRoot(root, label, shaExpected) {
   const subject = git(actual, ['rev-parse', 'HEAD']);
   if (subject !== shaExpected)
     fail(`${label} root is ${subject}, expected exact ${shaExpected}`);
-  if (git(actual, ['status', '--porcelain']) !== '')
-    fail(`${label} root is dirty; capture requires a clean full tree`);
+  const dirty = git(actual, ['status', '--porcelain']);
+  if (dirty !== '') {
+    const entries = dirty.split('\n');
+    const details = entries.slice(0, 10).map((entry) => entry.slice(0, 240));
+    if (entries.length > 10) details.push(`and ${entries.length - 10} more`);
+    fail(
+      `${label} root is dirty; capture requires a clean full tree. Observed changes: ${details.join('; ')}`,
+    );
+  }
   assertInstalledDependenciesMatchLockfile({ repositoryRoot: actual });
   assertWorkspacePackageProvenance({ repositoryRoot: actual });
   return actual;

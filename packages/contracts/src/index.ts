@@ -23,6 +23,7 @@ export * from './connection-quota.js';
 export * from './connection-recovery.js';
 export * from './contribution.js';
 export * from './conversation-intent-summary.js';
+export * from './conversation-pull-request-links.js';
 export * from './discord.js';
 export * from './distribution.js';
 export * from './enriched-agent.js';
