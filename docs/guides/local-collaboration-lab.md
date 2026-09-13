@@ -218,7 +218,10 @@ The fixture verifies the signed proof, then awaits `isCurrent(snapshot)` before
 accepting the peer description. An independent tab that revokes trust before
 that check causes refusal before SDP acceptance or application content. This
 check is not a synchronous replacement for the cryptographic verifier's
-`isCurrent` predicate: both checks retain their respective owners. It does not
+`isCurrent` predicate: both checks retain their respective owners. After the
+storage await, `verifier.assertStillCurrent()` rechecks the consumed proof's
+expiry and in-memory handshake authority before SDP acceptance; the storage
+read cannot extend the signed proof's lifetime. It does not
 promise continuous revocation of an already established channel; application
 requests still require the account lane's current session/Device authorization.
 

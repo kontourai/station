@@ -197,7 +197,25 @@ export function createStationConnectionProofVerifier(input: {
   const now = input.now ?? (() => Math.floor(Date.now() / 1000));
   const isCurrent = input.isCurrent;
   let consumed = false;
+  let validity: { notBefore: number; expiresAt: number } | undefined;
   return Object.freeze({
+    /** Recheck an already verified handshake after a caller's additional await. */
+    assertStillCurrent(): void {
+      try {
+        const current = now();
+        if (
+          !consumed ||
+          !validity ||
+          isCurrent() !== true ||
+          !Number.isSafeInteger(current) ||
+          current < validity.notBefore ||
+          current >= validity.expiresAt
+        )
+          refuse();
+      } catch {
+        refuse();
+      }
+    },
     async verifyAndConsume(
       token: string,
     ): Promise<StationConnectionProofBinding> {
@@ -266,6 +284,10 @@ export function createStationConnectionProofVerifier(input: {
         )
           return refuse();
         consumed = true;
+        validity = {
+          notBefore: payload.iat as number,
+          expiresAt: payload.exp as number,
+        };
         return binding;
       } catch {
         return refuse();

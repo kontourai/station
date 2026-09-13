@@ -121,6 +121,7 @@ export async function browserAccept({ sdp, pin, candidates, proof }) {
       throw new Error(
         'Device signing trust changed before accepting the connection',
       );
+    verifier.assertStillCurrent();
     lab.proofConsumed = true;
   } finally {
     lab.proofInFlight = false;

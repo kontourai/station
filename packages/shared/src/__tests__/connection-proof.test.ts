@@ -68,6 +68,33 @@ async function fixture() {
 }
 
 describe('Station connection proof', () => {
+  test('post-await checks require a consumed proof and retain expiry and currentness limits', async () => {
+    const sample = await fixture();
+    let time = 101;
+    let current = true;
+    const verifier = sample.verifier({
+      now: () => time,
+      isCurrent: () => current,
+    });
+    expect(() => verifier.assertStillCurrent()).toThrow(
+      'Station connection proof refused',
+    );
+    await verifier.verifyAndConsume(sample.token);
+    expect(() => verifier.assertStillCurrent()).not.toThrow();
+    time = 130;
+    expect(() => verifier.assertStillCurrent()).toThrow(
+      'Station connection proof refused',
+    );
+    time = 101;
+    current = false;
+    expect(() => verifier.assertStillCurrent()).toThrow(
+      'Station connection proof refused',
+    );
+    current = true;
+    await expect(verifier.verifyAndConsume(sample.token)).rejects.toThrow(
+      'Station connection proof refused',
+    );
+  });
   test('public trust helpers snapshot approved input and refuse invalid curve points and extra fields', async () => {
     const { trust } = await fixture();
     const expected = await calculateJwkThumbprint(trust.signingKey);

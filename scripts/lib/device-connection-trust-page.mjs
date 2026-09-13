@@ -95,3 +95,16 @@ export async function prepareBrowserTrustProof(stationId) {
   responder.close();
   return { clientNonce, connectionId, offer: localDescription, answer };
 }
+
+export function expireProofAfterTrustRead() {
+  const store = window.stationConnectionTrustStore;
+  window.stationConnectionTrustStore = {
+    ...store,
+    isCurrent: async (snapshot) => {
+      const result = await store.isCurrent(snapshot);
+      const expired = Date.now() + 31000;
+      Date.now = () => expired;
+      return result;
+    },
+  };
+}

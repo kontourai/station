@@ -26,6 +26,7 @@ import {
   corruptBrowserTrustRecord,
   deviceTrustOperation,
   downgradeBrowserTrustDurability,
+  expireProofAfterTrustRead,
   fillBrowserTrustStore,
   openBrowserTrustStore,
   prepareBrowserTrustProof,
@@ -282,52 +283,62 @@ test.each([
   },
 );
 
-test('the browser caller refuses a valid signed answer after another tab revokes trust', async () => {
-  const context = await browser.newContext();
-  const page = await pageIn(context);
-  const revoker = await pageIn(context);
-  const { trust, keyId, privateKey } = await key();
-  await operation(page, 'approve', trust, null, keyId);
-  const description = await page.evaluate(
-    prepareBrowserTrustProof,
-    trust.stationId,
-  );
-  const fingerprint = (sdp: string) => {
-    const value = sdp.match(/^a=fingerprint:sha-256 (.+)$/m)?.[1]?.trim();
-    if (!value)
-      throw new Error('Missing actual browser certificate fingerprint');
-    return value;
-  };
-  const binding = {
-    stationId: trust.stationId,
-    enrollmentId: trust.enrollmentId,
-    generation: trust.generation,
-    clientNonce: description.clientNonce,
-    connectionId: description.connectionId,
-    clientFingerprint: fingerprint(description.offer),
-    stationFingerprint: fingerprint(description.answer),
-    offerSha256: await connectionDescriptionDigest(description.offer),
-    answerSha256: await connectionDescriptionDigest(description.answer),
-  };
-  const proof = await signStationConnectionProof({
-    trust,
-    binding,
-    signingKey: privateKey,
-    now: Math.floor(Date.now() / 1000),
-  });
-  await operation(revoker, 'revoke', trust.stationId, 1);
-  await expect(
-    page.evaluate(browserAccept, {
-      sdp: description.answer,
-      pin: binding.stationFingerprint,
-      candidates: [],
-      proof,
-    }),
-  ).rejects.toThrow(
-    'Device signing trust changed before accepting the connection',
-  );
-  expect(await page.evaluate(browserHasNoRemoteDescription)).toBe(true);
-});
+test.each([
+  'another tab revokes trust',
+  'the proof expires during the trust read',
+])(
+  'the browser caller refuses a valid signed answer after %s',
+  async (reason) => {
+    const context = await browser.newContext();
+    const page = await pageIn(context);
+    const revoker = await pageIn(context);
+    const { trust, keyId, privateKey } = await key();
+    await operation(page, 'approve', trust, null, keyId);
+    const description = await page.evaluate(
+      prepareBrowserTrustProof,
+      trust.stationId,
+    );
+    const fingerprint = (sdp: string) => {
+      const value = sdp.match(/^a=fingerprint:sha-256 (.+)$/m)?.[1]?.trim();
+      if (!value)
+        throw new Error('Missing actual browser certificate fingerprint');
+      return value;
+    };
+    const binding = {
+      stationId: trust.stationId,
+      enrollmentId: trust.enrollmentId,
+      generation: trust.generation,
+      clientNonce: description.clientNonce,
+      connectionId: description.connectionId,
+      clientFingerprint: fingerprint(description.offer),
+      stationFingerprint: fingerprint(description.answer),
+      offerSha256: await connectionDescriptionDigest(description.offer),
+      answerSha256: await connectionDescriptionDigest(description.answer),
+    };
+    const proof = await signStationConnectionProof({
+      trust,
+      binding,
+      signingKey: privateKey,
+      now: Math.floor(Date.now() / 1000),
+    });
+    if (reason === 'another tab revokes trust')
+      await operation(revoker, 'revoke', trust.stationId, 1);
+    else await page.evaluate(expireProofAfterTrustRead);
+    await expect(
+      page.evaluate(browserAccept, {
+        sdp: description.answer,
+        pin: binding.stationFingerprint,
+        candidates: [],
+        proof,
+      }),
+    ).rejects.toThrow(
+      reason === 'another tab revokes trust'
+        ? 'Device signing trust changed before accepting the connection'
+        : 'Station connection proof refused',
+    );
+    expect(await page.evaluate(browserHasNoRemoteDescription)).toBe(true);
+  },
+);
 
 test('denied persistence fails instead of publishing memory-only approval', async () => {
   const page = await pageIn();
