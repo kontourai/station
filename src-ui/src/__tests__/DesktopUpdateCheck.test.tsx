@@ -22,7 +22,7 @@ function mount() {
     </QueryClientProvider>,
   );
   fireEvent.click(
-    screen.getByRole('button', { name: 'Check for Desktop Updates' }),
+    screen.getByRole('button', { name: 'Check for desktop app updates' }),
   );
   return view;
 }
@@ -42,11 +42,11 @@ test('releases replaced native update handles and the final handle on unmount', 
       close: closeSecond,
     });
   const view = mount();
-  await screen.findByText('Station first is available.');
+  await screen.findByText('Desktop app version first is available.');
   fireEvent.click(
-    screen.getByRole('button', { name: 'Check for Desktop Updates' }),
+    screen.getByRole('button', { name: 'Check for desktop app updates' }),
   );
-  await screen.findByText('Station second is available.');
+  await screen.findByText('Desktop app version second is available.');
   await waitFor(() => expect(closeFirst).toHaveBeenCalledOnce());
   expect(closeSecond).not.toHaveBeenCalled();
   view.unmount();
@@ -79,7 +79,9 @@ test('unmount does not close a native handle while installation is pending', asy
   check.mockResolvedValue({ version: 'next', downloadAndInstall, close });
   const view = mount();
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Install and restart' }),
+    await screen.findByRole('button', {
+      name: 'Install desktop app update and restart',
+    }),
   );
   await waitFor(() => expect(downloadAndInstall).toHaveBeenCalledOnce());
   view.unmount();
@@ -97,7 +99,9 @@ test('checks the native channel and installs before relaunching', async () => {
   });
   mount();
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Install and restart' }),
+    await screen.findByRole('button', {
+      name: 'Install desktop app update and restart',
+    }),
   );
   await waitFor(() => expect(relaunch).toHaveBeenCalledOnce());
   expect(check).toHaveBeenCalledWith({ timeout: 15_000 });
@@ -114,10 +118,10 @@ test('reports a failed channel check and allows a successful retry', async () =>
     'Could not check',
   );
   fireEvent.click(
-    screen.getByRole('button', { name: 'Check for Desktop Updates' }),
+    screen.getByRole('button', { name: 'Check for desktop app updates' }),
   );
   expect((await screen.findByRole('status')).textContent).toContain(
-    'up to date',
+    'No desktop app update',
   );
   expect(screen.queryByRole('alert')).toBeNull();
 });
@@ -133,10 +137,16 @@ test('failed installation never relaunches and can be retried', async () => {
     .mockResolvedValueOnce(undefined);
   mount();
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Install and restart' }),
+    await screen.findByRole('button', {
+      name: 'Install desktop app update and restart',
+    }),
   );
   await screen.findByRole('alert');
   expect(relaunch).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Install and restart' }));
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Install desktop app update and restart',
+    }),
+  );
   await waitFor(() => expect(relaunch).toHaveBeenCalledOnce());
 });

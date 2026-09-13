@@ -130,22 +130,54 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     ).toBeTruthy();
   });
 
-  test('an unknown install renders its message without a bare "Current:" label', () => {
-    renderWith({
-      installKind: 'unknown',
-      updateAvailable: false,
-      message:
-        'This install carries no update provenance (no git checkout and no build stamp), so updates cannot be checked from here.',
-    });
-    expect(screen.getByText(/no update provenance/).className).toContain(
+  // Fixture fidelity: the exact bytes the real route emits for a stampless
+  // bundle (system-update-routes.ts wraps the resolver's detail sentence).
+  const UNKNOWN_REFUSAL = {
+    installKind: 'unknown' as const,
+    updateAvailable: false,
+    message:
+      'This install carries no update provenance (no git checkout and no station-nightly-source.json build stamp near /bundle/Resources/dist-server), so updates cannot be checked from here.',
+  };
+
+  test('an unknown install renders the bounded refusal, never the raw diagnostic as explanation', () => {
+    renderWith(UNKNOWN_REFUSAL);
+    expect(screen.getByText('Server update check unavailable')).toBeTruthy();
+    const refusalBody = screen.getByText(/no usable update provenance/);
+    expect(refusalBody.closest('.settings__update-msg')?.className).toContain(
       'settings__update-msg--warning',
     );
-    // No provenance fields → no meta row at all, not empty labels.
+    // The resolver's raw detail exists only inside the collapsed disclosure —
+    // it is diagnostic text, not the explanation.
+    const details = screen.getByText('Technical details').closest('details');
+    expect(details).toBeTruthy();
+    expect(details!.open).toBe(false);
+    const diagnostic = screen.getByText(
+      /no git checkout and no station-nightly-source/,
+    );
+    expect(details!.contains(diagnostic)).toBe(true);
+    // No provenance fields → no meta row at all, and no apply path.
+    expect(screen.queryByRole('button', { name: /^Update \(/ })).toBeNull();
     expect(screen.queryByText(/Current:/)).toBeNull();
     expect(screen.queryByText(/Branch:/)).toBeNull();
     expect(
       screen.queryByText(/Pull latest changes from the git remote/),
     ).toBeNull();
+  });
+
+  test('opening Technical details reveals the raw provenance diagnostic', () => {
+    renderWith(UNKNOWN_REFUSAL);
+    const details = screen
+      .getByText('Technical details')
+      .closest('details') as HTMLDetailsElement;
+    fireEvent.click(screen.getByText('Technical details'));
+    expect(details.open).toBe(true);
+    expect(
+      screen.getByText(
+        'This install carries no update provenance (no git checkout and no station-nightly-source.json build stamp near /bundle/Resources/dist-server), so updates cannot be checked from here.',
+      ),
+    ).toBeTruthy();
+    // The bounded refusal stays visible alongside the disclosure.
+    expect(screen.getByText('Server update check unavailable')).toBeTruthy();
   });
 
   test('remoteUnreachable renders the message as a warning, not an error', () => {
@@ -278,7 +310,9 @@ describe('git-based self-update affordances (#1624)', () => {
     expect(signal?.aborted).toBe(true);
     expect(screen.getByText(/could not verify the expected restarted server/));
     expect(queryState.refetch).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check for server updates' }),
+    );
     expect(
       screen.queryByText(/could not verify the expected restarted server/),
     ).toBeNull();
@@ -392,7 +426,9 @@ describe('git-based self-update affordances (#1624)', () => {
     beginRestart();
     await act(async () => {});
 
-    fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check for server updates' }),
+    );
     expect(signal?.aborted).toBe(true);
     expect(screen.queryByText(/Restarting — verifying/)).toBeNull();
   });
