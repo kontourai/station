@@ -412,7 +412,17 @@ async function exchange(
               return new Response(null, { status: 404 });
             const marker = await request.text();
             assert.match(marker, /^sdk-request-[a-f0-9-]{36}$/);
-            return new Response(marker.repeat(512));
+            const address = server.address();
+            assert(address && typeof address !== 'string');
+            const origin = `http://127.0.0.1:${address.port}`;
+            assert.equal(
+              request.headers.get('Origin'),
+              origin,
+              'Virtual request must preserve the actual browser origin',
+            );
+            return new Response(marker.repeat(512), {
+              headers: { 'X-Fixture-Client-Origin': origin },
+            });
           },
         },
       );

@@ -215,11 +215,22 @@ export function createApplicationChannelFetch(options: {
           ? input.signal
           : new AbortController().signal),
     ]);
+    // Chrome's Request guard drops Origin because HTTP would add it later.
+    // A virtual transport must retain the explicit SDK origin and proof headers.
+    const suppliedHeaders = new Headers(
+      init?.headers !== undefined
+        ? init.headers
+        : input instanceof Request
+          ? input.headers
+          : undefined,
+    );
     const request = new Request(input, {
       ...init,
       signal,
       credentials: 'omit',
     });
+    const headers = new Headers(request.headers);
+    suppliedHeaders.forEach((value, name) => headers.set(name, value));
     const url = new URL(request.url);
     if (
       url.origin !== configuration.origin ||
@@ -236,7 +247,7 @@ export function createApplicationChannelFetch(options: {
       type: 'request',
       method: request.method,
       path: url.pathname + url.search,
-      headers: headerEntries(request.headers),
+      headers: headerEntries(headers),
       body,
     });
     signal.throwIfAborted();

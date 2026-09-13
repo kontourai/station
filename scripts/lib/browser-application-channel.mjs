@@ -65,6 +65,10 @@ export async function browserCheckApplicationChannel() {
       headers: { Origin: location.origin },
       timeoutMs: 15000,
     });
+    if (response.headers.get('X-Fixture-Client-Origin') !== location.origin)
+      throw new Error(
+        'Actual browser origin was lost across virtual transport',
+      );
     if (response.status !== 200)
       throw new Error('Application protocol response refused');
     const text = await response.text();
