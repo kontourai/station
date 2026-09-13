@@ -886,6 +886,30 @@ admission remain separate consumers of this identity API.
 
 ## Project access administration and account entry
 
+For a verified virtual transport, `@kontourai/station-sdk/application-session`
+exports `createApplicationSessionKey`, `ApplicationSessionClient` and the low-level
+proof builder. Keep the non-extractable key in dedicated credential custody, never
+in a Project manifest or ordinary query cache. Pass the actual client origin, the
+verified Station id and the existing scoped Device transport:
+
+```ts
+import { ApplicationSessionClient, createApplicationSessionKey } from '@kontourai/station-sdk/application-session';
+
+const key = await createApplicationSessionKey();
+const accounts = new ApplicationSessionClient(apiBase, verifiedStationId, clientOrigin, deviceRequestOptions, key);
+const continuation = await accounts.establish({ username, password });
+const accountHeaders = await accounts.headers(continuation, { method: 'GET', url: requestUrl });
+// Send with the SAME Device request scope and authenticated encrypted transport.
+// accounts.renew(continuation) preserves authorityKey; accounts.revoke signs out.
+```
+
+Calling `establish()` without credentials uses native HTTPS cookie exchange;
+virtual-only login requires its separately advertised provider capability. The
+relay forwards headers/body and respects response backpressure; it does not own
+account cookies, proof verification or membership logic. See the
+[application-session protocol](../guides/deployment-authentication.md#application-sessions-over-virtual-transports)
+for expiry, origin, replay and revocation behavior.
+
 `@kontourai/station-sdk/project-access-client` exports `getProjectAccess` and
 `changeProjectAccess`. Both take the selected Station API base, local Project
 slug and explicit `ClientRequestOptions`. Reads return the acting principal,
