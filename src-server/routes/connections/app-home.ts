@@ -616,7 +616,7 @@ export function createAppHomeRoutes(deps?: {
   const deviceCodeContext = async (
     context: Context,
   ): Promise<
-    | { engine: AppHomeEngine; dir: string }
+    | { engine: AppHomeEngine; ref: string; dir: string }
     | { failure: { body: object; status: 400 | 404 } }
   > => {
     const id = param(context, 'id');
@@ -646,6 +646,7 @@ export function createAppHomeRoutes(deps?: {
     }
     return {
       engine,
+      ref,
       dir: credentialProfileAppHomeDir(engine.credentialProfileEngineId, ref),
     };
   };
@@ -656,9 +657,20 @@ export function createAppHomeRoutes(deps?: {
       if ('failure' in context) {
         return c.json(context.failure.body, context.failure.status);
       }
+      // Profile homes are created lazily (on import and at session start), so
+      // a profile that has never been used has no directory yet. Pointed at a
+      // missing CODEX_HOME, `codex login status` reports a configuration error
+      // rather than "Not logged in"; that reads as an unknown sign-in state and
+      // would refuse exactly the first-time login this route exists for.
+      // Creating the empty, marker-only home first gives the engine a real
+      // profile to answer about. Reads (GET) and cancels (DELETE) never create.
+      const { dir } = await ensureCredentialProfileAppHome(
+        context.engine.credentialProfileEngineId,
+        context.ref,
+      );
       const result = await deviceCodeLogins().start(
         context.engine.provider,
-        context.dir,
+        dir,
       );
       if (result.kind === 'unsupported') {
         return c.json({ success: false, error: result.reason }, 409);
@@ -674,6 +686,24 @@ export function createAppHomeRoutes(deps?: {
       }
       if (result.kind === 'busy') {
         return c.json({ success: false, error: result.reason }, 429);
+      }
+      if (result.kind === 'closed') {
+        return c.json(
+          { success: false, error: result.reason, outcome: result.kind },
+          503,
+        );
+      }
+      if (result.kind === 'cancelled') {
+        // Cancelled before it spawned: nothing is waiting for approval, so this
+        // is not a success.
+        return c.json(
+          {
+            success: false,
+            error: 'The login was cancelled before it started.',
+            data: { outcome: result.kind, login: result.record },
+          },
+          409,
+        );
       }
       if (result.kind === 'failed') {
         // Nothing is waiting for approval, so this is not a success carrying a

@@ -226,14 +226,6 @@ describe('scoped pairing (station#1098)', () => {
     ]);
   });
 
-  /*
-   * The widening this token was reviewed against. `engine:login` joins the
-   * vocabulary and ONE preset; a default grant is what would hand it to every
-   * migrated, scope-omitting and bootstrap credential that never chose it,
-   * which is the case DEFAULT_GRANT_PAIRING_SCOPE's docblock exists to
-   * prevent. Pinned literally so adding a token to that constant has to be a
-   * deliberate edit here too.
-   */
   test('the read-only preset is exactly orchestration:read', () => {
     expect(PAIRING_SCOPE_PRESETS['read-only']).toEqual([
       PAIRING_SCOPE_ORCHESTRATION_READ,

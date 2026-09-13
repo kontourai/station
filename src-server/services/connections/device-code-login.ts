@@ -87,7 +87,9 @@ export type DeviceCodeStartResult =
    */
   | { readonly kind: 'already-signed-in'; readonly reason: string }
   /** The engine could not say whether the profile is signed in, so that risk cannot be ruled out. */
-  | { readonly kind: 'sign-in-state-unknown'; readonly reason: string };
+  | { readonly kind: 'sign-in-state-unknown'; readonly reason: string }
+  /** The manager was closed for runtime shutdown; nothing was started. */
+  | { readonly kind: 'closed'; readonly reason: string };
 
 /** The child-process surface this module uses — narrow so tests can stand it up. */
 export interface DeviceCodeChildProcess {
@@ -180,11 +182,11 @@ const HTTPS_URL_PATTERN = /https:\/\/[^\s"'<>)\]]+/;
  * query), short enough that a runaway line is never relayed to a client.
  */
 const MAX_VERIFICATION_URI_LENGTH = 2048;
-// Control characters and bidi overrides. A relayed URL is rendered on another
-// device, where either can disguise where it points.
+// Control, bidi-override and zero-width characters. A relayed URL is rendered
+// on another device, where any of them can disguise where it points.
 const UNSAFE_URI_CHARACTERS =
   // biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting these is the point
-  /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
+  /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/;
 
 /**
  * The URL Station is willing to relay to a client, or nothing. It must parse,
@@ -203,7 +205,10 @@ function relayableVerificationUri(candidate: string): string | undefined {
   }
   if (url.protocol !== 'https:' || !url.hostname) return undefined;
   if (url.username || url.password) return undefined;
-  return candidate;
+  // The parsed form, not the text. A backslash lets a URL read as an
+  // openai.com address while a WHATWG parser sends it to a different host;
+  // relaying `href` shows the host it will actually reach.
+  return url.href;
 }
 
 export interface DeviceCodePrompt {
@@ -218,9 +223,9 @@ export interface DeviceCodePrompt {
  * `undefined` rather than a guess, and why the caller turns `undefined` into
  * a stated failure instead of a phase that implies a code is on its way.
  *
- * The two structural facts it leans on, both observed live rather than
- * assumed (see `device-code-cli-output.ts`): the URL is printed before the
- * code, and the code is printed alone on its line. Requiring the code to
+ * The structural facts it leans on, all observed live rather than assumed
+ * (see `device-code-cli-output.ts`): the URL and the code are each printed
+ * alone on their own line, and the URL comes first. Requiring the code to
  * follow the URL is what keeps a banner line ("Welcome to Codex") from being
  * read as one.
  */
@@ -230,11 +235,13 @@ export function parseDeviceCodePrompt(
   const lines = output.replace(ANSI_PATTERN, '').split(/\r?\n/);
   let verificationUri: string | undefined;
   for (const line of lines) {
-    const url = HTTPS_URL_PATTERN.exec(line);
-    if (url) {
-      // The LAST relayable URL before the code, not the first: a CLI can print
-      // an unrelated link (an update notice) ahead of its prompt, and the URL
-      // a code belongs to is the one immediately preceding it.
+    const trimmed = line.trim();
+    const url = HTTPS_URL_PATTERN.exec(trimmed);
+    if (url && url.index === 0 && url[0].length === trimmed.length) {
+      // Only a URL alone on its line is a verification URL; both observed CLIs
+      // print theirs that way. A URL inside a sentence -- an update notice
+      // ahead of the prompt, a help link between the URL and the code -- is
+      // not one, and taking it would relay the wrong page next to a real code.
       const relayable = relayableVerificationUri(
         url[0].replace(/[.,;:]+$/, ''),
       );
@@ -242,7 +249,7 @@ export function parseDeviceCodePrompt(
       continue;
     }
     if (!verificationUri) continue;
-    const candidate = line.trim();
+    const candidate = trimmed;
     if (!USER_CODE_PATTERN.test(candidate)) continue;
     const payload = candidate.replace(/-/g, '');
     if (payload.length < 6 || payload.length > 12) continue;
@@ -263,6 +270,15 @@ interface LoginSession {
   finishedAtMs?: number;
 }
 
+const CLOSED_REASON =
+  'Station is shutting down, so no new device login was started.';
+
+/** A start that has passed the fast checks but not yet registered a session. */
+interface PendingStart {
+  readonly profileDir: string;
+  cancelled: boolean;
+}
+
 function busyReason(): string {
   return `${DEVICE_CODE_MAX_LIVE_LOGINS} device logins are already waiting for approval on this host.`;
 }
@@ -278,6 +294,8 @@ function isLive(record: DeviceCodeLoginRecord): boolean {
 export class DeviceCodeLoginManager {
   readonly #deps: DeviceCodeLoginDeps;
   readonly #sessions = new Map<string, LoginSession>();
+  readonly #pending = new Set<PendingStart>();
+  #closed = false;
 
   constructor(deps: DeviceCodeLoginDeps = defaultDeviceCodeLoginDeps()) {
     this.#deps = deps;
@@ -292,9 +310,12 @@ export class DeviceCodeLoginManager {
    * Start the engine's device-code login for this profile.
    *
    * Single-flight per profile: a second start while one is live returns the
-   * SAME record and spawns nothing. The session is registered synchronously,
-   * before the spawn, and the one `await` that precedes registration (the
-   * capability probe) is re-checked on the far side.
+   * SAME record and spawns nothing. Two awaits precede registration (the
+   * capability probe and the engine's sign-in check), and everything they
+   * could change is re-checked afterwards, in the synchronous window before
+   * the session enters the map. A cancel or shutdown that arrives during those
+   * awaits has no session to act on, so it is recorded against the pending
+   * start and honoured at that re-check.
    */
   async start(
     engine: EnrolmentEngine,
@@ -308,7 +329,24 @@ export class DeviceCodeLoginManager {
     if (this.#liveCount() >= DEVICE_CODE_MAX_LIVE_LOGINS) {
       return { kind: 'busy', reason: busyReason() };
     }
+    if (this.#closed) {
+      return { kind: 'closed', reason: CLOSED_REASON };
+    }
 
+    const pending: PendingStart = { profileDir, cancelled: false };
+    this.#pending.add(pending);
+    try {
+      return await this.#startAfterChecks(engine, profileDir, pending);
+    } finally {
+      this.#pending.delete(pending);
+    }
+  }
+
+  async #startAfterChecks(
+    engine: EnrolmentEngine,
+    profileDir: string,
+    pending: PendingStart,
+  ): Promise<DeviceCodeStartResult> {
     const capabilities = await this.#deps.capabilities(engine);
     const evidence = mechanismEvidence(capabilities, 'device-code');
     if (!evidence) {
@@ -341,6 +379,16 @@ export class DeviceCodeLoginManager {
     // below is synchronous, so a check made here holds until the session is in
     // the map: this is where single-flight and the cap are actually enforced,
     // and the checks at the top are only a fast path.
+    // A cancel or shutdown that landed during those awaits found no session;
+    // honour it here rather than spawning after the caller was told nothing
+    // was waiting.
+    if (pending.cancelled || this.#closed) {
+      const now = this.#deps.now().toISOString();
+      return {
+        kind: 'cancelled',
+        record: { engine, phase: 'cancelled', startedAt: now, expiresAt: now },
+      };
+    }
     const raced = this.#sessions.get(profileDir);
     if (raced && isLive(raced.record)) {
       return { kind: 'existing', record: raced.record };
@@ -370,6 +418,10 @@ export class DeviceCodeLoginManager {
     try {
       baseEnv = await this.#deps.baseEnv();
     } catch {
+      // A cancel that landed first already decided this login's outcome.
+      if (session.settled) {
+        return { kind: 'cancelled', record: session.record };
+      }
       this.#fail(
         session,
         `The ${engine} login could not be started: Station could not prepare its environment.`,
@@ -461,6 +513,11 @@ export class DeviceCodeLoginManager {
 
   /** Stop a live login and kill its process. Returns the record it stopped. */
   cancel(profileDir: string): DeviceCodeLoginRecord | undefined {
+    // A start still in its checks has no session yet. Mark it, so it stops
+    // before registering instead of spawning after this call returned.
+    for (const pending of this.#pending) {
+      if (pending.profileDir === profileDir) pending.cancelled = true;
+    }
     const session = this.#sessions.get(profileDir);
     if (!session || !isLive(session.record)) return undefined;
     this.#kill(session);
@@ -468,8 +525,13 @@ export class DeviceCodeLoginManager {
     return session.record;
   }
 
-  /** Kill every live login. Runtime shutdown reaches this through `cancelSharedDeviceCodeLogins`. */
+  /**
+   * Kill every live login and refuse new ones. Runtime shutdown reaches this
+   * through `cancelSharedDeviceCodeLogins`; afterwards the manager is closed.
+   */
   cancelAll(): void {
+    this.#closed = true;
+    for (const pending of this.#pending) pending.cancelled = true;
     for (const profileDir of [...this.#sessions.keys()]) {
       this.cancel(profileDir);
     }

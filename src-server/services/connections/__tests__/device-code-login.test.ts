@@ -710,3 +710,111 @@ describe('only a URL fit to relay is relayed', () => {
     expect(parseDeviceCodePrompt(output)).toEqual(EXPECTED);
   });
 });
+
+describe('what reaches another device is what the CLI meant', () => {
+  const PROMPT_TAIL = ['2. Enter this one-time code', '   7IEZ-B1FLE', ''];
+
+  test('a backslash cannot disguise the host: the relayed URL is the parsed one', () => {
+    const output = [
+      '   https://evil.example\\.auth.openai.com/device',
+      ...PROMPT_TAIL,
+    ].join('\n');
+
+    expect(parseDeviceCodePrompt(output)?.verificationUri).toBe(
+      'https://evil.example/.auth.openai.com/device',
+    );
+  });
+
+  test('a help link between the verification URL and the code is not relayed instead', () => {
+    const output = [
+      '   https://auth.openai.com/codex/device',
+      'Trouble? See https://help.openai.com/device',
+      '   7IEZ-B1FLE',
+      '',
+    ].join('\n');
+
+    expect(parseDeviceCodePrompt(output)).toEqual({
+      verificationUri: 'https://auth.openai.com/codex/device',
+      userCode: '7IEZ-B1FLE',
+    });
+  });
+
+  test('a URL only ever printed inside a sentence yields nothing rather than a guess', () => {
+    const output = [
+      'Open https://auth.openai.com/codex/device to continue',
+      '   7IEZ-B1FLE',
+      '',
+    ].join('\n');
+
+    expect(parseDeviceCodePrompt(output)).toBeUndefined();
+  });
+});
+
+describe('a cancel or shutdown during the pre-spawn checks is honoured', () => {
+  function holdCapabilities(
+    capabilities: ReturnType<typeof harness>['capabilities'],
+  ) {
+    const gate: { release?: () => void } = {};
+    capabilities.mockImplementationOnce(
+      (() =>
+        new Promise((resolve) => {
+          gate.release = () => resolve(capabilitiesWith('--device-auth'));
+        })) as never,
+    );
+    return gate;
+  }
+
+  test('cancelling while the engine is being probed stops the login before it registers', async () => {
+    const { manager, spawnLogin, capabilities } = harness();
+    const gate = holdCapabilities(capabilities);
+
+    const pending = manager.start('codex', PROFILE_DIR);
+    await vi.waitFor(() => expect(gate.release).toBeTypeOf('function'));
+    // Nothing is registered yet, so there is no record to hand back...
+    expect(manager.cancel(PROFILE_DIR)).toBeUndefined();
+    gate.release?.();
+
+    // ...but the start honours the cancel instead of spawning after it.
+    expect((await pending).kind).toBe('cancelled');
+    expect(spawnLogin).not.toHaveBeenCalled();
+    expect((await manager.start('codex', PROFILE_DIR)).kind).toBe('started');
+    expect(spawnLogin).toHaveBeenCalledTimes(1);
+  });
+
+  test('shutdown during the pre-spawn checks spawns nothing and refuses every later start', async () => {
+    const { manager, spawnLogin, capabilities } = harness();
+    const gate = holdCapabilities(capabilities);
+
+    const pending = manager.start('codex', PROFILE_DIR);
+    await vi.waitFor(() => expect(gate.release).toBeTypeOf('function'));
+    manager.cancelAll();
+    gate.release?.();
+
+    expect((await pending).kind).toBe('cancelled');
+    expect((await manager.start('codex', `${PROFILE_DIR}-later`)).kind).toBe(
+      'closed',
+    );
+    expect(spawnLogin).not.toHaveBeenCalled();
+  });
+
+  test('an environment failure after a cancel reports the cancel, not a start failure', async () => {
+    const gate: { reject?: () => void } = {};
+    const { manager, spawnLogin } = harness({
+      baseEnv: () =>
+        new Promise<BaseEnv>((_, reject) => {
+          gate.reject = () =>
+            reject(new Error('login shell resolution failed'));
+        }),
+    });
+
+    const pending = manager.start('codex', PROFILE_DIR);
+    await vi.waitFor(() =>
+      expect(manager.status(PROFILE_DIR)?.phase).toBe('starting'),
+    );
+    manager.cancel(PROFILE_DIR);
+    gate.reject?.();
+
+    expect((await pending).kind).toBe('cancelled');
+    expect(spawnLogin).not.toHaveBeenCalled();
+  });
+});

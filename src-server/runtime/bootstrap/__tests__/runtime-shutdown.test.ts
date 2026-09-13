@@ -1,5 +1,10 @@
 import { describe, expect, test, vi } from 'vitest';
+import { cancelSharedDeviceCodeLogins } from '../../../services/connections/device-code-login.js';
 import { shutdownRuntimeServices } from '../runtime-shutdown.js';
+
+vi.mock('../../../services/connections/device-code-login.js', () => ({
+  cancelSharedDeviceCodeLogins: vi.fn(),
+}));
 
 describe('shutdownRuntimeServices', () => {
   test('expires all optional network work once, then continues required teardown', async () => {
@@ -347,5 +352,29 @@ describe('shutdownRuntimeServices', () => {
 
     expect(retiredMcp.disconnect).toHaveBeenCalledTimes(1);
     expect(retiredMcpConfigs.has(retiredMcp)).toBe(true);
+  });
+});
+
+describe('shutdownRuntimeServices and engine device-code logins', () => {
+  test('cancels live device-code logins, so a restart does not leave them running', async () => {
+    // The mock is module-wide and every shutdown in this file calls it; count
+    // only the shutdown this test performs.
+    vi.mocked(cancelSharedDeviceCodeLogins).mockClear();
+
+    await shutdownRuntimeServices({
+      logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
+      timers: [],
+      schedulerService: { stop: vi.fn(async () => {}) },
+      mcpConfigs: new Map(),
+      activeAgents: new Map(),
+      acpBridge: { shutdown: vi.fn(async () => {}) },
+      feedbackService: { stop: vi.fn() },
+      voiceService: { stop: vi.fn(async () => {}) },
+      terminalWsServer: { stop: vi.fn() },
+      terminalService: { dispose: vi.fn(async () => {}) },
+      configLoader: { dispose: vi.fn(async () => {}) },
+    });
+
+    expect(cancelSharedDeviceCodeLogins).toHaveBeenCalledOnce();
   });
 });

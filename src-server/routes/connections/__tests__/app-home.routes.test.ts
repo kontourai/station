@@ -999,7 +999,18 @@ describe('device-code enrolment routes', () => {
     };
   }
 
-  function routes(options: { deviceCode?: boolean; signedIn?: boolean } = {}) {
+  function routes(
+    options: {
+      deviceCode?: boolean;
+      signedIn?: boolean;
+      /**
+       * `by-directory` mirrors codex-cli 0.154.0: pointed at a CODEX_HOME that
+       * does not exist, `codex login status` reports a configuration error
+       * (read as `unknown`); pointed at an existing empty one, "Not logged in".
+       */
+      status?: 'authenticated' | 'unauthenticated' | 'unknown' | 'by-directory';
+    } = {},
+  ) {
     const { service } = credentialRecoveryFixture();
     const spawned = fakeChild();
     const spawnLogin = vi.fn(() => spawned.child);
@@ -1021,11 +1032,21 @@ describe('device-code enrolment routes', () => {
                 },
               ],
       }),
-      verify: async () => ({
-        state: options.signedIn
-          ? ('authenticated' as const)
-          : ('unauthenticated' as const),
-      }),
+      verify: async (_engine: string, dir: string) => {
+        if (options.status === 'by-directory') {
+          return {
+            state: existsSync(dir)
+              ? ('unauthenticated' as const)
+              : ('unknown' as const),
+          };
+        }
+        if (options.status) return { state: options.status };
+        return {
+          state: options.signedIn
+            ? ('authenticated' as const)
+            : ('unauthenticated' as const),
+        };
+      },
       now: () => new Date('2026-09-11T12:00:00.000Z'),
       schedule: () => () => undefined,
     });
@@ -1034,7 +1055,7 @@ describe('device-code enrolment routes', () => {
       loginCapabilities: loginCapabilitiesStub(),
       deviceCodeLogins,
     });
-    return { app, spawned, spawnLogin };
+    return { app, spawned, spawnLogin, deviceCodeLogins };
   }
 
   test('starts a login and relays the URL and code the CLI printed', async () => {
@@ -1109,6 +1130,56 @@ describe('device-code enrolment routes', () => {
       success: false,
       outcome: 'already-signed-in',
     });
+    expect(spawnLogin).not.toHaveBeenCalled();
+  });
+
+  /*
+   * The first-time case this feature exists for. Profile homes are created
+   * lazily, and codex treats a missing CODEX_HOME as a configuration error, so
+   * without creating the home first the sign-in check reads "unknown" and the
+   * login is refused for every profile that has never been used.
+   */
+  test('a profile that has never been used gets its home created, so the first login is not refused', async () => {
+    const { app, spawnLogin } = routes({ status: 'by-directory' });
+
+    const res = await app.request(
+      '/agent/codex/enrolment/profile-a/device-code',
+      { method: 'POST' },
+    );
+
+    expect(res.status).toBe(200);
+    expect(spawnLogin).toHaveBeenCalledTimes(1);
+  });
+
+  test('refuses, without spawning, when the engine cannot report the sign-in state', async () => {
+    const { app, spawnLogin } = routes({ status: 'unknown' });
+
+    const res = await app.request(
+      '/agent/codex/enrolment/profile-a/device-code',
+      { method: 'POST' },
+    );
+    const body = await readJson<{ success: boolean; outcome: string }>(res);
+
+    expect(res.status).toBe(409);
+    expect(body).toMatchObject({
+      success: false,
+      outcome: 'sign-in-state-unknown',
+    });
+    expect(spawnLogin).not.toHaveBeenCalled();
+  });
+
+  test('a start after shutdown is refused as unavailable, not reported as a success', async () => {
+    const { app, spawnLogin, deviceCodeLogins } = routes();
+    deviceCodeLogins.cancelAll();
+
+    const res = await app.request(
+      '/agent/codex/enrolment/profile-a/device-code',
+      { method: 'POST' },
+    );
+    const body = await readJson<{ success: boolean; outcome: string }>(res);
+
+    expect(res.status).toBe(503);
+    expect(body).toMatchObject({ success: false, outcome: 'closed' });
     expect(spawnLogin).not.toHaveBeenCalled();
   });
 
