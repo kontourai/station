@@ -106,4 +106,13 @@ export interface CodexSessionRecord {
    */
   stopped: boolean;
   terminationPromise?: Promise<void>;
+  /** Total raw stdout bytes accepted while a bounded adoption/recovery phase is active. */
+  stdoutIngressLimit?: {
+    maxBytes: number;
+    observedBytes: number;
+    exceeded: boolean;
+  };
+  /** Forked cumulative usage includes source history and is withheld until a durable baseline exists. */
+  withholdCumulativeUsage?: boolean;
+  cumulativeUsageWithheldWarningPublished?: boolean;
 }

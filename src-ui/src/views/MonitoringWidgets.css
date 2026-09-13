@@ -571,14 +571,6 @@
   color: var(--text-primary);
 }
 
-.conversation-pill {
-  font-size: 0.65rem;
-  padding: 0.125rem 0.375rem;
-  border-radius: 3px;
-  color: white;
-  font-weight: 500;
-}
-
 .meta-item {
   display: flex;
   justify-content: space-between;
@@ -648,27 +640,9 @@
 }
 
 .event-filter.active {
-  color: white;
-}
-.event-filter[data-type="agent"].active {
-  background: var(--event-agent-start);
-  border-color: var(--event-agent-start);
-}
-.event-filter[data-type="tool"].active {
-  background: var(--event-tool-call);
-  border-color: var(--event-tool-call);
-}
-.event-filter[data-type="planning"].active {
-  background: var(--event-planning);
-  border-color: var(--event-planning);
-}
-.event-filter[data-type="reasoning"].active {
-  background: var(--event-reasoning);
-  border-color: var(--event-reasoning);
-}
-.event-filter[data-type="health"].active {
-  background: var(--event-agent-health);
-  border-color: var(--event-agent-health);
+  color: var(--text-on-accent);
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
 }
 
 .search-wrapper {
@@ -839,9 +813,9 @@
   background: var(--bg-hover);
 }
 .live-mode-toggle.active {
-  background: var(--health-success);
-  color: white;
-  border-color: var(--health-success);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border-color: var(--accent-primary);
 }
 
 .live-dot {
@@ -942,11 +916,6 @@
   word-wrap: break-word;
   overflow-wrap: break-word;
   max-width: 100%;
-}
-
-.log-trace {
-  display: flex;
-  align-items: center;
 }
 
 .trace-pill {
@@ -1295,45 +1264,9 @@
   margin-top: 0.5rem;
 }
 
-/* ── Artifacts ── */
-
-.artifacts-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 0.5rem;
-}
-
-.artifact-item {
-  padding: 0.75rem;
-  background: var(--bg-tertiary);
-  border-radius: 4px;
-  border-left: 3px solid var(--accent-primary);
-}
-
-.artifact-header {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-  font-size: 0.75rem;
-}
-
-.artifact-type {
-  padding: 0.125rem 0.5rem;
-  background: var(--bg-primary);
-  border-radius: 3px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
 .artifact-name {
   color: var(--warning-text);
   font-weight: 500;
-}
-
-.artifact-item pre {
-  margin: 0;
-  font-size: 0.75rem;
 }
 
 /* ── Pills & badges ── */
@@ -1413,6 +1346,21 @@
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .monitoring-page > .detail-header {
     flex-direction: column;
+    /* `DetailHeader.css` wraps this row unconditionally, and on a COLUMN
+       container `flex-wrap: wrap` wraps into additional COLUMNS, sizing each
+       child to its own content instead of the container. That file pins
+       `nowrap` in its own <= 640px column block; this block stacks the header
+       at <= 768px, so the 641-768px band is stacked only here and needs the
+       same pin.
+       What keeps it inert today is the `width: 100%` below, which holds both
+       children to the container whatever the wrapping does. Removing either
+       one alone still measures zero overflow; removing BOTH lets the identity
+       take its title's own width. How far past depends on the title — one
+       hundred-character title measured a 897px identity, which is 221px past a
+       700px region and 161px past a 760px one. Two declarations in different
+       rules are therefore jointly what stands between this band and that
+       overflow; this one says so locally rather than depending on the other. */
+    flex-wrap: nowrap;
     align-items: stretch;
     gap: 0.75rem;
     padding: 1rem 1.5rem;

@@ -14,13 +14,13 @@
  * Only the errno decides. The thrown error's message is never forwarded: it
  * carries the absolute path, and neither route discloses one.
  */
-export interface PathAccessFailure {
+interface PathAccessFailure {
   error: string;
   status: 400 | 403 | 404 | 500;
 }
 
 /** What the caller asked us to read, as it should be named back to them. */
-export type PathAccessSubject = 'Folder' | 'Workspace';
+type PathAccessSubject = 'Folder' | 'Workspace';
 
 export function pathAccessFailure(
   error: unknown,

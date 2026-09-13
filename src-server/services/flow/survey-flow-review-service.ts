@@ -26,7 +26,7 @@ export interface StationSurveyReviewSession
 }
 
 /** Host capability only: Survey and Flow Agents remain authoritative for data semantics. */
-export interface StationSurveyReviewSessionStore {
+interface StationSurveyReviewSessionStore {
   list(
     projectSlug: string,
   ):
@@ -126,7 +126,7 @@ function assertStationSurveyReviewSession(
   return { ...session, projectSlug } as StationSurveyReviewSession;
 }
 
-export interface SurveyFlowReviewQueueItem {
+interface SurveyFlowReviewQueueItem {
   readonly reviewSessionRef: string;
   readonly projectSlug: string;
   readonly projectionSource: string;
@@ -173,7 +173,7 @@ function classifySessionStoreFailure(
   return 'sessions-unreadable';
 }
 
-export interface SurveyFlowReviewUnavailableProject {
+interface SurveyFlowReviewUnavailableProject {
   readonly projectSlug: string;
   readonly reason: SurveyFlowReviewUnavailableReason;
 }
@@ -184,7 +184,7 @@ export interface SurveyFlowReviewUnavailableProject {
  * zero items plus an `unavailableProjects` entry carrying the reason it
  * failed, instead of failing the whole flow-reviews source.
  */
-export interface SurveyFlowReviewAggregate {
+interface SurveyFlowReviewAggregate {
   readonly items: SurveyFlowReviewQueueItem[];
   readonly unavailableProjects: SurveyFlowReviewUnavailableProject[];
 }

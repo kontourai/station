@@ -116,6 +116,12 @@ describe('ProjectPageHeader working directory (station#3317)', () => {
   // `navigator.clipboard` at all — which is every plain-http:// origin, i.e.
   // Station reached over the LAN from another device. Both used to render as
   // "Copied" (archive#3317).
+  // ONE failure case here, not the primitive's matrix. Which clipboard states
+  // resolve `false` (absent, no `writeText`, rejected, throwing) is
+  // `copyToClipboard`'s own contract, pinned in
+  // `src-ui/src/lib/__tests__/clipboard.test.ts` -- 'resolves false when the
+  // origin has no clipboard API at all'. What is this header's to prove is that
+  // it derives its affordance from that boolean rather than from the call.
   test('a rejected clipboard write never claims a copy', async () => {
     const writeText = vi.fn().mockRejectedValue(new Error('denied'));
     Object.assign(navigator, { clipboard: { writeText } });
@@ -135,19 +141,6 @@ describe('ProjectPageHeader working directory (station#3317)', () => {
     );
     // The haptic is a second success channel — no confirmation buzz for
     // something that did not happen.
-    expect(triggerHaptic).not.toHaveBeenCalled();
-  });
-
-  test('an insecure origin with no clipboard API never claims a copy', async () => {
-    Object.assign(navigator, { clipboard: undefined });
-    renderHeader();
-
-    const button = screen.getByRole('button', {
-      name: 'Copy working directory path',
-    });
-    fireEvent.click(button);
-    await waitFor(() => expect(button.textContent).toBe("Can't copy"));
-    expect(button.textContent).not.toBe('Copied');
     expect(triggerHaptic).not.toHaveBeenCalled();
   });
 

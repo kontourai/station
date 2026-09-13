@@ -402,9 +402,7 @@ describe('ProjectLiveWorkSection', () => {
     });
   });
 
-  test('a session Station cannot reopen falls through to the sessions surface', () => {
-    // `read-only-attached` is the shared open policy's navigate branch. The
-    // row must still be actionable rather than silently no-oping.
+  test('external history is not presented as live project work', () => {
     mocks.sessions.push(
       session({
         threadId: 'attached',
@@ -413,13 +411,11 @@ describe('ProjectLiveWorkSection', () => {
         pendingReview: true,
       }),
     );
-
     render(<ProjectLiveWorkSection slug="station" />);
-    fireEvent.click(
-      screen.getByRole('button', { name: /Ship the badge fix/i }),
-    );
-
-    expect(mocks.focus).toHaveBeenCalledWith({ threadId: 'attached' });
+    expect(
+      screen.queryByRole('button', { name: /Ship the badge fix/i }),
+    ).toBeNull();
+    expect(mocks.focus).not.toHaveBeenCalled();
   });
 
   test('links out to the Sessions list for everything it deliberately omits', () => {

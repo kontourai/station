@@ -179,9 +179,33 @@
         "reconcileNote": {
           "type": "string",
           "maxLength": 1024
+        },
+        "infrastructureCause": {
+          "description": "The stopping runner's own final word about why this lane never reached a verdict — ci:fast's owner-final feedback-budget line, or otherwise the message of the error the owned runner itself raised. Escape-stripped, redacted and bounded to 512 bytes by the producer; this `maxLength` counts code points and is the looser outer wall. Present when an `infrastructure_error` receipt carried a recovered runner declaration, and on no other status. Its absence says only that no declaration was recorded on this receipt — it is not evidence that the runner made none, since a run the coordinator's deadline stops is classified `timed_out` before the runner's own classification is consulted.",
+          "type": "string",
+          "maxLength": 512
         }
       },
       "allOf": [
+        {
+          "description": "A runner-declared stop cause belongs only to the status it explains.",
+          "if": {
+            "type": "object",
+            "properties": {
+              "infrastructureCause": {
+                "type": "string"
+              }
+            },
+            "required": ["infrastructureCause"]
+          },
+          "then": {
+            "properties": {
+              "status": {
+                "const": "infrastructure_error"
+              }
+            }
+          }
+        },
         {
           "if": {
             "type": "object",

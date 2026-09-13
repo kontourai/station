@@ -34,7 +34,6 @@ export type {
 } from './active-chats-state';
 
 // Constructed in unit tests via dynamic import; the app uses the singleton below.
-// fallow-ignore-next-line unused-export
 export class ActiveChatsStore {
   private chats: ActiveChatsMap = {};
   private listeners = new Set<() => void>();

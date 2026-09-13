@@ -531,7 +531,7 @@ describe('new-chat-modal-utils', () => {
     expect(viewModel.groups.map((group) => group.label)).toEqual([
       'Recent',
       'Workspace Layout',
-      'Engines on this machine',
+      'AI apps',
     ]);
     expect(viewModel.flatList.map((agent) => agent.slug)).toEqual([
       'alpha',
@@ -634,7 +634,7 @@ describe('new-chat-modal-utils', () => {
     // actually about is DEDUPE — each engine appears once, carrying the
     // server-backed row's own description — and that is unchanged.
     const engineBand = viewModel.groups.find(
-      (group) => group.label === 'Engines on this machine',
+      (group) => group.label === 'AI apps',
     );
 
     expect(engineBand?.agents.map((agent) => agent.slug).sort()).toEqual([
@@ -1308,9 +1308,7 @@ describe('new-chat-modal-utils', () => {
         recentSlugs: [],
       });
 
-      expect(viewModel.groups.map((group) => group.label)).toEqual([
-        'Engines on this machine',
-      ]);
+      expect(viewModel.groups.map((group) => group.label)).toEqual(['AI apps']);
       expect(
         viewModel.groups.find((group) => group.label === 'Your agents'),
       ).toBeUndefined();
@@ -1437,7 +1435,7 @@ describe('new-chat-modal-utils', () => {
     // row share ONE band, so two connections for one engine cannot open two
     // headings whatever they are called.
     const engineGroups = viewModel.groups.filter(
-      (group) => group.label === 'Engines on this machine',
+      (group) => group.label === 'AI apps',
     );
     expect(engineGroups).toHaveLength(1);
     expect(engineGroups[0]?.agents.map((agent) => agent.slug).sort()).toEqual(

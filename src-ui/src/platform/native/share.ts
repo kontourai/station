@@ -2,7 +2,7 @@ import type { NativePlatformError } from './types';
 
 export const MAX_NATIVE_SHARE_TEXT_BYTES = 256 * 1024;
 
-export type NativeShareTextResult =
+type NativeShareTextResult =
   | { status: 'ok'; text: string }
   | { status: 'empty' }
   | { status: 'error'; error: NativePlatformError };

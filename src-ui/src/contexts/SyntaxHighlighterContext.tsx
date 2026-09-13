@@ -15,13 +15,7 @@ import {
   useMemo,
   useState,
 } from 'react';
-import {
-  escapeHtml,
-  fnv1a,
-  HighlightCache,
-  PRELOAD_LANGS,
-  THEME,
-} from '../highlight/shared';
+import { escapeHtml, fnv1a, HighlightCache, THEME } from '../highlight/shared';
 
 // ── Interface ─────────────────────────────────────────────────────
 
@@ -34,7 +28,9 @@ export interface ISyntaxHighlighter {
 // ── Shiki singleton ───────────────────────────────────────────────
 
 type ShikiHighlighter = Awaited<
-  ReturnType<typeof import('shiki')['createHighlighter']>
+  ReturnType<
+    typeof import('../highlight/core-highlighter')['createChatHighlighter']
+  >
 >;
 
 let shikiPromise: Promise<ShikiHighlighter> | null = null;
@@ -43,60 +39,18 @@ let shikiPromise: Promise<ShikiHighlighter> | null = null;
  * archive#3354 — exported for the async highlight client's main-thread
  * fallback (jsdom / failed worker bootstrap); interactive callers keep using
  * the provider.
+ *
+ * The factory stays behind a dynamic import: this module is reachable from
+ * the entry chunk, and Shiki is not something a first paint should carry.
  */
 export function initShiki(): Promise<ShikiHighlighter> {
-  shikiPromise ??= import('shiki')
-    .then(({ createHighlighter }) =>
-      createHighlighter({ themes: [THEME], langs: [...PRELOAD_LANGS] }),
-    )
+  shikiPromise ??= import('../highlight/core-highlighter')
+    .then(({ createChatHighlighter }) => createChatHighlighter())
     .catch((error) => {
       shikiPromise = null;
       throw error;
     });
   return shikiPromise;
-}
-
-// ── File extension → language mapping ─────────────────────────────
-
-const EXT_LANG: Record<string, string> = {
-  ts: 'typescript',
-  tsx: 'tsx',
-  js: 'javascript',
-  jsx: 'jsx',
-  mjs: 'javascript',
-  cjs: 'javascript',
-  py: 'python',
-  rs: 'rust',
-  go: 'go',
-  java: 'java',
-  json: 'json',
-  yaml: 'yaml',
-  yml: 'yaml',
-  toml: 'toml',
-  html: 'html',
-  htm: 'html',
-  css: 'css',
-  scss: 'scss',
-  md: 'markdown',
-  mdx: 'markdown',
-  sql: 'sql',
-  sh: 'bash',
-  bash: 'bash',
-  zsh: 'bash',
-  xml: 'xml',
-  svg: 'xml',
-  dockerfile: 'dockerfile',
-  graphql: 'graphql',
-  gql: 'graphql',
-  vue: 'vue',
-  svelte: 'svelte',
-};
-
-export function langFromFilePath(path: string): string | undefined {
-  const ext = path.split('.').pop()?.toLowerCase() ?? '';
-  // Handle "Dockerfile" with no extension
-  if (path.toLowerCase().endsWith('dockerfile')) return 'dockerfile';
-  return EXT_LANG[ext];
 }
 
 // ── Shiki implementation ──────────────────────────────────────────

@@ -35,6 +35,31 @@ afterEach(() => {
 });
 
 describe('openChatsStore', () => {
+  test('delegates canonical Conversation open without manufacturing a focus target', async () => {
+    const openConversation = vi.fn(async () => true);
+    const focus = vi.fn();
+    const isCurrent = () => true;
+    const unregister = openChatsStore.registerNavigation({
+      openConversation,
+      focus,
+      openCollection: vi.fn(),
+    });
+    try {
+      expect(
+        await openChatsStore.openConversation('conversation-target', isCurrent),
+      ).toBe(true);
+      expect(openConversation).toHaveBeenCalledExactlyOnceWith(
+        'conversation-target',
+        isCurrent,
+      );
+      expect(focus).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+    expect(await openChatsStore.openConversation('conversation-target')).toBe(
+      false,
+    );
+  });
   test('owns membership and orders newest activity first', () => {
     addChat('older', 100);
     addChat('newer', 200);

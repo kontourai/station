@@ -44,7 +44,7 @@ export function TerminalPanel({
   isActive?: boolean;
 }) {
   const { apiBase, credentialProvider } = useApiBase();
-  const { activeChat } = useNavigation();
+  const activeChat = useNavigation((state) => state.activeChat);
   const { getDraft, setDraft, updateChat } = useActiveChatActions();
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);

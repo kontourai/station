@@ -72,7 +72,7 @@ export interface ProjectTaskRoomWriteAdmissionPort {
   >;
 }
 
-export interface ProjectTaskRoomCapabilityReceipt {
+interface ProjectTaskRoomCapabilityReceipt {
   receiptId: string;
   capability: ProjectTaskRoomGrantKind;
   scope: ProjectTaskRoomScope;
@@ -88,7 +88,7 @@ export interface ProjectTaskRoomCapabilityAuthority {
     required: ProjectTaskRoomGrantKind;
   }): Promise<ProjectTaskRoomCapabilityResolution>;
 }
-export type ProjectTaskRoomLinkResolution =
+type ProjectTaskRoomLinkResolution =
   | { kind: 'resolved'; link: ProjectTaskRoomResolvedLink }
   | { kind: 'unresolved' | 'unverified' | 'unavailable' };
 export interface ProjectTaskRoomLinkAuthority {
@@ -98,7 +98,7 @@ export interface ProjectTaskRoomLinkAuthority {
     scope: ProjectTaskRoomScope;
   }): Promise<ProjectTaskRoomLinkResolution>;
 }
-export type ProjectTaskRoomAgentResolution =
+type ProjectTaskRoomAgentResolution =
   | {
       kind: 'authorized';
       principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }>;

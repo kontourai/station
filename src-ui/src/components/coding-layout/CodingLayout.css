@@ -57,10 +57,6 @@
   color: #e6edf3;
 }
 
-.coding-layout__terminal-shortcut {
-  opacity: 0.5;
-}
-
 .coding-layout__terminal-body {
   flex: 1;
   min-height: 0;

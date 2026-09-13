@@ -13,7 +13,7 @@ import type {
   ToolCallContext,
 } from '../types.js';
 
-export type StationFrameworkKind = 'strands' | 'voltagent';
+type StationFrameworkKind = 'strands' | 'voltagent';
 
 const unavailableInstall = Object.freeze({
   skill: 'unavailable',

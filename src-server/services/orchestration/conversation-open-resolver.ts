@@ -9,6 +9,7 @@
  */
 import type {
   ConversationListItem,
+  ConversationOpenExecution,
   ConversationOpenResolution,
 } from '@kontourai/station-contracts/orchestration';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
@@ -18,6 +19,7 @@ export interface ConversationOpenResolver {
   resolve(input: {
     conversation: ConversationListItem;
     authority: SessionReadAuthority;
+    expectedSessionId?: string;
   }): Promise<ConversationOpenResolution>;
 }
 
@@ -27,14 +29,17 @@ export function createConversationOpenResolver(deps: {
     conversationId: string;
     authority: SessionReadAuthority;
   }): Promise<{
+    sessionId: string;
+    execution?: ConversationOpenExecution;
     messages: readonly ConversationMessage[];
     answerability: ConversationListItem['answerability'];
     canContinue: boolean;
+    continuationPending?: boolean;
   } | null>;
   reportUnavailable?(error: unknown): void;
 }): ConversationOpenResolver {
   return {
-    async resolve({ conversation, authority }) {
+    async resolve({ conversation, authority, expectedSessionId }) {
       if (conversation.source === 'store') {
         // The runtime picker filters store rows and the point-read route never
         // guesses their owner. Keep this defensive arm total if another caller
@@ -50,6 +55,11 @@ export function createConversationOpenResolver(deps: {
       }
       try {
         const currentSessionId = deps.currentSessionId(conversation.id);
+        if (
+          expectedSessionId !== undefined &&
+          currentSessionId !== expectedSessionId
+        )
+          throw new Error('Conversation child changed during open');
         const current = await deps.readCurrent({
           conversationId: conversation.id,
           authority,
@@ -64,16 +74,28 @@ export function createConversationOpenResolver(deps: {
             recoveryActions: ['retry', 'start-new'],
           };
         }
+        if (
+          current.sessionId !== currentSessionId ||
+          deps.currentSessionId(conversation.id) !== currentSessionId ||
+          (current.execution &&
+            (current.execution.sessionId !== currentSessionId ||
+              current.execution.agentId !== conversation.agentSlug))
+        )
+          throw new Error('Conversation child changed during open');
         return {
           status: 'resolved',
           conversation,
           currentSessionId,
+          ...(current.execution ? { execution: current.execution } : {}),
           transcript: {
             available: true,
             owner: 'runtime',
             messageCount: current.messages.length,
           },
           canContinue: current.canContinue,
+          ...(!current.canContinue && current.continuationPending
+            ? { continuationPending: true }
+            : {}),
           answerability: current.answerability,
           recoveryActions: [],
         };

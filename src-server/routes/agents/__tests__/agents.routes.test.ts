@@ -1,6 +1,22 @@
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 
+const agentFileReads = vi.hoisted(() => [] as string[]);
+vi.mock('node:fs/promises', async () => {
+  const actual =
+    await vi.importActual<typeof import('node:fs/promises')>(
+      'node:fs/promises',
+    );
+  return {
+    ...actual,
+    readFile: (...args: Parameters<typeof actual.readFile>) => {
+      if (String(args[0]).endsWith('agent.json'))
+        agentFileReads.push(String(args[0]));
+      return actual.readFile(...args);
+    },
+  };
+});
+
 vi.mock('../../../telemetry/metrics.js', () => ({
   agentOps: { add: vi.fn() },
 }));
@@ -28,7 +44,7 @@ vi.mock('../../../providers/llm/bedrock-models.js', () => ({
   },
 }));
 
-const { createAgentRoutes, deriveAgentCatalog } = await import('../agents.js');
+const { createAgentRoutes } = await import('../agents.js');
 const { AgentService } = await import(
   '../../../services/agents/agent-service.js'
 );
@@ -54,6 +70,21 @@ function setup() {
     updateAgent: vi.fn().mockResolvedValue({ name: 'Updated' }),
     deleteAgent: vi.fn().mockResolvedValue({ success: true }),
   };
+  Object.assign(agentService, {
+    agentMetadataMap: new Map(),
+    configLoader: {
+      readAgentCatalog: async () =>
+        Promise.all(
+          (await agentService.listAgents()).map(
+            async (metadata: { slug: string; name: string }) => ({
+              metadata,
+              spec: await agentService.loadAgentSpec(metadata.slug),
+            }),
+          ),
+        ),
+    },
+    getAgentCatalog: AgentService.prototype.getAgentCatalog,
+  });
   const skillService = {
     listSkills: vi
       .fn()
@@ -146,9 +177,8 @@ describe('Agent Routes', () => {
       resolveAvailability as any,
     );
     const routeCatalog = (await json(await app.request('/'))).data;
-    const aggregateCatalog = await deriveAgentCatalog(
-      agentService as any,
-      await agentService.getEnrichedAgents(await getVoltAgent().getAgents()),
+    const aggregateCatalog = await (agentService as any).getAgentCatalog(
+      await getVoltAgent().getAgents(),
       resolveAvailability,
     );
     expect(aggregateCatalog).toEqual(routeCatalog);
@@ -271,9 +301,8 @@ describe('Agent Routes', () => {
     test('the boot aggregate derives the same external-engine treatment as GET /', async () => {
       const { app, agentService, getVoltAgent } = setupCatalog();
       const routeCatalog = (await json(await app.request('/'))).data;
-      const aggregateCatalog = await deriveAgentCatalog(
-        agentService as any,
-        await agentService.getEnrichedAgents(await getVoltAgent().getAgents()),
+      const aggregateCatalog = await (agentService as any).getAgentCatalog(
+        await getVoltAgent().getAgents(),
         resolveAvailabilityForEmptyHome as any,
       );
       expect(aggregateCatalog).toEqual(routeCatalog);
@@ -694,7 +723,7 @@ describe('Agent Routes', () => {
 
   test('reinitialize failure does not crash the route handler', async () => {
     const agentService = {
-      getEnrichedAgents: vi.fn().mockResolvedValue([]),
+      getAgentCatalog: vi.fn().mockResolvedValue([]),
       listAgents: vi.fn().mockResolvedValue([]),
       loadAgentSpec: vi.fn().mockResolvedValue({ name: 'Test' }),
       createAgent: vi
@@ -885,4 +914,75 @@ describe('the Station Agent cannot be rebound through the API', () => {
       }),
     );
   });
+});
+
+test('GET / reads each persisted definition once and refreshes the catalog on the next request', async () => {
+  const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { readAgentCatalog } = await import(
+    '../../../domain/config-loader-agents.js'
+  );
+  const home = await mkdtemp(join(tmpdir(), 'station-agent-catalog-'));
+  try {
+    for (const slug of ['registered', 'unregistered']) {
+      await mkdir(join(home, 'agents', slug), { recursive: true });
+      await writeFile(
+        join(home, 'agents', slug, 'agent.json'),
+        JSON.stringify({ name: slug, prompt: 'initial' }),
+      );
+    }
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    };
+    const service = new AgentService(
+      { readAgentCatalog: () => readAgentCatalog(home) } as never,
+      {} as never,
+      new Map(),
+      new Map([['live', { slug: 'registered', name: 'registered' }]]),
+      new Map(),
+      logger as never,
+    );
+    const app = createAgentRoutes(
+      service,
+      { listSkills: () => [] } as never,
+      (() => {}) as never,
+      () => ({ getAgents: () => [{ id: 'live' }] }),
+      () => 'No model',
+    );
+    agentFileReads.length = 0;
+    const first = await json(await app.request('/'));
+    expect(first.error).toBeUndefined();
+    expect(first.success).toBe(true);
+    expect(first.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ slug: 'registered', prompt: 'initial' }),
+        expect.objectContaining({
+          slug: 'unregistered',
+          available: false,
+          unavailableReason: 'No model',
+        }),
+      ]),
+    );
+    expect([...agentFileReads].sort()).toEqual(
+      ['registered', 'unregistered'].map((slug) =>
+        join(home, 'agents', slug, 'agent.json'),
+      ),
+    );
+    await writeFile(
+      join(home, 'agents', 'registered', 'agent.json'),
+      JSON.stringify({ name: 'registered', prompt: 'changed' }),
+    );
+    agentFileReads.length = 0;
+    const second = await json(await app.request('/'));
+    expect(
+      second.data.find((agent: any) => agent.slug === 'registered').prompt,
+    ).toBe('changed');
+    expect(agentFileReads).toHaveLength(2);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });

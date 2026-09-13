@@ -18,7 +18,6 @@ import { isExternalEngineBoundAgent } from '../../runtime/agents/agent-engine-cl
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import {
   type AgentService,
-  type EnrichedAgent,
   StationEngineIsAppSettingError,
 } from '../../services/agents/agent-service.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
@@ -39,95 +38,6 @@ import {
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
 import type { RuntimeConnectionSummary } from './enriched-agents.js';
-
-/**
- * Builds enriched-shaped entries for persisted agents that are NOT in the
- * registered (enriched) set — the agents that failed model resolution and were
- * silently dropped before registering with VoltAgent. Each is marked
- * `available: false` with the concrete resolution reason (or a generic
- * fallback when the resolver is absent) so it stops being invisible (#chat).
- *
- * archive#3121 — with one exception, because "not in the registered set" has
- * two causes, not one. An agent bound to an EXTERNAL engine (Claude Code,
- * Codex, an ACP connection) is deliberately skipped from VoltAgent
- * registration (`runtime-agent-registry.ts`, archive#954/#977), so it lands
- * here by design rather than by failure. `resolveAgentAvailability` is a
- * Station-engine model-resolution probe — "is there an enabled LLM provider
- * connection with a resolvable model" — and an external engine has no
- * model-provider concept at all, so running it on such a record reported a
- * perfectly runnable agent as `available: false, unavailableReason: 'No
- * enabled LLM provider connection is configured.'` on any home without a
- * model connection. That is what station-control's `list_agents` tool reads
- * (it forwards this route's body verbatim), so a delegating agent was told a
- * working agent was unavailable.
- *
- * The classification reuses `isExternalEngineBoundAgent` — the same
- * classifier the cold-boot registry and the reload lifecycle use to decide
- * this exact skip — rather than re-deriving the rule here.
- *
- * External-engine records therefore OMIT `available`/`unavailableReason`
- * entirely, which is the established "this route makes no availability
- * claim" shape (registered agents omit them too, and consumers key on
- * `available === false`). This route deliberately does no connection I/O on
- * the list path, so it cannot honestly evaluate external readiness: an
- * external agent whose bound connection is missing/disabled/unready is
- * simply not marked here. `GET /api/agents` (`enriched-agents.ts`) is the
- * authority on that — it short-circuits on connection readiness
- * (`isHonestlyAvailableConnectedAgent`) and derives the honest external
- * reason (`externalEngineUnavailableReason`) before any model reasoning.
- * Omitting a claim is strictly smaller than asserting a false one, and it
- * keeps this function's two callers (`GET /` here and `/api/boot`'s
- * aggregate in `runtime-routes.ts`) producing identical catalogs without
- * plumbing a connections fetcher into either.
- */
-export async function deriveAgentCatalog(
-  agentService: AgentService,
-  enrichedAgents: EnrichedAgent[],
-  resolveAgentAvailability?: (spec: AgentSpec) => string | null,
-): Promise<EnrichedAgent[]> {
-  const registeredSlugs = new Set(enrichedAgents.map((agent) => agent.slug));
-  const storeAgents = await agentService.listAgents();
-  const storeOnly: EnrichedAgent[] = [];
-  for (const metadata of storeAgents) {
-    if (registeredSlugs.has(metadata.slug)) {
-      continue;
-    }
-    let spec: AgentSpec;
-    try {
-      spec = await agentService.loadAgentSpec(metadata.slug);
-    } catch {
-      continue;
-    }
-    const externalEngineBound = isExternalEngineBoundAgent(spec);
-    const reason = externalEngineBound
-      ? null
-      : (resolveAgentAvailability?.(spec) ?? null);
-    storeOnly.push({
-      id: metadata.slug,
-      slug: metadata.slug,
-      name: metadata.name ?? spec.name ?? metadata.slug,
-      prompt: spec.prompt,
-      description: spec.description ?? metadata.description,
-      model: spec.model,
-      region: spec.region,
-      guardrails: spec.guardrails,
-      maxSteps: spec.maxSteps,
-      icon: spec.icon,
-      commands: spec.commands,
-      toolsConfig: spec.tools,
-      execution: spec.execution,
-      updatedAt: metadata.updatedAt,
-      ...(externalEngineBound
-        ? {}
-        : {
-            available: false,
-            unavailableReason: reason ?? 'Agent is not currently launchable.',
-          }),
-      ...(spec.project !== undefined ? { project: spec.project } : {}),
-    });
-  }
-  return [...enrichedAgents, ...storeOnly];
-}
 
 function validateSkills(
   skills: string[] | undefined,
@@ -347,10 +257,8 @@ export function createAgentRoutes(
         );
       }
       const coreAgents = await voltAgent.getAgents();
-      const enrichedAgents = await agentService.getEnrichedAgents(coreAgents);
-      const agents = await deriveAgentCatalog(
-        agentService,
-        enrichedAgents,
+      const agents = await agentService.getAgentCatalog(
+        coreAgents,
         resolveAgentAvailability,
       );
       return c.json({

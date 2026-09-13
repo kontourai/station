@@ -38,24 +38,24 @@ export interface StarterWorkOperationExclusiveLock {
   ): Promise<T>;
 }
 
-export type StarterWorkOperationRead =
+type StarterWorkOperationRead =
   | { state: 'absent' }
   | { state: 'pending'; operationId: string }
   | { state: 'corrupt' }
   | { state: 'unavailable' };
 
-export type StarterWorkOperationReservation =
+type StarterWorkOperationReservation =
   | { state: 'reserved'; operationId: string; reused: boolean }
   | { state: 'corrupt' }
   | { state: 'unavailable' };
 
-export type StarterWorkOperationClearance =
+type StarterWorkOperationClearance =
   | { state: 'cleared' }
   | { state: 'stale' }
   | { state: 'corrupt' }
   | { state: 'unavailable' };
 
-export interface StarterWorkOperationStore {
+interface StarterWorkOperationStore {
   read(projectId: string): StarterWorkOperationRead;
   reserve(projectId: string): Promise<StarterWorkOperationReservation>;
   clear(
@@ -64,7 +64,7 @@ export interface StarterWorkOperationStore {
   ): Promise<StarterWorkOperationClearance>;
 }
 
-export interface StarterWorkOperationStoreOptions {
+interface StarterWorkOperationStoreOptions {
   storage: StarterWorkOperationStorage;
   lock: StarterWorkOperationExclusiveLock | null;
   createUuid?: () => string;

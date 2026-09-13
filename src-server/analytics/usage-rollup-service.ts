@@ -18,8 +18,8 @@ import {
   USAGE_ROLLUP_MAX_PAGE_SIZE,
 } from '@kontourai/station-shared/usage-rollup';
 
-export const USAGE_ROLLUP_MAX_SOURCES = 3;
-export const USAGE_ROLLUP_SOURCE_DEADLINE_MS = 3_000;
+const USAGE_ROLLUP_MAX_SOURCES = 3;
+const USAGE_ROLLUP_SOURCE_DEADLINE_MS = 3_000;
 
 export interface UsageRollupRequest {
   from: string;

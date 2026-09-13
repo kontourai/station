@@ -49,7 +49,7 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(1)} ${units[index]}`;
 }
 
-export interface ExistingSetupImportStepperProps {
+interface ExistingSetupImportStepperProps {
   /** A capability ID, not an engine or connection identity. */
   sourceId?: string;
   compact?: boolean;

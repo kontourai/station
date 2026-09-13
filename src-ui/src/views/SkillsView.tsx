@@ -1,4 +1,8 @@
-import type { Skill } from '@kontourai/station-contracts/catalog';
+import type {
+  Skill,
+  SkillWriteRefusal,
+  SkillWriteRefusalReason,
+} from '@kontourai/station-contracts/catalog';
 import { skillCommandNameError } from '@kontourai/station-contracts/skill-command';
 import { serializeSkillMarkdown } from '@kontourai/station-contracts/skill-markdown';
 import {
@@ -50,6 +54,56 @@ import {
 import './editor-layout.css';
 import './page-layout.css';
 import './skills-view.css';
+
+/**
+ * What to DO about each refusal — keyed by the server's reason code, because the
+ * remedies are not the same sentence. A plugin-served prompt has no registry
+ * entry to install; a name that cannot be a directory name needs a rename, not
+ * an install. Appending one fixed remedy to every reason made the closed union
+ * real in the type and unrealised in the product (review medium).
+ *
+ * A `Record` over the union rather than a lookup with a default, so adding a
+ * reason code fails to COMPILE until someone decides what to say about it.
+ */
+const SKILL_WRITE_REMEDY: Record<SkillWriteRefusalReason, string> = {
+  'served-in-place': 'The plugin that provides it is what to change.',
+  'canonical-package': 'Install it into your workspace to author it here.',
+  'outside-writable-root': 'Install it into your workspace to author it here.',
+  'unresolvable-name': 'Rename it to author it here.',
+  'directory-name-mismatch':
+    "Rename the directory, or the skill's own name, so the two match.",
+  'containment-unreadable':
+    'Check the path it sits at — a broken link or an unreadable folder is in the way.',
+};
+
+/**
+ * The refusal sentence: WHAT is wrong, in Station's own words, then WHAT TO DO,
+ * chosen by the reason code.
+ *
+ * `reason` arrives over HTTP from a server that may be NEWER than this build —
+ * this change itself adds reason codes the previous build does not know, so a
+ * desktop app on that build meeting this server is the live case, not a
+ * hypothetical. Two
+ * ways an unrecognised code used to reach the reader as prose, both closed
+ * here: a plain lookup rendered `undefined`, and a lookup for an INHERITED key
+ * (`constructor`, `toString`) rendered JavaScript source — native-code strings
+ * and an object constructor, straight into a paragraph the reader takes for
+ * Station's explanation. `Object.hasOwn` is what makes the table's own keys the
+ * only ones that answer; the `Record` type keeps the union exhaustive at
+ * COMPILE time, and neither guard weakens that.
+ *
+ * An unrecognised code drops the remedy and keeps the description. Save is
+ * withheld either way — `editableLocal` reads `writable === true` and never
+ * this text.
+ */
+function skillWriteRefusalNote(refusal: SkillWriteRefusal): string {
+  const remedy = Object.hasOwn(SKILL_WRITE_REMEDY, refusal.reason)
+    ? SKILL_WRITE_REMEDY[refusal.reason]
+    : undefined;
+  return remedy
+    ? `Read-only. ${refusal.detail} ${remedy}`
+    : `Read-only. ${refusal.detail}`;
+}
 
 export function SkillsView({
   basePath = '/skills',
@@ -103,11 +157,17 @@ export function SkillsView({
     refetch: refetchSkills,
   } = useSkillsQuery();
 
+  // `source: s.source || 'local'` used to sit here, coercing an unrecorded
+  // source into a claim the server had declined to make — and `editableLocal`
+  // read exactly that coerced value, so a package with no install record was
+  // offered a Save on the strength of the coercion. Editability now derives
+  // from the server's `writable` (#1655), and `source` is carried through as
+  // sent: nothing in this view reads it any more (the row chip and the detail
+  // heading both derive from `origin`).
   const localSkills: Skill[] = localRaw.map((s: any) => ({
     ...s,
     name: s.name || s.id,
     installedVersion: s.version,
-    source: s.source || 'local',
     installed: true,
     updateAvailable: false,
   }));
@@ -377,12 +437,16 @@ export function SkillsView({
     });
   }
 
-  function navigateWithGuard(path: string) {
-    guard(() => navigate(path));
-  }
-
+  // The SERVER's writability decision, projected onto the listing and read
+  // here — never re-derived (#1655). This read `selected.source === 'local'`,
+  // which is the install record's statement about where a package CAME FROM
+  // and not the question "may Station write it": a registry install in a
+  // writable root is writable and read as read-only, while a `source: 'local'`
+  // record in a plugin's root is read-only and was offered a Save that the
+  // route answers 409. `=== true` and not `!== false` on purpose — a server
+  // that did not state the decision has not granted it.
   const editableLocal =
-    isCreating || (selected?.installed && selected.source === 'local');
+    isCreating || (selected?.installed && selected.writable === true);
   // Same derivation as the list chip. It used to read `source === 'local'` and
   // print "Workspace-authored skill" for anything writable, which called a
   // machine-scoped skill a workspace one — the conflation #1582 D6 names. The
@@ -457,7 +521,7 @@ export function SkillsView({
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => navigateWithGuard('/registry/skills')}
+            onClick={() => navigate('/registry/skills')}
           >
             Browse Registry Skills
           </Button>
@@ -561,12 +625,40 @@ export function SkillsView({
                     <div className="skill-detail__meta">
                       <span>{sourceLabel}</span>
                     </div>
+                    {/* WHAT is wrong comes from the server verbatim; WHAT TO
+                        DO is chosen by the reason code, because the remedies
+                        genuinely differ — a plugin-served prompt has no registry
+                        entry to install, and telling its reader to install it is
+                        advice that cannot be followed. The fallback covers a
+                        server that stated no decision: Save is still withheld,
+                        and saying so without a reason beats inventing one. */}
                     {!editableLocal && (
-                      <p className="skill-detail__source-note">
-                        This skill is read-only here. Browse Registry to
-                        discover or install skills; create a new workspace skill
-                        to author one.
-                      </p>
+                      <>
+                        <p className="skill-detail__source-note">
+                          {selected?.writeRefusal
+                            ? skillWriteRefusalNote(selected.writeRefusal)
+                            : 'This skill is read-only here. Browse Registry to discover or install skills; create a new workspace skill to author one.'}
+                        </p>
+                        {/* The path is AUTHOR-CONTROLLED — a plugin names its
+                            own directories and the last segment is usually the
+                            skill's name — so it gets its own element, labelled
+                            as a path and set in a monospace face. Spliced into
+                            the sentence above it borrowed the grammar of
+                            Station's own explanation, and review built one that
+                            read as a session-expiry notice pointing the reader
+                            at another domain (#1655 review low). React escapes
+                            markup; framing was the whole attack. */}
+                        {selected?.writeRefusal?.packageDirectory && (
+                          <p className="skill-detail__source-path">
+                            <span className="skill-detail__source-path-label">
+                              Package directory
+                            </span>
+                            <code>
+                              {selected.writeRefusal.packageDirectory}
+                            </code>
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 )}

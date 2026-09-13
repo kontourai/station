@@ -113,7 +113,7 @@ describe('iOS simulator runtime smoke selection', () => {
     expect(calls).toHaveLength(4);
 
     const firstShellWait = swiftSmoke.indexOf(
-      'waitForStartupShell(connect, budget: 90)',
+      'waitForElement(connect, budget: 90)',
     );
     const secondDismissal = calls[1].index;
     const reactivation = swiftSmoke.indexOf('app.activate()', secondDismissal);
@@ -148,8 +148,12 @@ describe('iOS simulator runtime smoke selection', () => {
       postTapReacquire,
     );
     const retryTap = swiftSmoke.indexOf('connect.tap()', postTapHittable);
+    // The manager assertion is a bounded tap-retry, not a single existence
+    // wait: a tap delivered to a WKWebView before its handler is attached is
+    // dropped, and one `waitForExistence` afterwards cannot tell that apart
+    // from a surface that never opens (#1174).
     const finalManagerWait = swiftSmoke.indexOf(
-      'addAddress.waitForExistence(timeout: 10)',
+      'tap(connect, until: addAddress, budget: 20)',
       retryTap,
     );
 
@@ -175,6 +179,50 @@ describe('iOS simulator runtime smoke selection', () => {
     );
     expect([...swiftSmoke.matchAll(/connect\.tap\(\)/g)]).toHaveLength(2);
     expect(swiftSmoke).not.toContain('while !addAddress.waitForExistence');
+    // Hold the ground this test just gained: neither surface may go back to a
+    // single-shot existence wait after a tap.
+    expect(swiftSmoke).not.toContain(
+      'addAddress.waitForExistence(timeout: 10)',
+    );
+    expect(swiftSmoke).not.toContain('name.waitForExistence(timeout: 10)');
+    expect(swiftSmoke).toContain('tap(addAddress, until: name, budget: 20)');
+
+    const conditionalActivations = [
+      ...swiftSmoke.matchAll(
+        /if dismissSystemAlertIfPresent\(\) \{\s+app\.activate\(\)\s+\}/g,
+      ),
+    ];
+    expect(conditionalActivations).toHaveLength(3);
+    expect([...swiftSmoke.matchAll(/app\.activate\(\)/g)]).toHaveLength(3);
+
+    const helper = swiftSmoke.slice(
+      swiftSmoke.indexOf('private func dismissSystemAlertIfPresent() -> Bool'),
+      swiftSmoke.indexOf('private func assertContained'),
+    );
+    expect(helper).toContain('let deadline = Date().addingTimeInterval(2)');
+    expect(helper).toContain('return false');
+    expect(helper).toContain('alert.waitForNonExistence(timeout: remaining)');
+    expect(helper).not.toContain('waitForExistence(timeout: 3)');
+  });
+
+  test('registers final-state evidence and cleanup before launch', () => {
+    const teardown = swiftSmoke.indexOf('addTeardownBlock {');
+    const launch = swiftSmoke.indexOf('app.launch()');
+    const firstDismissal = swiftSmoke.indexOf(
+      'if dismissSystemAlertIfPresent()',
+    );
+    const firstActivation = swiftSmoke.indexOf('app.activate()');
+
+    expect([...swiftSmoke.matchAll(/addTeardownBlock \{/g)]).toHaveLength(1);
+    expect(teardown).toBeGreaterThanOrEqual(0);
+    expect(teardown).toBeLessThan(launch);
+    const teardownBody = swiftSmoke.slice(teardown, launch);
+    const screenshot = teardownBody.indexOf('XCUIScreen.main.screenshot()');
+    const terminate = teardownBody.indexOf('app.terminate()');
+    expect(screenshot).toBeGreaterThanOrEqual(0);
+    expect(terminate).toBeGreaterThan(screenshot);
+    expect(launch).toBeLessThan(firstDismissal);
+    expect(firstDismissal).toBeLessThan(firstActivation);
   });
 });
 
@@ -208,8 +256,9 @@ describe('iOS simulator runtime smoke retry policy', () => {
 
   test('binds the retryable signature to the one pre-test app.launch() line', () => {
     expect(findPreTestLaunchLine(swiftSmoke)).toBe(realLaunchLine);
-    expect(realLaunchLine).toBe(10);
-    // Fixtures below are recorded against line 10, the real launch line.
+    // These fixtures remain the recorded hosted line-10 failure. Production
+    // derives the current launch line from the Swift source rather than
+    // widening the retry classifier to other activation failures.
     expect(launchTimeoutLine).toContain(`${swiftPath}:10: error:`);
 
     // No launch line, or more than one, fails closed to "never retry".

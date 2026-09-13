@@ -1,7 +1,14 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_PROJECT_HOME,
   extractPluginName,
@@ -12,6 +19,25 @@ import {
 } from '../commands/helpers.js';
 
 afterEach(() => vi.unstubAllEnvs());
+
+// Homes and roots named below used to be fixed paths in the shared system temp
+// directory (`/tmp/explicit-home`, `/tmp/station-helper-root`, ...). Any other
+// process on the host can leave a regular file at such a name, and the home
+// admission check then refuses the path -- failing these tests for a reason
+// unrelated to the resolver (#1790). Own the root with `mkdtempSync` instead
+// and keep the names as leaves inside it: still absent on disk, no longer
+// shared.
+const TEST_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-cli-helpers-test-'));
+const ownedPath = (name: string): string => join(TEST_TEMP_ROOT, name);
+
+const EXPLICIT_HOME = ownedPath('explicit-home');
+const FLAG_HOME = ownedPath('flag-home');
+const AMBIENT_HOME = ownedPath('ambient-home');
+const HELPER_ROOT = ownedPath('station-helper-root');
+
+afterAll(() => {
+  rmSync(TEST_TEMP_ROOT, { force: true, recursive: true });
+});
 
 describe('channel lifecycle homes', () => {
   it('resolves stable and beta homes independently when STATION_HOME is absent', () => {
@@ -32,10 +58,10 @@ describe('channel lifecycle homes', () => {
   it('keeps an explicit STATION_HOME ahead of a channel home', () => {
     expect(
       resolveLifecycleHomeTarget({
-        env: { STATION_CHANNEL: 'beta', STATION_HOME: '/tmp/explicit-home' },
+        env: { STATION_CHANNEL: 'beta', STATION_HOME: EXPLICIT_HOME },
       }),
     ).toMatchObject({
-      projectHome: normalizeHomePath('/tmp/explicit-home'),
+      projectHome: normalizeHomePath(EXPLICIT_HOME),
       source: 'env',
     });
   });
@@ -46,11 +72,11 @@ describe('channel lifecycle homes', () => {
   it('keeps --home ahead of STATION_HOME and reports it as the chooser', () => {
     expect(
       resolveLifecycleHomeTarget({
-        homeDir: '/tmp/flag-home',
-        env: { STATION_HOME: '/tmp/ambient-home' },
+        homeDir: FLAG_HOME,
+        env: { STATION_HOME: AMBIENT_HOME },
       }),
     ).toMatchObject({
-      projectHome: normalizeHomePath('/tmp/flag-home'),
+      projectHome: normalizeHomePath(FLAG_HOME),
       source: '--home',
     });
   });
@@ -70,7 +96,7 @@ describe('channel lifecycle homes', () => {
   it.each(['homeDir', 'baseDir', 'env'] as const)(
     'recognizes the supplied root default through %s',
     (kind) => {
-      const root = '/tmp/station-helper-root';
+      const root = HELPER_ROOT;
       const home = `${root}/instances/stable`;
       const env = {
         STATION_ROOT: root,
@@ -86,16 +112,31 @@ describe('channel lifecycle homes', () => {
     },
   );
 
-  it('still lets --temp-home mint its own home ahead of --home', () => {
-    // Combining them is refused at the CLI boundary; this pins that the
-    // resolver never silently starts a throwaway home at a path the operator
-    // named and expects to keep.
-    const target = resolveLifecycleHomeTarget({
-      homeDir: '/tmp/flag-home',
-      tempHome: true,
-    });
-    expect(target.source).toBe('--temp-home');
-    expect(target.projectHome).not.toBe('/tmp/flag-home');
+  it('mints a canonical temporary home ahead of --home, even through an aliased temp root', () => {
+    const fixture = realpathSync(
+      mkdtempSync(join(tmpdir(), 'station-home-identity-')),
+    );
+    const physical = join(fixture, 'physical');
+    const alias = join(fixture, 'alias');
+    mkdirSync(physical);
+    symlinkSync(
+      physical,
+      alias,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    vi.stubEnv('STATION_TEMP_ROOT', alias);
+    try {
+      const target = resolveLifecycleHomeTarget({
+        homeDir: '/tmp/flag-home',
+        tempHome: true,
+      });
+      expect(target.source).toBe('--temp-home');
+      expect(target.projectHome).not.toBe('/tmp/flag-home');
+      expect(target.projectHome).toBe(realpathSync(target.projectHome));
+      expect(target.projectHome.startsWith(physical)).toBe(true);
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
   });
 
   it('rejects shared-root and container selections before CLI lifecycle work', () => {

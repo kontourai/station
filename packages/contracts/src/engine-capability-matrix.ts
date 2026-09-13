@@ -5,6 +5,7 @@ import {
   engineId as toEngineId,
 } from './agent-identity.js';
 import { engineDisplayLabel } from './engine-display.js';
+import type { AttachedSessionSourceMetadata } from './provider.js';
 
 /**
  * The honest, single-source capability
@@ -333,7 +334,12 @@ export interface EngineCapabilityMatrix {
   engineId: EngineId;
   /** Independent native child from an external transcript, never control of its original process. */
   externalSessionContinuation?:
-    | { state: 'native'; basis: 'declared' }
+    | {
+        state: 'native';
+        basis: 'declared';
+        boundary?: 'completed-turn';
+        requiresSourceAffinity?: boolean;
+      }
     | { state: 'unsupported'; reason: string };
   systemPrompt: CapabilityDelivery;
   /**
@@ -364,7 +370,75 @@ export interface EngineCapabilityMatrix {
   builtInTools: BuiltInToolsCell;
   /** Whether a per-tool disable path is WIRED today. */
   builtInToolControl: BuiltInToolControlCell;
+  /** What the engine REPORTS about its own subagents; see `SubagentObservabilityCell`. */
+  subagentObservability: SubagentObservabilityCell;
+  /** Whether Station can ACT on one of those subagents today; see `SubagentControlCell`. */
+  subagentControl: SubagentControlCell;
 }
+
+/**
+ * The signals an engine emits about subagents it spawned itself. This is the
+ * engine's report, not Station's rendering: a `declared` cell says the wire
+ * carries these facts, never that a client shows them.
+ *
+ * - `lifecycle` — the subagent's start and terminal state.
+ * - `progress` — a running status line while it works.
+ * - `usage` — token/tool/duration accounting for the subagent alone.
+ * - `result` — its returned output, or a handle to the full transcript.
+ * - `nesting` — a depth or parent id distinguishing a child from a sibling.
+ */
+export type SubagentSignal =
+  | 'lifecycle'
+  | 'progress'
+  | 'usage'
+  | 'result'
+  | 'nesting';
+
+export type SubagentObservabilityCell =
+  | { state: 'none'; reason: string }
+  | {
+      state: 'declared';
+      signals: readonly SubagentSignal[];
+      /** The observed wire facts backing the claim, named so it can be re-checked. */
+      evidence: string;
+      /** Adapter module that maps them, used by the conformance tripwire. */
+      adapterModule: string;
+    };
+
+/**
+ * How a subagent is INVOKED, which is the distinction a single boolean loses.
+ *
+ * `client-request` means Station can address the subagent directly and expect
+ * the engine to act. `model-tool` means only the engine's own model can invoke
+ * it — Station may put text in front of the model, but cannot make it happen,
+ * so a control wired to `model-tool` would be a button that sometimes does
+ * nothing.
+ */
+export type SubagentInvocation = 'client-request' | 'model-tool';
+
+export type SubagentActionCell =
+  | { state: 'unsupported'; reason: string }
+  | {
+      state: 'available';
+      invocation: SubagentInvocation;
+      /** Whether the action reaches one subagent, its turn, or the whole session. */
+      scope: 'per-task' | 'turn' | 'session';
+      evidence: string;
+    };
+
+/**
+ * Whether Station can act on an engine's subagent TODAY.
+ *
+ * Deliberately separate from `subagentObservability`, exactly as
+ * `builtInToolControl` is separate from `builtInTools`: an engine offering a
+ * stop mechanism is not the same claim as Station having wired one, and this
+ * cell answers only the second. A `wired` cell is what a client may render a
+ * control from — `none` gets no control, because a switch wired to nothing is
+ * the label-without-derivation defect.
+ */
+export type SubagentControlCell =
+  | { state: 'none'; reason: string }
+  | { state: 'wired'; stop: SubagentActionCell; resume: SubagentActionCell };
 
 /**
  * What the MODEL catalog says about the selected model's image input, as a
@@ -580,12 +654,27 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // The Station engine HAS no built-in toolbox: an agent runs exactly the
     // tools its configuration supplies, which is also why the control cell
     // is station-owned — disabling a tool is editing the agent.
+    subagentObservability: {
+      state: 'none',
+      reason: 'Station delegation is a task, not an engine subagent.',
+    },
+    subagentControl: {
+      state: 'none',
+      // A Station delegate is stopped and continued through `station delegate
+      // interrupt`/`continue`, which are task APIs rather than an engine
+      // subagent control.
+      reason: 'Use the delegate task APIs.',
+    },
     builtInTools: { state: 'station-configured' },
     builtInToolControl: { state: 'station-owned' },
   },
   claude: {
     engineId: toEngineId('claude'),
-    externalSessionContinuation: { state: 'native', basis: 'declared' },
+    externalSessionContinuation: {
+      state: 'native',
+      basis: 'declared',
+      requiresSourceAffinity: true,
+    },
     // systemPrompt deliverable via a per-session flag.
     systemPrompt: { state: 'session', channel: 'flag' },
     // The native flag channel above already delivers the authored prompt;
@@ -635,6 +724,21 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // identity, and the generic toolName seam proves identities are
     // CARRIED, not that a specific tool exists. Add the category only with
     // a test that observes an editing-tool identity at this seam.
+    subagentObservability: {
+      state: 'declared',
+      signals: ['lifecycle', 'progress', 'usage', 'result', 'nesting'],
+      // `task_started`/`task_progress`/`task_updated`/`task_notification`
+      // system messages, plus `background_tasks_changed`. `task_notification`
+      // carries `output_file`, `summary` and optional `usage`; `task_started`
+      // carries `spawn_depth`. `progress` requires the
+      // `agentProgressSummaries` option, which Station sets.
+      evidence: 'task_started/progress/updated/notification',
+      adapterModule: 'claude-adapter-events.ts',
+    },
+    subagentControl: {
+      state: 'none',
+      reason: 'No per-task stop or resume path is wired.',
+    },
     builtInTools: {
       state: 'documented',
       categories: ['shell', 'file-read'],
@@ -652,9 +756,10 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   codex: {
     engineId: toEngineId('codex'),
     externalSessionContinuation: {
-      state: 'unsupported',
-      reason:
-        'Station can read this Codex transcript, but independent continuation is not available yet.',
+      state: 'native',
+      basis: 'declared',
+      requiresSourceAffinity: true,
+      boundary: 'completed-turn',
     },
     // Evidence gate (docs/design/agent-engine-unification.md
     // §4.1/§6.1): `codex app-server generate-json-schema` against the
@@ -727,12 +832,34 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       channel: 'native-content',
       basis: 'declared',
     },
-    // codex app-server exposes turn/start and turn/interrupt, but no input/steer method for an active turn.
-    midTurnSteer: false,
+    // Codex app-server `turn/steer` appends input to the in-flight turn.
+    midTurnSteer: true,
     // Codex's core loop is command execution and patch application, and the
     // adapter's EVENT seam observes both identities: codex-adapter-events.ts
     // handles `item/commandExecution/requestApproval` and maps
     // `item/fileChange/requestApproval` to the `apply_patch` tool identity.
+    subagentObservability: {
+      state: 'declared',
+      signals: ['lifecycle'],
+      // `collabAgent/started` and `collabAgent/activity` notifications with a
+      // seven-state `CollabAgentStatus`, plus `CollabAgentToolCallThreadItem`
+      // and `SubAgentActivityThreadItem` in the v2 thread stream (codex-cli
+      // 0.145.0, default schema — not experimental-gated).
+      evidence: 'collabAgent/started, collabAgent/activity',
+      adapterModule: 'codex-adapter-events.ts',
+    },
+    subagentControl: {
+      state: 'none',
+      // Not wired, and not yet consumed at all: Station has no `collabAgent`
+      // handling, so both subagent thread items are dropped. The protocol
+      // would support it — a subagent is a first-class thread
+      // (`ThreadSourceKind` includes `subAgent`), its id is published on
+      // `CollabAgentToolCallThreadItem.receiverThreadIds` and
+      // `SubAgentActivityThreadItem.agentThreadId`, and `Thread/resume`
+      // rejoins a running thread while `Turn/interrupt` takes `{threadId,
+      // turnId}`.
+      reason: 'No collabAgent handling is wired.',
+    },
     builtInTools: {
       state: 'documented',
       categories: ['shell', 'file-edit'],
@@ -777,13 +904,12 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // `execution-target-resolver.ts`.
     modelSelection: { state: 'session', channel: 'flag' },
     toolPolicy: { state: 'unsupported', adapterModule: 'muse-adapter' },
-    // `buildMuseExecArgs` spawns `muse exec` with a text prompt and nothing
-    // else; the adapter never reads `input.attachments` and declares no
-    // `image-input`, so orchestration refuses the turn rather than dropping
-    // the image.
+    // Image bytes are validated and staged until the owned process exits;
+    // each path is passed through the CLI's repeatable --image option.
     imageInput: {
-      state: 'unsupported',
-      reason: 'Muse Code runs a text-only prompt and cannot see images.',
+      state: 'session',
+      channel: 'native-content',
+      basis: 'declared',
     },
     // One prompt is bound to one muse process; there is no live input channel.
     midTurnSteer: false,
@@ -791,6 +917,18 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // with a toolName (muse-adapter-events.ts) — but nothing enumerates
     // WHICH tools the CLI ships, so this stays unenumerated rather than
     // guessing categories from observed names in one stream.
+    subagentObservability: {
+      state: 'none',
+      // The muse JSONL stream reports tool activity but names no subagent:
+      // there is no task or child-agent identity on the wire
+      // (muse-adapter-events.ts).
+      reason: 'The engine reports no subagent identity.',
+    },
+    subagentControl: {
+      state: 'none',
+      // Nothing to control: the engine reports no subagent identity.
+      reason: 'Nothing to control.',
+    },
     builtInTools: { state: 'unenumerated' },
     builtInToolControl: { state: 'none' },
   },
@@ -875,10 +1013,28 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       channel: 'native-content',
       basis: 'runtime_observation',
     },
-    // ACP permits session/prompt and session/cancel; it defines no concurrent steer operation.
-    midTurnSteer: false,
+    // ACP has no protocol-level steer. The adapter still implements
+    // steerTurn: Kiro `_session/steer` and Grok `_x.ai/interject` when
+    // those extension methods exist, else T3-style cancel + re-prompt on
+    // the same Station turn id.
+    midTurnSteer: true,
     // A custom engine's toolbox is whatever the connected CLI brings; ACP
     // advertises protocol capabilities at initialize, not a tool inventory.
+    subagentObservability: {
+      state: 'none',
+      // ACP 1.1.1 has no subagent concept. `session/update` carries
+      // `agent_message_chunk`, `agent_thought_chunk`, `tool_call`,
+      // `tool_call_update`, `plan`, `usage_update` and mode/command/config
+      // updates only, so a subagent invocation is indistinguishable from an
+      // ordinary tool call — it arrives without a child id or model.
+      reason: 'ACP 1.1.1 has no subagent concept.',
+    },
+    subagentControl: {
+      state: 'none',
+      // Nothing to control: a subagent is not addressable, having no identity
+      // separate from the tool call that invoked it.
+      reason: 'A subagent is not addressable.',
+    },
     builtInTools: { state: 'unenumerated' },
     builtInToolControl: { state: 'none' },
   },
@@ -892,6 +1048,19 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
  */
 export const UNKNOWN_EXTERNAL_ENGINE_MATRIX: EngineCapabilityMatrix = {
   engineId: toEngineId('unknown'),
+  // Never guessed for an unknown engine class: an engine Station has no
+  // adapter for reports nothing it knows how to read, and controls nothing.
+  subagentObservability: {
+    state: 'none',
+    // Unknown engine class: Station has no adapter mapping any subagent
+    // signal for it.
+    reason: 'Unknown engine class.',
+  },
+  subagentControl: {
+    state: 'none',
+    // Unknown engine class: no subagent control path exists.
+    reason: 'Unknown engine class.',
+  },
   systemPrompt: { state: 'unsupported' },
   // Never guessed for an unknown engine class, same as every other surface.
   instructionsInFirstTurn: { state: 'unsupported' },
@@ -1256,10 +1425,13 @@ export function resolveBuiltinAgentEngineBinding(input: {
 }
 
 /** A declaration is product support, not permission or proof of current source readiness. */
-export function externalSessionContinuationSupport(
-  provider: string,
-):
-  | { state: 'native'; basis: 'declared' }
+export function externalSessionContinuationSupport(provider: string):
+  | {
+      state: 'native';
+      basis: 'declared';
+      boundary?: 'completed-turn';
+      requiresSourceAffinity?: boolean;
+    }
   | { state: 'unsupported' | 'unknown'; reason: string } {
   return (
     ENGINE_CAPABILITY_MATRICES[provider]?.externalSessionContinuation ?? {
@@ -1268,4 +1440,33 @@ export function externalSessionContinuationSupport(
         'Station has not established independent continuation support for this engine.',
     }
   );
+}
+
+/** Product availability only; the command owner revalidates source authority. */
+export function externalSessionContinuationAvailability(
+  provider: string,
+  source?: AttachedSessionSourceMetadata,
+): { enabled: boolean; reason?: string } {
+  const support = externalSessionContinuationSupport(provider);
+  if (support.state !== 'native')
+    return { enabled: false, reason: support.reason };
+  if (
+    support.requiresSourceAffinity &&
+    (!source?.affinity?.kind || !source.affinity.ref)
+  ) {
+    return {
+      enabled: false,
+      reason: 'Waiting for the source configuration to be verified.',
+    };
+  }
+  if (
+    support.boundary === 'completed-turn' &&
+    source?.completedBoundary?.kind !== 'completed-turn'
+  ) {
+    return {
+      enabled: false,
+      reason: 'No completed source turn is available for continuation.',
+    };
+  }
+  return { enabled: true };
 }

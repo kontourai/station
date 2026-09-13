@@ -1,49 +1,50 @@
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import type { PluginComponent } from '@kontourai/station-contracts/plugin';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
+import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import {
+  describePluginManifestRejection,
+  type InstalledPluginInventoryEntry,
   rejectedInstalledPluginRecord,
   scanInstalledPluginInventory,
 } from '../../services/plugins/installed-plugin-inventory.js';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import { readPluginCatalogInstallationAsync } from '../../services/plugins/plugin-catalog-installation.js';
 import { scanPluginPromptFileSafety } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   findPluginContentLockCycleError,
   pluginContentLockCycleMessage,
 } from '../../services/plugins/plugin-content-integrity.js';
+import { resolveInstalledPluginRoot } from '../../services/plugins/plugin-incarnation.js';
 import {
   derivePluginConsentBasis,
   isPluginConsentRefusedError,
   type PluginInstallConsent,
 } from '../../services/plugins/plugin-install-consent.js';
-import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
-import {
-  getPermissionTier,
-  PluginGrantsUnavailableError,
-  readPluginGrantState,
-  requiredPermissionsForManifest,
-} from '../../services/plugins/plugin-permissions.js';
-import type { Logger } from '../../utils/logger.js';
-import {
-  errorMessage,
-  getBody,
-  pluginInstallSchema,
-  pluginPreviewSchema,
-  validate,
-} from '../schemas/schemas.js';
-import {
-  captureConfigurationMutation,
-  configurationActivationPayload,
-  configurationMutationStatus,
-} from '../system/configuration-activation.js';
-import { buildPlugin } from './plugin-bundles.js';
 import {
   installPluginFromSource,
+  type PluginInstallTransactionDeps,
+  previewInstalledPluginRecovery,
+  recoverInstalledPlugin,
   resolvePluginRegistrySource,
-} from './plugin-install-shared.js';
+} from '../../services/plugins/plugin-install-transaction.js';
+import { localPluginInstallationState } from '../../services/plugins/plugin-installation-local.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
+import { readPluginManifestFileWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
+import {
+  describePluginGrantState,
+  getPermissionTier,
+  observePluginGrantRevisions,
+  PluginGrantsUnavailableError,
+  readPluginGrantRecord,
+  requiredPermissionsForManifest,
+} from '../../services/plugins/plugin-permissions.js';
 import {
   detectPluginConflicts,
   detectWorkspacePaneCatalogConflicts,
@@ -51,9 +52,27 @@ import {
   getPluginGitInfo,
   PluginPreviewUnsupportedDependencyError,
   resolvePluginDependencies,
-} from './plugin-source.js';
+} from '../../services/plugins/plugin-source.js';
+import type { Logger } from '../../utils/logger.js';
+import {
+  errorMessage,
+  getBody,
+  param,
+  pluginInstallSchema,
+  pluginPreviewSchema,
+  pluginRecoverySchema,
+  validate,
+} from '../schemas/schemas.js';
+import {
+  configurationActivationPayload,
+  configurationMutationStatus,
+} from '../system/configuration-activation.js';
+import { buildPlugin } from './plugin-bundles.js';
+import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 
 interface PluginInstallRouteDeps {
+  installationHost?: PluginInstallationHost;
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: {
     emit: (event: ServerEventName, data?: Record<string, unknown>) => void;
@@ -64,7 +83,10 @@ interface PluginInstallRouteDeps {
   applyConfigurationMutation?: AgentConfigurationMutationRunner;
   refreshKitObservability?: () => void;
   settleProviderAdapterRetirements?: () => Promise<void>;
-  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  reconcileEngineConnections?: (
+    plugin: string,
+    view?: PluginProviderReadView,
+  ) => Promise<void>;
   quiesceEventSubscriptions?: (
     pluginName: string,
   ) => Promise<{ release(): void }>;
@@ -87,93 +109,235 @@ export function registerPluginInstallRoutes(
     quiesceEventSubscriptions,
   } = deps;
 
+  app.get('/:name/retained-generations', (c) => {
+    const history = deps.packageMcpJournal?.history(c.req.param('name'), {
+      after: c.req.query('cursor') ? Number(c.req.query('cursor')) : undefined,
+    });
+    if (!history || history.state === 'unavailable')
+      return c.json(
+        { error: 'Package installation history is unavailable' },
+        503,
+      );
+    return c.json(history);
+  });
+
   app.get('/', async (c) => {
-    const plugins = [];
-
-    for (const entry of scanInstalledPluginInventory(pluginsDir, logger)) {
-      if (entry.state === 'rejected') {
-        plugins.push(rejectedInstalledPluginRecord(entry));
-        continue;
-      }
-      try {
-        const manifest = entry.manifest;
-        const bundlePath = join(
-          pluginsDir,
-          entry.directoryName,
-          'dist',
-          'bundle.js',
-        );
-        const pluginDir = join(pluginsDir, entry.directoryName);
-        const git = await getPluginGitInfo(pluginDir, logger);
-        const declared = requiredPermissionsForManifest(manifest);
-        // archive#4288: EFFECTIVE grants, plus the derived binding state and
-        // the names it withheld. `missing` therefore includes anything the
-        // content change took away — and `withheld` is what tells the reader
-        // that it was taken away rather than never given.
-        const grantState = readPluginGrantState(projectHomeDir, manifest.name);
-        const granted = grantState.granted;
-        const missing = declared
-          .filter((permission: string) => !granted.includes(permission))
-          .map((permission: string) => ({
-            permission,
-            tier: getPermissionTier(permission),
-          }));
-
-        plugins.push({
-          name: manifest.name,
-          displayName: manifest.displayName,
-          version: manifest.version,
-          description: manifest.description,
-          hasBundle: existsSync(bundlePath),
-          hasSettings:
-            Array.isArray(manifest.settings) && manifest.settings.length > 0,
-          layout: manifest.layout,
-          workspacePanes: manifest.workspacePanes,
-          agents: manifest.agents,
-          providers: manifest.providers,
-          links: manifest.links,
-          git,
-          permissions: {
-            declared,
-            granted,
-            missing,
-            contentBinding: grantState.binding,
-            withheld: grantState.withheld,
-          },
+    const readEntries = () => {
+      const inventory = scanInstalledPluginInventory(pluginsDir, logger);
+      const selected = deps.packageMcpJournal?.selectedInstallations();
+      if (selected?.state === 'unavailable')
+        throw new Error('Plugin installation inventory unavailable');
+      const entries = new Map<
+        string,
+        | InstalledPluginInventoryEntry
+        | { state: 'candidate'; directoryName: string }
+      >(inventory.map((entry) => [entry.directoryName, entry]));
+      for (const installed of selected?.installations ?? []) {
+        entries.set(installed.pluginId, {
+          state: 'candidate',
+          directoryName: installed.pluginId,
         });
-      } catch (error: unknown) {
-        if (error instanceof PluginGrantsUnavailableError) {
-          // The grants store is one file for every plugin: listing the
-          // plugins with empty grant lists would render "nothing granted" as
-          // fact (archive#1835). Surface the unavailable state for the whole list.
-          logger.error(
-            'Plugin grants store unavailable while listing plugins',
-            {
-              path: error.storePath,
-              error: errorMessage(error),
-            },
+      }
+      return entries;
+    };
+    try {
+      // Git is display metadata, not byte or execution authority. Resolve its
+      // selected root without hashing, then observe all package bytes AFTER
+      // Git settles. The final projection owns readiness and grant binding.
+      const gitObservations = new Map<
+        string,
+        {
+          root: string;
+          git: Awaited<ReturnType<typeof getPluginGitInfo>>;
+        }
+      >();
+      for (const entry of readEntries().values()) {
+        if (entry.state === 'rejected') continue;
+        try {
+          const root = resolveInstalledPluginRoot(
+            pluginsDir,
+            entry.directoryName,
           );
-          return c.json(
-            {
-              success: false,
-              error: errorMessage(error),
-              grantsUnavailable: true,
+          if (!root) continue;
+          const git = await getPluginGitInfo(root.packageRoot, logger);
+          gitObservations.set(entry.directoryName, {
+            root: root.packageRoot,
+            git,
+          });
+        } catch {
+          /* Final projection below owns the current bounded rejection. */
+        }
+      }
+      const plugins = [];
+      for (const entry of readEntries().values()) {
+        if (entry.state === 'rejected') {
+          plugins.push(rejectedInstalledPluginRecord(entry));
+          continue;
+        }
+        try {
+          const catalog = await readPluginCatalogInstallationAsync(
+            pluginsDir,
+            entry.directoryName,
+            deps.packageMcpJournal,
+          );
+          if (!catalog) throw new Error('Selected installation is unavailable');
+          const manifest = catalog.manifest;
+          const observation = gitObservations.get(entry.directoryName);
+          const git =
+            observation?.root === catalog.packageRoot
+              ? observation.git
+              : undefined;
+          const declared = requiredPermissionsForManifest(manifest);
+          // Inventory is an inert description of the just-observed package.
+          // Project stored grants against that observation without rescanning;
+          // bundle delivery and every invocation recheck their own authority.
+          const grantState = describePluginGrantState(
+            readPluginGrantRecord(projectHomeDir, manifest.name),
+            catalog.artifact.digest,
+          );
+          const granted = grantState.granted;
+          plugins.push({
+            name: manifest.name,
+            displayName: manifest.displayName,
+            version: manifest.version,
+            description: manifest.description,
+            installationReadiness: catalog.readiness,
+            hasBundle:
+              catalog.readiness.state === 'ready' &&
+              existsSync(join(catalog.packageRoot, 'dist', 'bundle.js')),
+            ...(catalog.retained ? { retainedOnRemoval: true } : {}),
+            hasSettings:
+              catalog.readiness.state === 'ready' &&
+              Array.isArray(manifest.settings) &&
+              manifest.settings.length > 0,
+            layout: manifest.layout,
+            workspacePanes: manifest.workspacePanes,
+            agents: manifest.agents,
+            providers: manifest.providers,
+            links: manifest.links,
+            git,
+            permissions: {
+              declared,
+              granted,
+              missing: declared
+                .filter((permission) => !granted.includes(permission))
+                .map((permission) => ({
+                  permission,
+                  tier: getPermissionTier(permission),
+                })),
+              contentBinding: grantState.binding,
+              withheld: grantState.withheld,
             },
-            503,
+          });
+        } catch (error) {
+          if (error instanceof PluginGrantsUnavailableError) throw error;
+          plugins.push(
+            rejectedInstalledPluginRecord({
+              state: 'rejected',
+              directoryName: entry.directoryName,
+              rejection: describePluginManifestRejection(error),
+            }),
           );
         }
-        logger.error('Failed to read plugin manifest', {
-          plugin: entry.directoryName,
-          error: errorMessage(error),
-        });
       }
+      return c.json({ plugins });
+    } catch (error) {
+      if (error instanceof PluginGrantsUnavailableError)
+        return c.json(
+          {
+            success: false,
+            error: 'Plugin permissions are unavailable',
+            grantsUnavailable: true,
+          },
+          503,
+        );
+      return c.json(
+        { success: false, error: 'Plugin installation inventory unavailable' },
+        503,
+      );
     }
+  });
 
-    return c.json({ plugins });
+  const recoveryDependencies: PluginInstallTransactionDeps = {
+    agentsDir,
+    pluginsDir,
+    projectHomeDir,
+    logger,
+    eventBus,
+    installationHost: deps.installationHost,
+    packageMcpJournal: deps.packageMcpJournal,
+    buildPlugin: (directory, name, manifest) =>
+      buildPlugin(directory, name, logger, manifest),
+    settleProviderAdapterRetirements,
+    reconcileEngineConnections,
+    quiesceEventSubscriptions,
+  };
+  app.get('/:name/recovery-preview', async (c) => {
+    try {
+      return c.json(
+        await previewInstalledPluginRecovery(
+          param(c, 'name'),
+          recoveryDependencies,
+        ),
+      );
+    } catch (error) {
+      return c.json(
+        { success: false, error: errorMessage(error) },
+        error instanceof PluginGrantsUnavailableError
+          ? 503
+          : error instanceof AggregateError
+            ? 500
+            : 409,
+      );
+    }
+  });
+  app.post('/:name/recover', validate(pluginRecoverySchema), async (c) => {
+    try {
+      const body = getBody(c);
+      const mutation = await capturePluginConfigurationMutation(
+        applyConfigurationMutation,
+        async (beginMutation, _activation, activationSession) =>
+          recoverInstalledPlugin(
+            param(c, 'name'),
+            {
+              ...recoveryDependencies,
+              beginConfigurationMutation: beginMutation,
+              activationSession,
+            },
+            {
+              recoveryRevision: body.recoveryRevision,
+              consent: {
+                ...body.consent,
+                kind: 'operator-decision',
+                dependencies: body.consent.dependencies ?? [],
+              },
+            },
+          ),
+        { rediscoverSkills: true },
+      );
+      return c.json(
+        {
+          ...mutation.value,
+          success: mutation.activation?.status !== 'pending',
+          ...configurationActivationPayload(mutation.activation),
+        },
+        configurationMutationStatus(mutation.activation, 200),
+      );
+    } catch (error) {
+      return c.json(
+        { success: false, error: errorMessage(error) },
+        error instanceof PluginGrantsUnavailableError
+          ? 503
+          : error instanceof AggregateError
+            ? 500
+            : 409,
+      );
+    }
   });
 
   app.post('/preview', validate(pluginPreviewSchema), async (c) => {
     try {
+      const grantRevisions = observePluginGrantRevisions(projectHomeDir);
       const { source: bodySource, registryId } = getBody(c);
       let source = bodySource;
       // The Registry view previews by catalog id: its listings carry provider
@@ -221,7 +385,7 @@ export function registerPluginInstallRoutes(
 
       const { tempDir } = result;
       try {
-        const manifest = await readPluginManifestFile(
+        const { manifest, format } = await readPluginManifestFileWithFormat(
           join(tempDir, 'plugin.json'),
         );
         // Preview refuses exactly what install refuses, through the SAME scan
@@ -248,13 +412,7 @@ export function registerPluginInstallRoutes(
           ...detectPluginConflicts(manifest, agentsDir, pluginsDir, logger),
           ...detectWorkspacePaneCatalogConflicts(manifest, projectHomeDir),
         ];
-        const components: Array<{
-          type: string;
-          id: string;
-          detail?: string;
-          conflict?: (typeof conflicts)[0];
-          skippable?: boolean;
-        }> = [];
+        const components: PluginComponent[] = [];
 
         for (const agent of manifest.agents || []) {
           const slug = agent.slug;
@@ -360,12 +518,37 @@ export function registerPluginInstallRoutes(
           );
         }
 
+        const installationRevision =
+          format !== 'agent-plugin-1.0'
+            ? undefined
+            : deps.installationHost
+              ? await (await deps.installationHost.service()).inspect(
+                  manifest.name,
+                )
+              : deps.packageMcpJournal
+                ? await localPluginInstallationState(
+                    deps.packageMcpJournal,
+                  ).current(manifest.name)
+                : undefined;
         return c.json({
           valid: true,
           manifest,
+          installationRevision,
+          grantRevision: grantRevisions.revisionFor(manifest.name),
+          existingDataScope: installationRevision != null,
           components,
           conflicts,
-          dependencies,
+          dependencies: dependencies.map((entry) => ({
+            ...entry,
+            ...(entry.consent
+              ? {
+                  consent: {
+                    ...entry.consent,
+                    grantRevision: grantRevisions.revisionFor(entry.id),
+                  },
+                }
+              : {}),
+          })),
           git,
           contentDigest: consentBasis.contentDigest,
           permissions: {
@@ -416,7 +599,8 @@ export function registerPluginInstallRoutes(
 
   app.post('/install', validate(pluginInstallSchema), async (c) => {
     try {
-      const { source, skip, consent } = getBody(c);
+      const { source, skip, consent, dataPolicy, expectedInstallation } =
+        getBody(c);
       // archive#4288. Refused before the source is even staged: this route is
       // how an operator admits a plugin's code into the shell's own document,
       // and the permission derivation cannot see the contributions that run
@@ -437,6 +621,7 @@ export function registerPluginInstallRoutes(
       }
       const operatorDecision: PluginInstallConsent = {
         kind: 'operator-decision',
+        grantRevision: consent.grantRevision,
         permissions: consent.permissions,
         contentDigest: consent.contentDigest,
         dependencies: consent.dependencies ?? [],
@@ -444,17 +629,19 @@ export function registerPluginInstallRoutes(
           ? { dependencyApprovals: consent.dependencyApprovals }
           : {}),
       };
-      const mutation = await captureConfigurationMutation(
+      const mutation = await capturePluginConfigurationMutation(
         applyConfigurationMutation,
-        async (beginMutation) => {
+        async (beginMutation, _activation, activationSession) => {
           const installed = await installPluginFromSource(
             source,
             skip,
             {
               agentsDir,
+              packageMcpJournal: deps.packageMcpJournal,
+              installationHost: deps.installationHost,
               beginConfigurationMutation: beginMutation,
-              buildPlugin: (pluginDir, name) =>
-                buildPlugin(pluginDir, name, logger),
+              buildPlugin: (pluginDir, name, manifest) =>
+                buildPlugin(pluginDir, name, logger, manifest),
               eventBus,
               logger,
               pluginsDir,
@@ -463,10 +650,16 @@ export function registerPluginInstallRoutes(
               reconcileEngineConnections,
               quiesceEventSubscriptions,
             },
-            { consent: operatorDecision },
+            {
+              consent: operatorDecision,
+              dataPolicy,
+              expectedInstallation,
+              activationSession,
+            },
           );
           return installed;
         },
+        { rediscoverSkills: true },
       );
       if (mutation.value.success) {
         try {
@@ -486,6 +679,20 @@ export function registerPluginInstallRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      if (error instanceof PluginInstallationPending)
+        return c.json(
+          {
+            success: false,
+            error: errorMessage(error),
+            lifecycle: {
+              status: 'pending',
+              selected: error.selected,
+              code: error.code,
+            },
+          },
+          202,
+        );
+
       if (isContextSafetyError(error)) {
         return c.json(
           {

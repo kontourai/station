@@ -45,6 +45,18 @@ export const BellGlyph = /* @__PURE__ */ glyph(
 export const BoardGlyph = /* @__PURE__ */ glyph(
   'M2.5 3h3.2v10H2.5V3Zm3.9 0h3.2v7H6.4V3Zm3.9 0h3.2v5h-3.2V3Z',
 );
+/**
+ * A git branch: a trunk node, a branch node, and the fork joining them.
+ *
+ * Replaces `⎇` (U+2387 ALTERNATIVE KEY SYMBOL), which four surfaces drew as
+ * the branch marker. That codepoint means "Alt"; it resembles a branch by
+ * accident, and it is outside the bundled font subsets, so on a host without
+ * a font covering Miscellaneous Technical it drew a tofu box in place of the
+ * repository's branch (#1649).
+ */
+export const BranchGlyph = /* @__PURE__ */ glyph(
+  'M4 2.5V10M2 12a2 2 0 1 0 4 0 2 2 0 1 0-4 0M10 4a2 2 0 1 0 4 0 2 2 0 1 0-4 0M12 6a6 6 0 0 1-6 6',
+);
 export const BrainGlyph = /* @__PURE__ */ glyph(
   'M6.2 3.2A2.3 2.3 0 0 0 2.5 5a2.2 2.2 0 0 0 .7 4.2A2.4 2.4 0 0 0 6.5 12v1.5M9.8 3.2A2.3 2.3 0 0 1 13.5 5a2.2 2.2 0 0 1-.7 4.2A2.4 2.4 0 0 1 9.5 12v1.5M8 2.5v11M5.5 6H8m2.5 3H8',
 );

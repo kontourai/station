@@ -1,7 +1,7 @@
 import './StatusGlyph.css';
 import type { SessionStateLabel } from '../../utils/session-state';
 
-export interface StatusGlyphPresentation {
+interface StatusGlyphPresentation {
   glyph: string;
   color: 'muted' | 'active' | 'attention' | 'warning' | 'success' | 'danger';
   ariaLabel: string;

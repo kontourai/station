@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   appendFileSync,
@@ -9,6 +9,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,13 +20,24 @@ import {
   join,
   relative,
   resolve,
+  sep,
 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import receiptSchema from '../schemas/verification-receipt.schema.json' with {
   type: 'json',
 };
-import { incompleteDiagnosticReasons } from './lib/changed-verification-diagnostics.mjs';
+import {
+  CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES,
+  incompleteDiagnosticReasons,
+} from './lib/changed-verification-diagnostics.mjs';
+import {
+  captureOwnedProcessOutput,
+  executeOwnedCommand,
+  registerProcessSignal,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from './lib/owned-process.mjs';
 import {
   loadProductLawManifest,
   productLawDispositions,
@@ -40,13 +52,16 @@ import {
   createVerificationRequest,
 } from './lib/verification-receipt.mjs';
 import { redactVerificationOutput } from './lib/verification-redaction.mjs';
+import { groupFiles, VITEST_CORPUS_GROUPS } from './run-vitest-corpus.mjs';
 import {
+  buildTestImpactManifest,
   isEscalationPath,
   matches,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
 } from './test-impact-manifest.mjs';
 import { resolveLane } from './verification-lanes.mjs';
+import { partitionVitestResourceSubset } from './vitest-resource-manifest.mjs';
 import {
   assertWorkspacePackageProvenance,
   listWorkspacePackageManifests,
@@ -55,9 +70,279 @@ import {
 const receiptValidator = new Ajv2020({ strict: true }).compile(receiptSchema);
 const FAILURE_IDENTITY_LIMIT = 20;
 const FAILURE_NAME_LIMIT = 512;
-const FAILURE_EXCERPT_LIMIT = 2 * 1024;
+const FAILURE_EXCERPT_LIMIT = CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES;
 const NARROW_DIFF_FIXTURE =
   'scripts/__tests__/fixtures/changed-verification/narrow-diff.json';
+const RELATED_DISCOVERY_LIMIT_BYTES = 1024 * 1024;
+const RELATED_DISCOVERY_TIMEOUT_MS = 60_000;
+const RELATED_DISCOVERY_SETTLEMENT_MS = 5_000;
+const CHANGED_CHILD_OUTPUT_LIMIT_BYTES = 2 * 1024 * 1024;
+const VITEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
+const RELATED_DISCOVERY_SOURCE = `
+import { relative, sep } from 'node:path';
+import { createVitest } from 'vitest/node';
+const root = process.cwd();
+const vitest = await createVitest('test', {
+  root,
+  watch: false,
+  run: true,
+  passWithNoTests: true,
+  related: process.argv.slice(1),
+});
+try {
+  const specifications = await vitest.getRelevantTestSpecifications();
+  const files = [...new Set(specifications.map((item) =>
+    relative(root, item.moduleId).split(sep).join('/'),
+  ))].sort();
+  process.stdout.write(JSON.stringify(files));
+} finally {
+  await vitest.close();
+}`;
+
+export function parseRelatedTestDiscovery(result) {
+  if (result.error || result.status !== 0 || result.signal)
+    throw new Error(
+      `Related Vitest discovery failed: ${result.error?.message ?? (String(result.stderr ?? '').trim() || `status ${result.status ?? 'unknown'}`)}`,
+    );
+  let parsed;
+  try {
+    parsed = JSON.parse(String(result.stdout ?? '').trim());
+  } catch {
+    throw new Error('Related Vitest discovery returned malformed JSON');
+  }
+  if (
+    !Array.isArray(parsed) ||
+    parsed.some((path) => typeof path !== 'string' || path.length === 0)
+  )
+    throw new Error('Related Vitest discovery returned no valid test files');
+  // An empty array is discovery's answer, not its failure: no test in the
+  // corpus imports the changed paths. Only output discovery could not have
+  // produced -- a non-array, or an entry that is not a usable path -- means it
+  // could not run. Conflating the two made a data-only diff read as a broken
+  // runner (#1757).
+  return parsed;
+}
+
+export async function runOwnedChangedCommand(
+  command,
+  args,
+  {
+    cwd,
+    execute = executeOwnedCommand,
+    emitOutput = false,
+    maxBytes = CHANGED_CHILD_OUTPUT_LIMIT_BYTES,
+    processLabel,
+    signal,
+    timeoutMs,
+    waitForSettlement = waitForSuiteSettlement,
+  },
+) {
+  if (signal?.aborted)
+    return {
+      status: null,
+      signal: null,
+      stdout: '',
+      stderr: '',
+      error: new Error(`${processLabel} ${signal.reason ?? 'aborted'}`),
+      launch: { attempted: false, started: false },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+    };
+  let execution;
+  try {
+    execution = execute(command, args, spawn, processLabel, {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+  } catch (error) {
+    return {
+      status: null,
+      signal: null,
+      stdout: '',
+      stderr: '',
+      error: error instanceof Error ? error : new Error(String(error)),
+      launch: { attempted: true, started: false },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+    };
+  }
+  const launch = {
+    attempted: true,
+    started: Number.isInteger(execution.child?.pid),
+  };
+  let cleanupPromise;
+  let cancellation;
+  let resolveCancellation;
+  const cancellationRequested = new Promise((resolveCancellationPromise) => {
+    resolveCancellation = resolveCancellationPromise;
+  });
+  const settle = () => {
+    if (!cleanupPromise)
+      cleanupPromise = terminateSuiteExecution(execution, {
+        processLabel,
+        terminationGraceMs: RELATED_DISCOVERY_SETTLEMENT_MS,
+        terminationForceMs: RELATED_DISCOVERY_SETTLEMENT_MS,
+        waitForSuiteSettlement: waitForSettlement,
+      });
+    return cleanupPromise;
+  };
+  const cancel = (reason) => {
+    cancellation ??= reason;
+    resolveCancellation(cancellation);
+    return settle();
+  };
+  const output = captureOwnedProcessOutput(execution, {
+    maxBytes,
+    onOverflow: () => void cancel(`output exceeded ${maxBytes} bytes`),
+  });
+  const abort = () => void cancel(signal?.reason ?? 'aborted');
+  signal?.addEventListener?.('abort', abort, { once: true });
+  let timer;
+  if (timeoutMs !== undefined)
+    timer = setTimeout(
+      () => void cancel(`timed out after ${timeoutMs}ms`),
+      timeoutMs,
+    );
+  try {
+    if (signal?.aborted) abort();
+    const completed = await Promise.race([
+      execution.completion.then((result) => ({ kind: 'completed', result })),
+      cancellationRequested.then((reason) => ({ kind: 'cancelled', reason })),
+    ]);
+    if (completed.kind === 'cancelled') await cleanupPromise;
+    else if (execution.completionRequiresCleanup === true) await settle();
+    else if (
+      execution.isAlive() &&
+      !(await waitForSettlement(execution, RELATED_DISCOVERY_SETTLEMENT_MS))
+    )
+      await settle();
+    const cleanupResult = cleanupPromise ? await cleanupPromise : undefined;
+    const captured = output.finish();
+    if (emitOutput) {
+      if (captured.stdout.text) process.stdout.write(captured.stdout.text);
+      if (captured.stderr.text) process.stderr.write(captured.stderr.text);
+    }
+    const unsafeOutput = captured.truncated || captured.invalidUtf8;
+    const treeAlive = execution.isAlive() || cleanupResult?.settled === false;
+    const cleanupFailed = (cleanupResult?.errors?.length ?? 0) > 0;
+    const error =
+      completed.kind === 'completed' ? completed.result.error : undefined;
+    return {
+      status: completed.kind === 'completed' ? completed.result.status : null,
+      signal: completed.kind === 'completed' ? completed.result.signal : null,
+      stdout: captured.stdout.text,
+      stderr: captured.stderr.text,
+      launch,
+      cleanup: treeAlive
+        ? // The canonical receipt has no unknown cardinality. One is a
+          // conservative nonzero sentinel when settlement cannot establish
+          // zero survivors; it is not an exact process count.
+          { status: 'failed', survivingOwnedChildren: 1 }
+        : cleanupFailed
+          ? { status: 'failed', survivingOwnedChildren: 0 }
+          : cleanupResult
+            ? { status: 'passed', survivingOwnedChildren: 0 }
+            : { status: 'not_required', survivingOwnedChildren: 0 },
+      error:
+        error ??
+        (treeAlive
+          ? new Error(`${processLabel} left an owned process tree alive`)
+          : cleanupFailed
+            ? new Error(`${processLabel} cleanup reported an error`)
+            : unsafeOutput
+              ? new Error(`${processLabel} output was not safely retained`)
+              : cancellation
+                ? new Error(`${processLabel} ${cancellation}`)
+                : undefined),
+    };
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener?.('abort', abort);
+  }
+}
+
+export async function discoverRelatedTestFiles(
+  root,
+  relatedPaths,
+  {
+    run = runOwnedChangedCommand,
+    signal,
+    timeoutMs = RELATED_DISCOVERY_TIMEOUT_MS,
+  } = {},
+) {
+  if (!Array.isArray(relatedPaths) || relatedPaths.length === 0)
+    throw new Error('Related Vitest discovery requires at least one path');
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000)
+    throw new Error('Related Vitest discovery timeout is invalid');
+  let result;
+  try {
+    result = await run(
+      process.execPath,
+      [
+        '--input-type=module',
+        '--eval',
+        RELATED_DISCOVERY_SOURCE,
+        ...relatedPaths.map((path) => resolve(root, path)),
+      ],
+      {
+        cwd: root,
+        maxBytes: RELATED_DISCOVERY_LIMIT_BYTES,
+        processLabel: 'Related Vitest discovery',
+        signal,
+        timeoutMs,
+      },
+    );
+    return parseRelatedTestDiscovery(result);
+  } catch (error) {
+    const discoveryError = new Error(
+      error instanceof Error ? error.message : String(error),
+      { cause: error },
+    );
+    discoveryError.phase = 'related-discovery';
+    discoveryError.childStarted = result?.launch?.started === true;
+    discoveryError.cleanup = result?.cleanup;
+    throw discoveryError;
+  }
+}
+
+export function validateSelectedTestFiles(root, files) {
+  const realRoot = realpathSync(root);
+  if (!Array.isArray(files) || files.length === 0)
+    throw new Error('Changed verification selected no test files');
+  return files.map((path) => {
+    if (
+      typeof path !== 'string' ||
+      path.length === 0 ||
+      isAbsolute(path) ||
+      path.split(/[\\/]/).includes('..') ||
+      /[\r\n\0]/.test(path) ||
+      !VITEST_FILE_PATTERN.test(path)
+    )
+      throw new Error(
+        `Changed verification selected an unsafe test path: ${path}`,
+      );
+    const candidate = resolve(realRoot, path);
+    const relativeCandidate = relative(realRoot, candidate);
+    if (
+      relativeCandidate === '' ||
+      relativeCandidate === '..' ||
+      relativeCandidate.startsWith(`..${sep}`)
+    )
+      throw new Error(
+        `Changed verification test leaves the workspace: ${path}`,
+      );
+    let realCandidate;
+    try {
+      realCandidate = realpathSync(candidate);
+    } catch {
+      throw new Error(`Changed verification test is missing: ${path}`);
+    }
+    if (realCandidate !== candidate || !statSync(realCandidate).isFile())
+      throw new Error(
+        `Changed verification test is not a direct workspace file: ${path}`,
+      );
+    return relativeCandidate.split(sep).join('/');
+  });
+}
 
 function git(root, args) {
   try {
@@ -139,21 +424,36 @@ export function selectChangedVerification(
         matches(edge.pattern, path) &&
         (edge.whenAll?.every((required) => changed.has(required)) ?? true),
     );
+    // A SUPPLEMENTAL edge only ever adds to `tests`: it is invisible to the
+    // boundary, escalation, and related decisions below, so a derived edge
+    // (`pathReadPinEdges`, #1807) cannot trade a broader selection for a
+    // narrower one. Naming `tests` on an ordinary edge would set
+    // `hasExplicitBoundary`, suppressing the generic `related` edge for the
+    // same path, which is how an explicit list silently DROPS the related
+    // suites (#1563, #1613). This says nothing about whether the added test
+    // can run — `pathReadPinEdges` owns that.
+    const boundaryEdges = edges.filter((edge) => !edge.supplemental);
+    // Added before every branch below: a supplemental test is additive even
+    // where the path escalates, and naming it in the receipt is the point.
+    for (const edge of edges)
+      if (edge.supplemental)
+        for (const test of edge.tests ?? [])
+          addReason(tests, test, `${edge.reason}: ${path}`);
     const hasExplicitBoundary =
       isChangedTest ||
-      edges.some((edge) => edge.tests?.length || edge.lanes?.length);
+      boundaryEdges.some((edge) => edge.tests?.length || edge.lanes?.length);
     if (isEscalationPath(path) && !hasExplicitBoundary) {
       addReason(lanes, 'ci-fast', `escalation: ${path}`);
       escalated = true;
       continue;
     }
-    if (!edges.length) {
+    if (!boundaryEdges.length) {
       if (isChangedTest) continue;
       addReason(lanes, 'ci-fast', `unknown changed path: ${path}`);
       escalated = true;
       continue;
     }
-    for (const edge of edges) {
+    for (const edge of boundaryEdges) {
       // A direct mapping replaces the generic graph fallback. An edge that
       // explicitly requests both tests and related selection supplements the
       // import graph (for example, a source-reading portability check).
@@ -258,6 +558,27 @@ function boundedRedactedText(value, maxBytes) {
     bounded += point;
   }
   return bounded;
+}
+
+function preparationFailure(phase, childStarted, error, cleanup) {
+  const redacted = redactVerificationOutput(String(error ?? ''));
+  const bounded = boundedRedactedText(redacted, FAILURE_EXCERPT_LIMIT);
+  return {
+    phase,
+    childStarted,
+    infrastructureError: true,
+    error: bounded,
+    errorTruncated: Buffer.byteLength(redacted) > Buffer.byteLength(bounded),
+    cleanup:
+      cleanup?.status === 'failed'
+        ? {
+            status: 'failed',
+            survivingOwnedChildren: cleanup.survivingOwnedChildren > 0 ? 1 : 0,
+          }
+        : cleanup?.status === 'passed'
+          ? { status: 'passed', survivingOwnedChildren: 0 }
+          : { status: 'not_required', survivingOwnedChildren: 0 },
+  };
 }
 
 function reportFile(name, root) {
@@ -397,33 +718,88 @@ function parseVitestReport(contents, { root = process.cwd() } = {}) {
   return parsed;
 }
 
-function runVitest(
+export async function planChangedVitestExecutions(
+  root,
+  selection,
+  {
+    discoverRelated = discoverRelatedTestFiles,
+    partition = partitionVitestResourceSubset,
+    vitestPath,
+  } = {},
+) {
+  const vitest = vitestPath ?? resolve(root, 'node_modules/vitest/vitest.mjs');
+  const relatedTests = selection.relatedPaths.length
+    ? await discoverRelated(root, selection.relatedPaths)
+    : [];
+  const candidates = [
+    ...new Set([
+      ...relatedTests,
+      ...selection.tests.map((entry) => entry.path),
+    ]),
+  ].sort();
+  // Discovery ran and matched nothing. That is an empty plan, not a planning
+  // failure, so it must not reach validateSelectedTestFiles -- whose empty
+  // throw is the fail-closed guard for a selection that was supposed to hold
+  // files. Only a related-path selection can land here: an explicit test
+  // target always contributes its own path.
+  if (candidates.length === 0 && selection.relatedPaths.length > 0) return [];
+  const selected = validateSelectedTestFiles(root, candidates);
+  const groups = partition(selected, { root });
+  const kind = selection.relatedPaths.length
+    ? selection.tests.length
+      ? 'combined'
+      : 'related'
+    : 'explicit';
+  return VITEST_CORPUS_GROUPS.flatMap((group) => {
+    const files = groupFiles(groups, group.name);
+    if (!files.length) return [];
+    return [
+      {
+        kind,
+        resourceGroup: group.name,
+        command: [
+          vitest,
+          'run',
+          `--maxWorkers=${group.maxWorkers}`,
+          ...(group.noFileParallelism ? ['--no-file-parallelism'] : []),
+          ...files.map((file) => `./${file}`),
+        ],
+      },
+    ];
+  });
+}
+
+async function runVitest(
   root,
   run,
   selection,
-  { beforeCleanup = () => {}, readReport = readFileSync, vitestPath } = {},
+  {
+    beforeCleanup = () => {},
+    discoverRelated,
+    partition,
+    readReport = readFileSync,
+    vitestPath,
+  } = {},
 ) {
-  const vitest = vitestPath ?? resolve(root, 'node_modules/vitest/vitest.mjs');
-  const plannedExecutions = [];
-  if (selection.relatedPaths.length) {
-    plannedExecutions.push({
-      kind: 'related',
-      command: [vitest, 'related', '--run', ...selection.relatedPaths],
+  let plannedExecutions;
+  try {
+    plannedExecutions = await planChangedVitestExecutions(root, selection, {
+      ...(discoverRelated ? { discoverRelated } : {}),
+      ...(partition ? { partition } : {}),
+      vitestPath,
     });
-  }
-  if (selection.tests.length) {
-    // These manifest targets are a separate dynamic-boundary floor which
-    // import analysis cannot discover. Passing each unique target once keeps
-    // it deterministic and avoids duplicate explicit execution.
-    const related = new Set(selection.relatedPaths);
-    const exactTests = selection.tests
-      .map((entry) => entry.path)
-      .filter((path) => !related.has(path));
-    if (exactTests.length)
-      plannedExecutions.push({
-        kind: 'explicit',
-        command: [vitest, 'run', ...exactTests],
-      });
+  } catch (error) {
+    return {
+      executions: [],
+      preparation: preparationFailure(
+        error instanceof Error && error.phase === 'related-discovery'
+          ? 'related-discovery'
+          : 'resource-plan',
+        error instanceof Error && error.childStarted === true,
+        error instanceof Error ? error.message : String(error),
+        error instanceof Error ? error.cleanup : undefined,
+      ),
+    };
   }
   // An execution record is evidence that a child was actually started. Keep
   // the plan separate: a non-zero related run is fail-fast, so later planned
@@ -431,22 +807,58 @@ function runVitest(
   // plans as executions made an otherwise truthful failing diagnostic look
   // corrupt to its consumer (#701).
   const executions = [];
+  let preparation;
   const reportDirectory = mkdtempSync(join(tmpdir(), 'station-test-changed-'));
   let durable = false;
   try {
     for (const [index, execution] of plannedExecutions.entries()) {
+      if (selection.signal?.aborted) {
+        preparation = preparationFailure(
+          'resource-execution',
+          false,
+          `Changed Vitest execution ${selection.signal.reason ?? 'aborted'}`,
+        );
+        break;
+      }
       const reportPath = join(reportDirectory, `${index}.json`);
+      let child;
+      try {
+        child = await run(
+          process.execPath,
+          [
+            ...execution.command,
+            '--reporter=json',
+            `--outputFile=${reportPath}`,
+            '--passWithNoTests',
+          ],
+          {
+            cwd: root,
+            emitOutput: true,
+            processLabel: `Changed Vitest ${execution.resourceGroup}`,
+            signal: selection.signal,
+          },
+        );
+      } catch (error) {
+        preparation = preparationFailure(
+          'resource-execution',
+          false,
+          error instanceof Error ? error.message : String(error),
+        );
+        break;
+      }
+      if (child.launch?.started === false) {
+        preparation = preparationFailure(
+          'resource-execution',
+          false,
+          child.error instanceof Error
+            ? child.error.message
+            : 'Changed Vitest child did not start',
+          child.cleanup,
+        );
+        break;
+      }
       executions.push(execution);
-      const child = run(
-        process.execPath,
-        [
-          ...execution.command,
-          '--reporter=json',
-          `--outputFile=${reportPath}`,
-          '--passWithNoTests',
-        ],
-        { cwd: root, stdio: 'inherit', shell: false },
-      );
+      execution.cleanup = child.cleanup;
       execution.exitCode = Number.isInteger(child.status) ? child.status : 1;
       execution.infrastructureError = Boolean(
         child.error || child.status === null || child.signal,
@@ -468,20 +880,24 @@ function runVitest(
       )
         break;
     }
-    beforeCleanup(executions);
+    beforeCleanup(executions, preparation);
     durable = true;
   } finally {
     // Preserve the raw reporter directory if durable diagnostic persistence
     // fails. Successful runs remove it only after the stable artifact exists.
     if (durable) rmSync(reportDirectory, { recursive: true, force: true });
   }
-  return executions;
+  return {
+    executions,
+    emptySelection: plannedExecutions.length === 0,
+    ...(preparation ? { preparation } : {}),
+  };
 }
 
-function countsFor(executions) {
-  const infrastructureErrors = executions.filter(
-    (entry) => entry.infrastructureError,
-  ).length;
+function countsFor(executions, preparation) {
+  const infrastructureErrors =
+    executions.filter((entry) => entry.infrastructureError).length +
+    (preparation?.infrastructureError === true ? 1 : 0);
   const parserErrors = executions.filter((entry) => entry.error).length;
   const testCounts = executions.flatMap((entry) =>
     entry.counts ? [entry.counts] : [],
@@ -497,6 +913,53 @@ function countsFor(executions) {
     infrastructureErrors,
     parserErrors,
     emptyReports: executions.filter((entry) => entry.empty).length,
+  };
+}
+
+function cleanupFor(result) {
+  const observations = [
+    result.preparation?.cleanup,
+    ...result.executed.map((execution) => execution.cleanup),
+  ].filter(Boolean);
+  const failed = observations.filter((cleanup) => cleanup.status === 'failed');
+  if (failed.length)
+    return {
+      status: 'failed',
+      survivingOwnedChildren: failed.some(
+        (cleanup) => cleanup.survivingOwnedChildren > 0,
+      )
+        ? 1
+        : 0,
+    };
+  if (observations.some((cleanup) => cleanup.status === 'passed'))
+    return { status: 'passed', survivingOwnedChildren: 0 };
+  return { status: 'not_required', survivingOwnedChildren: 0 };
+}
+
+/**
+ * Name the obligation an empty related selection leaves behind. Exit 3 must
+ * name the next lane (docs/guides/testing.md) and the test-changed lane
+ * declares that "empty selections escalate to named deferred lanes"
+ * (scripts/verification-lanes.mjs), so an empty plan that named nothing left
+ * a provisional exit 3 with no lane, no next command and escalated: false --
+ * an unnamed obligation, which run-ci-fast then passes over.
+ */
+function escalateEmptyRelatedSelection(selection, relatedPaths) {
+  const laneReasons = new Map(
+    selection.lanes.map(({ id, reasons }) => [id, new Set(reasons)]),
+  );
+  for (const path of relatedPaths)
+    addReason(
+      laneReasons,
+      'test-full',
+      `no related suites for ${path}; ${EMPTY_RELATED_SELECTION_REMEDY}`,
+    );
+  return {
+    ...selection,
+    lanes: [...laneReasons.keys()]
+      .sort()
+      .map((id) => ({ id, reasons: [...laneReasons.get(id)].sort() })),
+    escalated: true,
   };
 }
 
@@ -553,8 +1016,22 @@ function diagnosticsArtifact(result, counts, provenance) {
       escalated: result.selection.escalated,
     },
     counts,
+    ...(result.preparation
+      ? {
+          preparation: {
+            phase: result.preparation.phase,
+            childStarted: result.preparation.childStarted,
+            infrastructureError: result.preparation.infrastructureError,
+            error: result.preparation.error,
+            errorTruncated: result.preparation.errorTruncated,
+          },
+        }
+      : {}),
     executions: result.executed.map((execution) => ({
       kind: execution.kind,
+      ...(execution.resourceGroup
+        ? { resourceGroup: execution.resourceGroup }
+        : {}),
       exitCode: execution.exitCode,
       infrastructureError: execution.infrastructureError === true,
       ...(execution.error ? { error: execution.error } : {}),
@@ -596,6 +1073,8 @@ const CHANGED_OUTPUT_NAME_LIMIT = 6;
 const CHANGED_OUTPUT_LINE_LIMIT = 1_024;
 const CHANGED_SELECTION_ARTIFACT =
   '.kontourai/test-impact/changed-selection.json';
+const EMPTY_RELATED_SELECTION_REMEDY =
+  'declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file';
 
 function boundedNames(names) {
   const unique = [...new Set(names)].sort();
@@ -630,9 +1109,34 @@ export function renderChangedVerificationSummary(result) {
   const truncated = focused.truncated || lanes.truncated;
   const mode = result.receipt?.terminal?.status ?? 'unknown';
   const laws = boundedNames(result.productLaws ?? []);
+  const emptyRelated = result.emptyRelatedSelection
+    ? boundedNames(result.emptyRelatedSelection.relatedPaths ?? [])
+    : undefined;
+  // station#1911: how many suites were SELECTED is not how many RAN. When a
+  // lane escalates, `executionSelection` drops every test above the 32-entry
+  // cap, so the largest changes execute the fewest suites — and the summary
+  // used to report only the selected figure, which reads like coverage that
+  // did not happen. #1836 selected 153 and ran none while this line said
+  // "153 focused target(s)". State the executed count beside it so a silent
+  // truncation is legible in the log rather than only in the artifact.
+  const executedCount = Array.isArray(result.executed)
+    ? result.executed.length
+    : undefined;
+  const executedNote =
+    executedCount === undefined
+      ? ''
+      : executedCount === 0 && focusedCount(result.selection) > 0
+        ? `, 0 executed (selection deferred to a lane; none of the ${focusedCount(result.selection)} selected suites ran)`
+        : `, ${executedCount} executed`;
   return [
-    `[test:changed] ${result.paths?.length ?? 0} changed path(s); ${focusedCount(result.selection)} focused target(s), ${result.selection.lanes.length} deferred lane(s) (${mode}).`,
+    `[test:changed] ${result.paths?.length ?? 0} changed path(s); ${focusedCount(result.selection)} focused target(s)${executedNote}, ${result.selection.lanes.length} deferred lane(s) (${mode}).`,
     `[test:changed] focused: ${focused.rendered}`,
+    ...(emptyRelated
+      ? [
+          `[test:changed] no related suites for: ${emptyRelated.rendered}`,
+          `[test:changed] remedy: ${result.emptyRelatedSelection.remedy ?? EMPTY_RELATED_SELECTION_REMEDY}`,
+        ]
+      : []),
     `[test:changed] lanes: ${lanes.rendered}`,
     `[test:changed] product laws: ${laws.rendered}`,
     `[test:changed] detail: ${CHANGED_SELECTION_ARTIFACT}${truncated ? ' (terminal names truncated; full selection is in the artifact)' : ''}`,
@@ -722,11 +1226,12 @@ function linkFixtureWorkspaceDependencies(fixtureRoot) {
  * is removed even when the selected test fails. This is intentionally a
  * timing/demo seam, not verification evidence for the caller's worktree.
  */
-export function runRepresentativeNarrowDiffFixture({
+export async function runRepresentativeNarrowDiffFixture({
   root = process.cwd(),
   fixturePath = NARROW_DIFF_FIXTURE,
   runChanged = runChangedVerification,
   now = Date.now,
+  signal,
   worktreeCommand = (args, cwd) => git(cwd, args),
 } = {}) {
   const fixture = JSON.parse(readFileSync(resolve(root, fixturePath), 'utf8'));
@@ -760,8 +1265,9 @@ export function runRepresentativeNarrowDiffFixture({
     );
     appendFileSync(fixtureTarget(fixtureRoot, targetPath), '\n');
     const startedAt = now();
-    const result = runChanged(['--base=HEAD'], {
+    const result = await runChanged(['--base=HEAD'], {
       root: fixtureRoot,
+      ...(signal ? { signal } : {}),
       vitestPath: join(dependencies, 'vitest/vitest.mjs'),
     });
     return {
@@ -778,17 +1284,20 @@ export function runRepresentativeNarrowDiffFixture({
   }
 }
 
-export function runChangedVerification(
+export async function runChangedVerification(
   args,
   {
     root = process.cwd(),
-    run = spawnSync,
+    run = runOwnedChangedCommand,
     changedPathsFn = changedPaths,
     collectProvenance = collectVerificationProvenance,
     writeReceipt = writeReceiptSecurely,
     vitestPath,
+    discoverRelatedFiles,
+    resourcePartition = partitionVitestResourceSubset,
     assertDependencyProvenance = assertWorkspacePackageProvenance,
     pathExists = existsSync,
+    signal,
   } = {},
 ) {
   // Resolve dependency provenance before selecting or starting Vitest. A
@@ -797,11 +1306,20 @@ export function runChangedVerification(
   assertDependencyProvenance({ cwd: root });
   const { base, explain } = parseChangedArgs(args);
   const changed = changedPathsFn({ root, base });
+  // The derived manifest adds the path-read pin edges (#1807): a test that
+  // reads a source file's text has no import edge to it, so neither the graph
+  // fallback nor `vitest related` would schedule it here.
   let selection = escalateUnavailableExplicitTests(
-    escalateUnavailableRelatedPaths(selectChangedVerification(changed.paths), {
-      root,
-      pathExists,
-    }),
+    escalateUnavailableRelatedPaths(
+      selectChangedVerification(
+        changed.paths,
+        buildTestImpactManifest({ root }),
+      ),
+      {
+        root,
+        pathExists,
+      },
+    ),
     { root, pathExists },
   );
   const productLawRouting = withProductLawDispositions(
@@ -845,31 +1363,68 @@ export function runChangedVerification(
     !explain &&
     (executionSelection.tests.length || executionSelection.relatedPaths.length)
   ) {
-    result.executed = runVitest(root, run, executionSelection, {
-      vitestPath,
-      beforeCleanup(executions) {
-        result.executed = executions;
-        selection = escalateEmptyReports(selection, executions);
-        result.selection = selection;
-        result.nextCommands = nextCommands(selection);
-        const earlyDiagnostics = diagnosticsArtifact(
-          result,
-          countsFor(executions),
-          before,
-        );
-        writeReceipt(
-          earlyDiagnostics.artifact.path,
-          earlyDiagnostics.contents,
-          root,
-        );
+    const vitestOutcome = await runVitest(
+      root,
+      run,
+      { ...executionSelection, signal },
+      {
+        vitestPath,
+        discoverRelated:
+          discoverRelatedFiles ??
+          ((discoveryRoot, relatedPaths) =>
+            discoverRelatedTestFiles(discoveryRoot, relatedPaths, {
+              run,
+              signal,
+            })),
+        partition: resourcePartition,
+        beforeCleanup(executions, preparation) {
+          result.executed = executions;
+          if (preparation) result.preparation = preparation;
+          selection = escalateEmptyReports(selection, executions);
+          result.selection = selection;
+          result.nextCommands = nextCommands(selection);
+          const earlyDiagnostics = diagnosticsArtifact(
+            result,
+            countsFor(executions, preparation),
+            before,
+          );
+          writeReceipt(
+            earlyDiagnostics.artifact.path,
+            earlyDiagnostics.contents,
+            root,
+          );
+        },
       },
-    });
+    );
+    result.executed = vitestOutcome.executions;
+    if (vitestOutcome.preparation)
+      result.preparation = vitestOutcome.preparation;
+    // Related discovery ran and named no suite. Record the fact durably in
+    // the selection artifact so a reader sees a selection decision rather
+    // than a silent zero-execution run.
+    if (vitestOutcome.emptySelection === true && !vitestOutcome.preparation) {
+      result.emptyRelatedSelection = {
+        relatedPaths: [...executionSelection.relatedPaths].sort(),
+        remedy: EMPTY_RELATED_SELECTION_REMEDY,
+      };
+      selection = escalateEmptyRelatedSelection(
+        selection,
+        executionSelection.relatedPaths,
+      );
+    }
     selection = escalateEmptyReports(selection, result.executed);
     result.selection = selection;
     result.nextCommands = nextCommands(selection);
   }
   const after = collectProvenance({ cwd: root });
-  const counts = countsFor(result.executed);
+  const counts = countsFor(result.executed, result.preparation);
+  // An empty related selection is deferred, not complete and not broken: no
+  // suite was executed, so the receipt layer cannot call it a pass
+  // (isPassingCounts requires executed > 0), and nothing here justifies
+  // loosening that. The escalation above names test-full, which makes this
+  // `provisional` -- and run-ci-fast reads its exit 3 as a deferred selection
+  // and carries on, so a data-only diff does not red fast-checks while its
+  // receipt still names the obligation (#1757).
   const deferred = explain || selection.lanes.length > 0;
   const failed = counts.failed > 0;
   const childFailed = result.executed.some(
@@ -910,7 +1465,7 @@ export function runChangedVerification(
     exitCode: receiptExitCode,
     counts: receiptCounts,
     artifacts: [artifact, diagnostics.artifact],
-    cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+    cleanup: cleanupFor(result),
     before,
     after,
   });
@@ -943,16 +1498,22 @@ if (
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
+  const controller = new AbortController();
+  const unregister = ['SIGINT', 'SIGTERM'].map((name) =>
+    registerProcessSignal(name, () => controller.abort(name)),
+  );
   try {
     const args = process.argv.slice(2);
-    const result =
-      args.length === 1 && args[0] === '--representative-narrow-diff'
-        ? runRepresentativeNarrowDiffFixture()
-        : runChangedVerification(args);
+    const result = await (args.length === 1 &&
+    args[0] === '--representative-narrow-diff'
+      ? runRepresentativeNarrowDiffFixture({ signal: controller.signal })
+      : runChangedVerification(args, { signal: controller.signal }));
     console.log(renderChangedVerificationSummary(result));
     process.exitCode = result.exitCode;
   } catch (error) {
     console.error(error.message);
     process.exitCode = 2;
+  } finally {
+    for (const remove of unregister) remove();
   }
 }

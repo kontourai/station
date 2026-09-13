@@ -153,7 +153,9 @@ describe('ACPConnectionsView', () => {
     expect(installRegistryEntry).not.toHaveBeenCalled();
     // The confirmation names both durable effects, not just the connection.
     expect(
-      screen.getByText(/Saves a connection to Kiro CLI on this computer\./),
+      screen.getByText(
+        /Saves a connection to Kiro CLI on the computer Station runs on\./,
+      ),
     ).toBeTruthy();
     expect(
       screen.getByText(/Adds an agent named Kiro CLI to your Agents list\./),

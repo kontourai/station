@@ -342,6 +342,55 @@ describe('JobFormModal schedule compatibility', () => {
     ).toBe(true);
   });
 
+  test('refuses a name that the form reports as invalid', () => {
+    render(<JobFormModal onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Daily briefing' },
+    });
+    fireEvent.change(screen.getByLabelText('Instructions'), {
+      target: { value: 'Summarize my day' },
+    });
+    const submit = screen.getByRole('button', { name: 'Add Job' });
+    expect(submit).toHaveProperty('disabled', true);
+    fireEvent.click(submit);
+    expect(addMutate).not.toHaveBeenCalled();
+  });
+
+  test('cannot submit the previous schedule after all weekdays are deselected', () => {
+    render(
+      <JobFormModal
+        prefill={{ name: 'briefing', prompt: 'Summarize' }}
+        onClose={vi.fn()}
+      />,
+    );
+    for (const day of [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+    ]) {
+      fireEvent.click(screen.getByRole('button', { name: day }));
+    }
+    const submit = screen.getByRole('button', { name: 'Add Job' });
+    expect(submit).toHaveProperty('disabled', true);
+    fireEvent.click(submit);
+    expect(addMutate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Monday' }));
+    expect(submit).toHaveProperty('disabled', false);
+    fireEvent.click(submit);
+    expect(addMutate.mock.calls[0]?.[0].schedule.expr).toBe('0 8 * * 1');
+  });
+
+  test('an empty catalog offers setup guidance instead of blaming a default agent ID', () => {
+    agentCatalog.agents = [];
+    render(<JobFormModal onClose={vi.fn()} />);
+    expect(
+      screen.getByText('Set up an agent in Agents before adding a job.'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/No Agent named/)).toBeNull();
+  });
+
   test('adopts a runnable agent as the default instead of the station literal', () => {
     agentCatalog.agents = [
       {
@@ -532,6 +581,47 @@ describe('the Calendar field states the zone it will be evaluated in', () => {
 
     expect(screen.getByText('· Australia/Brisbane')).toBeTruthy();
   });
+
+  test.each(['Australia/Brisbane', undefined])(
+    'edits calendar wall time in the job zone (%s), regardless of the browser offset',
+    (timezone) => {
+      editMutate.mockClear();
+      const offset = vi
+        .spyOn(Date.prototype, 'getTimezoneOffset')
+        .mockReturnValue(420);
+      try {
+        render(
+          <JobFormModal
+            job={{
+              name: 'briefing',
+              provider: 'built-in',
+              schedule: {
+                kind: 'cron',
+                expr: '0 8 * * 1-5',
+                ...(timezone ? { timezone } : {}),
+              },
+              prompt: 'Summarize',
+              agent: 'station',
+              enabled: true,
+            }}
+            onClose={vi.fn()}
+          />,
+        );
+        const time = screen.getByLabelText(`Time in ${timezone ?? 'UTC'}`);
+        expect(time).toHaveProperty('value', '08:00');
+        fireEvent.change(time, { target: { value: '09:30' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+        expect(editMutate.mock.calls[0]?.[0].schedule).toEqual({
+          kind: 'cron',
+          expr: '30 9 * * 1,2,3,4,5',
+          ...(timezone ? { timezone } : {}),
+        });
+        expect(screen.queryByText(/stores UTC schedules/)).toBeNull();
+      } finally {
+        offset.mockRestore();
+      }
+    },
+  );
 
   test('names the IANA zone, never a short abbreviation, in the panel text', () => {
     // #1536 R6: one vocabulary. The abbreviation belongs only to the instant

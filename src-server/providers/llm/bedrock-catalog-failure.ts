@@ -21,9 +21,7 @@
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import type { LLMModelCatalog } from './model-provider-types.js';
 
-export type BedrockCatalogFailureKind = NonNullable<
-  LLMModelCatalog['reasonKind']
->;
+type BedrockCatalogFailureKind = NonNullable<LLMModelCatalog['reasonKind']>;
 
 /**
  * An IAM policy may grant `bedrock:InvokeModel` and withhold
@@ -151,7 +149,7 @@ function httpStatus(error: unknown): number | undefined {
 }
 
 /** Whether this failure is the catalogue call being denied specifically. */
-export function isBedrockCatalogAuthorizationDenial(error: unknown): boolean {
+function isBedrockCatalogAuthorizationDenial(error: unknown): boolean {
   return CATALOG_DENIED_ERROR_NAMES.has(errorName(error));
 }
 

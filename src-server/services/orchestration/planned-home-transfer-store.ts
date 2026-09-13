@@ -36,7 +36,7 @@ export interface PlannedHomeTransfer {
 export type TransferStoreResult<T> =
   | { kind: 'stored'; value: T }
   | { kind: 'conflict' | 'not-found' | 'unavailable' | 'denied' };
-export type TransferCommitResult =
+type TransferCommitResult =
   | TransferStoreResult<PlannedHomeTransfer>
   | { kind: 'admission-pending' };
 export interface HomeTransferDurableDatabase {

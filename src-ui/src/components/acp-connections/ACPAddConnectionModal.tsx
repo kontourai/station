@@ -92,6 +92,7 @@ export function ACPAddConnectionModal({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onCancel}
       ariaLabelledBy="add-provider-title"
       overlayClassName="acp-add-dialog__overlay"

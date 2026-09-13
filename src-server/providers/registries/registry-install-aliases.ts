@@ -1,17 +1,12 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 
 export const AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL =
   'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json' as const;
 
-export interface RegistryInstallAlias {
+interface RegistryInstallAlias {
   pluginName: string;
   registryKey: string;
   /** Optional until a registry is installed through the signed-package path. */
@@ -62,11 +57,19 @@ export function writeRegistryInstallAliases(
   projectHomeDir: string,
   aliases: RegistryInstallAliases,
 ): void {
-  const target = aliasesPath(projectHomeDir);
-  mkdirSync(dirname(target), { recursive: true });
-  const temporary = `${target}.tmp-${process.pid}`;
-  writeFileSync(temporary, `${JSON.stringify(aliases, null, 2)}\n`);
-  renameSync(temporary, target);
+  // No pre-mkdir: the shared writer creates a missing `config/` 0o700, which
+  // is where this directory ends up anyway. Station is split on how it
+  // creates `config/` -- `config-loader-app`, `persisted-random-identifier`
+  // and `usage-telemetry-service` each mkdir it 0o700 AND chmod it 0o700 on
+  // every write, while `config-loader-storage`, `config-loader` and
+  // `distribution-profile-service` take the umask default -- so a caller-side
+  // mkdir here would preserve the default only until the next telemetry
+  // acknowledgement or app-config save chmods it back. An earlier version of
+  // this comment claimed the opposite; it was wrong twice.
+  //
+  // Same two-space-plus-newline document; the shared writer additionally
+  // fsyncs the data and the directory entry.
+  writeJsonDurably(aliasesPath(projectHomeDir), aliases);
 }
 
 export function readRegistryInstallAliases(

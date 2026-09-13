@@ -1,3 +1,8 @@
+import {
+  parseEngineConnectionId,
+  parseEngineId,
+  agentId as validateAgentId,
+} from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import { authenticatedFetch } from './client/http';
 import { resolveApiBase } from './query-core';
@@ -104,6 +109,15 @@ function parseConversationOpenResolution(
   )
     return false;
   if (record.status === 'resolved') {
+    if (
+      record.execution !== undefined &&
+      !validExecution(
+        record.execution,
+        record.currentSessionId,
+        conversation.agentSlug,
+      )
+    )
+      return false;
     return (
       typeof record.currentSessionId === 'string' &&
       record.currentSessionId.length > 0 &&
@@ -125,5 +139,47 @@ function parseConversationOpenResolution(
   return (
     transcript.available === false &&
     (transcript.owner === 'store' || transcript.owner === 'runtime')
+  );
+}
+
+function validExecution(
+  value: unknown,
+  sessionId: unknown,
+  agentId: unknown,
+): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const execution = value as Record<string, unknown>;
+  const fields = [
+    'sessionId',
+    'agentId',
+    'provider',
+    'engineConnectionId',
+    'model',
+    'acceptedModel',
+  ];
+  if (Object.keys(execution).some((key) => !fields.includes(key))) return false;
+  const boundedText = (text: unknown) =>
+    typeof text === 'string' &&
+    text.length > 0 &&
+    text.length <= 256 &&
+    [...text].every(
+      (character) =>
+        character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127,
+    );
+  if (typeof execution.agentId !== 'string') return false;
+  try {
+    validateAgentId(execution.agentId);
+  } catch {
+    return false;
+  }
+  return (
+    execution.sessionId === sessionId &&
+    execution.agentId === agentId &&
+    parseEngineId(execution.provider) !== undefined &&
+    (execution.engineConnectionId === undefined ||
+      parseEngineConnectionId(execution.engineConnectionId) !== undefined) &&
+    (execution.model === undefined || boundedText(execution.model)) &&
+    (execution.acceptedModel === undefined ||
+      boundedText(execution.acceptedModel))
   );
 }

@@ -10,7 +10,7 @@ import { createRuntimeFrameworkModel } from '../../runtime/plugins/runtime-provi
 import type { IAgentFramework } from '../../runtime/types.js';
 import { approvalGuardianOps } from '../../telemetry/metrics.js';
 
-export interface ApprovalGuardianReviewInput {
+interface ApprovalGuardianReviewInput {
   agentName?: string;
   agentSlug: string;
   conversationId?: string;
@@ -19,7 +19,7 @@ export interface ApprovalGuardianReviewInput {
   toolName: string;
 }
 
-export interface ApprovalGuardianDecision {
+interface ApprovalGuardianDecision {
   decision: 'allow' | 'defer' | 'deny';
   reason: string;
 }
@@ -159,7 +159,7 @@ export class ApprovalGuardianService {
  * behavior, so the composition is fixed to match the promise (archive#1831
  * delivery review).
  */
-export function composeGuardianInstructions(
+function composeGuardianInstructions(
   userInstructions: string | undefined,
 ): string {
   const trimmed = userInstructions?.trim();

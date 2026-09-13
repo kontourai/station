@@ -9,9 +9,9 @@ import {
 import { LazyMarkdown } from '../chat/LazyMarkdown';
 import { Empty } from '../state';
 
-export type WorkflowPlanStepStatus = 'completed' | 'in_progress' | 'pending';
+type WorkflowPlanStepStatus = 'completed' | 'in_progress' | 'pending';
 
-export interface WorkflowPlanStep {
+interface WorkflowPlanStep {
   id: string;
   label: string;
   status: WorkflowPlanStepStatus;
@@ -275,13 +275,13 @@ function StepStatusBadge({ status }: { status: WorkflowPlanStepStatus }) {
   );
 }
 
-export type WorkflowPlanRuntimeState = {
+type WorkflowPlanRuntimeState = {
   status?: string | null;
   pendingApprovals?: number;
   isProcessingStep?: boolean;
 };
 
-export type WorkflowPlanRuntimeStrip = {
+type WorkflowPlanRuntimeStrip = {
   label: string;
   tone: 'live' | 'attention' | 'complete';
   live: boolean;

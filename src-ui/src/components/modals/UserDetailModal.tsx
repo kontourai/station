@@ -47,6 +47,7 @@ export function UserDetailModal({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabel={`${displayName || alias} profile`}
       overlayClassName="user-detail-overlay"

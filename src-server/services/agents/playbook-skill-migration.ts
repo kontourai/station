@@ -21,6 +21,7 @@
  * counter side store) and the agent config loader — so there is no second
  * serializer, no raw path join, and no second validator.
  */
+
 import {
   existsSync,
   readdirSync,
@@ -41,6 +42,7 @@ import {
   skillCommandSlug,
 } from '@kontourai/station-contracts/skill-command';
 import { isSafeSkillName, skillsRootDir } from '../../domain/skill-paths.js';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   type AgentPromptTranslation,
   applyAgentPromptTranslation,
@@ -540,10 +542,6 @@ function isUnwritableHomeError(error: unknown): boolean {
   return code === 'EROFS' || code === 'EACCES' || code === 'EPERM';
 }
 
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /**
  * The directory name a playbook becomes.
  *
@@ -611,7 +609,7 @@ export async function migratePlaybooksToSkills(
     // archive a file we could not read, and leave no marker so a repaired
     // store is picked up on the next boot.
     report.status = 'failed';
-    report.reason = `playbook store could not be read: ${errorText(error)}`;
+    report.reason = `playbook store could not be read: ${errorMessage(error)}`;
     report.errors.push(report.reason);
     logger.warn(
       'Playbooks→Skills migration could not read the playbook store',
@@ -848,7 +846,7 @@ export async function migratePlaybooksToSkills(
         // The migration itself succeeded; only the tidy-up did not. The marker
         // is already in place, so the next boot skips rather than repeats.
         report.errors.push(
-          `playbook store kept at ${roots.promptsDir}: ${errorText(error)}`,
+          `playbook store kept at ${roots.promptsDir}: ${errorMessage(error)}`,
         );
         logger.warn('Playbooks→Skills migration could not archive the store', {
           promptsDir: roots.promptsDir,
@@ -863,7 +861,7 @@ export async function migratePlaybooksToSkills(
       // pass did write carries its `legacyIds`, so the next boot resumes from
       // exactly where this one stopped.
       report.status = 'pending';
-      report.reason = `writes are not permitted in ${homeDir} yet (${errorText(error)}); the migration will resume on the next start`;
+      report.reason = `writes are not permitted in ${homeDir} yet (${errorMessage(error)}); the migration will resume on the next start`;
       report.errors.push(report.reason);
       logger.warn('Playbooks→Skills migration pending: home is not writable', {
         homeDir,
@@ -872,7 +870,7 @@ export async function migratePlaybooksToSkills(
       return report;
     }
     report.status = 'failed';
-    report.reason = errorText(error);
+    report.reason = errorMessage(error);
     report.errors.push(report.reason);
     logger.warn('Playbooks→Skills migration stopped', { homeDir, error });
     return report;
@@ -965,7 +963,7 @@ async function bindAgents(context: {
       // still refuses to complete: see the `failedAgents` gate above.
       // `failedAgents` only — pushing the same failure into `errors` too made
       // the doctor print every refused agent twice (seen live).
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = errorMessage(error);
       report.failedAgents.push({ slug: agentSlug, reason });
       logger.warn('Playbooks→Skills migration could not update an agent', {
         agentSlug,

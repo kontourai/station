@@ -450,7 +450,7 @@
 .task-workspace__surface-answer-summary dt,
 .task-workspace__surface-answer-bucket h5,
 .task-workspace__answer-support-selector legend {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 0.65rem;
   letter-spacing: 0.06em;

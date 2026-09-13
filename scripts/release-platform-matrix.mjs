@@ -126,16 +126,22 @@ export function validateReleasePlatformMatrix({
       }
 
       const evidence = cell.evidence;
-      if (channel === 'nightly' && ['android', 'macos'].includes(platform)) {
+      if (
+        channel === 'nightly' &&
+        ['android', 'macos', 'windows'].includes(platform)
+      ) {
+        // A matrix invariant for the three cohort cells (a matrix edit cannot
+        // silently demote either), not a property the cohort derives: the
+        // cohort publishes per platform and discloses a partial night (#1774).
         if (cell.requiredForPromotion !== true)
           errors.push(`${label}.requiredForPromotion must be true`);
         if (
           typeof cell.availabilityPolicy !== 'string' ||
-          !cell.availabilityPolicy.includes('atomic-native-cohort') ||
+          !cell.availabilityPolicy.includes('per-platform-native-cohort') ||
           !cell.availabilityPolicy.includes('NOT_VERIFIED')
         )
           errors.push(
-            `${label}.availabilityPolicy must retain cohort and fleet boundary`,
+            `${label}.availabilityPolicy must retain the per-platform cohort and fleet boundary`,
           );
       }
       if (evidence?.kind === 'deploy-ledger') {

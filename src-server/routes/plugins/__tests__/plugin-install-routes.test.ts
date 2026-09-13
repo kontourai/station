@@ -32,7 +32,7 @@ vi.mock('../../../providers/registries/registry.js', () => ({
   ]),
 }));
 
-vi.mock('../plugin-install-shared.js', () => ({
+vi.mock('../../../services/plugins/plugin-install-transaction.js', () => ({
   installPluginFromSource,
 }));
 
@@ -593,6 +593,7 @@ describe('plugin-install-routes', () => {
         status: 'will-install',
         consent: {
           contentDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+          grantRevision: expect.stringMatching(/^legacy:[0-9a-f]{64}$/),
           permissions: ['providers.register'],
           dependencies: [],
           pendingConsent: [

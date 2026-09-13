@@ -110,7 +110,7 @@ export function resolvedModelLabel(
 const ENGINE_DEFAULT_MODEL_ID = 'default';
 
 /** What an identity surface calls a session running the engine's default. */
-export const ENGINE_DEFAULT_MODEL_LABEL = 'Default';
+const ENGINE_DEFAULT_MODEL_LABEL = 'Default';
 
 /**
  * What to CALL the model a chat is running, on any surface that NAMES it
@@ -163,7 +163,7 @@ export type NewChatModelChoice = {
   providerOptions: Record<string, unknown>;
 };
 
-export const MODEL_CONTROL_KEYS = [
+const MODEL_CONTROL_KEYS = [
   'effort',
   'reasoningEffort',
   'fastMode',
@@ -276,7 +276,7 @@ export function sanitizeRuntimeOptionsForModel(
  * A route the picker can offer, or several routes the reviewed map says are the
  * same model.
  */
-export type ModelPickerSection =
+type ModelPickerSection =
   | { kind: 'route'; model: SelectableModel }
   | {
       kind: 'model';

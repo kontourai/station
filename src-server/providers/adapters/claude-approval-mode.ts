@@ -64,7 +64,7 @@ export function resolveClaudePermissionMode(
  * composer chip), so it intentionally maps to `undefined`.
  */
 export function mapPermissionModeToApprovalMode(
-  mode: PermissionMode,
+  mode: PermissionMode | undefined,
 ): ApprovalMode | undefined {
   switch (mode) {
     case 'default':
@@ -73,6 +73,11 @@ export function mapPermissionModeToApprovalMode(
       return 'auto';
     case 'bypassPermissions':
       return 'never';
+    // Claude's own classifier Auto (`defaultMode: "auto"` in settings).
+    // Station's composer Auto still *sends* acceptEdits; this inbound map
+    // only reports what the engine applied when Station sent no override.
+    case 'auto':
+      return 'auto';
     default:
       return undefined;
   }

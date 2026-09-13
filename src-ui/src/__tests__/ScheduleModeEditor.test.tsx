@@ -13,17 +13,17 @@ import {
 
 describe('ScheduleModeEditor', () => {
   test('recognizes friendly schedules and preserves arbitrary cron', () => {
-    expect(parseFriendlySchedule('*/15 * * * *', 0)).toMatchObject({
+    expect(parseFriendlySchedule('*/15 * * * *')).toMatchObject({
       mode: 'interval',
       intervalValue: 15,
       intervalUnit: 'minutes',
     });
-    expect(parseFriendlySchedule('30 15 * * 1-5', 0)).toMatchObject({
+    expect(parseFriendlySchedule('30 15 * * 1-5')).toMatchObject({
       mode: 'weekly',
       weeklyDays: [1, 2, 3, 4, 5],
       localTime: '15:30',
     });
-    expect(parseFriendlySchedule('5 3 1 * *', 0).mode).toBe('cron');
+    expect(parseFriendlySchedule('5 3 1 * *').mode).toBe('cron');
   });
 
   test('compiles intervals within cron-safe bounds', () => {
@@ -33,10 +33,9 @@ describe('ScheduleModeEditor', () => {
     expect(compileIntervalSchedule(60, 'minutes')).toBeNull();
   });
 
-  test('converts local weekly schedules across UTC day boundaries', () => {
-    // UTC-7: Sunday 8 PM local is Monday 3 AM UTC.
-    expect(compileWeeklySchedule('20:00', [0], 420)).toBe('0 3 * * 1');
-    expect(parseFriendlySchedule('0 3 * * 1', 420)).toMatchObject({
+  test('preserves the wall-clock hour and weekday in the schedule zone', () => {
+    expect(compileWeeklySchedule('20:00', [0])).toBe('0 20 * * 0');
+    expect(parseFriendlySchedule('0 20 * * 0')).toMatchObject({
       mode: 'weekly',
       weeklyDays: [0],
       localTime: '20:00',
@@ -45,7 +44,13 @@ describe('ScheduleModeEditor', () => {
 
   test('offers accessible mode and weekday controls', () => {
     const onChange = vi.fn();
-    render(<ScheduleModeEditor value="0 16 * * 1-5" onChange={onChange} />);
+    render(
+      <ScheduleModeEditor
+        value="0 16 * * 1-5"
+        onChange={onChange}
+        timezone="UTC"
+      />,
+    );
 
     expect(
       screen

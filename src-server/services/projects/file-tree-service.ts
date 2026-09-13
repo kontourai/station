@@ -19,6 +19,9 @@ import {
   resolve,
 } from 'node:path';
 import { fileTreeOps } from '../../telemetry/metrics.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger({ name: 'file-tree-service' });
 
 export interface FileEntry {
   name: string;
@@ -84,7 +87,7 @@ export class FileTreeService {
     try {
       entries = readdirSync(current);
     } catch (e) {
-      console.debug('Failed to read directory:', current, e);
+      logger.debug('Failed to read directory', { path: current, error: e });
       return;
     }
     for (const name of entries) {
@@ -93,7 +96,10 @@ export class FileTreeService {
       try {
         if (lstatSync(fullPath).isSymbolicLink()) continue;
       } catch (e) {
-        console.debug('Failed to inspect directory entry:', fullPath, e);
+        logger.debug('Failed to inspect directory entry', {
+          path: fullPath,
+          error: e,
+        });
         continue;
       }
       let resolvedPath: string;
@@ -102,14 +108,17 @@ export class FileTreeService {
         this._assertWithin(base, resolvedPath, name);
       } catch (e) {
         // Do not disclose an escaped symlink through the directory listing.
-        console.debug('Skipping path outside workspace:', fullPath, e);
+        logger.debug('Skipping path outside workspace', {
+          path: fullPath,
+          error: e,
+        });
         continue;
       }
       let stat: ReturnType<typeof statSync>;
       try {
         stat = statSync(resolvedPath);
       } catch (e) {
-        console.debug('Failed to stat file:', fullPath, e);
+        logger.debug('Failed to stat file', { path: fullPath, error: e });
         continue;
       }
       const isDir = stat.isDirectory();

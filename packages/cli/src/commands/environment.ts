@@ -21,6 +21,7 @@ import {
   PUBLIC_STATION_PROOF_PATH,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
+import { readExistingEnvironmentSecurityRecord } from '@kontourai/station-shared/environment-security-record';
 import QRCode from 'qrcode';
 import {
   activeLocalStationPath,
@@ -222,7 +223,7 @@ const USAGE = `Usage:
   station environment credential rotate [--force]
   station environment reset [--force]
   station environment access list [--api-base=<loopback-url>|--station=<name>]
-  station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
+  station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person] [--api-base=<loopback-url>|--station=<name>]
   station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
   station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
   station environment offer [--client-channel=<stable|beta|nightly>] [--tailscale] [--tailscale-serve-port=<port>] [--payload-only] [--advertise-url=<url>]
@@ -1441,7 +1442,15 @@ async function runLocalAccessCommand(
   if (
     action !== 'list' &&
     (parsed.positionals.length > 3 ||
-      !allowedFlags(parsed.flags, ['api-base', 'station', 'latest', 'force']) ||
+      !allowedFlags(parsed.flags, [
+        'api-base',
+        'station',
+        'latest',
+        'force',
+        ...(action === 'approve' ? ['bind-person'] : []),
+      ]) ||
+      (parsed.flags['bind-person'] !== undefined &&
+        parsed.flags['bind-person'] !== true) ||
       (parsed.flags.latest !== undefined && parsed.flags.latest !== true) ||
       (parsed.flags.force !== undefined && parsed.flags.force !== true))
   ) {
@@ -1497,17 +1506,21 @@ async function runLocalAccessCommand(
   const request = dependencies.request ?? requestBareJson;
   const serviceProjectHome =
     targetProfile?.localService?.baseDir ?? dependencies.projectHome;
-  const service = requireSecurityService({
-    ...dependencies,
-    projectHome: serviceProjectHome,
-  });
-  const snapshot = targetProfile?.localService?.baseDir
-    ? await readSavedStationRecord(
-        service,
-        targetProfile.name,
-        targetProfile.localService.baseDir,
-      )
-    : await service.initialize();
+  const snapshot = dependencies.createService
+    ? await (async () => {
+        const service = requireSecurityService({
+          ...dependencies,
+          projectHome: serviceProjectHome,
+        });
+        return targetProfile?.localService?.baseDir
+          ? readSavedStationRecord(
+              service,
+              targetProfile.name,
+              targetProfile.localService.baseDir,
+            )
+          : service.initialize();
+      })()
+    : readExistingEnvironmentSecurityRecord(serviceProjectHome);
   const handshake = await request(apiBase, '/.well-known/station/v1');
   // station#4515 review NEW-3: an explicit, standalone shape rejection —
   // mirrors the sibling check in `verifyLocalOfferHost` above
@@ -1637,6 +1650,12 @@ async function runLocalAccessCommand(
     );
   }
 
+  const bindPerson = parsed.flags['bind-person'] === true;
+  if (bindPerson && (selected.source !== 'tailnet' || !selected.requester)) {
+    throw new Error(
+      'Person binding requires a request with server-verified Tailscale identity.',
+    );
+  }
   const force = parsed.flags.force === true;
   if (!force) {
     if (!dependencies.isInteractive) {
@@ -1649,7 +1668,7 @@ async function runLocalAccessCommand(
       throw new Error(
         `${action === 'approve' ? 'Approving' : 'Denying'} device access requires --force when stdin is non-interactive, ` +
           `so a script can never silently grant a stranger's device access to this Station without a human confirming ` +
-          `${accessRequestLabel(selected)} first. Rerun: station environment access ${action} ${selected.requestId} --force${rerunTarget}`,
+          `${accessRequestLabel(selected)} first. Rerun: station environment access ${action} ${selected.requestId} --force${bindPerson ? ' --bind-person' : ''}${rerunTarget}`,
       );
     }
     if (!dependencies.confirm) {
@@ -1659,7 +1678,7 @@ async function runLocalAccessCommand(
     }
     const confirmed = await dependencies.confirm(
       `${action === 'approve' ? 'Approve' : 'Deny'} device access for ${accessRequestLabel(selected)} ` +
-        `on ${describeResolvedTargetForHuman(resolved)}?`,
+        `on ${describeResolvedTargetForHuman(resolved)}${bindPerson ? ` and recognize this device as ${terminalSafeText(selected.requester!.login)} when it reconnects` : ''}?`,
     );
     if (!confirmed) {
       (dependencies.stdout ?? console.log)('Cancelled.');
@@ -1670,11 +1689,27 @@ async function runLocalAccessCommand(
   const path = `/api/pairing/requests/${encodeURIComponent(selected.requestId)}${
     action === 'approve' ? '/confirm' : ''
   }`;
-  const updated = parsePairingRequest(
-    await requestOperatorJson(path, {
-      method: action === 'approve' ? 'POST' : 'DELETE',
-    }),
-  );
+  const result = await requestOperatorJson(path, {
+    method: action === 'approve' ? 'POST' : 'DELETE',
+    ...(bindPerson
+      ? {
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bindVerifiedIdentity: true }),
+        }
+      : {}),
+  });
+  if (
+    bindPerson &&
+    (!result ||
+      typeof result !== 'object' ||
+      !('personBindingApproved' in result) ||
+      result.personBindingApproved !== true)
+  ) {
+    throw new Error(
+      'Device access was approved, but this Station did not confirm person binding. Update this Station and pair again.',
+    );
+  }
+  const updated = parsePairingRequest(result);
   const expectedStatus = action === 'approve' ? 'confirmed' : 'denied';
   if (
     updated.requestId !== selected.requestId ||
@@ -1707,9 +1742,19 @@ function requireSecurityService(
   dependencies: EnvironmentCommandDependencies,
 ): EnvironmentSecurityServiceLike {
   if (!dependencies.createService) {
-    throw new Error(
-      'Environment security commands require the Station repository launcher (./station).',
-    );
+    const read = async () =>
+      readExistingEnvironmentSecurityRecord(dependencies.projectHome);
+    const unavailable = async (): Promise<EnvironmentSecuritySnapshot> => {
+      throw new Error(
+        'Credential rotation and identity reset require the host management UI or repository launcher.',
+      );
+    };
+    return {
+      initialize: read,
+      readExistingRecord: read,
+      rotateCredential: unavailable,
+      resetEnvironment: unavailable,
+    };
   }
   return dependencies.createService(dependencies.projectHome);
 }

@@ -220,13 +220,33 @@ async function capture({ css: cssPath, out, legacyParent }) {
               ) {
                 throw new Error('Parity fixture is missing its main or dock');
               }
-              document.documentElement.style.setProperty(
-                '--chat-dock-width',
-                '400px',
-              );
+              // What region-clearance.ts publishes for this fold: the side
+              // width under the RENDERED side's own variable (the retired
+              // single-side alias named "the side" for both sides, #1374),
+              // and the bottom height under `--dock-slot-size` and its
+              // region twin.
+              for (const name of [
+                '--region-left-size',
+                '--region-right-size',
+                '--region-bottom-size',
+              ]) {
+                document.documentElement.style.removeProperty(name);
+              }
+              const bottomSize = state === 'collapsed' ? '38px' : '320px';
+              if (fold === 'bottom') {
+                document.documentElement.style.setProperty(
+                  '--region-bottom-size',
+                  bottomSize,
+                );
+              } else {
+                document.documentElement.style.setProperty(
+                  `--region-${fold}-size`,
+                  '400px',
+                );
+              }
               document.documentElement.style.setProperty(
                 '--dock-slot-size',
-                state === 'collapsed' ? '38px' : '320px',
+                fold === 'bottom' ? bottomSize : '0px',
               );
               main.className = `app__main${legacyParent ? ` app__main--dock-${fold}` : ''}`;
               dock.className = `chat-dock chat-dock--${fold}${

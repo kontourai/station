@@ -37,7 +37,7 @@ interface HomeActionSectionProps {
  * (`actionsLoading`), so an unmatched slug here means the project is gone from
  * the catalog, and the slug is then the only handle anything has on it.
  */
-export function continuationProjectLabel(
+function continuationProjectLabel(
   continuation: HomeViewNavigation,
   projects: { slug: string; name?: string }[] | undefined,
 ): string {
@@ -119,7 +119,7 @@ export function HomeActionSection({
         title={
           model.startReady
             ? 'Write a message and begin'
-            : 'Finish setting up an engine to chat'
+            : 'Set up an AI app to start chatting'
         }
         detail={model.startIdentity}
         onClick={() => window.dispatchEvent(new Event(OPEN_NEW_CHAT_EVENT))}

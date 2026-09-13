@@ -113,11 +113,6 @@
     },
     {
       "path": "src-ui/src/index.css",
-      "selector": ".image-preview-modal",
-      "reason": "Programmatic modal container focus is not a visible control."
-    },
-    {
-      "path": "src-ui/src/index.css",
       "selector": ".new-chat-modal__dropdown-search",
       "reason": "Legacy suppression covered by the global keyboard-focus floor."
     },

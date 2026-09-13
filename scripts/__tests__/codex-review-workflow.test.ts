@@ -8,14 +8,37 @@ const workflowPath = resolve(root, '.github/workflows/codex-pr-review.yml');
 const source = readFileSync(workflowPath, 'utf8');
 const document = load(source) as Record<string, any>;
 
-const FLOW_AGENTS_REVIEW =
-  'kontourai/flow-agents/.github/actions/codex-pr-review@b0adbb4a5defdff0b0d2c7641f1735c06dd121e8';
+const FLOW_AGENTS_REVIEW_ACTION =
+  'kontourai/flow-agents/.github/actions/codex-pr-review';
+// The composite pin is bumped by dependabot in the workflow file only — this
+// test file is outside every dependabot manifest, so a hardcoded SHA here
+// goes stale on the next bump and the finds below return undefined
+// (b0adbb4 -> 9c0ea5a red exactly that way). Derive the pin and assert the
+// invariants that must survive every bump: the action appears at least once,
+// every appearance shares ONE pin, and the pin is a full-length immutable
+// commit SHA — never a branch or tag.
+const REVIEW_PINS = [
+  ...source.matchAll(
+    new RegExp(
+      `uses:\\s*${FLOW_AGENTS_REVIEW_ACTION.replaceAll('.', '\\.')}@([0-9a-f]+)`,
+      'g',
+    ),
+  ),
+].map((match) => match[1]);
+const FLOW_AGENTS_REVIEW_PIN = REVIEW_PINS[0];
+const FLOW_AGENTS_REVIEW = `${FLOW_AGENTS_REVIEW_ACTION}@${FLOW_AGENTS_REVIEW_PIN}`;
 const CHECKOUT = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
 const UPLOAD_ARTIFACT =
   'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
 const expression = (value: string) => `\${{ ${value} }}`;
 
 describe('standalone Codex PR review workflow', () => {
+  it('pins the review composite to one immutable full-length SHA everywhere it appears', () => {
+    expect(REVIEW_PINS.length).toBeGreaterThan(0);
+    expect(new Set(REVIEW_PINS).size).toBe(1);
+    expect(FLOW_AGENTS_REVIEW_PIN).toMatch(/^[0-9a-f]{40}$/);
+  });
+
   it('uses the trusted workflow-run ingress rather than candidate-controlled PR execution', () => {
     expect(document.on).toEqual({
       workflow_run: {

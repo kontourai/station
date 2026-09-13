@@ -24,11 +24,7 @@ import { resolveGuidanceTab } from '../views/guidance-tab';
  * - `unshaped` — the route has no frame, so nothing has told the user which
  *   page they are arriving at and there is no declared shape to hold.
  */
-export type RoutePendingShape =
-  | 'split-pane'
-  | 'detail-sheet'
-  | 'region'
-  | 'unshaped';
+type RoutePendingShape = 'split-pane' | 'detail-sheet' | 'region' | 'unshaped';
 
 /**
  * The frame's own layout fields decide the base shape.
@@ -78,7 +74,7 @@ function baseShape(
  * `plugins`, `review-queue`, `connections-models`, `connections-engines`,
  * `connections-tools` and bare `agents` name no record and open on their list.
  */
-export function routeOpensDetailPane(view: NavigationView): boolean {
+function routeOpensDetailPane(view: NavigationView): boolean {
   switch (view.type) {
     case 'agent-new':
     case 'agent-edit':

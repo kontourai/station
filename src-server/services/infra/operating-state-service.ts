@@ -73,6 +73,7 @@ import {
   handoffBlockers,
   hasUnresolvedLiveCritique,
 } from '../../capabilities/workflow-process-projection-mirror.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
 
 export const STATION_OPERATING_STATE_PRODUCER_ID = 'station-workflow';
@@ -275,7 +276,7 @@ export class OperatingStateService {
     } catch (error) {
       this.logger?.warn('Skipping unreadable workflow handoff sidecar', {
         taskSlug,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return null;
     }
@@ -327,7 +328,7 @@ export class OperatingStateService {
     } catch (error) {
       this.logger?.warn('Skipping unreadable workflow trust.bundle', {
         taskSlug,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return null;
     }

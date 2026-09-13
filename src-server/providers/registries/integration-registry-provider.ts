@@ -4,8 +4,11 @@ import { join } from 'node:path';
 import type { RegistryItem } from '@kontourai/station-contracts/catalog';
 import { builtinIntegrationRuntimeSpawnCommand } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { IntegrationIconAssets } from '../../services/plugins/integration-icon-assets.js';
+import { createLogger } from '../../utils/logger.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import type { IIntegrationRegistryProvider } from '../provider-interfaces.js';
+
+const logger = createLogger({ name: 'integration-registry-provider' });
 
 export async function readDiskIntegrations(
   homeDir = resolveHomeDir(),
@@ -44,7 +47,7 @@ export async function readDiskIntegrations(
           );
           commandExists = true;
         } catch (error) {
-          console.debug('Command not found for integration', error);
+          logger.debug('Command not found for integration', { error });
         }
       }
       const iconAsset = await iconAssets.resolve(entry.name);
@@ -60,11 +63,10 @@ export async function readDiskIntegrations(
         status: commandExists ? 'connected' : 'missing binary',
       });
     } catch (error) {
-      console.debug(
-        'Failed to read integration definition:',
-        entry.name,
+      logger.debug('Failed to read integration definition', {
+        integration: entry.name,
         error,
-      );
+      });
     }
   }
   return items;

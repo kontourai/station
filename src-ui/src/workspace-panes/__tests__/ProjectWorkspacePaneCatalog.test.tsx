@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-file-preview';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import { createFilePreviewPaneInstance } from '../filePreviewPaneInstance';
 import { ProjectWorkspacePaneModal } from '../ProjectWorkspacePaneCatalog';
@@ -30,11 +30,11 @@ const entries: readonly ResolvedWorkspacePaneCatalogEntry[] = [
   },
 ];
 
-function renderModal(notice?: string | null) {
-  return render(
+function renderModal(notice?: string | null, onClose = vi.fn()) {
+  render(
     <ProjectWorkspacePaneModal
       show
-      onClose={vi.fn()}
+      onClose={onClose}
       entries={entries}
       loading={false}
       error={false}
@@ -45,6 +45,7 @@ function renderModal(notice?: string | null) {
       notice={notice}
     />,
   );
+  return onClose;
 }
 
 test('carries an open refusal in the sanctioned callout primitive, above a still-usable list', () => {
@@ -92,4 +93,29 @@ test('shows no callout when the picker has refused nothing', () => {
       name: 'Workspace pane could not open',
     }),
   ).toBeNull();
+});
+
+// Three ways out, none of them observed before this file existed in this shape
+// (#1616). The picker no longer owns any of the mechanisms — `Dialog` and
+// `ResponsiveDialogSurface` below it do — which is exactly why the picker's own
+// tests should say the picker still HAS them: a props rename or a swapped
+// primitive is a silent regression otherwise.
+test('Escape inside the picker closes it', () => {
+  const onClose = renderModal(null);
+  const dialog = screen.getByRole('dialog', { name: 'Add workspace pane' });
+  fireEvent.keyDown(dialog, { key: 'Escape' });
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+test('the close control closes the picker', () => {
+  const onClose = renderModal(null);
+  fireEvent.click(screen.getByRole('button', { name: 'Close pane picker' }));
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+test('Cancel closes the picker', () => {
+  const onClose = renderModal(null);
+  const dialog = screen.getByRole('dialog', { name: 'Add workspace pane' });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+  expect(onClose).toHaveBeenCalledTimes(1);
 });

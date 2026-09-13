@@ -7,11 +7,20 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { StrictMode, useEffect, useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({
     navigate: vi.fn(),
-  }),
-}));
+  });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 
 // Drive the layout's responsive branch through the shared hook so tests can
 // flip between desktop and mobile deterministically.
@@ -578,7 +587,7 @@ describe('SplitPaneLayout', () => {
     expect(screen.getByText('Skills').getAttribute('tabindex')).toBeNull();
   });
 
-  test('desktop keeps both panes visible with no back affordance', () => {
+  test('desktop keeps both pane contents mounted for region-responsive presentation', () => {
     isMobileMock.mockReturnValue(false);
     const { container } = renderWithSelection();
 
@@ -586,7 +595,7 @@ describe('SplitPaneLayout', () => {
     // on desktop, so panes sit side-by-side rather than stacking.
     expect(container.querySelector('.split-pane__left--visible')).toBeTruthy();
     expect(container.querySelector('.split-pane__right--visible')).toBeTruthy();
-    expect(screen.queryByText('← Back to list')).toBeNull();
+    expect(document.querySelector('.split-pane__back')).toBeNull();
   });
 
   test('mobile collapses to a single column with a back affordance', () => {

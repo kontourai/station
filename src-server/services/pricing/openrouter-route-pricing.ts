@@ -19,6 +19,7 @@ import {
   type RoutePricingReference,
   type RoutePricingTier,
 } from '@kontourai/station-contracts/model-inventory';
+import { errorMessage } from '../../utils/error-message.js';
 
 /**
  * Per-route pricing for OpenRouter routes, sourced through bearing (#1127).
@@ -116,9 +117,7 @@ function promptTokenTiersByRow(
       typeof body === 'string' ? body : new TextDecoder().decode(body),
     );
   } catch (error) {
-    onUnreadable(
-      `snapshot body did not parse: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    onUnreadable(`snapshot body did not parse: ${errorMessage(error)}`);
     return tiers;
   }
   const rows = (parsed as { data?: unknown } | null)?.data;
@@ -161,7 +160,7 @@ function decimalPerMillion(value: unknown): number | null {
   return perMillionTokens(parsed);
 }
 
-export interface OpenRouterRoutePricingDependencies {
+interface OpenRouterRoutePricingDependencies {
   /** Station home; snapshots live under <home>/pricing/openrouter/snapshots. */
   homeDir: string;
   /** Test seam: forage's snapshot store. Defaults to the filesystem store. */
@@ -253,7 +252,7 @@ export class OpenRouterRoutePricing {
       this.inflight = this.acquire()
         .catch((error: unknown) => {
           this.logger.warn('OpenRouter route pricing refresh failed', {
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
         })
         .finally(() => {
@@ -329,7 +328,7 @@ export class OpenRouterRoutePricing {
         this.logger.warn(
           'OpenRouter snapshot store read failed; writing anyway',
           {
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           },
         );
       }

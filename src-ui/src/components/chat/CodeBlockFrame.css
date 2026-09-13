@@ -1,0 +1,44 @@
+.code-block-frame {
+  margin: 8px 0;
+  min-width: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.code-block-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+.code-block-actions .button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.code-block-body {
+  overflow-x: auto;
+  min-width: 0;
+  font-size: var(--text-base);
+  line-height: 1.5;
+}
+.code-block-body pre {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg-primary);
+}
+.code-block-body code {
+  font-family: var(--font-mono);
+}
+
+.code-block-actions > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.code-block-actions .button {
+  flex-shrink: 0;
+}

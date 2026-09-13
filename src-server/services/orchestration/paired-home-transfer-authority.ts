@@ -18,20 +18,20 @@ import {
   type TransferStoreResult,
 } from './planned-home-transfer-store.js';
 
-export type PairedHomeTransferPrincipal = Readonly<
+type PairedHomeTransferPrincipal = Readonly<
   Pick<
     RuntimeAuthenticatedRequestPrincipal,
     'credential' | 'authority' | 'deviceId'
   >
 >;
 
-export interface PairedHomeOwnerInitialization {
+interface PairedHomeOwnerInitialization {
   readonly channelId: string;
   readonly sourceDeviceId: string;
   readonly policyRevision: string;
 }
 
-export interface PairedHomeTransferPreparation {
+interface PairedHomeTransferPreparation {
   readonly channelId: string;
   readonly operationId: string;
   readonly targetDeviceId: string;
@@ -40,7 +40,7 @@ export interface PairedHomeTransferPreparation {
 }
 
 /** Private trusted owner adapters, never decoded from HTTP or a copied manifest. */
-export type PairedHomeTransferOwners = PlannedHomeTransferOwners;
+type PairedHomeTransferOwners = PlannedHomeTransferOwners;
 
 export interface PairedHomeTransferAuthority {
   advance(
@@ -66,7 +66,7 @@ export interface PairedHomeTransferAuthority {
   ): TransferStoreResult<PlannedHomeTransfer>;
 }
 
-export interface PairedHomeTransferAuthorityOptions {
+interface PairedHomeTransferAuthorityOptions {
   /** Centrally owned, file-backed SQLite outside every portable Station home. */
   readonly database: HomeTransferDurableDatabase;
   readonly security: Pick<

@@ -36,6 +36,7 @@ export function resolvePluginProviders(
   // Optional so this adds no required plumbing to existing callers or tests,
   // matching how the rest of `src-server` threads a logger.
   logger?: Pick<Logger, 'warn'>,
+  capturedManifests?: readonly PluginManifest[],
 ): ResolvedProviders {
   const resolved: ResolvedEntry[] = [];
   const conflicts: ProviderConflict[] = [];
@@ -43,13 +44,15 @@ export function resolvePluginProviders(
   // Collect all provider entries from all plugins
   const byType = new Map<string, Map<string, ResolvedEntry[]>>(); // type -> layout -> entries
 
-  for (const entry of scanInstalledPluginInventory(pluginsDir, logger)) {
-    if (entry.state === 'rejected') continue;
-    const manifest: PluginManifest = entry.manifest;
-
+  const manifests =
+    capturedManifests ??
+    scanInstalledPluginInventory(pluginsDir, logger).flatMap((entry) =>
+      entry.state === 'rejected' ? [] : [entry.manifest],
+    );
+  for (const manifest of manifests) {
     if (!manifest.providers?.length) continue;
 
-    const pluginName = manifest.name || entry.directoryName;
+    const pluginName = manifest.name;
     if (!includePlugin(pluginName)) continue;
 
     const disabled = overrides[pluginName]?.disabled ?? [];

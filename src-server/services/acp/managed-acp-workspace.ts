@@ -5,7 +5,7 @@ import { resolveHomeDir } from '../../utils/paths.js';
 
 const WORKSPACE_MODE = 0o700;
 
-export type ManagedAcpWorkspaceIdentity =
+type ManagedAcpWorkspaceIdentity =
   | { kind: 'session'; connectionId: string; threadId: string }
   | { kind: 'probe'; connectionId: string };
 

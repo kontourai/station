@@ -35,6 +35,9 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
     selector: (state: typeof panelState.chat | null) => unknown,
   ) => selector(panelState.chat),
 }));
+vi.mock('../hooks/useACPConnections', () => ({
+  useACPConnections: () => ({ data: [] }),
+}));
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useCreateChatSession: () => () => 'acp-session',
 }));

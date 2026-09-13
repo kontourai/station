@@ -1206,3 +1206,19 @@ describe('ConnectionStore — injected connection', () => {
     });
   });
 });
+
+describe('native pairing health recovery', () => {
+  it('notifies subscribers and advances authority only for a saved connection', () => {
+    const store = makeStore();
+    const connection = store.add('Native', 'https://station.test');
+    const listener = vi.fn();
+    store.subscribe(listener);
+    const before = store.credentialAuthorityGeneration(connection.id);
+    store.nativeCredentialCommitted(connection.id);
+    expect(store.credentialAuthorityGeneration(connection.id)).toBe(before + 1);
+    expect(listener).toHaveBeenCalledOnce();
+    expect(store.getCredential(connection.id)).toBeNull();
+    store.nativeCredentialCommitted('missing');
+    expect(listener).toHaveBeenCalledOnce();
+  });
+});

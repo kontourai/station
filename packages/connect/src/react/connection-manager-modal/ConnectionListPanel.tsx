@@ -21,6 +21,9 @@ interface ConnectionListPanelProps {
   connections: SavedConnection[];
   activeConnectionId?: string;
   editingId: string | null;
+  canEditSharedProfiles?: boolean;
+  editError?: string;
+  editPending?: boolean;
   editName: string;
   editUrl: string;
   credentialEntry: string;
@@ -53,6 +56,7 @@ interface ConnectionListPanelProps {
   onScanQr: () => void;
   onEnterPairingCode: () => void;
   enterPairingCodeRef?: Ref<HTMLButtonElement>;
+  onPairPhone?: () => void;
   onViewDevices: () => void;
   onDiscover: () => void;
   /**
@@ -90,8 +94,12 @@ function ConnectionRow({
   onMakeDefaultProfile,
   onRestartInjectedConnection,
   getStatus,
+  canEditSharedProfiles,
+  busy,
 }: {
   connection: SavedConnection;
+  canEditSharedProfiles?: boolean;
+  busy?: boolean;
   activeConnectionId?: string;
   pendingConnectionId?: string;
   onSelect: (connection: SavedConnection) => void;
@@ -114,6 +122,7 @@ function ConnectionRow({
   // honest home for a fact that was previously true of every row, all the
   // time, whether or not anyone was about to tap Forget.
   const [forgetArmed, setForgetArmed] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<string>();
   const [actionsOpen, setActionsOpen] = useState(false);
   const actionsMenuId = useId();
   const actionsTriggerRef = useRef<HTMLButtonElement>(null);
@@ -192,6 +201,7 @@ function ConnectionRow({
         <button
           type="button"
           className="station-connect-row__select"
+          disabled={busy}
           aria-label={`Select ${connectionDisplayLabel(connection)}`}
           aria-pressed={connection.id === activeConnectionId}
           onClick={() => onSelect(connection)}
@@ -211,7 +221,14 @@ function ConnectionRow({
             {localServerState}
           </div>
         ) : (
-          <div className="station-connect-row__url">{connection.url}</div>
+          <div className="station-connect-row__url" title={connection.url}>
+            {connection.url}
+          </div>
+        )}
+        {copyStatus && (
+          <div role="status" className="station-connect-row__meta">
+            {copyStatus}
+          </div>
         )}
         {!isInjected && connection.endpoints.length > 1 && (
           <div className="station-connect-row__meta">
@@ -362,6 +379,7 @@ function ConnectionRow({
               }}
               title="More Station actions"
               aria-label={`More actions for ${connectionDisplayLabel(connection)}`}
+              disabled={busy}
               aria-expanded={actionsOpen}
               aria-controls={actionsOpen ? actionsMenuId : undefined}
               aria-haspopup="menu"
@@ -391,13 +409,35 @@ function ConnectionRow({
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={isSharedStationProfile}
+                  onClick={() => {
+                    closeActions(true);
+                    void navigator.clipboard?.writeText(connection.url).then(
+                      () => setCopyStatus('Address copied'),
+                      () =>
+                        setCopyStatus(
+                          'Could not copy. The full address is shown above.',
+                        ),
+                    );
+                    if (!navigator.clipboard)
+                      setCopyStatus(
+                        'Copy is unavailable. The full address is shown above.',
+                      );
+                  }}
+                >
+                  Copy address
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={isSharedStationProfile && !canEditSharedProfiles}
                   onClick={() => {
                     closeActions();
                     onStartEdit(connection);
                   }}
                 >
-                  {isSharedStationProfile ? 'Edit in the CLI' : 'Edit Station'}
+                  {isSharedStationProfile && !canEditSharedProfiles
+                    ? 'Edit in the CLI'
+                    : 'Edit Station'}
                 </button>
                 <button
                   type="button"
@@ -426,6 +466,9 @@ export function ConnectionListPanel({
   connections,
   activeConnectionId,
   editingId,
+  canEditSharedProfiles,
+  editError,
+  editPending,
   editName,
   editUrl,
   credentialEntry,
@@ -450,12 +493,18 @@ export function ConnectionListPanel({
   onScanQr,
   onEnterPairingCode,
   enterPairingCodeRef,
+  onPairPhone,
   onViewDevices,
   onDiscover,
   discoveryAvailable,
 }: ConnectionListPanelProps) {
   return (
     <>
+      {editError && (
+        <p role="alert" className="station-connect-edit__hint">
+          {editError}
+        </p>
+      )}
       <div className="station-connect-list">
         {connections.length === 0 && (
           <p className="station-connect-empty">No Stations saved yet.</p>
@@ -488,6 +537,8 @@ export function ConnectionListPanel({
               <input
                 type="text"
                 value={editName}
+                aria-label="Station name"
+                disabled={editPending}
                 onChange={(event) => onEditNameChange(event.target.value)}
                 placeholder="Name"
                 className="station-connect-input"
@@ -495,6 +546,8 @@ export function ConnectionListPanel({
               <input
                 type="text"
                 value={editUrl}
+                aria-label="Station address"
+                disabled={editPending}
                 onChange={(event) => onEditUrlChange(event.target.value)}
                 placeholder="http://192.168.1.x:3141"
                 className="station-connect-input"
@@ -541,17 +594,25 @@ export function ConnectionListPanel({
                   />
                 </label>
               )}
+              {connection.id.startsWith('station-profile:') &&
+                editUrl.trim() !== connection.url && (
+                  <p className="station-connect-edit__hint">
+                    Changing the address requires connecting this device again.
+                  </p>
+                )}
               <div className="station-connect-btn-row">
                 <button
                   type="button"
                   onClick={onSaveEdit}
+                  disabled={editPending}
                   className="station-connect-btn station-connect-btn--primary"
                 >
-                  Save
+                  {editPending ? 'Saving…' : 'Save'}
                 </button>
                 <button
                   type="button"
                   onClick={onCancelEdit}
+                  disabled={editPending}
                   className="station-connect-btn station-connect-btn--secondary"
                 >
                   Cancel
@@ -581,6 +642,8 @@ export function ConnectionListPanel({
               onConfirmEndpoint={onConfirmEndpoint}
               onRequestAccess={onRequestAccess}
               onMakeDefaultProfile={onMakeDefaultProfile}
+              canEditSharedProfiles={canEditSharedProfiles}
+              busy={editPending}
               onRestartInjectedConnection={onRestartInjectedConnection}
               getStatus={getStatus}
             />
@@ -589,53 +652,101 @@ export function ConnectionListPanel({
       </div>
 
       <div className="station-connect-footer">
-        {/* station#4513: the second of the sheet's two intro sentences —
-            deleted; the labeled buttons below already say what each does. */}
-        <button
-          type="button"
-          onClick={() => onRequestAccess()}
-          className="station-connect-btn station-connect-btn--primary"
+        <section
+          className="station-connect-footer__group"
+          aria-label="Connect this device"
         >
-          Request access
-        </button>
-        <button
-          type="button"
-          onClick={onAddManual}
-          className="station-connect-btn station-connect-btn--secondary"
-        >
-          Add a Station address
-        </button>
-        <button
-          type="button"
-          onClick={onScanQr}
-          className="station-connect-btn station-connect-btn--secondary"
-        >
-          Scan a QR code
-        </button>
-        <button
-          ref={enterPairingCodeRef}
-          type="button"
-          onClick={onEnterPairingCode}
-          className="station-connect-btn station-connect-btn--secondary"
-        >
-          Enter a pairing code
-        </button>
-        {discoveryAvailable && (
+          <h3>Connect this device</h3>
+          <p>
+            Request approval from{' '}
+            {connections.find(
+              (connection) => connection.id === activeConnectionId,
+            )?.name ?? 'the selected Station'}{' '}
+            to use it here.
+          </p>
           <button
             type="button"
-            onClick={onDiscover}
+            onClick={() =>
+              onRequestAccess(
+                connections.find(
+                  (connection) => connection.id === activeConnectionId,
+                ),
+              )
+            }
+            className="station-connect-btn station-connect-btn--primary"
+          >
+            Request access
+          </button>
+        </section>
+        <section
+          className="station-connect-footer__group"
+          aria-label="Connect to another Station"
+        >
+          <h3>Connect to another computer</h3>
+          <p>
+            Use its Station address, or a QR code or pairing code created there.
+          </p>
+          <button
+            type="button"
+            onClick={onAddManual}
             className="station-connect-btn station-connect-btn--secondary"
           >
-            Find other Stations
+            Add a Station address
           </button>
-        )}
-        <button
-          type="button"
-          onClick={onViewDevices}
-          className="station-connect-footer__devices"
+          <button
+            type="button"
+            onClick={onScanQr}
+            className="station-connect-btn station-connect-btn--secondary"
+          >
+            Scan a QR code
+          </button>
+          <button
+            ref={enterPairingCodeRef}
+            type="button"
+            onClick={onEnterPairingCode}
+            className="station-connect-btn station-connect-btn--secondary"
+          >
+            Enter a pairing code
+          </button>
+          {discoveryAvailable && (
+            <button
+              type="button"
+              onClick={onDiscover}
+              className="station-connect-btn station-connect-btn--secondary"
+            >
+              Find other Stations
+            </button>
+          )}
+        </section>
+        <section
+          className="station-connect-footer__group"
+          aria-label="Manage access to this Station"
         >
-          Paired devices
-        </button>
+          <h3>Connect another device to this Station</h3>
+          <p>
+            Invite your phone to{' '}
+            {connections.find(
+              (connection) => connection.id === activeConnectionId,
+            )?.name ?? 'the selected Station'}
+            . Both devices use the same Station server.
+          </p>
+          {onPairPhone && (
+            <button
+              type="button"
+              onClick={onPairPhone}
+              className="station-connect-btn station-connect-btn--primary"
+            >
+              Connect another device
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onViewDevices}
+            className="station-connect-footer__devices"
+          >
+            Paired devices
+          </button>
+        </section>
       </div>
     </>
   );

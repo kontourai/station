@@ -9,7 +9,7 @@ export type SessionInventorySelection = {
   groupId: SessionInventoryV2GroupId;
   itemKey?: string;
 };
-export type SessionInventorySelectionKey = {
+type SessionInventorySelectionKey = {
   apiBase: string;
   authorityKey: string;
   sessionId: string;
