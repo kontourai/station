@@ -329,7 +329,9 @@ shutdown prevents late publication and stops pending response delivery.
 
 The owner in `src-server/services/connections/virtual-application.ts` dispatches
 fresh Requests into the same protected Hono application without Node socket or
-proxy metadata. It rejects foreign targets, cookie operations, cookie headers,
+proxy metadata. Station-owned account descriptor/session reads and invitation
+acceptance reach their ordinary authorization owner; provider cookie operations
+remain excluded, and relay login uses the continuation provider flow. It rejects foreign targets, cookie operations, cookie headers,
 trusted ingress/proxy headers and HTTP hop headers. Cookies remain an HTTPS
 mechanism; the connector transports the SDK's opaque account continuation and
 proof with its independently approved Device credential and actual client

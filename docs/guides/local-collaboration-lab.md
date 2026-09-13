@@ -415,6 +415,43 @@ the SDK/provider and protected Station application. The opt-in
 is the server integration seam; composing the two against the full runtime is
 still required before enabling application relay access.
 
+### Full runtime account relay diagnostic
+
+```sh
+npm run lab:browser-transport -- --peer=node --browser-turn=udp --application-accounts --keep
+```
+
+This diagnostic composes the actual source `StationRuntime` in a separate owned
+process with the encrypted Node/Chromium channel. Its private process IPC carries
+application frames directly into the protected Hono app; it does not re-dial
+HTTP and invent a loopback caller. The signing-key trust, environment identity
+and account Station identity must match. A fresh schema marker is installed
+before security state is created in the disposable home.
+
+Setup uses real local account registration, Project invitations and explicit
+operator-approved read-only Device pairing. The browser receives its Device
+grant and synthetic account credentials, never the operator credential or an
+account cookie. Its SDK account calls use the configured transport resolver;
+direct browser HTTP requests to the Station are blocked and counted. The
+continuation key is non-extractable. The scenario checks account identity,
+proof replay, invitation acceptance, renewal, continuation/provider-session/
+Device revocation, and an unshared Project refusal. It retains
+`account-boundary.json` and `account-scenario.json` separately from transport
+receipts so positive account checks cannot hide a failed privacy boundary.
+
+**Current acceptance failure: [#2030](https://github.com/kontourai/station/issues/2030).**
+The authenticated viewer with the existing `orchestration:read` Device grant
+can currently receive unshared Project metadata. The diagnostic exits 1 and
+keeps that assertion; it does not treat the grant as collaborator-scoped or
+claim safe shared application access. #488 owns the person/Project admission
+correction. The independent login, replay, membership and revocation checks may
+complete while the overall result remains failed.
+
+This remains a free synthetic Node UDP/source-runtime diagnostic. It does not
+prove the rendered guest UI, a supported Pion application adapter, native or
+remote delivery, offered compute/plugins, or hostile-process isolation. The
+production connector remains disabled until the required boundaries qualify.
+
 ### Full collaboration
 
 Future integration uses actual membership, account, compute and plugin owners;

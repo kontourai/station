@@ -21,9 +21,20 @@ import {
 import { chromium, type Page } from '@playwright/test';
 import { build, stop as stopBundler } from 'esbuild';
 import datachannel from 'node-datachannel';
+import { ensureStationHomeSchemaSync } from '../src-server/domain/home-schema-gate.js';
 import type { createStationConnectionProofIssuer } from '../src-server/services/ssh/connection-proof-issuer.js';
 import { ConnectionSigningKeyStore } from '../src-server/services/ssh/connection-signing-key-store.js';
 import { EnvironmentSecurityService } from '../src-server/services/ssh/environment-security-service.js';
+import { bridgeApplicationChannels } from './lib/application-ipc.js';
+import {
+  browserAcceptApplicationInvitation,
+  browserApplicationAccountRequest,
+  browserLoginApplicationAccountAgain,
+  browserRenewApplicationAccount,
+  browserRevokeApplicationContinuation,
+  browserStartApplicationAccount,
+  browserStopApplicationAccount,
+} from './lib/browser-application-account.mjs';
 import { browserCheckApplicationChannel } from './lib/browser-application-channel.mjs';
 import {
   browserAccept,
@@ -43,6 +54,7 @@ import {
   runLabCommand,
   startLabRelay,
 } from './lib/local-collaboration-process.mjs';
+import { startRelayAccountStation } from './lib/local-collaboration-relay-account.js';
 import { nodeApplicationChannel } from './lib/node-application-channel.js';
 
 // Transport evaluation only. No Station/account/provider API is enabled here.
@@ -60,6 +72,7 @@ if (
         '--peer=node',
         '--fail-after-create',
         '--application-protocol',
+        '--application-accounts',
       ].includes(arg),
   ) ||
   args.filter((arg) => arg.startsWith('--browser-turn=')).length > 1 ||
@@ -69,10 +82,18 @@ if (
     'Use --browser-turn=udp or --browser-turn=tcp and optional --keep',
   );
 const peerAdapter = args.includes('--peer=pion') ? 'pion' : 'node';
-if (args.includes('--application-protocol') && peerAdapter !== 'node')
+if (
+  (args.includes('--application-protocol') ||
+    args.includes('--application-accounts')) &&
+  peerAdapter !== 'node'
+)
   throw new Error(
     'Application protocol fixture currently qualifies only the Node UDP profile',
   );
+let accountStation:
+  | Awaited<ReturnType<typeof startRelayAccountStation>>
+  | undefined;
+let accountReport: Record<string, unknown> | undefined;
 let applicationProtocol:
   | { status: string; requestMarker: string; responseBytes: number }
   | undefined;
@@ -394,6 +415,18 @@ async function exchange(
     });
   });
   peer.onDataChannel((channel) => {
+    if (channel.getLabel() === 'station-application-account-fixture') {
+      if (!accountStation?.station.openApplicationChannel) {
+        channel.close();
+        return;
+      }
+      bridgeApplicationChannels(
+        nodeApplicationChannel(channel),
+        accountStation.station.openApplicationChannel(),
+        abort.signal,
+      );
+      return;
+    }
     if (channel.getLabel() === 'station-application-protocol-fixture') {
       if (!args.includes('--application-protocol')) {
         channel.close();
@@ -454,7 +487,11 @@ async function exchange(
 }
 
 try {
-  const authorityHome = join(root, 'station-authority');
+  const authorityHome = args.includes('--application-accounts')
+    ? join(root, 'application-station', 'home')
+    : join(root, 'station-authority');
+  if (args.includes('--application-accounts'))
+    ensureStationHomeSchemaSync(authorityHome);
   const environment = new EnvironmentSecurityService({
     homeDir: authorityHome,
   });
@@ -477,7 +514,8 @@ try {
     window.stationConnectionProof = {createStationConnectionProofVerifier, connectionDescriptionDigest, newNonce: createStationProofNonce, openDeviceConnectionTrustStore};
     import {createApplicationChannelFetch, browserApplicationChannel} from '@kontourai/station-connect/application-channel';
     import {authenticatedFetch, setClientCredentialResolver} from '@kontourai/station-sdk/client';
-    window.stationApplicationChannel = {createApplicationChannelFetch, browserApplicationChannel, authenticatedFetch, setClientCredentialResolver};
+    import {ApplicationSessionClient, createApplicationSessionKey} from '@kontourai/station-sdk/application-session';
+    window.stationApplicationChannel = {createApplicationChannelFetch, browserApplicationChannel, authenticatedFetch, setClientCredentialResolver, ApplicationSessionClient, createApplicationSessionKey};
   `,
       resolveDir: process.cwd(),
     },
@@ -576,6 +614,18 @@ try {
   await once(server, 'listening');
   const address = server.address();
   assert(address && typeof address !== 'string');
+  if (args.includes('--application-accounts'))
+    accountStation = await startRelayAccountStation(
+      root,
+      `http://127.0.0.1:${address.port}`,
+      abort.signal,
+    );
+  if (accountStation)
+    assert.equal(
+      accountStation.station.stationId,
+      connectionTrust.stationId,
+      'Application and transport must be the same Station',
+    );
   browser = await chromium.launch({ headless: true });
   abort.signal.throwIfAborted();
   const context = await browser.newContext();
@@ -606,6 +656,133 @@ try {
     );
     assert.equal(applicationProtocol.status, 'passed');
     assert(applicationProtocol.responseBytes > 16 * 1024);
+  }
+  if (accountStation) {
+    let directApplicationAttempts = 0;
+    await page.route(`${accountStation.station.base}/**`, async (route) => {
+      directApplicationAttempts++;
+      await route.abort('blockedbyclient');
+    });
+    const account = await bounded(
+      page.evaluate(browserStartApplicationAccount, accountStation.browser),
+      'encrypted account login',
+    );
+    assert.equal(account.stationId, accountStation.station.stationId);
+    const self = await page.evaluate(browserApplicationAccountRequest, {
+      path: '/api/account-auth/session',
+    });
+    assert.equal(self.status, 200, self.body);
+    assert.equal(JSON.parse(self.body).data.principal.id, account.principalId);
+    const replay = await page.evaluate(browserApplicationAccountRequest, {
+      path: '/api/account-auth/session',
+      replay: true,
+    });
+    assert.equal(replay.status, 401);
+    const accepted = await page.evaluate(browserAcceptApplicationInvitation);
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.body.data.grantsDeviceAccess, false);
+    await accountStation.verifyMembership(account.principalId);
+    const sharedRead = await page.evaluate(browserApplicationAccountRequest, {
+      path: '/api/projects/relay-shared',
+    });
+    assert.equal(
+      sharedRead.status,
+      200,
+      'Permitted Project is the positive resource control',
+    );
+    assert(sharedRead.body.includes('Relay shared fixture'));
+    const privateRead = await page.evaluate(browserApplicationAccountRequest, {
+      path: '/api/projects/relay-private',
+    });
+    const privateBoundary = {
+      status: privateRead.status,
+      containsPrivateMarker: privateRead.body.includes(
+        accountStation.browser.privateName,
+      ),
+      path: '/api/projects/relay-private',
+      deviceScope: 'orchestration:read',
+      principalId: account.principalId,
+    };
+    writeFileSync(
+      join(root, 'account-boundary.json'),
+      JSON.stringify(privateBoundary, null, 2),
+      { mode: 0o600 },
+    );
+    const privateRefused =
+      [401, 403, 404].includes(privateRead.status) &&
+      !privateBoundary.containsPrivateMarker;
+    if (!privateRefused)
+      errors.push(
+        new Error(
+          `Unshared Project boundary failed: status=${privateRead.status}, containsPrivateMarker=${privateBoundary.containsPrivateMarker}`,
+        ),
+      );
+    await page.evaluate(browserRenewApplicationAccount);
+    await page.evaluate(browserRevokeApplicationContinuation);
+    assert.equal(
+      (
+        await page.evaluate(browserApplicationAccountRequest, {
+          path: '/api/account-auth/session',
+        })
+      ).status,
+      401,
+    );
+    assert.equal(
+      (await page.evaluate(browserLoginApplicationAccountAgain)).principalId,
+      account.principalId,
+    );
+    await accountStation.revokeAccount();
+    assert.equal(
+      (
+        await page.evaluate(browserApplicationAccountRequest, {
+          path: '/api/account-auth/session',
+        })
+      ).status,
+      401,
+    );
+    assert.equal(
+      (await page.evaluate(browserLoginApplicationAccountAgain)).principalId,
+      account.principalId,
+    );
+    await accountStation.revokeDevice();
+    assert.equal(
+      (
+        await page.evaluate(browserApplicationAccountRequest, {
+          path: '/api/account-auth/session',
+        })
+      ).status,
+      401,
+    );
+    await page.evaluate(browserStopApplicationAccount);
+    assert.equal(
+      directApplicationAttempts,
+      0,
+      'Account traffic must not bypass the encrypted channel',
+    );
+    accountReport = {
+      status: privateRefused ? 'passed' : 'failed',
+      directApplicationAttempts,
+      stationId: account.stationId,
+      principalId: account.principalId,
+      keyExtractable: account.keyExtractable,
+      scope:
+        'full source Station account, Device and membership APIs; no guest UI or compute',
+      checks: [
+        'encrypted provider login',
+        'account self and proof replay refusal',
+        'invitation acceptance without new Device authority',
+        'operator-observed viewer membership and permitted Project read',
+        'continuation renewal and revocation',
+        'provider-session revocation and stable relogin',
+        'Device revocation',
+      ],
+      privateProject: privateBoundary,
+    };
+    writeFileSync(
+      join(root, 'account-scenario.json'),
+      JSON.stringify(accountReport, null, 2),
+      { mode: 0o600 },
+    );
   }
   await context.close();
   await good.peer.close();
@@ -685,6 +862,14 @@ try {
     'Transport proof requires a nonempty relay capture',
   );
   assert.equal(captured.includes(Buffer.from(marker)), false);
+  if (accountStation) {
+    for (const secret of [
+      accountStation.browser.password,
+      accountStation.browser.credential,
+      accountStation.browser.invitation,
+    ])
+      assert.equal(captured.includes(Buffer.from(secret)), false);
+  }
   if (applicationProtocol)
     assert.equal(
       captured.includes(Buffer.from(applicationProtocol.requestMarker)),
@@ -694,6 +879,7 @@ try {
   report = {
     scope: 'browser-transport-evaluation',
     status: 'passed',
+    applicationAccounts: accountReport ?? { status: 'not-run' },
     applicationProtocol: applicationProtocol
       ? {
           status: 'passed',
@@ -752,6 +938,7 @@ try {
   }
   for (const cleanup of [
     () => (browser ? bounded(browser.close(), 'browser cleanup') : undefined),
+    () => accountStation?.stop(),
     () => relay?.close(),
     cleanupContainer,
   ]) {
