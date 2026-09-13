@@ -435,6 +435,25 @@ const BUNDLED_SERVER_OWNERSHIPS = new Set<BundledServerOwnership>([
   'none',
 ]);
 
+/**
+ * The closed destination set the native replay may carry. It mirrors the
+ * Rust `TrayNavigationDestination` enum: any other wire value — including an
+ * arbitrary path — is refused before delivery, never turned into UI.
+ */
+const TRAY_NAVIGATION_DESTINATIONS = new Set([
+  'connections',
+  'pairedDevices',
+  'coreUpdates',
+  'desktopUpdates',
+  'serverUpdates',
+]);
+
+function isClosedTrayNavigationDestination(
+  value: unknown,
+): value is NativeTrayNavigationEvent['destination'] {
+  return typeof value === 'string' && TRAY_NAVIGATION_DESTINATIONS.has(value);
+}
+
 function isNullableInteger(value: unknown): boolean {
   return (
     value === null || (typeof value === 'number' && Number.isInteger(value))
@@ -741,9 +760,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
           const { id, destination } = replay as Record<string, unknown>;
           if (
             !Number.isSafeInteger(id) ||
-            (destination !== 'connections' &&
-              destination !== 'pairedDevices' &&
-              destination !== 'coreUpdates')
+            !isClosedTrayNavigationDestination(destination)
           ) {
             reportReplayFailure(
               'Station refused a malformed tray navigation replay; the native lease was left for renderer recovery.',

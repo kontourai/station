@@ -317,7 +317,9 @@ export interface NativePairingDeepLinkEvent {
 type NativeTrayNavigationDestination =
   | 'connections'
   | 'pairedDevices'
-  | 'coreUpdates';
+  | 'coreUpdates'
+  | 'desktopUpdates'
+  | 'serverUpdates';
 export interface NativeTrayNavigationEvent {
   destination: NativeTrayNavigationDestination;
 }
