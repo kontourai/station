@@ -25,14 +25,14 @@
  *   for a row with no session id — never fabricated.
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { SESSION_INVENTORY_V2 } from '@kontourai/station-contracts/session-inventory';
+import { useGitStatusQuery } from '@kontourai/station-sdk';
+import { getConversationPullRequestLinks } from '@kontourai/station-sdk/conversation-pull-request-links';
+import { useSessionInventoryQuery } from '@kontourai/station-sdk/session-inventory';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InboxRow } from '../components/chat-dock/ChatDockInboxRows';
-import { getConversationPullRequestLinks } from '@kontourai/station-sdk/conversation-pull-request-links';
-import { useGitStatusQuery } from '@kontourai/station-sdk';
-import { useSessionInventoryQuery } from '@kontourai/station-sdk/session-inventory';
-import { SESSION_INVENTORY_V2 } from '@kontourai/station-contracts/session-inventory';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 
 vi.mock(
@@ -51,9 +51,7 @@ vi.mock('@kontourai/station-sdk/session-inventory', () => ({
   useSessionInventoryQuery: vi.fn(),
 }));
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import('../contexts/ApiBaseContext')
-  >()),
+  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
   useHostRequestAuthorityScope: () => ({
     apiBase: 'http://station.test',
     authorityKey: 'test-authority',
@@ -81,7 +79,7 @@ function workItem(overrides: Partial<HomeWorkItem> = {}): HomeWorkItem {
   };
 }
 
-function gitRepo(overrides: Record<string, unknown> = {}) {
+function gitRepo() {
   return {
     isRepo: true as const,
     branch: 'main',
@@ -101,31 +99,34 @@ function gitRepo(overrides: Record<string, unknown> = {}) {
 }
 
 function v2Projection() {
+  // Widened field types so individual tests can override state/items without
+  // fighting the all-empty literal the base fixture starts as.
+  const groups = (
+    [
+      'inputs',
+      'sources',
+      'work-items',
+      'execution',
+      'decisions',
+      'outputs',
+      'verification-delivery',
+      'live-now',
+      'kept',
+      'attention',
+      'resources',
+    ] as const
+  ).map((id) => ({
+    id,
+    owner: { owner: 'station.inventory', id: 'v2' },
+    state: 'empty' as 'empty' | 'available',
+    count: { kind: 'exact' as const, value: 0 },
+    items: [] as Array<Record<string, unknown>>,
+    gaps: [] as string[],
+  }));
   return {
     version: SESSION_INVENTORY_V2,
     scope: { kind: 'whole-session', sessionId: 'thread-1' },
-    groups: (
-      [
-        'inputs',
-        'sources',
-        'work-items',
-        'execution',
-        'decisions',
-        'outputs',
-        'verification-delivery',
-        'live-now',
-        'kept',
-        'attention',
-        'resources',
-      ] as const
-    ).map((id) => ({
-      id,
-      owner: { owner: 'station.inventory', id: 'v2' },
-      state: 'empty' as const,
-      count: { kind: 'exact' as const, value: 0 },
-      items: [],
-      gaps: [],
-    })),
+    groups,
   };
 }
 
@@ -205,9 +206,11 @@ describe('inbox hover card opening (through the real row)', () => {
     hoverRow();
     // Not immediate: a row crossed in passing must not flash a card.
     expect(screen.queryByTestId('inbox-row-hover-card')).toBeNull();
+    // Generous ceiling: this pins "not instant, then open" — the first open
+    // also pays the card chunk's import, so latency here is not the claim.
     await waitFor(
       () => expect(screen.getByTestId('inbox-row-hover-card')).toBeTruthy(),
-      { timeout: 1_000 },
+      { timeout: 8_000 },
     );
   });
 
@@ -278,7 +281,9 @@ describe('inbox hover card metadata sections', () => {
     expect(card.textContent).toContain('main');
     expect(card.textContent).toContain('3 changes');
     expect(card.textContent).toContain('↑2');
-    expect(card.textContent).toContain('feat(projects): expose portable identity');
+    expect(card.textContent).toContain(
+      'feat(projects): expose portable identity',
+    );
   });
 
   it('renders a named gap while git is being read — never a fabricated state', async () => {
@@ -304,7 +309,7 @@ describe('inbox hover card metadata sections', () => {
 describe('inbox hover card pull requests (projects that have Git)', () => {
   it('lists linked pull requests with number, title, and provenance — bounded', async () => {
     vi.mocked(useGitStatusQuery).mockReturnValue({
-      data: gitRepo({ isRepo: true }),
+      data: gitRepo(),
       isLoading: false,
       error: null,
     } as never);
@@ -315,13 +320,15 @@ describe('inbox hover card pull requests (projects that have Git)', () => {
     });
     await openCard(workItem(), '/repo/station');
     await waitFor(() =>
-      expect(
-        vi.mocked(getConversationPullRequestLinks).mock.calls[0]![1],
-      ).toBe('conv-1'),
+      expect(vi.mocked(getConversationPullRequestLinks).mock.calls[0]![1]).toBe(
+        'conv-1',
+      ),
     );
     const card = screen.getByTestId('inbox-row-hover-card');
     expect(card.textContent).toContain('#2033');
-    expect(card.textContent).toContain('feat(projects): portable identity part 0');
+    expect(card.textContent).toContain(
+      'feat(projects): portable identity part 0',
+    );
     expect(card.textContent).toContain('Explicit');
     expect(card.textContent).toContain('From branch');
     // Bounded preview with an honest pointer to the full list: the ninth
@@ -350,9 +357,9 @@ describe('inbox hover card pull requests (projects that have Git)', () => {
     );
     await openCard(workItem(), '/repo/station');
     await waitFor(() =>
-      expect(
-        screen.getByTestId('inbox-row-hover-card').textContent,
-      ).toContain('Pull request links unavailable.'),
+      expect(screen.getByTestId('inbox-row-hover-card').textContent).toContain(
+        'Pull request links unavailable.',
+      ),
     );
   });
 });

@@ -3,6 +3,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
 } from 'react';
@@ -159,7 +160,15 @@ function useInboxRowHoverCard() {
     },
     [close],
   );
-  return { anchor, open, close, onPointerEnter, onPointerLeave, onFocus, onBlur };
+  return {
+    anchor,
+    open,
+    close,
+    onPointerEnter,
+    onPointerLeave,
+    onFocus,
+    onBlur,
+  };
 }
 
 const LazyChatInboxHoverCard = lazy(() => import('./ChatInboxHoverCard'));
@@ -300,6 +309,7 @@ export function InboxRow({
 }: InboxRowProps) {
   const iconAgent = inboxRowIconAgent(item, agents);
   const hover = useInboxRowHoverCard();
+  const hoverCardId = useId();
   // The icon COLUMN is reserved for the whole list, not per row: a host that
   // supplies a catalog is a host that shows agent icons, and rows whose
   // agent does not resolve must still line their text up with the rows whose
@@ -308,6 +318,7 @@ export function InboxRow({
   // information.
   const showsIcons = Boolean(agents?.length);
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: hover/focus host for the metadata card; the keyboard paths are the row button (focus opens the card) and Escape (the card closes itself).
     <div
       className={`chat-dock-inbox__row${isCurrent ? ' is-current' : ''}`}
       data-testid="inbox-row"
@@ -320,6 +331,7 @@ export function InboxRow({
         type="button"
         className={`chat-dock-inbox__item${showsIcons ? ' chat-dock-inbox__item--avatars' : ''}`}
         aria-label={`${item.title}, ${item.projectLabel}${item.controlMode === 'read-only-attached' ? `, started in ${item.agentLabel}` : ''}`}
+        aria-describedby={hover.anchor ? hoverCardId : undefined}
         aria-current={isCurrent ? 'true' : undefined}
         onClick={() => onActivate(item)}
       >
@@ -423,6 +435,7 @@ export function InboxRow({
             cwd={cwd}
             anchor={hover.anchor}
             onClose={hover.close}
+            id={hoverCardId}
           />
         </Suspense>
       )}
@@ -538,17 +551,17 @@ export function InboxGroupList({
                   isOpenChat={Boolean(
                     item.chatSessionId && openChatIds.has(item.chatSessionId),
                   )}
-                   now={now}
-                   onActivate={onActivate}
-                   onSnoozeWake={onSnoozeWake}
-                   onCloseChat={onCloseChat}
-                   agents={agents}
-                   cwd={
-                     cwdByThreadId?.get(
-                       item.orchestrationThreadId ?? item.chatSessionId ?? '',
-                     ) ?? undefined
-                   }
-                 />
+                  now={now}
+                  onActivate={onActivate}
+                  onSnoozeWake={onSnoozeWake}
+                  onCloseChat={onCloseChat}
+                  agents={agents}
+                  cwd={
+                    cwdByThreadId?.get(
+                      item.orchestrationThreadId ?? item.chatSessionId ?? '',
+                    ) ?? undefined
+                  }
+                />
               ))}
           </section>
         );

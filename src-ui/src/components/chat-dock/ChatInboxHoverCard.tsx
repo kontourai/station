@@ -67,6 +67,7 @@ export default function ChatInboxHoverCard({
   cwd,
   anchor,
   onClose,
+  id,
 }: {
   item: HomeWorkItem;
   now: number;
@@ -83,6 +84,12 @@ export default function ChatInboxHoverCard({
   /** The row element the card anchors beside (measured once on mount). */
   anchor: HTMLElement;
   onClose: () => void;
+  /**
+   * The row-instance-scoped id the row button references through
+   * `aria-describedby` while the card is open — a focus-opened tooltip a
+   * screen reader cannot announce is a tooltip that does not exist.
+   */
+  id: string;
 }) {
   const scope = useHostRequestAuthorityScope();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -110,8 +117,7 @@ export default function ChatInboxHoverCard({
         signal,
         requestScope: scope!,
       }),
-    enabled:
-      !!scope?.isCurrent() && !!item.conversationId && !gitIsNonRepo,
+    enabled: !!scope?.isCurrent() && !!item.conversationId && !gitIsNonRepo,
     retry: false,
     staleTime: 15_000,
     refetchOnMount: false,
@@ -153,8 +159,7 @@ export default function ChatInboxHoverCard({
       Math.max(VIEWPORT_MARGIN, window.innerHeight - height - VIEWPORT_MARGIN),
     );
     const fitsRight =
-      rect.right + CARD_GAP + CARD_WIDTH <=
-      window.innerWidth - VIEWPORT_MARGIN;
+      rect.right + CARD_GAP + CARD_WIDTH <= window.innerWidth - VIEWPORT_MARGIN;
     const left = fitsRight
       ? rect.right + CARD_GAP
       : Math.max(VIEWPORT_MARGIN, rect.left - CARD_GAP - CARD_WIDTH);
@@ -210,53 +215,54 @@ export default function ChatInboxHoverCard({
     !gitIsNonRepo &&
     (links.isPending || !!links.error || prLinks.length > 0);
   const prSection = prSectionVisible ? (
-      <section
-        className="chat-dock-inbox-hover-card__section"
-        aria-label="Pull requests"
-      >
-        <h4>Pull requests</h4>
-        {links.isPending ? (
-          <p className="chat-dock-inbox-hover-card__gap">
-            Reading pull requests…
-          </p>
-        ) : links.error ? (
-          <p className="chat-dock-inbox-hover-card__gap">
-            Pull request links unavailable.
-          </p>
-        ) : prLinks.length > 0 ? (
-          <>
-            <ul className="chat-dock-inbox-hover-card__prs">
-              {prLinks.slice(0, PR_PREVIEW_LIMIT).map((link) => (
-                <li key={`${link.source}:${link.host}/${link.repository.owner}/${link.repository.name}#${link.ref}`}>
-                  <span className="chat-dock-inbox-hover-card__pr-ref">
-                    #{link.ref}
-                  </span>
-                  <span className="chat-dock-inbox-hover-card__pr-title">
-                    <bdi>
-                      {link.status.state === 'current'
-                        ? link.status.title
-                        : link.status.reason}
-                    </bdi>
-                  </span>
-                  <span className="chat-dock-inbox-hover-card__pr-meta">
-                    {sourceLabel(link.source)}
+    <section
+      className="chat-dock-inbox-hover-card__section"
+      aria-label="Pull requests"
+    >
+      <h4>Pull requests</h4>
+      {links.isPending ? (
+        <p className="chat-dock-inbox-hover-card__gap">
+          Reading pull requests…
+        </p>
+      ) : links.error ? (
+        <p className="chat-dock-inbox-hover-card__gap">
+          Pull request links unavailable.
+        </p>
+      ) : prLinks.length > 0 ? (
+        <>
+          <ul className="chat-dock-inbox-hover-card__prs">
+            {prLinks.slice(0, PR_PREVIEW_LIMIT).map((link) => (
+              <li
+                key={`${link.source}:${link.host}/${link.repository.owner}/${link.repository.name}#${link.ref}`}
+              >
+                <span className="chat-dock-inbox-hover-card__pr-ref">
+                  #{link.ref}
+                </span>
+                <span className="chat-dock-inbox-hover-card__pr-title">
+                  <bdi>
                     {link.status.state === 'current'
-                      ? ` · ${link.status.pullRequestState}`
-                      : ` · ${link.status.state}`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {prLinks.length > PR_PREVIEW_LIMIT && (
-              <p className="chat-dock-inbox-hover-card__more">
-                +{prLinks.length - PR_PREVIEW_LIMIT} more in Linked pull
-                requests
-              </p>
-            )}
-          </>
-        ) : null}
-      </section>
-    ) : null;
+                      ? link.status.title
+                      : link.status.reason}
+                  </bdi>
+                </span>
+                <span className="chat-dock-inbox-hover-card__pr-meta">
+                  {sourceLabel(link.source)}
+                  {link.status.state === 'current'
+                    ? ` · ${link.status.pullRequestState}`
+                    : ` · ${link.status.state}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {prLinks.length > PR_PREVIEW_LIMIT && (
+            <p className="chat-dock-inbox-hover-card__more">
+              +{prLinks.length - PR_PREVIEW_LIMIT} more in Linked pull requests
+            </p>
+          )}
+        </>
+      ) : null}
+    </section>
+  ) : null;
 
   const basisGroups = basisModel
     ? BASIS_GROUP_ORDER.map((id) =>
@@ -276,10 +282,7 @@ export default function ChatInboxHoverCard({
     .find((gap) => gap.length > 0);
   const basisEnabled = Boolean(basisScope && scope?.isCurrent());
   const basisSection = basisScope ? (
-    <section
-      className="chat-dock-inbox-hover-card__section"
-      aria-label="Basis"
-    >
+    <section className="chat-dock-inbox-hover-card__section" aria-label="Basis">
       <h4>Basis</h4>
       {!basisEnabled || inventory.error || !basisModel ? (
         <p className="chat-dock-inbox-hover-card__gap">Basis unavailable.</p>
@@ -306,9 +309,7 @@ export default function ChatInboxHoverCard({
               <li key={viewItem.key}>
                 <bdi>{viewItem.label}</bdi>
                 {viewItem.classification === 'kept' && (
-                  <span className="chat-dock-inbox-hover-card__kept">
-                    Kept
-                  </span>
+                  <span className="chat-dock-inbox-hover-card__kept">Kept</span>
                 )}
               </li>
             ))}
@@ -324,6 +325,7 @@ export default function ChatInboxHoverCard({
   return createPortal(
     <div
       ref={cardRef}
+      id={id}
       className="chat-dock-inbox-hover-card"
       style={position}
       role="tooltip"
@@ -380,7 +382,11 @@ export default function ChatInboxHoverCard({
   );
 }
 
-function GitFacts({ git }: { git: Extract<GitStatusResult, { isRepo: true }> }) {
+function GitFacts({
+  git,
+}: {
+  git: Extract<GitStatusResult, { isRepo: true }>;
+}) {
   const dirty = git.staged + git.unstaged + git.untracked;
   return (
     <>
