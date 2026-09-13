@@ -13,6 +13,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import type {
+  SystemRuntimeIdentity,
+  UpdateProvenanceIssue,
+} from '@kontourai/station-contracts/system-status';
 import {
   DEFAULT_SERVER_PORT,
   DEFAULT_UI_PORT,
@@ -24,8 +28,10 @@ import { execGit } from '../../utils/git-exec.js';
 import { isRecord } from '../../utils/is-record.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import { errorMessage } from '../schemas/schemas.js';
+import { readSystemRuntimeIdentity } from './build-provenance.js';
 import {
   fetchChannelLatestSha,
+  type InstallProvenance,
   resolveInstallProvenance,
   resolveSelfUpdateEligibility,
   type SelfUpdateEligibility,
@@ -502,6 +508,9 @@ export function createSystemUpdateRoutes(
     // "apply" means running that checkout's own installer instead of asking
     // the user to reinstall by hand.
     const eligibility = await resolveSelfUpdateEligibility(provenance);
+    const selfUpdateUnavailableReason = eligibility.eligible
+      ? null
+      : eligibility.reason;
     const base = {
       installKind: 'desktop-bundle' as const,
       applyMethod: eligibility.eligible
@@ -512,6 +521,7 @@ export function createSystemUpdateRoutes(
         ? provenance.ref.slice('origin/'.length)
         : provenance.ref,
       currentHash: provenance.sha.substring(0, 7),
+      selfUpdateUnavailableReason,
     };
     try {
       const latestSha = await fetchChannelLatestSha(
@@ -522,6 +532,7 @@ export function createSystemUpdateRoutes(
         ...base,
         remoteHash: latestSha.substring(0, 7),
         updateAvailable: latestSha !== provenance.sha,
+        technicalDetail: null,
       };
     } catch (error) {
       logger.warn('Core update check: channel remote unreachable', {
@@ -533,8 +544,25 @@ export function createSystemUpdateRoutes(
         updateAvailable: false,
         remoteUnreachable: true,
         message: `Could not reach ${provenance.repository} to check the ${provenance.channel} channel.`,
+        // The caught diagnostic — the underlying network/git failure the
+        // user-facing message above deliberately summarizes.
+        technicalDetail: errorMessage(error),
       };
     }
+  };
+
+  /**
+   * The unknown-provenance refusal, rendered FROM the resolver's reason code
+   * rather than re-parsed out of `detail` text: `missing` keeps the long-standing
+   * stampless wording; `invalid-stamp` says the stamp is invalid, not absent.
+   */
+  const unknownProvenanceMessage = (
+    provenance: Extract<InstallProvenance, { installKind: 'unknown' }>,
+  ): string => {
+    if (provenance.reason === 'invalid-stamp') {
+      return `This server's update provenance is invalid. Station cannot determine whether a server update is available (${provenance.detail}), so updates cannot be checked from here.`;
+    }
+    return `This install carries no update provenance (${provenance.detail}), so updates cannot be checked from here.`;
   };
 
   // Runs the verified checkout's own installer, detached: the installer (not
@@ -600,19 +628,37 @@ export function createSystemUpdateRoutes(
   };
 
   app.get('/core-update', async (c) => {
+    // Identity is captured ONCE, before any async comparison: it comes from
+    // the env baked at process start, so a comparison that takes a while (or
+    // fails) must still report the identity of the process ANSWERING, not
+    // whatever the env says by the time the response is written.
+    const serverIdentity: SystemRuntimeIdentity | null =
+      readSystemRuntimeIdentity();
     const provenance = resolveInstallProvenance(
       dirname(fileURLToPath(import.meta.url)),
     );
+    const provenanceIssue: UpdateProvenanceIssue | null =
+      provenance.installKind === 'unknown' ? provenance.reason : null;
 
     if (provenance.installKind === 'desktop-bundle') {
-      return c.json(await desktopBundleUpdateStatus(provenance));
+      const status = await desktopBundleUpdateStatus(provenance);
+      return c.json({
+        ...status,
+        serverIdentity,
+        provenanceIssue,
+      });
     }
 
     if (provenance.installKind === 'unknown') {
       return c.json({
         installKind: 'unknown',
         updateAvailable: false,
-        message: `This install carries no update provenance (${provenance.detail}), so updates cannot be checked from here.`,
+        message: unknownProvenanceMessage(provenance),
+        serverIdentity,
+        provenanceIssue,
+        // Filesystem paths live here, not in user-facing copy.
+        technicalDetail: provenance.detail,
+        selfUpdateUnavailableReason: null,
       });
     }
 
@@ -662,6 +708,10 @@ export function createSystemUpdateRoutes(
           ahead: 0,
           updateAvailable: false,
           noUpstream: true,
+          serverIdentity,
+          provenanceIssue,
+          technicalDetail: null,
+          selfUpdateUnavailableReason: null,
         });
       }
 
@@ -707,9 +757,22 @@ export function createSystemUpdateRoutes(
         behind,
         ahead,
         updateAvailable: behind > 0,
+        serverIdentity,
+        provenanceIssue,
+        technicalDetail: null,
+        selfUpdateUnavailableReason: null,
       });
     } catch (error: unknown) {
-      return c.json({ updateAvailable: false, error: errorMessage(error) });
+      return c.json({
+        updateAvailable: false,
+        error: errorMessage(error),
+        serverIdentity,
+        provenanceIssue,
+        // The caught comparison diagnostic; the `error` message above stays
+        // the SDK-thrown surface.
+        technicalDetail: errorMessage(error),
+        selfUpdateUnavailableReason: null,
+      });
     }
   });
 

@@ -1,3 +1,4 @@
+import type { SystemRuntimeIdentity } from '@kontourai/station-contracts/system-status';
 import type { SystemBuildProvenance } from './system-route-types.js';
 
 const FULL_GIT_SHA = /^[0-9a-f]{40,64}$/i;
@@ -132,4 +133,29 @@ export function readBuildProvenanceSnapshot(
     }
   }
   return build;
+}
+
+/**
+ * The ONE derivation of this process's identity triple for every surface that
+ * must answer "which Station is this" (/api/system/identity, the core-update
+ * diagnostics) — both read it here so their identity rules cannot diverge.
+ * Null unless instanceId, bootId, and a validated sha are ALL present: these
+ * consumers treat the triple as proof of which Station answered, so a partial
+ * answer is not an identity. Build-stamp precedence and the SHA validation
+ * rule are `readBuildProvenance`'s, inherited rather than reimplemented.
+ */
+export function readSystemRuntimeIdentity(
+  env: NodeJS.ProcessEnv = process.env,
+  baked = readBakedServerBuildIdentity(),
+): SystemRuntimeIdentity | null {
+  const provenance = readBuildProvenance(env, Date.now(), baked);
+  if (!provenance?.fullSha || !provenance.instanceId || !provenance.bootId) {
+    return null;
+  }
+  return {
+    instanceId: provenance.instanceId,
+    bootId: provenance.bootId,
+    sha: provenance.fullSha,
+    ...(provenance.shaSource ? { shaSource: provenance.shaSource } : {}),
+  };
 }
