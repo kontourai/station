@@ -136,6 +136,24 @@ TCP scenario passed. The newer 0.33.4 release notes a separate handshake
 reliability fix; the repository's dependency-age policy refused it at the time
 of evaluation. The older eligible release is not production approval.
 
+An independent **Pion peer profile** is available under `--peer=pion`. Build the
+[pinned Go fixture](../../experiments/browser-transport-peer/README.md) first,
+then run `npm run lab:browser-transport -- --peer=pion --browser-turn=tcp`.
+Pion uses TURN/TCP; both TCP and UDP browser control paths must qualify
+individually. The report includes the actual linked Pion/Go versions and binary
+hash. This profile preserves the same approved-certificate, advertised-key and
+actual DTLS-substitution checks. It uses an owned child process and the same
+coturn/capture lifecycle rather than replacing Station's application server.
+
+The native Node failure is tracked separately in
+[#1995](https://github.com/kontourai/station/issues/1995). Captured Chromium
+TURN/TCP Binding requests carried a present, zero-valued ICE-CONTROLLING
+attribute. The packaged libjuice backend treats zero as absence and refuses the
+request. A separate Chromium-to-Chromium TURN/TCP control passed; the Pion
+profile permits qualification against another maintained ICE implementation.
+The Node package's TURN/TCP option also requires a different native backend;
+an exposed option is not evidence the installed binary implements it.
+
 Success prints `STATION_BROWSER_TRANSPORT_REPORT` with the tested transport,
 versions, capture size and completed checks. The report is published after
 cleanup. Failure exits 1 and retains private protocol diagnostics; `--keep`
