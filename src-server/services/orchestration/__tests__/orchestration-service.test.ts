@@ -37,6 +37,7 @@ import {
   awaitSessionAttachmentSettled,
   awaitSessionRecoveryCompleted,
 } from '../../../__test-utils__/session-runtime-barriers.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { MonitoringEmitter } from '../../../monitoring/emitter.js';
 import type {
   ProviderAdapterMetadata,
@@ -77,6 +78,7 @@ import {
   tenantExecutionContextOutcomes,
   turnProvenanceProjections,
 } from '../../../telemetry/metrics.js';
+import { execGitSync } from '../../../utils/git-exec.js';
 import { createLogger } from '../../../utils/logger.js';
 import { LOG_BINDING_KEYS } from '../../../utils/logger-correlation.js';
 import { AgentPolicyService } from '../../agents/agent-policy-service.js';
@@ -94,7 +96,10 @@ import {
   resetServerLogSinkForTests,
 } from '../../infra/server-log-store.js';
 import { NotificationService } from '../../notifications/notification-service.js';
+import { ProjectBindingsStore } from '../../projects/project-binding-store.js';
+import { ProjectManifestStore } from '../../projects/project-manifest-store.js';
 import type { CwdShadowSample } from '../../projects/project-resource-shadow.js';
+import { createProjectSessionDirectoryResolver } from '../../projects/project-session-directory.js';
 import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import type { AdoptionLedger } from '../adoption-ledger.js';
@@ -11332,6 +11337,157 @@ describe('OrchestrationService', () => {
       // the original resolved.
       expect(claude.sendTurn).toHaveBeenCalledTimes(1);
       expect(second).toEqual(first);
+    });
+  });
+
+  describe('destination Project bindings at the actual engine start', () => {
+    async function fixture(bind = true) {
+      const home = join(tmp, 'binding-home');
+      const oldPath = join(tmp, 'old-checkout');
+      const boundPath = join(tmp, 'bound-checkout');
+      const remote = 'https://github.com/example/portable.git';
+      for (const path of [oldPath, boundPath]) {
+        mkdirSync(path, { recursive: true });
+        execGitSync(['init', path]);
+        execGitSync(['remote', 'add', 'origin', remote], { cwd: path });
+      }
+      const storage = new FileStorageAdapter(home);
+      const project = {
+        id: randomUUID(),
+        slug: 'portable',
+        name: 'Portable',
+        workingDirectory: oldPath,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await storage.createProject(project);
+      const manifests = new ProjectManifestStore(home, storage);
+      await manifests.ensureProjectManifest(project);
+      const manifest = manifests.readProjectManifest(project.slug);
+      if (!manifest) throw new Error('fixture did not create its manifest');
+      const bindings = new ProjectBindingsStore(home);
+      if (bind)
+        await bindings.upsertProjectBinding({
+          projectId: manifest.id,
+          resourceId: manifest.repos[0].id,
+          kind: 'git-checkout',
+          path: boundPath,
+          remotes: [remote],
+          verifiedAt: Date.now(),
+          state: 'bound',
+        });
+      const engine = new FakeAdapter('claude');
+      const runtime = new OrchestrationService({
+        adapterRegistry: createRegistry([engine]),
+        eventBus,
+        eventStore,
+        listProjects: () => storage.listProjects(),
+        resolveProjectSessionDirectory: createProjectSessionDirectoryResolver(
+          home,
+          storage,
+        ),
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const start = (cwd?: string) =>
+        runtime.dispatch({
+          type: 'startSession',
+          input: {
+            threadId: randomUUID(),
+            provider: 'claude',
+            modelId: 'claude-sonnet',
+            metadata: { projectSlug: project.slug },
+            ...(cwd ? { cwd } : {}),
+          },
+        });
+      return { engine, start, boundPath, oldPath, storage, project };
+    }
+
+    test('uses the current binding instead of the legacy workingDirectory', async () => {
+      const { engine, start, boundPath } = await fixture();
+      await start();
+      expect(engine.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({ cwd: boundPath }),
+      );
+    });
+
+    test('refuses a missing binding even when the legacy checkout still exists', async () => {
+      const { engine, start, boundPath } = await fixture();
+      rmSync(boundPath, { recursive: true });
+      await expect(start()).rejects.toThrow(/cannot start here \(missing\)/);
+      expect(engine.startSession).not.toHaveBeenCalled();
+    });
+
+    test('refuses a different repository before engine invocation', async () => {
+      const { engine, start, boundPath } = await fixture();
+      execGitSync(
+        ['remote', 'set-url', 'origin', 'https://github.com/example/other.git'],
+        { cwd: boundPath },
+      );
+      await expect(start()).rejects.toThrow(/cannot start here \(drifted\)/);
+      expect(engine.startSession).not.toHaveBeenCalled();
+    });
+
+    test.each(['local-only', 'git'] as const)(
+      'distinguishes an unbound %s Project from an execution target',
+      async (kind) => {
+        const { engine, start, storage, project } = await fixture(false);
+        const directoryless = { ...project, workingDirectory: undefined };
+        await storage.projectRevision(project.slug).replace(directoryless);
+        // The existing sidecar remains intentional identity on an unattached runner.
+        const home = join(tmp, 'binding-home');
+        const manifests = new ProjectManifestStore(home, storage);
+        const manifest = manifests.readProjectManifest(project.slug);
+        if (!manifest) throw new Error('missing fixture manifest');
+        if (kind === 'local-only') {
+          // Separate organizational Project created through the real storage owner.
+          await storage.createProject({
+            ...directoryless,
+            id: randomUUID(),
+            slug: 'organizational',
+          });
+          const resolveDirectory = createProjectSessionDirectoryResolver(
+            home,
+            storage,
+          );
+          const runtime = new OrchestrationService({
+            adapterRegistry: createRegistry([engine]),
+            eventBus,
+            eventStore,
+            listProjects: () => storage.listProjects(),
+            resolveProjectSessionDirectory: resolveDirectory,
+            logger: { debug: vi.fn(), warn: vi.fn() },
+          });
+          await runtime.dispatch({
+            type: 'startSession',
+            input: {
+              threadId: randomUUID(),
+              provider: 'claude',
+              modelId: 'claude-sonnet',
+              metadata: { projectSlug: 'organizational' },
+            },
+          });
+          expect(engine.startSession).toHaveBeenCalledWith(
+            expect.objectContaining({ cwdDefaulted: true }),
+          );
+        } else {
+          await expect(start()).rejects.toThrow(
+            /cannot start here \(unbound\)/,
+          );
+          expect(engine.startSession).not.toHaveBeenCalled();
+        }
+      },
+    );
+
+    test('checks caller-supplied directories against the rebound root', async () => {
+      const { engine, start, oldPath, boundPath } = await fixture();
+      await expect(start(oldPath)).rejects.toThrow(/outside project/);
+      expect(engine.startSession).not.toHaveBeenCalled();
+      const subdir = join(boundPath, 'src');
+      mkdirSync(subdir);
+      await start(subdir);
+      expect(engine.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({ cwd: subdir }),
+      );
     });
   });
 
