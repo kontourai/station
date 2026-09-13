@@ -15,7 +15,7 @@ import {
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
+import { hostname, tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -369,6 +369,11 @@ function launchDesktopServer(release: string, root: string, port: number) {
     sha: stagedBuild.sha,
     shaSource: 'build-stamp' as const,
     bootId: randomUUID(),
+    // This raw bearer probe has no home-possession locality, even on loopback.
+    devicePresentation: {
+      deviceClass: 'paired' as const,
+      hostName: hostname().trim().split('.')[0] || 'the host',
+    },
   };
   const child = spawn(process.execPath, ['dist-server/command-station.js'], {
     cwd: release,
