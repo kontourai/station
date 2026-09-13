@@ -166,6 +166,8 @@ export async function startAccountLabStation(
         },
       },
     );
+    const stdout =
+      'stdout' in execution.child ? execution.child.stdout : undefined;
     const capture = captureOwnedProcessOutput(execution, {
       maxBytes: 1024 * 1024,
     });
@@ -212,7 +214,7 @@ export async function startAccountLabStation(
       const finish = (error?: Error) => {
         clearTimeout(timer);
         signal.removeEventListener('abort', aborted);
-        execution.child.stdout?.off('data', data);
+        stdout?.off('data', data);
         if (error) reject(error);
         else resolve();
       };
@@ -241,7 +243,7 @@ export async function startAccountLabStation(
           }
         }
       };
-      execution.child.stdout?.on('data', data);
+      stdout?.on('data', data);
       signal.addEventListener('abort', aborted, { once: true });
       if (signal.aborted) aborted();
       void execution.completion.then(() =>

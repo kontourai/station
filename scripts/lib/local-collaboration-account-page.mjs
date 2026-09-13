@@ -1,4 +1,5 @@
 // SDK calls run at the actual Station origin. Browser cookie handling stays native.
+/** @param {{ operation: string, path?: string, body?: Record<string, unknown>, invitation?: string }} input */
 export async function accountLabOperation({
   operation,
   path,
