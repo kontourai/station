@@ -8,7 +8,7 @@ const args = process.argv.slice(2);
 if (args.includes('--help')) {
   process.stdout.write(
     'Local collaboration lab: --check=security | --check=accounts | --check=all [--keep]\n' +
-      'Security runs real TLS and Station pairing in isolated fixtures. All reports incomplete until Project/compute/plugin integration lands.\n',
+      'Security checks TLS and pairing; accounts checks real local accounts and membership. All remains incomplete until shared content, relay, compute and plugin integration lands.\n',
   );
 } else {
   if (
@@ -51,9 +51,12 @@ if (args.includes('--help')) {
         ).checkLocalCollaborationSecurity(root, abort.signal);
     const accounts = args.includes('--check=security')
       ? undefined
-      : await (
-          await import('./lib/local-collaboration-accounts.js')
-        ).checkLocalCollaborationAccounts(root, abort.signal);
+      : await (async () => {
+          const { checkLocalCollaborationAccounts } = await import(
+            './lib/local-collaboration-accounts.js'
+          );
+          return checkLocalCollaborationAccounts(root, abort.signal);
+        })();
     const result =
       accounts && security
         ? {
