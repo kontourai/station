@@ -471,8 +471,8 @@ importers:
   examples/builder-delivery-viewer:
     dependencies:
       '@kontourai/flow-agents':
-        specifier: 5.7.0
-        version: 5.7.0(@ai-sdk/provider@3.0.15)(@kontourai/bearing@0.2.0(playwright@1.62.1))(@kontourai/datum@0.7.0(playwright@1.62.1))(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
+        specifier: 6.2.0
+        version: 6.2.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
       '@kontourai/station-sdk':
         specifier: '*'
         version: link:../../packages/sdk
@@ -746,60 +746,6 @@ importers:
         version: 0.28.1
 
 packages:
-  '@node-datachannel/android-arm64@0.33.2':
-    resolution: {integrity: sha512-I71a0jICUNYgh4ZI5AcINEMuRtQSVyrpp4FV3kJZMcx31xS0vKKtf06tpsUAtW5uS+uRXbZR+vlMEqS1h710wQ==}
-    cpu: [arm64]
-    os: [android]
-
-  '@node-datachannel/darwin-arm64@0.33.2':
-    resolution: {integrity: sha512-EwBGiaMh3MX6zjYoZHuK02Q6hmQQIvR39335Kb/ZnP3fXZU0/VWx6ksHLM6K0XFFYRfP+yJeVgU79g++xoeQpw==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@node-datachannel/darwin-x64@0.33.2':
-    resolution: {integrity: sha512-a1nvL6MiskSjV3TWTNXdVpI/2kHNIOP2AbuBZjR5eC7VSrH/6hCFfHIBW4SFKXGFm8LOGliY9Df10UnJUutjwA==}
-    cpu: [x64]
-    os: [darwin]
-
-  '@node-datachannel/linux-arm64-gnu@0.33.2':
-    resolution: {integrity: sha512-YWAu3EiMl2HRi/fwWlfFTW30wFTkRVYJWRHQcI1uDSeZYG/tfyBqBy6CRy9Sgrb0xjOYZ6XhLDj8cdX0foPlpg==}
-    cpu: [arm64]
-    os: [linux]
-    libc: [glibc]
-
-  '@node-datachannel/linux-arm64-musl@0.33.2':
-    resolution: {integrity: sha512-16o3Ny5hbxTTjDmhsZog/t7p2tRP6s/Oa/V9kKzZfiGlCqvxxCE4ACOWw/MWHOhN0xI9/63IIRfrrnQnPxjK8g==}
-    cpu: [arm64]
-    os: [linux]
-    libc: [musl]
-
-  '@node-datachannel/linux-x64-gnu@0.33.2':
-    resolution: {integrity: sha512-grLRAbZgSIX8nmObciblyCmnevDCst0snhV+z1fvDmUlzXIVXeDmv6lEzAaWs3KRleagqwSsFg5d1td1bwMT9w==}
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
-
-  '@node-datachannel/linux-x64-musl@0.33.2':
-    resolution: {integrity: sha512-PlpgvYjo+gmBhIkRFaZWIhCF335FMTJmCpl+FVa4XliEgyOqD+cvjQPWcbnlrA2Jd+QnLiZt+NxT7nv4QXpoiQ==}
-    cpu: [x64]
-    os: [linux]
-    libc: [musl]
-
-  '@node-datachannel/win32-arm64-msvc@0.33.2':
-    resolution: {integrity: sha512-8NpHkm7R8EY0jHGHOXdK7K0wjWY34PJ+PJY++2VDHTAtXGazNm28zcnVE/4IU0N26YGdCDSSWat3OO3W6nwoRw==}
-    cpu: [arm64]
-    os: [win32]
-
-  '@node-datachannel/win32-x64-msvc@0.33.2':
-    resolution: {integrity: sha512-aLk0O/M1JNVpzxx4RVBXMJTMlpswE04Cz5baayKwuEN+qk9hO6DSJgYMR6Wq9a5zGYAmvLFlOg+LsePyXkWliA==}
-    cpu: [x64]
-    os: [win32]
-
-  node-datachannel@0.33.3:
-    resolution: {integrity: sha512-Tf7bbOjUXh7gPiWKTFpMDZXpippya6pdsEz3tgxsIJiW+BMLWSaX7O6F9kDjHu0GCan4vSmXlfA8l21O4D+K9Q==}
-    engines: {node: '>=18.20.0'}
-
-
 
   '@a2a-js/sdk@0.2.5':
     resolution: {integrity: sha512-VTDuRS5V0ATbJ/LkaQlisMnTAeYKXAK6scMguVBstf+KIBQ7HIuKhiXLv+G/hvejkV+THoXzoNifInAkU81P1g==}
@@ -1073,15 +1019,6 @@ packages:
 
   '@anthropic-ai/sdk@0.71.2':
     resolution: {integrity: sha512-TGNDEUuEstk/DKu0/TflXAEt+p+p/WhTlFzEnoosvbaDU2LTjm42igSdlL0VijrKpWejtOKxX0b8A7uc+XiSAQ==}
-    hasBin: true
-    peerDependencies:
-      zod: ^3.25.0 || ^4.0.0
-    peerDependenciesMeta:
-      zod:
-        optional: true
-
-  '@anthropic-ai/sdk@0.74.0':
-    resolution: {integrity: sha512-srbJV7JKsc5cQ6eVuFzjZO7UR3xEPJqPamHFIe29bs38Ij2IripoAhC0S5NslNbaFUYqBKypmmpzMTpqfHEUDw==}
     hasBin: true
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
@@ -2285,11 +2222,6 @@ packages:
       '@anthropic-ai/sdk':
         optional: true
 
-  '@kontourai/flow-agents@5.7.0':
-    resolution: {integrity: sha512-KI7F2HYj86rvGYkBdxwqZqPLuXSsOKQK1GKcTI/uMi3Zd5w41pKqfdNnmw+4EwZuAZQ0YIHsdcvwSrOujndsyA==}
-    engines: {node: '>=22'}
-    hasBin: true
-
   '@kontourai/flow-agents@6.2.0':
     resolution: {integrity: sha512-DZV2bMAaHxP35hv7bRKA+WKs56oxcvjhF+UTNjsHcHbzQ8/7HgpptyGdG9EgL9FlofPdq/aWl4hBcTjGIiE3cg==}
     engines: {node: '>=22'}
@@ -2297,11 +2229,6 @@ packages:
 
   '@kontourai/flow@1.4.1':
     resolution: {integrity: sha512-xrR4iDlqTrTGODWF4GTJTm/Bntxe4o3OUwsIFP5MsMgeQRaeZj0F3VYNs8L58bic3PzRa19Xi6RXgajzXoqNeA==}
-    engines: {node: '>=22'}
-    hasBin: true
-
-  '@kontourai/flow@3.9.0':
-    resolution: {integrity: sha512-LnLvIwtHB9ia0BqwJGpYRgOc/d82RJ62lT9FU8jkCzb4y2LvwNkXsqGcdNKO4Fwy/Ig9eUUPZjVP3U5TEPAxpg==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -2358,16 +2285,6 @@ packages:
 
   '@kontourai/relay@0.2.0':
     resolution: {integrity: sha512-hKNm4eQl3i+O834cJppava0D+DFcCENkzZHPLqh/nB8oQFgyaT5AsqdDIfZDv7coGxIT0BFMjsx7cBWGviZdTg==}
-    engines: {node: '>=22'}
-    peerDependencies:
-      '@ai-sdk/provider': '>=3.0.0'
-      '@anthropic-ai/sdk': '>=0.40.0'
-    peerDependenciesMeta:
-      '@anthropic-ai/sdk':
-        optional: true
-
-  '@kontourai/relay@0.4.0':
-    resolution: {integrity: sha512-1vOORm62rPrIgLcjXJdjK4dxseFXSz9VRS/GR8j3ZPf/hLl2pmaxBkwXG9aGLNVfV5DrLk6EBR6Px2biZ4bCUw==}
     engines: {node: '>=22'}
     peerDependencies:
       '@ai-sdk/provider': '>=3.0.0'
@@ -2620,6 +2537,55 @@ packages:
   '@noble/hashes@2.4.0':
     resolution: {integrity: sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==}
     engines: {node: '>= 20.19.0'}
+
+  '@node-datachannel/android-arm64@0.33.2':
+    resolution: {integrity: sha512-I71a0jICUNYgh4ZI5AcINEMuRtQSVyrpp4FV3kJZMcx31xS0vKKtf06tpsUAtW5uS+uRXbZR+vlMEqS1h710wQ==}
+    cpu: [arm64]
+    os: [android]
+
+  '@node-datachannel/darwin-arm64@0.33.2':
+    resolution: {integrity: sha512-EwBGiaMh3MX6zjYoZHuK02Q6hmQQIvR39335Kb/ZnP3fXZU0/VWx6ksHLM6K0XFFYRfP+yJeVgU79g++xoeQpw==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@node-datachannel/darwin-x64@0.33.2':
+    resolution: {integrity: sha512-a1nvL6MiskSjV3TWTNXdVpI/2kHNIOP2AbuBZjR5eC7VSrH/6hCFfHIBW4SFKXGFm8LOGliY9Df10UnJUutjwA==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@node-datachannel/linux-arm64-gnu@0.33.2':
+    resolution: {integrity: sha512-YWAu3EiMl2HRi/fwWlfFTW30wFTkRVYJWRHQcI1uDSeZYG/tfyBqBy6CRy9Sgrb0xjOYZ6XhLDj8cdX0foPlpg==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@node-datachannel/linux-arm64-musl@0.33.2':
+    resolution: {integrity: sha512-16o3Ny5hbxTTjDmhsZog/t7p2tRP6s/Oa/V9kKzZfiGlCqvxxCE4ACOWw/MWHOhN0xI9/63IIRfrrnQnPxjK8g==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@node-datachannel/linux-x64-gnu@0.33.2':
+    resolution: {integrity: sha512-grLRAbZgSIX8nmObciblyCmnevDCst0snhV+z1fvDmUlzXIVXeDmv6lEzAaWs3KRleagqwSsFg5d1td1bwMT9w==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@node-datachannel/linux-x64-musl@0.33.2':
+    resolution: {integrity: sha512-PlpgvYjo+gmBhIkRFaZWIhCF335FMTJmCpl+FVa4XliEgyOqD+cvjQPWcbnlrA2Jd+QnLiZt+NxT7nv4QXpoiQ==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@node-datachannel/win32-arm64-msvc@0.33.2':
+    resolution: {integrity: sha512-8NpHkm7R8EY0jHGHOXdK7K0wjWY34PJ+PJY++2VDHTAtXGazNm28zcnVE/4IU0N26YGdCDSSWat3OO3W6nwoRw==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@node-datachannel/win32-x64-msvc@0.33.2':
+    resolution: {integrity: sha512-aLk0O/M1JNVpzxx4RVBXMJTMlpswE04Cz5baayKwuEN+qk9hO6DSJgYMR6Wq9a5zGYAmvLFlOg+LsePyXkWliA==}
+    cpu: [x64]
+    os: [win32]
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -6291,6 +6257,10 @@ packages:
     resolution: {integrity: sha512-t1QzWwnk4sjLWaQAS8CHgOJ+RAfmHpxFWmc36IWTiWHQfs0w5JDMBS1b1ZxQteo0vVVuWJvIUKHDkkeK7vIGCg==}
     engines: {node: '>= 8.0.0'}
 
+  node-datachannel@0.33.3:
+    resolution: {integrity: sha512-Tf7bbOjUXh7gPiWKTFpMDZXpippya6pdsEz3tgxsIJiW+BMLWSaX7O6F9kDjHu0GCan4vSmXlfA8l21O4D+K9Q==}
+    engines: {node: '>=18.20.0'}
+
   node-domexception@1.0.0:
     resolution: {integrity: sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==}
     engines: {node: '>=10.5.0'}
@@ -7722,47 +7692,6 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
-  '@node-datachannel/android-arm64@0.33.2':
-    optional: true
-
-  '@node-datachannel/darwin-arm64@0.33.2':
-    optional: true
-
-  '@node-datachannel/darwin-x64@0.33.2':
-    optional: true
-
-  '@node-datachannel/linux-arm64-gnu@0.33.2':
-    optional: true
-
-  '@node-datachannel/linux-arm64-musl@0.33.2':
-    optional: true
-
-  '@node-datachannel/linux-x64-gnu@0.33.2':
-    optional: true
-
-  '@node-datachannel/linux-x64-musl@0.33.2':
-    optional: true
-
-  '@node-datachannel/win32-arm64-msvc@0.33.2':
-    optional: true
-
-  '@node-datachannel/win32-x64-msvc@0.33.2':
-    optional: true
-
-  node-datachannel@0.33.3:
-    dependencies:
-      detect-libc: 2.1.2
-    optionalDependencies:
-      '@node-datachannel/android-arm64': 0.33.2
-      '@node-datachannel/darwin-arm64': 0.33.2
-      '@node-datachannel/darwin-x64': 0.33.2
-      '@node-datachannel/linux-arm64-gnu': 0.33.2
-      '@node-datachannel/linux-arm64-musl': 0.33.2
-      '@node-datachannel/linux-x64-gnu': 0.33.2
-      '@node-datachannel/linux-x64-musl': 0.33.2
-      '@node-datachannel/win32-arm64-msvc': 0.33.2
-      '@node-datachannel/win32-x64-msvc': 0.33.2
-
 
   '@a2a-js/sdk@0.2.5(supports-color@7.2.0)':
     dependencies:
@@ -8063,13 +7992,6 @@ snapshots:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
       zod: 3.25.76
-
-  '@anthropic-ai/sdk@0.74.0(zod@4.5.4)':
-    dependencies:
-      json-schema-to-ts: 3.1.1
-    optionalDependencies:
-      zod: 4.5.4
-    optional: true
 
   '@anycable/core@0.9.2':
     dependencies:
@@ -9167,16 +9089,6 @@ snapshots:
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
 
-  '@kontourai/dispatch@0.3.0(@ai-sdk/provider@3.0.15)(@anthropic-ai/sdk@0.74.0(zod@4.5.4))(@kontourai/bearing@0.2.0(playwright@1.62.1))(@kontourai/datum@0.7.0(playwright@1.62.1))':
-    dependencies:
-      '@kontourai/relay': 0.2.0(@ai-sdk/provider@3.0.15)(@anthropic-ai/sdk@0.74.0(zod@4.5.4))
-    optionalDependencies:
-      '@ai-sdk/provider': 3.0.15
-      '@kontourai/bearing': 0.2.0(playwright@1.62.1)
-      '@kontourai/datum': 0.7.0(playwright@1.62.1)
-    transitivePeerDependencies:
-      - '@anthropic-ai/sdk'
-
   '@kontourai/dispatch@0.3.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.116.0(zod@4.5.4))(@kontourai/bearing@0.2.0(playwright@1.62.1))(@kontourai/datum@0.7.0(playwright@1.62.1))':
     dependencies:
       '@kontourai/relay': 0.2.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.116.0(zod@4.5.4))
@@ -9267,27 +9179,6 @@ snapshots:
       - supports-color
       - typescript
 
-  '@kontourai/flow-agents@5.7.0(@ai-sdk/provider@3.0.15)(@kontourai/bearing@0.2.0(playwright@1.62.1))(@kontourai/datum@0.7.0(playwright@1.62.1))(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)':
-    dependencies:
-      '@kontourai/conduit': 0.2.1
-      '@kontourai/dispatch': 0.3.0(@ai-sdk/provider@3.0.15)(@anthropic-ai/sdk@0.74.0(zod@4.5.4))(@kontourai/bearing@0.2.0(playwright@1.62.1))(@kontourai/datum@0.7.0(playwright@1.62.1))
-      '@kontourai/flow': 3.9.0(supports-color@7.2.0)
-      '@kontourai/relay': 0.4.0(@ai-sdk/provider@3.0.15)(@anthropic-ai/sdk@0.74.0(zod@4.5.4))
-      '@kontourai/survey': 2.0.0(supports-color@7.2.0)(typescript@5.9.3)
-      esbuild: 0.28.1
-    optionalDependencies:
-      '@anthropic-ai/sdk': 0.74.0(zod@4.5.4)
-      '@kontourai/surface': 2.18.0(supports-color@7.2.0)
-      neo4j-driver: 5.28.3
-    transitivePeerDependencies:
-      - '@ai-sdk/provider'
-      - '@kontourai/bearing'
-      - '@kontourai/datum'
-      - kerberos
-      - supports-color
-      - typescript
-      - zod
-
   '@kontourai/flow-agents@6.2.0(@ai-sdk/provider@3.0.15)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)':
     dependencies:
       '@kontourai/conduit': 0.2.1
@@ -9338,16 +9229,6 @@ snapshots:
       ajv: 8.20.0
       hachure: 0.5.1
     transitivePeerDependencies:
-      - supports-color
-
-  '@kontourai/flow@3.9.0(supports-color@7.2.0)':
-    dependencies:
-      '@kontourai/surface': 2.18.0(supports-color@7.2.0)
-      ajv: 8.20.0
-      ajv-formats: 3.0.1(ajv@8.20.0)
-      hachure: 0.15.0
-    transitivePeerDependencies:
-      - kerberos
       - supports-color
 
   '@kontourai/flow@5.0.0(supports-color@7.2.0)':
@@ -9406,23 +9287,11 @@ snapshots:
     optionalDependencies:
       '@anthropic-ai/sdk': 0.116.0(zod@4.5.4)
 
-  '@kontourai/relay@0.2.0(@ai-sdk/provider@3.0.15)(@anthropic-ai/sdk@0.74.0(zod@4.5.4))':
-    dependencies:
-      '@ai-sdk/provider': 3.0.15
-    optionalDependencies:
-      '@anthropic-ai/sdk': 0.74.0(zod@4.5.4)
-
   '@kontourai/relay@0.2.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.116.0(zod@4.5.4))':
     dependencies:
       '@ai-sdk/provider': 3.0.16
     optionalDependencies:
       '@anthropic-ai/sdk': 0.116.0(zod@4.5.4)
-
-  '@kontourai/relay@0.4.0(@ai-sdk/provider@3.0.15)(@anthropic-ai/sdk@0.74.0(zod@4.5.4))':
-    dependencies:
-      '@ai-sdk/provider': 3.0.15
-    optionalDependencies:
-      '@anthropic-ai/sdk': 0.74.0(zod@4.5.4)
 
   '@kontourai/relay@0.6.0(@ai-sdk/provider@3.0.15)(@anthropic-ai/sdk@0.116.0(zod@4.5.4))':
     dependencies:
@@ -9687,6 +9556,33 @@ snapshots:
   '@noble/ciphers@2.4.0': {}
 
   '@noble/hashes@2.4.0': {}
+
+  '@node-datachannel/android-arm64@0.33.2':
+    optional: true
+
+  '@node-datachannel/darwin-arm64@0.33.2':
+    optional: true
+
+  '@node-datachannel/darwin-x64@0.33.2':
+    optional: true
+
+  '@node-datachannel/linux-arm64-gnu@0.33.2':
+    optional: true
+
+  '@node-datachannel/linux-arm64-musl@0.33.2':
+    optional: true
+
+  '@node-datachannel/linux-x64-gnu@0.33.2':
+    optional: true
+
+  '@node-datachannel/linux-x64-musl@0.33.2':
+    optional: true
+
+  '@node-datachannel/win32-arm64-msvc@0.33.2':
+    optional: true
+
+  '@node-datachannel/win32-x64-msvc@0.33.2':
+    optional: true
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -14005,6 +13901,20 @@ snapshots:
   node-cache@5.1.2:
     dependencies:
       clone: 2.1.2
+
+  node-datachannel@0.33.3:
+    dependencies:
+      detect-libc: 2.1.2
+    optionalDependencies:
+      '@node-datachannel/android-arm64': 0.33.2
+      '@node-datachannel/darwin-arm64': 0.33.2
+      '@node-datachannel/darwin-x64': 0.33.2
+      '@node-datachannel/linux-arm64-gnu': 0.33.2
+      '@node-datachannel/linux-arm64-musl': 0.33.2
+      '@node-datachannel/linux-x64-gnu': 0.33.2
+      '@node-datachannel/linux-x64-musl': 0.33.2
+      '@node-datachannel/win32-arm64-msvc': 0.33.2
+      '@node-datachannel/win32-x64-msvc': 0.33.2
 
   node-domexception@1.0.0: {}
 
