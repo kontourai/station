@@ -717,7 +717,7 @@ describe('ConnectedServerUpdates', () => {
       profileOverrides: { supervisesBundledServer: false },
     });
     // The held probe identity keeps the coordinator in its connecting state.
-    expect(await screen.findByText('Checking the connection…')).toBeTruthy();
+    expect(await screen.findByText('Checking the connection')).toBeTruthy();
     expect(
       screen.queryByText(
         'Connected server unavailable. Reconnect to check its update status.',

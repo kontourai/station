@@ -501,9 +501,8 @@ describe('re-check keeps the last known state (6-OPS-44)', () => {
     queryState.isFetching = true;
     queryState.data = undefined;
     render(<CoreUpdateCheck apiBase="http://localhost:3141" />);
-    expect(screen.getByLabelText('Checking for updates')).toBeTruthy();
     expect(
-      screen.getByText('Checking the connected server’s update source…'),
+      screen.getByLabelText('Checking the connected server’s update source'),
     ).toBeTruthy();
     expect(screen.queryByText(/Channel: nightly/)).toBeNull();
     expect(screen.queryByText(/Showing the result from/)).toBeNull();

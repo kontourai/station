@@ -402,12 +402,12 @@ export function CoreUpdateCheck({
         refresh; only the first has nothing to preserve.
       */}
       {checking && !status && (
-        <>
-          <SkeletonBlock count={1} label="Checking for updates" />
-          <div className="settings__update-meta">
-            <span>Checking the connected server’s update source…</span>
-          </div>
-        </>
+        // The wait's name rides the skeleton's label (state-primitives gate):
+        // S1 is the sentence, the skeleton is the region-shaped wait.
+        <SkeletonBlock
+          count={1}
+          label="Checking the connected server’s update source"
+        />
       )}
       {checking && status && (
         <div className="settings__update-meta">

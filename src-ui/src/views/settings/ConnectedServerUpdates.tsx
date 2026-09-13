@@ -20,7 +20,7 @@ function ServerIdentitySummary({
   const profile = usePlatformProfile();
 
   if (context.reachability === 'checking') {
-    return <p className="settings__field-hint">Checking the connection…</p>;
+    return <p className="settings__field-hint">Checking the connection</p>;
   }
 
   if (context.reachability !== 'connected') {
