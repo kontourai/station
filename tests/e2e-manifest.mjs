@@ -1027,7 +1027,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Live bundled Registry install, persisted installed state, project Add Layout/use, unavailable-component recovery after uninstall, reinstall, and 390x844 overflow proof.',
+      'Live bundled Registry install through the UI, persisted installed state, project Add pane/use of the Minimal Workspace occurrence, pane withdrawal after uninstall, reinstall, and 390x844 overflow proof.',
     exceptions: [],
   },
   {

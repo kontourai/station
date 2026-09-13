@@ -4,8 +4,7 @@
   "private": true,
   "description": "Minimal workspace plugin example for Station",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./src/index.tsx",
   "files": [
     "src",
     "dist",
