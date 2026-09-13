@@ -116,7 +116,7 @@ test('portable minimal example opens its Project Pane and existing dock without 
       page.getByRole('region', { name: 'Chat dock', exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText('No active session', { exact: true }),
+      page.getByText('No chat open', { exact: true }),
     ).toBeVisible();
     const openedDockUrl = new URL(paneUrl);
     openedDockUrl.searchParams.set('dock', 'open');
