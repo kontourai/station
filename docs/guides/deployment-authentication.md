@@ -395,7 +395,7 @@ verified identity returns. Account creation does not accept the invitation or
 grant Project/Device permissions. The underlying external account key includes
 verified issuer and immutable subject; reusing an operator's provider label for
 a different issuer cannot inherit an old account. UserInfo must identify the
-same subject as the verified ID token. Equal emails never link accounts automatically.
+same subject as the verified ID token, following [OIDC Core UserInfo validation](https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse). Equal emails never link accounts automatically.
 
 Discovery runs at account-provider startup. An unavailable or mismatched
 optional issuer is shown as unavailable and its start/callback endpoints refuse;
