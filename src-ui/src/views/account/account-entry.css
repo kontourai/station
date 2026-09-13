@@ -9,18 +9,10 @@
 }
 .account-entry__card {
   width: min(100%, 30rem);
-  padding: 1.5rem;
+  padding: 0;
   border: 1px solid var(--border-primary);
   border-radius: 12px;
   background: var(--bg-secondary);
-}
-.account-entry__brand {
-  color: var(--text-secondary);
-  font-weight: 600;
-}
-.account-entry h1 {
-  font-size: 1.65rem;
-  line-height: 1.25;
 }
 .account-entry form,
 .account-entry label {
