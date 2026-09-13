@@ -134,9 +134,21 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     renderWith({
       installKind: 'unknown',
       updateAvailable: false,
+      // Exact wire bytes the server now sends: the refusal copy carries no
+      // filesystem paths (the resolver detail rides technicalDetail).
       message:
-        'This install carries no update provenance (no git checkout and no build stamp), so updates cannot be checked from here.',
+        'This install carries no update provenance, so updates cannot be checked from here.',
+      technicalDetail:
+        'no git checkout and no station-nightly-source.json build stamp near /bundle/dist-server',
+      provenanceIssue: 'missing',
     });
+    // Exact match, not a substring: a server that re-embeds paths into the
+    // refusal message must break this fixture, not pass silently.
+    expect(
+      screen.getByText(
+        'This install carries no update provenance, so updates cannot be checked from here.',
+      ),
+    ).toBeTruthy();
     expect(screen.getByText(/no update provenance/).className).toContain(
       'settings__update-msg--warning',
     );

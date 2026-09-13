@@ -553,16 +553,18 @@ export function createSystemUpdateRoutes(
 
   /**
    * The unknown-provenance refusal, rendered FROM the resolver's reason code
-   * rather than re-parsed out of `detail` text: `missing` keeps the long-standing
-   * stampless wording; `invalid-stamp` says the stamp is invalid, not absent.
+   * rather than re-parsed out of `detail` text: `missing` and `invalid-stamp`
+   * word the situation differently. The resolver `detail` — which carries
+   * filesystem paths — goes to `technicalDetail` only, never into this
+   * user-facing copy.
    */
   const unknownProvenanceMessage = (
     provenance: Extract<InstallProvenance, { installKind: 'unknown' }>,
   ): string => {
     if (provenance.reason === 'invalid-stamp') {
-      return `This server's update provenance is invalid. Station cannot determine whether a server update is available (${provenance.detail}), so updates cannot be checked from here.`;
+      return "This server's update provenance is invalid. Station cannot determine whether a server update is available, so updates cannot be checked from here.";
     }
-    return `This install carries no update provenance (${provenance.detail}), so updates cannot be checked from here.`;
+    return 'This install carries no update provenance, so updates cannot be checked from here.';
   };
 
   // Runs the verified checkout's own installer, detached: the installer (not

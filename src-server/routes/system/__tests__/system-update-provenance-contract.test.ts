@@ -138,8 +138,9 @@ describe('core-update provenance contract (resolver reason → route rendering)'
     expect(body.applyMethod).toBeUndefined();
     expect(body.error).toBeUndefined();
     expect(body.provenanceIssue).toBe('missing');
-    expect(body.message).toMatch(
-      /^This install carries no update provenance \(/,
+    // Exact wire bytes: the refusal copy carries no filesystem paths.
+    expect(body.message).toBe(
+      'This install carries no update provenance, so updates cannot be checked from here.',
     );
     expect(body.technicalDetail).toContain('station-nightly-source.json');
   });
@@ -158,10 +159,9 @@ describe('core-update provenance contract (resolver reason → route rendering)'
     // DIFFERENT machine-readable reason — the whole point of the typed
     // reason field.
     expect(body.provenanceIssue).toBe('invalid-stamp');
-    expect(body.message).toMatch(
-      /^This server's update provenance is invalid\./,
+    expect(body.message).toBe(
+      "This server's update provenance is invalid. Station cannot determine whether a server update is available, so updates cannot be checked from here.",
     );
-    expect(body.message).toContain('updates cannot be checked from here');
     expect(body.technicalDetail).toContain('malformed');
   });
 

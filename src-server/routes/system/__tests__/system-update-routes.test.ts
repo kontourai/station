@@ -188,7 +188,11 @@ describe('GET /core-update on an unknown install', () => {
     const body = await json(await createApp().request('/core-update'));
     expect(body.installKind).toBe('unknown');
     expect(body.updateAvailable).toBe(false);
-    expect(body.message).toContain('station-nightly-source.json');
+    // The user-facing message carries NO filesystem paths — the resolver
+    // detail with the paths lives in technicalDetail only.
+    expect(body.message).toBe(
+      'This install carries no update provenance, so updates cannot be checked from here.',
+    );
     expect(body.error).toBeUndefined();
     expect(JSON.stringify(body)).not.toContain('Not a git repository');
     // Missing-provenance diagnostics: the reason comes from the resolver's
@@ -197,6 +201,7 @@ describe('GET /core-update on an unknown install', () => {
     expect(body.technicalDetail).toBe(
       'no git checkout and no station-nightly-source.json build stamp',
     );
+    expect(body.message).not.toContain('station-nightly-source.json');
     expect(body.serverIdentity).toBeNull();
     expect(body.selfUpdateUnavailableReason).toBeNull();
   });
@@ -213,10 +218,11 @@ describe('GET /core-update on an unknown install', () => {
     expect(body.updateAvailable).toBe(false);
     expect(body.applyMethod).toBeUndefined();
     expect(body.provenanceIssue).toBe('invalid-stamp');
-    expect(body.message).toMatch(
-      /^This server's update provenance is invalid\./,
+    // Exact bytes, paths-free: the malformed-stamp path (with the stamp
+    // location) must stay in technicalDetail, never in the message.
+    expect(body.message).toBe(
+      "This server's update provenance is invalid. Station cannot determine whether a server update is available, so updates cannot be checked from here.",
     );
-    expect(body.message).toContain('updates cannot be checked from here');
     expect(body.technicalDetail).toContain('malformed');
     expect(body.error).toBeUndefined();
   });
