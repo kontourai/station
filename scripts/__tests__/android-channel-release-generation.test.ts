@@ -14,7 +14,37 @@ import {
   applyAndroidReleaseSigning,
   gradleWithAndroidReleaseSigning,
 } from '../apply-android-release-signing.mjs';
+import { normalizeDevPairingDeepLinkSuffix } from '../channel-platform-matrix.mjs';
 import { resetAndroidGeneratedProject } from '../reset-android-generated-project.mjs';
+
+it('debug build entrypoints carry the scheme expected by the native development identity', () => {
+  const overlay = JSON.parse(
+    readFileSync('src-desktop/tauri.android.dev.conf.json', 'utf8'),
+  );
+  expect(overlay.plugins['deep-link'].mobile).toEqual([
+    {
+      scheme: [`station-dev-${normalizeDevPairingDeepLinkSuffix('instance')}`],
+      appLink: false,
+    },
+  ]);
+  const scripts = JSON.parse(readFileSync('package.json', 'utf8')).scripts;
+  for (const key of ['build:android', 'build:android:arm64'])
+    expect(scripts[key]).toContain(
+      '--config src-desktop/tauri.android.dev.conf.json',
+    );
+  expect(scripts['build:android:release']).not.toContain(
+    'tauri.android.dev.conf.json',
+  );
+  const workflow = readFileSync('.github/workflows/build-android.yml', 'utf8');
+  for (const line of workflow
+    .split('\n')
+    .filter(
+      (line) =>
+        /tauri android (init|build)/.test(line) &&
+        line.trim().startsWith('run:'),
+    ))
+    expect(line).toContain('--config tauri.android.dev.conf.json');
+});
 
 function generatedFixture(namespace = 'io.kontourai.station.beta') {
   const root = mkdtempSync(join(tmpdir(), 'station-channel-generation-'));
