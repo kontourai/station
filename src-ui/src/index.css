@@ -9269,6 +9269,59 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 }
 
+/* A short phone window gives an open chat the visible height without changing
+   its saved Half/Full preference. The keyboard may leave only ~150 CSS pixels:
+   preserve the header and a single-line composer instead of clipping Send. */
+@media (max-height: 540px) and (pointer: coarse) {
+  .app__main > .chat-dock--bottom:not(.is-collapsed):not(.is-dragging) {
+    top: calc(var(--chat-visual-viewport-top, 0px) + var(--safe-top));
+    bottom: auto;
+    height: calc(
+      var(--chat-visual-viewport-height, 100dvh) -
+      var(--safe-top)
+    ) !important;
+    max-height: calc(
+      var(--chat-visual-viewport-height, 100dvh) -
+      var(--safe-top)
+    );
+    z-index: calc(var(--layer-sticky) + 1);
+  }
+
+  .app__main > .chat-dock--bottom .chat-dock__body {
+    container: short-chat / size;
+  }
+
+  .app__main > .chat-dock--bottom .chat-input {
+    flex-shrink: 0;
+    padding-bottom: max(
+      0px,
+      calc(var(--safe-bottom) - var(--chat-visual-viewport-bottom, 0px))
+    );
+  }
+
+  .app__main > .chat-dock--bottom .chat-input__capsule {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+
+  .app__main > .chat-dock--bottom .chat-input textarea {
+    max-height: max(44px, calc(1lh + 20px));
+    padding: 10px 12px;
+  }
+
+  .app__main > .chat-dock--bottom .chat-messages {
+    padding-block: 0;
+  }
+}
+
+@container short-chat (max-height: 180px) {
+  /* These selectors return as soon as the keyboard leaves room. The chat's
+     primary input and send controls retain their full touch targets. */
+  .chat-input__meta {
+    display: none;
+  }
+}
+
 /* ── Approval-mode sheet (shared: desktop popover, mobile bottom sheet) ──
    Reuses `ResponsiveDialogHeader` for its title block and
    `composer-actions-menu__list/__item` for its rows — the same primitives
