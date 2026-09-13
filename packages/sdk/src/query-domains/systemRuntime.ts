@@ -11,6 +11,8 @@ import type {
   DevicePresentation,
   ExternalEngineReadinessProjection,
   HomeRecoveryDisclosure,
+  SystemRuntimeIdentity,
+  UpdateProvenanceIssue,
 } from '@kontourai/station-contracts/system-status';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
@@ -50,6 +52,7 @@ export {
   fetchServerCapabilities,
   renewAuth,
   requestCoreUpdateStatus,
+  requestSystemIdentity,
   requestSystemStatus,
   verifyBedrockConnection,
   verifyManagedRuntimeConnection,
@@ -273,6 +276,25 @@ export interface CoreUpdateStatus {
   remoteUnreachable?: boolean;
   message?: string;
   error?: string;
+  /**
+   * The answering server's identity, when the server could state a complete
+   * one. Null on older servers and on a server that cannot prove its own
+   * triple — never inferred.
+   */
+  serverIdentity?: SystemRuntimeIdentity | null;
+  /** Why this install cannot state its update provenance; null otherwise. */
+  provenanceIssue?: UpdateProvenanceIssue | null;
+  /**
+   * The provenance detail or caught comparison diagnostic a message may have
+   * summarized. Filesystem paths live here, deliberately not in `message`.
+   */
+  technicalDetail?: string | null;
+  /**
+   * For a desktop bundle: why git-based self-update refuses this install,
+   * straight from the server's eligibility resolver. Null when eligible or
+   * not a bundle.
+   */
+  selfUpdateUnavailableReason?: string | null;
 }
 
 /** Correlates an accepted git-pull restart with its detached watchdog. */

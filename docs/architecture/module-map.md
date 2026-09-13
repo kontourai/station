@@ -1137,3 +1137,17 @@ app identity from a screen or live readiness from a snapshot.
 `src-server/routes/__tests__/mobile-device.routes.test.ts`, and
 `packages/sdk/src/__tests__/mobile-device.test.ts`. See the
 [operator guide](../guides/mobile-device-workspace.md).
+
+
+## Project session directory
+
+`createProjectSessionDirectoryResolver` in
+`src-server/services/projects/project-session-directory.ts` composes the
+existing manifest and live resource resolver for new engine starts. Runtime
+initialization installs it in OrchestrationService; recovery awaits it only
+when the recorded session has no cwd. Bound resources return their local path;
+only a directory-less organizational Project may default without a checkout.
+Missing, drifted, ambiguous and unverifiable resources stop before engine
+invocation. The caller retains path containment and owned-worktree admission.
+Real Git/binding-to-engine tests live in `orchestration-service.test.ts`.
+Resolution is an observation, not a filesystem lease or a compute grant.

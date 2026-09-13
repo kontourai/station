@@ -131,28 +131,40 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
   });
 
   // Fixture fidelity: the exact bytes the real route emits for a stampless
-  // bundle (system-update-routes.ts wraps the resolver's detail sentence).
+  // bundle (system-update-routes.ts). The refusal copy carries no filesystem
+  // paths; the resolver detail rides technicalDetail for the PR4 disclosure.
   const UNKNOWN_REFUSAL = {
     installKind: 'unknown' as const,
     updateAvailable: false,
     message:
-      'This install carries no update provenance (no git checkout and no station-nightly-source.json build stamp near /bundle/Resources/dist-server), so updates cannot be checked from here.',
+      'This install carries no update provenance, so updates cannot be checked from here.',
+    technicalDetail:
+      'no git checkout and no station-nightly-source.json build stamp near /bundle/dist-server',
+    provenanceIssue: 'missing' as const,
   };
 
-  test('an unknown install renders the bounded refusal, never the raw diagnostic as explanation', () => {
+  test('an unknown install renders the bounded refusal, never a raw diagnostic as explanation', () => {
     renderWith(UNKNOWN_REFUSAL);
     expect(screen.getByText('Server update check unavailable')).toBeTruthy();
     const refusalBody = screen.getByText(/no usable update provenance/);
     expect(refusalBody.closest('.settings__update-msg')?.className).toContain(
       'settings__update-msg--warning',
     );
-    // The resolver's raw detail exists only inside the collapsed disclosure —
-    // it is diagnostic text, not the explanation.
+    // Exact wire bytes, not a substring: a server that re-embeds paths into
+    // the refusal message must break this fixture, not pass silently.
+    expect(
+      screen.getByText(
+        'This install carries no update provenance, so updates cannot be checked from here.',
+      ),
+    ).toBeTruthy();
+    // The refusal message lives only inside the collapsed disclosure —
+    // diagnostic text, not the explanation. (technicalDetail — the resolver's
+    // path detail — is rendered by the PR4 disclosure work, not here yet.)
     const details = screen.getByText('Technical details').closest('details');
     expect(details).toBeTruthy();
     expect(details!.open).toBe(false);
     const diagnostic = screen.getByText(
-      /no git checkout and no station-nightly-source/,
+      'This install carries no update provenance, so updates cannot be checked from here.',
     );
     expect(details!.contains(diagnostic)).toBe(true);
     // No provenance fields → no meta row at all, and no apply path.
@@ -164,7 +176,7 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     ).toBeNull();
   });
 
-  test('opening Technical details reveals the raw provenance diagnostic', () => {
+  test('opening Technical details reveals the refusal diagnostic', () => {
     renderWith(UNKNOWN_REFUSAL);
     const details = screen
       .getByText('Technical details')
@@ -173,7 +185,7 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     expect(details.open).toBe(true);
     expect(
       screen.getByText(
-        'This install carries no update provenance (no git checkout and no station-nightly-source.json build stamp near /bundle/Resources/dist-server), so updates cannot be checked from here.',
+        'This install carries no update provenance, so updates cannot be checked from here.',
       ),
     ).toBeTruthy();
     // The bounded refusal stays visible alongside the disclosure.
