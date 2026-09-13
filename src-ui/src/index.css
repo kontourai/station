@@ -3760,16 +3760,6 @@ button:hover {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
 }
 
-/* Not a duration: the motion primitive (`tokens.css`) already tweens every
-   transition to 0.01ms under reduce, so the `transition: none` that used to
-   sit here said nothing new. What survives is an END STATE — the hover lift
-   is a movement, and no duration can express "do not move at all". */
-@media (prefers-reduced-motion: reduce) {
-  .chat-scroll-to-bottom:hover {
-    transform: none;
-  }
-}
-
 .message {
   box-sizing: border-box;
   max-width: 80%;
@@ -4090,6 +4080,11 @@ button:hover {
    left is END STATE — a decorative pseudo-element that should not exist at
    all, and a sweep parked where its keyframes would have carried it. */
 @media (prefers-reduced-motion: reduce) {
+  /* The shared duration reset cannot prevent a hover end-state movement. */
+  .chat-scroll-to-bottom:hover {
+    transform: none;
+  }
+
   .streaming-tip::after {
     content: none;
   }
@@ -9287,10 +9282,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     z-index: calc(var(--layer-sticky) + 1);
   }
 
-  .app__main > .chat-dock--bottom .chat-dock__body {
-    container: short-chat / size;
-  }
-
   .app__main > .chat-dock--bottom .chat-input {
     flex-shrink: 0;
     padding-bottom: max(
@@ -9312,12 +9303,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   .app__main > .chat-dock--bottom .chat-messages {
     padding-block: 0;
   }
-}
 
-@container short-chat (max-height: 180px) {
-  /* These selectors return as soon as the keyboard leaves room. The chat's
-     primary input and send controls retain their full touch targets. */
-  .chat-input__meta {
+  /* Editing gets the limited height. Blurring the textarea restores the
+     model/agent selectors; input and Send keep their full touch targets. */
+  .app__main
+    > .chat-dock--bottom
+    .chat-input:has(textarea:focus)
+    > .chat-input__meta {
     display: none;
   }
 }
