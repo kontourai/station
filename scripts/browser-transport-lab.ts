@@ -12,16 +12,14 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
-import type {
-  ApprovedStationConnectionTrust,
-  StationConnectionSigningKey,
-} from '@kontourai/station-contracts/connection-proof';
+import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
 import { connectionDescriptionDigest } from '@kontourai/station-shared/connection-proof';
 import { chromium, type Page } from '@playwright/test';
 import { build, stop as stopBundler } from 'esbuild';
-import { exportJWK, generateKeyPair } from 'jose';
 import datachannel from 'node-datachannel';
-import { createStationConnectionProofIssuer } from '../src-server/services/ssh/connection-proof-issuer.js';
+import type { createStationConnectionProofIssuer } from '../src-server/services/ssh/connection-proof-issuer.js';
+import { ConnectionSigningKeyStore } from '../src-server/services/ssh/connection-signing-key-store.js';
+import { EnvironmentSecurityService } from '../src-server/services/ssh/environment-security-service.js';
 import {
   browserAccept,
   browserChannelOpen,
@@ -383,20 +381,20 @@ async function exchange(
 }
 
 try {
-  const keys = await generateKeyPair('ES256', { extractable: true });
-  connectionTrust = {
-    stationId: crypto.randomUUID(),
-    enrollmentId: crypto.randomUUID(),
-    generation: 1,
-    signingKey: (await exportJWK(
-      keys.publicKey,
-    )) as StationConnectionSigningKey,
-  };
-  proofIssuer = createStationConnectionProofIssuer({
-    trust: connectionTrust,
-    signingKey: keys.privateKey,
-    authorize: (binding) => admittedConnections.has(binding.connectionId),
+  const authorityHome = join(root, 'station-authority');
+  const environment = new EnvironmentSecurityService({
+    homeDir: authorityHome,
   });
+  const environmentIdentity = await environment.initialize();
+  connectionTrust = await new ConnectionSigningKeyStore(
+    authorityHome,
+  ).initialize();
+  assert.equal(connectionTrust.stationId, environmentIdentity.environmentId);
+  const reopenedKeys = new ConnectionSigningKeyStore(authorityHome);
+  assert.deepEqual(reopenedKeys.readDescriptor(), connectionTrust);
+  proofIssuer = reopenedKeys.createIssuer((binding) =>
+    admittedConnections.has(binding.connectionId),
+  );
   const bundled = await build({
     stdin: {
       contents: `
@@ -606,6 +604,7 @@ try {
     checks: [
       'TURN relay selected at both peers',
       'Station-signed exact client, generation and SDP proof verified and consumed in the browser',
+      'Station signing identity restored from its private home before proof issuance',
       'tampered proof refused before accepting the connection description',
       'browser-native DTLS connected',
       'application content echoed through encrypted data channel',

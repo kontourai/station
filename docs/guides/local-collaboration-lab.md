@@ -111,7 +111,11 @@ unrelated container; a nonzero exit alone does not prove successful cleanup.
 Each run generates two distinct endpoint certificates. Approved fingerprint
 trust is supplied independently by the fixture controller.
 
-The controller also supplies a separate approved Station signing key. Before
+The controller initializes an isolated Station security home, creates a separate
+signing identity, then reopens its private key store before issuing proofs. It
+supplies only the public descriptor to the browser's fixture trust owner. This
+checks persistence and reuse of the existing Station identity; it does not
+implement a production key-approval UI. Before
 accepting SDP, the browser verifies a 30-second ES256 connection proof against
 its own nonce/connection ID, the admitted Station generation, both fingerprints
 and the exact offer/answer bytes. Altered proofs and successful-proof replay
