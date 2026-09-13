@@ -9,6 +9,7 @@ import {
   BANNER_PRIORITY,
   bannerStore,
 } from '../contexts/banner-store';
+import { useConnectedServerUpdateContext } from '../hooks/useConnectedServerUpdateContext';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 
 interface NativeUpdateFeed {
@@ -91,6 +92,7 @@ export function CoreUpdateLaunchCheck({
   channel?: string;
 }) {
   const { isMobile } = usePlatformProfile();
+  const context = useConnectedServerUpdateContext();
   const [failure, setFailure] = useState<string | null>(null);
   const [latest, setLatest] = useState<NativeUpdateFeed | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -98,7 +100,13 @@ export function CoreUpdateLaunchCheck({
     // Mobile packages use the immutable, provenance-pinned release feed below.
     // Every other shell asks its selected Station, sharing the exact query key
     // that Settings consumes so opening the review surface does not re-probe.
-    enabled: !isMobile,
+    // The source query waits for the connected-server correlation: an
+    // established embedded sidecar is updated with this desktop app and must
+    // never fire it, and a pending identity knows too little to start one.
+    enabled:
+      !isMobile &&
+      context.identitySettled &&
+      context.kind !== 'embedded-sidecar',
     staleTime: 5 * 60 * 1000,
   });
 
@@ -186,7 +194,17 @@ export function CoreUpdateLaunchCheck({
 
   useEffect(() => {
     const availableDesktopStatus =
-      !isMobile && desktopStatus?.updateAvailable ? desktopStatus : null;
+      !isMobile &&
+      context.kind !== 'embedded-sidecar' &&
+      desktopStatus?.updateAvailable &&
+      // Until PR4 renders explicit comparison facts, the launch banner
+      // claims an update only from a source checkout's own comparison
+      // facts. A stamped bundle's SHA difference is a build-stamp
+      // comparison — never a released desktop update — and an established
+      // embedded sidecar has no server update to advertise at all.
+      desktopStatus.installKind === 'source-checkout'
+        ? desktopStatus
+        : null;
     if (!latest && !availableDesktopStatus) {
       bannerStore.dismiss(BANNER_IDS.updateAvailable);
       return;
@@ -228,7 +246,7 @@ export function CoreUpdateLaunchCheck({
     return () => {
       bannerStore.dismiss(BANNER_IDS.updateAvailable);
     };
-  }, [desktopStatus, isMobile, latest]);
+  }, [context.kind, desktopStatus, isMobile, latest]);
 
   return null;
 }

@@ -12,7 +12,18 @@ export const RESTART_STATUS_POLL_INTERVAL_MS = 1_500;
 
 type RestartVerificationState = 'idle' | 'verifying' | 'failed';
 
-export function CoreUpdateCheck({ apiBase }: { apiBase: string }) {
+export function CoreUpdateCheck({
+  apiBase,
+  enabled = true,
+}: {
+  apiBase: string;
+  /**
+   * Gated by the connected-server correlation (ConnectedServerUpdates):
+   * the auto-check waits until the selected server's identity has settled
+   * and it is reachable. A manual re-check still refetches.
+   */
+  enabled?: boolean;
+}) {
   const [restartVerification, setRestartVerification] =
     useState<RestartVerificationState>('idle');
   const [selfUpdating, setSelfUpdating] = useState(false);
@@ -40,8 +51,10 @@ export function CoreUpdateCheck({ apiBase }: { apiBase: string }) {
     // deliberately applies to EVERY install kind — the kind isn't knowable
     // before the first check — so a source checkout also fetches its remote
     // on Settings mount, bounded to once per staleTime window. The button
-    // stays the explicit re-check.
-    enabled: true,
+    // stays the explicit re-check. The caller may hold the auto-check until
+    // server identity correlation has settled (see the `enabled` prop); a
+    // held check is still refetchable by the button.
+    enabled,
     staleTime: 5 * 60 * 1000,
   });
 
