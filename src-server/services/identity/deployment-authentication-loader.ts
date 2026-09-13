@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import {
   DEPLOYMENT_AUTHENTICATION_BASE_PATH,
   type DeploymentAuthenticationConfiguration,
+  type DeploymentAuthenticationHost,
   type DeploymentAuthenticationModule,
 } from '@kontourai/station-contracts/deployment-authentication';
 import { expandTilde } from '../../utils/paths.js';
@@ -72,6 +73,20 @@ async function authenticationStateDirectory(
   return stateDirectory;
 }
 
+/** Shared custody and origin validation for built-in and operator-installed providers. */
+export async function createDeploymentAuthenticationHost(
+  publicOrigin: string,
+  host: { stationId: string; homeDirectory: string },
+): Promise<Readonly<DeploymentAuthenticationHost>> {
+  const origin = authenticationOrigin(publicOrigin);
+  return Object.freeze({
+    stationId: host.stationId,
+    publicOrigin: origin,
+    basePath: DEPLOYMENT_AUTHENTICATION_BASE_PATH,
+    stateDirectory: await authenticationStateDirectory(host.homeDirectory),
+  });
+}
+
 /** Only explicit process configuration can load deployment code; no request or plugin registry reaches this loader. */
 export async function loadDeploymentAuthentication(
   configuration: DeploymentAuthenticationConfiguration | undefined,
@@ -81,10 +96,12 @@ export async function loadDeploymentAuthentication(
   const { modulePath, publicOrigin } = structuredClone(configuration);
   if (!isAbsolute(modulePath))
     throw new Error('Authentication module path must be absolute.');
-  const origin = authenticationOrigin(publicOrigin);
+  const providerHost = await createDeploymentAuthenticationHost(
+    publicOrigin,
+    host,
+  );
   if (!(await lstat(modulePath)).isFile())
     throw new Error('Authentication module must be a regular file.');
-  const stateDirectory = await authenticationStateDirectory(host.homeDirectory);
   const loaded: unknown = await import(pathToFileURL(modulePath).href);
   if (
     !loaded ||
@@ -98,18 +115,11 @@ export async function loadDeploymentAuthentication(
   }
   const provider = await (
     loaded as DeploymentAuthenticationModule
-  ).createStationAuthenticationProvider(
-    Object.freeze({
-      stationId: host.stationId,
-      publicOrigin: origin,
-      basePath: DEPLOYMENT_AUTHENTICATION_BASE_PATH,
-      stateDirectory,
-    }),
-  );
+  ).createStationAuthenticationProvider(providerHost);
   try {
     return {
       service: new DeploymentAuthenticationService(provider),
-      publicOrigin: origin,
+      publicOrigin: providerHost.publicOrigin,
     };
   } catch (error) {
     if (provider && typeof provider.close === 'function')
