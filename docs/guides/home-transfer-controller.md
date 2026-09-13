@@ -209,16 +209,22 @@ session does not authorize room access or Agent execution.
 
 The controller stores one session record per paired home, bounded to 4,096
 records in the external authority database. The record stores capability and replay secrets only as SHA-256 digests,
-alongside their identity and generation metadata. The fresh
-256-bit capability and 256-bit replay secret remain in runtime memory and must
-never be written to a Station home, Project, peer record, log or portable
-archive. A new open or same-process retry supplies the open ID and replay
-secret. Knowing the inspectable open ID or copying the pairing credential is
-insufficient to recover the cached capability. After restart, a caller may
+alongside their identity and generation metadata. The controller mints the
+256-bit capability. The replay secret is supplied by the caller as a 64-character
+hex string; the controller checks only its format, never its entropy, so a
+caller must generate it with a cryptographically secure random source. Both
+values remain in runtime memory and must never be written to a Station home,
+Project, peer record, log or portable archive. A new open or same-process retry
+supplies the open ID and replay secret. Knowing the inspectable open ID or
+copying the pairing credential is insufficient to recover the cached
+capability only to the extent the caller's replay secret is unguessable. After restart, a caller may
 instead present the exact retained capability. If the controller loses its
 replay cache and the runtime has no retained capability, the result is
 `recovery-required`, even if the runtime still knows the replay secret. A different open cannot replace an active
 session. There is no timeout, process-ID expiry or automatic deletion path.
+Removing and re-granting `home:control` advances the grant revision: the
+existing session no longer binds, and a new open is refused as a conflict until
+an operator retires the old generation.
 
 Operator retirement names the exact paired device and expected session
 generation. It refuses while any admission for that home remains unresolved.
