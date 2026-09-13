@@ -364,6 +364,14 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
     }
   }
   const clientBuild = parseClientBuildProvenance(candidate.clientBuild);
+  const pairingDeepLinkScheme =
+    typeof candidate.pairingDeepLinkScheme === 'string' &&
+    candidate.pairingDeepLinkScheme.length <= 128 &&
+    /^station-(?:stable|beta|nightly|dev-[a-z0-9]+(?:-[a-z0-9]+)*)$/.test(
+      candidate.pairingDeepLinkScheme,
+    )
+      ? candidate.pairingDeepLinkScheme
+      : undefined;
   return {
     platform: candidate.platform as NativeCapabilityReport['platform'],
     channel:
@@ -378,6 +386,7 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
     devBuild: candidate.devBuild === true,
     ...(mobileDefaultEndpoint ? { mobileDefaultEndpoint } : {}),
     ...(clientBuild ? { clientBuild } : {}),
+    ...(pairingDeepLinkScheme ? { pairingDeepLinkScheme } : {}),
   };
 }
 

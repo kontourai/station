@@ -599,6 +599,7 @@ jobs:
             icon_channel=beta
           fi
           node scripts/apply-android-channel-icons.mjs "$icon_channel"
+          node scripts/apply-android-pairing-scheme.mjs "$icon_channel"
       - name: Apply native credential bootstrap to the channel namespace
         run: |
           node scripts/apply-android-native-bootstrap.mjs
