@@ -1372,6 +1372,92 @@ describe('NativeStationProfileStorage', () => {
     ).toHaveLength(2);
   });
 
+  it('persists a Station rename with its selection and project references while retaining credentials', async () => {
+    const initial = structuredClone(
+      PROFILE_STORE,
+    ) as unknown as StationProfileStore;
+    initial.projectProfiles = { '/project': 'kontour' };
+    const { storage, currentStore, calls } = storageWithKeyring({
+      initialStore: initial,
+    });
+    await storage.hydrate();
+    await storage.authorizeActiveConnection('station-profile:kontour');
+    await storage.updateProfile({
+      connectionId: 'station-profile:kontour',
+      expected: { name: 'kontour', url: initial.profiles[0].endpoint },
+      name: 'desktop',
+      url: initial.profiles[0].endpoint,
+    });
+    expect(currentStore().profiles[0]).toMatchObject({
+      name: 'desktop',
+      credentialRef: initial.profiles[0].credentialRef,
+    });
+    expect(currentStore().defaultProfile).toBe('desktop');
+    expect(currentStore().projectProfiles['/project']).toBe('desktop');
+    expect(storage.get('station-connect-connections-active')).toBe(
+      'station-profile:desktop',
+    );
+    expect(calls).not.toContain('credential_vault_commit_pairing');
+    expect(calls).not.toContain('credential_vault_delete_unreferenced');
+    expect(
+      storage.captureNativeRequestBinding(
+        'station-profile:desktop',
+        initial.profiles[0].endpoint,
+      ),
+    ).not.toBeNull();
+    await storage.refresh();
+    expect(new ConnectionStore({ storage }).getAll()[0].name).toBe('desktop');
+  });
+
+  it('persists an edited address without transferring credentials to that origin', async () => {
+    const { storage, currentStore, credentials } = storageWithKeyring();
+    await storage.hydrate();
+    await storage.updateProfile({
+      connectionId: 'station-profile:kontour',
+      expected: { name: 'kontour', url: PROFILE_STORE.profiles[0].endpoint },
+      name: 'kontour',
+      url: 'https://new.example.test:8443',
+    });
+    expect(currentStore().profiles[0]).toMatchObject({
+      endpoint: 'https://new.example.test:8443',
+      configurationState: 'unconfigured',
+    });
+    expect(currentStore().profiles[0].credentialRef).toBeUndefined();
+    expect(currentStore().profiles[0].environmentId).toBeUndefined();
+    expect(credentials.get('station-bearer:kontour-token')).toBe('old-token');
+    await storage.refresh();
+    expect(new ConnectionStore({ storage }).getActive()?.url).toBe(
+      'https://new.example.test:8443',
+    );
+  });
+
+  it('retries an unrelated profile revision but refuses a conflicting target edit', async () => {
+    const { storage, currentStore } = storageWithKeyring({
+      conflictOnceBeforeWrite: (current) => ({
+        ...current,
+        revision: current.revision + 1,
+        profiles: current.profiles.map((profile, index) =>
+          index === 1 ? { ...profile, name: 'changed-elsewhere' } : profile,
+        ),
+      }),
+    });
+    await storage.hydrate();
+    const edit = {
+      connectionId: 'station-profile:kontour',
+      expected: { name: 'kontour', url: PROFILE_STORE.profiles[0].endpoint },
+      name: 'desktop',
+      url: PROFILE_STORE.profiles[0].endpoint,
+    };
+    await storage.updateProfile(edit);
+    expect(currentStore().profiles[1].name).toBe('changed-elsewhere');
+    expect(currentStore().profiles[0].name).toBe('desktop');
+    const next = { ...edit, connectionId: 'station-profile:desktop' };
+    await expect(storage.updateProfile(next)).rejects.toThrow(
+      'changed while you were editing',
+    );
+    expect(currentStore().revision).toBe(2);
+  });
+
   it('writes the shared default only through the explicit action', async () => {
     const { calls, storage } = storageWithProfileStore();
     await storage.hydrate();

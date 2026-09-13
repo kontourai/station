@@ -12,12 +12,29 @@ interface TranscriptQueryDatabase {
 export class TranscriptReadLimitError extends Error {}
 /** Recency only breaks comparable FTS relevance; shared with the write owner's public constant. */
 export const MESSAGE_SEARCH_RECENCY_SCORE_PER_DAY = 0.000000001;
+
+function transcriptOwnerIds(options: {
+  ownerUserId: string;
+  legacyOwnerUserId?: string;
+  ownerUserIds?: readonly string[];
+}): (string | null)[] {
+  return options.ownerUserIds
+    ? [
+        ...new Set([
+          options.ownerUserId,
+          ...options.ownerUserIds,
+          ...(options.legacyOwnerUserId ? [options.legacyOwnerUserId] : []),
+        ]),
+      ]
+    : [options.ownerUserId, options.legacyOwnerUserId ?? null];
+}
 export function queryTranscriptMessages(
   db: TranscriptQueryDatabase,
   options: {
     query: string;
     ownerUserId: string;
     legacyOwnerUserId?: string;
+    ownerUserIds?: readonly string[];
     tenantId?: string;
     projectId?: string;
     limit: number;
@@ -35,12 +52,18 @@ export function queryTranscriptMessages(
   engine?: string;
   turnAnchorId?: string;
 }> {
+  const ownerIds = transcriptOwnerIds(options);
   const contentTerms = nonCjkSearchTerms(options.query);
   const cjkTerms = cjkSearchTerms(options.query);
   // A punctuation-only query must not degrade into an owner-wide match.
   if (!contentTerms && !cjkTerms) return [];
   const matchTerms = [
-    `(${[options.ownerUserId, ...(options.legacyOwnerUserId ? [options.legacyOwnerUserId] : [])].map((owner) => ftsColumnPhrase('owner_scope_key', messageOwnerScopeKey(owner))).join(' OR ')})`,
+    `(${ownerIds
+      .filter((owner): owner is string => owner !== null)
+      .map((owner) =>
+        ftsColumnPhrase('owner_scope_key', messageOwnerScopeKey(owner)),
+      )
+      .join(' OR ')})`,
   ];
   if (options.tenantId) {
     matchTerms.splice(
@@ -82,7 +105,7 @@ export function queryTranscriptMessages(
            LEFT JOIN provider_session_state p
              ON p.thread_id = s.thread_id
           WHERE orchestration_message_search_v3 MATCH ?
-            AND h.owner_user_id IN (?, ?)
+            AND h.owner_user_id IN (${ownerIds.map(() => '?').join(', ')})
             AND (? IS NULL OR h.tenant_id = ?)
             AND (? IS NULL OR h.project_slug = ?)
           ORDER BY bm25(orchestration_message_search_v3) +
@@ -93,8 +116,7 @@ export function queryTranscriptMessages(
     )
     .all(
       matchTerms.join(' AND '),
-      options.ownerUserId,
-      options.legacyOwnerUserId ?? null,
+      ...ownerIds,
       options.tenantId ?? null,
       options.tenantId ?? null,
       options.projectId ?? null,
@@ -142,18 +164,19 @@ export function queryTranscriptSession(
     threadId: string;
     ownerUserId: string;
     legacyOwnerUserId?: string;
+    ownerUserIds?: readonly string[];
     tenantId?: string;
   },
 ): { conversationId: string; projectSlug?: string } | null {
+  const ownerIds = transcriptOwnerIds(options);
   const row = db
     .prepare(`SELECT thread_id, CASE WHEN length(CAST(project_slug AS BLOB)) <= 256 THEN project_slug END AS project_slug,
     coalesce(length(CAST(project_slug AS BLOB)), 0) > 256 AS oversized
-    FROM orchestration_conversation_history WHERE thread_id = ? AND owner_user_id IN (?, ?)
+    FROM orchestration_conversation_history WHERE thread_id = ? AND owner_user_id IN (${ownerIds.map(() => '?').join(', ')})
       AND (? IS NULL OR tenant_id = ?) LIMIT 1`)
     .get(
       options.threadId,
-      options.ownerUserId,
-      options.legacyOwnerUserId ?? null,
+      ...ownerIds,
       options.tenantId ?? null,
       options.tenantId ?? null,
     ) as
@@ -176,6 +199,7 @@ export function queryTranscriptMessage(
     matchedEventId: string;
     ownerUserId: string;
     legacyOwnerUserId?: string;
+    ownerUserIds?: readonly string[];
     tenantId?: string;
   },
 ): {
@@ -184,6 +208,7 @@ export function queryTranscriptMessage(
   messageId: string;
   projectSlug?: string;
 } | null {
+  const ownerIds = transcriptOwnerIds(options);
   const anchor = `(SELECT e.id FROM orchestration_events e WHERE e.thread_id = s.thread_id
     AND e.turn_id = matched.turn_id AND e.method = 'turn.started' LIMIT 1)`;
   const bounded = (name: string, max = 256) =>
@@ -195,14 +220,13 @@ export function queryTranscriptMessage(
     FROM orchestration_message_search_v3 s
     INNER JOIN orchestration_conversation_history h ON h.thread_id = s.thread_id
     INNER JOIN orchestration_events matched ON matched.thread_id = s.thread_id AND matched.id = s.event_id
-    WHERE s.thread_id = ? AND s.event_id = ? AND h.owner_user_id IN (?, ?)
+    WHERE s.thread_id = ? AND s.event_id = ? AND h.owner_user_id IN (${ownerIds.map(() => '?').join(', ')})
       AND ((s.role = 'user' AND matched.method = 'turn.started') OR (s.role = 'assistant' AND matched.method = 'turn.completed'))
       AND (? IS NULL OR h.tenant_id = ?) LIMIT 1`)
     .get(
       options.threadId,
       options.matchedEventId,
-      options.ownerUserId,
-      options.legacyOwnerUserId ?? null,
+      ...ownerIds,
       options.tenantId ?? null,
       options.tenantId ?? null,
     ) as
@@ -275,10 +299,12 @@ export function queryTranscriptMessagePage(
     matchedEventId: string;
     ownerUserId: string;
     legacyOwnerUserId?: string;
+    ownerUserIds?: readonly string[];
     tenantId?: string;
     continuation?: string;
   },
 ) {
+  const ownerIds = transcriptOwnerIds(options);
   const content = `CASE WHEN json_valid(e.payload) THEN CASE e.method
     WHEN 'turn.started' THEN CASE WHEN json_type(e.payload, '$.prompt') = 'text' THEN json_extract(e.payload, '$.prompt') END
     WHEN 'turn.completed' THEN CASE WHEN json_type(e.payload, '$.outputText') = 'text' THEN json_extract(e.payload, '$.outputText') END END END`;
@@ -295,12 +321,11 @@ export function queryTranscriptMessagePage(
     FROM orchestration_events e
     INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
     WHERE e.thread_id = ? AND e.id = ? AND e.method IN ('turn.started', 'turn.completed')
-      AND h.owner_user_id IN (?, ?) AND (? IS NULL OR h.tenant_id = ?) LIMIT 1`)
+      AND h.owner_user_id IN (${ownerIds.map(() => '?').join(', ')}) AND (? IS NULL OR h.tenant_id = ?) LIMIT 1`)
     .get(
       options.threadId,
       options.matchedEventId,
-      options.ownerUserId,
-      options.legacyOwnerUserId ?? null,
+      ...ownerIds,
       options.tenantId ?? null,
       options.tenantId ?? null,
     ) as

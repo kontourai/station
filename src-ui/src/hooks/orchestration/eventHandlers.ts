@@ -1,3 +1,4 @@
+import type { OrchestrationConversationStreamBinding } from '@kontourai/station-contracts/orchestration';
 import { isDeferredRetriableTurnError } from '@kontourai/station-contracts/runtime-events';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
@@ -19,6 +20,7 @@ import {
 } from './governanceHandlers';
 import { handlePlanUpdatedEvent } from './planHandlers';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
+import { recordReplayRuntime } from './replay/capture-tap';
 import { isReplayThread } from './replay/replay-registry';
 import {
   handleSessionExitedEvent,
@@ -53,7 +55,30 @@ export function handleOrchestrationEvent(
    * degrades honestly instead of being partly believed here.
    */
   provenance?: unknown,
+  conversation?: OrchestrationConversationStreamBinding,
 ) {
+  if (
+    conversation?.currentSessionId === event.threadId &&
+    (event.method === 'session.started' ||
+      event.method === 'session.configured') &&
+    !isReplayThread(event.threadId)
+  ) {
+    const key = activeChatsStore.getChatKeyForExecutionSession(
+      conversation.conversationId,
+    );
+    if (
+      key &&
+      !isReplayThread(key) &&
+      activeChatsStore.getSnapshot()[key]?.currentSessionId !== event.threadId
+    )
+      activeChatsStore.updateChat(key, {
+        currentSessionId: event.threadId,
+        conversationId: conversation.conversationId,
+        conversationOpenPending: true,
+        conversationOpenFailed: false,
+      });
+  }
+  recordReplayRuntime(apiBase, event, provenance);
   // archive#1301: ingest BEFORE the `if (!chat) return` guard below —
   // a delegate session's events arrive on the delegate's own threadId, which
   // is never opened as a chat, so the guard would otherwise drop every event

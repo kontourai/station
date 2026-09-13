@@ -140,6 +140,7 @@ import {
   scheduleRuntimePluginUpdateCheck,
   startRuntimeACPConnections,
 } from './runtime-background-tasks.js';
+import { withStationShutdownOwnership } from './runtime-signal-ownership.js';
 import {
   checkOllamaAvailability,
   prepareRuntimeStartup,
@@ -161,7 +162,10 @@ export interface InitializeRuntimeDeps {
   approvalRegistry: ApprovalRegistry;
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
-    'verifyCredential' | 'resolveGrantedScope'
+    | 'verifyCredential'
+    | 'resolveGrantedScope'
+    | 'canSharePersonalConversation'
+    | 'personalConversationOwnerIds'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -570,6 +574,17 @@ export async function initializeRuntime(
     // process's former OS alias. SessionAuthorization admits it only for the
     // request-derived home-possession local-operator principal.
     legacyPersonalOwner: getCachedUser().alias,
+    personalConversationAccess: {
+      canRead: (requesterId, ownerId) =>
+        deps.environmentSecurityService.canSharePersonalConversation(
+          requesterId,
+          ownerId,
+        ),
+      ownerIds: (requesterId) =>
+        deps.environmentSecurityService.personalConversationOwnerIds(
+          requesterId,
+        ),
+    },
     flowRunService,
     resourcePosture,
     listProjects: () => storageAdapter.listProjects(),
@@ -961,11 +976,14 @@ export async function initializeRuntime(
     };
   };
 
-  const voltAgent = new VoltAgent({
-    agents,
-    logger: logger as any,
-    server: trackedServerFactory,
-  });
+  const voltAgent = withStationShutdownOwnership(
+    () =>
+      new VoltAgent({
+        agents,
+        logger: logger as any,
+        server: trackedServerFactory,
+      }),
+  );
   onVoltAgentCreated(voltAgent);
   await voltAgent.ready;
   if (serverStartInvoked) await serverStartup;

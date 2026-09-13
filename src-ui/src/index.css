@@ -3933,14 +3933,14 @@ button:hover {
    the agent never reads as idle before the first delta arrives. */
 .streaming-activity {
   display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.streaming-activity__label {
-  color: var(--text-muted);
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-secondary);
   font-size: 0.88em;
   line-height: 1.35;
+}
+.streaming-activity .elapsed-wait {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Streaming-aliveness motion primitives (archive#2651) ──────────────────
@@ -4190,50 +4190,6 @@ button.background-tasks-banner:focus-visible {
    than on source position, so chunking changes cannot silently un-style it.
    `src-ui/src/__tests__/copy-affordance-cascade.test.ts` asserts one such rule
    per adopter stylesheet. */
-
-.streaming-progress {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-  padding: 10px 12px;
-  border: 1px solid rgba(var(--accent-primary-rgb, 0, 102, 204), 0.18);
-  border-radius: 10px;
-  background: linear-gradient(
-    135deg,
-    rgba(var(--accent-primary-rgb, 0, 102, 204), 0.12),
-    rgba(var(--accent-primary-rgb, 0, 102, 204), 0.04)
-  );
-}
-
-.streaming-progress__pulse {
-  width: 10px;
-  height: 10px;
-  flex-shrink: 0;
-  border-radius: 999px;
-  background: var(--accent-primary);
-  box-shadow: 0 0 0 0 rgba(var(--accent-primary-rgb, 0, 102, 204), 0.45);
-  animation: streaming-progress-pulse var(--motion-status-pulse) var(--ease-out)
-    infinite;
-}
-
-.streaming-progress__body {
-  min-width: 0;
-}
-
-.streaming-progress__label {
-  color: var(--text-primary);
-  font-size: 0.92em;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-.streaming-progress__tool {
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.72em;
-  margin-top: 2px;
-}
 
 @keyframes streaming-progress-pulse {
   0% {

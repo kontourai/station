@@ -1,7 +1,7 @@
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { deriveLatestPlanArtifactFromMessages } from '../../utils/planArtifacts';
 import { pruneStaleFailureMarkers } from '../../utils/sessionFailure';
-import { buildAssistantTurnContent } from './messageParts';
+import { buildAssistantTurnContent, upsertTextPart } from './messageParts';
 
 /**
  * archive#1410: the turn identity and provenance envelope the terminal
@@ -24,7 +24,34 @@ export function finalizeAssistantTurn(
   const chat = activeChatsStore.getChatForExecutionSession(threadId);
   if (!chat) return;
 
-  const streamingMessage = chat.streamingMessage;
+  let streamingMessage = chat.streamingMessage;
+  // A reconnect can leave a strict prefix in the live buffer. A terminal
+  // output that extends that exact prefix supplies the missing suffix; keep
+  // tool/reasoning parts and avoid appending an already received answer twice.
+  const receivedText =
+    streamingMessage?.contentParts
+      ?.filter((part) => part.type === 'text')
+      .map((part) => part.content ?? '')
+      .join('') ||
+    streamingMessage?.content ||
+    '';
+  if (
+    typeof fallbackText === 'string' &&
+    fallbackText.startsWith(receivedText) &&
+    fallbackText.length > receivedText.length
+  ) {
+    const missing = fallbackText.slice(receivedText.length);
+    streamingMessage = {
+      ...streamingMessage,
+      role: 'assistant',
+      content: `${streamingMessage?.content ?? ''}${missing}`,
+      contentParts: upsertTextPart(
+        streamingMessage?.contentParts,
+        'text',
+        missing,
+      ),
+    };
+  }
   const content = buildAssistantTurnContent(streamingMessage, fallbackText);
 
   // archive#1294: `handleRuntimeErrorEvent` (turnHandlers.ts) appends the raw
@@ -56,7 +83,18 @@ export function finalizeAssistantTurn(
   );
   const hasNonTextParts = nonTextParts.length > 0;
 
+  const retainedFailure =
+    chat.status === 'error' &&
+    !fallbackText &&
+    chat.messages?.some(
+      (message) =>
+        message.answerEligible === false &&
+        message.role === 'assistant' &&
+        (turnProvenance?.turnId === undefined ||
+          message.turnId === turnProvenance.turnId),
+    );
   if (
+    retainedFailure ||
     (!content && !(streamingMessage?.contentParts || []).length) ||
     (isDuplicateErrorText && !hasNonTextParts)
   ) {

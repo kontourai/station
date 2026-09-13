@@ -19,6 +19,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 | Module | Intent | Primary source |
 | --- | --- | --- |
+| [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
 | [WorkspacePaneHostContributions](#workspacepanehostcontributions) | Bind package-level Pane-host actions and explicit Agent selection without treating Pane requirements as routing authority. | `src-server/services/plugins/workspace-pane-host-contributions.ts` |
@@ -45,6 +46,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [StationHomeArchive](#stationhomearchive) | Validate, back up, and atomically restore one inactive Station home. | `packages/shared/src/station-home-archive.ts` |
 | [StationHomeRecoveryPreflight](#stationhomerecoverypreflight) | Observe bounded recovery metadata without granting mutation or execution authority. | `packages/shared/src/station-home-recovery-preflight.ts` |
 | [ProjectFileTransactions](#projectfiletransactions) | Serialize Project lifecycle and nested record mutations under exact revision capabilities. | `src-server/domain/project-file-transactions.ts` |
+| [ProjectIdentity](#projectidentity) | Prepare and attach portable identity while preserving receiver-local Project identity. | `src-server/services/projects/project-identity-service.ts` |
 | [KnowledgeFileTransactions](#knowledgefiletransactions) | Publish one multi-file knowledge mutation with durable rollback and exact conflict detection. | `src-server/knowledge-store/adapters/shared/file-transactions.ts` |
 | [SharedWorkingState](#sharedworkingstate) | Converge one authorized text document through versioned causal operations and bounded resync. | `src-server/domain/shared-working-state.ts` |
 | [LiveWorkSession](#liveworksession) | Project bounded, separately authorized ephemeral work presence for one exact Project/Task/surface/session. | `src-server/domain/live-work-session.ts` |
@@ -68,6 +70,31 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [SchedulerLedger and BuiltinScheduler](#schedulerledger-and-builtinscheduler) | Own scheduled-job state, occurrence receipts, and safe unattended execution. | `src-server/services/scheduling/scheduler-ledger.ts` |
 | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) | Dispatch a task while keeping graph state and orchestration detail local. | `src-server/services/projects/task-dispatcher.ts` |
 | [StationInstanceReconciler](#stationinstancereconciler) | Observe and converge one installed Station instance safely. | `packages/cli/src/commands/station-instance-reconciler.ts` |
+
+## DeploymentAuthentication
+
+**Intent and Interface.** The public `deployment-authentication` contract lets an
+operator supply a versioned authentication module at startup. Its factory receives
+the selected Station identity, public origin, fixed authentication base path and
+private state directory. It declares exact account cookies and operation paths;
+Project plugins and requests cannot install an authority. Verified issuer/subject
+pairs produce bounded stable principals; contact and display fields grant no access.
+
+**Implementation and callers.** `deployment-authentication-loader.ts` validates
+explicit startup configuration and storage custody. `DeploymentAuthenticationService`
+validates provider results, bounds waits, rejects expired/malformed credentials and
+keeps request identity through bounded-body replacement. `runtime-http.ts` composes
+this before personal-device admission, while `runtime-routes.ts` refuses conflicting
+verified people and supplies the actual account principal to existing execution and
+room authority. `deployment-authentication-routes.ts` owns the narrow login/self
+surface, its origin/body/attempt bounds and declared-operation dispatch. Account
+authentication does not bypass device scope or implement Project membership.
+
+**Evidence and limits.** External-module HTTP fixtures and the real runtime
+principal-composition suite exercise refusal and identity propagation. They do not
+prove a production identity provider, email delivery, the member/admin UI or physical
+two-human acceptance. See [deployment authentication](../guides/deployment-authentication.md)
+for the operator contract and the remaining account/member delivery boundaries.
 
 ## AgentPluginLoader
 
@@ -570,11 +597,44 @@ This is not a live-home backup, immutable forensic snapshot, migration, restore,
 
 ## ProjectFileTransactions
 
+Portable attachment uses `createProjectWithManifest`: the initial Project and
+identity are prepared outside the visible catalog and their directory is
+published once under the Project mutation lock. Existing or orphaned destination
+directories are not overwritten. Known post-publication faults preserve the
+applied result. `project-identity-service.test.ts` exercises visibility, retries,
+faults, input capture and real checkout resolution through the filesystem owner.
+
 **Intent and Interface.** `ProjectFileTransactions` is the single lifecycle authority for a Project tree. Callers create a Project, read a `ProjectStoredFileRevision<T>` or `StoredFileRevision<T>`, or request an intent-shaped nested record upsert/delete. A Project revision exposes only its validated value and exact `replace`/`remove`/`createLayout` capabilities; callers never receive a lock path, fingerprint, temporary path, callback-under-lock, or generic filesystem transaction.
 
 **Contract.** One Station-owned, project-keyed lock outside the deletable Project tree orders create, update, delete, Layout, conversation, and document mutations across processes. Reads runtime-validate strict persisted schemas; only `ENOENT` means absent. Every revision snapshots its input, admits one exact transition synchronously, joins a concurrent duplicate intent without publishing twice, and rejects a different intent. Replace and remove compare the exact observed fingerprint after ownership. Layout creation is issued only by the Project revision whose validated agent scope, workspace, and namespace facts produced it, so a concurrent Project change conflicts before any Layout effect. Project deletion atomically renames the entire tree out of service before best-effort trash cleanup, so a nested writer ordered before deletion cannot resurrect it and one ordered after deletion is refused. Publication uses the shared same-directory sync-and-rename Adapter. A post-commit fault is classified by exact readback, and observer or cleanup failure cannot turn a committed effect into a retryable result.
 
 **Seam, Implementation, callers, and tests.** `FileStorageAdapter` composes one authority and exposes intent-shaped `IStorageAdapter` revisions to `ProjectService`, knowledge-namespace mutation, and Project routes. Plugin namespace convergence completes idempotently before catalog Layout creation; the subsequent Project revision binds every Project-dependent Layout decision. HTTP maps only typed absence to 404, exact conflicts to stable 409, and corrupt or unavailable storage to stable 5xx copy without filesystem diagnostics. Layout creation adds server-owned identity and timestamps before persistence. Real child-process ordering, same-capability concurrency, stale Project/Layout revisions, post-commit, strict-schema, non-file, and missing-file proofs live in `src-server/domain/__tests__/project-file-transactions.process.test.ts`, `file-storage-schemas.test.ts`, and the Project route/service suites. **Do not reintroduce:** route- or service-owned read/merge/save, direct recursive Project deletion, Layout-local lock files, permissive `JSON.parse` casts at persisted boundaries, treating schema or I/O errors as empty or 404, raw storage paths in API errors, caller-controlled callbacks under lifecycle ownership, or nested record writes outside the Project lifecycle lock.
+
+## ProjectIdentity
+
+**Intent and Interface.** `ProjectIdentityService` exposes explicit read,
+preparation and attachment operations over the runtime's existing Project,
+manifest and storage owners. `ProjectPortableIdentity` is the closed public
+identity/reference snapshot; `ProjectIdentityAssociation` names its portable ID
+and the receiver's distinct local ID and slug. Existing Project IDs and history
+are preserved.
+
+**Contract.** Reads do not backfill. Explicit preparation uses the current
+Project-revision admission and creates only a missing sidecar. Attachment
+validates its snapshot and any selected local directory, then requires atomic
+Project/manifest creation from the storage adapter. Existing mismatched identity
+or configuration is a conflict; unknown versions/fields, unavailable stores and
+unverifiable directories are named refusals. A same remote or slug is not
+membership, execution consent, a room locator or a history-merge instruction.
+
+**Seams, callers and evidence.** Project routes inject the runtime-pinned stores
+and checkout reader; no second store is constructed behind a route. The SDK's
+React-free client methods validate responses and capture the original attachment
+request before asynchronous work. `project-identity-service.test.ts` covers
+real Git checkouts, real filesystem publication/faults, conflicts and the HTTP
+surface; `client-project-identity.test.ts` covers the public wire consumer and
+incompatible/changed responses. Physical multi-machine and independent-human
+acceptance remain separate from these tests.
 
 ## KnowledgeFileTransactions
 

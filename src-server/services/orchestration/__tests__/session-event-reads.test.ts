@@ -18,6 +18,7 @@ function readsFor(
   store: EventStore,
   rootId: string,
   readSession?: (threadId: string) => Promise<any>,
+  overrides: Partial<ConstructorParameters<typeof SessionEventReads>[0]> = {},
 ): SessionEventReads {
   return new SessionEventReads({
     eventStore: store,
@@ -35,6 +36,7 @@ function readsFor(
         threadId === rootId
           ? ({ session: { threadId: rootId }, events: [] } as never)
           : null),
+    ...overrides,
   });
 }
 
@@ -252,6 +254,67 @@ describe('SessionEventReads conversation boundary hydration', () => {
           turnLimit: 10,
         }),
       ).resolves.toBeNull();
+    } finally {
+      store.close();
+    }
+  });
+});
+
+describe('SessionEventReads bounded archive caller', () => {
+  test.each([false, true])(
+    'discovers only an unknown target (unknown=%s)',
+    async (unknown) => {
+      const store = createStore();
+      const id = 'archive-target';
+      const inventory = vi.fn(async () => {
+        seedRoot(store, id);
+        return [];
+      });
+      const hydrate = vi.fn();
+      try {
+        if (!unknown) seedRoot(store, id);
+        const reads = readsFor(store, id, undefined, {
+          listSessions: inventory,
+          hydratePersistedTenantContexts: hydrate,
+        });
+        const options = {
+          afterSequence: 0,
+          limit: 100,
+          authority: INTERNAL_SESSION_READ_SCOPE,
+        };
+        expect(await reads.readSessionEventPage(id, options)).toMatchObject({
+          session: { threadId: id },
+          events: [],
+        });
+        expect(await reads.readSessionEventPage(id, options)).not.toBeNull();
+        expect(inventory).toHaveBeenCalledTimes(unknown ? 1 : 0);
+        expect(
+          hydrate.mock.calls.every(
+            ([sessions]) =>
+              sessions.length === 1 && sessions[0].threadId === id,
+          ),
+        ).toBe(true);
+      } finally {
+        store.close();
+      }
+    },
+  );
+  test('denied archive never reads its event projection or payload', async () => {
+    const store = createStore();
+    try {
+      seedRoot(store, 'private');
+      const projection = vi.spyOn(store, 'listSessionProjectionEvents');
+      const page = vi.spyOn(store, 'listEventPage');
+      const result = await readsFor(store, 'private', undefined, {
+        canReadSession: () => false,
+      }).readSessionEventPage('private', {
+        afterSequence: 0,
+        limit: 100,
+        authority: INTERNAL_SESSION_READ_SCOPE,
+      });
+      expect(result).toBeNull();
+      expect(projection).not.toHaveBeenCalled();
+      expect(page).not.toHaveBeenCalled();
     } finally {
       store.close();
     }
