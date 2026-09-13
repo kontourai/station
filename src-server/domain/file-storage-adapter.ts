@@ -10,6 +10,7 @@ import type {
   ProjectConfig,
   ProjectMetadata,
 } from '@kontourai/station-contracts/project';
+import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   assertObservationTreeBudget,
@@ -43,6 +44,7 @@ import {
   type ProjectStoredFileRevision,
   type StoredFileRevision,
 } from './project-file-transactions.js';
+import { parseProjectPortableIdentity } from './project-identity-record.js';
 import {
   assertSafeLayoutPathSegment,
   type ConversationRecord,
@@ -173,6 +175,20 @@ export class FileStorageAdapter implements IStorageAdapter {
     assertSafeLayoutPathSegment('project slug', config.slug);
     const parsed = parseProjectConfig(config);
     await this.#transactions.createProject(parsed.slug, parsed);
+  }
+
+  async createProjectWithIdentity(
+    config: ProjectConfig,
+    identity: ProjectPortableIdentity,
+  ): Promise<void> {
+    assertSafeLayoutPathSegment('project slug', config.slug);
+    const parsed = parseProjectConfig(config);
+    const portable = parseProjectPortableIdentity(identity);
+    await this.#transactions.createProjectWithManifest(
+      parsed.slug,
+      parsed,
+      portable,
+    );
   }
 
   async deleteProject(slug: string): Promise<void> {

@@ -223,6 +223,42 @@ describe('native platform boundary', () => {
     expect(adapter.capability('desktop-tray').state).toBe('enabled');
   });
 
+  test.each([
+    'station-stable',
+    'station-nightly',
+    'station-dev-instance',
+    'station-dev-my-worktree',
+  ])('retains the native pairing association %s', async (scheme) => {
+    const adapter = new TauriNativePlatformAdapter({
+      invoke: async <T>() =>
+        ({ ...validCapabilityReport(), pairingDeepLinkScheme: scheme }) as T,
+      listen: async () => () => undefined,
+    });
+    expect(await adapter.getCapabilityReport()).toMatchObject({
+      status: 'ok',
+      value: { pairingDeepLinkScheme: scheme },
+    });
+  });
+
+  test.each([
+    'https',
+    'station-dev-../other',
+    'station-stable://pair',
+    'station-dev-',
+    'station-dev-' + 'a'.repeat(128),
+    42,
+  ])('omits an invalid optional pairing association: %s', async (scheme) => {
+    const adapter = new TauriNativePlatformAdapter({
+      invoke: async <T>() =>
+        ({ ...validCapabilityReport(), pairingDeepLinkScheme: scheme }) as T,
+      listen: async () => () => undefined,
+    });
+    const result = await adapter.getCapabilityReport();
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok')
+      expect(result.value.pairingDeepLinkScheme).toBeUndefined();
+  });
+
   test('rejects malformed capability reports without changing state', async () => {
     const adapter = new TauriNativePlatformAdapter({
       invoke: async <T>() =>

@@ -278,6 +278,7 @@ jobs:
           node scripts/apply-android-release-signing.mjs
           node scripts/apply-android-channel-icons.mjs nightly
           node scripts/apply-android-native-bootstrap.mjs
+          node scripts/apply-android-pairing-scheme.mjs nightly
           node scripts/apply-android-network-policy.mjs
           node scripts/write-android-build-manifest.mjs
           keystore="$RUNNER_TEMP/station-nightly.keystore"; printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"

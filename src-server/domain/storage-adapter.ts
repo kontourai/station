@@ -66,6 +66,11 @@ export interface IStorageAdapter {
   getProject(slug: string): ProjectConfig;
   projectRevision(slug: string): ProjectStoredFileRevision<ProjectConfig>;
   createProject(config: ProjectConfig): Promise<void>;
+  /** Must publish Project and portable identity together or refuse before visibility. */
+  createProjectWithIdentity?(
+    config: ProjectConfig,
+    identity: import('@kontourai/station-contracts/project-identity').ProjectPortableIdentity,
+  ): Promise<void>;
   deleteProject(slug: string): Promise<void>;
 
   // Layouts
