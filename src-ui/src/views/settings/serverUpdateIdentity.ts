@@ -122,7 +122,7 @@ export function exactLoopbackPortMatch(
 }
 
 /** The exact sidecar child generation, absent outside a desktop-owned child. */
-export function validSidecarGeneration(
+function validSidecarGeneration(
   generation: number | null | undefined,
 ): boolean {
   return (

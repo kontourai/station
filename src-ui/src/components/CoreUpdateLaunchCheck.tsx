@@ -42,9 +42,7 @@ export function compareVersions(left: string, right: string) {
  * does not establish that an installable release exists. A diverged checkout
  * is manual work, not an offered update.
  */
-export function sourceComparisonMessage(
-  status: CoreUpdateStatus,
-): string | null {
+function sourceComparisonMessage(status: CoreUpdateStatus): string | null {
   if (status.installKind !== 'source-checkout') return null;
   const behind = status.behind;
   if (typeof behind !== 'number' || behind <= 0) return null;
