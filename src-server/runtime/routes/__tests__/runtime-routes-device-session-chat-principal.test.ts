@@ -45,6 +45,7 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ACCOUNT_AUTHENTICATION_FAILURE_HEADER } from '@kontourai/station-contracts/application-session';
 import {
   DEPLOYMENT_AUTHENTICATION_VERSION,
   type DeploymentAuthenticationProvider,
@@ -61,11 +62,17 @@ import type {
 } from '@kontourai/station-contracts/project-membership';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
+import {
+  ApplicationSessionClient,
+  createApplicationSessionKey,
+} from '@kontourai/station-sdk/application-session';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
+import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import type { LoadedDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
 import { DeploymentAuthenticationService } from '../../../services/identity/deployment-authentication-service.js';
 import { loadLocalAccounts } from '../../../services/identity/local-account-runtime.js';
@@ -423,11 +430,20 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           )
         : undefined;
     const app = new Hono();
+    const applicationSessions = localAccounts
+      ? createApplicationSessionRuntime(
+          roomHomeDir,
+          'environment-local',
+          localAccounts,
+          (value) => pairing.identifyDevice(value),
+        )
+      : undefined;
     const context = deepStub({
       projectMembership: membership?.service,
       ...(membershipStorage ? { storageAdapter: membershipStorage } : {}),
       deploymentAuthentication: localAccounts ?? deploymentAuthentication,
       localAccounts,
+      applicationSessions,
       app,
       port: 4321,
       appConfig: {},
@@ -478,6 +494,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       membership,
       localAccounts,
       sharedProject,
+      applicationSessions,
       roomRuntime: result.projectTaskRoomRuntime!,
       pairing,
       paired,
@@ -784,6 +801,226 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     return ((await response.json()) as { data: T }).data;
   }
 
+  test('a cookie-free SDK session reaches the real principal owner, rejects replay and survives renewal only while its source remains active', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const h = await setup(undefined, false, undefined, true, true);
+    let producer: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const cancelled = vi.fn();
+    const streamPath = '/api/projects/example/account-session-stream';
+    const expiryPath = '/api/projects/example/account-expiry-result';
+    h.app.get(expiryPath, () => {
+      const later = Date.now() + 16 * 60_000;
+      vi.setSystemTime(later);
+      return Response.json({ secret: 'private-result-after-expiry' });
+    });
+    h.app.get(
+      streamPath,
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              producer = controller;
+              controller.enqueue(new TextEncoder().encode('first'));
+            },
+            cancel: cancelled,
+          }),
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+    );
+    const origin = 'http://localhost:4321';
+    const request = (
+      path: string,
+      body?: unknown,
+      headers: Record<string, string> = {},
+    ) =>
+      h.app.request(
+        `${origin}${path}`,
+        {
+          method: body === undefined ? 'GET' : 'POST',
+          headers: {
+            Origin: origin,
+            'Content-Type': 'application/json',
+            ...headers,
+          },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+    try {
+      const operator = { Authorization: `Bearer ${OPERATOR_SECRET}` };
+      const view = await responseData<ProjectAccessAdministrationView>(
+        await request(
+          '/api/projects/example/access/enable',
+          { localProjectId: h.sharedProject!.id },
+          operator,
+        ),
+      );
+      const offer = await responseData<{ token: string }>(
+        await request(
+          '/api/projects/example/access/invitations',
+          {
+            scope: view.scope,
+            email: null,
+            role: 'viewer',
+            expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+          },
+          operator,
+        ),
+      );
+      const user = {
+        username: 'channel-user',
+        password: 'Cookie free fixture password 12345',
+      };
+      const registration = await request(
+        '/api/account-auth/sign-up/username',
+        user,
+        { 'x-station-invitation': offer.token },
+      );
+      expect(registration.status, await registration.clone().text()).toBe(200);
+      const outgoing: Headers[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string, init?: RequestInit) => {
+          const headers = new Headers(init?.headers);
+          outgoing.push(headers);
+          const response = await h.app.request(url, init, REMOTE_TAILNET_ENV);
+          expect(response.headers.getSetCookie()).toEqual([]);
+          return response;
+        }),
+      );
+      const key = await createApplicationSessionKey();
+      const onDeviceUnauthorized = vi.fn();
+      const onAccountUnauthorized = vi.fn();
+      setClientCredentialResolver(() => ({
+        credential: h.paired.credential,
+        origin,
+        onUnauthorized: onDeviceUnauthorized,
+        onAccountUnauthorized,
+      }));
+      expect(key.privateKey.extractable).toBe(false);
+      await expect(
+        crypto.subtle.exportKey('jwk', key.privateKey),
+      ).rejects.toThrow();
+      const client = new ApplicationSessionClient(
+        origin,
+        'environment-local',
+        origin,
+        {},
+        key,
+      );
+      const session = await client.establish(user);
+      expect(session.deviceId).toBe(h.paired.device.id);
+      expect(session.principal.id).toMatch(/^human:deployment:/);
+      expect(outgoing.every((headers) => !headers.has('Cookie'))).toBe(true);
+      const path = '/api/orchestration/attachment-staging/prepare';
+      const proof = await client.headers(session, {
+        method: 'POST',
+        url: origin + path,
+      });
+      const headers = {
+        ...proof,
+        Authorization: `Bearer ${h.paired.credential}`,
+      };
+      const prepare = vi.spyOn(AttachmentStagingService.prototype, 'prepare');
+      const accepted = await request(path, ATTACHMENT_DESCRIPTOR, headers);
+      expect(accepted.status, await accepted.clone().text()).toBe(200);
+      expect(prepare.mock.calls[0]![0].principalId).toBe(session.principal.id);
+      expect((await request(path, ATTACHMENT_DESCRIPTOR, headers)).status).toBe(
+        401,
+      );
+      expect(prepare).toHaveBeenCalledOnce();
+      const wrongKeyClient = new ApplicationSessionClient(
+        origin,
+        'environment-local',
+        origin,
+        { credential: h.paired.credential, credentialOrigin: origin },
+        await createApplicationSessionKey(),
+      );
+      const wrongKeyHeaders = await wrongKeyClient.headers(session, {
+        method: 'POST',
+        url: origin + path,
+      });
+      expect(
+        (
+          await request(path, ATTACHMENT_DESCRIPTOR, {
+            ...wrongKeyHeaders,
+            Authorization: `Bearer ${h.paired.credential}`,
+          })
+        ).status,
+      ).toBe(401);
+      const wrongTargetHeaders = await client.headers(session, {
+        method: 'GET',
+        url: `${origin}/api/projects`,
+      });
+      expect(
+        (
+          await request(path, ATTACHMENT_DESCRIPTOR, {
+            ...wrongTargetHeaders,
+            Authorization: `Bearer ${h.paired.credential}`,
+          })
+        ).status,
+      ).toBe(401);
+      expect(prepare).toHaveBeenCalledOnce();
+      const renewed = await client.renew(session);
+      expect(renewed.authorityKey).toBe(session.authorityKey);
+      expect(renewed.credential).not.toBe(session.credential);
+      const stream = await request(streamPath, undefined, {
+        ...(await client.headers(renewed, {
+          method: 'GET',
+          url: origin + streamPath,
+        })),
+        Authorization: `Bearer ${h.paired.credential}`,
+      });
+      expect(stream.status).toBe(200);
+      const reader = stream.body!.getReader();
+      expect(new TextDecoder().decode((await reader.read()).value)).toBe(
+        'first',
+      );
+      producer!.enqueue(new TextEncoder().encode('must-not-be-delivered'));
+      await client.revoke(renewed);
+      await expect(reader.read()).rejects.toThrow(
+        'Account authorization ended',
+      );
+      expect(cancelled).toHaveBeenCalledOnce();
+      const afterLogout = await request(path, ATTACHMENT_DESCRIPTOR, {
+        ...(await client.headers(session, {
+          method: 'POST',
+          url: origin + path,
+        })),
+        Authorization: `Bearer ${h.paired.credential}`,
+      });
+      expect(afterLogout.status).toBe(401);
+      expect(
+        afterLogout.headers.get(ACCOUNT_AUTHENTICATION_FAILURE_HEADER),
+      ).toBe('account');
+      expect(h.pairing.verifyCredential(h.paired.credential)).toBe(true);
+      await expect(client.renew(session)).rejects.toThrow();
+      expect(onDeviceUnauthorized).not.toHaveBeenCalled();
+      expect(onAccountUnauthorized).toHaveBeenCalledOnce();
+      const fresh = await client.establish(user);
+      const expiredResult = await request(expiryPath, undefined, {
+        ...(await client.headers(fresh, {
+          method: 'GET',
+          url: origin + expiryPath,
+        })),
+        Authorization: `Bearer ${h.paired.credential}`,
+      });
+      expect(expiredResult.status).toBe(401);
+      expect(await expiredResult.text()).not.toContain(
+        'private-result-after-expiry',
+      );
+    } finally {
+      vi.useRealTimers();
+      setClientCredentialResolver(undefined);
+      vi.unstubAllGlobals();
+      h.applicationSessions?.close();
+      await h.localAccounts?.service.close();
+      h.membership?.close();
+      await h.roomRuntime.close();
+      h.store.close();
+    }
+  });
+
   test('shareable invitation supports local username registration and explicit acceptance without email or a new device grant', async () => {
     const h = await setup(undefined, false, undefined, true, true);
     const invoke = (
@@ -1041,6 +1278,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         devicesBefore.map(({ lastUsedAt: _lastUsedAt, ...grant }) => grant),
       );
     } finally {
+      h.applicationSessions?.close();
       await h.localAccounts?.service.close();
       h.membership?.close();
       await h.roomRuntime.close();

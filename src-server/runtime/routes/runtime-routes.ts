@@ -2,10 +2,12 @@ import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-c
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
+import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
 import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
 import { createLocalAccountAdministrationRoutes } from '../../routes/system/local-account-administration-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
+import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
@@ -500,6 +502,7 @@ export interface ConfigureRuntimeRoutesContext {
   projectMembership?: ProjectMembershipService;
   deploymentAuthentication?: LoadedDeploymentAuthentication;
   localAccounts?: LoadedLocalAccounts;
+  applicationSessions?: ApplicationSessionService;
   runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
   app: HonoApp;
   logger: Logger;
@@ -1236,6 +1239,10 @@ export function configureRuntimeRoutes(
     }
     await next();
   });
+  context.app.route(
+    '/api/account-auth/continuations',
+    createApplicationSessionRoutes(context.applicationSessions),
+  );
   context.app.route(
     '/api/account-auth',
     createDeploymentAuthenticationRoutes(

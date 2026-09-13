@@ -217,6 +217,99 @@ app is installed or that a device has been approved.
 
 ## Verify an implementation
 
+### Application sessions over virtual transports
+
+`@kontourai/station-contracts/application-session` defines
+`station.application-session/v1`. The SDK implementation is
+`@kontourai/station-sdk/application-session`. Ordinary HTTPS keeps native
+HttpOnly cookies. A virtual transport uses a separate Station-issued continuation
+and a non-extractable P-256 signing key; it does not process `Set-Cookie` or extract
+provider cookies into JavaScript. The existing approved Device credential remains
+independently required. Transport/Station connection proof grants neither one.
+
+The SDK's `ApplicationSessionSigner` allows a native bridge to sign in protected
+platform custody. Its browser factory creates a non-extractable WebCrypto key;
+persist the CryptoKey and public JWK, then use `restoreApplicationSessionKey` to
+restore the facade. Never serialize private key bytes. Non-extractability is a
+custody property, not an attestation supplied by a client-controlled JSON field.
+
+All application headers and bodies travel inside the authenticated encrypted
+transport. The receiver must establish the selected Station's identity before
+credentials enter it. The continuation adds these headers to the normal Device
+authorization:
+
+| Header | Meaning |
+| --- | --- |
+| `Authorization: Bearer <device-credential>` | Existing independently approved Device grant |
+| `X-Station-Account-Continuation` | Opaque, proof-key-bound continuation; not a provider cookie or bearer session token |
+| `X-Station-Account-Proof` | Fresh ES256 compact JWS for the logical request |
+| `Origin` | Actual, explicitly allowed client origin; never omitted to impersonate a native client |
+
+The proof has type `station.application-session+jwt` and signs the protocol
+version, Station id, purpose, server nonce, method, canonical target, credential
+hash for resource requests, random request-proof id and issuance time. Verification
+requires a fresh proof (60 seconds, five-second clock tolerance), exact public key,
+nonce, target including query, method and continuation. This is a Station virtual
+request profile, not a claim that a DataChannel is HTTPS or implements OAuth DPoP.
+The encrypted transport still owns message/body integrity. Do not prebuffer a
+response outside its authorized delivery boundary or rewrite its target/query.
+
+`GET /api/account-auth/continuations` advertises cookie exchange and virtual login
+separately. The remaining operations are POST:
+
+| Path suffix | Input and effect |
+| --- | --- |
+| `/challenge` | Public P-256 JWK; checks the Device and origin, returns a nonce/challenge valid for two minutes |
+| `/exchange` | Challenge id and proof; requires the current HTTPS account cookie |
+| `/login` | Challenge id, proof and provider credentials; uses a provider-native server login without exporting cookies |
+| `/renew` | Current continuation/proof headers; rechecks the source session and Device, retains the authority key |
+| `/revoke` | Current continuation/proof headers; revokes the provider session and its continuation renewal family |
+
+Controls have a 16 KiB body limit. Login attempts are bounded per Device credential.
+Continuations last at most 15 minutes and never outlive their provider session.
+Renew before expiry; an expired continuation requires fresh login or cookie
+exchange. Older renewed credentials remain bounded by their original expiry,
+and source-session logout invalidates all of them. Challenges, continuations and
+consumed proof ids are bounded and stored privately in SQLite. Repeated verification
+of the same admitted server Request rechecks live authority without consuming the
+proof twice; a new request replay is refused, including after process restart.
+
+The provider opts in with private `sessionReferences.verify(sessionId, signal)`
+and `sessionReferences.revoke(sessionId, signal)` hooks. The id comes from a
+previously verified result and is never accepted as a caller's identity claim.
+An optional `sessionReferences.login(request)` enables virtual-only login. Local
+username accounts implement these through the maintained auth library. A custom
+or OIDC provider must retain its own verified callback and private session owner;
+no missing hook falls back to caller-supplied subject/email, browser cookie
+emulation or an operator credential. Unsupported providers return 501. This
+interface does not claim a deployed Google/OIDC callback flow.
+
+For an additional application origin, configure
+`STATION_AUTHENTICATION_BROWSER_ORIGINS` as a comma-separated explicit list, and
+include that origin in the deployment's existing `ALLOWED_ORIGINS`. The public
+Station origin remains allowed. Known native-shell origins may be explicitly
+listed; missing Origin is never evidence of native custody. This policy binding
+is not hardware or browser attestation.
+
+Every application request checks current account/session and Device state. A
+conflicting approved Device/person binding is refused. Continuation issuance does
+not create that binding or change its grant. Response delivery rechecks account
+authority before headers and before releasing each body chunk, including producer-
+queued chunks. It does not recall bytes already released or prove cancellation of
+work already accepted by an external engine. Project/resource and compute policy
+remain at their existing owners and require their own live checks.
+
+Account-specific 401 responses carry `X-Station-Authentication-Failure: account`.
+The SDK invokes `onAccountUnauthorized` instead of discarding the Device credential.
+Bind that callback and the continuation's stable `authorityKey` to the client's
+account/cache lifetime. Account changes must retire pending operations and private
+state; renewal of the same authority must not retarget them.
+
+The core/SDK fixture is free and uses real cryptographic keys, maintained local
+sessions and the production HTTP principal path without a cookie-processing client.
+It is not proof of actual WebRTC delivery, native key custody or two-human use;
+the relay consumer and physical acceptance must supply those receipts.
+
 The executable external-module fixture materializes a disposable module using
 the public factory contract and loads it through the production loader. It
 exercises login, self identity, invalid/revoked sessions, provider outage, origin
