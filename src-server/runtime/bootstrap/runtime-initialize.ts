@@ -91,6 +91,7 @@ import {
 } from '../../services/orchestration/session-agent-resolution.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import { observeCwdShadow } from '../../services/projects/project-resource-shadow.js';
+import { createProjectSessionDirectoryResolver } from '../../services/projects/project-session-directory.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
@@ -588,6 +589,10 @@ export async function initializeRuntime(
     flowRunService,
     resourcePosture,
     listProjects: () => storageAdapter.listProjects(),
+    resolveProjectSessionDirectory: createProjectSessionDirectoryResolver(
+      configLoader.getProjectHomeDir(),
+      storageAdapter,
+    ),
     nativeDeclaredPullRequestResolver,
     // archive#1501: shadow `resolveProjectResource` against the
     // session-cwd seam over REAL traffic before slice 3c flips it. Dispatched
