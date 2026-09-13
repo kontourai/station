@@ -125,6 +125,60 @@ the private fixture callback is not a production account or key-enrollment API.
 The full gathered SDP is signed; extra unsigned candidate callbacks are not
 forwarded as an implicit trust extension.
 
+### Local operator signing-key commands
+
+From a Station checkout, the operator can inspect an existing home's public
+connection signing key or deliberately create it. Use an absolute home path;
+the command never selects the default home or starts Station:
+
+```sh
+npm run connection:key -- inspect --home=/absolute/path/to/station-home
+npm run connection:key -- initialize --home=/absolute/path/to/station-home
+```
+
+The home must already have its Station security identity. `inspect` is read-only
+and exits 2 when that home's connection key has not been initialized. Initialization
+preserves an existing valid key. Missing homes, corrupt keys and identity mismatches
+are refused; initialization is not a recovery/reset command. Successful commands
+emit one JSON report containing public `trust` metadata and its `keyId` (the
+SHA-256 JWK thumbprint). Use `npm run --silent connection:key -- ...` when capturing
+stdout as JSON. Exit 1 reports a closed refusal reason on stderr without private
+key material, credentials, raw parser errors or home paths.
+
+To rotate, supply the generation and key ID from the inspected report and
+acknowledge that Devices will need independent approval of the new key:
+
+```sh
+npm run connection:key -- rotate --home=/absolute/path/to/station-home \
+  --expected-generation=1 --expected-key-id='<keyId-from-inspect>' \
+  --acknowledge-device-reapproval
+```
+
+Rotation compares the exact observed Station, enrollment, generation and public
+key under the store's mutation lock. Concurrent or stale requests cannot rotate a
+replacement key. It retains the Station/enrollment IDs, increments the generation
+and replaces only the connection signing key. Ordinary direct credentials remain
+independent. If output is lost after publication, inspect again; retrying the old
+rotation inputs fails instead of rotating twice.
+
+This is the **operator side** of key admission. A public report obtained solely
+from an untrusted broker is not authenticated. Devices still need an independently
+authenticated approval ceremony; printing a descriptor does not install Device
+trust, link an account, enable a broker, or grant Project access. Rotation stops
+new issuance with the retired key. An unreachable Device retaining the old public
+key cannot learn revocation immediately: a previously minted proof may remain
+verifiable for its remaining 30-second lifetime, and a compromised old private
+key remains dangerous until that Device independently updates or revokes trust.
+Automatic recovery, remote approval, Device trust persistence and established
+channel termination are separate implementation work.
+
+The command requires the existing private-home filesystem authority. It is not
+a tenant sandbox, an OS keychain, or protection from another process running as
+the same OS user. No network listener or telemetry is needed for this local
+operation; the bounded public result is its receipt.
+
+### Browser security checks
+
 The checks require:
 
 - A browser DTLS connection to the approved certificate, with both sides using

@@ -89,8 +89,8 @@ test('rotation is generation-checked, retired issuers cannot sign old bindings, 
     isCurrent: () => store.readDescriptor()?.generation === original.generation,
   });
   const contenders = await Promise.allSettled([
-    store.rotate(1),
-    new ConnectionSigningKeyStore(home).rotate(1),
+    store.rotate(original),
+    new ConnectionSigningKeyStore(home).rotate(original),
   ]);
   expect(
     contenders.filter((value) => value.status === 'fulfilled'),
@@ -118,8 +118,31 @@ test('rotation is generation-checked, retired issuers cannot sign old bindings, 
   ).resolves.toEqual(next);
   expect(environment.verifyOperatorCredential(identity.credential)).toBe(true);
   await expect(
-    store.rotate(undefined as unknown as number),
+    store.rotate(undefined as unknown as ApprovedStationConnectionTrust),
   ).rejects.toMatchObject({ code: 'key_generation_conflict' });
+});
+
+test('rotation binds the complete observed identity and snapshots it before waiting for the lock', async () => {
+  const { store, path } = await fixture();
+  const original = await store.initialize();
+  const bytes = readFileSync(path);
+  for (const changed of [
+    { ...original, stationId: randomUUID() },
+    { ...original, enrollmentId: randomUUID() },
+    { ...original, signingKey: { ...original.signingKey, x: 'a'.repeat(43) } },
+  ]) {
+    await expect(store.rotate(changed)).rejects.toMatchObject({
+      code: 'key_generation_conflict',
+    });
+    expect(readFileSync(path)).toEqual(bytes);
+  }
+  const expected = structuredClone(original);
+  const pending = store.rotate(expected);
+  (expected as { enrollmentId: string }).enrollmentId = randomUUID();
+  (expected.signingKey as { x: string }).x = 'a'.repeat(43);
+  const current = await pending;
+  expect(current.generation).toBe(2);
+  expect(current.enrollmentId).toBe(original.enrollmentId);
 });
 
 test.each([

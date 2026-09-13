@@ -120,6 +120,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Real framework signal handlers run in bounded, isolated child processes.
   'src-server/runtime/bootstrap/__tests__/runtime-signal-ownership.test.ts',
   // Owns bounded TLS endpoints, OpenSSL children and TCP relay processes.
+  'scripts/__tests__/connection-key.test.ts',
   'scripts/__tests__/local-collaboration-lab.test.ts',
   // Owns a UDP relay child and private command-output diagnostics.
   'scripts/__tests__/browser-transport-fixture.test.ts',

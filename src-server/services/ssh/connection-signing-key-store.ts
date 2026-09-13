@@ -193,7 +193,7 @@ export class ConnectionSigningKeyStore {
   }
 
   async #mutate(
-    expectedGeneration?: number,
+    expected?: ApprovedStationConnectionTrust,
   ): Promise<ApprovedStationConnectionTrust> {
     const stationId = this.#stationId();
     const committed = await mutateJsonFileWithGuardedRead<PrivateRecord | null>(
@@ -201,13 +201,17 @@ export class ConnectionSigningKeyStore {
       null,
       async () => this.#load()?.record ?? null,
       (current) => {
-        if (expectedGeneration === undefined)
+        if (expected === undefined)
           return current ?? this.#newRecord(stationId, randomUUID(), 1);
         if (!current)
           throw new ConnectionSigningKeyStoreError('key_store_missing');
+        const publicKey = this.#materialize(current).descriptor.signingKey;
         if (
-          !Number.isSafeInteger(expectedGeneration) ||
-          current.generation !== expectedGeneration ||
+          current.stationId !== expected.stationId ||
+          current.enrollmentId !== expected.enrollmentId ||
+          current.generation !== expected.generation ||
+          publicKey.x !== expected.signingKey.x ||
+          publicKey.y !== expected.signingKey.y ||
           current.generation === Number.MAX_SAFE_INTEGER
         )
           throw new ConnectionSigningKeyStoreError('key_generation_conflict');
@@ -234,12 +238,27 @@ export class ConnectionSigningKeyStore {
   initialize(): Promise<ApprovedStationConnectionTrust> {
     return this.#mutate();
   }
-  rotate(expectedGeneration: number): Promise<ApprovedStationConnectionTrust> {
-    if (!Number.isSafeInteger(expectedGeneration) || expectedGeneration < 1)
+  rotate(
+    expected: ApprovedStationConnectionTrust,
+  ): Promise<ApprovedStationConnectionTrust> {
+    if (
+      !expected ||
+      !Number.isSafeInteger(expected.generation) ||
+      expected.generation < 1 ||
+      expected.signingKey?.kty !== 'EC' ||
+      expected.signingKey.crv !== 'P-256'
+    )
       return Promise.reject(
         new ConnectionSigningKeyStoreError('key_generation_conflict'),
       );
-    return this.#mutate(expectedGeneration);
+    // Snapshot before yielding to the file lock. A generation alone cannot
+    // distinguish a replaced enrollment or another Station at the same path.
+    return this.#mutate({
+      stationId: expected.stationId,
+      enrollmentId: expected.enrollmentId,
+      generation: expected.generation,
+      signingKey: { ...expected.signingKey },
+    });
   }
 
   /** Reload custody per request; never keep signing with a retired key. */
