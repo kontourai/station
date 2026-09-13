@@ -73,3 +73,24 @@ describe('account entry continuation', () => {
     expect(window.location.hash).toBe('');
   });
 });
+
+test('reports a callback failure without reflecting provider text or losing the pending invitation', () => {
+  const token = 'z'.repeat(43);
+  sessionStorage.setItem(
+    INVITATION_STATE_KEY,
+    JSON.stringify({ token, until: Date.now() + 3600_000 }),
+  );
+  window.history.replaceState(
+    null,
+    '',
+    '/account?error=access_denied&error_description=untrusted-text',
+  );
+  expect(readAccountEntryContinuation()).toMatchObject({
+    invitation: token,
+    authenticationError: true,
+  });
+  expect(window.location.search).toBe('');
+  expect(readAccountEntryContinuation()).not.toHaveProperty(
+    'authenticationError',
+  );
+});

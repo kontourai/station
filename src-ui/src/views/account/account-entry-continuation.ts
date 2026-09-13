@@ -1,6 +1,14 @@
 export const INVITATION_STATE_KEY = 'station-pending-project-invitation';
 export function readAccountEntryContinuation() {
   const fragment = new URLSearchParams(window.location.hash.slice(1));
+  const query = new URLSearchParams(window.location.search);
+  const authenticationError =
+    window.location.pathname === '/account' && query.has('error');
+  if (authenticationError) {
+    query.delete('error');
+    query.delete('error_description');
+    query.delete('error_uri');
+  }
   const provided = fragment.get('invitation');
   let invitation: string | undefined;
   if (provided && /^[A-Za-z0-9_-]{43}$/.test(provided)) {
@@ -49,11 +57,15 @@ export function readAccountEntryContinuation() {
     candidate && /^[A-Za-z0-9_-]{16,256}$/.test(candidate)
       ? candidate
       : undefined;
-  if (provided || candidate)
+  if (provided || candidate || authenticationError)
     window.history.replaceState(
       null,
       '',
-      window.location.pathname + window.location.search,
+      window.location.pathname + (query.toString() ? `?${query}` : ''),
     );
-  return { invitation, resetToken };
+  return {
+    invitation,
+    resetToken,
+    ...(authenticationError ? { authenticationError: true } : {}),
+  };
 }

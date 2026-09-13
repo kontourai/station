@@ -41,7 +41,11 @@ export function AccountEntryView({
   initialFlow = browserFlow,
 }: {
   apiBase: string;
-  initialFlow?: { invitation?: string; resetToken?: string };
+  initialFlow?: {
+    invitation?: string;
+    resetToken?: string;
+    authenticationError?: boolean;
+  };
 }) {
   const client = useQueryClient();
   const [invitation, setInvitation] = useState(initialFlow.invitation);
@@ -52,7 +56,11 @@ export function AccountEntryView({
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [notice, setNotice] = useState<string>();
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<string | undefined>(
+    initialFlow.authenticationError
+      ? 'Sign-in could not be completed. Try again, or contact this Station’s operator.'
+      : undefined,
+  );
   const [joined, setJoined] = useState(false);
   const descriptor = useQuery({
     queryKey: ['account', apiBase, 'provider'],

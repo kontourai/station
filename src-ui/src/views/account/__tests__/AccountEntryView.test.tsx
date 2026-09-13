@@ -121,7 +121,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 function mount(
-  initialFlow: { invitation?: string; resetToken?: string } = { invitation },
+  initialFlow: {
+    invitation?: string;
+    resetToken?: string;
+    authenticationError?: boolean;
+  } = { invitation },
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -194,6 +198,17 @@ describe('invitation entry through real account SDK requests', () => {
     expect(request?.headers.get('x-station-invitation')).toBe(invitation);
     expect(request?.headers.has('authorization')).toBe(false);
     expect(screen.getByLabelText('Email address')).toBeTruthy();
+  });
+
+  test('a failed provider return explains recovery while keeping the invitation', async () => {
+    mount({ invitation, authenticationError: true });
+    await screen.findByLabelText('Email address');
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Sign-in could not be completed',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Create an account' }),
+    ).toBeTruthy();
   });
 
   test('username registration needs no email and keeps sign-in and acceptance explicit', async () => {
