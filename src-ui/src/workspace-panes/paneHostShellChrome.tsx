@@ -28,7 +28,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
  * difference the design says should be the only one.
  */
 
-export interface PaneConfirmChrome {
+interface PaneConfirmChrome {
   /** The contract's `confirm` member — see the contract for its semantics. */
   confirm: WorkspacePaneHostContract['confirm'];
   /**

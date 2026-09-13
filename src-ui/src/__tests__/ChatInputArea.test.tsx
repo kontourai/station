@@ -236,6 +236,50 @@ describe('ChatInputArea', () => {
     expect(props.onCancel).toHaveBeenCalled();
   });
 
+  test('steer-default busy composer offers Queue and Enter still sends', () => {
+    const onQueueFollowUp = vi.fn(async () => {});
+    const onSend = vi.fn(async () => {});
+    renderChatInputArea({
+      turnInFlight: true,
+      busyFollowUp: 'steer',
+      onQueueFollowUp,
+      onSend,
+      input: 'course correct',
+    });
+
+    expect(
+      screen.getByPlaceholderText(
+        'Steer this turn… (Enter steers; Queue waits)',
+      ),
+    ).toBeTruthy();
+    const queue = screen.getByRole('button', {
+      name: 'Queue this follow-up until the turn finishes',
+    });
+    fireEvent.click(queue);
+    expect(onQueueFollowUp).toHaveBeenCalledTimes(1);
+    expect(onSend).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(screen.getByPlaceholderText(/Steer this turn/), {
+      key: 'Enter',
+    });
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  test('queue-only busy composer has no Queue control', () => {
+    renderChatInputArea({
+      turnInFlight: true,
+      busyFollowUp: 'queue',
+      input: 'later',
+    });
+
+    expect(screen.getByPlaceholderText('Queue a follow-up…')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', {
+        name: 'Queue this follow-up until the turn finishes',
+      }),
+    ).toBeNull();
+  });
+
   test('opens the model picker when model selection is available', () => {
     const props = renderChatInputArea();
 
@@ -752,6 +796,69 @@ describe('ChatInputArea', () => {
       screen.getByRole('button', { name: /^Approval mode: Ask first\./ }),
     ).toBeTruthy();
     expect(onApprovalModeChange).not.toHaveBeenCalled();
+  });
+
+  test('omits the approval chip for an external engine with no native knob (station#1933)', () => {
+    render(
+      <ChatInputArea
+        {...renderProps({
+          executionMode: 'external',
+          agentConnectionId: 'acp',
+        })}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: /^Approval mode:/ }),
+    ).toBeNull();
+    expect(screen.queryByText(/Set by engine/)).toBeNull();
+  });
+
+  test('station#1945: advertised ACP modes replace the approval-mode chip', async () => {
+    const onAcpSessionModeChange = vi.fn();
+    const onApprovalModeChange = vi.fn();
+    renderChatInputArea({
+      executionMode: 'external',
+      agentConnectionId: 'kiro',
+      acpSessionModes: [
+        { id: 'build', name: 'Build' },
+        { id: 'plan', name: 'Plan', description: 'Read-only planning' },
+      ],
+      acpCurrentModeId: 'build',
+      onAcpSessionModeChange,
+      onApprovalModeChange,
+    });
+
+    expect(
+      await screen.findByRole('button', { name: /^Session mode: Build\./ }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /^Approval mode:/ }),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Session mode: Build\./ }),
+    );
+    await screen.findByRole('radiogroup', { name: 'Session mode' });
+    fireEvent.click(screen.getByRole('radio', { name: /Plan/ }));
+    expect(onAcpSessionModeChange).toHaveBeenCalledWith('plan');
+    expect(onApprovalModeChange).not.toHaveBeenCalled();
+  });
+
+  test('station#1945: an ACP chat with no advertised modes does not invent a session-mode picker', () => {
+    renderChatInputArea({
+      executionMode: 'external',
+      agentConnectionId: 'kiro',
+      acpSessionModes: [],
+      onAcpSessionModeChange: vi.fn(),
+    });
+    expect(screen.queryByRole('button', { name: /^Session mode:/ })).toBeNull();
+    // kiro has no native approval knob: no chip and no read-only note
+    // either (station#1933).
+    expect(
+      screen.queryByRole('button', { name: /^Approval mode:/ }),
+    ).toBeNull();
+    expect(screen.queryByText(/Set by engine/)).toBeNull();
   });
 
   describe('prompt size guard (station#2807)', () => {

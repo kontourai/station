@@ -15,7 +15,7 @@ const INDEX_CSS = readFileSync(
 
 describe('Dialog — the one Station dialog chrome (SHELL-02)', () => {
   test('renders eyebrow, title, subtitle, close X, body and footer in one contract', () => {
-    const { container } = render(
+    render(
       <Dialog
         eyebrow="Project setup"
         title="New Project"
@@ -34,8 +34,8 @@ describe('Dialog — the one Station dialog chrome (SHELL-02)', () => {
     expect(
       screen.getByRole('button', { name: 'Close new project' }),
     ).toBeTruthy();
-    expect(container.querySelector('.station-dialog__body')).toBeTruthy();
-    expect(container.querySelector('.station-dialog__footer')).toBeTruthy();
+    expect(document.querySelector('.station-dialog__body')).toBeTruthy();
+    expect(document.querySelector('.station-dialog__footer')).toBeTruthy();
   });
 
   test('the title names the dialog for assistive tech', () => {

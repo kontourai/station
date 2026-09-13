@@ -50,6 +50,7 @@ export function SessionOutputInspector({
   }, [inspection.error, onUnavailable]);
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       ariaLabel="Session output"
       returnFocusTarget={returnFocusTarget}
       onClose={onClose}

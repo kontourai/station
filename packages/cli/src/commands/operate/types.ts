@@ -14,6 +14,7 @@
  */
 import type { FleetRoutingReceiptPage } from '@kontourai/station-contracts/fleet-routing-receipt';
 import type { RequestAnswerability } from '@kontourai/station-contracts/orchestration';
+import type { FlowGateVerdict } from '@kontourai/station-contracts/runtime-events';
 import type { ApprovalDecision } from '@kontourai/station-sdk/client';
 
 export type { ApprovalDecision };
@@ -82,8 +83,6 @@ export interface OperateApproval {
   toolInput?: unknown;
   createdAt?: string;
 }
-
-export type FlowGateVerdict = 'pass' | 'route-back' | 'block' | 'wait';
 
 /**
  * The latest-observed `flow.gate-verdict` event's fields

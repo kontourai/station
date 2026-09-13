@@ -225,6 +225,7 @@ export function ConversationContextResetDialog({
   };
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       ariaLabel="Replace engine context"
       onClose={pending ? () => {} : onClose}
       historyMode="entry"

@@ -1,11 +1,18 @@
 /** @vitest-environment jsdom */
 
+import {
+  formatInteractiveWorkspaceBatchTiming,
+  INTERACTIVE_WORKSPACE_TIMING_RESPONSE_HEADER,
+} from '@shared/interactive-workspace-performance-timing';
 import { afterEach, expect, test, vi } from 'vitest';
+import referenceContract from '../../../../scripts/fixtures/interactive-workspace/performance-contract.json';
 import {
   foregroundAttributionForPersistedHostDocumentRestoration,
   foregroundAttributionForProductMark,
   installInteractiveWorkspacePerformanceBridge,
   measureInteractiveWorkspace,
+  observeFilePreviewFetches,
+  observeProductMarks,
   observeReconnectMark,
   productMarkFailureCode,
   reconnectDriverStage,
@@ -13,6 +20,8 @@ import {
 import {
   browserEpochMs,
   emitDiffCommitPerformanceMark,
+  emitFilePreviewCommitPerformanceMark,
+  emitFilePreviewScrollPerformanceMark,
   emitReconnectStrategyPerformanceMark,
   emitTaskCommitPerformanceMark,
   emitTaskDocumentApplyPerformanceMark,
@@ -25,6 +34,8 @@ afterEach(() => {
   delete window.__stationInteractiveWorkspacePerformance;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  vi.useRealTimers();
 });
 
 test('installs the production bridge on the exact Project Work Board route', async () => {
@@ -194,6 +205,7 @@ test('rejects fabricated surface markup when product hooks did not attest commit
       data-station-working-revision="swsr-v1:${'a'.repeat(64)}">base</textarea>
     <button>Inspect worktree diff</button>
   `;
+  const originalFetch = window.fetch;
   const evidence = (await measureInteractiveWorkspace(
     {
       sampling: { warmups: 0, samples: 1 },
@@ -227,6 +239,7 @@ test('rejects fabricated surface markup when product hooks did not attest commit
       'PRODUCT_TASK_INPUT_TIMEOUT',
     ]),
   });
+  expect(window.fetch).toBe(originalFetch);
 });
 
 test('replays a persisted host restoration mark observed before the measure listener', async () => {
@@ -320,7 +333,223 @@ test('replays a persisted host restoration mark observed before the measure list
   ]);
 });
 
+test('file measurement keeps zero-duration scroll marks ordered across epoch conversion', async () => {
+  vi.spyOn(performance, 'now').mockReturnValue(24317.900000095367);
+  vi.spyOn(performance, 'timeOrigin', 'get').mockReturnValue(1_700_000_000_000);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response('{}')),
+  );
+  document.body.innerHTML = `<textarea data-station-performance-surface="task-editor" data-station-task-id="task-1" data-station-working-revision="swsr-v1:${'a'.repeat(64)}"></textarea>
+    <div data-station-performance-surface="workspace-file-preview" data-station-project-slug="demo"></div>
+    <button>Inspect worktree diff</button>`;
+  const surface = document.querySelector<HTMLDivElement>(
+    '[data-station-performance-surface="workspace-file-preview"]',
+  )!;
+  Object.defineProperty(surface, 'scrollHeight', { value: 1000 });
+  surface.addEventListener('scroll', () =>
+    emitFilePreviewScrollPerformanceMark({
+      projectSlug: 'demo',
+      path: 'file.txt',
+      scrollTop: surface.scrollTop,
+      scrolledEpochMs: browserEpochMs(),
+      committedEpochMs: browserEpochMs(),
+    }),
+  );
+  document.querySelector('button')!.addEventListener('click', () =>
+    emitDiffCommitPerformanceMark({
+      workingDir: '/fixture/workspace',
+      patchBytes: 1,
+      fileCount: 1,
+      committedEpochMs: browserEpochMs(),
+    }),
+  );
+  const refresh = async (event: Event) => {
+    await window.fetch('/api/projects/demo/file-preview', {
+      method: 'POST',
+      body: JSON.stringify({ path: 'file.txt' }),
+    });
+    emitFilePreviewCommitPerformanceMark({
+      projectSlug: 'demo',
+      path: 'file.txt',
+      sizeBytes: 199999,
+      lineCount: 100000,
+      renderedLineCount: 2000,
+      refreshNonce: (event as CustomEvent<{ nonce: string }>).detail.nonce,
+      committedEpochMs: browserEpochMs(),
+    });
+  };
+  window.addEventListener('station:performance:file-preview-refresh', refresh);
+  window.__stationInteractiveWorkspacePerformanceDriver = async (command) => {
+    if (command.kind !== 'prepare-100k-corpus')
+      throw new Error('Unexpected driver action');
+    return {
+      kind: 'prepared',
+      path: 'file.txt',
+      corpusId: referenceContract.fixtureCorpus.id,
+      sha256: referenceContract.fixtureCorpus.sha256,
+      lineCount: 100000,
+      rebuilt: command.phase === 'cold',
+    };
+  };
+  try {
+    const definition = referenceContract.fixtures.find(
+      (entry) => entry.id === 'open-100k-lines',
+    )!;
+    const fixture = {
+      id: definition.id,
+      workloads: definition.workloads,
+      measurementPhases: {
+        cold: definition.measurementPhases.cold!,
+        warm: definition.measurementPhases.warm!,
+      },
+    };
+    const result = await measureInteractiveWorkspace(
+      {
+        sampling: { warmups: 0, samples: 1 },
+        fixtureCorpus: referenceContract.fixtureCorpus,
+        fixtures: [fixture],
+      },
+      'task-1',
+    );
+    const measurements = Reflect.get(
+      result.observations[0]!,
+      'measurements',
+    ) as Array<{
+      phases: Record<
+        string,
+        { actions: Array<{ kind: string; marks: Record<string, number> }> }
+      >;
+    }>;
+    expect(measurements).toHaveLength(1);
+    for (const phase of ['cold', 'warm']) {
+      const scroll = measurements[0]!.phases[phase]!.actions.find(
+        (entry) => entry.kind === 'scroll',
+      )!;
+      expect(scroll.marks.scrollRenderedAt).toBeGreaterThanOrEqual(
+        scroll.marks.scrollStartedAt!,
+      );
+    }
+  } finally {
+    window.removeEventListener(
+      'station:performance:file-preview-refresh',
+      refresh,
+    );
+    delete window.__stationInteractiveWorkspacePerformanceDriver;
+  }
+});
+
+test('matches remote apply by revision while retaining unqualified clock evidence unchanged', async () => {
+  const before = `swsr-v1:${'a'.repeat(64)}`;
+  const after = `swsr-v1:${'b'.repeat(64)}`;
+  const epoch = browserEpochMs();
+  document.body.innerHTML = `<p role="status">Shared document saved.</p>
+    <textarea data-station-performance-surface="task-editor" data-station-task-id="task-1" data-station-working-revision="${before}">base</textarea>
+    <button disabled>Join room</button><button>Announce work</button><button>Leave room</button><button>Save shared document</button>`;
+  const editor = document.querySelector('textarea')!;
+  editor.addEventListener('input', () =>
+    emitTaskInputPerformanceMark({
+      taskId: 'task-1',
+      workingRevision: before,
+      text: editor.value,
+      enteredEpochMs: epoch,
+      exitedEpochMs: epoch,
+    }),
+  );
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      editor.dataset.stationWorkingRevision = after;
+      emitTaskDocumentApplyPerformanceMark({
+        taskId: 'task-1',
+        workingRevision: after,
+        appliedEpochMs: epoch + 19,
+      });
+      emitTaskCommitPerformanceMark({
+        taskId: 'task-1',
+        workingRevision: after,
+        text: editor.value,
+        committedEpochMs: epoch + 21,
+      });
+      return new Response('{}', {
+        headers: {
+          [INTERACTIVE_WORKSPACE_TIMING_RESPONSE_HEADER]:
+            formatInteractiveWorkspaceBatchTiming({
+              taskId: 'task-1',
+              ingressEpochMs: epoch + 1,
+              acceptedEpochMs: epoch + 20,
+            })!,
+        },
+      });
+    }),
+  );
+  document.querySelectorAll('button')[3]!.addEventListener('click', () => {
+    void window.fetch('/api/tasks/task-1/room/batches', { method: 'POST' });
+  });
+  const fixture = referenceContract.fixtures.find(
+    (entry) => entry.id === 'remote-apply',
+  )!;
+  const result = await measureInteractiveWorkspace(
+    {
+      sampling: { warmups: 0, samples: 1 },
+      fixtureCorpus: referenceContract.fixtureCorpus,
+      fixtures: [
+        {
+          id: fixture.id,
+          workloads: fixture.workloads,
+          measurementPhases: { measured: fixture.measurementPhases.measured! },
+        },
+      ],
+    },
+    'task-1',
+  );
+  const measurements = Reflect.get(
+    result.observations[0]!,
+    'measurements',
+  ) as Array<{
+    phases: {
+      measured: {
+        actions: Array<{ kind: string; marks: Record<string, number> }>;
+      };
+    };
+  }>;
+  expect(measurements).toHaveLength(1);
+  const apply = measurements[0]!.phases.measured.actions.find(
+    (entry) => entry.kind === 'authoritative-document-apply',
+  )!;
+  // Capture the real mark instead of timing out or clamping the negative
+  // interval. The unchanged reference validator must reject this clock evidence.
+  expect(apply.marks.appliedAt).toBeLessThan(apply.marks.applyStartedAt!);
+});
+
+test('identifies the missing task product mark without exposing arbitrary error text', () => {
+  for (const kind of ['input', 'apply', 'commit']) {
+    expect(
+      productMarkFailureCode(new Error(`task-${kind} product mark timed out`)),
+    ).toBe(`PRODUCT_TASK_${kind.toUpperCase()}_TIMEOUT`);
+  }
+  expect(
+    productMarkFailureCode(
+      new Error('task-private-secret product mark timed out'),
+    ),
+  ).toBe('PRODUCT_MARK_TIMEOUT');
+});
+
 test('classifies every 100k measurement stage without retaining volatile driver output', () => {
+  expect(
+    productMarkFailureCode(
+      new Error('100k file measurement OPEN_FILE failed', {
+        cause: new Error('file-preview-commit product timed out'),
+      }),
+    ),
+  ).toBe('PRODUCT_FILE_PREVIEW_COMMIT_TIMEOUT');
+  expect(
+    productMarkFailureCode(
+      new Error('100k file measurement OPEN_FILE failed', {
+        cause: new Error('/private/unrecognized/page-text'),
+      }),
+    ),
+  ).toBe('PRODUCT_FILE_100K_OPEN_FILE_FAILED');
   for (const stage of [
     'PREPARE_CORPUS',
     'OPEN_FILE',
@@ -444,6 +673,13 @@ test('keeps only a closed live-command diagnostic through collaboration failure'
   expect(
     productMarkFailureCode(
       new Error(
+        'Collaboration measure peer-cursor failed: Live command Cursor status 200 outcome RATE_LIMITED',
+      ),
+    ),
+  ).toBe('PRODUCT_COLLABORATION_PEER_CURSOR_LIVE_COMMAND_OUTCOME_RATE_LIMITED');
+  expect(
+    productMarkFailureCode(
+      new Error(
         'Collaboration measure leave failed: Live command Leave room status 200 outcome DEGRADED',
       ),
     ),
@@ -477,6 +713,12 @@ test('categorizes reconnect revision mismatches without retaining revisions', ()
   );
   expect(editor).not.toContain('a1b2c3d4e5f6');
   expect(render).not.toContain('0123456789ab');
+  for (const status of ['200', 'none'])
+    expect(
+      reconnectDriverStage(
+        `Reconnect stage FALLBACK_SAMPLE_74 failed: document status ${status}; editor revision a1b2c3d4e5f6 expected a1b2c3d4e5f6; reconnect apply wait timed out; no task apply observed`,
+      ),
+    ).toBe('FALLBACK_SAMPLE_74_APPLY_NO_MARK');
 });
 
 test('classifies closed peer-presence stages before their outer measure wrapper', () => {
@@ -624,7 +866,7 @@ test('rejects browser RTT when the real batch response has no server receipt', a
   });
 });
 
-test('rejects an already-current editor DOM without a post-strategy layout mark', async () => {
+test('rejects an already-current editor DOM when no apply was observed', async () => {
   document.body.innerHTML = `<textarea data-station-performance-surface="task-editor"
     data-station-task-id="task-1"
     data-station-working-revision="swsr-v1:${'a'.repeat(64)}">already current</textarea>`;
@@ -639,7 +881,65 @@ test('rejects an already-current editor DOM without a post-strategy layout mark'
     revision: `swsr-v1:${'a'.repeat(64)}`,
     receivedEpochMs: browserEpochMs(),
   });
-  await expect(observed).rejects.toThrow('reconnect apply wait timed out');
+  await expect(observed).rejects.toThrow('no task apply observed');
+});
+
+test.each([
+  ['task', 'APPLY_TASK_MISMATCH'],
+  ['revision', 'APPLY_REVISION_MISMATCH'],
+  ['time', 'APPLY_BEFORE_STRATEGY'],
+] as const)(
+  'identifies an unusable reconnect apply by %s',
+  async (mismatch, code) => {
+    const revision = `swsr-v1:${'a'.repeat(64)}`;
+    const receivedEpochMs = browserEpochMs();
+    const observed = observeReconnectMark('task-1', {
+      strategy: 'gap',
+      afterEpochMs: receivedEpochMs,
+      expectedRevision: revision,
+    });
+    emitReconnectStrategyPerformanceMark({
+      taskId: 'task-1',
+      strategy: 'gap',
+      receivedEpochMs,
+    });
+    emitTaskDocumentApplyPerformanceMark({
+      taskId: mismatch === 'task' ? 'another-task' : 'task-1',
+      workingRevision:
+        mismatch === 'revision' ? `swsr-v1:${'b'.repeat(64)}` : revision,
+      appliedEpochMs: receivedEpochMs + (mismatch === 'time' ? -1 : 1),
+    });
+    const failure = await observed.catch((error: Error) => error);
+    expect(failure).toBeInstanceOf(Error);
+    if (!(failure instanceof Error)) throw new Error('Expected rejected apply');
+    expect(
+      reconnectDriverStage(
+        `Reconnect stage FALLBACK_SAMPLE_74 failed: ${failure.message}`,
+      ),
+    ).toBe(`FALLBACK_SAMPLE_74_${code}`);
+  },
+);
+
+test('an exact apply and matching DOM still require a post-apply layout commit', async () => {
+  const revision = `swsr-v1:${'a'.repeat(64)}`;
+  document.body.innerHTML = `<textarea data-station-working-revision="${revision}"></textarea>`;
+  const receivedEpochMs = browserEpochMs();
+  const observed = observeReconnectMark('task-1', {
+    strategy: 'gap',
+    afterEpochMs: receivedEpochMs,
+    expectedRevision: revision,
+  });
+  emitReconnectStrategyPerformanceMark({
+    taskId: 'task-1',
+    strategy: 'gap',
+    receivedEpochMs,
+  });
+  emitTaskDocumentApplyPerformanceMark({
+    taskId: 'task-1',
+    workingRevision: revision,
+    appliedEpochMs: receivedEpochMs + 1,
+  });
+  await expect(observed).rejects.toThrow('no task commit observed');
 });
 
 test('accepts an exact post-strategy revision commit without inspecting document text', async () => {
@@ -673,4 +973,122 @@ test('accepts an exact post-strategy revision commit without inspecting document
     apply: { taskId: 'task-1', workingRevision: revision },
     render: { taskId: 'task-1', workingRevision: revision },
   });
+});
+
+test('file refresh commits must match the requested nonce, path and time', async () => {
+  vi.useFakeTimers();
+  const marks = observeProductMarks();
+  const expected = {
+    path: 'file.txt',
+    refreshNonce: 'fp-0-cold',
+    afterEpochMs: 10,
+  };
+  const pending = marks.filePreviewCommit(expected);
+  let settled = false;
+  void pending.then(
+    () => {
+      settled = true;
+    },
+    () => {},
+  );
+  const base = {
+    projectSlug: 'project',
+    path: 'file.txt',
+    sizeBytes: 100,
+    lineCount: 20,
+    renderedLineCount: 20,
+    committedEpochMs: 11,
+    refreshNonce: 'fp-0-cold',
+  };
+  try {
+    emitFilePreviewCommitPerformanceMark({ ...base, path: 'other.txt' });
+    emitFilePreviewCommitPerformanceMark({ ...base, committedEpochMs: 9 });
+    emitFilePreviewCommitPerformanceMark({ ...base, refreshNonce: 'old-mark' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    emitFilePreviewCommitPerformanceMark(base);
+    expect(await pending).toEqual(base);
+  } finally {
+    marks.close();
+    vi.useRealTimers();
+  }
+});
+
+test.each([false, true])(
+  'a preview refresh requires a matching request started after arming (Request object: %s)',
+  async (requestObject) => {
+    let completeOld!: (response: Response) => void;
+    const old = new Promise<Response>((resolve) => {
+      completeOld = resolve;
+    });
+    const fetch = vi
+      .fn()
+      .mockImplementationOnce(() => old)
+      .mockImplementation(async () => new Response('{}'));
+    vi.stubGlobal('fetch', fetch);
+    const observer = observeFilePreviewFetches();
+    const url = 'http://localhost/api/projects/project/file-preview';
+    const init = (path: string) => ({
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    });
+    const send = (path: string) =>
+      requestObject
+        ? window.fetch(new Request(url, init(path)))
+        : window.fetch(url, init(path));
+    try {
+      const previous = send('file.txt');
+      const fresh = observer.next('file.txt');
+      let settled = false;
+      void fresh.then(
+        () => {
+          settled = true;
+        },
+        () => {},
+      );
+      completeOld(new Response('{}'));
+      await previous;
+      expect(settled).toBe(false);
+      await send('other.txt');
+      expect(settled).toBe(false);
+      await send('file.txt');
+      await fresh;
+      expect(settled).toBe(true);
+    } finally {
+      observer.close();
+    }
+  },
+);
+
+test('a late animation frame from an older scroll cannot satisfy the next scroll', async () => {
+  vi.useFakeTimers();
+  const marks = observeProductMarks();
+  const pending = marks.filePreviewScroll({
+    path: 'file.txt',
+    afterEpochMs: 10,
+  });
+  let settled = false;
+  void pending.then(
+    () => {
+      settled = true;
+    },
+    () => {},
+  );
+  const base = {
+    projectSlug: 'project',
+    path: 'file.txt',
+    scrollTop: 100,
+    scrolledEpochMs: 9,
+    committedEpochMs: 11,
+  };
+  try {
+    emitFilePreviewScrollPerformanceMark(base);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    emitFilePreviewScrollPerformanceMark({ ...base, scrolledEpochMs: 10 });
+    expect((await pending).scrolledEpochMs).toBe(10);
+  } finally {
+    marks.close();
+    vi.useRealTimers();
+  }
 });

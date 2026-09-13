@@ -1,3 +1,4 @@
+import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import type {
   PullRequest,
   PullRequestMergeMethod,
@@ -10,9 +11,19 @@ import {
   usePullRequestsQuery,
 } from '@kontourai/station-sdk';
 import { useEffect, useRef, useState } from 'react';
+import { useNavigation } from '../../contexts/NavigationContext';
+import { Button } from '../Button';
+import { LazyBoundary } from '../LazyBoundary';
 import { ConfirmModal } from '../modals/ConfirmModal';
-import { Empty, ErrorState, SkeletonList } from '../state';
+import { ConversationPullRequestLinks } from '../pull-requests/ConversationPullRequestLinks';
+import { Empty, ErrorState, SkeletonBlock, SkeletonList } from '../state';
+import { PullRequestDependencyStacks } from './PullRequestDependencyStacks';
 import './PullRequestsPanel.css';
+
+const loadReview = () =>
+  import('./PullRequestReviewPanel').then((module) => ({
+    default: module.PullRequestReviewPanel,
+  }));
 
 type StateFilter = 'ALL' | 'OPEN' | 'CLOSED' | 'MERGED';
 
@@ -27,6 +38,10 @@ export function PullRequestsPanel({
   projectSlug: string;
   activeRepoRoot?: string | null;
 }) {
+  const activeChat = useNavigation((state) => state.activeChat);
+  const [selected, setSelected] = useState<PullRequestLinkIdentity | null>(
+    null,
+  );
   const [filter, setFilter] = useState<StateFilter>('OPEN');
   const resolvingContext = {
     project: projectSlug,
@@ -79,6 +94,33 @@ export function PullRequestsPanel({
       />
     );
   }
+  if (
+    selected &&
+    identity &&
+    selected.provider === identity.provider &&
+    selected.host === identity.host &&
+    selected.repository.owner === identity.repository.owner &&
+    selected.repository.name === identity.repository.name
+  ) {
+    return (
+      <LazyBoundary
+        load={loadReview}
+        componentProps={{
+          target: {
+            provider: selected.provider,
+            host: selected.host,
+            owner: selected.repository.owner,
+            repository: selected.repository.name,
+            ref: selected.ref,
+            project: projectSlug,
+            repositoryRootHint: activeRepoRoot ?? undefined,
+          },
+          onBack: () => setSelected(null),
+        }}
+        pending={<SkeletonBlock label="Opening pull request review" />}
+      />
+    );
+  }
   if (pullRequests.isLoading) return <SkeletonList count={4} />;
   if (pullRequests.error) {
     return (
@@ -106,9 +148,48 @@ export function PullRequestsPanel({
     (pullRequest) =>
       filter === 'ALL' || normalizedState(pullRequest.state) === filter,
   );
+  const observedAt = new Date(
+    pullRequests.dataUpdatedAt || Date.now(),
+  ).toISOString();
 
   return (
     <section className="pull-requests-panel" aria-label="Pull requests">
+      {activeChat && identity && (
+        <ConversationPullRequestLinks
+          conversationId={activeChat}
+          suggested={{
+            provider: identity.provider,
+            host: identity.host,
+            repository: identity.repository,
+          }}
+          derived={(result.data ?? [])
+            .filter(
+              (pullRequest) => pullRequest.sourceBranch === identity.branch,
+            )
+            .map((pullRequest) => ({
+              provider: pullRequest.provider,
+              host: pullRequest.host,
+              repository: pullRequest.repository,
+              ref: pullRequest.ref,
+              source: 'branch-derived' as const,
+              observedAt,
+              status: {
+                state: 'current' as const,
+                title: pullRequest.title,
+                pullRequestState: pullRequest.state,
+                ...(pullRequest.headSha ? { head: pullRequest.headSha } : {}),
+              },
+            }))}
+          onOpen={(link) => setSelected(link)}
+        />
+      )}
+      <PullRequestDependencyStacks
+        pullRequests={result.data ?? []}
+        observedAt={observedAt}
+        refreshing={pullRequests.isFetching}
+        onRefresh={() => void pullRequests.refetch()}
+        onOpen={setSelected}
+      />
       <header className="pull-requests-panel__header">
         <div>
           <h2>Pull requests</h2>
@@ -149,6 +230,7 @@ export function PullRequestsPanel({
               projectSlug={projectSlug}
               activeRepoRoot={activeRepoRoot}
               onMerged={() => void pullRequests.refetch()}
+              onOpen={() => setSelected(pullRequest)}
             />
           ))}
         </ul>
@@ -163,12 +245,14 @@ function PullRequestRow({
   projectSlug,
   activeRepoRoot,
   onMerged,
+  onOpen,
 }: {
   pullRequest: PullRequest;
   result: PullRequestResult<PullRequest[]>;
   projectSlug: string;
   activeRepoRoot?: string | null;
   onMerged: () => void;
+  onOpen: () => void;
 }) {
   const [method, setMethod] = useState<PullRequestMergeMethod>(
     result.effectiveMergeMethods[0] ?? 'merge',
@@ -241,9 +325,9 @@ function PullRequestRow({
   return (
     <li className="pull-request-card">
       <div className="pull-request-card__title-row">
-        <a href={pullRequest.url} target="_blank" rel="noreferrer">
+        <Button variant="link" onClick={onOpen}>
           {pullRequest.title}
-        </a>
+        </Button>
         <span className="pull-request-card__chip">
           {normalizedState(pullRequest.state)}
         </span>

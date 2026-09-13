@@ -19,7 +19,7 @@ import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const WINDOWS_DEVICE_STEM = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
-export function localPluginStorageKey(pluginId: string): string {
+function localPluginStorageKey(pluginId: string): string {
   if (!isCanonicalPluginId(pluginId))
     throw new PluginIncarnationError('unsafe-pointer');
   return `plugin-${pluginId}`;
@@ -80,7 +80,13 @@ export function resolveInstalledPluginRoot(
 ): InstalledPluginRoot | null {
   if (!isCanonicalPluginId(pluginId))
     throw new PluginIncarnationError('unsafe-pointer');
-  const parent = realpathSync(pluginsDir);
+  let parent: string;
+  try {
+    parent = realpathSync(pluginsDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
   const alias = selectionAlias(parent, pluginId);
   if (dirname(alias) !== parent && existsSync(dirname(alias)))
     directory(dirname(alias));

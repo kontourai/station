@@ -43,18 +43,18 @@ export type AttachedSessionContinuationRead =
   | { state: 'corrupt' }
   | { state: 'unavailable' };
 
-export type AttachedSessionContinuationReservation =
+type AttachedSessionContinuationReservation =
   | { state: 'reserved'; operationId: string; reused: boolean }
   | { state: 'corrupt' }
   | { state: 'unavailable' };
 
-export type AttachedSessionContinuationClearance =
+type AttachedSessionContinuationClearance =
   | { state: 'cleared' }
   | { state: 'stale' }
   | { state: 'corrupt' }
   | { state: 'unavailable' };
 
-export interface AttachedSessionContinuationStore {
+interface AttachedSessionContinuationStore {
   read(sessionId: string): AttachedSessionContinuationRead;
   reserve(sessionId: string): Promise<AttachedSessionContinuationReservation>;
   clear(
@@ -63,7 +63,7 @@ export interface AttachedSessionContinuationStore {
   ): Promise<AttachedSessionContinuationClearance>;
 }
 
-export interface AttachedSessionContinuationStoreOptions {
+interface AttachedSessionContinuationStoreOptions {
   storage: AttachedSessionContinuationStorage;
   lock: AttachedSessionContinuationExclusiveLock | null;
   createUuid?: () => string;

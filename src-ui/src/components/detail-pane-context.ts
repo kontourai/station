@@ -20,7 +20,7 @@ import { createContext, useContext } from 'react';
  * weight and colour, so only the element name (and therefore the accessibility
  * tree) differs.
  */
-export interface DetailPaneContextValue {
+interface DetailPaneContextValue {
   /** True when the consuming subtree is inside a `SplitPaneLayout` detail slot. */
   inDetailPane: boolean;
 }

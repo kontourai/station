@@ -23,12 +23,12 @@ import {
   createPluginActivationSession,
 } from '../../../services/plugins/plugin-activation-composition.js';
 import { derivePluginConsentBasis } from '../../../services/plugins/plugin-install-consent.js';
+import { installPluginFromSource } from '../../../services/plugins/plugin-install-transaction.js';
 import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
 import {
   getPluginGrants,
   revokeGrants,
 } from '../../../services/plugins/plugin-permissions.js';
-import { installPluginFromSource } from '../plugin-install-shared.js';
 import { createPluginRoutes } from '../plugins.js';
 
 test('retained recovery reaches separate trusted approval without exposing pending or ungranted modules', {

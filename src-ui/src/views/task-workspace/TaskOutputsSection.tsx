@@ -183,6 +183,7 @@ export function TaskOutputsSection({
       )}
       {confirming ? (
         <ResponsiveDialogSurface
+          layer="dialog"
           role="alertdialog"
           ariaLabelledBy="delete-output-title"
           panelClassName="task-outputs__confirmation"

@@ -58,6 +58,7 @@ import type { PairingScope } from '@kontourai/station-contracts';
 import {
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
+  PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
@@ -65,10 +66,13 @@ import {
   pairingScopeIncludes,
 } from '@kontourai/station-contracts';
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
+import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
 import {
+  PAIRING_SCOPE_ENGINE_LOGIN,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
   PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
@@ -140,6 +144,7 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // Personal spatial-board reads need read; every revisioned mutation needs
   // operate. Hosted execution does not mount this family.
   '/api/spatial-board',
+  '/api/mobile-devices',
   '/api/orchestration',
   // archive#3677 PR 3: the native consent broker. The FAMILY sits on the
   // ordinary tiers so the local-grant-minted desktop credential (whose scope
@@ -235,6 +240,80 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  {
+    id: '/api/operator/accounts:operator-read',
+    method: 'GET',
+    prefix: '/api/operator/accounts',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/accounts/:accountId/actions:operator-action',
+    method: 'POST',
+    prefix: '/api/operator/accounts/:accountId/actions',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/projects/:slug/access:member-administration-read',
+    method: 'GET',
+    prefix: '/api/projects/:slug/access',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  ...[
+    '/api/projects/:slug/access/enable',
+    '/api/projects/:slug/access/invitations',
+    '/api/projects/:slug/access/invitations/:invitationId/revoke',
+    '/api/projects/:slug/access/members',
+    '/api/projects/:slug/access/transfer',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:member-administration`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+
+  ...[
+    '/api/home-authority/channels/:channelId/bindings',
+    '/api/home-authority/channels/:channelId/bindings/:controllerDeviceId/inspect',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:administration`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+    }),
+  ),
+
+  {
+    id: '/api/home-authority/channels/:channelId/owner:administration',
+    method: 'POST',
+    prefix: '/api/home-authority/channels/:channelId/owner',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  // Home-authority preparation and transfer participation is a separate,
+  // explicitly granted capability. Every present and future method beneath
+  // this family stays on that one tier; it does not inherit ordinary
+  // orchestration read/operate authority or pairing-management authority.
+  {
+    id: '/api/home-authority:home-transfer',
+    method: '*',
+    prefix: '/api/home-authority',
+    scope: PAIRING_SCOPE_HOME_TRANSFER,
+    origin: 'explicit',
+  },
   // Body-shaped reads, including fresh open resolution, have no navigation or mutation effect.
   ...[
     '/api/search',
@@ -341,6 +420,18 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     prefix: '/api/orchestration/sessions/:threadId/outputs/:eventId/inspect',
     exact: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  // A screen can expose an arbitrary app or terminal running on the operator's
+  // device host. Inventory is read-only metadata; frame inspection deliberately
+  // requires the stronger existing terminal authority, not ordinary read.
+  {
+    id: '/api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/capture:terminal-operate',
+    method: 'POST',
+    prefix:
+      '/api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/capture',
+    exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
     origin: 'explicit',
   },
   // Terminal termination kills a PTY process. It must match the dedicated
@@ -690,6 +781,20 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  {
+    id: '/api/conversation-pull-requests:read',
+    method: 'GET',
+    prefix: '/api/conversation-pull-requests',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  ...(['POST', 'DELETE'] as const).map((method) => ({
+    id: `/api/conversation-pull-requests:${method.toLowerCase()}`,
+    method,
+    prefix: '/api/conversation-pull-requests',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit' as const,
+  })),
   // archive#1131 review round 1 (HIGH, own-audit finding beyond what the
   // reviewer named): `registerPluginHostApprovalRoutes`
   // (`plugin-host-approval-routes.ts`) exists specifically so a 'trusted'
@@ -805,14 +910,44 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // sharper reason than either: it names a filesystem path inside Station's
   // profile store and the exact command that will write a credential into it.
   // That is a recipe for provisioning an account on this host, which no paired
-  // remote credential should be able to read — the fact that Station returns
-  // the command rather than running it makes the response MORE useful to a
-  // remote caller, not less.
+  // remote credential should be able to read.
+  //
+  //
+  // The device-code leaves (`…/enrolment/:ref/device-code`, POST/GET/DELETE)
+  // are deliberately NOT part of this rule. They carry their own, more
+  // specific rule below, at `engine:login`.
   {
     id: '/api/connections/agent/:id/enrolment:manage',
     method: '*',
     prefix: '/api/connections/agent/:id/enrolment',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  // The device-code leaves, which START the engine's own login as a child
+  // process on this host. A LONGER, more specific prefix than the enrolment
+  // family above, so it wins rather than inheriting that family's tier.
+  //
+  // `access:manage` was the obvious reuse and is the wrong answer in both
+  // directions. The pairing UI's `standard` preset WITHHOLDS `access:manage`,
+  // so gating here would close the flow to exactly the paired phone device
+  // code exists for; meanwhile `access:manage` IS in
+  // DEFAULT_GRANT_PAIRING_SCOPE, so the population that would have been able
+  // to start a login is the migrated and scope-omitting one that never chose
+  // it. Simultaneously unreachable for the intended caller and granted to an
+  // unintended one.
+  //
+  // `engine:login` is in no preset and no default grant: it reaches a device
+  // only by operator promotion, the `access:approve` posture. A preset was the
+  // first choice and is unavailable — `parsePairingScope` refuses a whole
+  // scope string on one unknown token, so shipping this token inside
+  // `standard` would make every newly issued standard grant unparseable to any
+  // peer built before it. Promotion after pairing is the only shape that is
+  // both additive and backward-compatible; see the token's docblock.
+  {
+    id: '/api/connections/agent/:id/enrolment/:ref/device-code:engine-login',
+    method: '*',
+    prefix: '/api/connections/agent/:id/enrolment/:ref/device-code',
+    scope: PAIRING_SCOPE_ENGINE_LOGIN,
     origin: 'explicit',
   },
   // archive#1398 (docs/design/inference-fleet.md §3.3): the fleet
@@ -1133,6 +1268,26 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     // its own narrow proof, rate limit, loopback-secret, or share-token
     // contract. Keep every exception method-specific and exact.
     {
+      id: 'public:account-auth-get',
+      transport: 'http',
+      method: 'GET',
+      prefix: DEPLOYMENT_AUTHENTICATION_BASE_PATH,
+      match: 'prefix',
+      capability: 'public',
+      reason:
+        'operator authentication module routes; exact endpoint dispatch and account self-authentication owned by account-auth router',
+    },
+    {
+      id: 'public:account-auth-post',
+      transport: 'http',
+      method: 'POST',
+      prefix: DEPLOYMENT_AUTHENTICATION_BASE_PATH,
+      match: 'prefix',
+      capability: 'public',
+      reason:
+        'origin-bound operator authentication module endpoints; no Project membership or host API scope',
+    },
+    {
       id: 'public:station-handshake',
       transport: 'http',
       method: 'GET',
@@ -1158,6 +1313,15 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       match: 'exact',
       capability: 'public',
       reason: 'public challenge proof',
+    },
+    {
+      id: 'public:pairing-local-access',
+      transport: 'http',
+      method: 'POST',
+      prefix: PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
+      match: 'exact',
+      capability: 'public',
+      reason: 'direct-loopback owner-secret access review',
     },
     {
       id: 'public:pairing-local-grant',
@@ -1296,6 +1460,26 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     // Hono records middleware in `app.routes` alongside externally reachable
     // endpoints. Classify the exact registrations so the guard can enumerate
     // the real runtime without giving an unknown endpoint a wildcard pass.
+    {
+      id: 'middleware:account-continuations',
+      transport: 'http',
+      method: '*',
+      prefix: `${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/continuations/*`,
+      match: 'exact',
+      capability: 'middleware',
+      reason:
+        'Hono body-limit and no-store middleware registration; endpoint admission still requires Origin and Device/account proof',
+    },
+    {
+      id: 'middleware:account-auth',
+      transport: 'http',
+      method: '*',
+      prefix: `${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/*`,
+      match: 'exact',
+      capability: 'middleware',
+      reason:
+        'Hono registration for account origin, body and attempt middleware; does not admit undeclared HTTP methods',
+    },
     {
       id: 'middleware:runtime-global',
       transport: 'http',
@@ -1694,9 +1878,23 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // caller's own Session. Their GET leaves inherit read; narrative and
     // assessment replacement/removal are owner mutations and inherit operate.
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/outputs' },
+    // The input-reply context read (#1855) resolves ONE pending input
+    // request inside the caller's own thread: it requires the request
+    // principal to be current (checked before AND after the service call)
+    // and passes the caller's read authority into the service, so it
+    // discloses no thread the family's session reads do not already expose
+    // and crosses no Environment/Station boundary. Read tier is intended.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/input-requests/:requestId',
+    },
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/turns/:turnId/narrative/target',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/turns/:turnId/quote-source',
     },
     {
       method: 'PUT',
@@ -2102,6 +2300,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/orchestration/sessions/:threadId/event-window',
     },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/events' },
+    // station#1877: stops ONE provider-reported subagent inside a session the
+    // caller already reaches through this family. It mutates, but no more
+    // sensitively than `delegations/:taskId/interrupt` directly above, which
+    // is the same shape — a task-scoped stop — and inherits here too. It
+    // returns only `{outcome, taskId}` for a task on THIS Station: no other
+    // environment's data, no other Station's, and nothing about a task the
+    // caller could not already observe through this family's session reads.
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/flow-run' },
     // archive#2802: a thread's recorded turn-checkpoint outcomes. Deliberate
     // family inheritance, considered: the records do carry the bound
@@ -2168,6 +2377,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/orchestration/sessions/read-model' },
     { method: 'GET', path: '/api/projects' },
     { method: 'POST', path: '/api/projects' },
+    // Portable identity reads do not mutate; preparation and attachment retain
+    // the Project family's operate scope and grant no peer/member authority.
+    { method: 'GET', path: '/api/projects/:slug/identity' },
+    { method: 'POST', path: '/api/projects/:slug/identity/prepare' },
+    { method: 'POST', path: '/api/projects/attach' },
     // Reorders this Station's own project list and returns it. A mutation
     // within its family and no more sensitive than the rest of it: it reads
     // and writes nothing beyond the local ordering, and discloses no peer or
@@ -2490,6 +2704,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/starter-work/:starterId/observation' },
     { method: 'POST', path: '/api/starter-work/bind' },
     { method: 'DELETE', path: '/api/starter-work/:starterId/binding' },
+    { method: 'GET', path: '/api/mobile-devices/hosts/local/devices' },
     { method: 'GET', path: '/api/spatial-board' },
     { method: 'GET', path: '/api/spatial-board/resolved' },
     { method: 'POST', path: '/api/spatial-board/pins' },
@@ -2626,6 +2841,27 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/plugins/:name/settings' },
     { method: 'PUT', path: '/api/plugins/:name/settings' },
     { method: 'POST', path: '/api/plugins/:name/update' },
+    // station#1744 (routes added by station#1377): the retained-recovery
+    // leaves of `plugin-install-routes.ts`. `GET /:name/retained-generations`
+    // pages `packageMcpJournal.history()` — this Station's own generation
+    // records for one plugin (journal/plugin/incarnation ids, content digest,
+    // counts), no filesystem path; the family's `GET /api/plugins` listing
+    // already returns each plugin's `packageRoot` and digest to the same
+    // read-tier caller, so this discloses strictly less. `GET
+    // /:name/recovery-preview` returns `inspectRetainedPluginRecovery`'s
+    // `view` (manifest, expected installation revision, permission basis,
+    // dependency approvals, a recovery revision hash) and drops `source`;
+    // it only reads the journal, manifests and digests — same shape as the
+    // sibling `POST /preview`. `POST /:name/recover` re-materializes an
+    // already-selected, locally retained generation through the SAME
+    // `installPluginFromSource` seam `POST /install` and `POST /:name/update`
+    // call, with the same operator-decision consent gate and no remote
+    // fetch — a subset of `update`'s mutation surface, so the family's
+    // ordinary mutate tier is the consistent call. None returns another
+    // environment's or another Station's data.
+    { method: 'GET', path: '/api/plugins/:name/retained-generations' },
+    { method: 'GET', path: '/api/plugins/:name/recovery-preview' },
+    { method: 'POST', path: '/api/plugins/:name/recover' },
     { method: 'GET', path: '/api/plugins/check-updates' },
     // POST /api/plugins/:name/fetch is currently a stub that always 403s
     // ("Plugin fetch proxy is disabled until plugin execution identity is

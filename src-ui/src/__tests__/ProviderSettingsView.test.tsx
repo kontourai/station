@@ -71,13 +71,29 @@ vi.mock('../hooks/useACPConnections', () => ({
   useACPConnectionRegistry: () => ({ data: [] }),
 }));
 
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate: vi.fn() }),
-}));
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({ navigate: vi.fn() });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { resetModelPickerPreferencesCacheForTests } from '../settings/modelPickerPreferences';
 import { ProviderSettingsView } from '../views/ProviderSettingsView';
+
+// The device projection this page now reads. `undefined` is the honest
+// default: what a server that has not answered yet returns, where HostAction
+// makes no claim about a second machine.
+vi.mock('../hooks/useDevicePresentation', () => ({
+  useDevicePresentation: () => undefined,
+}));
 
 describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () => {
   const onNavigate = vi.fn();

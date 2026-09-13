@@ -17,7 +17,7 @@ export function operationalEventScopeKey(scope: OperationalEventScope): string {
   return JSON.stringify(scope);
 }
 
-export type OperationalEventAppendOutcome =
+type OperationalEventAppendOutcome =
   | {
       kind: 'appended';
       journalSequence: number;
@@ -27,7 +27,7 @@ export type OperationalEventAppendOutcome =
   | { kind: 'rejected'; diagnostics: OperationalEventDiagnostic[] }
   | { kind: 'unavailable' };
 
-export type OperationalEventReadOutcome =
+type OperationalEventReadOutcome =
   | {
       kind: 'available';
       events: PersistedOperationalEvent[];
@@ -60,12 +60,12 @@ export interface OperationalEventNotificationAdapter {
   appended(event: PersistedOperationalEvent): void;
 }
 
-export type OperationalEventStorageAppendOutcome =
+type OperationalEventStorageAppendOutcome =
   | { kind: 'appended'; journalSequence: number }
   | { kind: 'duplicate'; journalSequence: number }
   | { kind: 'unavailable' };
 
-export type OperationalEventStorageReadOutcome =
+type OperationalEventStorageReadOutcome =
   | {
       kind: 'available';
       events: PersistedOperationalEvent[];
@@ -90,7 +90,7 @@ export interface OperationalEventOutboxCoordinator {
 }
 
 const DEFAULT_PAGE_LIMIT = 100;
-export const MAX_OPERATIONAL_EVENT_REPLAY_PAGE = 1_000;
+const MAX_OPERATIONAL_EVENT_REPLAY_PAGE = 1_000;
 
 function deliveryRejection(): OperationalEventDiagnostic {
   return {

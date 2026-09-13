@@ -4,15 +4,24 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useSyncExternalStore,
 } from 'react';
 import type { DockMode } from '../types';
+import { isShallowEqual } from '../utils/isShallowEqual';
 import type { OpenFilePreviewIntent } from '../workspace-panes/openFilePreviewIntent';
+import type { NavigationState } from './navigation-store';
 import { navigationStore } from './navigation-store';
 
 export { navigationStore } from './navigation-store';
 
-const NavigationContext = createContext<{
+/**
+ * Every navigation write this app is allowed to make. The provider memoizes
+ * one instance of this object for its whole lifetime, so a consumer that
+ * reads only actions has nothing to re-render for — `useNavigationActions`
+ * is how it says so.
+ */
+export type NavigationActions = {
   navigate: (pathname: string, params?: Record<string, string | null>) => void;
   updateParams: (params: Record<string, string | null>) => void;
   setAgent: (slug: string | null) => void;
@@ -28,7 +37,9 @@ const NavigationContext = createContext<{
   setDockState: (open: boolean, maximized?: boolean) => void;
   collapseMaximizedDock: () => void;
   setDockMode: (mode: DockMode) => void;
-} | null>(null);
+};
+
+const NavigationContext = createContext<NavigationActions | null>(null);
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
   const navigate = useCallback(
@@ -127,24 +138,132 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useNavigation() {
+/**
+ * The store's own memory of where the user was. Not part of `NavigationState`
+ * and not covered by `subscribe`/`notify`, so a selector never sees it — it is
+ * re-read on whatever render the whole-snapshot form is already doing.
+ */
+type NavigationMemory = {
+  lastProject: string | null;
+  lastProjectLayout: string | null;
+  lastDockMaximized: boolean;
+};
+
+export type NavigationValue = NavigationState &
+  NavigationMemory &
+  NavigationActions;
+
+/**
+ * Reads navigation. Two forms:
+ *
+ * - `useNavigation()` returns the whole snapshot plus the store memory plus
+ *   every action, and re-renders on every store write.
+ * - `useNavigation(selector)` returns only what the selector picks out of
+ *   `NavigationState`, and re-renders only when that slice changes.
+ *
+ * The selector form is the same shape as `useActiveChatSelector`, equality
+ * semantics included: the selected value is cached against the snapshot
+ * identity, and a recomputed value that compares equal keeps the PREVIOUS
+ * reference so `useSyncExternalStore` sees no change. `isEqual` defaults to a
+ * one-level shallow compare, which covers a primitive field and a flat object
+ * of primitives/stable references; a selector returning a fresh nested object
+ * needs its own comparator or it re-renders exactly as often as the
+ * whole-snapshot form.
+ *
+ * Actions are not in the selector's input. A consumer that reads no state at
+ * all wants `useNavigationActions`, which does not subscribe.
+ */
+export function useNavigation(): NavigationValue;
+export function useNavigation<T>(
+  selector: (state: NavigationState) => T,
+  isEqual?: (a: T, b: T) => boolean,
+): T;
+export function useNavigation<T>(
+  selector?: (state: NavigationState) => T,
+  isEqual: (a: T, b: T) => boolean = isShallowEqual,
+): NavigationValue | T {
   const context = useContext(NavigationContext);
   if (!context) {
     throw new Error('useNavigation must be used within NavigationProvider');
   }
 
-  const state = useSyncExternalStore(
+  // Read the latest selector/isEqual through refs rather than as
+  // useSyncExternalStore dependencies, so callers can pass inline functions
+  // without memoizing them and `subscribe` never churns. The selection is
+  // cached against the snapshot AND the selector identity, so a selector that
+  // closes over a prop re-selects when that prop changes, with no store write
+  // — the property React's own `useSyncExternalStoreWithSelector` gets by
+  // memoizing on `[getSnapshot, selector, isEqual]`. An inline selector
+  // therefore re-runs on every render of its consumer; an equal result keeps
+  // the previous reference, so that costs a selector call and no re-render.
+  // A selector that returns a fresh, never-equal value on every call (a
+  // mapped array of objects, say) must supply its own `isEqual` or be
+  // memoized, exactly as React's shim requires.
+  const selectorRef = useRef(selector);
+  selectorRef.current = selector;
+  const isEqualRef = useRef(isEqual);
+  isEqualRef.current = isEqual;
+
+  const cacheRef = useRef<{
+    raw: NavigationState;
+    selector: (state: NavigationState) => T;
+    selected: T;
+  } | null>(null);
+
+  const getSnapshot = useCallback((): NavigationState | T => {
+    const raw = navigationStore.getSnapshot();
+    const select = selectorRef.current;
+    if (!select) return raw;
+    const cached = cacheRef.current;
+    if (cached && cached.raw === raw && cached.selector === select) {
+      return cached.selected;
+    }
+    const nextSelected = select(raw);
+    if (cached && isEqualRef.current(cached.selected, nextSelected)) {
+      // Equal by value — keep the old reference so useSyncExternalStore (and
+      // any memoized consumer downstream) sees no change.
+      cacheRef.current = { raw, selector: select, selected: cached.selected };
+      return cached.selected;
+    }
+    cacheRef.current = { raw, selector: select, selected: nextSelected };
+    return nextSelected;
+  }, []);
+
+  const snapshot = useSyncExternalStore(
     navigationStore.subscribe,
-    navigationStore.getSnapshot,
+    getSnapshot,
+    getSnapshot,
   );
 
+  if (selector) return snapshot as T;
+
   return {
-    ...state,
+    ...(snapshot as NavigationState),
     lastProject: navigationStore.lastProject,
     lastProjectLayout: navigationStore.lastProjectLayout,
     lastDockMaximized: navigationStore.lastDockMaximized,
     ...context,
   };
+}
+
+/**
+ * Navigation actions with no subscription. The provider publishes one
+ * memoized actions object for its lifetime (archive#3796), so a consumer of
+ * this hook re-renders for its own reasons only — never because some other
+ * surface toggled the dock or changed the font size.
+ *
+ * Use this wherever the destructure is actions only. Reading URL state
+ * ambiently (`window.location` in render) counts as reading navigation: that
+ * consumer wants `useNavigation(selector)` on the field it is really keyed to.
+ */
+export function useNavigationActions(): NavigationActions {
+  const context = useContext(NavigationContext);
+  if (!context) {
+    throw new Error(
+      'useNavigationActions must be used within NavigationProvider',
+    );
+  }
+  return context;
 }
 
 /**

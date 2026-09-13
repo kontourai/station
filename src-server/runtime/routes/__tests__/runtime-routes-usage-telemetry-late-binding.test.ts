@@ -62,6 +62,7 @@ function deepCallable(): unknown {
     // forever — which is exactly how this shape failed CI at 4m57s against
     // the 5-minute lane budget while passing locally.
     get: (_target, property) => (property === 'then' ? undefined : proxy),
+    apply: () => proxy,
   });
   return proxy;
 }
@@ -73,8 +74,10 @@ function runtimeContext(
 ) {
   const fallback = new Proxy(
     {
+      deploymentAuthentication: undefined,
       app,
       port: 4321,
+      host: '127.0.0.1',
       appConfig: {},
       configLoader: {
         getProjectHomeDir: () => homeDir,
@@ -90,6 +93,19 @@ function runtimeContext(
       memoryAdapters: new Map(),
       metricsLog: [],
       monitoringEvents: [],
+      orchestrationEventStore: new Proxy(
+        {
+          sessionTurnBoundaryAuthority: () => ({
+            reconcile: () => ({ kind: 'available', interrupted: [] }),
+          }),
+        },
+        {
+          get(target, property) {
+            if (property in target) return Reflect.get(target, property);
+            return deepCallable();
+          },
+        },
+      ),
       taskGraphService: { listTasks: () => [] },
       ...overrides,
     },

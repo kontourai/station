@@ -3,9 +3,11 @@
  *
  * The dock's top edge is draggable. While dragging the height tracks the
  * pointer; on release the height snaps to the nearest of three discrete states
- * — Collapsed (header only) / Half / Full (maximized). This mirrors the mobile
- * file-tree pattern in `coding-layout/treeSnap.ts` and is kept intentionally
- * pure (no React, no DOM) so the snap math is unit-testable in isolation.
+ * — Collapsed (header only) / Half / Full (maximized). It is kept
+ * intentionally pure (no React, no DOM) so the snap math is unit-testable in
+ * isolation. A parallel `coding-layout/treeSnap.ts` once carried the same
+ * three-state shape for the mobile file tree; nothing mounted it and it has
+ * been deleted, so this is the only snap implementation in the UI.
  *
  * Pixel resolution depends on the live viewport, so heights are resolved
  * against `viewportHeight` (and a toolbar offset for the Full state, which can
@@ -14,11 +16,11 @@
 
 export type DockSnap = 'collapsed' | 'half' | 'full';
 
-export const DOCK_SNAP_ORDER: DockSnap[] = ['collapsed', 'half', 'full'];
+const DOCK_SNAP_ORDER: DockSnap[] = ['collapsed', 'half', 'full'];
 
 export const DEFAULT_DOCK_SNAP: DockSnap = 'half';
 
-export const DOCK_SNAP_STORAGE_KEY = 'station.chatDock.snap';
+const DOCK_SNAP_STORAGE_KEY = 'station.chatDock.snap';
 
 /**
  * Default header-only peek height (px) for the Collapsed state.
@@ -33,7 +35,7 @@ export const DOCK_SNAP_STORAGE_KEY = 'station.chatDock.snap';
 export const DOCK_COLLAPSED_HEIGHT = 38;
 
 /** Half opens the dock to this fraction of the available viewport. */
-export const DOCK_HALF_FRACTION = 0.45;
+const DOCK_HALF_FRACTION = 0.45;
 
 /** Movement threshold (px) below which a pointer interaction counts as a tap. */
 export const TAP_MOVE_THRESHOLD = 6;

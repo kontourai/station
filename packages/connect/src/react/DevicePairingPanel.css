@@ -1,0 +1,94 @@
+.pairing-wait {
+  display: grid;
+  gap: 16px;
+}
+.pairing-wait__status {
+  font-size: 1.1rem;
+  line-height: 1.35;
+  color: var(--text-primary, #eee);
+}
+.pairing-wait__instruction {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text-secondary, #aaa);
+}
+.pairing-wait__instruction strong {
+  color: var(--text-primary, #eee);
+}
+.pairing-wait__timer {
+  justify-self: start;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--bg-primary, #111);
+  color: var(--text-secondary, #aaa);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.pairing-wait__help {
+  border-top: 1px solid var(--border-primary, #333);
+  padding-top: 12px;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #aaa);
+  line-height: 1.5;
+}
+.pairing-wait > details {
+  font-size: 0.8rem;
+}
+.pairing-wait > details > summary {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.pairing-wait {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+.pairing-wait__terminal {
+  min-width: 0;
+}
+.pairing-wait__terminal > summary {
+  gap: 8px;
+}
+.pairing-wait__chevron {
+  display: inline-block;
+  font-size: 1.2rem;
+  transition: transform 120ms ease;
+}
+.pairing-wait__terminal[open] .pairing-wait__chevron {
+  transform: rotate(90deg);
+}
+.pairing-wait__terminal small {
+  overflow-wrap: anywhere;
+}
+
+.pairing-target {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: 13px;
+}
+.pairing-target__address {
+  color: var(--text-secondary, #999);
+  overflow-wrap: anywhere;
+}
+.pairing-error {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--status-error, #e66);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.pairing-error strong {
+  color: var(--status-error, #e66);
+}
+.pairing-error p {
+  margin: 0;
+}
+.pairing-error p + p {
+  color: var(--text-secondary, #999);
+}

@@ -13,19 +13,167 @@ vi.mock('@kontourai/station-sdk', () => ({
     browseMock(path, config),
 }));
 
-import { PathAutocomplete } from '../components/PathAutocomplete';
+import {
+  anchorIsWithinClip,
+  PathAutocomplete,
+  scrollClipRect,
+} from '../components/PathAutocomplete';
 
 function ControlledPathAutocomplete({ initial }: { initial: string }) {
   const [value, setValue] = useState(initial);
-  return (
-    <PathAutocomplete
-      value={value}
-      onChange={setValue}
-      apiBase="http://localhost:3000"
-      browsable
-    />
-  );
+  return <PathAutocomplete value={value} onChange={setValue} browsable />;
 }
+
+/**
+ * #1582 E6. Scrolling the New Project modal's body by 220px put the directory
+ * input 177px above the visible area while its suggestion list — which hangs
+ * below the input and is taller than that gap — still painted 138px of itself
+ * over the Description field. Measured live on 2026-09-06 before the fix:
+ * input `top: -47`, dropdown `top: 12`, scrollport `top: 130`.
+ */
+describe('the suggestion list follows its input out of a scrollport', () => {
+  test('the clip rectangle is the first ancestor that actually scrolls', () => {
+    const outer = document.createElement('div');
+    const middle = document.createElement('div');
+    const scroller = document.createElement('div');
+    const inner = document.createElement('div');
+    const input = document.createElement('input');
+    // Only `scroller` clips. `outer` also scrolls, and must NOT be the answer:
+    // an element is clipped by the FIRST such ancestor, and taking the
+    // outermost one would report a field visible while a nearer scrollport
+    // had already hidden it.
+    outer.style.overflowY = 'auto';
+    scroller.style.overflowY = 'auto';
+    outer.appendChild(middle);
+    middle.appendChild(scroller);
+    scroller.appendChild(inner);
+    inner.appendChild(input);
+    document.body.appendChild(outer);
+    const rect = (element: Element, top: number, bottom: number) => {
+      Object.defineProperty(element, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => ({
+          top,
+          bottom,
+          left: 0,
+          right: 100,
+          width: 100,
+          height: bottom - top,
+        }),
+      });
+    };
+    rect(outer, 0, 900);
+    rect(scroller, 130, 492);
+
+    expect(scrollClipRect(input)).toMatchObject({ top: 130, bottom: 492 });
+
+    document.body.removeChild(outer);
+  });
+
+  test('an unmeasurable anchor is not treated as hidden', () => {
+    // jsdom lays nothing out, and a real field renders a frame before layout.
+    // An all-zero rect is the absence of a measurement, not evidence.
+    const zero = { top: 0, bottom: 0, left: 0, right: 0 };
+    expect(
+      anchorIsWithinClip(zero, { top: 130, bottom: 492, left: 0, right: 670 }),
+    ).toBe(true);
+  });
+
+  test('the anchor is hidden exactly when it has left the scrollport', () => {
+    const clip = { top: 130, bottom: 492, left: 305, right: 975 };
+    // The measured pre-fix position: the input scrolled fully above the port.
+    expect(
+      anchorIsWithinClip({ top: -47, bottom: 6, left: 322, right: 910 }, clip),
+    ).toBe(false);
+    // One pixel of it still showing is still showing.
+    expect(
+      anchorIsWithinClip(
+        { top: 100, bottom: 131, left: 322, right: 910 },
+        clip,
+      ),
+    ).toBe(true);
+    // Flush against the top edge is NOT visible: `bottom === clip.top` means
+    // zero rows of the field are on screen.
+    expect(
+      anchorIsWithinClip({ top: 77, bottom: 130, left: 322, right: 910 }, clip),
+    ).toBe(false);
+    // Below the port, and horizontally out of it.
+    expect(
+      anchorIsWithinClip(
+        { top: 492, bottom: 545, left: 322, right: 910 },
+        clip,
+      ),
+    ).toBe(false);
+    expect(
+      anchorIsWithinClip({ top: 200, bottom: 253, left: 0, right: 305 }, clip),
+    ).toBe(false);
+  });
+
+  test('a scroll that hides the input removes the list, and scrolling back restores it', () => {
+    browseMock.mockReturnValue({
+      data: {
+        path: '/Users/test',
+        entries: [{ name: 'Documents', isDirectory: true }],
+      },
+    });
+    const scroller = document.createElement('div');
+    scroller.style.overflowY = 'auto';
+    document.body.appendChild(scroller);
+    Object.defineProperty(scroller, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({
+        top: 130,
+        bottom: 492,
+        left: 0,
+        right: 670,
+        width: 670,
+        height: 362,
+      }),
+    });
+
+    render(<PathAutocomplete value="~/Do" onChange={vi.fn()} />, {
+      container: scroller,
+    });
+    const input = scroller.querySelector('input');
+    if (!input) throw new Error('the field did not render');
+    let inputTop = 200;
+    Object.defineProperty(input, 'getBoundingClientRect', {
+      configurable: true,
+      get: () => () => ({
+        top: inputTop,
+        bottom: inputTop + 53,
+        left: 0,
+        right: 588,
+        width: 588,
+        height: 53,
+      }),
+    });
+
+    // In view: the list is on screen. (The effect measures on mount, so this
+    // also proves the mount measurement does not hide a visible field.)
+    act(() => {
+      scroller.dispatchEvent(new Event('scroll', { bubbles: false }));
+    });
+    expect(screen.getByText('Documents')).toBeTruthy();
+
+    // Scrolled out: the list goes with it.
+    inputTop = -47;
+    act(() => {
+      scroller.dispatchEvent(new Event('scroll', { bubbles: false }));
+    });
+    expect(screen.queryByText('Documents')).toBeNull();
+
+    // Nothing was dismissed — scrolling back shows the same list. A fix that
+    // closed the list instead would pass the assertion above and fail here.
+    inputTop = 200;
+    act(() => {
+      scroller.dispatchEvent(new Event('scroll', { bubbles: false }));
+    });
+    expect(screen.getByText('Documents')).toBeTruthy();
+
+    document.body.removeChild(scroller);
+  });
+});
 
 describe('PathAutocomplete', () => {
   beforeEach(() => {
@@ -45,13 +193,7 @@ describe('PathAutocomplete', () => {
     });
     const onChange = vi.fn();
 
-    render(
-      <PathAutocomplete
-        value="~/Do"
-        onChange={onChange}
-        apiBase="http://localhost:3000"
-      />,
-    );
+    render(<PathAutocomplete value="~/Do" onChange={onChange} />);
 
     expect(browseMock).toHaveBeenCalledWith('~', { enabled: true });
     expect(screen.getByText('Documents')).toBeTruthy();
@@ -72,13 +214,7 @@ describe('PathAutocomplete', () => {
       },
     });
 
-    render(
-      <PathAutocomplete
-        value="~/de"
-        onChange={vi.fn()}
-        apiBase="http://localhost:3000"
-      />,
-    );
+    render(<PathAutocomplete value="~/de" onChange={vi.fn()} />);
 
     // Prefix matches present.
     expect(screen.getByText('dev')).toBeTruthy();
@@ -101,13 +237,7 @@ describe('PathAutocomplete', () => {
       },
     });
 
-    render(
-      <PathAutocomplete
-        value="~/demo"
-        onChange={vi.fn()}
-        apiBase="http://localhost:3000"
-      />,
-    );
+    render(<PathAutocomplete value="~/demo" onChange={vi.fn()} />);
 
     const options = screen.getAllByRole('button');
     expect(options.length).toBe(8);
@@ -127,13 +257,7 @@ describe('PathAutocomplete', () => {
     });
     const onChange = vi.fn();
 
-    render(
-      <PathAutocomplete
-        value="/tmp/pro"
-        onChange={onChange}
-        apiBase="http://localhost:3000"
-      />,
-    );
+    render(<PathAutocomplete value="/tmp/pro" onChange={onChange} />);
 
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Tab' });
 
@@ -160,13 +284,7 @@ describe('PathAutocomplete', () => {
     });
     const onChange = vi.fn();
 
-    render(
-      <PathAutocomplete
-        value="/tmp/project"
-        onChange={onChange}
-        apiBase="http://localhost:3000"
-      />,
-    );
+    render(<PathAutocomplete value="/tmp/project" onChange={onChange} />);
 
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
 
@@ -184,13 +302,7 @@ describe('PathAutocomplete', () => {
       },
     }));
 
-    render(
-      <PathAutocomplete
-        value="~/"
-        onChange={vi.fn()}
-        apiBase="http://localhost:3000"
-      />,
-    );
+    render(<PathAutocomplete value="~/" onChange={vi.fn()} />);
 
     expect(browseMock).toHaveBeenCalledWith('~', { enabled: true });
 
@@ -205,13 +317,7 @@ describe('PathAutocomplete', () => {
   test('auto-focuses the input on mount', () => {
     browseMock.mockReturnValue({ data: undefined });
 
-    render(
-      <PathAutocomplete
-        value="/tmp"
-        onChange={vi.fn()}
-        apiBase="http://localhost:3000"
-      />,
-    );
+    render(<PathAutocomplete value="/tmp" onChange={vi.fn()} />);
 
     const input = screen.getByRole('textbox');
     expect(input).toBe(document.activeElement);
@@ -227,11 +333,7 @@ describe('PathAutocomplete', () => {
     const outsideAction = vi.fn();
     render(
       <>
-        <PathAutocomplete
-          value="/tmp/pro"
-          onChange={vi.fn()}
-          apiBase="http://localhost:3000"
-        />
+        <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />
         <button type="button" onClick={outsideAction}>
           Outside action
         </button>
@@ -260,13 +362,7 @@ describe('PathAutocomplete', () => {
       },
     });
     const onChange = vi.fn();
-    render(
-      <PathAutocomplete
-        value="/tmp/pro"
-        onChange={onChange}
-        apiBase="http://localhost:3000"
-      />,
-    );
+    render(<PathAutocomplete value="/tmp/pro" onChange={onChange} />);
 
     fireEvent.pointerDown(screen.getByRole('button', { name: /project/ }));
     expect(onChange).toHaveBeenCalledWith('/tmp/project/');
@@ -284,11 +380,7 @@ describe('PathAutocomplete', () => {
     });
     render(
       <>
-        <PathAutocomplete
-          value="/tmp/pro"
-          onChange={vi.fn()}
-          apiBase="http://localhost:3000"
-        />
+        <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />
         <button type="button">Next field</button>
       </>,
     );
@@ -312,16 +404,8 @@ describe('PathAutocomplete', () => {
     });
     render(
       <>
-        <PathAutocomplete
-          value="/tmp/pro"
-          onChange={vi.fn()}
-          apiBase="http://localhost:3000"
-        />
-        <PathAutocomplete
-          value="/tmp/pro"
-          onChange={vi.fn()}
-          apiBase="http://localhost:3000"
-        />
+        <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />
+        <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />
       </>,
     );
 
@@ -347,11 +431,7 @@ describe('PathAutocomplete', () => {
     });
     const remove = vi.spyOn(document, 'removeEventListener');
     const view = render(
-      <PathAutocomplete
-        value="/tmp/pro"
-        onChange={vi.fn()}
-        apiBase="http://localhost:3000"
-      />,
+      <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />,
     );
     view.unmount();
 
@@ -371,11 +451,7 @@ describe('PathAutocomplete', () => {
     }));
     const view = render(
       <>
-        <PathAutocomplete
-          value="/tmp/pro"
-          onChange={vi.fn()}
-          apiBase="http://localhost:3000"
-        />
+        <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />
         <button type="button">Outside</button>
       </>,
     );
@@ -390,11 +466,7 @@ describe('PathAutocomplete', () => {
     ];
     view.rerender(
       <>
-        <PathAutocomplete
-          value="/tmp/pro"
-          onChange={vi.fn()}
-          apiBase="http://localhost:3000"
-        />
+        <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />
         <button type="button">Outside</button>
       </>,
     );
@@ -407,23 +479,13 @@ describe('PathAutocomplete', () => {
       data: { path: '/tmp', entries },
     }));
     const view = render(
-      <PathAutocomplete
-        value="/tmp/pro"
-        onChange={vi.fn()}
-        apiBase="http://localhost:3000"
-      />,
+      <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />,
     );
 
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
 
     entries = [{ name: 'project', isDirectory: true }];
-    view.rerender(
-      <PathAutocomplete
-        value="/tmp/pro"
-        onChange={vi.fn()}
-        apiBase="http://localhost:3000"
-      />,
-    );
+    view.rerender(<PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />);
 
     expect(screen.queryByText('project')).toBeNull();
   });
@@ -431,13 +493,7 @@ describe('PathAutocomplete', () => {
   test('renders no Browse button by default (opt-in only)', () => {
     browseMock.mockReturnValue({ data: undefined });
 
-    render(
-      <PathAutocomplete
-        value="/tmp"
-        onChange={vi.fn()}
-        apiBase="http://localhost:3000"
-      />,
-    );
+    render(<PathAutocomplete value="/tmp" onChange={vi.fn()} />);
 
     expect(
       screen.queryByRole('button', { name: 'Browse for a folder' }),
@@ -449,14 +505,7 @@ describe('PathAutocomplete', () => {
       data: { path: '/tmp', entries: [{ name: 'project', isDirectory: true }] },
     });
 
-    render(
-      <PathAutocomplete
-        value="/tmp"
-        onChange={vi.fn()}
-        apiBase="http://localhost:3000"
-        browsable
-      />,
-    );
+    render(<PathAutocomplete value="/tmp" onChange={vi.fn()} browsable />);
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Browse for a folder' }),
@@ -471,14 +520,7 @@ describe('PathAutocomplete', () => {
     });
     const onChange = vi.fn();
 
-    render(
-      <PathAutocomplete
-        value="/tmp"
-        onChange={onChange}
-        apiBase="http://localhost:3000"
-        browsable
-      />,
-    );
+    render(<PathAutocomplete value="/tmp" onChange={onChange} browsable />);
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Browse for a folder' }),
@@ -555,13 +597,7 @@ describe('PathAutocomplete', () => {
           entries: [{ name: 'project', isDirectory: true }],
         },
       });
-      render(
-        <PathAutocomplete
-          value="/tmp/pro"
-          onChange={vi.fn()}
-          apiBase="http://localhost:3000"
-        />,
-      );
+      render(<PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />);
       const input = screen.getByRole('textbox');
       expect(screen.getByText('project')).toBeTruthy();
 

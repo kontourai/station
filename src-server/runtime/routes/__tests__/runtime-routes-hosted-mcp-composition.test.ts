@@ -96,6 +96,7 @@ function deepCallable(): unknown {
     // forever — which is exactly how this shape failed CI at 4m57s against
     // the 5-minute lane budget while passing locally.
     get: (_target, property) => (property === 'then' ? undefined : proxy),
+    apply: () => proxy,
   });
   return proxy;
 }
@@ -107,8 +108,10 @@ function runtimeContext(
 ) {
   const fallback = new Proxy(
     {
+      deploymentAuthentication: undefined,
       app,
       port: 4321,
+      host: '127.0.0.1',
       appConfig: {},
       configLoader: {
         getProjectHomeDir: () => homeDir,
@@ -124,6 +127,23 @@ function runtimeContext(
       memoryAdapters: new Map(),
       metricsLog: [],
       monitoringEvents: [],
+      // Route composition now starts the boot-only completed-dispatch repair.
+      // This fixture owns no durable dispatches, but it must explicitly model
+      // the available empty authority rather than let the generic callable
+      // fallback turn `sessionTurnBoundaryAuthority()` into undefined.
+      orchestrationEventStore: new Proxy(
+        {
+          sessionTurnBoundaryAuthority: () => ({
+            reconcile: () => ({ kind: 'available', interrupted: [] }),
+          }),
+        },
+        {
+          get(target, property) {
+            if (property in target) return Reflect.get(target, property);
+            return deepCallable();
+          },
+        },
+      ),
       taskGraphService: { listTasks: () => [] },
       environmentSecurityService: {
         devicePairing: { environmentId: () => 'test-environment' },
@@ -777,7 +797,10 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
     });
     await expect(receipt.json()).resolves.toMatchObject({
       success: true,
-      data: { starterId: 'inspect-receipt', state: 'unavailable' },
+      // Without a personal Starter Work registry there is no receipt target
+      // to inspect. `missing` is the owner result; `unavailable` would imply
+      // a known target whose inspection cannot currently proceed.
+      data: { starterId: 'inspect-receipt', state: 'missing' },
     });
   });
 

@@ -1,3 +1,4 @@
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { describe, expect, test } from 'vitest';
 import {
   classifyToolName,
@@ -6,6 +7,10 @@ import {
   type ToolCallGroup,
   type ToolCallLike,
 } from '../components/chat/tool-call-groups';
+import {
+  isToolCallAwaitingApproval,
+  toolCallPhase,
+} from '../components/chat/tool-call-labels';
 
 function toolCall(overrides: Partial<ToolCallLike> = {}): ToolCallLike {
   return {
@@ -21,6 +26,45 @@ function toolCall(overrides: Partial<ToolCallLike> = {}): ToolCallLike {
 function textPart(content: string): ToolCallLike {
   return { type: 'text', content } as ToolCallLike;
 }
+
+describe('isToolCallAwaitingApproval', () => {
+  test('matches the producer shape from request.opened', () => {
+    expect(
+      isToolCallAwaitingApproval({
+        needsApproval: true,
+        state: 'awaiting-approval',
+      }),
+    ).toBe(true);
+  });
+
+  test('refuses a call that already has a result, failed, cancelled, or went unresolved', () => {
+    expect(
+      isToolCallAwaitingApproval({
+        needsApproval: true,
+        state: 'awaiting-approval',
+        result: 'ok',
+      }),
+    ).toBe(false);
+    expect(
+      isToolCallAwaitingApproval({
+        needsApproval: true,
+        state: 'error',
+      }),
+    ).toBe(false);
+    expect(
+      isToolCallAwaitingApproval({
+        needsApproval: true,
+        state: 'unresolved',
+      }),
+    ).toBe(false);
+    expect(
+      isToolCallAwaitingApproval({
+        needsApproval: true,
+        cancelled: true,
+      }),
+    ).toBe(false);
+  });
+});
 
 describe('isToolCallPart', () => {
   test('matches the flat tool-invocation type', () => {
@@ -150,6 +194,7 @@ describe('groupToolCallParts', () => {
     ];
     const [group] = groupToolCallParts(parts) as ToolCallGroup[];
     expect(group.summary).toBe('Read 2 files, ran 2 commands');
+    expect(group.aggregateSummary).toBe(group.summary);
   });
 
   test('single-kind batch summarizes as "Ran 3 commands"', () => {
@@ -194,7 +239,7 @@ describe('groupToolCallParts', () => {
     expect(group.inProgress).toBe(false);
   });
 
-  test('reflects in-progress state with a progressive verb and ellipsis', () => {
+  test('a live multi-call run headlines the latest running call, not the inventory phrase', () => {
     const parts = [
       toolCall({ toolCallId: 'a', toolName: 'Read', state: 'completed' }),
       toolCall({
@@ -206,7 +251,190 @@ describe('groupToolCallParts', () => {
     ];
     const [group] = groupToolCallParts(parts) as ToolCallGroup[];
     expect(group.inProgress).toBe(true);
-    expect(group.summary).toBe('Reading 1 file, running 1 command…');
+    // Collapsed line updates to the current tool.
+    expect(group.summary).toBe('Running npm test…');
+    // Sheet title still names the whole run.
+    expect(group.aggregateSummary).toBe('Reading 1 file, running 1 command…');
+  });
+
+  test('a later running call replaces the headline', () => {
+    const parts = [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Read',
+        args: { file_path: 'a.ts' },
+        state: 'running',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Bash',
+        args: { command: 'npm test' },
+        state: 'running',
+      }),
+    ];
+    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    expect(group.summary).toBe('Running npm test…');
+  });
+
+  test('a failed sibling does not stop a running call from headlining', () => {
+    const parts = [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Read',
+        args: { file_path: 'a.ts' },
+        state: 'error',
+        error: 'missing',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Bash',
+        args: { command: 'npm test' },
+        state: 'running',
+        progressMessage: 'compiling',
+      }),
+    ];
+    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    expect(group.summary).toBe('Running npm test…');
+    expect(group.progressMessage).toBe('compiling');
+    expect(group.failedCount).toBe(1);
+  });
+
+  test('a batch with a call waiting on approval uses the pending verb, not past tense', () => {
+    // Producer shape: `runtime-event-projection.ts` stamps both
+    // `needsApproval` and `state: 'awaiting-approval'` on request.opened.
+    const parts = [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Read',
+        args: { file_path: 'a.ts' },
+        state: 'result',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Write',
+        args: { path: 'secrets.env' },
+        needsApproval: true,
+        state: 'awaiting-approval',
+      }),
+    ];
+    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    expect(group.awaitingApprovalCount).toBe(1);
+    expect(group.summary).toBe('Read 1 file, edit 1 file');
+    expect(group.aggregateSummary).toBe(group.summary);
+    expect(group.summary).not.toMatch(/edited/i);
+    expect(group.calls.map((call) => call.awaitingApproval)).toEqual([
+      false,
+      true,
+    ]);
+  });
+
+  test('a running sibling does not headline a batch that also awaits approval', () => {
+    const parts = [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Read',
+        args: { file_path: 'a.ts' },
+        state: 'running',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Write',
+        args: { path: 'secrets.env' },
+        needsApproval: true,
+        state: 'awaiting-approval',
+      }),
+    ];
+    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    expect(group.inProgress).toBe(true);
+    expect(group.summary).toBe('Read 1 file, edit 1 file');
+    expect(group.summary).not.toContain('…');
+  });
+
+  test('a known failure does not strip past tense from successful siblings', () => {
+    const parts = [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Bash',
+        args: { command: 'npm test' },
+        state: 'completed',
+        result: 'ok',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Bash',
+        args: { command: 'npm run lint' },
+        state: 'error',
+        error: 'exit 1',
+      }),
+    ];
+    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    expect(group.summary).toBe('Ran 2 commands');
+    expect(group.failedCount).toBe(1);
+  });
+
+  test('a user-denied write in a batch never claims the edit landed', () => {
+    const parts = [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Read',
+        args: { file_path: 'a.ts' },
+        state: 'result',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Write',
+        args: { path: 'secrets.env' },
+        needsApproval: false,
+        state: 'awaiting-approval',
+        approvalStatus: 'user-denied',
+      }),
+    ];
+    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    expect(toolCallPhase(parts[1])).toBe('unresolved');
+    expect(group.summary).toBe('Read 1 file, edit 1 file');
+    expect(group.summary).not.toMatch(/edited/i);
+  });
+
+  test('a cancelled write in a batch never claims the edit landed', () => {
+    const parts = [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Read',
+        args: { file_path: 'a.ts' },
+        state: 'result',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Write',
+        args: { path: 'secrets.env' },
+        state: 'cancelled',
+        cancelled: true,
+      }),
+    ];
+    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    expect(group.summary).toBe('Read 1 file, edit 1 file');
+    expect(group.summary).not.toMatch(/edited/i);
+  });
+
+  test("the latest running call's progress message rides on the group", () => {
+    const parts = [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Read',
+        args: { file_path: 'a.ts' },
+        state: 'completed',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Bash',
+        args: { command: 'npm test' },
+        state: 'running',
+        progressMessage: 'still going',
+      }),
+    ];
+    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    expect(group.progressMessage).toBe('still going');
+    expect(group.summary).toBe('Running npm test…');
   });
 
   test('a solo in-progress call gets a progressive label and trailing ellipsis', () => {
@@ -240,6 +468,167 @@ describe('groupToolCallParts', () => {
     // Not running either: no ellipsis, no failure claim.
     expect(group.inProgress).toBe(false);
     expect(group.failedCount).toBe(0);
+  });
+
+  // station#1569 (item 3): the same defect one level up. The BATCH header
+  // derived its verb from `inProgress` alone, so a run containing an
+  // unresolved call still read "Ran 2 commands" — past tense for work that
+  // may never have happened, contradicting the very rows it expands into.
+  describe('a batch containing an unresolved call (station#1569 item 3)', () => {
+    const unresolvedBatch = (extra: Partial<ToolCallLike> = {}) => [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Bash',
+        args: { command: 'npm test' },
+        state: 'completed',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Bash',
+        args: { command: 'npm run build' },
+        state: 'unresolved',
+        ...extra,
+      }),
+    ];
+
+    test('takes the bare verb, never the past tense', () => {
+      const [group] = groupToolCallParts(unresolvedBatch()) as ToolCallGroup[];
+      expect(group.summary).toBe('Run 2 commands');
+      expect(group.unresolvedCount).toBe(1);
+      // Not a failure claim either: nothing observed the tool fail.
+      expect(group.failedCount).toBe(0);
+    });
+
+    test('counts every unresolved call in the run', () => {
+      const [group] = groupToolCallParts([
+        toolCall({ toolCallId: 'a', toolName: 'Bash', state: 'unresolved' }),
+        toolCall({ toolCallId: 'b', toolName: 'Read', state: 'unresolved' }),
+        toolCall({ toolCallId: 'c', toolName: 'Read', state: 'completed' }),
+      ]) as ToolCallGroup[];
+      expect(group.unresolvedCount).toBe(2);
+      expect(group.calls.map((call) => call.unresolved)).toEqual([
+        true,
+        true,
+        false,
+      ]);
+    });
+
+    test('does not claim flight either when a sibling call is still running', () => {
+      const [group] = groupToolCallParts([
+        toolCall({ toolCallId: 'a', toolName: 'Bash', state: 'running' }),
+        toolCall({ toolCallId: 'b', toolName: 'Bash', state: 'unresolved' }),
+      ]) as ToolCallGroup[];
+      // "Running 2 commands…" would be as false for the unresolved call as
+      // "Ran" was; the bare verb is the only form true of both, and the
+      // ellipsis (which means "still going") is dropped with it.
+      expect(group.summary).toBe('Run 2 commands');
+      expect(group.inProgress).toBe(true);
+      expect(group.unresolvedCount).toBe(1);
+    });
+
+    test('leaves an ordinary finished batch in the past tense', () => {
+      // The discriminating control: the bare verb is conditional on an
+      // unresolved call being present, not the new default.
+      const [group] = groupToolCallParts([
+        toolCall({ toolCallId: 'a', toolName: 'Bash', state: 'completed' }),
+        toolCall({ toolCallId: 'b', toolName: 'Bash', state: 'completed' }),
+      ]) as ToolCallGroup[];
+      expect(group.summary).toBe('Ran 2 commands');
+      expect(group.unresolvedCount).toBe(0);
+    });
+
+    /**
+     * station#1569 (H1): the composition the reviewer caught. The header
+     * counts what the FOLD produced, so a fold that left the stale
+     * `unresolved` row standing beside the real result made this read
+     * "Run 2 commands · 1 with no result" for one call that succeeded.
+     * Driven through the real projection rather than a hand-written part —
+     * a literal `state: 'completed'` would only assert the classifier's own
+     * `===`, and could not have caught this.
+     */
+    test('does not count a row the real result superseded', () => {
+      const base = {
+        provider: 'claude',
+        threadId: 't1',
+        createdAt: '2026-09-05T00:00:00.000Z',
+      };
+      const messages = projectRuntimeEventsToMessages([
+        { ...base, eventId: 'e1', method: 'turn.started', turnId: 'turn-a' },
+        {
+          ...base,
+          eventId: 'e2',
+          method: 'tool.started',
+          turnId: 'turn-a',
+          itemId: 'i1',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          arguments: { command: 'npm test' },
+        },
+        {
+          ...base,
+          eventId: 'e3',
+          method: 'tool.completed',
+          turnId: 'turn-a',
+          itemId: 'i1',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          status: 'unresolved',
+          output:
+            'No result was reported before the session ended; whether the tool ran is unknown.',
+        },
+        {
+          ...base,
+          eventId: 'e4',
+          method: 'tool.completed',
+          turnId: 'turn-a',
+          itemId: 'i1',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          status: 'success',
+          output: 'real output',
+        },
+        {
+          ...base,
+          eventId: 'e5',
+          method: 'turn.completed',
+          turnId: 'turn-a',
+          finishReason: 'stop',
+        },
+      ] as never);
+
+      const assistant = messages.find(
+        (message) => message.role === 'assistant',
+      )!;
+      const [group] = groupToolCallParts(
+        assistant.parts as unknown as ToolCallLike[],
+      ) as ToolCallGroup[];
+      expect(group.unresolvedCount).toBe(0);
+      expect(group.summary).toBe('Ran npm test');
+    });
+
+    test('a mixed-kind batch takes the bare verb in every segment', () => {
+      const [group] = groupToolCallParts([
+        toolCall({
+          toolCallId: 'a',
+          toolName: 'Read',
+          args: { file_path: '/repo/a.ts' },
+          state: 'completed',
+        }),
+        toolCall({
+          toolCallId: 'b',
+          toolName: 'Read',
+          args: { file_path: '/repo/b.ts' },
+          state: 'completed',
+        }),
+        toolCall({
+          toolCallId: 'c',
+          toolName: 'Bash',
+          args: { command: 'npm test' },
+          state: 'unresolved',
+        }),
+      ]) as ToolCallGroup[];
+      expect(group.summary).toBe('Read 2 files, run 1 command');
+    });
   });
 
   test('extracts a truncated command label for exec calls', () => {

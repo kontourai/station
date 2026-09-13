@@ -46,13 +46,13 @@ import type {
  * reason (§10 OQ-8), and a receipt that cannot say so cannot stop a later
  * change from silently switching a streaming conversation onto this path.
  */
-export const FLEET_STREAM_CAPABILITY: FleetRoutingStreamCapability = {
+const FLEET_STREAM_CAPABILITY: FleetRoutingStreamCapability = {
   capable: false,
   reason:
     'A Dispatch-routed turn is buffered end to end: Relay has no native streaming and the fleet serve route returns the completion in full. v1 fleet routing is scoped to non-interactive work.',
 };
 
-export interface FleetRoutingContext {
+interface FleetRoutingContext {
   /** The DECIDING Station — whose log this envelope belongs to. */
   environmentId: string;
   agentName: string;

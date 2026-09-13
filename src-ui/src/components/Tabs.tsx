@@ -27,7 +27,7 @@ import '../views/page-layout.css';
  * is deliberately no `children` slot, so a host can never smuggle a
  * non-tab node into the tablist row.
  */
-export interface TabItem {
+interface TabItem {
   /** Stable identity — what `activeKey` compares against and `onSelect` receives. */
   key: string;
   label: string;
@@ -37,9 +37,9 @@ export interface TabItem {
   attention?: boolean;
 }
 
-export type TabActivation = 'automatic' | 'manual';
+type TabActivation = 'automatic' | 'manual';
 
-export interface TabsProps {
+interface TabsProps {
   /**
    * Stable identity for this tablist, used as the prefix for every
    * generated tab/panel id (see `tabElementId`/`tabPanelElementId`). Two

@@ -20,8 +20,12 @@
 import {
   callLabel,
   classifyToolName,
+  isToolCallAwaitingApproval,
+  isToolCallBatchPending,
   KIND_VERBS,
   type ToolCallKind,
+  type ToolCallPhase,
+  toolCallPhase,
 } from './tool-call-labels';
 import {
   type ContentPartBlock,
@@ -64,16 +68,26 @@ function toolNameOf(part: ToolCallLike): string {
   return '';
 }
 
-export interface ClassifiedToolCall<P extends ToolCallLike = ToolCallLike> {
+interface ClassifiedToolCall<P extends ToolCallLike = ToolCallLike> {
   part: P;
   /** Index of this call within the original content-parts array. */
   index: number;
   kind: ToolCallKind;
   /** e.g. "Read app.tsx", "Ran <short command>". */
   label: string;
+  phase: ToolCallPhase;
   inProgress: boolean;
   /** The call reached a failure terminal (error text or an error state). */
   failed: boolean;
+  /** The session ended with the call still open, so whether it ran is
+   * unknown (station#1558's `unresolved` terminal). Neither in progress nor
+   * done — the batch header's verb has to account for it separately from
+   * both (station#1569 item 3). */
+  unresolved: boolean;
+  /** Live path only: the call is waiting on an explicit grant. */
+  awaitingApproval: boolean;
+  denied: boolean;
+  cancelled: boolean;
 }
 
 export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
@@ -81,15 +95,39 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
   /** Stable React key: the first call's id when present, else a position key. */
   key: string;
   calls: ClassifiedToolCall<P>[];
-  /** e.g. "Read 2 files, ran 2 commands" / "Ran 3 commands" / "Ran build.sh". */
+  /**
+   * Collapsed-button copy. While a multi-call run is in flight and nothing
+   * in it is proposed or unresolved, this is the latest running call's own
+   * label. Otherwise the inventory phrase.
+   */
   summary: string;
+  /**
+   * Inventory phrase for the sheet title — always "Read 2 files, ran 2
+   * commands" / "Ran 3 commands" / the solo label. Independent of the live
+   * headline so opening a streaming batch still names the whole run.
+   */
+  aggregateSummary: string;
   inProgress: boolean;
   /** How many of this run's calls failed — a collapsed batch must disclose
    * failure without being opened (archive#2652 redesign). */
   failedCount: number;
+  /** How many of this run's calls ended `unresolved`. Disclosed for the same
+   * reason `failedCount` is: the summary's verb alone cannot say that some of
+   * these calls may never have run, and a reader who does not open the batch
+   * would otherwise be told nothing (station#1569 item 3). */
+  unresolvedCount: number;
+  /** How many of this run's calls are waiting on an explicit grant. Same
+   * collapsed-visible duty as `failedCount`: collapsing 2+ calls would
+   * otherwise hide Allow Once / Deny behind the sheet. */
+  awaitingApprovalCount: number;
+  deniedCount: number;
+  cancelledCount: number;
+  /** Latest running call's `progressMessage`, if any — the collapsed line
+   * is the only live surface once the run is batched. */
+  progressMessage?: string;
 }
 
-export type MessageBlock<P extends ToolCallLike = ToolCallLike> =
+type MessageBlock<P extends ToolCallLike = ToolCallLike> =
   | ContentPartBlock<P>
   | ToolCallGroup<P>;
 
@@ -100,21 +138,42 @@ function classifyCall<P extends ToolCallLike>(
   const toolName = toolNameOf(part);
   const kind = classifyToolName(toolName);
   const args = part.args ?? part.input;
-  const inProgress = part.state === 'running';
-  // station#1558 (fix round, M6): the collapsed group header passed the
-  // boolean form, so anything not running read as done — "Ran npm test" for a
-  // call whose session ended before it reported. `ToolCallDisplay` already
-  // refuses that tense for an unresolved call; the header a reader sees FIRST
-  // must not contradict the row it expands into.
-  const label = callLabel(
-    kind,
-    toolName,
-    args,
-    part.state === 'unresolved' ? 'unresolved' : inProgress,
-  );
+  const phase = toolCallPhase(part);
+  const inProgress = phase === 'running';
+  const unresolved = part.state === 'unresolved';
+  const awaitingApproval = isToolCallAwaitingApproval(part);
+  const denied =
+    part.approvalStatus === 'user-denied' ||
+    part.approvalStatus === 'policy-denied';
+  const cancelled =
+    (part.cancelled === true || part.state === 'cancelled') && !denied;
   const failed =
-    Boolean(part.error || part.errorText) || part.state === 'error';
-  return { part, index, kind, label, inProgress, failed };
+    (Boolean(part.error || part.errorText) || part.state === 'error') &&
+    !denied;
+  const label = callLabel(kind, toolName, args, phase);
+  return {
+    part,
+    index,
+    kind,
+    label,
+    phase,
+    inProgress,
+    failed,
+    unresolved,
+    awaitingApproval,
+    denied,
+    cancelled,
+  };
+}
+
+/** Latest actually-running call in transcript order. */
+function latestRunningCall(
+  calls: ClassifiedToolCall[],
+): ClassifiedToolCall | undefined {
+  for (let index = calls.length - 1; index >= 0; index -= 1) {
+    if (calls[index].inProgress) return calls[index];
+  }
+  return undefined;
 }
 
 /** Joins per-kind segments the way the owner-supplied examples read: plain
@@ -122,9 +181,10 @@ function classifyCall<P extends ToolCallLike>(
 function summarizeCalls(
   calls: ClassifiedToolCall[],
   inProgress: boolean,
+  pending: boolean,
 ): string {
   if (calls.length === 1) {
-    const suffix = inProgress ? '…' : '';
+    const suffix = inProgress && !pending ? '…' : '';
     return `${calls[0].label}${suffix}`;
   }
 
@@ -137,9 +197,15 @@ function summarizeCalls(
   for (const kind of KIND_ORDER) {
     const count = counts.get(kind) ?? 0;
     if (count === 0) continue;
-    const verbForm = inProgress
-      ? KIND_VERBS[kind].progressiveVerb
-      : KIND_VERBS[kind].verb;
+    // station#1569 (item 3): a mixed batch that includes an unresolved OR
+    // proposed call cannot take past or progressive tense — both claim
+    // work the expanded rows refuse. The bare infinitive is the only form
+    // honest for the mix; the count badges name which.
+    const verbForm = pending
+      ? KIND_VERBS[kind].pendingVerb
+      : inProgress
+        ? KIND_VERBS[kind].progressiveVerb
+        : KIND_VERBS[kind].verb;
     const verb = segments.length === 0 ? verbForm : verbForm.toLowerCase();
     const nouns = KIND_NOUNS[kind];
     const noun = count === 1 ? nouns.singularNoun : nouns.pluralNoun;
@@ -147,7 +213,8 @@ function summarizeCalls(
   }
 
   const joined = segments.join(', ');
-  return inProgress ? `${joined}…` : joined;
+  // Ellipsis means "still going". A proposed or unresolved sibling is not.
+  return inProgress && !pending ? `${joined}…` : joined;
 }
 
 /** Classifies a single run (from `splitToolCallRuns`) into a `ToolCallGroup`
@@ -159,15 +226,40 @@ export function classifyToolCallRun<P extends ToolCallLike>(
 ): ToolCallGroup<P> {
   const calls = run.calls.map(({ part, index }) => classifyCall(part, index));
   const inProgress = calls.some((c) => c.inProgress);
-  const summary = summarizeCalls(calls, inProgress);
+  const unresolvedCount = calls.filter((c) => c.unresolved).length;
+  const awaitingApprovalCount = calls.filter((c) => c.awaitingApproval).length;
+  const pending = calls.some((c) => isToolCallBatchPending(c.part));
+  const aggregateSummary = summarizeCalls(calls, inProgress, pending);
+  // A live multi-call run updates to the current tool only when every
+  // sibling is still allowed to claim flight. A proposed or unresolved
+  // sibling owns the inventory phrase instead.
+  const liveCall =
+    inProgress && !pending && calls.length > 1
+      ? latestRunningCall(calls)
+      : undefined;
+  const summary = liveCall ? `${liveCall.label}…` : aggregateSummary;
   const failedCount = calls.filter((c) => c.failed).length;
+  const deniedCount = calls.filter((c) => c.denied).length;
+  const cancelledCount = calls.filter((c) => c.cancelled).length;
+  const progressSource = liveCall;
+  const rawProgress = progressSource?.part.progressMessage;
+  const progressMessage =
+    typeof rawProgress === 'string' && rawProgress.trim().length > 0
+      ? rawProgress.trim()
+      : undefined;
   return {
     type: 'tool-call-group',
     key: run.key,
     calls,
     summary,
+    aggregateSummary,
     inProgress,
     failedCount,
+    unresolvedCount,
+    awaitingApprovalCount,
+    deniedCount,
+    cancelledCount,
+    progressMessage,
   };
 }
 

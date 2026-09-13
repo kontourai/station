@@ -35,6 +35,7 @@ export function LayoutAssignmentModal({
 }) {
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabelledBy="layout-assignment-title"
       overlayClassName="plugins__confirm-overlay"

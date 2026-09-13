@@ -29,6 +29,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./connection-proof": "./src/connection-proof.ts",
     ".": "./src/index.ts",
     "./agent-validation": "./src/agent-validation.ts",
     "./build": "./src/build.ts",
@@ -41,6 +42,7 @@
     "./mcp": "./src/mcp.ts",
     "./mcp-ui-csp": "./src/mcp-ui-csp.ts",
     "./node-runtime": "./src/node-runtime.ts",
+    "./node-http-compat": "./src/node-http-compat.mjs",
     "./parsers": "./src/parsers.ts",
     "./portability": "./src/portability.ts",
     "./ports": "./src/ports.ts",
@@ -49,6 +51,7 @@
     "./return-focus": "./src/return-focus.ts",
     "./temp-dir": "./src/temp-dir.ts",
     "./fs-windows-compat": "./src/fs-windows-compat.ts",
+    "./windows-path-trust": "./src/windows-path-trust.ts",
     "./runtime-events": "./src/runtime-events.ts",
     "./runtime-path-resolver": "./src/runtime-path-resolver.ts",
     "./conversation-message": "./src/conversation-message.ts",
@@ -61,6 +64,7 @@
     "./process-identity": "./src/process-identity.mjs",
     "./launch-path": "./src/launch-path.ts",
     "./station-home-schema": "./src/station-home-schema.ts",
+    "./station-home-recovery-preflight": "./src/station-home-recovery-preflight.ts",
     "./station-home-archive": "./src/station-home-archive.ts",
     "./station-home-lifecycle": "./src/station-home-lifecycle.ts",
     "./sqlite-integrity": "./src/sqlite-integrity.ts",
@@ -81,7 +85,8 @@
     "./plugin-tree-digest": "./src/plugin-tree-digest.ts",
     "./knowledge-root-identity": "./src/knowledge-root-identity.ts",
     "./cloud-move": "./src/cloud-move.ts",
-    "./workspace-package": "./src/workspace-package.ts"
+    "./workspace-package": "./src/workspace-package.ts",
+    "./environment-security-record": "./src/environment-security-record.ts"
   },
   "publishConfig": {
     "access": "public"
@@ -90,6 +95,7 @@
     "@kontourai/station-contracts": "^0.7.0",
     "@kontourai/thread": "0.5.0",
     "@modelcontextprotocol/client": "^2.0.0",
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "jose": "6.2.4"
   }
 }

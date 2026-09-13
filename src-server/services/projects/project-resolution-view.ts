@@ -135,7 +135,7 @@ export interface ProjectManifestRecordReader {
 }
 
 /** The one project-store read this module makes. */
-export interface ProjectResolutionProjectReader {
+interface ProjectResolutionProjectReader {
   getProject(slug: string): ProjectConfig;
 }
 
@@ -148,7 +148,7 @@ export interface ProjectResolutionBindingReader {
   read(): { bindings: readonly { projectId: string }[] };
 }
 
-export interface ProjectResolutionViewDeps {
+interface ProjectResolutionViewDeps {
   resolver: ProjectResourceResolverLike;
   manifests: ProjectManifestRecordReader;
   source: ProjectResolutionProjectReader;

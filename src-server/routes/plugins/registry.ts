@@ -6,6 +6,7 @@ import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import { observePluginGrantRevisions } from '../../services/plugins/plugin-permissions.js';
+import { isRecord } from '../../utils/is-record.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 /**
  * Registry Routes — browse, install, and uninstall agents and tools
@@ -37,6 +38,13 @@ import {
   isPluginConsentRefusedError,
   type PluginInstallConsent,
 } from '../../services/plugins/plugin-install-consent.js';
+import {
+  installPluginFromSource,
+  type PluginLifecycleEventBus,
+  readRegistryPluginAvailability,
+  resolvePluginRegistryInstall,
+  uninstallInstalledPlugin,
+} from '../../services/plugins/plugin-install-transaction.js';
 import { registryOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -53,13 +61,6 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
-import {
-  installPluginFromSource,
-  type PluginLifecycleEventBus,
-  readRegistryPluginAvailability,
-  resolvePluginRegistryInstall,
-  uninstallInstalledPlugin,
-} from './plugin-install-shared.js';
 
 interface RegistryRouteDeps {
   installationHost?: PluginInstallationHost;
@@ -922,8 +923,4 @@ export function createRegistryRoutes(
   });
 
   return app;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }

@@ -16,7 +16,7 @@ const BUCKET_MS = 4 * HOUR_MS;
 /** Derived from the window the buckets actually cover, not written twice. */
 const WINDOW_LABEL = `${(BUCKET_COUNT * BUCKET_MS) / (24 * HOUR_MS)} days ago`;
 
-export interface HeatCell {
+interface HeatCell {
   count: number;
   latest: HomeWorkItem | null;
 }

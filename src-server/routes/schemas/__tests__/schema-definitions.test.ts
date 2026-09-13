@@ -74,6 +74,20 @@ describe('schema definitions barrel', () => {
       );
     });
 
+    test('the per-turn input budget ships at 200,000 characters', () => {
+      // Lives beside the artifact budget because that is where the two are
+      // compared. A literal for the same reason as the pin below: everything
+      // else asserted about this constant is relative to it.
+      expect(CHAT_INPUT_MAX_CHARS).toBe(200_000);
+    });
+
+    test('the authored-artifact budget ships at 100,000 characters', () => {
+      // A literal, so widening the budget a user's authored work is refused
+      // at is a visible decision in a diff rather than a silent one. Every
+      // other assertion here is relative to the constant and moves with it.
+      expect(AUTHORED_ARTIFACT_MAX_CHARS).toBe(100_000);
+    });
+
     const cases = [
       {
         name: 'agentCreateSchema.prompt',
@@ -878,6 +892,9 @@ describe('schema definitions barrel', () => {
       // the user-prompt constant means lowering that constant later silently
       // drags an unrelated policy with it.
       expect(CHAT_INPUT_TOOL_PART_MAX_CHARS).not.toBe(CHAT_INPUT_MAX_CHARS);
+      // ...and this budget's own value as shipped, literally, so moving it is
+      // a visible decision. Distinctness alone survives both being doubled.
+      expect(CHAT_INPUT_TOOL_PART_MAX_CHARS).toBe(400_000);
       // Tool text above the PROMPT limit but below the TOOL limit is fine —
       // if this ever throws, the two budgets have been fused.
       expect(() =>

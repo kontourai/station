@@ -2,7 +2,9 @@ import { expect, test } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import {
+  dismissSetupLauncher,
   emitMockOrchestrationEvent,
+  installMockOrchestrationConversationEventWindow,
   installMockOrchestrationEventWindow,
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
@@ -136,6 +138,10 @@ async function seedRuntimeRoutes(
         mutable: false,
         answerability: { answerable: true },
       })),
+  );
+
+  await installMockOrchestrationConversationEventWindow(page, (id) =>
+    runtimeInventory.some((entry) => entry.id === id) ? [id] : [],
   );
 
   await Promise.all([
@@ -289,6 +295,19 @@ async function seedRuntimeRoutes(
       const payload = route.request().postDataJSON() as ExecutionRequest;
       commandBodies.push(payload);
       const conversationId = payload.conversationId ?? 'runtime-conversation';
+      if (!runtimeInventory.some((entry) => entry.id === conversationId)) {
+        runtimeInventory.push({
+          id: conversationId,
+          source: 'runtime',
+          agentSlug: payload.target?.agent ?? 'claude',
+          title: payload.message ?? 'Runtime conversation',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          messageCount: 1,
+          mutable: false,
+          answerability: { answerable: true },
+        });
+      }
       await route.fulfill(
         json(
           foregroundMessageReceiptEnvelope({
@@ -326,10 +345,34 @@ async function seedRuntimeRoutes(
           }),
         );
       }
-      const conversationId = url.pathname.split('/').filter(Boolean).pop();
+      const parts = url.pathname.split('/').filter(Boolean);
+      const isOpen = parts.at(-1) === 'open';
+      const conversationId = decodeURIComponent(
+        (isOpen ? parts.at(-2) : parts.at(-1)) ?? '',
+      );
       const conversation = runtimeInventory.find(
         (entry) => entry.id === conversationId,
       );
+      if (isOpen && conversation) {
+        return route.fulfill(
+          json({
+            success: true,
+            data: {
+              status: 'resolved',
+              conversation,
+              currentSessionId: conversation.id,
+              transcript: {
+                available: true,
+                owner: 'runtime',
+                messageCount: conversation.messageCount,
+              },
+              canContinue: true,
+              answerability: { answerable: true },
+              recoveryActions: [],
+            },
+          }),
+        );
+      }
       return route.fulfill(
         conversation
           ? json({ success: true, data: conversation })
@@ -379,16 +422,13 @@ async function openRuntimeSession(
     page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1),
   ).toBeVisible({ timeout: 15_000 });
   await dismissSetupLauncher(page);
-  await page
-    .locator('.chat-dock__tab-actions .chat-dock__new')
-    .nth(1)
-    .dispatchEvent('click');
+  await page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1).click();
   await expect(
     page.locator('.new-chat-modal__agent', { hasText: runtimeName }),
   ).toBeVisible({ timeout: 10_000 });
   await page
     .locator('.new-chat-modal__agent', { hasText: runtimeName })
-    .dispatchEvent('click');
+    .click();
   await page.getByRole('button', { name: 'Earlier' }).click();
   const selectedChat = page
     .getByRole('complementary', { name: 'Inbox chats' })
@@ -409,16 +449,6 @@ async function waitForExecutionThread(
     .toBeTruthy();
   return requests.find((request) => request.message === message)!
     .conversationId!;
-}
-
-async function dismissSetupLauncher(page: import('@playwright/test').Page) {
-  const continueBtn = page.getByRole('button', {
-    name: 'Continue Without Setup',
-  });
-  if (await continueBtn.isVisible().catch(() => false)) {
-    await continueBtn.click({ force: true });
-    await expect(continueBtn).not.toBeVisible({ timeout: 5_000 });
-  }
 }
 
 test.describe('Built-in runtime chat workflows', () => {
@@ -460,9 +490,7 @@ test.describe('Built-in runtime chat workflows', () => {
     ).toBeVisible({ timeout: 15_000 });
     await dismissSetupLauncher(page);
 
-    await page
-      .getByRole('button', { name: 'Conversation history' })
-      .click({ force: true });
+    await page.getByRole('button', { name: 'Conversation history' }).click();
     await expect(page.locator('.conversation-history')).toContainText(
       'Claude history',
     );
@@ -493,9 +521,7 @@ test.describe('Built-in runtime chat workflows', () => {
     ).toBeVisible({ timeout: 15_000 });
     await dismissSetupLauncher(page);
 
-    await page
-      .getByRole('button', { name: 'Conversation history' })
-      .click({ force: true });
+    await page.getByRole('button', { name: 'Conversation history' }).click();
     await expect(page.locator('.conversation-history')).toContainText(
       'Codex history',
     );
@@ -896,11 +922,14 @@ test.describe('Built-in runtime chat workflows', () => {
       name: '1 pending approval',
     });
     await expect(approvalQueue).toBeVisible({ timeout: 10_000 });
-    const allowOnce = page.getByRole('button', { name: 'Allow Once' });
+    const approvalPanel = page.getByTestId('approval-queue-panel');
+    const allowOnce = approvalPanel.getByRole('button', { name: 'Allow Once' });
     await expect(allowOnce).toBeHidden();
     await approvalQueue.click();
     await expect(allowOnce).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Deny' })).toBeVisible();
+    await expect(
+      approvalPanel.getByRole('button', { name: 'Deny' }),
+    ).toBeVisible();
 
     // Approving must dispatch a respondToRequest command with the accept
     // decision and the originating requestId, mirroring how the other tests

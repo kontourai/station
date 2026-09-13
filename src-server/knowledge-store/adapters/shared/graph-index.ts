@@ -6,7 +6,7 @@
 import type { KitLink } from '@kontourai/station-contracts/knowledge-store';
 import { KnowledgeStoreCorruptionError } from '../../errors.js';
 
-export const GRAPH_SCHEMA_VERSION = '1.0';
+const GRAPH_SCHEMA_VERSION = '1.0';
 
 export interface GraphIndex {
   schema_version: string;

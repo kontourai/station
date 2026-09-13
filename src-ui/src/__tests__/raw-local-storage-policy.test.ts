@@ -23,7 +23,6 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station.background-tasks.sections', // Ephemeral panel disclosure state.
   'station.banners.dismissed', // Per-occurrence banner dismissals, not a setting.
   'station.chatDock.snap', // Ephemeral dock geometry/snap state.
-  'station.coding.treeSnap', // Ephemeral coding-tree selection state.
   'station.dockFirstRunSeen', // One-time affordance marker.
   // archive#3122's `station.home.variant` used to sit here. It was written by
   // one deletable module and read by nothing else, exactly so that retiring
@@ -51,7 +50,6 @@ const ALLOWED_COMPUTED_KEY_FILES = new Set([
   'components/SplitPaneLayout.tsx', // Pane geometry is scoped by the caller-provided pane id.
   'components/split-pane-metrics.ts', // Shared pane restoration reads the same pane-id-scoped geometry key.
   'core/remotePluginBundleConsent.ts', // Consent is scoped by the normalized remote plugin origin.
-  'hooks/useSidePanelCollapse.ts', // Collapse state is scoped by project and layout slugs.
 ]);
 
 function productionFiles(directory: string): string[] {

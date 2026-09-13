@@ -3,11 +3,11 @@ import { lstat, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { createStationTempDir } from '@kontourai/station-shared/temp-dir';
+import { sleep } from '../../utils/sleep.js';
 import {
   createSystemOpenSshRunner,
   type OpenSshCommandRunner,
   type ResolvedOpenSshHost,
-  redactOpenSshArgs,
   requireOpenSshAlias,
   resolveOpenSshHost,
 } from './openssh-config.js';
@@ -48,7 +48,7 @@ export type OpenSshTunnelState =
       reason: 'remote-closed' | 'transport-error' | 'stopped';
     };
 
-export interface OpenSshTunnelOptions {
+interface OpenSshTunnelOptions {
   alias: string;
   remotePort: number;
   onStateChange?: (state: OpenSshTunnelState) => void;
@@ -257,12 +257,6 @@ function spawnSystemOpenSsh(args: readonly string[]): OpenSshProcess {
     windowsHide: true,
     shell: false,
   });
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolvePromise) =>
-    setTimeout(resolvePromise, milliseconds),
-  );
 }
 
 interface TunnelOperation {
@@ -585,7 +579,7 @@ export class OpenSshTunnel {
         // The control socket is not ready yet.
       }
       if (!this.isMasterRunning(operation)) break;
-      await delay(this.dependencies.pollIntervalMs);
+      await sleep(this.dependencies.pollIntervalMs);
     }
     if (!this.isActive(operation)) {
       await this.cleanupOperation(operation, true);
@@ -768,9 +762,5 @@ export class OpenSshEnvironmentAdapter {
     requireOpenSshAlias(options.alias);
     safeRemotePort(options.remotePort);
     return new OpenSshTunnel(options, this.dependencies);
-  }
-
-  describeCommand(args: readonly string[]): string[] {
-    return redactOpenSshArgs(args);
   }
 }

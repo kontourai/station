@@ -9,6 +9,10 @@ import {
 } from '../../contexts/DeviceSettingsContext';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { Toggle } from '../Toggle';
+import {
+  ReplayCaptureControls,
+  type ReplayCaptureSource,
+} from './ReplayCaptureControls';
 
 interface ChatSettingsPanelProps {
   isOpen: boolean;
@@ -36,6 +40,9 @@ interface ChatSettingsPanelProps {
     agentSlug: string;
     conversationId: string;
   };
+  /** Developer-tools entry: step the current conversation's events in-dock. */
+  onReplayConversation?: () => void;
+  replayCaptureSource?: ReplayCaptureSource;
 }
 
 export function ChatSettingsPanel({
@@ -51,12 +58,14 @@ export function ChatSettingsPanel({
   autoHideEnabled,
   setAutoHideEnabled,
   sessionSummary,
+  onReplayConversation,
+  replayCaptureSource,
 }: ChatSettingsPanelProps) {
   const reasoningId = useId();
   const toolsId = useId();
   const autoHideId = useId();
   const smoothRevealId = useId();
-  const { featureSettings } = useDeviceSettings();
+  const { featureSettings, developerToolsEnabled } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const dismissSummary = useDismissSessionSummaryMutation();
   const showSummary = useShowSessionSummaryMutation();
@@ -64,6 +73,7 @@ export function ChatSettingsPanel({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       overlayClassName="chat-settings-overlay"
       panelClassName="chat-settings-modal"
@@ -245,6 +255,30 @@ export function ChatSettingsPanel({
           </p>
         </fieldset>
       )}
+
+      {developerToolsEnabled && onReplayConversation ? (
+        <fieldset className="chat-settings-modal__section">
+          <legend className="chat-settings-modal__label">Event replay</legend>
+          <ReplayCaptureControls
+            source={replayCaptureSource}
+            onOpen={onClose}
+          />
+          <button
+            type="button"
+            className="chat-settings-modal__btn"
+            onClick={() => {
+              onReplayConversation();
+              onClose();
+            }}
+          >
+            Step through this conversation
+          </button>
+          <p className="chat-settings-modal__hint">
+            Opens a copy of this chat in the dock and plays its recorded events
+            one at a time. The live conversation is not changed.
+          </p>
+        </fieldset>
+      ) : null}
 
       <div className="chat-settings-modal__actions">
         <button

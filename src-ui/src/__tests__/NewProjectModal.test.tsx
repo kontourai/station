@@ -284,16 +284,26 @@ describe('NewProjectModal starter layout picker', () => {
       target: { value: '/tmp/repo/' },
     });
 
-    await waitFor(() =>
-      expect(
-        screen.getByText('Recommended for this Git directory'),
-      ).toBeTruthy(),
+    // Detection and selection settle in that order, one commit apart: the
+    // Recommended group renders as soon as the settled directory reports a
+    // repo, and the effect that SELECTS Coding runs after that commit. Waiting
+    // on the group and then reading `aria-pressed` synchronously read the
+    // pre-selection render whenever the host was busy enough to separate the
+    // two (#1603). The pressed state is the later signal, so it is the one to
+    // await; the group is still asserted, after it. Above the 1s default,
+    // because the hook's own 400ms settle has to elapse before discovery is
+    // even asked — that leaves ~600ms for the query, the render and the
+    // selection effect on a loaded host.
+    await waitFor(
+      () =>
+        expect(
+          screen
+            .getByRole('button', { name: /Coding/ })
+            .getAttribute('aria-pressed'),
+        ).toBe('true'),
+      { timeout: 3_000 },
     );
-    expect(
-      screen
-        .getByRole('button', { name: /Coding/ })
-        .getAttribute('aria-pressed'),
-    ).toBe('true');
+    expect(screen.getByText('Recommended for this Git directory')).toBeTruthy();
   });
 
   test('does not surface or create Coding when the distribution omits it', async () => {
@@ -779,15 +789,19 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
   });
 
   test('HIGH: a backdrop tap while browsing returns to the draft form instead of exiting the flow', () => {
-    const { container } = render(
-      <NewProjectModal isOpen onClose={onCloseMock} />,
-    );
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
     fireEvent.change(screen.getByPlaceholderText('My Project'), {
       target: { value: 'Draft Keeper' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
 
-    const overlay = container.querySelector('.responsive-surface-overlay')!;
+    // The browser step's OWN backdrop, reached through its panel rather than
+    // as the document's first overlay: this flow renders one surface today and
+    // the first-match form would silently tap the wrong one if a second were
+    // ever stacked.
+    const overlay = screen
+      .getByRole('dialog', { name: /Browse installed layouts/ })
+      .closest('.responsive-surface-overlay')!;
     fireEvent.pointerDown(overlay);
 
     expect(onCloseMock).not.toHaveBeenCalled();
@@ -847,9 +861,9 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
 
     onCloseMock.mockReset();
     const second = render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    const overlay = second.container.querySelector(
-      '.responsive-surface-overlay',
-    )!;
+    const overlay = screen
+      .getByRole('dialog', { name: 'New Project' })
+      .closest('.responsive-surface-overlay')!;
     fireEvent.pointerDown(overlay);
     expect(onCloseMock).toHaveBeenCalledTimes(1);
     second.unmount();

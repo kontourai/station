@@ -43,6 +43,8 @@ export interface StationProfile {
   name: string;
   /** Normalized HTTP(S) origin; API paths and bearer material are excluded. */
   endpoint: string;
+  /** Device-approved development exception, bound to this exact HTTP origin. */
+  developmentHttpOrigin?: string;
   credentialRef?: StationProfileCredentialRef;
   /** Optional server-owned Environment identity learned during pairing. */
   environmentId?: string;
@@ -120,6 +122,7 @@ export function isStationProfile(value: unknown): value is StationProfile {
     'createdAt',
     'updatedAt',
     'clientInstanceId',
+    'developmentHttpOrigin',
   ]);
   if (Object.keys(value).some((key) => !allowed.has(key))) return false;
   const credentialRef = value.credentialRef;
@@ -129,6 +132,10 @@ export function isStationProfile(value: unknown): value is StationProfile {
     value.name.length > 0 &&
     typeof value.endpoint === 'string' &&
     value.endpoint.length > 0 &&
+    (value.developmentHttpOrigin === undefined ||
+      (typeof value.developmentHttpOrigin === 'string' &&
+        value.developmentHttpOrigin === value.endpoint &&
+        value.developmentHttpOrigin.startsWith('http://'))) &&
     (credentialRef === undefined ||
       (isRecord(credentialRef) &&
         Object.keys(credentialRef).every(

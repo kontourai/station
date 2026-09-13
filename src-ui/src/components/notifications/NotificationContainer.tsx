@@ -12,7 +12,7 @@ import {
   useState,
 } from 'react';
 import { useAllActiveChats } from '../../contexts/ActiveChatsContext';
-import { useNavigation } from '../../contexts/NavigationContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useNotificationHistory, useToast } from '../../contexts/ToastContext';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import './NotificationContainer.css';
@@ -255,7 +255,7 @@ export function NotificationContainer() {
   const history = useNotificationHistory();
   const { dismissToast } = useToast();
   const activeChats = useAllActiveChats();
-  const { navigate } = useNavigation();
+  const { navigate } = useNavigationActions();
   const approvalQueueRef = useRef<HTMLDivElement>(null);
   const approvalQueueTriggerRef = useRef<HTMLButtonElement>(null);
   const [approvalQueueOpen, setApprovalQueueOpen] = useState(false);

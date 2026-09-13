@@ -20,7 +20,7 @@ export function withClientOrigin<T extends { clientOrigin?: ClientOrigin }>(
  * (still the common case for `clientOrigin` alone) is not forced to reason
  * about the other.
  */
-export function withPrincipal<T extends { principal?: PrincipalRef }>(
+function withPrincipal<T extends { principal?: PrincipalRef }>(
   record: T,
   principal: PrincipalRef | undefined,
 ): T {
@@ -30,7 +30,7 @@ export function withPrincipal<T extends { principal?: PrincipalRef }>(
 }
 
 /** What a turn-start reserves for its eventual `turn.started` event. */
-export interface TurnAttribution {
+interface TurnAttribution {
   clientOrigin?: ClientOrigin;
   principal?: PrincipalRef;
 }

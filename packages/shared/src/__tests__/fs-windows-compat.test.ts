@@ -1,8 +1,18 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
-import { fsyncDirectorySync, rmDirSyncRetrying } from '../fs-windows-compat.js';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  fsyncDirectorySync,
+  renameFileSyncRetrying,
+  rmDirSyncRetrying,
+} from '../fs-windows-compat.js';
 
 describe('fsyncDirectorySync', () => {
   let dir: string;
@@ -52,4 +62,21 @@ describe('rmDirSyncRetrying', () => {
     rmDirSyncRetrying(dir);
     expect(() => rmDirSyncRetrying(dir)).not.toThrow();
   });
+});
+
+test('rename retry never hides an absent source or removes the existing destination', () => {
+  const root = mkdtempSync(join(tmpdir(), 'station-rename-fault-'));
+  const destination = join(root, 'target.json');
+  writeFileSync(destination, 'original');
+  const waiting = vi.spyOn(Atomics, 'wait');
+  try {
+    expect(() =>
+      renameFileSyncRetrying(join(root, 'absent'), destination, 'win32'),
+    ).toThrow(/ENOENT/);
+    expect(waiting).not.toHaveBeenCalled();
+    expect(readFileSync(destination, 'utf8')).toBe('original');
+  } finally {
+    waiting.mockRestore();
+    rmDirSyncRetrying(root);
+  }
 });

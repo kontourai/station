@@ -23,6 +23,7 @@ import {
   schedulerConcurrencyDeferrals,
   schedulerHealthy,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import { schedulerJobCorrelationBindings } from '../../utils/logger-correlation.js';
 import { SSEBroadcaster } from '../infra/sse-broadcaster.js';
@@ -685,7 +686,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
         );
       } else {
         this.options.logger?.warn('Scheduler storage unavailable during tick', {
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
       return;
@@ -695,7 +696,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
       void this.executeJob(receipt).catch((error) =>
         this.observe(() =>
           this.options.logger?.warn('Scheduler execution lifecycle failed', {
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           }),
         ),
       );
@@ -792,7 +793,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
       }
     } catch (error) {
       this.options.logger?.warn('Monitor terminal reconciliation failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     } finally {
       this.reconcilingMonitorTerminals = false;

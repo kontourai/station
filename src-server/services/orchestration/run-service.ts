@@ -38,7 +38,7 @@ export class PluginForegroundRunStorageUnavailableError extends Error {
   }
 }
 
-export interface RunListFilters {
+interface RunListFilters {
   source?: RunSource;
   providerId?: string;
   sourceId?: string;

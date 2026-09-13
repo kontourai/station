@@ -6,6 +6,9 @@ import {
 import { resolveE2EApiBase } from './helpers/e2e-target';
 
 const API = resolveE2EApiBase();
+// Inventory, CSS, and JavaScript each have an 8s owner deadline.
+// A 5s locator assertion can delete the plugin while that valid load is pending.
+const LAYOUT_READY_TIMEOUT_MS = 30_000;
 
 async function openBundledPluginInRegistry(
   page: import('@playwright/test').Page,
@@ -18,7 +21,7 @@ async function openBundledPluginInRegistry(
   if (await decideLater.isVisible().catch(() => false)) {
     await decideLater.click();
   }
-  await page.getByRole('button', { name: 'Plugins', exact: true }).click();
+  await page.getByRole('tab', { name: 'Plugins', exact: true }).click();
   await page
     .getByRole('button', { name: 'View Minimal Layout details' })
     .click();
@@ -65,9 +68,9 @@ test.describe('Bundled plugin registry lifecycle', () => {
   // Body worst case: two 60s install waits (install + reinstall) plus one
   // 60s removal response = 180s. Baseline DELETE (30s) runs before the body;
   // final cleanup runs two 30s DELETEs concurrently (Promise.all) = 30s
-  // ceiling. Total bounded: 180 + 30 + 30 = 240s. 300s gives 60s headroom so
-  // the enclosing timeout never interrupts primary-error-preserving cleanup.
-  test.describe.configure({ timeout: 300_000 });
+  // ceiling. Two layout readiness waits add 60s: 180 + 30 + 30 + 60 = 300s.
+  // The 360s outer budget leaves 60s for ordinary UI interactions and cleanup.
+  test.describe.configure({ timeout: 360_000 });
 
   test('request-only authentication reaches operator routes without changing the ordinary request context', async ({
     authenticatedRequest,
@@ -111,6 +114,10 @@ test.describe('Bundled plugin registry lifecycle', () => {
       await detail
         .getByRole('button', { name: 'Install', exact: true })
         .click();
+      await page
+        .getByRole('dialog', { name: 'Install Preview' })
+        .getByRole('button', { name: 'Confirm Install', exact: true })
+        .click();
       await expect(page.getByText('Installed Minimal Layout')).toBeVisible({
         timeout: 60_000,
       });
@@ -118,7 +125,7 @@ test.describe('Bundled plugin registry lifecycle', () => {
       // A reload must project the persisted registry alias as installed, not
       // merely preserve optimistic client mutation state.
       await page.reload();
-      await page.getByRole('button', { name: 'Plugins', exact: true }).click();
+      await page.getByRole('tab', { name: 'Plugins', exact: true }).click();
       await expect(
         page.getByRole('article').filter({ hasText: 'Minimal Layout' }).first(),
       ).toContainText('Installed');
@@ -134,7 +141,9 @@ test.describe('Bundled plugin registry lifecycle', () => {
       expect(project.ok()).toBe(true);
 
       await page.goto(`/projects/${slug}`);
-      await page.getByRole('button', { name: '+ Add', exact: true }).click();
+      await page
+        .getByRole('button', { name: '+ Add layout', exact: true })
+        .click();
       const picker = page.getByRole('dialog', { name: 'Add Layout' });
       const minimalLayout = picker
         .getByRole('button', { name: /Minimal.*Plugin: minimal-layout/ })
@@ -147,7 +156,9 @@ test.describe('Bundled plugin registry lifecycle', () => {
       });
       await expect(minimalSidebarTab).toBeVisible();
       await minimalSidebarTab.click();
-      await expect(page.getByText('Minimal plugin starter')).toBeVisible();
+      await expect(page.getByText('Minimal plugin starter')).toBeVisible({
+        timeout: LAYOUT_READY_TIMEOUT_MS,
+      });
 
       await page.setViewportSize({ width: 390, height: 844 });
       await assertNoHorizontalOverflow(page);
@@ -186,12 +197,18 @@ test.describe('Bundled plugin registry lifecycle', () => {
       await reinstallDetail
         .getByRole('button', { name: 'Install', exact: true })
         .click();
+      await page
+        .getByRole('dialog', { name: 'Install Preview' })
+        .getByRole('button', { name: 'Confirm Install', exact: true })
+        .click();
       await expect(page.getByText('Installed Minimal Layout')).toBeVisible({
         timeout: 60_000,
       });
 
       await page.goto(`/projects/${slug}/layouts/minimal`);
-      await expect(page.getByText('Minimal plugin starter')).toBeVisible();
+      await expect(page.getByText('Minimal plugin starter')).toBeVisible({
+        timeout: LAYOUT_READY_TIMEOUT_MS,
+      });
       await assertNoHorizontalOverflow(page);
     } catch (error) {
       testError = error;

@@ -1,11 +1,11 @@
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
-import { publicAgentIdFromRuntimeKey } from '../../routes/agents/runtime-agent-identity.js';
+import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
 import type { ConversationHistoryCursor, EventStore } from './event-store.js';
 import { buildOrchestrationSessionSummary } from './orchestration-session-state.js';
 
-export const CONVERSATION_HISTORY_PAGE_MAX = 100;
+const CONVERSATION_HISTORY_PAGE_MAX = 100;
 
 export interface ConversationHistoryPage {
   items: ConversationListItem[];
@@ -13,7 +13,7 @@ export interface ConversationHistoryPage {
   nextCursor?: string;
 }
 
-export interface ConversationHistoryRecordPage {
+interface ConversationHistoryRecordPage {
   records: ReturnType<EventStore['listConversationHistoryPage']>['records'];
   hasMore: boolean;
   nextCursor?: string;

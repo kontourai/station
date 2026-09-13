@@ -9,6 +9,7 @@ import { FirstRunHomeChapter } from '../components/first-run/FirstRunHomeChapter
 import { StarterInspectionCards } from '../components/home/StarterInspectionCards';
 import { StarterScheduledCheckCard } from '../components/home/StarterScheduledCheckCard';
 import { StarterWorkCard } from '../components/home/StarterWorkCard';
+import { PageCalloutStack } from '../components/PageCallout';
 import { ErrorState, SkeletonList } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
 import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
@@ -140,21 +141,26 @@ export function HomeView({
           with. It renders nothing at all unless this home's durable
           `firstRun` fact says it is on the table. Route chrome, not a Home
           renderer: it stays above BOTH the built-in and a granted Home. */}
-      <FirstRunHomeChapter />
-      {/* Starter Work is a post-onboarding offer.  It reads the same durable
-          first-run decision as the chapter; a cached/default browser flag
-          cannot make a real Task offer appear before setup is complete. */}
-      {config?.firstRun?.status === 'completed' && (
-        <>
-          <StarterWorkCard />
-          {developerToolsEnabled && (
-            <>
-              <StarterInspectionCards />
-              <StarterScheduledCheckCard />
-            </>
-          )}
-        </>
-      )}
+      {/* Home's page callouts, in one stack so they share one rhythm and one
+          identity check (#1582 C4). The chapter's DIALOG is not a callout —
+          it renders from the same component, above this stack's flow, and is
+          unaffected by it. */}
+      <PageCalloutStack>
+        <FirstRunHomeChapter />
+        {/* Starter Work is a post-onboarding offer.  It reads the same durable
+            first-run decision as the chapter; a cached/default browser flag
+            cannot make a real Task offer appear before setup is complete. */}
+        {config?.firstRun?.status === 'completed' ? <StarterWorkCard /> : null}
+        {/* The developer starters are the same family — same offer shape, same
+            primitive — so they share the stack's rhythm rather than each
+            carrying spacing of their own. */}
+        {config?.firstRun?.status === 'completed' && developerToolsEnabled ? (
+          <>
+            <StarterInspectionCards />
+            <StarterScheduledCheckCard />
+          </>
+        ) : null}
+      </PageCalloutStack>
       {status?.state === 'granted' ? (
         <Suspense fallback={<SkeletonList count={1} label="Loading Home" />}>
           <HomeRolePane

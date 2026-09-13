@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { readdirSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { relative, resolve, sep } from 'node:path';
 import { loadAll } from 'js-yaml';
 
 const DEFAULT_REPO_ROOT = resolve(import.meta.dirname, '..');
@@ -14,6 +14,52 @@ const LANE_ROOTS = Object.freeze([
 const CLASSIFICATIONS = new Set(['enforced', 'candidate', 'advisory']);
 const NPM_RUN_PATTERN = /\bnpm\s+run\s+([A-Za-z0-9][A-Za-z0-9:._-]*)/g;
 const EXACT_NPM_RUN_PATTERN = /^npm\s+run\s+([A-Za-z0-9][A-Za-z0-9:._-]*)$/;
+// The npm-run graph and the workflow run blocks are not the only things that
+// execute a check. A Vitest file that spawns scripts/<name>.mjs and asserts
+// its exit status runs it inside the corpus -- for PROCESS_HEAVY files, under
+// full:regression, the nightly and release gate. That execution was invisible
+// here, so `advisory` could carry the note "no Station lane consumes its exit
+// status" for a check the nightly corpus does consume (#1746).
+const TEST_CORPUS_ROOTS = Object.freeze([
+  'scripts/__tests__',
+  'src-server',
+  'src-ui',
+  'src-desktop',
+  'packages',
+  'tests',
+]);
+const CORPUS_SKIPPED_DIRECTORIES = new Set([
+  '.git',
+  'coverage',
+  'dist',
+  'node_modules',
+  'target',
+]);
+const CORPUS_TEST_FILE_PATTERN = /\.test\.[cm]?[jt]sx?$/;
+// A path mentioned in prose is not an execution. Requiring a spawn form in
+// the same file is what separates "this test runs the script" from "this test
+// names the script"; both shapes exist in the real corpus today.
+//
+// The signal is deliberately file-level co-occurrence, not an argv match. A
+// stricter rule would miss the case this gate exists for:
+// proof-repo-guardrails-fail-closed.test.ts reads the real script's source,
+// writes a copy (unmutated for its positive control) into a temporary
+// directory, and spawns THAT -- so no spawn argument ever holds the
+// repository path. File-level co-occurrence is therefore evidence the corpus
+// reaches the check, not proof of a direct invocation, and the messages below
+// say exactly what was observed.
+const SPAWN_FORM_PATTERN =
+  /\bspawnSync\b|\bexecFileSync\b|\bexecFile\(|\bspawn\(/;
+const SCRIPT_FILE_PATTERN = /scripts\/[A-Za-z0-9][A-Za-z0-9._-]*\.mjs/g;
+const CORPUS_EXECUTION_KEY = '_corpusExecution';
+const MAPPING_METADATA_KEYS = new Set(['_note', CORPUS_EXECUTION_KEY]);
+// An acknowledgement names the file that runs the check. A bare "yes" was
+// earned by ANY spawning file that happened to co-name the script -- two
+// unrelated test files did in this repository -- so deleting the real
+// executor left the acknowledgement green, which is the same underived label
+// the acknowledgement exists to remove.
+const RESOURCE_MANIFEST_PATH = 'scripts/vitest-resource-manifest.mjs';
+const TEST_FILE_PATTERN = /^[A-Za-z0-9._\-/]+\.test\.[cm]?[jt]sx?$/;
 
 function parseArguments(argv) {
   if (argv.length === 0) return DEFAULT_REPO_ROOT;
@@ -128,6 +174,100 @@ function executeCandidate(repoRoot, scriptName) {
   });
 }
 
+function repoRelativePath(repoRoot, path) {
+  return relative(repoRoot, path).split(sep).join('/');
+}
+
+function collectCorpusTestFiles(repoRoot) {
+  const files = [];
+  // A symlinked directory reports isDirectory() false through withFileTypes,
+  // so the walk cannot follow one out of the repository or into a cycle.
+  const pending = TEST_CORPUS_ROOTS.map((root) => resolve(repoRoot, root));
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    let entries;
+    try {
+      entries = readdirSync(directory, { withFileTypes: true });
+    } catch {
+      // A root a repository does not have is not a corpus, and not an error:
+      // the gate runs against fixture roots that carry only what they test.
+      continue;
+    }
+    for (const entry of entries) {
+      const path = resolve(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (!CORPUS_SKIPPED_DIRECTORIES.has(entry.name)) pending.push(path);
+      } else if (entry.isFile() && CORPUS_TEST_FILE_PATTERN.test(entry.name)) {
+        files.push(path);
+      }
+    }
+  }
+  return files.sort();
+}
+
+/**
+ * Map every `scripts/<name>.mjs` path a corpus test spawns to the test files
+ * that spawn it. Read failures are recorded, never swallowed: a corpus this
+ * gate could not read is not a corpus that runs nothing.
+ */
+function corpusExecutionIndex(repoRoot, errors) {
+  const index = new Map();
+  for (const file of collectCorpusTestFiles(repoRoot)) {
+    let contents;
+    try {
+      contents = readFileSync(file, 'utf8');
+    } catch (error) {
+      errors.push(
+        `test corpus file "${repoRelativePath(repoRoot, file)}" must be readable: ${error.message}`,
+      );
+      continue;
+    }
+    if (!SPAWN_FORM_PATTERN.test(contents)) continue;
+    for (const match of contents.matchAll(SCRIPT_FILE_PATTERN)) {
+      const existing = index.get(match[0]);
+      const testPath = repoRelativePath(repoRoot, file);
+      if (existing) existing.add(testPath);
+      else index.set(match[0], new Set([testPath]));
+    }
+  }
+  return index;
+}
+
+/** Every `scripts/<name>.mjs` file an npm script reaches, npm run children included. */
+function resolveScriptFiles(scripts, scriptName) {
+  const files = new Set();
+  const seen = new Set();
+  const pending = [scriptName];
+  while (pending.length > 0) {
+    const name = pending.pop();
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const command = scripts[name];
+    if (typeof command !== 'string') continue;
+    for (const match of command.matchAll(SCRIPT_FILE_PATTERN))
+      files.add(match[0]);
+    for (const child of extractNpmScripts(command)) pending.push(child);
+  }
+  return [...files].sort();
+}
+
+function readResourceManifest(repoRoot) {
+  try {
+    return readFileSync(resolve(repoRoot, RESOURCE_MANIFEST_PATH), 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+function corpusExecutors(scripts, scriptName, corpusIndex) {
+  const executors = [];
+  for (const file of resolveScriptFiles(scripts, scriptName)) {
+    for (const test of [...(corpusIndex.get(file) ?? [])].sort())
+      executors.push({ file, test });
+  }
+  return executors;
+}
+
 function evidenceScriptName(check, errors) {
   const match =
     typeof check.command === 'string'
@@ -195,7 +335,7 @@ function validate(repoRoot) {
     errors.push('execution mapping _note must be a non-empty string');
   }
   const mappingEntries = Object.entries(mapping).filter(
-    ([id]) => id !== '_note',
+    ([id]) => !MAPPING_METADATA_KEYS.has(id),
   );
   const mappingIds = new Set(mappingEntries.map(([id]) => id));
   for (const id of checksById.keys()) {
@@ -210,11 +350,42 @@ function validate(repoRoot) {
       errors.push(`execution mapping has unknown evidence-check id "${id}"`);
     }
   }
+  const acknowledgements = mapping[CORPUS_EXECUTION_KEY];
+  const acknowledgedExecutors = new Map();
+  if (acknowledgements !== undefined) {
+    if (
+      !acknowledgements ||
+      typeof acknowledgements !== 'object' ||
+      Array.isArray(acknowledgements)
+    ) {
+      errors.push(
+        `execution mapping ${CORPUS_EXECUTION_KEY} must be an object of evidence-check id to the test file that runs it`,
+      );
+    } else {
+      for (const [id, value] of Object.entries(acknowledgements)) {
+        if (!checksById.has(id)) {
+          errors.push(
+            `execution mapping ${CORPUS_EXECUTION_KEY} has unknown evidence-check id "${id}"`,
+          );
+          continue;
+        }
+        if (typeof value !== 'string' || !TEST_FILE_PATTERN.test(value)) {
+          errors.push(
+            `execution mapping ${CORPUS_EXECUTION_KEY}."${id}" must name the repository-relative test file that runs the check, not ${JSON.stringify(value)}`,
+          );
+          continue;
+        }
+        acknowledgedExecutors.set(id, value);
+      }
+    }
+  }
   if (errors.length > 0) return errors;
 
   const laneReachable = expandLaneRoots(scripts, errors);
   const workflowReachable = workflowReachability(repoRoot, errors);
   const reachable = new Set([...laneReachable, ...workflowReachable]);
+  const corpusIndex = corpusExecutionIndex(repoRoot, errors);
+  const resourceManifest = readResourceManifest(repoRoot);
 
   for (const [id, classification] of mappingEntries) {
     if (!CLASSIFICATIONS.has(classification)) {
@@ -256,6 +427,62 @@ function validate(repoRoot) {
     if (classification === 'advisory' && isReachable) {
       errors.push(
         `evidence check "${id}" is advisory but "npm run ${scriptName}" is reachable; expected it to be unreachable from every lane root and workflow run block`,
+      );
+    }
+    // An advisory check the Vitest corpus spawns is executed, whatever the
+    // npm-run graph says. The scan is the DETECTOR of an unacknowledged
+    // executor; the acknowledgement itself names one file and is checked
+    // against that file, so deleting the real executor fails even while other
+    // files still co-name the script.
+    const executors = corpusExecutors(scripts, scriptName, corpusIndex);
+    const acknowledgedExecutor = acknowledgedExecutors.get(id);
+    if (
+      classification === 'advisory' &&
+      executors.length > 0 &&
+      acknowledgedExecutor === undefined
+    ) {
+      errors.push(
+        `evidence check "${id}" is advisory but the Vitest corpus reaches it: ${executors
+          .map(
+            ({ file, test }) =>
+              `${test} names ${file} and spawns a child process`,
+          )
+          .join(
+            '; ',
+          )}; reclassify it, or record "${id}": "<the test file that runs it>" under ${CORPUS_EXECUTION_KEY} and say so in _note`,
+      );
+    }
+    if (acknowledgedExecutor === undefined) continue;
+    if (classification !== 'advisory') {
+      errors.push(
+        `evidence check "${id}" is ${classification} but ${CORPUS_EXECUTION_KEY} acknowledges it; the acknowledgement only qualifies an advisory classification`,
+      );
+      continue;
+    }
+    if (!existsSync(resolve(repoRoot, acknowledgedExecutor))) {
+      errors.push(
+        `evidence check "${id}" names ${acknowledgedExecutor} as its corpus executor, but that file does not exist`,
+      );
+      continue;
+    }
+    if (!executors.some(({ test }) => test === acknowledgedExecutor)) {
+      errors.push(
+        `evidence check "${id}" names ${acknowledgedExecutor} as its corpus executor, but that file does not name a script "npm run ${scriptName}" runs while spawning a child process`,
+      );
+      continue;
+    }
+    // The _note tells a reader which lane runs the check. A file no resource
+    // group claims is not a classified child-process test, so the lane claim
+    // would be prose nothing computes.
+    if (resourceManifest === undefined) {
+      errors.push(
+        `evidence check "${id}" is acknowledged as corpus-executed but ${RESOURCE_MANIFEST_PATH} could not be read to confirm ${acknowledgedExecutor} is a classified child-process test`,
+      );
+      continue;
+    }
+    if (!resourceManifest.includes(`'${acknowledgedExecutor}'`)) {
+      errors.push(
+        `evidence check "${id}" names ${acknowledgedExecutor} as its corpus executor, but ${RESOURCE_MANIFEST_PATH} does not classify it as a child-process test`,
       );
     }
   }

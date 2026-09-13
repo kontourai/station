@@ -35,7 +35,10 @@ describe('settings catalog search', () => {
   });
 
   test('projects stable settings commands from the catalog without DOM text', () => {
-    const desktop = settingsPaletteCommands({ isMobile: false });
+    const desktop = settingsPaletteCommands({
+      isMobile: false,
+      isDesktop: false,
+    });
     expect(desktop).toHaveLength(SETTINGS_CATALOG.length);
     expect(desktop.find((command) => command.id === 'settings:theme')).toEqual(
       expect.objectContaining({ view: 'appearance', highlight: 'theme' }),
@@ -44,30 +47,49 @@ describe('settings catalog search', () => {
       desktop.find((command) => command.id === 'settings:haptic-feedback'),
     ).toEqual(expect.objectContaining({ unavailable: true }));
     expect(
-      settingsPaletteCommands({ isMobile: true }).find(
+      settingsPaletteCommands({ isMobile: true, isDesktop: false }).find(
         (command) => command.id === 'settings:haptic-feedback',
+      )?.unavailable,
+    ).toBeUndefined();
+  });
+
+  test('projects the desktop-only update row with its honest unavailability', () => {
+    const unavailable = settingsPaletteCommands({
+      isMobile: false,
+      isDesktop: false,
+    }).find((command) => command.id === 'settings:desktop-app-updates');
+    expect(unavailable).toEqual(
+      expect.objectContaining({
+        unavailable: true,
+        unavailableReason: 'desktop',
+      }),
+    );
+    expect(
+      settingsPaletteCommands({ isMobile: false, isDesktop: true }).find(
+        (command) => command.id === 'settings:desktop-app-updates',
       )?.unavailable,
     ).toBeUndefined();
   });
 
   test('keeps export and import authority truthful across Station and device data', () => {
     expect(
-      settingsPaletteCommands({ isMobile: false }).find(
+      settingsPaletteCommands({ isMobile: false, isDesktop: false }).find(
         (command) => command.id === 'settings:backup-restore',
       ),
     ).toEqual(expect.objectContaining({ scope: 'mixed' }));
   });
 
   test('retains English title search terms when palette labels are pseudo-localized', () => {
-    const commands = settingsPaletteCommands({ isMobile: false }).map(
-      (command) => ({
-        ...command,
-        label: pseudoLocalize(command.label),
-        group: 'Settings',
-        keywords: [...command.keywords],
-        run: () => undefined,
-      }),
-    );
+    const commands = settingsPaletteCommands({
+      isMobile: false,
+      isDesktop: false,
+    }).map((command) => ({
+      ...command,
+      label: pseudoLocalize(command.label),
+      group: 'Settings',
+      keywords: [...command.keywords],
+      run: () => undefined,
+    }));
     for (const entry of SETTINGS_CATALOG) {
       expect(rankCommands(entry.title, commands).map(({ id }) => id)).toContain(
         `settings:${entry.id}`,
@@ -76,7 +98,10 @@ describe('settings catalog search', () => {
   });
 
   test('marks read-only and session-only targets with explicit authority', () => {
-    const commands = settingsPaletteCommands({ isMobile: false });
+    const commands = settingsPaletteCommands({
+      isMobile: false,
+      isDesktop: false,
+    });
     expect(
       commands.find((command) => command.id === 'settings:deployed-build'),
     ).toEqual(expect.objectContaining({ scope: 'informational' }));

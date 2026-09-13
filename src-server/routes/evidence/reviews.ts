@@ -6,7 +6,7 @@ import type { TenantExecutionContext } from '@kontourai/station-contracts/tenanc
 import { type Context, Hono } from 'hono';
 import type { ReviewEvidenceModule } from '../../services/evidence/review-evidence-module.js';
 
-export interface ReviewEvidenceRouteDeps {
+interface ReviewEvidenceRouteDeps {
   getUserId(): string;
   getTenantExecutionContext(): TenantExecutionContext | undefined;
   reportError(operation: string, error: unknown): void;

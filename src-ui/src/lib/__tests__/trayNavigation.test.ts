@@ -5,7 +5,7 @@ import {
 } from '../trayNavigation';
 
 describe('trayNavigationTarget', () => {
-  it('maps only the two fixed native tray destinations', () => {
+  it('maps only the fixed native tray destinations', () => {
     expect(trayNavigationTarget('connections')).toEqual({
       pathname: '/connections',
     });
@@ -13,12 +13,36 @@ describe('trayNavigationTarget', () => {
       pathname: '/settings',
       params: { view: 'system', highlight: 'core-app-updates' },
     });
+    expect(trayNavigationTarget('desktopUpdates')).toEqual({
+      pathname: '/settings',
+      params: { view: 'system', highlight: 'desktop-app-updates' },
+    });
+    expect(trayNavigationTarget('serverUpdates')).toEqual({
+      pathname: '/settings',
+      params: { view: 'system', highlight: 'core-app-updates' },
+    });
+  });
+
+  it('keeps the desktop destination distinct from every server destination', () => {
+    const desktop = trayNavigationTarget('desktopUpdates');
+    const server = trayNavigationTarget('serverUpdates');
+    const legacy = trayNavigationTarget('coreUpdates');
+    expect(desktop).not.toEqual(server);
+    expect(desktop).not.toEqual(legacy);
+    // The pre-split alias keeps resolving to the same server card, so an
+    // older native host cannot strand its replay.
+    expect(server).toEqual(legacy);
   });
 
   it('routes all closed destinations and disposes the exact native subscription', async () => {
     let listener:
       | ((event: {
-          destination: 'connections' | 'pairedDevices' | 'coreUpdates';
+          destination:
+            | 'connections'
+            | 'pairedDevices'
+            | 'coreUpdates'
+            | 'desktopUpdates'
+            | 'serverUpdates';
         }) => void)
       | undefined;
     const dispose = vi.fn();
@@ -35,11 +59,17 @@ describe('trayNavigationTarget', () => {
     await Promise.resolve();
     listener?.({ destination: 'connections' });
     listener?.({ destination: 'coreUpdates' });
+    listener?.({ destination: 'desktopUpdates' });
+    listener?.({ destination: 'serverUpdates' });
     listener?.({ destination: 'pairedDevices' });
     expect(navigate).toHaveBeenCalledWith('/connections', undefined);
     expect(navigate).toHaveBeenCalledWith('/settings', {
       view: 'system',
       highlight: 'core-app-updates',
+    });
+    expect(navigate).toHaveBeenCalledWith('/settings', {
+      view: 'system',
+      highlight: 'desktop-app-updates',
     });
     expect(paired).toHaveBeenCalledOnce();
     stop();
@@ -71,7 +101,9 @@ describe('trayNavigationTarget', () => {
     for (const payload of [
       '/connections',
       'connections?next=https://example.com',
+      'desktopUpdates?next=https://example.com',
       { path: '/settings' },
+      { destination: 'desktopUpdates' },
       null,
     ]) {
       expect(trayNavigationTarget(payload)).toBeNull();

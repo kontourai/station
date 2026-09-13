@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { homedir } from 'node:os';
 import nodePath from 'node:path';
 import {
   deleteSession,
@@ -23,6 +24,7 @@ import {
 import type {
   CapabilityDeliveryChannelReport,
   CapabilityUndelivered,
+  ProviderSessionSourceAffinity,
   ResolvedAgentDefinition,
 } from '@kontourai/station-contracts/provider';
 import {
@@ -55,14 +57,17 @@ import {
   childProcessEnvironment,
   scrubBootInternalSecrets,
 } from '../../utils/child-process-environment.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type {
   ProviderAdapterShape,
   ProviderAdoptionHooks,
   ProviderDiscardSessionRecovery,
+  ProviderNativeSessionIdentity,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
   ProviderSessionStartInput,
+  ProviderTaskStopResult,
   ProviderTurnStartResult,
 } from '../adapter-shape.js';
 import { ProviderTurnEndedError } from '../adapter-shape.js';
@@ -79,6 +84,8 @@ import {
   decodeChatAttachments,
   decodeUtf8Attachment,
 } from '../sessions/chat-attachments.js';
+import { snapshotSessionSourceAffinity } from '../sessions/session-source-affinity.js';
+import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
 import {
   type ClaudeMessageState,
@@ -99,6 +106,10 @@ import {
   resolveClaudeMcpServers,
 } from './claude-mcp-passthrough.js';
 import { CLAUDE_DEFAULT_MODEL, CLAUDE_KNOWN_MODELS } from './claude-models.js';
+import {
+  claudeResumeSessionId,
+  claudeSourceResumeCursor,
+} from './claude-resume-cursor.js';
 import {
   cleanupMaterializedSkills,
   defaultClaudeGlobalConfigDirs,
@@ -527,11 +538,19 @@ type ClaudeSessionRecord = {
   interruptingTurnId?: string;
   /** Mirrors `ClaudeMessageState.interruptedResultObserved`. */
   interruptedResultObserved?: boolean;
+  /**
+   * Mirrors `ClaudeMessageState.activeTasks`; same object at runtime. Only
+   * membership is read here (`stopProviderTask`), so the value stays opaque
+   * rather than importing the events module's own task shape.
+   */
+  activeTasks?: Map<string, unknown>;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** Tracks the live SDK permission mode so sendTurn only calls
-   * `setPermissionMode` when the resolved approvalMode actually changes. */
-  currentPermissionMode: PermissionMode;
+   * `setPermissionMode` when the resolved approvalMode actually changes.
+   * `undefined` until Station sent a mode or the engine's `system/init`
+   * reported one (station#1950: omit-the-knob inherits Claude settings). */
+  currentPermissionMode?: PermissionMode;
   /**
    * Whether this live process was spawned with
    * `allowDangerouslySkipPermissions: true` — the SDK requires that flag be
@@ -562,7 +581,8 @@ type ClaudeSessionRecord = {
    * (`claude-adapter-events.ts`) — same object at runtime, declared here too
    * so `consumeMessages`' catch can read it. See that field's docblock.
    */
-  terminalResultObserved?: boolean;
+  terminalResultObserved?: 'failed' | 'binding-dead';
+  attemptedResumeCursor?: string;
 };
 
 function adoptionTitle(threadId: string): string {
@@ -573,6 +593,9 @@ function adoptionTitle(threadId: string): string {
 type ClaudeAdapterLogger = any;
 
 export interface ClaudeAdapterOptions {
+  resolveSourceHome?: (
+    affinity: ProviderSessionSourceAffinity,
+  ) => string | null;
   /**
    * #1551: resolves the absolute path of the installed `claude` executable,
    * or `null` when none is on PATH. Injected so both the spawn assertions and
@@ -665,6 +688,27 @@ export interface ClaudeAdapterOptions {
   ) => Promise<StagedPreToolPolicyEvaluator | undefined>;
   /** Testable bound for the in-process PreToolUse callback. */
   preToolPolicyTimeoutMs?: number;
+  /**
+   * The two filesystem leaves `stopSession` calls to clean up this session's
+   * materialized skills, injected so a test can observe WHETHER they ran.
+   * That decision is the whole of station#1573 (#1569 M1) — both are keyed by
+   * threadId, so running them for a thread that has been retaken deletes the
+   * LIVE session's files — and it is not observable any other way without a
+   * real skills materialization, which the adapter test harness cannot set
+   * up. Same reason `findBinary` is injected: a branch that can only be
+   * reached on a particular host is a branch nothing checks.
+   */
+  skillsCleanup?: {
+    cleanupMaterializedSkills: typeof cleanupMaterializedSkills;
+    removeSkillOverlayDir: typeof removeSkillOverlayDir;
+  };
+  /**
+   * Testable bound for `CLAUDE_STREAM_STOP_GRACE_MS` — see that constant.
+   * Injected for the same reason `preToolPolicyTimeoutMs` is: the
+   * grace-elapsed branch is only reachable by letting the grace elapse, and
+   * a test that spends the real 1 s to do it is a test nobody runs.
+   */
+  streamStopGraceMs?: number;
   logger?: ClaudeAdapterLogger;
 }
 
@@ -677,11 +721,31 @@ const DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS = 5_000;
  * The SDK is expected to end its iterator once `query.close()` lands (the
  * adapter tests model that; nothing here verifies it against a live engine),
  * so this should elapse only when an engine misbehaves. It is a ceiling on
- * teardown, not a delay anything normally pays. Residual: if the grace does
- * elapse, the settle publishes `unresolved` and clears tracking, and a
- * `tool_result` that still arrives afterwards is dropped by the replay guard
- * — the original station#1558 M8 window, narrowed to this 1 s rather than
- * removed. The grace-elapsed branch has no test yet (station follow-up).
+ * teardown, not a delay anything normally pays.
+ *
+ * station#1569 (item 1) settled what happens when it DOES elapse. The
+ * bounded wait stays — `stopSession` must not be able to hang on an engine
+ * whose iterator never ends, and waiting forever would also leave the tool
+ * rows spinning with no terminal at all. What changed is that the
+ * `unresolved` it publishes is no longer final: the settle now remembers
+ * what it settled (`settledToolCalls`), so a `tool_result` the SDK was still
+ * holding publishes the real terminal when it drains, instead of being
+ * dropped by the replay guard. Both branches are tested — see
+ * `claude-adapter.test.ts`'s "grace" cases.
+ *
+ * "No longer final" is a claim about what a READER ends up with, so it is
+ * only true because both folds honour it (station#1569 H1): the durable
+ * projection's `unresolvedToolsByCallId` and the live handler's
+ * `toolPartSettleableBy` let the real terminal supersede that row in place.
+ * Publishing a correction nothing consumes is a correction only the log
+ * knows about — which is exactly what the first cut of this shipped, leaving
+ * the reader with two rows for one call.
+ *
+ * The alternative — do not settle here at all and let `consumeMessages`'
+ * `finally` be the only settle — was rejected: on the engine this exists for
+ * that `finally` may never run, so the calls would get no terminal, and
+ * `session.exited` (published straight after) closes their cards client-side
+ * as "Stopped", which asserts less than the truth rather than more.
  */
 const CLAUDE_STREAM_STOP_GRACE_MS = 1_000;
 
@@ -799,7 +863,7 @@ async function evaluateClaudePreToolPolicy(
     ]);
     return preToolPolicyHookOutput(decision);
   } catch (error) {
-    const reason = `Station pre-tool policy failed; tool execution was denied: ${error instanceof Error ? error.message : String(error)}`;
+    const reason = `Station pre-tool policy failed; tool execution was denied: ${errorMessage(error)}`;
     return preToolPolicyHookOutput({
       behavior: 'deny',
       denial: { allowed: false, reason },
@@ -811,6 +875,7 @@ async function evaluateClaudePreToolPolicy(
 
 export class ClaudeAdapter implements ProviderAdapterShape {
   readonly provider = 'claude' as const;
+  readonly adoptionLifecycle = 'reported' as const;
   readonly metadata = {
     displayName: 'Claude Code',
     description: 'Claude Code integration with approvals and reasoning events.',
@@ -848,6 +913,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     },
   } as const;
 
+  nativeSessionIdentity(
+    resumeCursor: unknown,
+  ): ProviderNativeSessionIdentity | undefined {
+    const sessionId = claudeResumeSessionId(resumeCursor);
+    if (!sessionId) return undefined;
+    const sourceCursor = claudeSourceResumeCursor(resumeCursor);
+    return {
+      sessionId,
+      ...(sourceCursor ? { affinity: sourceCursor.sourceAffinity } : {}),
+    };
+  }
+
   private readonly events = new AsyncEventQueue();
   private readonly sessions = new Map<string, ClaudeSessionRecord>();
   /** #1551: memoized `<claude> --version` probes, keyed by command + args. */
@@ -861,6 +938,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    const sourceCursor = claudeSourceResumeCursor(input.resumeCursor);
+    if (sourceCursor) {
+      this.requireSourceHome(sourceCursor.sourceAffinity);
+      input = { ...input, resumeCursor: sourceCursor };
+    }
     const { report: skillsReport, overlayDir } =
       await this.prepareSkillsMaterialization(
         input.cwd,
@@ -868,7 +950,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         input.threadId,
         input.agent,
       );
-    const appHomeEnv = await this.resolveAppHomeEnv(input.credentialProfileRef);
+    const appHomeEnv = sourceCursor
+      ? undefined
+      : await this.resolveAppHomeEnv(input.credentialProfileRef);
     const augmentedEnv = await this.resolveAugmentedSpawnEnv();
     const preToolPolicy = await this.resolvePreToolPolicy(input);
     const claudeExecutable = launchedClaudeExecutable(
@@ -898,6 +982,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (this.sessions.has(input.threadId)) {
       throw new Error(`Claude session already exists: ${input.threadId}`);
     }
+    if (input.sourceBoundary)
+      throw new Error('Claude does not support a completed-turn fork cutoff.');
+    if (input.sourceAffinity || this.options.resolveSourceHome) {
+      this.requireSourceHome(input.sourceAffinity);
+      input = {
+        ...input,
+        sourceAffinity: snapshotSessionSourceAffinity(input.sourceAffinity!),
+      };
+    }
+    await hooks?.onProviderChildCreationStarted?.();
     const fork = await forkSession(input.sourceSessionId, {
       dir: input.cwd,
       title: adoptionTitle(input.threadId),
@@ -908,7 +1002,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       );
     }
     try {
-      await hooks?.onProviderChildCreated(fork.sessionId);
+      const resumeCursor = input.sourceAffinity
+        ? {
+            claudeSessionId: fork.sessionId,
+            sourceAffinity: input.sourceAffinity,
+          }
+        : fork.sessionId;
+      await hooks?.onProviderChildCreated(resumeCursor);
       const { report: skillsReport, overlayDir } =
         await this.prepareSkillsMaterialization(
           input.cwd,
@@ -931,7 +1031,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         await this.resolveClaudeExecutable(),
       );
       return this.startTrackedSession(
-        { ...input, resumeCursor: fork.sessionId, persistSession: true },
+        { ...input, resumeCursor, persistSession: true },
         true,
         skillsReport,
         undefined,
@@ -941,9 +1041,29 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         claudeExecutable,
       );
     } catch (error) {
-      await deleteSession(fork.sessionId, { dir: input.cwd }).catch(() => {});
+      // With lifecycle reporting, the durable owner has the child cursor (or
+      // the reservation marker) and owns cleanup. Deleting here too would
+      // make its subsequent SDK deletion fail as "session not found".
+      if (!hooks)
+        await deleteSession(fork.sessionId, { dir: input.cwd }).catch(() => {});
       throw error;
     }
+  }
+
+  private requireSourceHome(
+    affinity: ProviderSessionSourceAffinity | undefined,
+  ): string {
+    const registered = affinity
+      ? this.options.resolveSourceHome?.(affinity)
+      : null;
+    const sdkHome = resolveConfigHomeAffinity(
+      'claude-config-home',
+      process.env.CLAUDE_CONFIG_DIR ?? nodePath.join(homedir(), '.claude'),
+      affinity,
+    );
+    if (!registered || registered !== sdkHome)
+      throw new Error('Claude source-home affinity is unavailable.');
+    return registered;
   }
 
   async discardSession(
@@ -951,7 +1071,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     recovery?: ProviderDiscardSessionRecovery,
   ): Promise<void> {
     const record = this.sessions.get(threadId);
-    let cursor = record?.session.resumeCursor ?? recovery?.resumeCursor;
+    if (recovery?.adoptionKey && this.options.resolveSourceHome)
+      this.requireSourceHome(recovery.sourceAffinity);
+    const resumeCursor = record?.session.resumeCursor ?? recovery?.resumeCursor;
+    const sourceCursor = claudeSourceResumeCursor(resumeCursor);
+    if (sourceCursor) this.requireSourceHome(sourceCursor.sourceAffinity);
+    let cursor = claudeResumeSessionId(resumeCursor);
     const cwd = record?.session.cwd ?? recovery?.cwd;
     await this.stopSession(threadId);
     if (
@@ -961,14 +1086,30 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       recovery.createdAt
     ) {
       const earliest = Date.parse(recovery.createdAt);
-      const recovered = (await listSessions({ dir: cwd })).find(
+      const candidates = (await listSessions({ dir: cwd })).filter(
         (session) =>
           session.customTitle === adoptionTitle(recovery.adoptionKey!) &&
           session.lastModified >= earliest - 1_000,
       );
-      cursor = recovered?.sessionId;
+      if (candidates.length !== 1)
+        throw new Error(
+          'Claude child cleanup could not establish a unique continuation.',
+        );
+      cursor = candidates[0]!.sessionId;
+    }
+    if (
+      recovery?.adoptionKey &&
+      (typeof cursor !== 'string' || cursor === recovery.sourceSessionId)
+    ) {
+      throw new Error(
+        'Claude child cleanup identity is unavailable or identifies the source.',
+      );
     }
     if (typeof cursor === 'string') {
+      if (recovery?.adoptionKey) {
+        await deleteSession(cursor, { dir: cwd });
+        return;
+      }
       // Best-effort: a session that ran under an app-home profile may have
       // its transcript under a different config root than the server-env
       // `deleteSession` call resolves (archive#896, decision 5) — Station owns the
@@ -976,7 +1117,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // failure. Profile GC is a wave-2 follow-up, not implemented here.
       await deleteSession(cursor, { dir: cwd }).catch((error) => {
         (this.options.logger ?? console).warn?.(
-          `Claude discardSession: deleteSession failed for cursor '${cursor}' (possibly an app-home-profile session whose transcript lives under a different config root): ${error instanceof Error ? error.message : String(error)}`,
+          `Claude discardSession: deleteSession failed for cursor '${cursor}' (possibly an app-home-profile session whose transcript lives under a different config root): ${errorMessage(error)}`,
         );
       });
     }
@@ -989,7 +1130,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     try {
       return await this.options.resolvePreToolPolicy(input);
     } catch (error) {
-      const reason = `Station pre-tool policy could not be prepared; tool execution was denied: ${error instanceof Error ? error.message : String(error)}`;
+      const reason = `Station pre-tool policy could not be prepared; tool execution was denied: ${errorMessage(error)}`;
       return async () => ({
         behavior: 'deny',
         denial: { allowed: false, reason },
@@ -1042,6 +1183,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
     const record: ClaudeSessionRecord = {
       session,
+      attemptedResumeCursor: claudeResumeSessionId(input.resumeCursor),
       promptQueue,
       query: sdkQuery,
       pendingRequests: new Map(),
@@ -1072,12 +1214,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // above) so the durable record reflects what the adapter actually
       // applied — including the 'plan' escape hatch and the
       // allowDangerouslySkipPermissions grant (archive#727 review item 5).
-      permissionMode,
+      ...(permissionMode ? { permissionMode } : {}),
       allowDangerouslySkipPermissions: permissionMode === 'bypassPermissions',
       // Lets the client track a durable lastAppliedApprovalMode baseline at
       // session start (archive#727 review round 3, item 1 — the pending-apply chip
-      // state).
-      approvalMode: mapPermissionModeToApprovalMode(permissionMode),
+      // state). Omitted when Station sent no override so the chip does not
+      // claim Ask while Claude's own `defaultMode` still applies (#1950).
+      ...(mapPermissionModeToApprovalMode(permissionMode)
+        ? { approvalMode: mapPermissionModeToApprovalMode(permissionMode) }
+        : {}),
       // archive#896: whether this session's SDK spawn env was layered with the
       // claude app-home profile, or left at the global config
       // (opted out, adoption, or a degraded lookup).
@@ -1154,6 +1299,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
+    if (record.session.status === 'error' || record.session.status === 'dead') {
+      throw new ProviderTurnEndedError();
+    }
     const turnId = crypto.randomUUID();
     record.activeTurnId = turnId;
     // archive#1182: a fresh turn has not reported anything yet — clear the
@@ -1209,7 +1357,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // so this only calls the SDK when the resolved mode actually changed.
     const targetPermissionMode = this.resolvePermissionMode(input.modelOptions);
     let rejectedEscalation = false;
-    if (targetPermissionMode !== record.currentPermissionMode) {
+    if (
+      targetPermissionMode &&
+      targetPermissionMode !== record.currentPermissionMode
+    ) {
       if (
         targetPermissionMode === 'bypassPermissions' &&
         !record.allowsBypassPermissions
@@ -1236,7 +1387,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             requestedApprovalMode: 'never',
             revertToApprovalMode:
               mapPermissionModeToApprovalMode(record.currentPermissionMode) ??
-              'ask',
+              'connection-default',
           },
         });
       } else {
@@ -1299,7 +1450,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       }
     }
 
-    record.promptQueue.push({
+    const enqueued = record.promptQueue.push({
       type: 'user',
       message: {
         role: 'user',
@@ -1310,6 +1461,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       uuid: turnId,
       timestamp: new Date().toISOString(),
     });
+    if (!enqueued) throw new ProviderTurnEndedError();
     // An allocated ID is not enough to attribute an inbound SDK result: a
     // resume/init handshake can arrive while async setup above is in flight.
     // Arm completion provenance only after this turn's prompt is queued.
@@ -1336,10 +1488,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(input.recoveryCorrelationId
           ? { recoveryCorrelationId: input.recoveryCorrelationId }
           : {}),
-        permissionMode: record.currentPermissionMode,
-        approvalMode: mapPermissionModeToApprovalMode(
-          record.currentPermissionMode,
-        ),
+        ...(record.currentPermissionMode
+          ? { permissionMode: record.currentPermissionMode }
+          : {}),
+        ...(mapPermissionModeToApprovalMode(record.currentPermissionMode)
+          ? {
+              approvalMode: mapPermissionModeToApprovalMode(
+                record.currentPermissionMode,
+              ),
+            }
+          : {}),
         ...(rejectedEscalation ? { approvalEscalationRejected: true } : {}),
         [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
           input.modelId,
@@ -1353,6 +1511,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       turnId,
       resumeCursor: record.session.resumeCursor,
     };
+  }
+
+  /**
+   * station#1877: stop ONE subagent, leaving the turn and its siblings
+   * running. `Query.stopTask` makes the engine emit a `task_notification`
+   * with status `stopped`, so the settle travels the ordinary path and no
+   * terminal is synthesised here.
+   */
+  async stopProviderTask(
+    threadId: string,
+    taskId: string,
+  ): Promise<ProviderTaskStopResult> {
+    const record = this.requireSession(threadId);
+    // A subagent can settle between a client rendering its stop control and
+    // this request landing. That race is a normal outcome, not an error.
+    if (!record.activeTasks?.has(taskId)) {
+      return { outcome: 'no-active-task', taskId };
+    }
+    await record.query.stopTask(taskId);
+    return { outcome: 'stopped', taskId };
   }
 
   async interruptTurn(threadId: string, turnId?: string) {
@@ -1496,22 +1674,68 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // still-running tool card client-side (`background-tasks-store.ts`), and a
     // card closed as "Stopped" no longer accepts the honest terminal.
     await this.settleAfterStreamStops(record);
-    this.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId,
-      createdAt: new Date().toISOString(),
-      method: 'session.exited',
-      sessionId: threadId,
-      reason: 'stopped',
-    });
-    if (record.skillsOverlayDir) {
+    // station#1569 (item 6): the record was removed BEFORE that await, so a
+    // `startSession` for this same thread during it installs a new record and
+    // the thread is live again by the time we get here. `session.exited` is
+    // keyed by threadId, not by session record — the client reads it as "this
+    // thread's session ended" and closes the thread's still-running tool
+    // cards (`background-tasks-store.ts`) — so publishing it now would be a
+    // terminal fact about a session that is running. The stopped session's
+    // own open calls already got their honest terminal from the settle above,
+    // which is what this ordering exists to guarantee; skipping the exit here
+    // costs the caller nothing it did not just get from `session.started`.
+    // (Mirrors `acp-adapter.ts`'s `if (this.sessions.get(threadId) !== record)
+    // return;` in `stopRecord`.)
+    //
+    // What it does NOT cost the caller is the exit event; the same window
+    // also governs the filesystem cleanup below, which is a real loss if it
+    // runs (station#1573).
+    const restarted = this.sessions.has(threadId);
+    if (restarted) {
+      (this.options.logger ?? console).warn?.(
+        `Claude session '${threadId}' was restarted while its stop was still draining; suppressing the stale session.exited for the stopped session.`,
+      );
+    } else {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+        sessionId: threadId,
+        reason: 'stopped',
+      });
+    }
+    // station#1573 (station#1569 M1): both cleanup paths below are keyed by
+    // THREAD ID, not by session record — `skillOverlayDirFor(sessionId)`
+    // resolves to `<overlays root>/<threadId>` and `cleanupMaterializedSkills`
+    // deletes the manifest written under that same `sessionId`. A session
+    // started for this thread during the grace above materialized into
+    // exactly those paths, so running either now deletes the LIVE session's
+    // skills: `removeSkillOverlayDir` is an unconditional recursive remove,
+    // and the manifest path's own "concurrent sessions never touch each
+    // other's files" reasoning holds only across DIFFERENT thread ids, which
+    // a restart is not. Skipping leaks the old session's files — but they are
+    // the same files the new session is using, so there is nothing here to
+    // leak that is not still in use.
+    const {
+      cleanupMaterializedSkills: cleanupSkills,
+      removeSkillOverlayDir: removeOverlayDir,
+    } = this.options.skillsCleanup ?? {
+      cleanupMaterializedSkills,
+      removeSkillOverlayDir,
+    };
+    if (restarted) {
+      (this.options.logger ?? console).warn?.(
+        `Claude session '${threadId}' was restarted while its stop was still draining; skipping this session's skills cleanup, whose paths the restarted session now owns.`,
+      );
+    } else if (record.skillsOverlayDir) {
       // archive#1174: the overlay is fully Station-owned (see
       // claude-skills-overlay.ts), so cleanup goes further than the
       // real-cwd path below — after the hash-verified per-file cleanup,
       // the whole per-session overlay directory is removed unconditionally.
       const overlayDir = record.skillsOverlayDir;
-      await cleanupMaterializedSkills({
+      await cleanupSkills({
         cwd: overlayDir,
         sessionId: threadId,
         globalConfigDirs: defaultClaudeGlobalConfigDirs(
@@ -1523,18 +1747,20 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       })
         .catch((error) => {
           (this.options.logger ?? console).warn?.(
-            `Claude skills overlay cleanup failed for '${overlayDir}': ${error instanceof Error ? error.message : String(error)}`,
+            `Claude skills overlay cleanup failed for '${overlayDir}': ${errorMessage(error)}`,
           );
         })
         .finally(() =>
-          removeSkillOverlayDir(threadId, { logger: this.options.logger }),
+          removeOverlayDir(threadId, { logger: this.options.logger }),
         );
     } else if (record.session.cwd) {
       // Best-effort — a cleanup failure must never surface as a stopSession
       // failure (mirrors the never-reject posture at session start). Scoped
-      // to THIS session's own manifest only (per-session manifests —
-      // concurrent sessions in the same cwd never touch each other's files).
-      await cleanupMaterializedSkills({
+      // to THIS session's own manifest only: per-session manifests, so two
+      // sessions with DIFFERENT thread ids in the same cwd never touch each
+      // other's files. A restart on the SAME thread id is the exception, and
+      // the guard above is why this line is not reached for one.
+      await cleanupSkills({
         cwd: record.session.cwd,
         sessionId: threadId,
         globalConfigDirs: defaultClaudeGlobalConfigDirs(
@@ -1545,7 +1771,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         logger: this.options.logger,
       }).catch((error) => {
         (this.options.logger ?? console).warn?.(
-          `Claude skills materialization cleanup failed for '${record.session.cwd}': ${error instanceof Error ? error.message : String(error)}`,
+          `Claude skills materialization cleanup failed for '${record.session.cwd}': ${errorMessage(error)}`,
         );
       });
     }
@@ -1832,7 +2058,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private buildOptions(
     input: ProviderSessionStartInput,
     persistSession = false,
-    permissionMode: PermissionMode = 'default',
+    permissionMode?: PermissionMode,
     appHomeEnv?: Record<string, string>,
     mcpServers?: Record<string, McpServerConfig>,
     skillsOverlayDir?: string,
@@ -1850,9 +2076,28 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ...(claudeExecutable
         ? { pathToClaudeCodeExecutable: claudeExecutable }
         : {}),
-      resume:
-        typeof input.resumeCursor === 'string' ? input.resumeCursor : undefined,
+      resume: claudeResumeSessionId(input.resumeCursor),
       includePartialMessages: true,
+      // station#1877 follow-up: ask the SDK to summarise what a subagent is
+      // doing, so `task_progress.summary` carries a live status line instead
+      // of nothing. Without it a five-minute background agent reports its
+      // description and then goes silent until it settles. The SDK's own
+      // docs put the cost at "typically minimal" — the summary fork reuses
+      // the session's model and prompt cache.
+      agentProgressSummaries: true,
+      /**
+       * station#1877: declares that Station renders a per-task stop control
+       * wired to `stop_task` — which `stopProviderTask` below is.
+       *
+       * This option is FAIL-CLOSED and must never be set without that
+       * control: absent, an interrupt kills every running background task;
+       * declared, an interrupt spares them and the per-task control becomes
+       * the only way to stop one. Setting it with no control would leave a
+       * runaway subagent unstoppable. It is also first-attached-client-wins
+       * on a multi-client session, so the first initialize decides the
+       * semantics for every later one.
+       */
+      perTaskStopAffordance: true,
       persistSession,
       // archive#1174: a cwd-less session materializes its skills into a
       // Station-owned overlay directory (see claude-skills-overlay.ts)
@@ -2059,7 +2304,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       //
       // See #1545 and docs/conformance/tool-policy-delivery.md. Setting this
       // option here is a deliberate product change, so it has a test.
-      permissionMode,
+      //
+      // station#1950: omit `permissionMode` when Station has no override so
+      // Claude's own `defaultMode` (settings.json) applies. Passing
+      // `'default'` here was the defect: it overrode a configured Auto.
+      ...(permissionMode ? { permissionMode } : {}),
       // Required by the SDK whenever bypassPermissions is granted at spawn
       // time (sdk.d.ts: "Must be set to true when using permissionMode:
       // 'bypassPermissions'"). Only ever set at session start — the SDK has
@@ -2093,7 +2342,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   /**
    * Resolves this session/turn's effective Claude PermissionMode: an
    * explicit raw `permissionMode: 'plan'` (predates approvalMode) wins,
-   * then a mapped `approvalMode`, then the adapter's existing default.
+   * then a mapped `approvalMode`. `undefined` means inherit Claude's own
+   * configured `defaultMode` (station#1950).
    *
    * Disclosed gap (archive#727 review item 6): plan mode has no `ApprovalMode`
    * analog and isn't reachable through the composer chip, so entering plan
@@ -2103,9 +2353,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    */
   private resolvePermissionMode(
     modelOptions?: Record<string, unknown>,
-  ): PermissionMode {
+  ): PermissionMode | undefined {
     if (modelOptions?.permissionMode === 'plan') return 'plan';
-    return resolveClaudePermissionMode(modelOptions) ?? 'default';
+    return resolveClaudePermissionMode(modelOptions);
   }
 
   /**
@@ -2116,22 +2366,45 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    * hang on an engine whose iterator never ends after `close()`. The settle
    * is idempotent (it clears the map before publishing), so running it here
    * after the consumer already ran it publishes nothing.
+   *
+   * station#1569 (item 1): when the grace DOES elapse, say so. The settle
+   * that follows publishes `unresolved` for calls the engine may yet report
+   * on, and `settledToolCalls` is what lets a late `tool_result` correct it
+   * — but the operator-visible fact is that this engine did not end its
+   * iterator when asked, which is the condition the grace exists for and the
+   * one nothing would otherwise record.
    */
   private async settleAfterStreamStops(
     record: ClaudeSessionRecord,
   ): Promise<void> {
+    const graceMs =
+      this.options.streamStopGraceMs ?? CLAUDE_STREAM_STOP_GRACE_MS;
+    let graceElapsed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      let timer: ReturnType<typeof setTimeout> | undefined;
       await Promise.race([
         record.streamTask,
         new Promise<void>((resolve) => {
-          timer = setTimeout(resolve, CLAUDE_STREAM_STOP_GRACE_MS);
+          timer = setTimeout(() => {
+            graceElapsed = true;
+            resolve();
+          }, graceMs);
         }),
       ]);
-      if (timer) clearTimeout(timer);
     } catch {
       // `consumeMessages` handles its own failures; a rejection here must not
-      // turn a stop into a throw, and must not skip the settle below.
+      // turn a stop into a throw, and must not skip the settle below. The
+      // stream ending by THROWING is still the stream ending, so this is not
+      // the grace elapsing.
+    } finally {
+      // In the `finally` so a rejected `streamTask` does not leave the timer
+      // holding the loop open for the rest of the grace.
+      if (timer) clearTimeout(timer);
+    }
+    if (graceElapsed) {
+      (this.options.logger ?? console).warn?.(
+        `Claude session '${record.session.threadId}' did not end its message stream within ${graceMs}ms of close(); settling still-open tool calls as unresolved. A result that still arrives will supersede that.`,
+      );
     }
     settleUnresolvedClaudeToolCalls({
       provider: this.provider,
@@ -2163,12 +2436,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   ): Promise<void> {
     try {
       for await (const message of record.query) {
-        // `interruptedResultObserved` suppresses only the iterator rejection
+        // Result markers suppress only the iterator rejection
         // immediately following the consumed result. If the iterator yields
         // another message instead, that proves there was no wrapper to
         // suppress and the marker must not leak into a later failure.
         record.interruptedResultObserved = false;
+        record.terminalResultObserved = undefined;
         this.mapMessage(record, message);
+        if (record.terminalResultObserved) record.promptQueue.close();
       }
       record.interruptedResultObserved = false;
     } catch (error) {
@@ -2181,7 +2456,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         return;
       }
       // archive#1827: once `mapMessage` has already published a structured
-      // `runtime.error` for a `terminal`-classified `result` message
+      // `runtime.error` for a failed `result` message
       // (`classifyClaudeResultOutcome`, `claude-adapter-events.ts`), the SDK
       // re-throws the SAME underlying failure a moment later as a generic
       // wrapped Error when the `claude` CLI process exits (its own
@@ -2191,12 +2466,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // again" shape this ticket exists to fix — skip it here; the
       // structured event already told the caller everything this generic
       // catch would, and (unlike this catch) also carried the terminal
-      // classification the recovery path acts on.
+      // query-versus-binding classification.
       if (record.terminalResultObserved) {
-        record.session.status = 'dead';
+        record.session.status =
+          record.terminalResultObserved === 'binding-dead' ? 'dead' : 'error';
         return;
       }
-      const detail = error instanceof Error ? error.message : String(error);
+      const detail = errorMessage(error);
       const message = record.session.model
         ? `Claude model "${record.session.model}" failed: ${detail}`
         : detail;
@@ -2210,6 +2486,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         message,
       });
       record.session.status = 'error';
+      record.promptQueue.close();
     }
   }
 
@@ -2255,7 +2532,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         );
       }
       (this.options.logger ?? console).warn?.(
-        `Claude app-home profile lookup failed; continuing with the global Claude Code config: ${error instanceof Error ? error.message : String(error)}`,
+        `Claude app-home profile lookup failed; continuing with the global Claude Code config: ${errorMessage(error)}`,
       );
       return undefined;
     }
@@ -2283,7 +2560,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       return await augmentedSpawnEnv();
     } catch (error) {
       (this.options.logger ?? console).warn?.(
-        `Claude login-PATH augmentation failed; continuing with the unaugmented process env: ${error instanceof Error ? error.message : String(error)}`,
+        `Claude login-PATH augmentation failed; continuing with the unaugmented process env: ${errorMessage(error)}`,
       );
       return undefined;
     }
@@ -2390,7 +2667,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       };
     } catch (error) {
       (this.options.logger ?? console).warn?.(
-        `Claude executable resolution failed; continuing with the Claude Code CLI bundled with the Agent SDK: ${error instanceof Error ? error.message : String(error)}`,
+        `Claude executable resolution failed; continuing with the Claude Code CLI bundled with the Agent SDK: ${errorMessage(error)}`,
       );
       return {
         resolved: null,
@@ -2546,7 +2823,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         logger,
       }).catch((error) => {
         logger.warn?.(
-          `Claude skills overlay: stale-overlay sweep failed: ${error instanceof Error ? error.message : String(error)}`,
+          `Claude skills overlay: stale-overlay sweep failed: ${errorMessage(error)}`,
         );
       });
     } else if (cwd) {
@@ -2563,7 +2840,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         logger,
       }).catch((error) => {
         logger.warn?.(
-          `Claude skills materialization: stale-manifest sweep failed for '${cwd}': ${error instanceof Error ? error.message : String(error)}`,
+          `Claude skills materialization: stale-manifest sweep failed for '${cwd}': ${errorMessage(error)}`,
         );
       });
     }
@@ -2587,12 +2864,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // "no materialized skills" for the session, but that outcome is
         // still receipted (delivery-failed), not dropped.
         logger.warn?.(
-          `Claude skills materialization failed${cwd ? ` for '${cwd}'` : ''}; continuing without materialized skills: ${error instanceof Error ? error.message : String(error)}`,
+          `Claude skills materialization failed${cwd ? ` for '${cwd}'` : ''}; continuing without materialized skills: ${errorMessage(error)}`,
         );
         const entry: CapabilityUndelivered = {
           capability: 'skills',
           reason: 'delivery-failed',
-          detail: error instanceof Error ? error.message : String(error),
+          detail: errorMessage(error),
         };
         agentCapabilityUndelivered.add(1, {
           provider: this.provider,
@@ -2707,12 +2984,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       };
     } catch (error) {
       logger.warn?.(
-        `Claude skills materialization failed for '${targetCwd}'; continuing without materialized skills: ${error instanceof Error ? error.message : String(error)}`,
+        `Claude skills materialization failed for '${targetCwd}'; continuing without materialized skills: ${errorMessage(error)}`,
       );
       const entry: CapabilityUndelivered = {
         capability: 'skills',
         reason: 'delivery-failed',
-        detail: error instanceof Error ? error.message : String(error),
+        detail: errorMessage(error),
       };
       agentCapabilityUndelivered.add(1, {
         provider: this.provider,

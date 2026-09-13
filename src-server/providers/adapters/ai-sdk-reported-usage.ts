@@ -33,7 +33,7 @@ import type { TokenUsageUpdatedEvent } from '@kontourai/station-contracts/runtim
 import type { LLMStreamChunk } from '../llm/model-provider-types.js';
 
 /** The subset of `token-usage.updated` fields these adapters can back. */
-export type ReportedTokenUsageFields = Pick<
+type ReportedTokenUsageFields = Pick<
   TokenUsageUpdatedEvent,
   'promptTokens' | 'completionTokens' | 'cacheReadTokens' | 'cacheWriteTokens'
 >;

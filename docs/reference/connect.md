@@ -289,15 +289,24 @@ only request metadata. It refuses a non-loopback `--api-base`. For scripted SSH,
 be used only after reviewing `access list`. `access deny` uses the same local,
 non-secret boundary.
 
-QR and manual pairing remain under **Advanced connection options** for devices
-that cannot open the Station URL first. Use **Approve another device** on the
-host. Station creates a five-minute, single-use offer containing an environment
+At the end of onboarding or in the Connections modal, choose **Connect another device** to invite a phone
+to the selected Station server. The existing client and the phone both connect
+to that server; the existing client does not become a server. Check the visible
+server address: the phone needs a reachable LAN or tailnet address, not localhost.
+Choose **Create pairing code**, scan with the phone camera to open the selected
+installed Station channel, then review and approve the request. For Station’s
+in-app scanner, select **Scanner inside Station** above the QR instead.
+**Paired devices → Approve another device** also opens the invitation panel.
+The selected client channel controls both the app-opening QR and any published
+mobile download links. Public store and beta invitation URLs are maintained in
+`packages/connect/src/core/mobileAppDownloads.ts`; absent destinations have no
+install link. Native clients default to their own release channel. Station creates a five-minute, single-use offer containing an environment
 ID, intended HTTPS endpoint,
 one-time challenge, conservative `station:interactive` scope, and expiry. The
 QR contains that offer only—never a bearer credential. A 10-character manual
 code plus the Station address is available when camera access is unavailable.
 
-On the other device, choose **Pair with code**, scan or enter the offer, and
+On the other device, choose **Scan a QR code** or **Enter a pairing code**, and
 name the device. The host must confirm the displayed name and scope. Only then
 can the browser atomically exchange the offer once for a random device
 credential. When

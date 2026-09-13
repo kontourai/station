@@ -1,4 +1,4 @@
-export const TOOL_RESULT_HEAD_CHARS = 3_000;
+const TOOL_RESULT_HEAD_CHARS = 3_000;
 export const TOOL_RESULT_TAIL_CHARS = 512;
 
 function endsOnHighSurrogate(value: string): boolean {
@@ -24,7 +24,7 @@ export function boundTailFragment(value: string): string {
     : value;
 }
 
-export interface BoundedToolResultText {
+interface BoundedToolResultText {
   head: string;
   tail: string;
   withheldBytes: number;

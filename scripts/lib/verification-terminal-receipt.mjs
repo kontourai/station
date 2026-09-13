@@ -3,6 +3,8 @@ import { existsSync, renameSync } from 'node:fs';
 import { createVerificationReceipt } from './verification-receipt.mjs';
 import { redactVerificationOutput } from './verification-redaction.mjs';
 import {
+  DECLARED_CAUSE_BYTE_CAP,
+  normalizeDeclaredCause,
   persistPlaywrightAttachments,
   persistVerificationOutput,
   summarizeVerificationOutput,
@@ -23,6 +25,47 @@ function boundedText(value, maxBytes = 256) {
 }
 
 function boundedSummaryEnvelope(summary) {
+  // The declared cause, taken VERBATIM and used for all THREE fields below
+  // that carry it -- the marker, the excerpt, and the head of the excerpt
+  // list. Nothing here re-derives it, and that is the whole point.
+  //
+  // Round 7 fixed two of the three and left the list, which is the copy the
+  // page actually shows (round-8 review, H1): `causalExcerptsOf` prefers the
+  // list over the single field. Two fields agreeing while the rendered one
+  // does not is the defect wearing a disguise.
+  //
+  // Every previous shape of these lines re-derived, and every one of them
+  // made a rendering disagree with the record it renders. `boundedText`
+  // redacts once without the marker strip or the trim, so it appended nine
+  // bytes ending in a truncated `[REDACTED` the receipt did not have.
+  // Re-running `normalizeDeclaredCause` looked safe on the argument that the
+  // function is identity on its own output -- and stopped being so the moment
+  // the loop grew an arm that exits when the value is NOT a fixed point, which
+  // is precisely when the next value differs. At the production cap 2,453 of
+  // 8,415 accepted values leave by that arm, and all 2,453 come back a byte
+  // longer inside the marker: `{"apiKey":[REDACTED]}` on the receipt,
+  // `{"apiKey":[REDACTED]]}` on the page (round-7 review, H1).
+  //
+  // There is one derivation, in `normalizeDeclaredCause`, and `reportExecution`
+  // hands its result to the summary and to the receipt. A consumer that
+  // transforms it again is a second derivation whatever the transform is, and
+  // a second derivation is what this branch exists to remove. A producer that
+  // puts an unnormalized value in this field is a defect at the producer; the
+  // receipt copy has no backstop either, and giving one to only the rendering
+  // is exactly how the two came to disagree.
+  //
+  // Two conditions, both cheap and neither a transform. The equality gate is
+  // DEFENSIVE -- the summarizer is the only producer and sets both fields from
+  // one value, so across 7,175 combinations it never fired -- and the bound
+  // check is what a verbatim copy owes this allow-list, where every other
+  // field is bounded. Failing either renders no marker rather than a repaired
+  // one, and `firstCausalExcerpt` falls back to its ordinary treatment.
+  const declaredCause =
+    summary?.infrastructureCause &&
+    summary.infrastructureCause === summary.firstCausalExcerpt &&
+    Buffer.byteLength(summary.infrastructureCause) <= DECLARED_CAUSE_BYTE_CAP
+      ? summary.infrastructureCause
+      : null;
   const envelope = {
     terminal: summary?.terminal ?? 'infrastructure_error',
     counts: summary?.counts ?? null,
@@ -31,7 +74,10 @@ function boundedSummaryEnvelope(summary) {
       ? { failingStep: boundedText(summary.failingStep, 128) }
       : {}),
     ...(summary?.firstCausalExcerpt
-      ? { firstCausalExcerpt: boundedText(summary.firstCausalExcerpt, 512) }
+      ? {
+          firstCausalExcerpt:
+            declaredCause ?? boundedText(summary.firstCausalExcerpt, 512),
+        }
       : {}),
     // station#1471 review: this allow-list silently dropped `causeStream`, so
     // the caveat the reporter computes -- "that excerpt was chosen by severity
@@ -44,6 +90,22 @@ function boundedSummaryEnvelope(summary) {
     ...(summary?.causeStream
       ? { causeStream: boundedText(summary.causeStream, 16) }
       : {}),
+    // station#1827 review item 7: the positive counterpart of `causeStream`.
+    // A runner-declared cause deliberately carries no `causeStream` (the
+    // caveat that field renders would be false for it), and this allow-list
+    // is where withholding a marker turns into showing nothing at all: the
+    // envelope is what the CI annotation and the printed verdict read, so
+    // without this a declared cause rendered byte-identically to a scanned
+    // one.
+    //
+    // Gated on the EXCERPT as well as on itself (round-4 review, L4). The
+    // marker is a claim about the head excerpt, so it may not appear beside
+    // an absent one. The summarizer applies that rule at its end; today it is
+    // the only producer, so this gate is unreachable -- but this allow-list
+    // is what a second producer would reach, and an allow-list that carries a
+    // field without its own rule is where the rule gets lost.
+    //
+    ...(declaredCause ? { infrastructureCause: declaredCause } : {}),
     // station#4249 review: present ONLY when reportExecution's own reporting
     // pipeline failed (the reconcile-note catch branches below) -- this is
     // the field a reader checks to tell that case apart from an ordinary
@@ -57,11 +119,32 @@ function boundedSummaryEnvelope(summary) {
     // bounded-per-item treatment. Capped at 32 entries (matching
     // recoveredFailures below) so a run with an unusually large number of
     // distinct failing checks cannot blow the envelope's own byte cap.
+    //
+    // The HEAD is exempt from that treatment when it is the declared cause,
+    // and this is the third field carrying that string rather than a third
+    // opinion about it (round-8 review, H1). Round 7 stopped the two fields
+    // above re-deriving and left this one running `boundedText`, which redacts
+    // -- so the list's head came out a byte longer inside the marker than the
+    // receipt. That is the copy the page shows: `causalExcerptsOf` in
+    // `verification-gate-summary.mjs` PREFERS the list and only falls back to
+    // the single field, so the fenced block and every error annotation
+    // rendered the re-derived value directly beneath the sentence saying the
+    // first excerpt was recorded by the runner. The tail fallback, which
+    // carries the single field and not the list, then rendered different bytes
+    // than the untruncated document for the same run.
+    //
+    // Every other entry keeps `boundedText`: those are scanned excerpts, which
+    // have been through no derivation of their own and are the values that
+    // pass most needs to see.
     ...(Array.isArray(summary?.causalExcerpts) && summary.causalExcerpts.length
       ? {
           causalExcerpts: summary.causalExcerpts
             .slice(0, 32)
-            .map((excerpt) => boundedText(excerpt, 512)),
+            .map((excerpt, index) =>
+              index === 0 && declaredCause && excerpt === declaredCause
+                ? excerpt
+                : boundedText(excerpt, 512),
+            ),
         }
       : {}),
     ...(summary?.finalTally
@@ -106,18 +189,68 @@ function boundedSummaryEnvelope(summary) {
     : envelope;
 }
 
+/**
+ * The normalized form of the runner's own final word about why it stopped, or
+ * null.
+ *
+ * station#1827: `ciFastInfrastructureCause` (verification-execution-lifecycle)
+ * already recovers the owner-final line ci:fast prints before it returns its
+ * infrastructure exit code, but only `primaryInterruptedCause` below read it
+ * -- and that is reached ONLY when reporting itself throws. On the ordinary
+ * path the value was computed and dropped, so the receipt for a budget kill
+ * carried no cause and the summary reported a scanned excerpt instead.
+ *
+ * TWO channels, in `primaryInterruptedCause`'s exact precedence (review item
+ * 1). `raw.error.message` is the message of whatever REJECTED the execution,
+ * on every lane and not only ci-fast, and threading one channel while dropping
+ * the sibling would leave the ordinary path and the reconcile path disagreeing
+ * about what the runner's own final word was -- the defect this exists to
+ * close.
+ *
+ * That second channel is a catch-all and its provenance is weaker than the
+ * first (round-4 review, L6). Most often it is the owned runner diagnosing
+ * itself -- a surviving owned process, an unreadable capture, a spawn failure
+ * -- but it also carries a harness assertion raised in `onSpawn` while the
+ * child was being adopted, or an error from an injected phase runner, where
+ * the stopping command never spoke at all. Nothing downstream may therefore
+ * say the CHILD named this; the rendered sentence attributes it to the runner
+ * layer, which is true of both channels.
+ *
+ * `primaryInterruptedCause`'s third arm, the fixed 'ended with an
+ * infrastructure error' sentence, is deliberately NOT adopted: it is prose
+ * this module synthesizes when neither channel spoke, so promoting it would
+ * displace a real scanned excerpt with boilerplate and make the receipt claim
+ * a declaration that never happened.
+ *
+ * Bound to the status it explains. A cause for stopping is meaningful for an
+ * `infrastructure_error` terminal and for no other: attaching it to a `failed`
+ * result would put an infrastructure explanation on an ordinary red, which is
+ * the misattribution this exists to remove, in the other direction.
+ */
+function ownerInfrastructureCause(raw, result) {
+  if (result?.status !== 'infrastructure_error') return null;
+  return (
+    normalizeDeclaredCause(raw?.infrastructureCause) ??
+    normalizeDeclaredCause(raw?.error?.message)
+  );
+}
+
 function primaryInterruptedCause(raw, result) {
   if (result?.status === 'timed_out')
     return 'verification execution timed out before terminal reporting';
   if (result?.status === 'canceled')
     return 'verification execution was canceled before terminal reporting';
   if (result?.status !== 'infrastructure_error') return null;
-  const classified = raw?.infrastructureCause;
-  if (typeof classified === 'string' && classified.length > 0)
-    return `verification execution infrastructure error: ${boundedText(classified, 512)}`;
-  const message = raw?.error?.message;
-  return typeof message === 'string' && message.length > 0
-    ? `verification execution infrastructure error: ${boundedText(message, 512)}`
+  // station#1827 review item 4: the declared cause embedded in this prose is
+  // resolved and normalized by the SAME function the receipt records, so the
+  // two differ only in rendering -- this branch wraps it in a sentence, and
+  // the summary's byte budget may cut it -- never in which declaration they
+  // read or in the bytes of that declaration. The precedence itself used to
+  // live here in duplicate; that duplication is what let the ordinary path
+  // drop `raw.error.message` while this path reported it.
+  const declared = ownerInfrastructureCause(raw, result);
+  return declared
+    ? `verification execution infrastructure error: ${declared}`
     : 'verification execution ended with an infrastructure error before terminal reporting';
 }
 
@@ -207,14 +340,46 @@ export function reportExecution({ raw, result, cleanup, worktree, request }) {
           }),
         );
     }
+    // station#1827: the cause rides the RESULT, not only the transient
+    // summary -- `publishTerminalReceipt` spreads this object into
+    // `createVerificationReceipt`, so this is what makes the runner's own
+    // final word survive into the canonical receipt a later reader opens.
+    const infrastructureCause = ownerInfrastructureCause(raw, reportedResult);
     return {
-      result: reportedResult,
+      result: infrastructureCause
+        ? { ...reportedResult, infrastructureCause }
+        : reportedResult,
       artifacts,
       outputTruncated,
       attachmentOmissions,
       summary: summarizeVerificationOutput({
         stdout: raw?.output?.stdout?.text ?? '',
         stderr: raw?.output?.stderr?.text ?? '',
+        // The SAME STRING the receipt carries -- this is the whole of the
+        // "one cause" guarantee, and it is an identity rather than a claim
+        // about two transforms agreeing (station#1827 fix round 2).
+        //
+        // The first round threaded a normalized value here and let the
+        // summarizer normalize it again, which read as belt-and-braces and
+        // was not: at the time `normalizeDeclaredCause` was not idempotent, so
+        // a cause whose bound landed on a token prefix came back different and
+        // the two artifacts named different causes for one run. It IS
+        // still is not, and the design does not rest on it being so: the
+        // summarizer uses what it is given, and this is the only derivation.
+        //
+        // What that guarantees, stated no wider than it is true. Whenever the
+        // MARKER is present the excerpt was not budget-truncated, and
+        // `boundedSummaryEnvelope` copies this one value into both of its
+        // fields without transforming it -- so receipt field, summary marker
+        // and envelope marker are the same bytes because nothing recomputed
+        // them, not because a recomputation happened to agree.
+        //
+        // When the marker is ABSENT the excerpt may be a budget-truncated
+        // prefix that the envelope re-redacts through `boundedText`, and no
+        // such claim is made about it. The reconcile branch below separately
+        // wraps the cause in a sentence, which is a rendering of the same
+        // declaration rather than a second one.
+        ...(infrastructureCause ? { infrastructureCause } : {}),
         // exitCode and truncated are what let the reporter tell a real
         // non-pass from a `completed` status, and a prefix-capture from a
         // real exit (review of station#1871). Dropping them here is what
@@ -251,9 +416,15 @@ export function reportExecution({ raw, result, cleanup, worktree, request }) {
     // reporting problem itself stays visible via reconcileNote below.
     if (preservesPrimaryTerminal(result)) {
       const primaryCause = primaryInterruptedCause(raw, result);
+      // station#1827: `primaryCause` already put the runner's own final word
+      // in the summary on this branch; without this the canonical receipt
+      // still lost it, and a receipt that omits the cause on one path while
+      // carrying it on the other invites the reading that there was none.
+      const preservedCause = ownerInfrastructureCause(raw, result);
       const preserved = {
         ...result,
         reconcileNote,
+        ...(preservedCause ? { infrastructureCause: preservedCause } : {}),
         ...(recoverableFailures.length
           ? {
               recoveredFailures: recoverableFailures

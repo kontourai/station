@@ -48,6 +48,90 @@ import {
 
 export const STATION_HOME_BACKUP_SCHEMA = 'station.home-backup/v1' as const;
 export const STATION_HOME_BACKUP_MANIFEST = 'station-home-backup.json';
+export const STATION_HOME_RECOVERY_RECORD = 'station-home-recovery.json';
+
+/** Recovery provenance is disclosure, never execution ownership. */
+export interface StationHomeRecoveryRecord {
+  schemaVersion: 'station.home-recovery/v1';
+  kind: 'recovered-from-copy';
+  recoveryId: string;
+  recoveredAt: string;
+  snapshotCreatedAt: string;
+  backupManifestSha256: string;
+  authorityTransferred: false;
+}
+
+export function readStationHomeRecovery(
+  homeDir: string,
+):
+  | { kind: 'recovered'; recovery: StationHomeRecoveryRecord }
+  | { kind: 'not-restored' | 'unavailable' } {
+  let fd: number | undefined;
+  try {
+    const path = join(homeDir, STATION_HOME_RECOVERY_RECORD);
+    const before = lstatSync(path);
+    if (!before.isFile() || before.isSymbolicLink())
+      return { kind: 'unavailable' };
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const stat = fstatSync(fd);
+    if (
+      !stat.isFile() ||
+      stat.dev !== before.dev ||
+      stat.ino !== before.ino ||
+      stat.size < 1 ||
+      stat.size > 4096
+    )
+      return { kind: 'unavailable' };
+    const bytes = Buffer.alloc(4097);
+    const count = readSync(fd, bytes, 0, bytes.length, 0);
+    if (count !== stat.size) return { kind: 'unavailable' };
+    const value = JSON.parse(bytes.subarray(0, count).toString('utf8'));
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      Array.isArray(value) ||
+      Object.keys(value).sort().join(',') !==
+        [
+          'schemaVersion',
+          'kind',
+          'recoveryId',
+          'recoveredAt',
+          'snapshotCreatedAt',
+          'backupManifestSha256',
+          'authorityTransferred',
+        ]
+          .sort()
+          .join(',') ||
+      value.schemaVersion !== 'station.home-recovery/v1' ||
+      value.kind !== 'recovered-from-copy' ||
+      value.authorityTransferred !== false ||
+      typeof value.recoveryId !== 'string' ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+        value.recoveryId,
+      ) ||
+      typeof value.backupManifestSha256 !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(value.backupManifestSha256) ||
+      ![value.recoveredAt, value.snapshotCreatedAt].every(
+        (v) =>
+          typeof v === 'string' &&
+          /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(v) &&
+          new Date(v).toISOString() === v,
+      )
+    )
+      return { kind: 'unavailable' };
+    return { kind: 'recovered', recovery: value };
+  } catch (error) {
+    return {
+      kind:
+        fd === undefined && (error as NodeJS.ErrnoException).code === 'ENOENT'
+          ? 'not-restored'
+          : 'unavailable',
+    };
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
 export const DEFAULT_STATION_HOME_BACKUP_MAX_FILES = 100_000;
 export const DEFAULT_STATION_HOME_BACKUP_MAX_BYTES = 20 * 1024 * 1024 * 1024;
 export const DEFAULT_STATION_HOME_BACKUP_MAX_FILE_BYTES =
@@ -126,6 +210,7 @@ export interface StationHomeBackupResult {
 }
 
 export interface StationHomeRestoreResult {
+  recovery: StationHomeRecoveryRecord;
   homeDir: string;
   previousHome?: string;
   manifest: StationHomeBackupManifest;
@@ -714,6 +799,17 @@ export function restoreStationHomeBackup(
       error,
     );
   }
+  const recovery: StationHomeRecoveryRecord = {
+    schemaVersion: 'station.home-recovery/v1',
+    kind: 'recovered-from-copy',
+    recoveryId: randomUUID(),
+    recoveredAt: new Date().toISOString(),
+    snapshotCreatedAt: manifest.createdAt,
+    backupManifestSha256: createHash('sha256')
+      .update(JSON.stringify(manifest))
+      .digest('hex'),
+    authorityTransferred: false,
+  };
   let movedPrevious = false;
   try {
     assertInactive('restore', options.assertInactive);
@@ -743,6 +839,17 @@ export function restoreStationHomeBackup(
       })
     )
       fail('staged restore does not match the validated backup');
+    // Publish disclosure with the restored home, after verifying copied bytes.
+    // Repeated restores replace only this reserved metadata file; no nested
+    // history or credentials are exposed in the record.
+    const recoveryPath = join(staging, STATION_HOME_RECOVERY_RECORD);
+    const recoveryTemp = `${recoveryPath}.${randomUUID()}.tmp`;
+    writeFileSync(recoveryTemp, `${JSON.stringify(recovery)}\n`, {
+      flag: 'wx',
+      mode: 0o600,
+    });
+    syncFile(recoveryTemp);
+    renameSync(recoveryTemp, recoveryPath);
     syncDirectoryTree(staging);
     options.beforePublish?.();
     assertInactive('restore', options.assertInactive);
@@ -777,6 +884,7 @@ export function restoreStationHomeBackup(
       throw error;
     }
     return {
+      recovery,
       homeDir,
       ...(movedPrevious ? { previousHome: previous } : {}),
       manifest,

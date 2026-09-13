@@ -23,6 +23,7 @@ import type {
   Client,
   ContentBlock,
   PermissionOption,
+  PromptResponse,
   RequestPermissionRequest,
   RequestPermissionResponse,
   SessionNotification,
@@ -68,14 +69,16 @@ import {
   agentCapabilityUndelivered,
   sessionCwdResolution,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
-import type {
-  CanonicalRuntimeEvent,
-  ProviderAdapterShape,
-  ProviderSendTurnInput,
-  ProviderSession,
-  ProviderSessionStartInput,
-  ProviderTurnStartResult,
+import {
+  type CanonicalRuntimeEvent,
+  type ProviderAdapterShape,
+  type ProviderSendTurnInput,
+  type ProviderSession,
+  type ProviderSessionStartInput,
+  ProviderTurnEndedError,
+  type ProviderTurnStartResult,
 } from '../adapter-shape.js';
 import { buildCliRuntimePrerequisites } from '../auth/cli-auth.js';
 import {
@@ -102,6 +105,20 @@ import {
   type AcpToolServerSkipReason,
   resolveAcpPassthroughMcpServers,
 } from './acp-mcp-passthrough.js';
+import {
+  type AdvertisedAcpModeCatalog,
+  advertisedAcpSessionModes,
+  applyAdvertisedAcpSessionMode,
+  requestedAcpSessionMode,
+} from './acp-session-mode.js';
+import {
+  ACP_INTERJECT_METHODS,
+  ACP_SESSION_STEER_METHOD,
+  acpInterjectParams,
+  acpSessionSteerParams,
+  isAcpMethodNotFound,
+  resolveAcpSteerChannel,
+} from './acp-steer.js';
 import {
   AcpToolUpdateGlobalBudget,
   AcpToolUpdateSupervisor,
@@ -214,7 +231,7 @@ export function isAcpResumeCursor(value: unknown): value is AcpResumeCursor {
  * added to this parameter list and `AcpExecutionIdentity` DELIBERATELY, by
  * a human deciding it belongs in the resume identity, never by accident.
  */
-export interface AcpExecutionIdentity {
+interface AcpExecutionIdentity {
   command: string;
   args: string[];
   effectiveCwd: string;
@@ -311,7 +328,7 @@ export interface AcpAdapterOptions {
 }
 
 /** Last-known slash command surfaced by a live ACP session (aggregated across sessions in `getCommands()` — see Risks: no per-connection threadId param on the shared shape). */
-export interface AcpSlashCommand {
+interface AcpSlashCommand {
   name: string;
   description: string;
   argumentHint?: string;
@@ -366,7 +383,7 @@ function findAcpModelConfigOption(
  * maps the decision + `options` into the ACP `RequestPermissionOutcome` via
  * `mapAcpDecisionToOutcome` (acp-adapter-events.ts).
  */
-export interface AcpPendingRequest {
+interface AcpPendingRequest {
   resolve: (decision: AcpDecision) => void;
   options: PermissionOption[];
 }
@@ -375,6 +392,14 @@ export interface AcpSessionRecord {
   session: ProviderSession;
   process: ACPProcess;
   connectionId: string;
+  command: string;
+  args?: string[];
+  /**
+   * Bumps on each `session/prompt` this Station turn owns. A T3-style
+   * cancel+reprompt steer increments it so the cancelled prompt's settlement
+   * cannot complete or fail the still-open turn.
+   */
+  promptEpoch: number;
   /** Invalidation generation captured when this session start was accepted. */
   generation: number;
   /** A `session.started` receipt was published and needs a terminal peer. */
@@ -399,6 +424,8 @@ export interface AcpSessionRecord {
   credentialRecoveryAttempted?: boolean;
   currentModeId?: string;
   configOptions?: unknown[];
+  /** Last advertised ACP session-mode catalog (station#1945). */
+  acpModeCatalog?: AdvertisedAcpModeCatalog;
   slashCommands?: AcpSlashCommand[];
   /**
    * Fix (external autoApprove parity): the resolved session agent
@@ -542,7 +569,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     try {
       return await this.options.resolvePreToolPolicy(input);
     } catch (error) {
-      const reason = `Station pre-tool policy could not be prepared; tool execution was denied: ${error instanceof Error ? error.message : String(error)}`;
+      const reason = `Station pre-tool policy could not be prepared; tool execution was denied: ${errorMessage(error)}`;
       return async () => ({
         behavior: 'deny',
         denial: { allowed: false, reason },
@@ -762,6 +789,9 @@ export class AcpAdapter implements ProviderAdapterShape {
       session,
       process: undefined as unknown as ACPProcess,
       connectionId: config.id,
+      command: config.command,
+      args: config.args,
+      promptEpoch: 0,
       generation: options?.generation ?? this.sessionGeneration(input.threadId),
       recoveryStart: {
         provider: input.provider,
@@ -1003,7 +1033,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         capabilityUndelivered.push({
           capability: 'toolServers',
           reason: 'delivery-failed',
-          detail: error instanceof Error ? error.message : String(error),
+          detail: errorMessage(error),
         });
       }
       for (const entry of capabilityUndelivered) {
@@ -1180,8 +1210,37 @@ export class AcpAdapter implements ProviderAdapterShape {
             }),
           ),
         } satisfies AcpResumeCursor;
-        record.currentModeId = sessionResult.modes?.currentModeId;
         record.configOptions = sessionResult.configOptions;
+        const modeCatalog = advertisedAcpSessionModes({
+          configOptions: sessionResult.configOptions,
+          modes: sessionResult.modes,
+        });
+        record.acpModeCatalog = modeCatalog;
+        if (modeCatalog.modes.length > 0) {
+          record.currentModeId = modeCatalog.currentModeId;
+        }
+        const requestedMode = requestedAcpSessionMode(input.modelOptions);
+        if (requestedMode) {
+          if (modeCatalog.modes.length === 0) {
+            throw new Error(
+              `ACP mode option unavailable: connection '${config.id}' did not advertise a session mode for this session.`,
+            );
+          }
+          const appliedMode = await applyAdvertisedAcpSessionMode(
+            acpProcess,
+            modeCatalog,
+            requestedMode,
+            config.id,
+          );
+          record.currentModeId = appliedMode.currentModeId;
+          record.acpModeCatalog = {
+            ...modeCatalog,
+            currentModeId: appliedMode.currentModeId,
+          };
+          if (appliedMode.configOptions) {
+            record.configOptions = appliedMode.configOptions;
+          }
+        }
         reportedModel = extractReportedModelFromConfigOptions(
           sessionResult.configOptions,
         );
@@ -1254,6 +1313,12 @@ export class AcpAdapter implements ProviderAdapterShape {
                     [MODEL_SELECTION_RECEIPT_METADATA_KEY]:
                       verifiedModelSelection,
                   }
+                : {}),
+              ...(record.currentModeId
+                ? { acpSessionMode: record.currentModeId }
+                : {}),
+              ...(record.acpModeCatalog?.modes.length
+                ? { acpSessionModes: record.acpModeCatalog.modes }
                 : {}),
             },
             'toolServers',
@@ -1352,6 +1417,29 @@ export class AcpAdapter implements ProviderAdapterShape {
         'This engine did not advertise image attachment support.',
       );
     }
+    const requestedMode = requestedAcpSessionMode(input.modelOptions);
+    if (requestedMode && requestedMode !== record.currentModeId) {
+      const catalog = record.acpModeCatalog ?? { modes: [] };
+      if (catalog.modes.length === 0) {
+        throw new Error(
+          `ACP mode option unavailable: this session did not advertise a session mode.`,
+        );
+      }
+      const appliedMode = await applyAdvertisedAcpSessionMode(
+        record.process,
+        { ...catalog, currentModeId: record.currentModeId },
+        requestedMode,
+        record.connectionId,
+      );
+      record.currentModeId = appliedMode.currentModeId;
+      record.acpModeCatalog = {
+        ...catalog,
+        currentModeId: appliedMode.currentModeId,
+      };
+      if (appliedMode.configOptions) {
+        record.configOptions = appliedMode.configOptions;
+      }
+    }
     record.activeTurnId = turnId;
     record.session.status = 'running';
     record.session.updatedAt = new Date().toISOString();
@@ -1414,68 +1502,14 @@ export class AcpAdapter implements ProviderAdapterShape {
         mimeType: attachment.mimeType,
       })),
     ];
-    record.process
-      .prompt(content)
-      .then((response) => {
-        // archive#4084 review fix round F2: unquarantine unconditionally —
-        // this specific prompt() has now settled, regardless of whether it
-        // still owns the active turn (an interrupted turn's own settlement
-        // lands here too, since interruptTurn does not replace this
-        // handler). Must run before the ownsActiveTurn early return below,
-        // or a superseded turn's quarantine would never clear.
-        record.quarantinedTurnIds?.delete(turnId);
-        if (!this.ownsActiveTurn(input.threadId, record, turnId)) return;
-        // Turn succeeded: any notification retained during this window
-        // turned out not to matter. Clear it rather than let it leak into a
-        // future failure it did not co-occur with (archive#4084).
-        record.turnErrorNotifications = undefined;
-        this.publish({
-          eventId: crypto.randomUUID(),
-          provider: this.provider,
-          threadId: input.threadId,
-          createdAt: new Date().toISOString(),
-          turnId,
-          method: 'turn.completed',
-          finishReason: mapAcpStopReasonToFinishReason(response.stopReason),
-        });
-        record.session.status = 'ready';
-        record.session.updatedAt = new Date().toISOString();
-        record.activeTurnId = undefined;
-      })
-      .catch((error) => {
-        // archive#4084 review fix round F2: see the `.then` branch above —
-        // must run before the ownsActiveTurn early return.
-        record.quarantinedTurnIds?.delete(turnId);
-        if (!this.ownsActiveTurn(input.threadId, record, turnId)) return;
-        const baseMessage =
-          error instanceof Error ? error.message : String(error);
-        // archive#4084: a bare JSON-RPC error (e.g. -32603 "Internal error")
-        // carries no actionable detail, but the engine may have already
-        // sent a separate, evidenced extension notification earlier in this
-        // same turn window (live evidence: kiro-cli's
-        // `_kiro.dev/error/rate_limit`). Quote the most recent such
-        // notification's own `message`, unmodified and clearly attributed
-        // to the engine — never fabricated when none arrived. Framed as
-        // co-occurrence, not causation (F5): Station observed the two
-        // events in the same turn window, and did not verify that the
-        // notification actually caused this failure.
-        const coReportedCause = record.turnErrorNotifications?.at(-1)?.message;
-        record.turnErrorNotifications = undefined;
-        this.publish({
-          eventId: crypto.randomUUID(),
-          provider: this.provider,
-          threadId: input.threadId,
-          createdAt: new Date().toISOString(),
-          method: 'runtime.error',
-          severity: 'error',
-          message: coReportedCause
-            ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
-            : baseMessage,
-        });
-        record.session.status = 'error';
-        record.session.updatedAt = new Date().toISOString();
-        record.activeTurnId = undefined;
-      });
+    record.promptEpoch += 1;
+    this.bindPromptSettlement(
+      record,
+      input.threadId,
+      turnId,
+      record.promptEpoch,
+      record.process.prompt(content),
+    );
 
     return {
       threadId: input.threadId,
@@ -1526,6 +1560,35 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.session.status = 'ready';
     record.session.updatedAt = new Date().toISOString();
     return { outcome: 'cancelled', turnId: targetTurnId } as const;
+  }
+
+  async steerTurn(
+    threadId: string,
+    input: string,
+    turnId: string,
+  ): Promise<void> {
+    const record = this.requireSession(threadId);
+    if (record.activeTurnId !== turnId) {
+      throw new ProviderTurnEndedError();
+    }
+    const text = input.trim();
+    if (!text) {
+      throw new Error('Steer input is empty.');
+    }
+    const native = await this.tryNativeAcpSteer(record, text);
+    if (!native) {
+      await this.steerByCancelReprompt(record, threadId, turnId, text);
+    }
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      turnId,
+      method: 'turn.started',
+      prompt: text,
+      inputKind: 'steer',
+    });
   }
 
   async respondToRequest(
@@ -2063,6 +2126,15 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
       if (this.sessions.get(threadId) !== record) return;
       this.sessions.delete(threadId);
+      // station#1569 (item 4): this is a session ending — the child is gone
+      // and a replacement one starts below with its own supervisor — so the
+      // calls this one still has open can never report. Unlike the stop path
+      // (`prepareRecordForStop` → `dispose`), nothing settled them here at
+      // all: they were abandoned mid-flight and left running forever in every
+      // client. Before `session.exited`, which closes their cards as
+      // "Stopped" (`background-tasks-store.ts`) and would take the honest
+      // terminal with it.
+      record.toolUpdateSupervisor.settleUnresolvedAtSessionEnd();
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
@@ -2224,6 +2296,124 @@ export class AcpAdapter implements ProviderAdapterShape {
       !record.stopping &&
       this.sessions.get(threadId) === record &&
       record.activeTurnId === turnId
+    );
+  }
+
+  private bindPromptSettlement(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+    promptEpoch: number,
+    prompt: Promise<PromptResponse>,
+  ): void {
+    prompt
+      .then((response) => {
+        // archive#4084 review fix round F2: unquarantine unconditionally —
+        // this specific prompt() has now settled, regardless of whether it
+        // still owns the active turn (an interrupted turn's own settlement
+        // lands here too, since interruptTurn does not replace this
+        // handler). Must run before the ownsActiveTurn early return below,
+        // or a superseded turn's quarantine would never clear.
+        record.quarantinedTurnIds?.delete(turnId);
+        if (record.promptEpoch !== promptEpoch) return;
+        if (!this.ownsActiveTurn(threadId, record, turnId)) return;
+        record.turnErrorNotifications = undefined;
+        this.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId,
+          createdAt: new Date().toISOString(),
+          turnId,
+          method: 'turn.completed',
+          finishReason: mapAcpStopReasonToFinishReason(response.stopReason),
+        });
+        record.session.status = 'ready';
+        record.session.updatedAt = new Date().toISOString();
+        record.activeTurnId = undefined;
+      })
+      .catch((error) => {
+        record.quarantinedTurnIds?.delete(turnId);
+        if (record.promptEpoch !== promptEpoch) return;
+        if (!this.ownsActiveTurn(threadId, record, turnId)) return;
+        const baseMessage = errorMessage(error);
+        const coReportedCause = record.turnErrorNotifications?.at(-1)?.message;
+        record.turnErrorNotifications = undefined;
+        this.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId,
+          createdAt: new Date().toISOString(),
+          method: 'runtime.error',
+          severity: 'error',
+          message: coReportedCause
+            ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
+            : baseMessage,
+        });
+        record.session.status = 'error';
+        record.session.updatedAt = new Date().toISOString();
+        record.activeTurnId = undefined;
+      });
+  }
+
+  private async tryNativeAcpSteer(
+    record: AcpSessionRecord,
+    text: string,
+  ): Promise<boolean> {
+    const channel = resolveAcpSteerChannel({
+      command: record.command,
+      args: record.args,
+      agentName: record.process.initResult?.agentInfo?.name,
+    });
+    const sessionId = record.process.sessionId;
+    if (!sessionId) return false;
+    if (channel === 'session-steer') {
+      try {
+        await record.process.extMethod(
+          ACP_SESSION_STEER_METHOD,
+          acpSessionSteerParams(sessionId, text),
+        );
+        return true;
+      } catch (error) {
+        if (!isAcpMethodNotFound(error)) throw error;
+        return false;
+      }
+    }
+    if (channel === 'interject') {
+      for (const method of ACP_INTERJECT_METHODS) {
+        try {
+          await record.process.extMethod(
+            method,
+            acpInterjectParams(sessionId, text),
+          );
+          return true;
+        } catch (error) {
+          if (!isAcpMethodNotFound(error)) throw error;
+        }
+      }
+      return false;
+    }
+    return false;
+  }
+
+  private async steerByCancelReprompt(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+    text: string,
+  ): Promise<void> {
+    record.promptEpoch += 1;
+    const promptEpoch = record.promptEpoch;
+    record.toolUpdateSupervisor.cancelAll();
+    await record.process.cancel();
+    if (record.activeTurnId !== turnId) {
+      throw new ProviderTurnEndedError();
+    }
+    this.bindPromptSettlement(
+      record,
+      threadId,
+      turnId,
+      promptEpoch,
+      record.process.prompt([{ type: 'text', text }]),
     );
   }
 }

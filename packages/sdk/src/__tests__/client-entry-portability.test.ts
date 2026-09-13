@@ -1,64 +1,19 @@
 import {
+  mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
-  unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, posix } from 'node:path';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
-/**
- * Zero-tolerance grep-gate for `packages/sdk/src/client/**` (#167 AC6),
- * modeled on this repo's existing `npm run rename:inventory` pattern
- * (CLAUDE.md): a hand-rolled `readFileSync` + regex check per file, not a
- * separate lint plugin or tsconfig project.
- *
- * `client/**` is imported by `src-server/tools/station-control-*.ts`, which
- * is esbuild-bundled into `dist-server/command-station.js` — `@kontourai/station-sdk`
- * is not in `esbuild.config.mjs`'s `external` list, so anything reachable
- * from `client/**` gets inlined at bundle time. A stray `react`/`.tsx`/`.css`
- * import (or a reach-back into the hook/provider/component surface, which
- * could transitively pull one in) would silently break that server build.
- *
- * #167 iteration-2 (L1): the original four named reach-back patterns
- * (`../hooks`, `../providers`, `../components`, `../layout`) only banned the
- * specific paths the audit happened to name — a new reach-back into some
- * other `../` sibling of `client/` (e.g. a future `../api` or `../utils`)
- * would slip through undetected. Banning *any* `../`-relative import makes
- * the gate transitive-by-construction: every file under `client/**` may
- * only import its own siblings (`./foo`) or `./http`, so nothing outside
- * this directory can be reached at all, named exception or not. Dynamic
- * `import(...)`/`require(...)` calls are banned for the same reason — a
- * static-analysis gate over `import ... from '...'` statements can't see
- * through them.
- */
-
+/** Explicit syntax boundary for the portable client. Resolved bundle checks
+ * remain separate; this scanner does not claim arbitrary data-flow analysis. */
 const CLIENT_DIR = join(__dirname, '..', 'client');
-
-const BANNED_IMPORT_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
-  { label: "import from 'react'", pattern: /from\s+['"]react['"]/ },
-  { label: "import from 'react-dom'", pattern: /from\s+['"]react-dom['"]/ },
-  {
-    label: "import from '@tanstack/react-query'",
-    pattern: /from\s+['"]@tanstack\/react-query['"]/,
-  },
-  { label: 'import of a .tsx file', pattern: /from\s+['"][^'"]+\.tsx['"]/ },
-  { label: 'import of a .css file', pattern: /from\s+['"][^'"]+\.css['"]/ },
-  {
-    label:
-      "relative import reaching outside client/ (only './' siblings are allowed)",
-    pattern: /from\s+['"]\.\.\//,
-  },
-  {
-    label: 'dynamic import(...) call',
-    pattern: /\bimport\s*\(/,
-  },
-  {
-    label: 'require(...) call',
-    pattern: /\brequire\s*\(/,
-  },
-];
 
 function listTsFilesRecursively(dir: string): string[] {
   const entries = readdirSync(dir);
@@ -77,17 +32,59 @@ function listTsFilesRecursively(dir: string): string[] {
   return files;
 }
 
-function scanForViolations(files: string[]): string[] {
+function scanSource(contents: string, file: string): string[] {
   const violations: string[] = [];
-  for (const file of files) {
-    const contents = readFileSync(file, 'utf-8');
-    for (const { label, pattern } of BANNED_IMPORT_PATTERNS) {
-      if (pattern.test(contents)) {
-        violations.push(`${file}: ${label}`);
-      }
+  const ast = ts.createSourceFile(file, contents, ts.ScriptTarget.Latest, true);
+  const report = (label: string) => violations.push(`${file}: ${label}`);
+  const checkSpecifier = (specifier: string) => {
+    for (const name of ['react', 'react-dom', '@tanstack/react-query']) {
+      if (specifier === name || specifier.startsWith(`${name}/`))
+        report(`import from '${name}'`);
     }
-  }
+    if (/\.tsx(?:[?#].*)?$/.test(specifier)) report('import of a .tsx file');
+    if (/\.css(?:[?#].*)?$/.test(specifier)) report('import of a .css file');
+    const normalized = posix.normalize(specifier.replace(/\\/g, '/'));
+    if (normalized.startsWith('../') || posix.isAbsolute(normalized))
+      report(
+        "relative import reaching outside client/ (only './' siblings are allowed)",
+      );
+  };
+  const visit = (node: ts.Node) => {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    )
+      checkSpecifier(node.moduleSpecifier.text);
+    if (
+      ts.isImportTypeNode(node) &&
+      ts.isLiteralTypeNode(node.argument) &&
+      ts.isStringLiteral(node.argument.literal)
+    )
+      checkSpecifier(node.argument.literal.text);
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword
+    )
+      report('dynamic import(...) call');
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'require'
+    )
+      report('require(...) call');
+    if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference)
+    )
+      report('require(...) call');
+    ts.forEachChild(node, visit);
+  };
+  visit(ast);
   return violations;
+}
+function scanForViolations(files: string[]): string[] {
+  return files.flatMap((file) => scanSource(readFileSync(file, 'utf8'), file));
 }
 
 describe('client-entry portability (#167 AC6)', () => {
@@ -108,14 +105,18 @@ describe('client-entry portability (#167 AC6)', () => {
   );
 
   it('negative control: the scan actually flags a planted violation (then restores)', () => {
-    const fixturePath = join(CLIENT_DIR, '__portability-negative-control__.ts');
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'client-portability-'));
+    const fixturePath = join(
+      fixtureRoot,
+      '__portability-negative-control__.ts',
+    );
     writeFileSync(
       fixturePath,
       "import { useSomething } from '../hooks/useSomething';\n" +
         "const lazy = () => import('./http');\n",
     );
     try {
-      const violations = scanForViolations(listTsFilesRecursively(CLIENT_DIR));
+      const violations = scanForViolations([fixturePath]);
       expect(
         violations.some(
           (v) =>
@@ -131,7 +132,28 @@ describe('client-entry portability (#167 AC6)', () => {
         ),
       ).toBe(true);
     } finally {
-      unlinkSync(fixturePath);
+      rmSync(fixtureRoot, { recursive: true, force: true });
     }
   });
+});
+
+it('accepts harmless comments, prose, and local type queries', () => {
+  expect(
+    scanSource(
+      `// import { x } from 'react';
+    const prose = "require('react')";
+    type Data = import('./http').Data;`,
+      'control.ts',
+    ),
+  ).toEqual([]);
+});
+it('catches side-effect imports, re-exports, subpaths, and disguised parent traversal', () => {
+  for (const source of [
+    "import 'react';",
+    "export {x} from 'react/jsx-runtime';",
+    "import {x} from './nested/../../hooks/x';",
+    "import {x} from 'react-dom/client';",
+  ]) {
+    expect(scanSource(source, 'bad.ts').length).toBeGreaterThan(0);
+  }
 });

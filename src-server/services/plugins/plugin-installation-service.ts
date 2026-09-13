@@ -1,7 +1,8 @@
 import type { PluginActivationPlan } from './plugin-activation-plan.js';
+
 /** Installation intent boundary. Backend adapters carry their own locations;
  * these values never require a filesystem path, process ID, or server account. */
-export interface PluginArtifactReference {
+interface PluginArtifactReference {
   readonly digest: string;
 }
 export type PluginArtifactEntry =
@@ -36,7 +37,8 @@ export interface PluginInstallationHost {
 export type { PluginInstallationRevision } from '@kontourai/station-contracts/plugin';
 
 import type { PluginInstallationRevision } from '@kontourai/station-contracts/plugin';
-export interface PluginMaterialization {
+
+interface PluginMaterialization {
   readonly reference: string;
   readonly dataScope: string;
   readonly origin?: string;

@@ -108,4 +108,28 @@ describe('memory conversation store', () => {
     expect(disk.metadata.revision).toBe(19);
     expect(cached).toEqual(disk);
   });
+
+  // The published bytes are this store's on-disk contract: two-space JSON with
+  // no trailing newline. Pinned so that changing the publication mechanism has
+  // to preserve the format, not merely keep the document parseable.
+  test('publishes two-space JSON with no trailing newline', async () => {
+    const conversation = {
+      id: 'conv-bytes',
+      resourceId: 'agent-bytes',
+      userId: 'user-bytes',
+      title: 'Bytes',
+      metadata: { nested: { flag: true } },
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    await store.persistConversation(conversation as any);
+
+    expect(
+      readFileSync(
+        paths.getConversationPath(conversation.resourceId, conversation.id),
+        'utf8',
+      ),
+    ).toBe(JSON.stringify(conversation, null, 2));
+  });
 });

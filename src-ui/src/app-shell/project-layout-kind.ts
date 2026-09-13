@@ -22,15 +22,15 @@ export const LAYOUT_TYPE_REGISTRY_KEYS = [
   'session-board',
 ] as const;
 
-export type LayoutTypeRegistryKey = (typeof LAYOUT_TYPE_REGISTRY_KEYS)[number];
+type LayoutTypeRegistryKey = (typeof LAYOUT_TYPE_REGISTRY_KEYS)[number];
 
-export type ProjectLayoutRendererKind =
+type ProjectLayoutRendererKind =
   | 'layout-view'
   | 'coding'
   | LayoutTypeRegistryKey;
 
 /** The subset of `LayoutConfig` the dispatch reads. */
-export interface ProjectLayoutRendererFacts {
+interface ProjectLayoutRendererFacts {
   type?: string;
   config?: Record<string, unknown> | null;
   catalogContribution?: {

@@ -26,6 +26,7 @@ import {
  * "Active now" and the lane ORDER, both of which are presentation.
  */
 export type SessionLaneId =
+  | 'external'
   | 'needsYou'
   | 'activeNow'
   | 'recentlyFinished'
@@ -37,6 +38,7 @@ export const SESSION_LANE_ORDER: readonly SessionLaneId[] = [
   'activeNow',
   'recentlyFinished',
   'earlier',
+  'external',
 ];
 
 export const SESSION_LANE_LABELS: Record<SessionLaneId, string> = {
@@ -44,6 +46,7 @@ export const SESSION_LANE_LABELS: Record<SessionLaneId, string> = {
   activeNow: 'Active now',
   recentlyFinished: 'Recently finished',
   earlier: 'Earlier',
+  external: 'From other apps',
 };
 
 export interface SessionLane {
@@ -127,6 +130,7 @@ export function partitionSessionLanes({
       );
 
   const membership: Record<SessionLaneId, OrchestrationSessionSummary[]> = {
+    external: resolve(partition.external ?? []),
     needsYou: resolve(partition.active.filter(needsYou)),
     activeNow: resolve(partition.active.filter((item) => !needsYou(item))),
     recentlyFinished: resolve(partition.recentlyFinished),

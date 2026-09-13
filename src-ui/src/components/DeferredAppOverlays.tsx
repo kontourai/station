@@ -24,15 +24,16 @@
  */
 
 import { useEffect } from 'react';
-import { useNavigation } from '../contexts/NavigationContext';
+import { useNavigationActions } from '../contexts/NavigationContext';
 import { OPEN_CONNECTIONS_MODAL_EVENT } from '../lib/connectionModalEvents';
 import { subscribeToTrayNavigation } from '../lib/trayNavigation';
 import { CommandPalette } from './CommandPalette';
 import { FirstRunFlow } from './first-run/FirstRunFlow';
+import { HomeRecoveryBannerSource } from './notifications/HomeRecoveryBannerSource';
 import { ReportProblemHost } from './report-problem/ReportProblemHost';
 
 function TrayNavigationListener() {
-  const { navigate } = useNavigation();
+  const { navigate } = useNavigationActions();
   useEffect(
     () =>
       subscribeToTrayNavigation(navigate, () =>
@@ -53,6 +54,7 @@ export default function DeferredAppOverlays() {
       <CommandPalette />
       <FirstRunFlow />
       <ReportProblemHost />
+      <HomeRecoveryBannerSource />
       <TrayNavigationListener />
     </>
   );

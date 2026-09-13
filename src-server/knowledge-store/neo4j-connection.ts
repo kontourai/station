@@ -79,12 +79,12 @@ export interface Neo4jGraphViewConnectionConfig {
   password?: string;
 }
 
-export interface Neo4jReachabilityResult {
+interface Neo4jReachabilityResult {
   ok: boolean;
   reason: string;
 }
 
-export interface Neo4jGraphQueryResult {
+interface Neo4jGraphQueryResult {
   // K2 never returns `ok: true` for an actual query — it ships no query client.
   ok: false;
   reason: string;

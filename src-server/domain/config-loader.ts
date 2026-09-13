@@ -49,6 +49,7 @@ import {
   listAgentWorkflowMetadata,
   loadAgentConfig,
   mutateAgentConfig,
+  readAgentCatalog,
   readAgentWorkflow,
   resolveAgentConfigSlug,
   saveAgentConfig,
@@ -67,7 +68,7 @@ import {
 } from './config-loader-app.js';
 import {
   deleteIntegrationConfig,
-  deleteSkillConfig,
+  deleteSkillPackageAt,
   integrationConfigExists,
   listIntegrationMetadata,
   listSkillConfigs,
@@ -77,7 +78,7 @@ import {
   type SkillConfigRecord,
   saveACPConfigFile,
   saveIntegrationConfig,
-  saveSkillConfig,
+  saveSkillConfigIn,
   skillConfigExists,
   updateIntegrationConfig,
 } from './config-loader-storage.js';
@@ -615,6 +616,19 @@ export class ConfigLoader {
   /**
    * List all agents
    */
+  async readAgentCatalog(composition?: PluginActivationComposition) {
+    await this.ensureHomeSchema();
+    const entries = await readAgentCatalog(this.projectHomeDir, async (slug) =>
+      this.admittedPluginAgentBinding(slug, composition) === null
+        ? null
+        : this.loadAgent(slug, composition),
+    );
+    return entries.filter(
+      ({ metadata }) =>
+        this.admittedPluginAgentBinding(metadata.slug, composition) !== null,
+    );
+  }
+
   async listAgents(composition?: PluginActivationComposition) {
     await this.ensureHomeSchema();
     const agents = await listAgentConfigs(this.projectHomeDir);
@@ -807,6 +821,8 @@ export class ConfigLoader {
           return (slug: string) => owner.loadAgent(slug, composition);
         if (property === 'listAgents')
           return () => owner.listAgents(composition);
+        if (property === 'readAgentCatalog')
+          return () => owner.readAgentCatalog(composition);
         if (property === 'loadIntegration')
           return (id: string) => owner.loadIntegration(id, composition);
         if (property === 'loadIntegrationWithOwnership')
@@ -1018,20 +1034,6 @@ export class ConfigLoader {
    */
   async agentExists(slug: string): Promise<boolean> {
     return agentConfigExists(this.projectHomeDir, slug);
-  }
-
-  /**
-   * Check if tool exists
-   */
-  async toolExists(id: string): Promise<boolean> {
-    const path = join(
-      this.projectHomeDir,
-      'integrations',
-      id,
-      'integration.json',
-    );
-    if (existsSync(path)) return true;
-    return this.integrationSources.some((source) => source.loadIntegration(id));
   }
 
   /**
@@ -1554,15 +1556,18 @@ export class ConfigLoader {
   /**
    * Save a skill config
    */
-  async saveSkill(name: string, config: SkillConfig): Promise<void> {
-    await saveSkillConfig(this.projectHomeDir, name, config);
+  /**
+   * Write a package's record into the package's own directory, for a caller
+   * that has already resolved it (`SkillService`, which resolves it from where
+   * discovery found the package rather than from a name and a slug — #1619).
+   */
+  async saveSkillIn(directory: string, config: SkillConfig): Promise<void> {
+    await saveSkillConfigIn(this.projectHomeDir, directory, config);
   }
 
-  /**
-   * Delete a skill directory
-   */
-  async deleteSkill(name: string): Promise<void> {
-    await deleteSkillConfig(this.projectHomeDir, name);
+  /** Remove a package by its own directory. See `saveSkillIn`. */
+  async deleteSkillAt(name: string, directory: string): Promise<void> {
+    await deleteSkillPackageAt(this.projectHomeDir, name, directory);
   }
 
   /**

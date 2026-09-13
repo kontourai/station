@@ -85,12 +85,17 @@ function tabButton(name: string) {
 }
 
 describe('AgentEditorForm', () => {
-  test('renders an existing slug inline with Name without a separate slug row', () => {
+  test('shows the existing agent ID only when advanced details are opened', () => {
     render(<AgentEditorForm {...baseProps()} />);
 
-    expect(screen.getByText('· agent-one')).toBeTruthy();
-    expect(screen.queryByText('slug: agent-one')).toBeNull();
-    expect(screen.queryByRole('textbox', { name: 'Slug' })).toBeNull();
+    expect(screen.queryByText('· agent-one')).toBeNull();
+    const details = screen.getByText('Advanced: agent ID').closest('details');
+    expect(details?.open).toBe(false);
+    fireEvent.click(screen.getByText('Advanced: agent ID'));
+    expect(details?.open).toBe(true);
+    expect((screen.getByLabelText('Agent ID') as HTMLInputElement).value).toBe(
+      'agent-one',
+    );
   });
 
   test('codex-bound agent with authored skills shows the Skills tab in a read-only validation state naming the engine', () => {

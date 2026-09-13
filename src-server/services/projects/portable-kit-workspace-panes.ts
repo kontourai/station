@@ -7,7 +7,7 @@ import {
 } from '@kontourai/station-contracts/workspace-pane';
 import type { StationKitRegistryEntry } from '../kits/kit-observability-host.js';
 
-export interface PortableKitWorkspacePane {
+interface PortableKitWorkspacePane {
   descriptor: WorkspacePaneDescriptor;
   instance: WorkspacePaneInstance;
   enabled: boolean;

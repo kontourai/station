@@ -8,6 +8,7 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore, PersistedRuntimeEvent } from './event-store.js';
 import {
   type RequestReplayOutcome,
@@ -28,7 +29,7 @@ function eventWindowSessionSummary(
   return publicSummary;
 }
 
-export interface SessionEventReadsDeps {
+interface SessionEventReadsDeps {
   eventStore?: EventStore;
   logger: { warn(message: string, meta?: Record<string, unknown>): void };
 
@@ -120,7 +121,7 @@ export class SessionEventReads {
         {
           threadId,
           requestId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         },
       );
       return { state: 'undetermined' };
@@ -135,39 +136,41 @@ export class SessionEventReads {
       authority: SessionReadScope;
     },
   ): Promise<OrchestrationSessionEventPage | null> {
-    await this.deps.listSessions(INTERNAL_SESSION_READ_SCOPE);
-
-    const persistedSessions = this.deps.eventStore?.readSessions() ?? [];
-    this.deps.hydratePersistedTenantContexts(persistedSessions);
-    const persisted = persistedSessions.find(
-      (session) => session.threadId === threadId,
-    );
-    const loaded = this.deps.loadedSessionForThread(threadId);
+    // A known page target never requires a global adapter inventory. Preserve
+    // discovery for an untracked live session only when both point reads miss.
+    let persisted = this.deps.eventStore?.readSessionByThread(threadId);
+    let loaded = this.deps.loadedSessionForThread(threadId);
+    if (!persisted && !loaded) {
+      await this.deps.listSessions(INTERNAL_SESSION_READ_SCOPE);
+      persisted = this.deps.eventStore?.readSessionByThread(threadId);
+      loaded = this.deps.loadedSessionForThread(threadId);
+    }
+    if (persisted) this.deps.hydratePersistedTenantContexts([persisted]);
     if (!persisted && !loaded) return null;
 
+    if (!this.deps.canReadSession(threadId, options.authority)) return null;
     const projectionEvents =
       this.deps.eventStore?.listSessionProjectionEvents(threadId) ?? [];
-    if (!this.deps.canReadSession(threadId, options.authority)) {
-      return null;
-    }
     const page = this.deps.eventStore?.listEventPage(threadId, options) ?? {
       events: [],
       hasMore: false,
       nextSequence: options.afterSequence,
     };
     return {
-      session: buildOrchestrationSessionSummary({
-        persisted,
-        loaded,
-        events: projectionEvents.map((event) => event.payload),
-        eventCount: this.deps.eventStore?.countEventsByThread(threadId),
-        turnProgress: this.deps.readTurnProgress(threadId),
-        answerability: this.deps.observeAnswerability(
-          threadId,
-          (loaded ?? persisted)?.provider,
-          new Date().toISOString(),
-        ),
-      }),
+      session: eventWindowSessionSummary(
+        buildOrchestrationSessionSummary({
+          persisted,
+          loaded,
+          events: projectionEvents.map((event) => event.payload),
+          eventCount: this.deps.eventStore?.countEventsByThread(threadId),
+          turnProgress: this.deps.readTurnProgress(threadId),
+          answerability: this.deps.observeAnswerability(
+            threadId,
+            (loaded ?? persisted)?.provider,
+            new Date().toISOString(),
+          ),
+        }),
+      ),
       events: page.events.map((event) => ({
         sequence: event.sequence,
         event: event.payload,
@@ -181,6 +184,7 @@ export class SessionEventReads {
     threadId: string,
     options: {
       cursor?: string;
+      direction?: 'newest';
       turnLimit: number;
       authority: SessionReadScope;
       signal?: AbortSignal;
@@ -254,6 +258,7 @@ export class SessionEventReads {
     conversationId: string,
     options: {
       cursor?: string;
+      direction?: 'newest';
       turnLimit: number;
       authority: SessionReadScope;
       signal?: AbortSignal;

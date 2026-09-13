@@ -1,5 +1,19 @@
 # Design: portable Project identity — remote-keyed resources, per-Station bindings
 
+> Current implementation note: new engine starts resolve the primary resource
+> through `project-session-directory.ts` in runtime composition. An explicit
+> local binding overrides legacy `workingDirectory`; missing, drifted or
+> unverifiable Git checkouts refuse execution. Directory-less local-only
+> Projects retain their organizational/global behavior. Caller-supplied paths
+> must fit the resolved root unless the existing owned-worktree admission
+> authorizes them. Recovery fills an absent cwd using the same resolver and
+> preserves an already persisted cwd. This does not prove receiving-Station
+> authorization, compute consent, execution leases or physical fleet delivery.
+> The dated migration inventory below is historical; live scope is tracked in
+> [#106](https://github.com/kontourai/station/issues/106) and
+> [#483](https://github.com/kontourai/station/issues/483).
+
+
 > Status: **draft for owner review (2026-08-01, revision 2); tracking issue
 > [#1425](https://github.com/kontourai/station/issues/1425).** Twelve open
 > questions are open — see §9, each with a recommendation; OQ-12 is explicitly
@@ -45,6 +59,10 @@ to understand or implement this design.
 "Resource" in this doc means a thing a Project references — today: a git repo,
 a knowledge root, an agent, an MCP integration, a layout. It does **not** mean
 a generalized resource graph; #1425 rules that out of scope and so does §8.
+
+The complementary [Station topology](station-topology.md) decision distinguishes
+this portable identity/reference document from local bindings, room authority,
+and execution offers.
 
 ## 1. Problem: three concerns fused into one optional string
 
@@ -586,9 +604,13 @@ by convention:
   have; the manifest has it explicitly.
 - **No secret values.** Auth is by reference only (§3.4), with the validator
   rejecting key-looking literals.
-- **No machine or member identity.** A manifest describes a project, never who
-  has it or who offers it. That is §4's contribution layer, computed per
-  Station and attributed by the reader (§4.2).
+- **No machine, Station-instance, room-authority, execution-offer, or member
+  identity.** A manifest describes a Project, never who has it, who may
+  sequence a room, or who offers it. Those are separately authored operational
+  facts: bindings and offers are local/per-Station; current personal rooms have
+  no lease service, while future witnessed authority uses its own verified
+  operational record. That is §4's contribution layer, computed per Station
+  and attributed by the reader (§4.2).
 - **Base URLs are allowed** and are not treated as secrets — a self-hosted
   forge or MCP endpoint is topology, and refusing it would make self-hosted
   setups unrepresentable. They are, however, the field most likely to be
@@ -602,6 +624,26 @@ by convention:
   span repos, change repos, or have none.
 
 ### 3.3 Decision: remote canonicalization and the alias problem
+
+**Checkout-comparison compatibility (#1965).** The persisted canonicalization
+algorithm also supplies verification-receipt repository identity, so its bytes
+remain unchanged. `src-server/services/projects/project-git-remote-comparison.ts`
+owns an ephemeral comparison key used by both the bind action and live resolver.
+It equates the historical `host:team/repo` spelling from non-`git` SSH users
+with `host/team/repo`, and recognizes the historical bracketed IPv6 spelling
+whose first colon was replaced by a slash. Neither resource IDs, stored remote
+observations nor receipt IDs are rewritten. New manifests retain the existing
+identity convention; matching a checkout does not merge Projects or grant access.
+
+Explicit numeric ports remain distinct from a default-port identity. A
+non-`git` SCP path beginning with a numeric component can resemble that stored
+port notation; use an explicit SSH URL for that checkout instead of guessing.
+Unsupported URL forms, malformed ports, local sources and query/fragment-bearing
+URLs cannot supply comparison evidence. Without another supported matching
+remote, binding refuses as `unverifiable` and live resolution reports `stale`.
+Host aliases still apply only to checkout observations. The existing lowercase
+and ambiguous single-label-host conventions below remain limitations of the
+persisted identity format, not new equivalence guarantees.
 
 Canonicalization must be **pure and deterministic — no filesystem, no
 `~/.ssh/config`, no network** — because every member must compute the same id
@@ -717,6 +759,42 @@ the contribution projection carries only `available: boolean`. Nothing at any
 layer carries the value.
 
 ### 3.5 The binding store
+
+**Explicit identity attachment (#483).** The initial identity API separates
+`ProjectConfig.id` from the portable sidecar ID. `GET /api/projects/:slug/identity`
+returns a closed `ProjectPortableIdentity` snapshot and an explicit local
+association without writing. `POST /api/projects/:slug/identity/prepare` derives
+a missing identity under the current Project revision; it never reassigns an
+existing identity. `POST /api/projects/attach` creates a new local Project with
+the supplied portable identity and an optional verified local working directory.
+The local slug is explicit. An unchanged existing attachment is returned on
+retry; a different identity or configuration at that slug is a conflict.
+
+The filesystem adapter stages `project.json` and `manifest.json` outside the
+visible Project catalog and publishes their directory under the existing Project
+mutation lock. A failure before publication exposes neither record; a known
+post-publication failure does not turn the applied creation into a new create.
+Adapters without this atomic creation capability refuse attachment before
+creating an ordinary Project. An occupied directory is preserved.
+
+The snapshot has a closed field set and uses the existing manifest/resource
+validator. It carries no local path, account, membership, credential or home
+authority. The SDK also validates the receiving association and retains the
+original request through asynchronous work. The API does not merge same-remote
+Projects, import private history, select among multiple local realizations,
+clone files or authorize execution. Receiver admission, resource-relative
+execution roots, home location, membership and the integrated target picker
+retain their separate implementation and acceptance boundaries. See the
+[SDK identity API](../reference/sdk.md#portable-project-identity).
+
+`POST /api/projects/:slug/bind` holds the selected Project revision while it
+verifies the checkout, publishes the binding and derives the response view.
+A Project changed before admission returns 409 without recording a binding;
+an adapter without current-revision admission returns 503. The Project's
+mutation owner serializes rename, replacement and deletion with this operation.
+An error reading the view after publication still reports the recorded binding
+and a separate view gap. This protects the Project association; it is not an
+execution lease or a guarantee against external filesystem changes.
 
 Per Station, per member. In today's single-tenant Station the member is
 implicit; the shape reserves the slot so #1392 does not have to reshape it.

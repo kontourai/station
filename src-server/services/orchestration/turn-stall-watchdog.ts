@@ -108,9 +108,9 @@ interface WatchedTurn {
   lastProgressEventAt: string;
 }
 
-export type TurnStallCallback = (threadId: string, turnId: string) => void;
+type TurnStallCallback = (threadId: string, turnId: string) => void;
 
-export interface TurnStallLifecycleCallbacks {
+interface TurnStallLifecycleCallbacks {
   onStall: TurnStallCallback;
   onProgress?: (input: {
     threadId: string;

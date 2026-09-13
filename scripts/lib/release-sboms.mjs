@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { releaseVariants } from './release-artifacts.mjs';
+import { releaseVariants } from './release-variants.mjs';
 
 export const SBOM_ASSETS = Object.freeze({
   portable: 'station-sbom-portable.cdx.json',

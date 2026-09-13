@@ -13,7 +13,7 @@ export interface UsageLike {
   cacheWriteTokens?: number;
 }
 
-export interface ConversationTokenBreakdown {
+interface ConversationTokenBreakdown {
   systemPromptTokens?: number;
   mcpServerTokens?: number;
   userMessageTokens?: number;
@@ -31,7 +31,7 @@ export interface ConversationStats {
   tokenBreakdown?: ConversationTokenBreakdown;
 }
 
-export interface StatsUpdateParams {
+interface StatsUpdateParams {
   existingStats?: ConversationStats | null;
   existingModelStats?: Record<string, ConversationStats | undefined>;
   usage: UsageLike;
@@ -54,11 +54,11 @@ export function createEmptyConversationStats(): ConversationStats {
   };
 }
 
-export function getUsageInputTokens(usage: UsageLike): number | undefined {
+function getUsageInputTokens(usage: UsageLike): number | undefined {
   return usage.promptTokens ?? usage.inputTokens;
 }
 
-export function getUsageOutputTokens(usage: UsageLike): number | undefined {
+function getUsageOutputTokens(usage: UsageLike): number | undefined {
   return usage.completionTokens ?? usage.outputTokens;
 }
 
@@ -73,7 +73,7 @@ export function getUsageTotalTokens(usage: UsageLike): number | undefined {
   );
 }
 
-export function estimateMessageTextTokens(text: string): number {
+function estimateMessageTextTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
@@ -250,6 +250,16 @@ export function buildConversationStatsUpdate({
   const stats = existingStats ?? createEmptyConversationStats();
   const currentModelStats =
     existingModelStats[modelId] ?? createEmptyConversationStats();
+  // A first recorded cost starts its aggregate. An existing unknown cost
+  // must remain unknown; a later priced turn cannot reconstruct it.
+  const priorCost =
+    existingStats === undefined || existingStats === null
+      ? 0
+      : stats.estimatedCost;
+  const priorModelCost =
+    existingModelStats[modelId] === undefined
+      ? 0
+      : currentModelStats.estimatedCost;
   const inputTokens = getUsageInputTokens(usage);
   const outputTokens = getUsageOutputTokens(usage);
   const systemPromptTokens = fixedTokens?.systemPromptTokens ?? 0;
@@ -283,9 +293,7 @@ export function buildConversationStatsUpdate({
     turns: stats.turns + 1,
     toolCalls: stats.toolCalls + toolCallCount,
     estimatedCost:
-      cost !== null && stats.estimatedCost !== null
-        ? stats.estimatedCost + cost
-        : null,
+      cost !== null && priorCost !== null ? priorCost + cost : null,
     tokenBreakdown: {
       systemPromptTokens,
       mcpServerTokens,
@@ -330,9 +338,7 @@ export function buildConversationStatsUpdate({
     turns: currentModelStats.turns + 1,
     toolCalls: currentModelStats.toolCalls + toolCallCount,
     estimatedCost:
-      cost !== null && currentModelStats.estimatedCost !== null
-        ? currentModelStats.estimatedCost + cost
-        : null,
+      cost !== null && priorModelCost !== null ? priorModelCost + cost : null,
     tokenBreakdown: updatedStats.tokenBreakdown,
   };
 

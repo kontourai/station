@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   statSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,7 +13,15 @@ import {
   admitStationRuntimeHome,
   spawnedStationRoot,
 } from '@kontourai/station-shared/runtime-path-resolver';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
 import { inspectServiceSchedulingPolicy } from '../commands/service-scheduling.js';
 import {
   installSystemd,
@@ -58,6 +67,22 @@ const lifecycle = (baseDir: string) => ({
   instanceName: 'agent',
   serverPort: 3242,
   uiPort: 5274,
+});
+
+// These unit paths must be ABSENT for the assertions below to mean anything
+// (a repeatable uninstall, an unknown status). Naming them directly in the
+// shared system temp directory made that absence a property of the whole host
+// rather than of this test: any process creating `<tmpdir>/station-agent.service`
+// turned them red (#1790 -- reproduced with a probe). A leaf inside a directory
+// this file owns is absent by construction.
+const TEST_TEMP_ROOT = mkdtempSync(
+  join(tmpdir(), 'station-systemd-unit-test-'),
+);
+const ABSENT_UNIT_PATH = join(TEST_TEMP_ROOT, 'absent-station-agent.service');
+const KNOWN_UNIT_PATH = join(TEST_TEMP_ROOT, 'station-agent.service');
+
+afterAll(() => {
+  rmSync(TEST_TEMP_ROOT, { force: true, recursive: true });
 });
 
 describe('systemd service backend', () => {
@@ -256,7 +281,7 @@ describe('systemd service backend', () => {
       serverPort: 1,
       uiPort: 2,
       unitName: 'station-agent.service',
-      unitPath: join(tmpdir(), 'absent-station-agent.service'),
+      unitPath: ABSENT_UNIT_PATH,
     };
     expect(() => uninstallSystemd(manifest, { fs, run })).not.toThrow();
     expect(() => uninstallSystemd(manifest, { fs, run })).not.toThrow();
@@ -519,7 +544,7 @@ describe('systemd service backend', () => {
     const registration = {
       platform: 'linux' as const,
       unitName: 'station-agent.service',
-      unitPath: join(tmpdir(), 'absent-station-agent.service'),
+      unitPath: ABSENT_UNIT_PATH,
     };
     const run = vi.fn(() => ({
       error: new Error('backend unavailable'),
@@ -546,7 +571,7 @@ describe('systemd service backend', () => {
       const registration = {
         platform: 'linux' as const,
         unitName: 'station-agent.service',
-        unitPath: join(tmpdir(), 'absent-station-agent.service'),
+        unitPath: ABSENT_UNIT_PATH,
       };
       const status = systemdStatus(registration, {
         fs,
@@ -577,7 +602,7 @@ describe('systemd service backend', () => {
     const registration = {
       platform: 'linux' as const,
       unitName: 'station-agent.service',
-      unitPath: join(tmpdir(), 'absent-station-agent.service'),
+      unitPath: ABSENT_UNIT_PATH,
     };
     const status = systemdStatus(registration, {
       fs,
@@ -773,7 +798,7 @@ describe('systemd service backend', () => {
     const registration = {
       platform: 'linux' as const,
       unitName: 'station-agent.service',
-      unitPath: join(tmpdir(), 'station-agent.service'),
+      unitPath: KNOWN_UNIT_PATH,
     };
     const active = vi.fn((command: string, args: string[]) => {
       if (command === 'loginctl') return { status: 0, stdout: 'yes\n' };

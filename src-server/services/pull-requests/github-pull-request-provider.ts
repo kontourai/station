@@ -9,9 +9,15 @@ import type {
   PullRequestRepositoryContext,
   PullRequestRepositoryIdentityContext,
   PullRequestResult,
+  PullRequestReviewInput,
+  PullRequestWriteAdmission,
 } from '@kontourai/station-contracts/pull-request-provider';
 import { execGitContextCommand } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
+import {
+  readPullRequestReview,
+  writePullRequestReview,
+} from './pull-request-review.js';
 
 type PullRequestProviderRequestContext =
   | PullRequestRepositoryContext
@@ -105,6 +111,12 @@ export function normalizeGitHubPullRequest(
     author: { login: value.author?.login ?? '', url: value.author?.url },
     sourceBranch: value.headRefName,
     targetBranch: value.baseRefName,
+    ...(typeof value.headRefOid === 'string'
+      ? { headSha: value.headRefOid }
+      : {}),
+    ...(typeof value.baseRefOid === 'string'
+      ? { baseSha: value.baseRefOid }
+      : {}),
     commits: Array.isArray(value.commits) ? value.commits.length : 0,
     reviewStatus: Array.isArray(value.reviews)
       ? (value.reviews.at(-1)?.state ?? 'NONE')
@@ -268,6 +280,56 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       return unavailable('GitHub CLI request failed');
     }
   }
+  async getReviewSnapshot(c: PullRequestRepositoryContext, ref: string) {
+    const availability = await this.getAvailability(c);
+    if (!availability.available) return { ...availability, available: false };
+    try {
+      const data = await readPullRequestReview(
+        'github',
+        this.getHost(c),
+        c,
+        ref,
+        (args) => this.gh(args, c),
+        normalizeGitHubPullRequest,
+      );
+      return { ...availability, data };
+    } catch (error) {
+      return {
+        ...availability,
+        available: false,
+        reason: error instanceof Error ? error.message : 'Review unavailable',
+      };
+    }
+  }
+  async submitReview(
+    c: PullRequestRepositoryContext,
+    ref: string,
+    input: PullRequestReviewInput,
+    admission?: PullRequestWriteAdmission,
+  ) {
+    const availability = await this.getAvailability(c);
+    if (
+      !availability.available ||
+      !availability.effectiveCapabilities[input.action]
+    )
+      return {
+        ...availability,
+        available: false,
+        reason: 'This review capability is unavailable.',
+      };
+    return {
+      ...availability,
+      data: await writePullRequestReview(
+        'github',
+        this.getHost(c),
+        c,
+        ref,
+        input,
+        (args) => this.gh(args, c),
+        admission,
+      ),
+    };
+  }
   listPullRequests(c: PullRequestRepositoryContext, q: any) {
     const host = this.getHost(c);
     return this.call(c, [
@@ -276,7 +338,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--repo',
       `${host}/${c.repository.owner}/${c.repository.name}`,
       '--json',
-      'number,url,title,body,state,author,headRefName,baseRefName,commits,reviews,comments,mergeable,mergeStateStatus',
+      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
       ...(q.state ? ['--state', q.state.toLowerCase()] : []),
       ...(q.limit ? ['--limit', String(q.limit)] : []),
     ]);
@@ -290,7 +352,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--repo',
       `${host}/${c.repository.owner}/${c.repository.name}`,
       '--json',
-      'number,url,title,body,state,author,headRefName,baseRefName,commits,reviews,comments,mergeable,mergeStateStatus',
+      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
     ]);
   }
   getPullRequestByIdentity(
@@ -304,7 +366,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--repo',
       `${c.host}/${c.repository.owner}/${c.repository.name}`,
       '--json',
-      'number,url,title,body,state,author,headRefName,baseRefName,commits,reviews,comments,mergeable,mergeStateStatus',
+      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
     ]);
   }
   openPullRequest(c: PullRequestRepositoryContext, input: any) {
@@ -360,6 +422,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
     c: PullRequestRepositoryContext,
     ref: string,
     input: PullRequestMergeInput,
+    admission?: PullRequestWriteAdmission,
   ): Promise<PullRequestResult<PullRequestMergeResult>> {
     const a = await this.getAvailability(c);
     if (!a.available) return a;
@@ -369,6 +432,14 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
         data: {
           status: 'refused',
           reason: `Merge method ${input.method} is not enabled for this repository`,
+        },
+      };
+    if (admission?.isCurrent() === false)
+      return {
+        ...a,
+        data: {
+          status: 'refused',
+          reason: 'Station access changed before merge admission.',
         },
       };
     try {
@@ -382,10 +453,13 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
           `${host}/${c.repository.owner}/${c.repository.name}`,
           `--${input.method}`,
           ...(input.autoMerge ? ['--auto'] : []),
+          ...(input.expectedHeadSha
+            ? ['--match-head-commit', input.expectedHeadSha]
+            : []),
         ],
         c,
       );
-      if (input.autoMerge) {
+      if (input.autoMerge || input.expectedHeadSha) {
         let observation: any;
         try {
           observation = JSON.parse(
@@ -438,10 +512,19 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
     } catch (error) {
       return {
         ...a,
-        data: {
-          status: 'refused',
-          reason: reason(error, 'GitHub refused the merge'),
-        },
+        data: input.expectedHeadSha
+          ? {
+              status: 'indeterminate',
+              reason: reason(
+                error,
+                'GitHub merge acknowledgement could not be verified',
+              ),
+              observed: null,
+            }
+          : {
+              status: 'refused',
+              reason: reason(error, 'GitHub refused the merge'),
+            },
       };
     }
   }

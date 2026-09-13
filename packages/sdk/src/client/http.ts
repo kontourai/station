@@ -19,10 +19,12 @@
  * `packages/sdk/src/__tests__/client-entry-portability.test.ts`.
  */
 
+import { ACCOUNT_AUTHENTICATION_FAILURE_HEADER } from '@kontourai/station-contracts/application-session';
 import {
   type ConnectionRetryClassification,
   isTerminalConnectionStatus,
 } from '@kontourai/station-contracts/http';
+import { boundResponse } from './bounded-response.js';
 import { withClientOriginHeaders } from './client-origin.js';
 
 /**
@@ -68,6 +70,12 @@ export interface ClientRequestOptions {
   /** Origin the credential belongs to. Credentials are never sent elsewhere. */
   credentialOrigin?: string;
   authentication?: 'required' | 'omit';
+  /** Require a matching bearer credential or current authenticated host transport. */
+  requireCredential?: boolean;
+  /** Identity probes must not follow a response to another listener. */
+  redirect?: 'error';
+  /** Optional byte ceiling for a JSON response body. */
+  maxResponseBytes?: number;
   /**
    * Per-call request deadline in milliseconds. `null` (or `0`) opts the call
    * out of the host-configured default — use it for streams and long polls
@@ -200,6 +208,7 @@ async function fetchWithDeadline(
   const signal = init?.signal
     ? AbortSignal.any([init.signal, deadline])
     : deadline;
+  signal.throwIfAborted();
   // `fetch` defaults an init without a method to GET, so reading GET here is a
   // derivation of what was actually sent, not a stand-in for an unknown.
   const method =
@@ -260,6 +269,8 @@ export type ClientCredential = {
    * is synchronous returns nothing and nothing changes.
    */
   onUnauthorized?: () => void | Promise<void>;
+  /** Account-session refusal does not revoke or erase the independently approved Device credential. */
+  onAccountUnauthorized?: () => void | Promise<void>;
   /**
    * Records that this Station accepted an authenticated request, and names the
    * URL it was accepted on. The URL matters to the recipient: a connection
@@ -597,6 +608,15 @@ function resolveRequestHeaders(
   opts?: ClientRequestOptions,
 ): Record<string, string> | undefined {
   const headers = withClientOriginHeaders(opts?.headers) ?? {};
+  if (
+    opts?.requireCredential &&
+    (opts.authentication === 'omit' ||
+      new Headers(headers).has('Authorization'))
+  ) {
+    throw new Error(
+      'Enrolled requests require SDK-owned credential attachment',
+    );
+  }
   if (opts?.authentication === 'omit') {
     return Object.keys(headers).length > 0 ? headers : undefined;
   }
@@ -620,6 +640,20 @@ function resolveRequestHeaders(
     throw new StationCredentialConflictError(url);
   }
   const source = explicit ?? configured;
+  if (
+    opts?.requireCredential &&
+    (!source ||
+      !sameOrigin(url, source.origin) ||
+      (!source.credential &&
+        !(
+          configured?.transport &&
+          configured.transportBindingIsCurrent?.() === true
+        )))
+  ) {
+    throw new Error(
+      'An enrolled Station credential for this target is required',
+    );
+  }
   if (
     source?.credential &&
     sameOrigin(url, source.origin) &&
@@ -713,7 +747,11 @@ async function reportUnauthorized(
     // user-visible contract the recovery suite pins ("the banner is gone the
     // moment the accepted response resolves") held only where the store
     // happened to be synchronous. Bounded — see `awaitCredentialReport`.
-    await awaitCredentialReport(configured.onUnauthorized?.());
+    await awaitCredentialReport(
+      response.headers.get(ACCOUNT_AUTHENTICATION_FAILURE_HEADER) === 'account'
+        ? configured.onAccountUnauthorized?.()
+        : configured.onUnauthorized?.(),
+    );
   }
 }
 
@@ -931,7 +969,13 @@ export async function getJson(
   opts?: ClientRequestOptions,
 ): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
-  const init: RequestInit = { method: 'GET' };
+  const maximum = requestOptions?.maxResponseBytes;
+  if (maximum !== undefined && (!Number.isSafeInteger(maximum) || maximum < 1))
+    throw new Error('Invalid response byte limit');
+  const init: RequestInit = {
+    method: 'GET',
+    ...(requestOptions?.redirect ? { redirect: requestOptions.redirect } : {}),
+  };
   if (requestOptions?.signal) init.signal = requestOptions.signal;
   const configured = await resolveRequestCredential(requestOptions);
   const assertAuthority = bindRequestAuthority(url, requestOptions, configured);
@@ -970,9 +1014,13 @@ export async function getJson(
     requestOptions,
     assertAuthority,
   );
+  const result =
+    maximum === undefined
+      ? response
+      : boundResponse(response, maximum, assertAuthority);
   return needsAuthorityGuard(url, requestOptions, configured)
-    ? guardResponseAuthority(response, assertAuthority)
-    : response;
+    ? guardResponseAuthority(result, assertAuthority)
+    : result;
 }
 
 /**
@@ -992,6 +1040,9 @@ export async function mutateJson(
   body?: unknown,
 ): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
+  const maximum = requestOptions?.maxResponseBytes;
+  if (maximum !== undefined && (!Number.isSafeInteger(maximum) || maximum < 1))
+    throw new Error('Invalid response byte limit');
   const hasBody = body !== undefined;
   const baseHeaders =
     hasBody || requestOptions?.headers
@@ -1048,9 +1099,13 @@ export async function mutateJson(
     requestOptions,
     assertAuthority,
   );
+  const result =
+    maximum === undefined
+      ? response
+      : boundResponse(response, maximum, assertAuthority);
   return needsAuthorityGuard(url, requestOptions, configured)
-    ? guardResponseAuthority(response, assertAuthority)
-    : response;
+    ? guardResponseAuthority(result, assertAuthority)
+    : result;
 }
 
 export interface FetchSseMessage {

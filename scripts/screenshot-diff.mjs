@@ -190,6 +190,36 @@ export function baselineImagesDir(baselinePath) {
   return join(dir, base);
 }
 
+/**
+ * #1652: the suffix a hand-curated, human-only reference image carries.
+ *
+ * A capture never writes this name — `runBaseline` stores an image only as
+ * `<name>.png`, and only for a non-volatile entry — so a file at this path can
+ * only have been put there deliberately by a person. That is the whole point of
+ * giving it its own suffix instead of reusing `<name>.png`: it makes the keep
+ * set below a derivation of what the manifest DECLARES rather than of whatever
+ * file happens to be sitting in the directory.
+ *
+ * Survival is a property of the REPLACE path specifically: a full-run
+ * regeneration preserves this name and prunes everything unclaimed, while a
+ * partial run takes the merge path and prunes nothing at all.
+ */
+export const VOLATILE_REFERENCE_SUFFIX = '.reference.png';
+
+/**
+ * The one file name a baseline entry claims in the companion image directory.
+ *
+ * A volatile entry claims only its hand-curated reference; a non-volatile entry
+ * claims only the image `runBaseline` writes for it. Nothing claims both, so a
+ * leftover `<name>.png` from before a screen was marked volatile is an orphan
+ * and gets pruned like any other.
+ */
+export function baselineImageFileName(entry) {
+  return entry.volatile === true
+    ? `${entry.name}${VOLATILE_REFERENCE_SUFFIX}`
+    : `${entry.name}.png`;
+}
+
 function readCaptureManifest(galleryDir) {
   const capturePath = join(galleryDir, 'capture.json');
   if (!existsSync(capturePath)) {
@@ -357,11 +387,36 @@ export function runBaseline(options, { log = console.log } = {}) {
     // REPLACE also drops stale reference images for screens no longer in
     // the manifest (renamed/retired screens), so the companion directory
     // never accumulates orphans a full-run baseline no longer claims.
-    const keep = new Set(
-      [...nextByName.values()]
-        .filter((entry) => entry.volatile !== true)
-        .map((entry) => `${entry.name}.png`),
-    );
+    //
+    // #1652: the keep set is the one file name each CURRENT entry claims — see
+    // `baselineImageFileName`. Deriving it from non-volatile entries alone made
+    // deleting a volatile entry's hand-curated reference unavoidable: a full
+    // regeneration removed the very artifact that entry's own `reason` pointed
+    // a reader at, which is what happened to `mobile-onboarding-setup`.
+    //
+    // Keeping `<name>.png` for a volatile entry would have fixed that by
+    // introducing a worse version of it. A volatile entry carries no hash, so
+    // nothing refreshes or enforces its image; a screen marked volatile while
+    // its auto-generated capture was still on disk would keep that capture
+    // forever, and every later regeneration would preserve it by name. The
+    // manifest would assert that no reference is committed while a months-old
+    // image sat at the path a human is invited to eyeball. A missing file is
+    // obvious; a present-but-stale one is silent. Note the asymmetry that makes
+    // it stick: for a non-volatile screen a stale image is impossible because
+    // the nightly enforces its hash, so for a volatile entry the only thing
+    // that ever tied an image to a build is exactly what is gone.
+    //
+    // Hence the distinct suffix. A volatile entry claims only
+    // `<name>.reference.png`, which no capture can write, so an auto-generated
+    // leftover is still pruned and only a deliberate human artifact survives.
+    //
+    // Precondition, because it is easy to read the above as unconditional: this
+    // whole block is REPLACE-only. A partial or not-fully-successful capture
+    // merges instead, prunes nothing, and leaves a stale `<name>.png` in place
+    // indefinitely — so "pruned" throughout means "pruned by the next full-run
+    // regeneration", which is also the only thing that could have deleted a
+    // reference in the first place.
+    const keep = new Set([...nextByName.values()].map(baselineImageFileName));
     for (const file of existsSync(imagesDir) ? readdirSync(imagesDir) : []) {
       if (!keep.has(file)) rmSync(join(imagesDir, file), { force: true });
     }
