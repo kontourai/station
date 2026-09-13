@@ -213,6 +213,12 @@ and a non-extractable P-256 signing key; it does not process `Set-Cookie` or ext
 provider cookies into JavaScript. The existing approved Device credential remains
 independently required. Transport/Station connection proof grants neither one.
 
+The SDK's `ApplicationSessionSigner` allows a native bridge to sign in protected
+platform custody. Its browser factory creates a non-extractable WebCrypto key;
+persist the CryptoKey and public JWK, then use `restoreApplicationSessionKey` to
+restore the facade. Never serialize private key bytes. Non-extractability is a
+custody property, not an attestation supplied by a client-controlled JSON field.
+
 All application headers and bodies travel inside the authenticated encrypted
 transport. The receiver must establish the selected Station's identity before
 credentials enter it. The continuation adds these headers to the normal Device

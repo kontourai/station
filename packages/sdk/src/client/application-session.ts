@@ -23,9 +23,14 @@ import {
   StationHttpError,
 } from './http';
 
-export interface ApplicationSessionKey {
-  readonly privateKey: CryptoKey;
+/** Native implementations can delegate signing to protected platform custody. */
+export interface ApplicationSessionSigner {
   readonly publicKey: ApplicationSessionPublicKey;
+  /** ES256, IEEE-P1363 signature bytes. Private key material must remain in custody. */
+  sign(input: Uint8Array): Promise<Uint8Array>;
+}
+export interface ApplicationSessionKey extends ApplicationSessionSigner {
+  readonly privateKey: CryptoKey;
 }
 const opaque = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 const origin = z
@@ -84,7 +89,7 @@ const hash = async (value: string) =>
     ),
   );
 
-/** May be structured-cloned into a dedicated IndexedDB custody store; never export the private key. */
+/** Persist only the CryptoKey/public JWK in dedicated custody; restore the signing facade separately. */
 export async function createApplicationSessionKey(): Promise<ApplicationSessionKey> {
   const pair = await crypto.subtle.generateKey(
     { name: 'ECDSA', namedCurve: 'P-256' },
@@ -92,20 +97,49 @@ export async function createApplicationSessionKey(): Promise<ApplicationSessionK
     ['sign', 'verify'],
   );
   const jwk = await crypto.subtle.exportKey('jwk', pair.publicKey);
-  return {
-    privateKey: pair.privateKey,
-    publicKey: keySchema.parse({
+  return restoreApplicationSessionKey(
+    pair.privateKey,
+    keySchema.parse({
       kty: jwk.kty,
       crv: jwk.crv,
       x: jwk.x,
       y: jwk.y,
     }),
-  };
+  );
+}
+
+export function restoreApplicationSessionKey(
+  privateKey: CryptoKey,
+  publicKey: ApplicationSessionPublicKey,
+): ApplicationSessionKey {
+  if (
+    privateKey.extractable ||
+    privateKey.algorithm.name !== 'ECDSA' ||
+    !('namedCurve' in privateKey.algorithm) ||
+    privateKey.algorithm.namedCurve !== 'P-256' ||
+    !privateKey.usages.includes('sign')
+  )
+    throw new Error(
+      'Application sessions require a non-extractable P-256 signing key.',
+    );
+  return Object.freeze({
+    privateKey,
+    publicKey: Object.freeze(keySchema.parse(publicKey)),
+    async sign(input: Uint8Array) {
+      return new Uint8Array(
+        await crypto.subtle.sign(
+          { name: 'ECDSA', hash: 'SHA-256' },
+          privateKey,
+          new Uint8Array(input),
+        ),
+      );
+    },
+  });
 }
 
 /** Station's versioned virtual-request profile; secure transport still owns message integrity. */
 export async function createApplicationSessionProof(
-  key: ApplicationSessionKey,
+  key: ApplicationSessionSigner,
   binding: Pick<
     ApplicationSessionChallenge,
     'nonce' | 'stationId' | 'requestOrigin'
@@ -114,15 +148,6 @@ export async function createApplicationSessionProof(
   purpose: 'request' | 'exchange' | 'login',
   credential?: string,
 ): Promise<string> {
-  if (
-    key.privateKey.extractable ||
-    key.privateKey.algorithm.name !== 'ECDSA' ||
-    !('namedCurve' in key.privateKey.algorithm) ||
-    key.privateKey.algorithm.namedCurve !== 'P-256'
-  )
-    throw new Error(
-      'Application sessions require a non-extractable P-256 key.',
-    );
   const target = new URL(request.url);
   const protectedHeader = encode({
     alg: 'ES256',
@@ -140,12 +165,12 @@ export async function createApplicationSessionProof(
     iat: Math.floor(Date.now() / 1000),
   });
   const input = `${protectedHeader}.${payload}`;
-  const signature = await crypto.subtle.sign(
-    { name: 'ECDSA', hash: 'SHA-256' },
-    key.privateKey,
-    new TextEncoder().encode(input),
-  );
-  return `${input}.${base64url(new Uint8Array(signature))}`;
+  const signature = await key.sign(new TextEncoder().encode(input));
+  if (signature.byteLength !== 64)
+    throw new Error(
+      'Application session signer returned an incompatible signature.',
+    );
+  return `${input}.${base64url(signature)}`;
 }
 
 async function read(response: Response): Promise<unknown> {
@@ -166,7 +191,7 @@ export class ApplicationSessionClient {
     private readonly stationId: string,
     private readonly clientOrigin: string,
     private readonly options: ClientRequestOptions,
-    readonly key: ApplicationSessionKey,
+    readonly key: ApplicationSessionSigner,
   ) {
     this.options = {
       ...options,
@@ -176,8 +201,8 @@ export class ApplicationSessionClient {
         : {}),
     };
     this.key = Object.freeze({
-      privateKey: key.privateKey,
       publicKey: Object.freeze(keySchema.parse(key.publicKey)),
+      sign: key.sign.bind(key),
     });
   }
   async capabilities() {
