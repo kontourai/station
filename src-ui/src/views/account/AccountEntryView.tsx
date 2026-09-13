@@ -236,6 +236,21 @@ export function AccountEntryView({
     }
   }
 
+  const externalChoices =
+    mode === 'sign-in' || mode === 'register'
+      ? descriptor.data?.externalLogins?.map((provider) => (
+          <Button
+            key={provider.id}
+            disabled={busy || provider.available === false}
+            onClick={() => void externalSignIn(provider.startPath)}
+          >
+            {provider.available === false
+              ? `${provider.displayName} is unavailable`
+              : `Continue with ${provider.displayName}`}
+          </Button>
+        ))
+      : undefined;
+
   return (
     <main className="account-entry">
       <div className="account-entry__card">
@@ -319,16 +334,19 @@ export function AccountEntryView({
               )}
             </>
           ) : login?.kind === 'redirect' ? (
-            <Button
-              variant="primary"
-              onClick={() => {
-                window.location.assign(
-                  `${apiBase}/api/account-auth${login.startPath}`,
-                );
-              }}
-            >
-              Continue to sign in
-            </Button>
+            <>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  window.location.assign(
+                    `${apiBase}/api/account-auth${login.startPath}`,
+                  );
+                }}
+              >
+                Continue to sign in
+              </Button>
+              {externalChoices}
+            </>
           ) : login?.kind === 'email-password' ||
             login?.kind === 'username-password' ? (
             <>
@@ -435,28 +453,16 @@ export function AccountEntryView({
                   </Button>
                 )}
               </div>
+              {externalChoices}
             </>
+          ) : externalChoices?.length ? (
+            externalChoices
           ) : (
             <p>
               This provider uses its own sign-in interface. Contact the Station
               operator for its login link.
             </p>
           )}
-          {!joined &&
-            session.isSuccess &&
-            !session.data &&
-            (mode === 'sign-in' || mode === 'register') &&
-            descriptor.data?.externalLogins?.map((provider) => (
-              <Button
-                key={provider.id}
-                disabled={busy || provider.available === false}
-                onClick={() => void externalSignIn(provider.startPath)}
-              >
-                {provider.available === false
-                  ? `${provider.displayName} is unavailable`
-                  : `Continue with ${provider.displayName}`}
-              </Button>
-            ))}
           {notice && <p role="status">{notice}</p>}
           {error && <p role="alert">{error}</p>}
         </PageFrame>

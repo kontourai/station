@@ -22,6 +22,13 @@ const invitation = 'invitation-valid-fixture-0001';
 
 async function fixture(discoveryAvailable = true) {
   const key = await generateKeyPair('RS256');
+  const rotatedKey = await generateKeyPair('RS256');
+  const rotatedJwk = {
+    ...(await exportJWK(rotatedKey.publicKey)),
+    kid: 'key-two',
+    alg: 'RS256',
+    use: 'sig',
+  };
   const jwk = {
     ...(await exportJWK(key.publicKey)),
     kid: 'key-one',
@@ -37,6 +44,10 @@ async function fixture(discoveryAvailable = true) {
   let badNonce = false;
   let badAudience = false;
   let omitIdToken = false;
+  let rotated = false;
+  let forged = false;
+  let expired = false;
+  let badPkce = false;
   let allowed = true;
   const eligibility: { invitation: string; email?: string }[] = [];
   const app = new Hono();
@@ -58,7 +69,7 @@ async function fixture(discoveryAvailable = true) {
           ],
         }),
   );
-  app.get('/jwks', (c) => c.json({ keys: [jwk] }));
+  app.get('/jwks', (c) => c.json({ keys: [jwk, rotatedJwk] }));
   app.get('/userinfo', (c) =>
     c.json({
       sub: 'immutable-person-one',
@@ -100,6 +111,7 @@ async function fixture(discoveryAvailable = true) {
       !authorized ||
       !flow?.nonce ||
       !flow.challenge ||
+      badPkce ||
       challenge !== flow.challenge ||
       form.get('redirect_uri') !== flow.redirect
     )
@@ -110,13 +122,16 @@ async function fixture(discoveryAvailable = true) {
       email_verified: true,
       name: 'Fixture Person',
     })
-      .setProtectedHeader({ alg: 'RS256', kid: 'key-one' })
+      .setProtectedHeader({
+        alg: 'RS256',
+        kid: rotated ? 'key-two' : 'key-one',
+      })
       .setIssuer(tokenIssuer ?? issuerOrigin)
       .setAudience(badAudience ? 'different-client' : 'station-test')
       .setSubject('immutable-person-one')
       .setIssuedAt()
-      .setExpirationTime('5m')
-      .sign(key.privateKey);
+      .setExpirationTime(expired ? '-1m' : '5m')
+      .sign(rotated || forged ? rotatedKey.privateKey : key.privateKey);
     return c.json({
       access_token: 'fixture-access',
       token_type: 'Bearer',
@@ -238,6 +253,18 @@ async function fixture(discoveryAvailable = true) {
     description: service.describe(),
     stateDirectory,
     clearCookies: () => jar.clear(),
+    rotateKey: () => {
+      rotated = true;
+    },
+    forgeSignature: () => {
+      forged = true;
+    },
+    expireToken: () => {
+      expired = true;
+    },
+    corruptPkce: () => {
+      badPkce = true;
+    },
     omitIdToken: () => {
       omitIdToken = true;
     },
@@ -285,6 +312,9 @@ describe('local accounts with a real HTTP OIDC issuer', () => {
     'audience',
     'state',
     'missing-id-token',
+    'signature',
+    'expiry',
+    'pkce',
     'invitation',
   ] as const)('refuses %s changes during the redirect', async (fault) => {
     const f = await fixture();
@@ -293,6 +323,9 @@ describe('local accounts with a real HTTP OIDC issuer', () => {
     if (fault === 'nonce') f.corruptNonce();
     if (fault === 'audience') f.corruptAudience();
     if (fault === 'missing-id-token') f.omitIdToken();
+    if (fault === 'signature') f.forgeSignature();
+    if (fault === 'expiry') f.expireToken();
+    if (fault === 'pkce') f.corruptPkce();
     if (fault === 'state') {
       const url = new URL(callback);
       url.searchParams.set('state', 'wrong-state');
@@ -340,5 +373,19 @@ describe('local accounts with a real HTTP OIDC issuer', () => {
       (await f.call('/sign-in/username', { body: credentials })).status,
     ).toBe(200);
     expect((await f.account()).kind).toBe('authenticated');
+  });
+  test('a prepublished signing-key rotation preserves the same account on later login', async () => {
+    const f = await fixture();
+    await f.call('/callback/test-idp', { url: await f.begin() });
+    const first = await f.account();
+    expect(first.kind).toBe('authenticated');
+    f.clearCookies();
+    f.rotateKey();
+    await f.call('/callback/test-idp', { url: await f.begin('') });
+    const second = await f.account();
+    expect(second.kind).toBe('authenticated');
+    if (first.kind !== 'authenticated' || second.kind !== 'authenticated')
+      throw new Error('Fixture accounts were not authenticated');
+    expect(second.session.subject).toBe(first.session.subject);
   });
 });
