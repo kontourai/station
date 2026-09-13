@@ -10,8 +10,9 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { AccountEntryView } from '../AccountEntryView';
+import { AccountEntryPage, AccountEntryView } from '../AccountEntryView';
 
 const apiBase = 'https://station.example.test';
 const invitation = 'i'.repeat(43);
@@ -140,6 +141,21 @@ async function enterCredentials() {
 }
 
 describe('invitation entry through real account SDK requests', () => {
+  test('the production page boots under StrictMode with its own query provider', async () => {
+    render(
+      <StrictMode>
+        <AccountEntryPage apiBase={apiBase} />
+      </StrictMode>,
+    );
+    await screen.findByLabelText('Email address');
+    expect(
+      calls.every(
+        (call) =>
+          call.path.startsWith('/api/account-auth') &&
+          !call.headers.has('authorization'),
+      ),
+    ).toBe(true);
+  });
   test('username registration needs no email and keeps sign-in and acceptance explicit', async () => {
     provider = {
       ...descriptor,

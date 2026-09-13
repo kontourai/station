@@ -29,11 +29,7 @@ import App from './App';
 import './components/editor-controls.css';
 import './index.css';
 import './tailwind.css';
-import {
-  QueryCache,
-  QueryClient,
-  QueryClientProvider,
-} from '@tanstack/react-query';
+import { QueryCache, QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { DeferredCapabilityBoundary } from './components/DeferredCapabilityBoundary';
 import { LocalUiSessionGate } from './components/LocalUiSessionGate';
@@ -117,7 +113,7 @@ const isAccountPath = ['/account', '/account/join', '/account/reset'].includes(
 );
 const loadAccountEntry = () =>
   import('./views/account/AccountEntryView').then((module) => ({
-    default: module.AccountEntryView,
+    default: module.AccountEntryPage,
   }));
 const isSharedAnswerPath =
   window.location.pathname === ANSWER_SHARE_PERMALINK_PATH ||
@@ -253,13 +249,11 @@ function renderApp(): void {
     isAccountPath ? (
       <React.StrictMode>
         <NativeRendererMountCommit />
-        <QueryClientProvider client={queryClient}>
-          <LazyBoundary
-            load={loadAccountEntry}
-            componentProps={{ apiBase: window.location.origin }}
-            pending={<p role="status">Loading sign-in…</p>}
-          />
-        </QueryClientProvider>
+        <LazyBoundary
+          load={loadAccountEntry}
+          componentProps={{ apiBase: window.location.origin }}
+          pending={<p role="status">Loading sign-in…</p>}
+        />
       </React.StrictMode>
     ) : isSharedAnswerPath ? (
       <React.StrictMode>

@@ -3,8 +3,14 @@ import {
   getAccountSession,
   runAccountOperation,
 } from '@kontourai/station-sdk/account-authentication';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import {
+  QueryClient,
+  QueryClientProvider,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ErrorState, SkeletonList } from '../../components/state';
 import { errorText } from '../../utils/errorText';
@@ -16,6 +22,17 @@ import './account-entry.css';
 
 // Read once so React StrictMode cannot consume the URL proof twice.
 const browserFlow = readAccountEntryContinuation();
+
+/** The lazy entry owns a fresh, non-persisted cache and no operator query callbacks. */
+export function AccountEntryPage({ apiBase }: { apiBase: string }) {
+  const [client] = useState(() => new QueryClient());
+  useEffect(() => () => client.clear(), [client]);
+  return (
+    <QueryClientProvider client={client}>
+      <AccountEntryView apiBase={apiBase} />
+    </QueryClientProvider>
+  );
+}
 
 /** Account entry never mounts personal connections or persisted Project caches. */
 export function AccountEntryView({
