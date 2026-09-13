@@ -4,6 +4,7 @@ import React, { lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import { buildInfo } from './build-info';
 import { LazyBoundary } from './components/LazyBoundary';
+import { SkeletonBlock } from './components/state';
 import { installPluginSharedRuntime } from './core/pluginSharedRuntime';
 import { installVisualViewportInset } from './hooks/useMobileVisualViewport';
 import { installAndroidSafeArea } from './platform/androidSafeArea';
@@ -252,7 +253,7 @@ function renderApp(): void {
         <LazyBoundary
           load={loadAccountEntry}
           componentProps={{ apiBase: window.location.origin }}
-          pending={<p role="status">Loading sign-in…</p>}
+          pending={<SkeletonBlock label="Loading sign-in" />}
         />
       </React.StrictMode>
     ) : isSharedAnswerPath ? (

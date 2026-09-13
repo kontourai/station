@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageSection } from '../../components/PageSection';
+import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { ErrorState, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { errorText } from '../../utils/errorText';
@@ -109,7 +110,7 @@ function AccountControls({
                 {account.disabled ? 'Sign-in disabled' : 'Active'}
               </p>
             </div>
-            <div className="local-accounts__actions">
+            <ResponsiveSurfaceActions className="local-accounts__actions">
               <Button
                 disabled={busy}
                 onClick={() =>
@@ -137,7 +138,7 @@ function AccountControls({
               >
                 Create recovery link
               </Button>
-            </div>
+            </ResponsiveSurfaceActions>
           </div>
         ))
       )}

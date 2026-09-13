@@ -15,6 +15,7 @@ import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Checkbox';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageSection } from '../../components/PageSection';
+import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { ErrorState, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
@@ -162,7 +163,7 @@ function AccessPanel({
                 {member.role === 'owner' ? (
                   <span>Transfer ownership to change the owner.</span>
                 ) : (
-                  <div className="project-access__actions">
+                  <ResponsiveSurfaceActions className="project-access__actions">
                     <label>
                       Role for {member.principal.display}
                       <select
@@ -234,7 +235,7 @@ function AccessPanel({
                         Make owner
                       </Button>
                     )}
-                  </div>
+                  </ResponsiveSurfaceActions>
                 )}
               </div>
             ))}
