@@ -297,13 +297,16 @@ export type RenderActivityPane = (
  * `reconcileRegionPaneHostDocument` does before the first hydration.
  *
  * Selection: the arrangement's `occupant` is the pane the host shows. The
- * controller owns the live selection (its `select` also writes navigation's
- * `pane` param, the way a tab click does), so when the live active pane
- * differs from the arrangement's the host selects the arrangement's through
- * the controller's own `focusExisting` — and only then, so a mount whose
- * persisted document already agrees writes nothing to navigation. The tab
- * strip writes the ARRANGEMENT (`selectPane`), never the controller, so
- * selection still runs one way through this seam: model → host.
+ * controller owns the live selection, so when the live active pane differs
+ * from the arrangement's the host selects the arrangement's through the
+ * controller's own `focusExisting` — and only then. The host is mounted
+ * with `navigationSelection={false}`: a region's selection is the model's,
+ * persisted in the arrangement record, not a `?pane=` history entry — so
+ * neither a placement nor a tab click pushes history (2a review: the
+ * follow used to push one entry per select and a popstate re-pushed), and
+ * `?pane=` never pulls a dock host away from the model. The tab strip
+ * writes the ARRANGEMENT (`selectPane`), never the controller, so selection
+ * runs one way through this seam: model → host.
  *
  * The renderers are supplied by the caller, not imported: Chat's lives in
  * `ChatDock.tsx` and Activity's behind `RegionShells`' lazy boundary, and
@@ -456,6 +459,10 @@ export function RegionPaneHost({
               document={document}
               presentation="dock"
               dockGroupId={groupId}
+              // The region model is the selection authority (the record
+              // persists it), so the host never writes `?pane=` — following
+              // the model is not a navigation — and never reads it.
+              navigationSelection={false}
               admitRestoredInstance={(candidate) =>
                 admitRegionPane(candidate, panes)
               }

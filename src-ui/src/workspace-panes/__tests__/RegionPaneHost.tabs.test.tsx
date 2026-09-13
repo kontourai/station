@@ -279,7 +279,6 @@ test('a tab click writes the selection through the model and it persists across 
   await waitFor(() =>
     expect(recordedBottom()).toEqual({
       kind: 'pane-host',
-      documentId: 'bottom',
       panes: [
         { kind: 'surface', id: 'chat' },
         { kind: 'surface', id: 'activity' },
@@ -453,6 +452,65 @@ test('reordering tabs writes the pane order and it persists across reload', asyn
     ['Activity', 'true'],
     ['Chat', 'false'],
   ]);
+});
+
+/**
+ * 2a review (HIGH): the host's follow of the arrangement used to go through
+ * the controller's navigation-writing select, so ONE placement pushed two
+ * `?pane=` history entries and a popstate re-pushed a third — Back was
+ * trapped. A dock host's selection is the model's, not a navigation fact:
+ * nothing here pushes history, `?pane=` is never written, and a popstate
+ * that changes `?pane=` moves neither the model nor the shown pane.
+ * Reverting `navigationSelection={false}` fails the push count after the
+ * join (two entries) and the popstate assertions (the model's `occupant`
+ * flips to Chat and a push follows).
+ */
+test('selection writes no history: a mount, a join, a tab click and a ?pane= popstate leave no entry', async () => {
+  const pushes = vi.spyOn(window.history, 'pushState');
+  const paneParam = () =>
+    new URLSearchParams(window.location.search).get('pane');
+
+  renderShells();
+  await waitFor(() => expect(model).not.toBeNull());
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+  await waitFor(() => expect(storedDocument(BOTTOM_KEY)).not.toBeNull());
+  // A mount whose document agrees with the arrangement writes nothing.
+  expect(pushes).not.toHaveBeenCalled();
+  expect(paneParam()).toBeNull();
+
+  act(() => currentModel().placeSurface('activity', 'bottom'));
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+  await screen.findByTestId('sessions-view');
+  expect(pushes).not.toHaveBeenCalled();
+  expect(paneParam()).toBeNull();
+
+  fireEvent.click(within(shell()).getByRole('tab', { name: 'Chat' }));
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+  expect(pushes).not.toHaveBeenCalled();
+  expect(paneParam()).toBeNull();
+
+  // Back/Forward landing on a URL that names a pane of this host's scope:
+  // the model, not the URL, says which tab shows.
+  act(() => {
+    window.history.replaceState(
+      {},
+      '',
+      `/?dock=open&pane=workspace-activity&paneScope=${encodeURIComponent(JSON.stringify(['ambient']))}`,
+    );
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await act(async () => Promise.resolve());
+  expect(currentModel().regions.bottom.occupant).toBe('chat');
+  expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
+  expect(screen.queryByTestId('sessions-view')).toBeNull();
+  expect(pushes).not.toHaveBeenCalled();
+  expect(paneParam()).toBe('workspace-activity');
 });
 
 /** ⌘D with Chat behind Activity's tab selects Chat's tab (2a's toggle, seen in the strip). */

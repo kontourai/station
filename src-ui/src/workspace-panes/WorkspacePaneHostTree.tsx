@@ -86,6 +86,12 @@ export interface WorkspacePaneHostTreeProps {
    * Defaults to the document's root group id.
    */
   dockGroupId?: string;
+  /**
+   * Whether the host's selection is a navigation fact (`?pane=`, a history
+   * entry). Default true; a region host passes false — its selection
+   * authority is the region model (see the controller's option).
+   */
+  navigationSelection?: boolean;
   runtime?: WorkspacePaneHostRuntime;
   storage?: WorkspacePaneHostStorage;
   /** Injectable only at the browser-lock boundary; production uses Web Locks. */
@@ -153,6 +159,7 @@ export function WorkspacePaneHostTree({
   compact = false,
   presentation = 'tabbed',
   dockGroupId,
+  navigationSelection,
   runtime,
   storage,
   lockManager,
@@ -189,6 +196,7 @@ export function WorkspacePaneHostTree({
   const controller = useWorkspacePaneHostController({
     document,
     compact,
+    navigationSelection,
     runtime,
     storage,
     lockManager,
