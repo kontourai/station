@@ -631,6 +631,27 @@ test('closing a tab keeps keyboard focus in the region bar', async () => {
 });
 
 /**
+ * A pointer close must not steal focus: a browser that does not focus a
+ * clicked button (Safari) leaves focus where it was — Chat's composer, say
+ * — and the refocus is only for the case where the unmounting button HELD
+ * it. Reverting the `activeElement !== body` guard moves focus into the bar.
+ */
+test('closing a tab by pointer leaves focus where it was', async () => {
+  await renderJoined();
+  const outside = document.createElement('input');
+  document.body.append(outside);
+  outside.focus();
+  expect(document.activeElement).toBe(outside);
+  fireEvent.click(within(shell()).getByLabelText('Close Activity'));
+  await waitFor(() =>
+    expect(currentModel().regions.bottom.panes).toEqual(['chat']),
+  );
+  await act(async () => Promise.resolve());
+  expect(document.activeElement).toBe(outside);
+  outside.remove();
+});
+
+/**
  * A shell that BECOMES Chat's adopts Chat's persisted snap: Activity's
  * region seeds from the default at mount, and when Chat joins it the snap
  * it reports is the key's, not the default it started from. Reverting the
