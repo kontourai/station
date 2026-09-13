@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+import { startPionFixture } from '../lib/browser-transport-pion.js';
 import {
   runLabCommand,
   startLabRelay,
@@ -105,3 +106,25 @@ it('refuses an unsupported relay transport before spawning a child', async () =>
     startLabRelay(49152, temporaryRoot(), 'forward', 'unknown'),
   ).rejects.toThrow('Unsupported lab relay transport');
 });
+
+it('refuses a missing Pion binary and an exited child before reporting a ready peer', async () => {
+  const root = temporaryRoot();
+  const input = {
+    executable: join(root, 'missing-peer'),
+    directory: join(root, 'peer'),
+    certificate: 'unused-certificate',
+    key: 'unused-key',
+    offer: { type: 'offer', sdp: 'fixture' },
+    turnPort: 49152,
+    username: 'fixture',
+    password: 'fixture',
+  };
+  await expect(startPionFixture(input)).rejects.toThrow(
+    'Build the Pion fixture',
+  );
+  // Node cannot execute a directory containing only config.json as a module;
+  // this deliberately exercises a real failed process, not a timer-only mock.
+  await expect(
+    startPionFixture({ ...input, executable: process.execPath }),
+  ).rejects.toThrow('Pion fixture startup failed');
+}, 30000);

@@ -98,6 +98,10 @@ vi.mock('../views/project-settings/AgentsSection', () => ({
   ),
 }));
 
+vi.mock('../views/project-settings/AccessSection', () => ({
+  AccessSection: () => <section>People and access section</section>,
+}));
+
 vi.mock('../views/project-settings/LayoutsSection', () => ({
   LayoutsSection: () => <section>Layouts section</section>,
 }));

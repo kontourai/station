@@ -239,7 +239,10 @@ than introducing an application cipher. See [RFC 8831](https://www.rfc-editor.or
 
 The current evaluation is a **go for further protocol integration, defer for
 production transport selection**. Real Chromium/Node UDP relay delivery and
-certificate-substitution rejection pass; TURN/TCP interoperability does not.
+certificate-substitution rejection pass; that packaged Node backend's TURN/TCP
+interoperability does not. The independent Pion profile uses a maintained Go
+implementation with TURN/TCP and the same browser DTLS rejection checks;
+qualification of that profile does not silently qualify the Node backend.
 [#1995](https://github.com/kontourai/station/issues/1995) owns qualification of
 that path before production adapter selection.
 The fixture installs approved fingerprint trust out of band. It does not deliver
