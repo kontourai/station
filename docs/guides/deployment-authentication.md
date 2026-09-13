@@ -355,6 +355,9 @@ Station authentication origin:
 
 Provide the named secret through the operator's environment/secret manager;
 never place it in an invitation, client configuration or Project manifest.
+Treat the provider `id` and issuer as durable configuration. Change the display
+name for presentation; changing an identifier is not an account migration.
+
 Register the exact redirect URI
 `<STATION_AUTHENTICATION_ORIGIN>/api/account-auth/callback/example` with the
 issuer. This implementation supports authorization-code callbacks using GET,

@@ -2416,3 +2416,19 @@ types, and `MobileDeviceRequestError` with an HTTP status. Both use the existing
 capture refuses mismatched targets and returns a timestamped PNG, not stream
 readiness or foreground-app provenance. See [Mobile device inspection](../guides/mobile-device-workspace.md)
 for host setup, access scopes, limits, and the web/desktop integration boundary.
+
+
+### Configured external account login choices
+
+`getAccountAuthentication` on `@kontourai/station-sdk/account-authentication`
+may return `externalLogins` alongside the primary password or redirect login.
+Each choice supplies `id`, `displayName`, a declared Station `startPath`, and an
+optional `available` flag. A false flag means the configured choice is unavailable.
+To begin, call `runAccountOperation(apiBase, choice.startPath, {}, invitation)`;
+the successful operation returns `{ url }` for browser navigation. Keep the
+invitation in its dedicated header and validate the returned destination before
+navigation. Never attach a personal/operator credential to this account operation.
+
+Station chooses provider/callback/return parameters from operator configuration;
+clients cannot supply arbitrary OAuth parameters. See the [deployment guide](../guides/deployment-authentication.md#optional-oidc-choices-with-local-accounts)
+for configuration, callback verification and the independent Device continuation.

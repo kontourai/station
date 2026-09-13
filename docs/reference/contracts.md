@@ -158,3 +158,10 @@ Host/device IDs are descriptive and carry no credentials, paths, or execution
 authority. A capture is one observed frame, not stream health or app/build
 identity. Runtime validation belongs to the helper, route, and SDK boundaries;
 see [Mobile device inspection](../guides/mobile-device-workspace.md).
+
+
+The deployment authentication descriptor's optional `externalLogins` lists
+operator-configured browser identity choices, their declared POST begin-login
+paths and availability. These are presentation/capability facts, not identity
+claims, Device grants or Project membership. Secret references and provider
+configuration remain private to Station's operator composition.
