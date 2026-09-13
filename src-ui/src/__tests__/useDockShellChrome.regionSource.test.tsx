@@ -252,7 +252,8 @@ describe('useDockShellChrome reads its open state from the region model', () => 
 
     act(() =>
       result.current.setRegion('right', {
-        panes: ['fixture'], occupant: 'fixture',
+        panes: ['fixture'],
+        occupant: 'fixture',
         visible: true,
       }),
     );
@@ -401,7 +402,8 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     );
     act(() =>
       result.current.model.setRegion('right', {
-        panes: ['fixture'], occupant: 'fixture',
+        panes: ['fixture'],
+        occupant: 'fixture',
         visible: true,
       }),
     );

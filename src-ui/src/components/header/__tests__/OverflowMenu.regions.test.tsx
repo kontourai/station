@@ -14,7 +14,12 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const harness = vi.hoisted(() => ({
   regions: {
-    main: { visible: true, size: 0, panes: [], occupant: null as string | null },
+    main: {
+      visible: true,
+      size: 0,
+      panes: [],
+      occupant: null as string | null,
+    },
     left: { visible: false, size: 400, panes: [], occupant: null },
     right: { visible: false, size: 400, panes: [], occupant: null },
     bottom: { visible: true, size: 320, panes: ['chat'], occupant: 'chat' },
@@ -94,22 +99,26 @@ describe('OverflowMenu region section (#917)', () => {
     Object.assign(harness.regions.main, {
       visible: true,
       size: 0,
-      panes: [], occupant: null,
+      panes: [],
+      occupant: null,
     });
     Object.assign(harness.regions.left, {
       visible: false,
       size: 400,
-      panes: [], occupant: null,
+      panes: [],
+      occupant: null,
     });
     Object.assign(harness.regions.right, {
       visible: false,
       size: 400,
-      panes: [], occupant: null,
+      panes: [],
+      occupant: null,
     });
     Object.assign(harness.regions.bottom, {
       visible: true,
       size: 320,
-      panes: ['chat'], occupant: 'chat',
+      panes: ['chat'],
+      occupant: 'chat',
     });
     harness.setRegion.mockReset();
     harness.placeSurface.mockReset();

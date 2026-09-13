@@ -23,7 +23,12 @@ import { describe, expect, test, vi } from 'vitest';
 
 const harness = vi.hoisted(() => ({
   regions: {
-    main: { visible: true, size: 0, panes: ['home'], occupant: 'home' as string | null },
+    main: {
+      visible: true,
+      size: 0,
+      panes: ['home'],
+      occupant: 'home' as string | null,
+    },
     left: { visible: false, size: 400, panes: [], occupant: null },
     right: { visible: false, size: 400, panes: [], occupant: null },
     bottom: { visible: true, size: 320, panes: ['chat'], occupant: 'chat' },

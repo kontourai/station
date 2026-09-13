@@ -279,7 +279,8 @@ describe('RegionModelProvider surface deep-link adoption', () => {
     const desktop = render(<Harness />);
     await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
     expect(model?.regions.bottom).toMatchObject({
-      panes: ['chat'], occupant: 'chat',
+      panes: ['chat'],
+      occupant: 'chat',
       visible: true,
     });
     desktop.unmount();

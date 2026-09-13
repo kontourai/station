@@ -688,7 +688,8 @@ describe('App home route resolution', () => {
           right: {
             visible: true,
             size: 400,
-            panes: ['activity'], occupant: 'activity',
+            panes: ['activity'],
+            occupant: 'activity',
             maximized: true,
           },
         },
@@ -702,7 +703,8 @@ describe('App home route resolution', () => {
           bottom: {
             visible: true,
             size: 320,
-            panes: ['chat'], occupant: 'chat',
+            panes: ['chat'],
+            occupant: 'chat',
             maximized: true,
           },
         },
@@ -716,7 +718,8 @@ describe('App home route resolution', () => {
           right: {
             visible: true,
             size: 400,
-            panes: ['activity'], occupant: 'activity',
+            panes: ['activity'],
+            occupant: 'activity',
             maximized: false,
           },
         },
@@ -864,7 +867,12 @@ describe('App home route resolution', () => {
       ...regionModelStub(),
       regions: {
         ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
-        main: { visible: true, size: 0, panes: ['activity'], occupant: 'activity' },
+        main: {
+          visible: true,
+          size: 0,
+          panes: ['activity'],
+          occupant: 'activity',
+        },
       },
     };
 
@@ -893,7 +901,12 @@ describe('App home route resolution', () => {
       ...regionModelStub(),
       regions: {
         ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
-        main: { visible: true, size: 0, panes: ['retired-surface'], occupant: 'retired-surface' },
+        main: {
+          visible: true,
+          size: 0,
+          panes: ['retired-surface'],
+          occupant: 'retired-surface',
+        },
       },
     };
 
@@ -917,7 +930,12 @@ describe('App home route resolution', () => {
       setRegion: vi.fn(),
       regions: {
         ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
-        main: { visible: true, size: 0, panes: ['activity'], occupant: 'activity' },
+        main: {
+          visible: true,
+          size: 0,
+          panes: ['activity'],
+          occupant: 'activity',
+        },
       },
     };
     hooks.regionModel = stub;
@@ -952,7 +970,12 @@ describe('App home route resolution', () => {
     ...regionModelStub(),
     regions: {
       ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
-      main: { visible: true, size: 0, panes: ['activity'], occupant: 'activity' },
+      main: {
+        visible: true,
+        size: 0,
+        panes: ['activity'],
+        occupant: 'activity',
+      },
     },
   });
 
