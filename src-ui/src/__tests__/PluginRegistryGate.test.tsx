@@ -127,40 +127,77 @@ describe('PluginRegistryGate', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  test('keeps a bundle-load failure non-dismissible with its retry action until a successful retry recovers it', async () => {
-    mocks.reload
-      .mockImplementationOnce(async () => {
-        setLoadStatus('degraded', ['broken-layout'], 'bundle-load-failure');
-        return 'degraded';
-      })
-      .mockImplementationOnce(async () => {
-        setLoadStatus('ready');
-        return 'ready';
+  test.each([false, true])(
+    'keeps bundle-load failure visible until retry succeeds (remote consent: %s)',
+    async (consented) => {
+      setRemotePluginBundlesAllowed('local-station', mocks.apiBase, consented);
+      mocks.reload
+        .mockImplementationOnce(async () => {
+          setLoadStatus('degraded', ['broken-layout'], 'bundle-load-failure');
+          return 'degraded';
+        })
+        .mockImplementationOnce(async () => {
+          setLoadStatus('ready');
+          return 'ready';
+        });
+
+      render(
+        <>
+          <PluginRegistryGate>
+            <main>Station shell</main>
+          </PluginRegistryGate>
+          <BannerHost />
+        </>,
+      );
+
+      await waitFor(() =>
+        expect(screen.getByRole('alert').textContent).toMatch(/broken-layout/),
+      );
+      expect(
+        screen.queryByRole('button', { name: 'Dismiss notice' }),
+      ).toBeNull();
+      expect(bannerStore.getSnapshot()[0]).toMatchObject({
+        dismissible: false,
+        actions: [{ label: 'Retry extensions' }],
       });
 
-    render(
-      <>
+      fireEvent.click(screen.getByRole('button', { name: 'Retry extensions' }));
+
+      await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    },
+  );
+
+  test.each(['ready', 'degraded'] as const)(
+    'first connection lets the initial load settle %s before deciding whether to retry',
+    async (settled) => {
+      mocks.connectionStatus = 'connecting';
+      mocks.reload.mockImplementation(async () => 'loading');
+      const view = render(
         <PluginRegistryGate>
           <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
-    );
-
-    await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toMatch(/broken-layout/),
-    );
-    expect(screen.queryByRole('button', { name: 'Dismiss notice' })).toBeNull();
-    expect(bannerStore.getSnapshot()[0]).toMatchObject({
-      dismissible: false,
-      actions: [{ label: 'Retry extensions' }],
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Retry extensions' }));
-
-    await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
-  });
+        </PluginRegistryGate>,
+      );
+      await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(1));
+      mocks.connectionStatus = 'connected';
+      view.rerender(
+        <PluginRegistryGate>
+          <main>Station shell</main>
+        </PluginRegistryGate>,
+      );
+      expect(mocks.reload).toHaveBeenCalledTimes(1);
+      act(() =>
+        setLoadStatus(
+          settled,
+          [],
+          settled === 'degraded' ? 'registry-unavailable' : undefined,
+        ),
+      );
+      await waitFor(() =>
+        expect(mocks.reload).toHaveBeenCalledTimes(settled === 'ready' ? 1 : 2),
+      );
+    },
+  );
 
   test('reloads on reconnect even when the outage-era attempt has not settled yet', async () => {
     // The reconnect can land while the offline attempt is still in flight.

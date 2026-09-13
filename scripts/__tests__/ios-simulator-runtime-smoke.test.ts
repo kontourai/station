@@ -113,7 +113,7 @@ describe('iOS simulator runtime smoke selection', () => {
     expect(calls).toHaveLength(4);
 
     const firstShellWait = swiftSmoke.indexOf(
-      'waitForStartupShell(connect, budget: 90)',
+      'waitForElement(connect, budget: 90)',
     );
     const secondDismissal = calls[1].index;
     const reactivation = swiftSmoke.indexOf('app.activate()', secondDismissal);
@@ -148,8 +148,12 @@ describe('iOS simulator runtime smoke selection', () => {
       postTapReacquire,
     );
     const retryTap = swiftSmoke.indexOf('connect.tap()', postTapHittable);
+    // The manager assertion is a bounded tap-retry, not a single existence
+    // wait: a tap delivered to a WKWebView before its handler is attached is
+    // dropped, and one `waitForExistence` afterwards cannot tell that apart
+    // from a surface that never opens (#1174).
     const finalManagerWait = swiftSmoke.indexOf(
-      'addAddress.waitForExistence(timeout: 10)',
+      'tap(connect, until: addAddress, budget: 20)',
       retryTap,
     );
 
@@ -175,6 +179,13 @@ describe('iOS simulator runtime smoke selection', () => {
     );
     expect([...swiftSmoke.matchAll(/connect\.tap\(\)/g)]).toHaveLength(2);
     expect(swiftSmoke).not.toContain('while !addAddress.waitForExistence');
+    // Hold the ground this test just gained: neither surface may go back to a
+    // single-shot existence wait after a tap.
+    expect(swiftSmoke).not.toContain(
+      'addAddress.waitForExistence(timeout: 10)',
+    );
+    expect(swiftSmoke).not.toContain('name.waitForExistence(timeout: 10)');
+    expect(swiftSmoke).toContain('tap(addAddress, until: name, budget: 20)');
 
     const conditionalActivations = [
       ...swiftSmoke.matchAll(

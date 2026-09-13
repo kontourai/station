@@ -17,10 +17,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   createRunCorrelationEnvelope,
+  flowAgentsArtifactRoot,
   validateRunCorrelationPresence,
 } from '@kontourai/flow-agents';
 import type { WorkflowState } from '@kontourai/station-contracts/workflow';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+vi.mock('@kontourai/flow-agents', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@kontourai/flow-agents')>();
+  return {
+    ...actual,
+    flowAgentsArtifactRoot: vi.fn(actual.flowAgentsArtifactRoot),
+  };
+});
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   workflowSidecarTransitions: { add: vi.fn() },
@@ -59,6 +69,36 @@ describe('WorkflowSidecarService', () => {
   afterEach(() => {
     rmSync(cwd, { recursive: true, force: true });
     vi.clearAllMocks();
+  });
+
+  test('resolves the shared Git root once per listing and reads fresh state on the next request', () => {
+    for (const slug of ['one', 'two', 'three']) {
+      const directory = join(cwd, '.kontourai', 'flow-agents', slug);
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(
+        join(directory, 'state.json'),
+        JSON.stringify(validState(slug)),
+      );
+    }
+    vi.mocked(flowAgentsArtifactRoot).mockClear();
+    expect(
+      service
+        .listTasks(cwd)
+        .map((task) => task.taskSlug)
+        .sort(),
+    ).toEqual(['one', 'three', 'two']);
+    expect(flowAgentsArtifactRoot).toHaveBeenCalledTimes(1);
+    writeFileSync(
+      join(cwd, '.kontourai', 'flow-agents', 'one', 'state.json'),
+      '{broken',
+    );
+    expect(
+      service
+        .listTasks(cwd)
+        .map((task) => task.taskSlug)
+        .sort(),
+    ).toEqual(['three', 'two']);
+    expect(flowAgentsArtifactRoot).toHaveBeenCalledTimes(2);
   });
 
   test('loads the schema files from the installed package', () => {

@@ -126,7 +126,11 @@ const status = {
   },
 };
 
-async function stageRemotePlugin(page: Page, bundle = hostileBundle) {
+async function stageRemotePlugin(
+  page: Page,
+  bundle = hostileBundle,
+  granted = ['network.fetch'],
+) {
   const hits = { blocked: 0, api: 0, navigations: 0 };
   await page.addInitScript(
     ({ remoteOrigin, frameOrigin }) => {
@@ -232,7 +236,7 @@ async function stageRemotePlugin(page: Page, bundle = hostileBundle) {
               // A REAL grant. With `granted: []` this fixture would only
               // ever prove that an ungranted plugin reaches nothing, which
               // was true of every earlier shape of this boundary too.
-              permissions: { granted: ['network.fetch'] },
+              permissions: { granted },
             },
           ],
         }),
@@ -340,6 +344,7 @@ function paneCatalog() {
   };
   return {
     projectId: 'hostile',
+    projectSlug: 'hostile',
     descriptors: [
       {
         id: 'hostile-pane',
@@ -362,7 +367,7 @@ function paneCatalog() {
         instanceId: 'hostile-instance',
         version: '1.0.0',
         stateKey: 'hostile',
-        boundContext: { contribution },
+        boundContext: { projectId: 'hostile', contribution },
       },
     ],
     availability: [
@@ -463,9 +468,27 @@ test.describe('isolated remote plugin host security', () => {
   test('turns a declaration-observation mismatch into a visible load failure', async ({
     page,
   }) => {
+    const observedExports: string[][] = [];
+    await page.exposeFunction('recordPluginExports', (exports: string[]) =>
+      observedExports.push(exports),
+    );
+    await page.addInitScript((origin) => {
+      addEventListener('message', (event) => {
+        if (event.origin === origin && event.data?.method === 'initialize') {
+          void (
+            window as typeof window & {
+              recordPluginExports(exports: string[]): Promise<void>;
+            }
+          ).recordPluginExports(event.data.params.exports);
+        }
+      });
+    }, FRAME_ORIGIN);
     const mismatch = hostileBundle.replace(DECLARED_SLUG, 'undeclared-export');
     await stageRemotePlugin(page, mismatch);
     await openHostilePlugin(page);
+    await expect
+      .poll(() => observedExports)
+      .toContainEqual(['undeclared-export']);
     // Several alerts can be live (connection/compat chrome); assert the
     // extension-load failure specifically rather than whichever renders first.
     await expect(
@@ -496,7 +519,10 @@ function runFrameConfirmJourney(label: string) {
   test(`a frame's confirm is answered by Station's own modal (${label})`, async ({
     page,
   }) => {
-    await stageRemotePlugin(page, confirmBundle);
+    await stageRemotePlugin(page, confirmBundle, [
+      'network.fetch',
+      'ui.confirm',
+    ]);
     await openHostilePlugin(page);
 
     // Station's dialog, in Station's document, attributed to the plugin --

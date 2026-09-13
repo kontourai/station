@@ -10,6 +10,12 @@ const retryDiscovery = vi.fn();
 let discoveryFailure: Error | null = null;
 let projectDefaultEnvironment: { kind: 'saved'; id: string } | undefined;
 let environmentsFailure = false;
+let environmentsLoading = false;
+let projectLoading = false;
+let projectFailure = false;
+let staleDiscoveryEnvironment: string | undefined;
+const retryProject = vi.fn();
+const discoveryInputs = vi.fn();
 let peerCredentials:
   | Array<{
       environmentId: string;
@@ -23,94 +29,116 @@ let peerCredentials:
 
 vi.mock('@kontourai/station-sdk', () => ({
   useProjectQuery: () => ({
-    data: projectDefaultEnvironment
-      ? { defaultEnvironment: projectDefaultEnvironment }
-      : undefined,
-  }),
-  useDelegationOptionsQuery: (input: { environmentId?: string }) => ({
-    data: discoveryFailure
+    data: projectLoading
       ? undefined
-      : {
-          environment: input.environmentId
-            ? { id: input.environmentId, name: 'Brian Media', kind: 'ssh' }
-            : {
-                id: 'env-current',
-                name: 'Current environment',
-                kind: 'current',
-              },
-          targets: [
-            {
-              id: 'codex',
-              kind: 'agent',
-              name: input.environmentId ? 'Remote Codex' : 'Codex',
-              ready: true,
-              defaultModel: 'gpt-5.6-sol',
-              models: [
-                {
-                  id: 'gpt-5.6-sol',
-                  name: 'GPT-5.6 Sol',
-                  originalId: 'gpt-5.6-sol',
+      : projectDefaultEnvironment
+        ? { defaultEnvironment: projectDefaultEnvironment }
+        : {},
+    isSuccess: !projectLoading && !projectFailure,
+    isError: projectFailure,
+    refetch: retryProject,
+  }),
+  useDelegationOptionsQuery: (
+    input: { environmentId?: string },
+    _apiBase: string,
+    options: { enabled: boolean },
+  ) => {
+    if (options.enabled) discoveryInputs(input);
+    const error =
+      discoveryFailure ??
+      (input.environmentId === 'deleted-environment'
+        ? new Error('Selected environment is missing')
+        : null);
+    return {
+      data: error
+        ? undefined
+        : {
+            environment: input.environmentId
+              ? {
+                  id: staleDiscoveryEnvironment ?? input.environmentId,
+                  name: 'Brian Media',
+                  kind: 'ssh',
+                }
+              : {
+                  id: 'env-current',
+                  name: 'Current environment',
+                  kind: 'current',
                 },
-              ],
-              capabilities: {
-                resume: true,
-                interrupt: true,
-                approvals: true,
-                modelSelection: true,
-              },
-            },
-            {
-              id: 'reviewer',
-              kind: 'agent',
-              name: 'Reviewer',
-              ready: true,
-              models: [],
-              capabilities: {
-                resume: true,
-                interrupt: true,
-                approvals: false,
-                modelSelection: false,
-              },
-            },
-            ...(input.environmentId
-              ? [
+            targets: [
+              {
+                id: 'codex',
+                kind: 'agent',
+                name: input.environmentId ? 'Remote Codex' : 'Codex',
+                ready: true,
+                defaultModel: 'gpt-5.6-sol',
+                models: [
                   {
-                    id: 'claude',
-                    kind: 'agent',
-                    name: 'Claude Code',
-                    ready: false,
-                    unavailableReason: 'Install the required runtime first.',
-                    models: [],
-                    capabilities: {
-                      resume: false,
-                      interrupt: false,
-                      approvals: false,
-                      modelSelection: false,
-                    },
+                    id: 'gpt-5.6-sol',
+                    name: 'GPT-5.6 Sol',
+                    originalId: 'gpt-5.6-sol',
                   },
-                ]
-              : []),
-          ],
-        },
-    error: discoveryFailure,
-    isFetching: false,
-    refetch: retryDiscovery,
-  }),
-  useSshEnvironmentsQuery: () => ({
-    data: environmentsFailure
-      ? undefined
-      : [
-          {
-            profile: {
-              id: 'media',
-              name: 'Brian Media',
-              environmentId: 'env-media',
-              verifiedProjectPath: '/home/brian/dev/github/kontourai/station',
-            },
-            state: { phase: 'disconnected' },
+                ],
+                capabilities: {
+                  resume: true,
+                  interrupt: true,
+                  approvals: true,
+                  modelSelection: true,
+                },
+              },
+              {
+                id: 'reviewer',
+                kind: 'agent',
+                name: 'Reviewer',
+                ready: true,
+                models: [],
+                capabilities: {
+                  resume: true,
+                  interrupt: true,
+                  approvals: false,
+                  modelSelection: false,
+                },
+              },
+              ...(input.environmentId
+                ? [
+                    {
+                      id: 'claude',
+                      kind: 'agent',
+                      name: 'Claude Code',
+                      ready: false,
+                      unavailableReason: 'Install the required runtime first.',
+                      models: [],
+                      capabilities: {
+                        resume: false,
+                        interrupt: false,
+                        approvals: false,
+                        modelSelection: false,
+                      },
+                    },
+                  ]
+                : []),
+            ],
           },
-        ],
-    isSuccess: !environmentsFailure,
+      error,
+      isFetching: false,
+      refetch: retryDiscovery,
+    };
+  },
+  useSshEnvironmentsQuery: () => ({
+    data:
+      environmentsFailure || environmentsLoading
+        ? undefined
+        : [
+            {
+              profile: {
+                id: 'media',
+                name: 'Brian Media',
+                environmentId: 'env-media',
+                verifiedProjectPath: '/home/brian/dev/github/kontourai/station',
+              },
+              state: { phase: 'disconnected' },
+            },
+          ],
+    isSuccess: !environmentsFailure && !environmentsLoading,
     isError: environmentsFailure,
   }),
   // #790: an `access:manage`-gated read — undefined data models the 403 a
@@ -135,6 +163,12 @@ describe('DelegationLauncher', () => {
     retryDiscovery.mockReset();
     discoveryFailure = null;
     environmentsFailure = false;
+    environmentsLoading = false;
+    projectLoading = false;
+    projectFailure = false;
+    staleDiscoveryEnvironment = undefined;
+    retryProject.mockReset();
+    discoveryInputs.mockReset();
     projectDefaultEnvironment = undefined;
     peerCredentials = undefined;
     mutateAsync.mockResolvedValue({
@@ -288,7 +322,7 @@ describe('DelegationLauncher', () => {
     );
   });
 
-  test('names a dangling project environment and honestly falls back to current', () => {
+  test('preserves a missing project environment and never delegates locally without an explicit choice', async () => {
     projectDefaultEnvironment = { kind: 'saved', id: 'deleted-environment' };
     render(
       <DelegationLauncher
@@ -301,10 +335,89 @@ describe('DelegationLauncher', () => {
       />,
     );
 
-    expect(screen.getByRole('status').textContent).toContain(
-      'names a saved environment that no longer exists',
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    expect(screen.getByLabelText('Station')).toHaveProperty(
+      'value',
+      'deleted-environment',
     );
-    expect(screen.getAllByText(/This Station/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'current' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: expect.objectContaining({ environment: { kind: 'current' } }),
+      }),
+    );
+  });
+
+  test('keeps the configured remote while inventory loads', async () => {
+    projectDefaultEnvironment = { kind: 'saved', id: 'env-media' };
+    environmentsLoading = true;
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        initialPrompt="Keep the selected machine"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    expect(screen.getByLabelText('Station')).toHaveProperty(
+      'value',
+      'env-media',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: expect.objectContaining({
+          environment: { kind: 'saved', id: 'env-media' },
+        }),
+      }),
+    );
+    expect(discoveryInputs).toHaveBeenCalledWith({
+      environmentId: 'env-media',
+    });
+    expect(
+      discoveryInputs.mock.calls.every(
+        ([input]) => input.environmentId === 'env-media',
+      ),
+    ).toBe(true);
+  });
+
+  test('waits for Project defaults before discovery or submission', async () => {
+    projectLoading = true;
+    const props = {
+      isOpen: true,
+      apiBase: 'http://station.test',
+      projectSlug: 'station',
+      initialPrompt: 'Wait for the actual default',
+      onClose: vi.fn(),
+      onDelegated: vi.fn(),
+    };
+    const { rerender } = render(<DelegationLauncher {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(discoveryInputs).not.toHaveBeenCalled();
+    projectLoading = false;
+    projectDefaultEnvironment = { kind: 'saved', id: 'env-media' };
+    rerender(<DelegationLauncher {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: expect.objectContaining({
+          environment: { kind: 'saved', id: 'env-media' },
+        }),
+      }),
+    );
   });
 
   test('reports unavailable inventory without claiming the project environment was deleted', () => {
@@ -328,6 +441,75 @@ describe('DelegationLauncher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
     expect((screen.getByLabelText('Station') as HTMLSelectElement).value).toBe(
       'env-unchecked',
+    );
+  });
+
+  test('offers retry and blocks default dispatch when Project loading fails', () => {
+    projectFailure = true;
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        initialPrompt="Keep the draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(discoveryInputs).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Project execution defaults could not be loaded',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry Project' }));
+    expect(retryProject).toHaveBeenCalledOnce();
+  });
+
+  test('rejects worker discovery from a different environment', () => {
+    projectDefaultEnvironment = { kind: 'saved', id: 'env-media' };
+    staleDiscoveryEnvironment = 'env-other';
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        initialPrompt="Use only the selected machine"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  test('keeps an explicit choice when Project defaults arrive later', () => {
+    projectLoading = true;
+    const props = {
+      isOpen: true,
+      apiBase: 'http://station.test',
+      projectSlug: 'station',
+      initialPrompt: 'Use my explicit choice',
+      onClose: vi.fn(),
+      onDelegated: vi.fn(),
+    };
+    const { rerender } = render(<DelegationLauncher {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'current' },
+    });
+    projectLoading = false;
+    projectDefaultEnvironment = { kind: 'saved', id: 'env-media' };
+    rerender(<DelegationLauncher {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: expect.objectContaining({ environment: { kind: 'current' } }),
+      }),
     );
   });
 

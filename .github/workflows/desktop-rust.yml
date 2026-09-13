@@ -26,6 +26,90 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # #1726 (bump jni 0.21.1 -> 0.22.4) passed every required check and then
+  # reddened `main` at `cargo build`. Nothing was wrong with the gates: the
+  # Android-only code is `#[cfg(target_os = "android")]`, so the desktop-rust
+  # job below never compiles it, and build-android.yml runs on push to `main`
+  # rather than on pull requests. The only lane that compiles Android code ran
+  # AFTER the merge — while that workflow's own header calls itself "the only
+  # CI signal for Android-breaking changes".
+  #
+  # This closes the gap at the cheapest point that would have caught it: a type
+  # check, not an APK. `cargo check` never links the target, so this is a small
+  # fraction of build-android.yml's four-target assembly and Gradle packaging,
+  # and one ABI is enough — an API break like #1726's `method not found` does
+  # not vary by target.
+  #
+  # Uses ONLY the actions this workflow already runs. No `setup-android` and no
+  # `setup-java`: this is a pull_request_target lane, where the gate rightly
+  # refuses unreviewed actions, and neither is needed anyway. adb lives in
+  # platform-tools and only matters when driving a device; aapt/apksigner live
+  # in build-tools and only matter when packaging an APK. The single Android
+  # requirement here is a C compiler, because `ring`'s build script compiles C
+  # for the target and build scripts run during `check` — and the hosted image
+  # already ships an NDK.
+  android-cross-check:
+    name: Android type check
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { targets: aarch64-linux-android }
+
+      # Resolved rather than pinned: the revision is an image detail, and any
+      # recent NDK supplies the C compiler this needs. Fails closed — an image
+      # without one must not read as a passing type check.
+      - name: Resolve the image's Android NDK
+        run: |
+          set -euo pipefail
+          root="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
+          if [ -z "$root" ] || [ ! -d "$root" ]; then
+            root="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/ndk" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -1)"
+          fi
+          if [ -z "$root" ] || [ ! -d "$root" ]; then
+            echo "::error::no Android NDK on this image; the Android type check cannot compile ring's build script" >&2
+            exit 1
+          fi
+          echo "Using NDK $root"
+
+          # `ring`'s build script drives cc-rs, which looks for an unsuffixed
+          # `aarch64-linux-android-clang` on PATH. The NDK ships API-suffixed
+          # wrappers instead (`aarch64-linux-android21-clang` upwards), so
+          # exporting PATH alone is not enough — the first run of this job
+          # failed with `ToolNotFound: aarch64-linux-android-clang`. Name a
+          # concrete wrapper. Any API level compiles ring's C identically; the
+          # highest present keeps this off the deprecation floor.
+          bin="$root/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          cc="$(find "$bin" -maxdepth 1 -name 'aarch64-linux-android*-clang' 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$cc" ] || [ ! -x "$cc" ]; then
+            echo "::error::no aarch64-linux-android clang under $bin" >&2
+            exit 1
+          fi
+          echo "Using CC $cc"
+
+          {
+            echo "NDK_HOME=$root"
+            echo "ANDROID_NDK_ROOT=$root"
+            echo "PATH=$bin:$PATH"
+            echo "CC_aarch64_linux_android=$cc"
+            echo "AR_aarch64_linux_android=$bin/llvm-ar"
+          } >> "$GITHUB_ENV"
+
+      # The same directories `verify:desktop-rust` creates. tauri-build resolves
+      # frontendDist at build-script time and that requirement does not vary by
+      # target, so no frontend build is needed to type-check Rust.
+      - name: Type-check the Android-only code paths
+        run: |
+          mkdir -p dist-server dist-desktop-runtime/node_modules
+          cd src-desktop
+          cargo check --target aarch64-linux-android --lib
+
   desktop-rust:
     runs-on: ubuntu-22.04
     steps:
@@ -36,7 +120,7 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

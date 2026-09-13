@@ -1,8 +1,12 @@
+import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
+import { expectNoBlockingAccessibilityViolations } from './helpers/accessibility';
+import {
+  mockChatShell,
+  seedMobileTaskSwitcher,
+} from './helpers/chat-shell-fixture';
 import { backgroundPaint, contrastRatio } from './helpers/color-contrast';
-import { agentConnectionFixture } from './helpers/connection-fixtures';
-import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
@@ -16,12 +20,8 @@ import {
   seedActiveChats,
 } from './helpers/orchestration';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
-import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
-import {
-  installVisualViewportFixture,
-  setVisualViewport,
-} from './helpers/visual-viewport';
+import { setVisualViewport } from './helpers/visual-viewport';
 
 const json = (body: unknown) => ({
   status: 200,
@@ -38,393 +38,14 @@ async function expectSettledTouchTargetHeight(locator: Locator) {
     .toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
 }
 
-async function mockChatShell(
-  page: Page,
-  options: { expectedEnvironmentId?: string } = {},
-) {
-  let providerCalls = 0;
-  page.on('pageerror', (error) => {
-    console.error(`mobile-chat page error: ${error.message}`);
-  });
-  await installVisualViewportFixture(page);
-  await page.addInitScript((expectedEnvironmentId) => {
-    localStorage.setItem('station-connect-connections-active', 'mobile');
-    localStorage.setItem(
-      'station-connect-connections',
-      JSON.stringify([
-        {
-          id: 'mobile',
-          name: 'Mobile',
-          url: location.origin,
-          ...(expectedEnvironmentId
-            ? { environmentId: expectedEnvironmentId }
-            : {}),
-        },
-      ]),
-    );
-  }, options.expectedEnvironmentId ?? null);
-  await page.route('**/.well-known/station/v1', (route) =>
-    route.fulfill(
-      json({
-        schemaVersion: 1,
-        environmentId: '11111111-1111-4111-8111-111111111111',
-        authentication: { scheme: 'bearer', protocolVersion: 1 },
-        transports: { http: 1, sse: 1, websocket: 1 },
-        compatibility: E2E_STATION_COMPATIBILITY,
-        capabilities: { sessionEventWindow: true },
-      }),
-    ),
-  );
-  await page.route('**/api/**', async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    // `GET /api/plugins` answers `{ plugins: [...] }`, not the `{success,data}`
-    // envelope the catch-all below returns. `PluginRegistry.ts:207-212`
-    // destructures `plugins` and iterates it, so the envelope makes it throw,
-    // land in `degraded`, and present the non-dismissible "Extensions
-    // unavailable" chrome banner — which sits above the dock's stacking context
-    // on mobile (`BannerHost.css:619-624`) and swallowed clicks on the composer
-    // sheets, and whose reserved height pushed the maximized desktop dock past
-    // the viewport.
-    if (path === '/api/plugins') return route.fulfill(json({ plugins: [] }));
-    if (path === '/api/orchestration/sessions/read-model')
-      return route.fulfill(
-        json({
-          success: true,
-          data: [
-            {
-              threadId: 'delegated-review',
-              provider: 'codex',
-              model: 'model-selected',
-              projectSlug: 'default',
-              assignedAgentSlug: 'station',
-              delegation: { taskId: 'task:delegated-review' },
-              status: 'ready',
-              lifecycleState: 'needs_input',
-              createdAt: '2026-07-19T10:06:00Z',
-              updatedAt: '2026-07-19T10:06:00Z',
-              isLoaded: true,
-              isPersisted: true,
-              eventCount: 1,
-            },
-          ],
-        }),
-      );
-    if (/^\/api\/agents\/[^/]+\/chat$/.test(path)) {
-      providerCalls += 1;
-      return route.abort();
-    }
-    if (path === '/api/orchestration/delegations/options')
-      return route.fulfill(
-        json({
-          success: true,
-          data: {
-            environment: {
-              id: '11111111-1111-4111-8111-111111111111',
-              name: 'Current environment',
-              kind: 'current',
-            },
-            project: { slug: 'default' },
-            targets: [
-              {
-                id: 'codex',
-                name: 'Codex',
-                kind: 'agent-app',
-                ready: true,
-                defaultModel: 'model-selected',
-                models: [
-                  {
-                    id: 'model-default',
-                    name: 'Default Test Model',
-                    originalId: 'model-default',
-                  },
-                  {
-                    id: 'model-selected',
-                    name: 'Selected Test Model',
-                    originalId: 'model-selected',
-                  },
-                ],
-                capabilities: {
-                  resume: true,
-                  interrupt: true,
-                  approvals: true,
-                  modelSelection: true,
-                },
-              },
-            ],
-          },
-        }),
-      );
-    if (path === '/api/orchestration/delegations')
-      return route.fulfill(
-        json({
-          success: true,
-          data: {
-            taskId: 'task:mobile-delegation',
-            sessionId: 'task:mobile-delegation',
-            status: 'dispatched',
-            environment: {
-              id: 'mobile',
-              name: 'This Station',
-              kind: 'current',
-            },
-            target: { kind: 'agent-app', id: 'codex' },
-            model: 'model-selected',
-            resumable: true,
-          },
-        }),
-      );
-    if (path === '/api/agents')
-      return route.fulfill(
-        json({
-          success: true,
-          data: [
-            {
-              slug: 'station',
-              name: 'Station',
-              description: 'Local test agent',
-              source: 'local',
-              engineId: 'station',
-              engineDisplayName: 'Station',
-              engineDefault: true,
-              available: true,
-              model: 'model-default',
-            },
-            {
-              slug: 'claude',
-              name: 'Claude',
-              description: 'Connected Claude test agent',
-              source: 'local',
-              engineId: 'claude',
-              engineDisplayName: 'Claude',
-              engineDefault: true,
-              available: true,
-              model: 'model-selected',
-              execution: {
-                agentConnectionId: 'claude',
-                modelId: 'model-selected',
-              },
-            },
-          ],
-        }),
-      );
-    if (path === '/api/projects')
-      return route.fulfill(
-        json({
-          success: true,
-          data: [
-            {
-              id: 'default',
-              slug: 'default',
-              name: 'Default',
-              hasWorkingDirectory: false,
-              layoutCount: 0,
-            },
-          ],
-        }),
-      );
-    if (path === '/api/connections/agents')
-      return route.fulfill(
-        json({
-          success: true,
-          data: [
-            agentConnectionFixture({
-              id: 'claude',
-              kind: 'agent',
-              type: 'claude',
-              name: 'Claude',
-              enabled: true,
-              capabilities: ['agent-runtime', 'image-input', 'file-input'],
-              config: {
-                engineId: 'claude',
-                defaultModel: 'model-selected',
-              },
-              status: 'ready',
-              runtimeCatalog: {
-                source: 'live',
-                models: [
-                  {
-                    id: 'model-default',
-                    name: 'Default Test Model',
-                    originalId: 'model-default',
-                  },
-                  {
-                    id: 'model-selected',
-                    name: 'Selected Test Model',
-                    originalId: 'model-selected',
-                  },
-                ],
-                builtInModels: [],
-              },
-              prerequisites: [],
-            }),
-          ],
-        }),
-      );
-    if (path === '/api/connections/models')
-      return route.fulfill(
-        json({
-          success: true,
-          data: [
-            {
-              id: 'ollama-local',
-              kind: 'model',
-              type: 'ollama',
-              name: 'Ollama',
-              enabled: true,
-              capabilities: ['llm'],
-              config: {},
-              status: 'ready',
-              prerequisites: [],
-            },
-          ],
-        }),
-      );
-    if (path === '/api/system/status')
-      return route.fulfill(
-        json({
-          ready: true,
-          acp: { connected: false, connections: [] },
-          providers: {
-            configuredChatReady: true,
-            configured: [],
-            detected: {},
-          },
-          capabilities: {
-            chat: { ready: true },
-            runtime: { ready: false },
-            knowledge: { ready: false },
-            acp: { ready: false },
-          },
-          prerequisites: [],
-          clis: {},
-        }),
-      );
-    if (path === '/api/system/identity')
-      return route.fulfill(
-        json({
-          environmentId: '11111111-1111-4111-8111-111111111111',
-          bootId: 'mobile-test-boot',
-        }),
-      );
-    if (path === '/api/system/capabilities')
-      return route.fulfill(
-        json({ voice: { stt: [], tts: [] }, context: { providers: [] } }),
-      );
-    if (path === '/api/attention')
-      return route.fulfill(
-        json({ success: true, data: { items: [], pendingCount: 0 } }),
-      );
-    if (path === '/api/models/capabilities')
-      return route.fulfill(
-        json({
-          success: true,
-          data: [{ modelId: 'model-default' }, { modelId: 'model-selected' }],
-        }),
-      );
-    if (path === '/api/models')
-      return route.fulfill(
-        json({
-          success: true,
-          data: [
-            {
-              modelId: 'model-default',
-              modelName: 'Default Test Model',
-              outputModalities: ['TEXT'],
-            },
-            {
-              modelId: 'model-selected',
-              modelName: 'Selected Test Model',
-              outputModalities: ['TEXT'],
-            },
-          ],
-        }),
-      );
-    if (
-      route.request().method() === 'GET' &&
-      path === '/api/projects/default/layouts'
-    )
-      return route.fulfill(json({ success: true, data: [] }));
-    if (route.request().method() === 'GET' && path === '/api/projects/default')
-      return route.fulfill(
-        json({
-          success: true,
-          data: {
-            id: 'default',
-            slug: 'default',
-            name: 'Default',
-            hasWorkingDirectory: false,
-          },
-        }),
-      );
-    if (await fulfillStationShellRead(route)) return;
-    return rejectUnexpectedFixtureRequest(route);
-  });
-  await page.route('**/config/app', (route) =>
-    route.fulfill(
-      json({ success: true, data: { defaultModel: 'test-model' } }),
-    ),
-  );
-  await page.route(/\/agents\/station\/conversations(?:\?.*)?$/, (route) =>
-    route.fulfill(
-      json({
-        success: true,
-        data: [
-          {
-            id: 'conv-running',
-            title: 'Mobile running task',
-            agentSlug: 'station',
-            updatedAt: '2026-07-19T10:00:00Z',
-          },
-          {
-            id: 'conv-review',
-            title: 'Mobile review task',
-            agentSlug: 'station',
-            updatedAt: '2026-07-19T10:05:00Z',
-          },
-        ],
-      }),
-    ),
-  );
-  await page.route('**/events', (route) => route.abort());
-  for (const [id, reply] of [
-    ['conv-running', 'Working through the current task.'],
-    ['conv-review', 'Review needed before continuing.'],
-  ]) {
-    const turns = buildLongSessionTurns({
-      threadId: id,
-      provider: 'codex',
-      turnCount: 1,
-      replyText: () => reply,
-    });
-    await mockRuntimeConversation(page, {
-      id,
-      agentSlug: 'station',
-      title: 'Station Chat',
-      provider: 'codex',
-      model: 'model-selected',
-      projectSlug: 'default',
-      canContinue: true,
-      turns: () => turns,
-    });
-  }
-
-  return () => providerCalls;
-}
-
 async function openComposer(
   page: Page,
   projectScoped = false,
   agentSlug = 'claude',
 ) {
-  await page.goto('/?dock=open');
+  await page.goto('/');
   await dismissSetupLauncher(page);
-  await openNewChat(page);
-  // With exactly one chat-ready runtime, the visible New button intentionally
-  // takes the one-click default path. Open the selection surface explicitly so
-  // this helper can bind a runtime and optional project deterministically.
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event('station:open-new-chat')),
-  );
+  await page.getByRole('button', { name: /^Start direct chat/ }).click();
   const modal = page.getByRole('dialog', { name: 'New Chat' });
   await expect(modal).toBeVisible({ timeout: 15_000 });
   const runtimeRow = modal.locator(`[data-agent-slug="${agentSlug}"]`).first();
@@ -447,6 +68,13 @@ async function openComposer(
       'Selected Test Model',
     );
   }
+  // Home opens the collapsed dock. Geometry assertions begin after its
+  // actual height transition, rather than comparing boxes from different frames.
+  await page.locator('.chat-dock').evaluate(async (element) => {
+    await Promise.allSettled(
+      element.getAnimations().map((animation) => animation.finished),
+    );
+  });
   return textarea;
 }
 
@@ -675,7 +303,7 @@ test('virtualizes a long real transcript while preserving reader controls on mob
     'browser fixture failure',
   );
 
-  const loadEarlier = page.getByRole('button', { name: 'Load earlier events' });
+  const loadEarlier = page.getByRole('button', { name: 'Earlier messages' });
   await expect(loadEarlier).toBeVisible();
   for (let pageIndex = 1; pageIndex <= 3; pageIndex++) {
     await loadEarlier.click();
@@ -691,18 +319,20 @@ test('virtualizes a long real transcript while preserving reader controls on mob
     await transcript.locator('[data-transcript-row]').count(),
   ).toBeLessThan(80);
   await page.evaluate(() => document.fonts.ready);
+  // History loading lives above the rows. Capture what the reader actually
+  // sees there, after bringing the control into view, before prepending.
+  await loadEarlier.scrollIntoViewIfNeeded();
+  await expect(
+    transcript.getByText('Transcript fixture 9930: prompt.', { exact: true }),
+  ).toBeInViewport();
   const anchoredRow = await transcript.evaluate((element) => {
-    element.scrollTop = Math.max(
-      1,
-      element.scrollHeight - element.clientHeight - 500,
-    );
-    element.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
-    element.dispatchEvent(new Event('scroll', { bubbles: true }));
     const bounds = element.getBoundingClientRect();
     const row = [
       ...element.querySelectorAll<HTMLElement>('[data-transcript-row]'),
     ].find(
-      (candidate) => candidate.getBoundingClientRect().bottom > bounds.top,
+      (candidate) =>
+        candidate.getBoundingClientRect().bottom > bounds.top &&
+        candidate.getBoundingClientRect().top < bounds.bottom,
     );
     return row
       ? {
@@ -934,21 +564,6 @@ async function expandMobileDock(page: Page) {
     .getByRole('menu', { name: 'Chat actions' })
     .getByRole('menuitem', { name: /^Expand chat/ })
     .click();
-}
-
-async function openNewChat(page: Page) {
-  const tabBarNew = page
-    .locator('.chat-dock__tab-actions .chat-dock__new')
-    .last();
-  if (await tabBarNew.isVisible().catch(() => false)) {
-    await expect(tabBarNew).toBeVisible({ timeout: 15_000 });
-    return;
-  }
-  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
-  await expect(
-    page.getByRole('menuitem', { name: 'New chat', exact: true }),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Close actions menu' }).click();
 }
 
 test('keeps mobile attachment selection reviewable without moving the draft', async ({
@@ -1238,107 +853,6 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
  * dismissal regression beside it (archive#3771), so two tests about one sheet
  * cannot drift into describing two different products.
  */
-async function seedMobileTaskSwitcher(page: Page) {
-  await mockChatShell(page);
-  for (const id of ['chat-running', 'chat-review'])
-    await page.route(
-      new RegExp(`/api/orchestration/sessions/${id}/checkpoints(?:\\?.*)?$`),
-      (route) => route.fulfill(json({ success: true, data: [] })),
-    );
-  await seedActiveChats(page, [
-    {
-      sessionId: 'chat-running',
-      conversationId: 'conv-running',
-      agentSlug: 'station',
-      projectSlug: 'default',
-      projectName: 'Default',
-      model: 'model-selected',
-      ephemeralMessages: [
-        {
-          role: 'assistant',
-          content: 'Working through the current task.',
-          timestamp: Date.parse('2026-07-19T10:00:00Z'),
-        },
-      ],
-    },
-    {
-      sessionId: 'chat-review',
-      conversationId: 'conv-review',
-      agentSlug: 'station',
-      projectSlug: 'default',
-      projectName: 'Default',
-      model: 'model-selected',
-      ephemeralMessages: [
-        {
-          role: 'assistant',
-          content: 'Review needed before continuing.',
-          timestamp: Date.parse('2026-07-19T10:05:00Z'),
-        },
-      ],
-    },
-  ]);
-
-  // archive#3300 (`contexts/active-chats-state.ts:626-640`) deliberately drops a
-  // persisted 'running'/'awaiting-approval' on rehydrate — never resurrect a
-  // LIVE status claim from storage — so the seeds above cannot put a lifecycle
-  // chip on a row. The read-model is the live channel those chips derive from
-  // (`utils/session-state.ts:118-162`), and it is what the delegated row in
-  // `mockChatShell` already uses. Registered after it, so it wins.
-  await page.route('**/api/orchestration/sessions/read-model', (route) =>
-    route.fulfill(
-      json({
-        success: true,
-        data: [
-          {
-            threadId: 'delegated-review',
-            provider: 'codex',
-            model: 'model-selected',
-            projectSlug: 'default',
-            assignedAgentSlug: 'station',
-            delegation: { taskId: 'task:delegated-review' },
-            status: 'ready',
-            lifecycleState: 'needs_input',
-            createdAt: '2026-07-19T10:06:00Z',
-            updatedAt: '2026-07-19T10:06:00Z',
-            isLoaded: true,
-            isPersisted: true,
-            eventCount: 1,
-          },
-          {
-            threadId: 'conv-running',
-            provider: 'codex',
-            model: 'model-selected',
-            projectSlug: 'default',
-            assignedAgentSlug: 'station',
-            status: 'running',
-            lifecycleState: 'running',
-            hasActiveTurn: true,
-            createdAt: '2026-07-19T10:00:00Z',
-            updatedAt: '2026-07-19T10:00:00Z',
-            isLoaded: true,
-            isPersisted: true,
-            eventCount: 2,
-          },
-          {
-            threadId: 'conv-review',
-            provider: 'codex',
-            model: 'model-selected',
-            projectSlug: 'default',
-            assignedAgentSlug: 'station',
-            status: 'ready',
-            lifecycleState: 'needs_input',
-            createdAt: '2026-07-19T10:05:00Z',
-            updatedAt: '2026-07-19T10:05:00Z',
-            isLoaded: true,
-            isPersisted: true,
-            eventCount: 2,
-          },
-        ],
-      }),
-    ),
-  );
-}
-
 test('switches between mobile tasks and restores the exact active chat context', async ({
   page,
 }, testInfo) => {
@@ -1417,7 +931,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     .click();
   await expect(textarea).toHaveValue('return to this draft');
   await expect(page.locator('.chat-input__model-name')).toHaveText(
-    'model-selected',
+    'Model Selected',
   );
 
   await switcher.click();
@@ -1457,7 +971,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     page.getByRole('button', { name: /^Switch project/ }),
   ).toContainText('Default');
   await expect(page.locator('.chat-input__model-name')).toHaveText(
-    'model-selected',
+    'Model Selected',
   );
 
   await page.setViewportSize({ width: 320, height: 568 });
@@ -1526,6 +1040,28 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockChatShell(page);
+  await page.route('**/api/tasks*', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({
+          json: {
+            success: true,
+            data: [
+              {
+                id: 'touch-target-task',
+                projectId: 'p-default',
+                title: 'Review merge queue',
+                description: '',
+                priority: 'normal',
+                status: 'todo',
+                createdBy: 'fixture',
+                createdAt: '2026-08-25T12:00:00.000Z',
+                updatedAt: '2026-08-25T12:00:00.000Z',
+              } satisfies TaskRecord,
+            ],
+          },
+        })
+      : rejectUnexpectedFixtureRequest(route),
+  );
   const touchTurns = buildLongSessionTurns({
     threadId: 'touch-target-conversation',
     provider: 'station-agent',
@@ -1710,6 +1246,17 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
     const box = await control.boundingBox();
     expect(box?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  }
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate(
+      (value) => document.documentElement.setAttribute('data-theme', value),
+      theme,
+    );
+    await expectNoBlockingAccessibilityViolations(
+      page,
+      `mobile-answer-details-${theme}`,
+      '[role="dialog"][aria-label="Answer details and actions"]',
+    );
   }
   await page.getByRole('button', { name: 'Close message details' }).click();
   await header
@@ -2608,24 +2155,6 @@ test('preserves desktop dock geometry', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockChatShell(page);
   await openComposer(page);
-  // archive#1064 removed the "Chat Dock" label — the dock is the only thing this
-  // chrome can belong to, and the row now carries the active chat's project
-  // context instead. Assert the row still identifies the surface (its toggle
-  // shortcut) rather than re-pinning a label that was deliberately dropped.
-  await expect(page.locator('.chat-dock__title')).not.toContainText(
-    'Chat Dock',
-  );
-  await expect(page.locator('.chat-dock__counter')).toHaveText('1 session');
-  await expect(
-    page.locator('.chat-dock__header').getByTitle('Chat settings'),
-  ).toBeVisible();
-  await expect(
-    page.locator('summary[aria-label="More chat actions"]'),
-  ).toHaveCount(0);
-  const desktopActions = page.locator('.chat-dock__tab-actions button');
-  await expect(desktopActions).toHaveCount(2);
-  await expect(desktopActions.nth(0)).toContainText('Open');
-  await expect(desktopActions.nth(1)).toContainText('New');
   // archive#1048 retired the overlay bottom dock: the dock is always inline in the
   // content column, spanning from the sidebar's right edge to the viewport
   // edge (previously it overlaid the full 1280px viewport width).
@@ -3367,4 +2896,90 @@ for (const width of [320, 390, 1280]) {
       await expect(clear).toBeHidden();
     });
   }
+}
+
+test('sidebar overflow opens the real mobile chat collection', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedMobileTaskSwitcher(page, true);
+  await page.goto('/?chat=conv-running');
+  await dismissSetupLauncher(page);
+  await page.getByRole('button', { name: 'Toggle menu', exact: true }).click();
+  const navigation = page.getByRole('navigation', {
+    name: 'Mobile navigation',
+  });
+  await expect(navigation).toBeVisible();
+  await navigation.getByRole('button', { name: /^\d+ more$/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Switch task' });
+  await expect(sheet).toBeVisible();
+  await expect(navigation).not.toBeVisible();
+  await expect(
+    sheet.getByText('Overflow conversation 0', { exact: true }),
+  ).toBeVisible();
+  await sheet.getByRole('button', { name: 'Close task switcher' }).click();
+  await expect(sheet).not.toBeVisible();
+});
+
+for (const width of [320, 431]) {
+  test(`chat layout audit centers its title and keeps slash commands usable at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await mockChatShell(page);
+    await page.goto('/?dock=open');
+    await dismissSetupLauncher(page);
+    await page
+      .getByRole('button', { name: 'Start a chat', exact: true })
+      .last()
+      .click();
+    const modal = page.getByRole('dialog', { name: 'New Chat' });
+    await expect(modal).toBeVisible();
+    await modal.locator('[data-agent-slug="claude"]').first().click();
+    const input = page.locator('textarea[placeholder*="Type a message"]');
+    await expect(input).toBeVisible();
+    const header = page.getByTestId('chat-dock-mobile-header');
+    const outer = (await header.boundingBox())!;
+    const identity = (await header
+      .getByRole('button', { name: /^Switch task/ })
+      .boundingBox())!;
+    expect(
+      Math.abs(identity.x + identity.width / 2 - (outer.x + outer.width / 2)),
+    ).toBeLessThanOrEqual(1);
+    const title = (await header
+      .locator('.chat-dock__mobile-title-text')
+      .boundingBox())!;
+    expect(
+      Math.abs(title.x + title.width / 2 - (outer.x + outer.width / 2)),
+    ).toBeLessThanOrEqual(1);
+    await input.fill('/');
+    const menu = page.getByRole('listbox', { name: 'Suggestions' });
+    await expect(menu).toBeVisible();
+    const box = (await menu.boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(160);
+    expect(box.y).toBeGreaterThanOrEqual(8);
+    const first = menu.getByRole('option').first();
+    const firstBox = (await first.boundingBox())!;
+    expect(firstBox.y).toBeGreaterThanOrEqual(box.y);
+    expect(
+      await first.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return element.contains(
+          document.elementFromPoint(
+            rect.x + rect.width / 2,
+            rect.y + rect.height / 2,
+          ),
+        );
+      }),
+    ).toBe(true);
+    await input.fill('/stats');
+    await expect(menu.getByText('Platform', { exact: true })).toBeVisible();
+    await menu.getByRole('option').click();
+    await expect(
+      page.getByText('Messages: 0. No usage recorded yet.', { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('No conversation ID available.')).toHaveCount(
+      0,
+    );
+  });
 }

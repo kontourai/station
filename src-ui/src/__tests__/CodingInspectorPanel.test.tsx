@@ -344,18 +344,14 @@ describe('CodingInspectorPanel — copyable setup command', () => {
     await waitFor(() => expect(copyButton().textContent).toBe('Copied'));
   });
 
+  // ONE failure case here, not the primitive's matrix. Which clipboard states
+  // resolve `false` (absent, no `writeText`, rejected, throwing) is
+  // `copyToClipboard`'s own contract, pinned in
+  // `src-ui/src/lib/__tests__/clipboard.test.ts` -- 'resolves false when the
+  // origin has no clipboard API at all'. What is this panel's to prove is that
+  // it derives its affordance from that boolean rather than from the call.
   test('a refused write never claims a copy', async () => {
     clipboardRefuses();
-    renderNoCliCta();
-
-    fireEvent.click(copyButton());
-
-    await waitFor(() => expect(copyButton().textContent).toBe("Can't copy"));
-    expect(screen.queryByText('Copied')).toBeNull();
-  });
-
-  test('an insecure origin with no clipboard API never claims a copy', async () => {
-    clipboardAbsent();
     renderNoCliCta();
 
     fireEvent.click(copyButton());

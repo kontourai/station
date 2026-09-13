@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { type Alias, defineConfig } from 'vite';
 import tauriConfig from './src-desktop/tauri.conf.json';
 
 // Build identity is injected into index.html rather than the JavaScript module
@@ -164,151 +164,22 @@ export default defineConfig(({ command }) => {
     worker: { format: 'es' },
     root: './src-ui',
     resolve: {
-      alias: {
+      // Vite accepts either an object of aliases (string keys only, matched as
+      // prefixes) or an array (whose `find` may also be a RegExp). The object
+      // below keeps the plain prefix aliases; the array tail carries the
+      // entries that must match EXACTLY.
+      alias: Object.entries({
         '@': path.resolve(__dirname, './src-ui/src'),
         '@shared': path.resolve(__dirname, './src-shared'),
-        // SDK subpath aliases must precede the exact package alias so Vite
-        // never rewrites a subpath as `<root-entrypoint>/<subpath>`.
-        '@kontourai/station-sdk/core-update-restart-status': path.resolve(
-          __dirname,
-          './packages/sdk/src/core-update-restart-status.ts',
-        ),
-        '@kontourai/station-sdk/voice': path.resolve(
-          __dirname,
-          './packages/sdk/src/voice/session.ts',
-        ),
-        '@kontourai/station-sdk/client': path.resolve(
-          __dirname,
-          './packages/sdk/src/client/index.ts',
-        ),
-        '@kontourai/station-sdk/setup-imports': path.resolve(
-          __dirname,
-          './packages/sdk/src/client/setup-imports.ts',
-        ),
-        '@kontourai/station-sdk/setup-imports-query': path.resolve(
-          __dirname,
-          './packages/sdk/src/query-domains/setupImports.ts',
-        ),
-        '@kontourai/station-sdk/secret-bindings-query': path.resolve(
-          __dirname,
-          './packages/sdk/src/query-domains/secret-bindings.ts',
-        ),
-        '@kontourai/station-sdk/client-origin': path.resolve(
-          __dirname,
-          './packages/sdk/src/client-origin.ts',
-        ),
-        '@kontourai/station-sdk/conversation-open': path.resolve(
-          __dirname,
-          './packages/sdk/src/conversation-open.ts',
-        ),
-        '@kontourai/station-sdk/app-config': path.resolve(
-          __dirname,
-          './packages/sdk/src/app-config.ts',
-        ),
-        '@kontourai/station-sdk/developer-runtime': path.resolve(
-          __dirname,
-          './packages/sdk/src/query-domains/developerRuntime.ts',
-        ),
-        '@kontourai/station-sdk/project-task-rooms': path.resolve(
-          __dirname,
-          './packages/sdk/src/query-domains/projectTaskRooms.ts',
-        ),
-        '@kontourai/station-sdk/task-outputs': path.resolve(
-          __dirname,
-          './packages/sdk/src/task-outputs.ts',
-        ),
-        '@kontourai/station-sdk/session-outputs': path.resolve(
-          __dirname,
-          './packages/sdk/src/session-outputs.ts',
-        ),
-        '@kontourai/station-sdk/session-inventory': path.resolve(
-          __dirname,
-          './packages/sdk/src/session-inventory.ts',
-        ),
-        '@kontourai/station-sdk/session-output-actions': path.resolve(
-          __dirname,
-          './packages/sdk/src/session-output-actions.ts',
-        ),
-        '@kontourai/station-sdk/task-user-input-references': path.resolve(
-          __dirname,
-          './packages/sdk/src/task-user-input-references.ts',
-        ),
-        '@kontourai/station-sdk/live-activity': path.resolve(
-          __dirname,
-          './packages/sdk/src/live-activity.ts',
-        ),
-        '@kontourai/station-sdk/action-operations': path.resolve(
-          __dirname,
-          './packages/sdk/src/action-operations.ts',
-        ),
-        '@kontourai/station-sdk/resource-posture': path.resolve(
-          __dirname,
-          './packages/sdk/src/query-domains/resourcePosture.ts',
-        ),
-        '@kontourai/station-sdk/workspace-pane': path.resolve(
-          __dirname,
-          './packages/sdk/src/workspace-pane.ts',
-        ),
-        '@kontourai/station-sdk/workspace-file-preview': path.resolve(
-          __dirname,
-          './packages/sdk/src/workspace-file-preview.ts',
-        ),
-        '@kontourai/station-sdk/workspace-browser-preview': path.resolve(
-          __dirname,
-          './packages/sdk/src/workspace-browser-preview.ts',
-        ),
-        '@kontourai/station-sdk/spatial-board': path.resolve(
-          __dirname,
-          './packages/sdk/src/spatial-board.ts',
-        ),
-        '@kontourai/station-sdk/error-state': path.resolve(
-          __dirname,
-          './packages/sdk/src/components/ErrorState.tsx',
-        ),
-        '@kontourai/station-sdk/answer-basis': path.resolve(
-          __dirname,
-          './packages/sdk/src/answer-basis.ts',
-        ),
-        '@kontourai/station-sdk/answer-assessment-events': path.resolve(
-          __dirname,
-          './packages/sdk/src/answer-assessment-events.ts',
-        ),
-        '@kontourai/station-sdk/answer-narrative-events': path.resolve(
-          __dirname,
-          './packages/sdk/src/answer-narrative-events.ts',
-        ),
-        '@kontourai/station-sdk/task-basis': path.resolve(
-          __dirname,
-          './packages/sdk/src/task-basis.ts',
-        ),
-        '@kontourai/station-sdk/task-tool-results': path.resolve(
-          __dirname,
-          './packages/sdk/src/task-tool-results.ts',
-        ),
-        '@kontourai/station-sdk/flow-gate-evaluations': path.resolve(
-          __dirname,
-          './packages/sdk/src/flow-gate-evaluations.ts',
-        ),
-        '@kontourai/station-sdk': path.resolve(
-          __dirname,
-          './packages/sdk/src/index.ts',
-        ),
-        // Subpath aliases must precede the package alias so the longer key wins.
+        // The one connect subpath that would need an alias if the UI imported
+        // it. Every other SUBPATH in `packages/connect`'s `exports` map
+        // points straight at a `src/*.ts` file Vite resolves on its own;
+        // `./health-probe` is the exception, pointing — like the root `.`
+        // below — at `dist/`, which `build:ui` does not build. Nothing in
+        // src-ui imports it today; the alias test is what pins this entry.
         '@kontourai/station-connect/health-probe': path.resolve(
           __dirname,
           './packages/connect/src/core/healthProbe.ts',
-        ),
-        '@kontourai/station-connect/known-environment': path.resolve(
-          __dirname,
-          './packages/connect/src/core/knownEnvironmentRegistry.ts',
-        ),
-        '@kontourai/station-connect/pairing-deep-link': path.resolve(
-          __dirname,
-          './packages/connect/src/core/pairingDeepLink.ts',
-        ),
-        '@kontourai/station-connect': path.resolve(
-          __dirname,
-          './packages/connect/src/index.ts',
         ),
         '@kontourai/station-contracts/orchestration': path.resolve(
           __dirname,
@@ -322,7 +193,38 @@ export default defineConfig(({ command }) => {
           __dirname,
           './packages/contracts/src/runtime-events.ts',
         ),
-      },
+      })
+        .map(([find, replacement]): Alias => ({ find, replacement }))
+        .concat([
+          // #1748: package ROOTS match EXACTLY, never as prefixes. As string
+          // keys these two also matched `<package>/<anything>` and rewrote it
+          // to `<the root's entry file>/<anything>`, which fails `build:ui`
+          // with ENOTDIR. Anchored, a subpath with no alias of its own falls
+          // through to Node resolution and the package's own `exports` map.
+          // They come last because an alias array is matched in order and an
+          // exact match cannot shadow anything above it.
+          {
+            // `vitest.config.ts` already anchors this one, for the same
+            // reason it exists at all: connect's `exports["."]` names
+            // `dist/`, which `build:ui` does not build.
+            find: /^@kontourai\/station-connect$/,
+            replacement: path.resolve(
+              __dirname,
+              './packages/connect/src/index.ts',
+            ),
+          },
+          {
+            // The SDK needed no root alias at all — its `exports["."]`
+            // already names this file — but as an unanchored string key it
+            // was the shield the ~30 SDK subpath aliases stood behind, and
+            // every one of them named exactly the file its own `exports`
+            // entry names. Anchoring the root is what made deleting those 30
+            // safe; the entry stays as the explicit pin to source for a
+            // package that is published and may one day ship a `dist/`.
+            find: /^@kontourai\/station-sdk$/,
+            replacement: path.resolve(__dirname, './packages/sdk/src/index.ts'),
+          },
+        ]),
     },
     build: {
       sourcemap: process.env.STATION_JOURNEY_PROFILE_DIR ? 'hidden' : false,

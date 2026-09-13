@@ -33,7 +33,7 @@ const logger = createLogger({ name: 'usage-aggregator' });
  * inherits archive#3201's unreported-vs-zero discipline from the fold for
  * free. `OrchestrationService.listSessionUsage` is the only implementation.
  */
-export interface OrchestrationUsageSource {
+interface OrchestrationUsageSource {
   listSessionUsage(): OrchestrationSessionUsage[];
   /**
    * The request-scoped version keeps hosted analytics inside the same
@@ -298,32 +298,6 @@ export class UsageAggregator {
       logger.error('Failed to read orchestration session usage', { error });
       return undefined;
     }
-  }
-
-  /**
-   * Read-only bridge for the usage-rollup module. Existing EventStore usage
-   * facts have no Station-observed ingestion timestamp, so this deliberately
-   * publishes one receipt per canonical folded session with `observedAt`
-   * absent and a legacy/unknown coverage result at the caller.
-   */
-  readLegacyUsageReceipts(stationId = 'local'): UsageReceipt[] | undefined {
-    const sessions = this.readOrchestrationSessionUsage();
-    if (sessions === undefined) return undefined;
-    return sessions.map(({ threadId, conversationId, usage }) => ({
-      id: `legacy-session:${threadId}`,
-      stationId,
-      provider: usage.provider ?? 'unattributed',
-      ...(usage.lastModelId ? { model: usage.lastModelId } : {}),
-      conversationId,
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      cacheReadTokens: usage.cacheReadTokens,
-      cacheWriteTokens: usage.cacheWriteTokens,
-      pricing: { status: 'unpriced' },
-      ...(usage.reportedCostUsd === undefined
-        ? {}
-        : { reportedCost: { amount: usage.reportedCostUsd, currency: 'USD' } }),
-    }));
   }
 
   /**

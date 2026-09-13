@@ -373,3 +373,54 @@ test('retires provisioning browser traffic before admitting two measured viewers
   }
   if (failures.length) throw failures[0];
 }, 30_000);
+
+// Driver/DOM fixture: the two projections intentionally share an actor identity.
+test('presence departure waits for its roster without matching the editor cursor', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const owner = await browser.newPage();
+    await owner.setContent(
+      '<section data-station-performance-surface="task-room-presence"><li data-actor-id="actor">Peer</li></section><aside aria-label="Remote selections"><li data-actor-id="actor">Cursor</li></aside>',
+    );
+    const outcomes = ['DEPARTED', 'JOINED', 'UPDATED'];
+    const peer = {
+      url: () => 'http://fixture.invalid/tasks/task-one',
+      waitForFunction: async () => ({
+        jsonValue: async () => 'actor',
+        dispose: async () => {},
+      }),
+      getByRole: (_role: string, options: { name: string }) => ({
+        isEnabled: async () => true,
+        waitFor: async () => {},
+        click: async () => {
+          if (options.name === 'Leave room')
+            await owner.evaluate(
+              `setTimeout(() => document.querySelector('[data-station-performance-surface="task-room-presence"] [data-actor-id]').remove(), 30)`,
+            );
+        },
+      }),
+      waitForResponse: async () => ({
+        status: () => 200,
+        json: async () => ({
+          success: true,
+          data: { kind: 'available', result: { outcome: outcomes.shift() } },
+        }),
+      }),
+      evaluate: async () => 1234,
+    };
+    await expect(
+      publishPeerPresence(peer, owner, 7, peer.url(), 'task-one'),
+    ).resolves.toMatchObject({
+      kind: 'presence-published',
+      peerActorId: 'actor',
+    });
+    expect(
+      await owner
+        .locator('[aria-label="Remote selections"] [data-actor-id]')
+        .count(),
+    ).toBe(1);
+    expect(outcomes).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});

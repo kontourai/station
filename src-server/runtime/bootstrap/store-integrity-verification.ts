@@ -14,6 +14,7 @@ import {
   storeIntegrityExitCode,
 } from '@kontourai/station-shared/sqlite-store-integrity';
 import { orchestrationStoreCorruptionObserved } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 
 /**
  * Verify the store on a schedule, in a child process.
@@ -195,7 +196,7 @@ export function startStoreIntegrityVerification(
       // A scheduled diagnostic must never take the runtime with it.
       context.logger.warn('Store integrity verification failed', {
         databasePath: context.databasePath,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     } finally {
       running = false;
@@ -270,7 +271,7 @@ export async function spawnStoreIntegrityProbe(input: {
   } catch (error) {
     return {
       results: [],
-      unreadable: `probe could not be spawned: ${message(error)}`,
+      unreadable: `probe could not be spawned: ${errorMessage(error)}`,
     };
   }
 
@@ -296,7 +297,7 @@ export async function spawnStoreIntegrityProbe(input: {
         clearTimeout(timer);
         resolve({
           code: null,
-          failure: `probe failed to run: ${message(error)}`,
+          failure: `probe failed to run: ${errorMessage(error)}`,
         });
       });
       child.once('close', (code) => {
@@ -360,8 +361,4 @@ function parseReport(stdout: string): StoreIntegrityReport | undefined {
       return undefined;
   }
   return { checkedAt: record.checkedAt, results: record.results };
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

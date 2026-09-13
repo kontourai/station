@@ -12,6 +12,7 @@ import type { LanguageModel } from 'ai';
 import { DEFAULT_OLLAMA_BASE_URL } from '../../constants.js';
 import { buildAiSdkLanguageModel } from '../../runtime/frameworks/framework-model-factory.js';
 import { throwIfAborted } from '../../utils/bounded-async.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   catalogLimit,
   ModelCatalogShapeError,
@@ -26,6 +27,8 @@ import type {
   LLMModelCatalog,
   ModelCatalogRequest,
 } from './model-provider-types.js';
+
+const logger = createLogger({ name: 'ollama-provider' });
 
 /**
  * archive#1430: Ollama's bulk `/api/tags` listing (used for the base catalog
@@ -321,7 +324,7 @@ export class OllamaLLMProvider extends AiSdkLLMProvider {
       return res.ok;
     } catch (e) {
       throwIfAborted(options?.signal);
-      console.debug('Failed to check Ollama LLM provider health:', e);
+      logger.debug('Failed to check Ollama LLM provider health', { error: e });
       return false;
     }
   }
@@ -363,7 +366,9 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
       return res.ok;
     } catch (e) {
       throwIfAborted(options?.signal);
-      console.debug('Failed to check Ollama embedding provider health:', e);
+      logger.debug('Failed to check Ollama embedding provider health', {
+        error: e,
+      });
       return false;
     }
   }

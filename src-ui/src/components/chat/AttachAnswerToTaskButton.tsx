@@ -31,6 +31,8 @@ export interface AttachAnswerToTaskButtonProps {
   projectId?: string;
   adapter: AttachAnswerToTaskAdapter;
   onOpen?: () => void;
+  onClose?: () => void;
+  returnFocusTarget?: HTMLElement | null;
   menuItem?: boolean;
 }
 
@@ -54,6 +56,8 @@ export function AttachAnswerToTaskButton({
   projectId,
   adapter,
   onOpen,
+  onClose,
+  returnFocusTarget,
   menuItem,
 }: AttachAnswerToTaskButtonProps) {
   return (
@@ -66,6 +70,8 @@ export function AttachAnswerToTaskButton({
       projectId={projectId}
       adapter={adapter}
       onOpen={onOpen}
+      onClose={onClose}
+      returnFocusTarget={returnFocusTarget}
       triggerRole={menuItem ? 'menuitem' : undefined}
       attach={(taskId, target) =>
         adapter.attach({
@@ -110,9 +116,18 @@ export function ConnectedAttachAnswerToTaskButton({
   turnId,
   projectId,
   menuItem,
+  onOpen,
+  onClose,
+  returnFocusTarget,
 }: Pick<
   AttachAnswerToTaskButtonProps,
-  'sessionId' | 'turnId' | 'projectId' | 'menuItem'
+  | 'sessionId'
+  | 'turnId'
+  | 'projectId'
+  | 'menuItem'
+  | 'onOpen'
+  | 'onClose'
+  | 'returnFocusTarget'
 >) {
   const { tasksQuery, hasNoTasks } = useTaskPickerAdapter(projectId);
   const attachMutation = useCreateTaskReferenceMutation();
@@ -141,6 +156,9 @@ export function ConnectedAttachAnswerToTaskButton({
       turnId={turnId}
       projectId={projectId}
       menuItem={menuItem}
+      onOpen={onOpen}
+      onClose={onClose}
+      returnFocusTarget={returnFocusTarget}
       adapter={adapter}
     />
   );

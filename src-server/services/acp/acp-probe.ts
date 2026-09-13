@@ -8,6 +8,7 @@ import {
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { acpProbeCleanupRetention } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
@@ -399,7 +400,7 @@ export const MAX_PENDING_CLEANUP_SIZE = MAX_CLEANUP_RETRY_ATTEMPTS - 1;
  * choice: secrets out, operator-owned paths kept.
  */
 function probeErrorMessage(err: unknown): string {
-  return redactSecrets(err instanceof Error ? err.message : String(err));
+  return redactSecrets(errorMessage(err));
 }
 
 /**

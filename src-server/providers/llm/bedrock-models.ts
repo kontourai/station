@@ -6,9 +6,12 @@ import {
 import { GetProductsCommand, PricingClient } from '@aws-sdk/client-pricing';
 import { fromIni } from '@aws-sdk/credential-providers';
 import { raceWithSignal } from '../../utils/bounded-async.js';
+import { createLogger } from '../../utils/logger.js';
 import type { BedrockAuthMode } from './bedrock-credentials.js';
 import { bedrockClientAuth } from './bedrock-credentials.js';
 import { isBedrockRegionId } from './bedrock-region.js';
+
+const logger = createLogger({ name: 'bedrock-models' });
 
 export interface BedrockModel {
   modelId: string;
@@ -631,11 +634,6 @@ export class BedrockModelCatalog {
     }
   }
 
-  async getModelInfo(modelId: string): Promise<BedrockModel | undefined> {
-    const models = await this.listModels();
-    return models.find((m) => m.modelId === modelId);
-  }
-
   async resolveModelId(modelId: string): Promise<string> {
     try {
       const [models, profiles] = await Promise.all([
@@ -644,7 +642,7 @@ export class BedrockModelCatalog {
       ]);
       return resolveLaunchableBedrockSelector(modelId, models, profiles);
     } catch (error) {
-      console.debug('Failed to resolve model via inference profile lookup.');
+      logger.debug('Failed to resolve model via inference profile lookup.');
       throw error;
     }
   }

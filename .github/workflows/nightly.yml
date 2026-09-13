@@ -6,7 +6,9 @@ name: Nightly
 # publication.
 on:
   schedule:
-    - cron: '0 9 * * *'
+    # 00:00, 06:00, 12:00, 18:00 UTC. Quiet intervals no-op when main has
+    # not moved since the last verified ship.
+    - cron: '0 */6 * * *'
   workflow_dispatch:
     inputs:
       source_sha: { description: Optional current workflow event SHA; older revisions are rejected, required: false }
@@ -52,7 +54,7 @@ jobs:
           test "$source_sha" = "$GITHUB_SHA"
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -151,7 +153,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -181,7 +183,10 @@ jobs:
           export NIGHTLY_RUN_CREATED_AT
           NIGHTLY_RUN_CREATED_AT=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq '.created_at')
           version=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; import {nightlyCliVersion} from "./scripts/lib/nightly-build-identity.mjs"; process.stdout.write(nightlyCliVersion(JSON.parse(readFileSync("packages/cli/package.json")).version,new Date(process.env.NIGHTLY_RUN_CREATED_AT),process.env.GITHUB_RUN_ID))')
-          (cd packages/cli && npm version "$version" --no-git-tag-version --allow-same-version)
+          # A raw `npm version` walks the workspace to refresh a lockfile this
+          # pnpm-managed repository does not have, and fails on peer conflicts
+          # (ERESOLVE) before it ever writes the field. Only the field changes.
+          node scripts/lib/nightly-build-identity.mjs --cli-version "$version" --package-json packages/cli/package.json
           npm run build:cli
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - id: cli_npm_preflight

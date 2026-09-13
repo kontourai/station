@@ -49,7 +49,7 @@ export type ToolOutputReceipt = {
 };
 
 /** A typed, data-only ACP content projection; image bytes are never copied. */
-export type AcpToolContentProjection = Array<
+type AcpToolContentProjection = Array<
   | { type: 'text'; text: string }
   | { type: 'diff'; path: string; oldText?: string; newText: string }
   | { type: 'resource'; uri?: string; text?: string; mimeType?: string }
@@ -60,7 +60,7 @@ export type AcpToolContentProjection = Array<
     }
 >;
 
-export type AcpToolUpdate = {
+type AcpToolUpdate = {
   toolCallId: string;
   title?: string | null;
   name?: string | null;

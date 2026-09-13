@@ -5,7 +5,10 @@ import type {
   ConnectionSmokeFailureReason,
   ConnectionSmokeStatus,
 } from '@kontourai/station-contracts/tool';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  type FileMutationLock,
+} from '@kontourai/station-shared/lifecycle-events';
 import { JsonFileStore } from '../infra/json-store.js';
 
 const SMOKE_FAILURE_REASONS = new Set<ConnectionSmokeFailureReason>([
@@ -23,28 +26,22 @@ const SMOKE_FAILURE_REASONS = new Set<ConnectionSmokeFailureReason>([
 ]);
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** One bounded smoke receipt is fresh for exactly one day from its observation. */
-export const CONNECTION_SMOKE_FRESH_MS = 24 * 60 * 60 * 1000;
+const CONNECTION_SMOKE_FRESH_MS = 24 * 60 * 60 * 1000;
 const CONNECTION_SMOKE_STORE_VERSION = 3;
 
 type ConnectionSmokeDocument = {
   evidenceVersion: typeof CONNECTION_SMOKE_STORE_VERSION;
   results: StoredConnectionSmokeResult[];
 };
-// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
-// so a contended acquisition yields the event loop; sync test fakes remain
-// assignable (awaiting a non-promise is a no-op).
-type ConnectionSmokeMutationLock = (
-  lockPath: string,
-) => (() => void | Promise<void>) | Promise<() => void | Promise<void>>;
 type ConnectionSmokeStore = Pick<
   JsonFileStore<ConnectionSmokeDocument>,
   'read' | 'write'
 >;
 type ConnectionSmokeStoreFactory = (filePath: string) => ConnectionSmokeStore;
 
-export interface FileConnectionSmokeEvidenceStoreOptions {
+interface FileConnectionSmokeEvidenceStoreOptions {
   /** Injectable only for deterministic cross-process mutation tests. */
-  acquireMutationLock?: ConnectionSmokeMutationLock;
+  acquireMutationLock?: FileMutationLock;
   /** Injectable only for durable-write fault-injection tests. */
   storeFactory?: ConnectionSmokeStoreFactory;
 }
@@ -102,7 +99,7 @@ export class FileConnectionSmokeEvidenceStore
 {
   private readonly store: ConnectionSmokeStore;
   private readonly filePath: string;
-  private readonly acquireMutationLock: ConnectionSmokeMutationLock;
+  private readonly acquireMutationLock: FileMutationLock;
 
   constructor(
     dataDir: string,

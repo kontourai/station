@@ -1,10 +1,60 @@
+import { rmSync } from 'node:fs';
 import {
   type BrowserContext,
+  test as base,
   expect,
   type Locator,
   type Page,
-  test,
 } from '@playwright/test';
+import {
+  seedE2EFirstRunDecision,
+  seedE2EUsageTelemetryDisclosure,
+} from '../scripts/run-e2e-suite.mjs';
+import { readE2EOperatorCredential } from './helpers/e2e-operator-credential';
+import {
+  allocateLiveStation,
+  type LiveStation,
+  startStation,
+  stationRootForLiveHome,
+  stopStation,
+} from './helpers/live-station-task';
+
+let isolatedStation: LiveStation | undefined;
+let isolatedCredential: string | undefined;
+const test = base.extend({
+  baseURL: async ({ baseURL }, use) => {
+    await use(isolatedStation?.ui ?? baseURL);
+  },
+});
+
+test.beforeAll(async () => {
+  // Container runs already own their Station. The shared product runner does
+  // not: earlier files can spend this peer's real access-request quota.
+  if (process.env.STATION_E2E_RUNNER !== '1') return;
+  test.setTimeout(150_000);
+  isolatedStation = await allocateLiveStation(
+    'station-pairing-',
+    'pairing-proof',
+  );
+  await startStation(isolatedStation, true, {
+    logFile: test.info().outputPath(`${isolatedStation.instance}.log`),
+  });
+  isolatedCredential = readE2EOperatorCredential(isolatedStation.home);
+  await seedE2EFirstRunDecision(isolatedStation.api, isolatedCredential);
+  await seedE2EUsageTelemetryDisclosure(
+    isolatedStation.api,
+    isolatedCredential,
+  );
+});
+
+test.afterAll(async () => {
+  if (!isolatedStation) return;
+  await stopStation(isolatedStation);
+  rmSync(stationRootForLiveHome(isolatedStation.home), {
+    recursive: true,
+    force: true,
+  });
+});
 
 const CONNECTION_ENTRY_TIMEOUT_MS = 15_000;
 
@@ -109,6 +159,7 @@ async function pairedApiStatus(page: import('@playwright/test').Page) {
  */
 function hostCredential() {
   return (
+    isolatedCredential ||
     process.env.STATION_E2E_HOST_CREDENTIAL ||
     process.env.STATION_CONTAINER_HOST_CREDENTIAL
   );
@@ -292,7 +343,7 @@ async function expectPhoneDeclined(page: Page): Promise<void> {
  */
 async function expectPhoneCanRequestAgain(page: Page): Promise<void> {
   await expect(
-    page.getByRole('dialog').getByRole('button', { name: 'Request access' }),
+    page.getByRole('dialog').getByRole('button', { name: 'Try again' }),
   ).toBeVisible();
 }
 
@@ -405,7 +456,7 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   const pairingRequestResponse = phone.waitForResponse((response) =>
     new URL(response.url()).pathname.endsWith('/pairing/access-request'),
   );
-  await phone.getByRole('button', { name: 'Request access' }).click();
+  await phone.getByRole('button', { name: 'Try again' }).click();
   const pairingRequest = (await (await pairingRequestResponse).json()) as {
     offerId: string;
     proof: string;
@@ -513,3 +564,101 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   await hostContext.close();
   await phoneContext.close();
 });
+
+test('unpaired mobile tour displays every step and returns to connection setup', async ({
+  browser,
+  baseURL,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    storageState: { cookies: [], origins: [] },
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(baseURL!);
+    await page.getByRole('button', { name: 'See how Station works' }).click();
+    const sample = page.getByTestId('unpaired-sample-workspace');
+    await expect(sample).toBeVisible();
+    for (let step = 1; step <= 4; step++) {
+      const coachmark = page.getByTestId('first-run-coachmark');
+      await expect(coachmark).toContainText(`Step ${step} of 4`);
+      await expect(
+        sample.locator('[data-first-run-anchor]').first(),
+      ).toBeVisible();
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await coachmark
+        .getByRole('button', {
+          name: step === 4 ? 'Done' : 'Next',
+          exact: true,
+        })
+        .click();
+    }
+    await expect(page.getByTestId('first-run-coachmark')).toHaveCount(0);
+    await page
+      .getByRole('button', { name: 'Connect your Station', exact: true })
+      .first()
+      .click();
+    await expect(sample).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+for (const width of [320, 1280]) {
+  test(`production app entry has an honest setup fallback at ${width}px`, async ({
+    browser,
+    baseURL,
+  }, testInfo) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      storageState: { cookies: [], origins: [] },
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(baseURL!);
+      const local = page.getByRole('region', { name: 'Current Station' });
+      await expect(local).toBeVisible();
+      await expect(local.getByRole('combobox')).toHaveCount(0);
+      await expect(local).not.toContainText('Installed app');
+      await expect(local).not.toContainText('Nightly');
+      const open = local.getByRole('link', {
+        name: 'Open in the Station app',
+        exact: true,
+      });
+      await expect(open).toHaveAttribute(
+        'href',
+        'station-stable://open-browser',
+      );
+      await expect(
+        local.getByRole('link', { name: 'Get Station' }),
+      ).toHaveAttribute('href', 'https://station.kontourai.io/#start');
+      expect((await open.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      const installHelp = await local
+        .getByText("Don't have the app?")
+        .boundingBox();
+      const requestButton = await local
+        .getByRole('button', { name: 'Request access' })
+        .boundingBox();
+      expect(
+        requestButton!.y - (installHelp!.y + installHelp!.height),
+      ).toBeGreaterThanOrEqual(16);
+      await page.screenshot({
+        path: testInfo.outputPath(`connect-production-${width}.png`),
+        fullPage: true,
+      });
+      await local.getByRole('button', { name: 'Request access' }).click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+    } finally {
+      await context.close();
+    }
+  });
+}

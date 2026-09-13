@@ -111,8 +111,13 @@ describe('station-control Basis MCP App', () => {
     expect(taskName).toBe('station-task-basis-v3');
     expect(taskUri).toBe('ui://station/basis/task/v3');
     expect(taskContent.mimeType).toBe('text/html;profile=mcp-app');
+    // Re-grounded 2026-09-11 to the measured resource: the generated bundle
+    // grew past the previous 480 KiB pin with #1562's honest basis panes and
+    // the @kontourai/surface 3.2.0 bump (#1741). Exact cap: any growth reds
+    // here and re-grounding is a conscious act, per the session-inventory
+    // budget precedent (#1207).
     expect(Buffer.byteLength(taskContent.text, 'utf8')).toBeLessThanOrEqual(
-      480 * 1024,
+      574_724,
     );
     expect(taskContent.text).not.toContain('surface-trust-panel');
     expect(appTool.mock.calls[0]?.slice(0, 4)).toMatchObject([

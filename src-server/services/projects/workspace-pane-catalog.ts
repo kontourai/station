@@ -17,7 +17,7 @@ import {
   enumerateLayoutPanes,
 } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import type { StationKitRegistryEntry } from '../kits/kit-observability-host.js';
-import type { DistributionProfileService } from '../plugins/distribution-profile-service.js';
+import type { DistributionCatalogReadView } from '../plugins/distribution-profile-service.js';
 import { portableKitWorkspacePanes } from './portable-kit-workspace-panes.js';
 import {
   resolveWorkspacePaneCatalogAvailability,
@@ -43,7 +43,7 @@ export interface WorkspacePaneCatalogSnapshot {
   availability: readonly WorkspacePaneCatalogAvailabilityEntry[];
 }
 
-export type WorkspacePaneCatalogContribution = LayoutCatalogItem & {
+type WorkspacePaneCatalogContribution = LayoutCatalogItem & {
   /** Display-only lifecycle explanation; never execution authorization. */
   disabledReason?: 'Disabled by distribution policy or lifecycle override';
 };
@@ -131,7 +131,7 @@ function tabsForCurrentLayout(resolved: ResolvedCatalogLayout): LayoutTab[] {
  * record so a host can explain them, but this never authorizes application or
  * renderer execution.
  */
-export interface WorkspacePaneCatalogLayoutOffer {
+interface WorkspacePaneCatalogLayoutOffer {
   /**
    * Whether this project offers the layout as a Pane at all (archive#3778).
    *
@@ -148,7 +148,7 @@ export interface WorkspacePaneCatalogLayoutOffer {
 }
 
 export function readCurrentWorkspacePaneCatalog(
-  layoutCatalog: DistributionProfileService,
+  layoutCatalog: DistributionCatalogReadView,
   projectId: string,
   availabilityOptions?: WorkspacePaneCatalogAvailabilityOptions,
   portableKits: readonly StationKitRegistryEntry[] = [],

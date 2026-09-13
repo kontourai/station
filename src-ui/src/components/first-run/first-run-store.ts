@@ -65,7 +65,7 @@ export function isKnownFirstRunChapter(
 }
 
 /** Where a resume or a re-trigger should put the user. */
-export interface FirstRunResumePoint {
+interface FirstRunResumePoint {
   chapter: FirstRunChapter;
   /** Only meaningful when `chapter === 'tour'`. */
   stepIndex: number;

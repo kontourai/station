@@ -13,7 +13,7 @@ export interface UsageLike {
   cacheWriteTokens?: number;
 }
 
-export interface ConversationTokenBreakdown {
+interface ConversationTokenBreakdown {
   systemPromptTokens?: number;
   mcpServerTokens?: number;
   userMessageTokens?: number;
@@ -31,7 +31,7 @@ export interface ConversationStats {
   tokenBreakdown?: ConversationTokenBreakdown;
 }
 
-export interface StatsUpdateParams {
+interface StatsUpdateParams {
   existingStats?: ConversationStats | null;
   existingModelStats?: Record<string, ConversationStats | undefined>;
   usage: UsageLike;
@@ -54,11 +54,11 @@ export function createEmptyConversationStats(): ConversationStats {
   };
 }
 
-export function getUsageInputTokens(usage: UsageLike): number | undefined {
+function getUsageInputTokens(usage: UsageLike): number | undefined {
   return usage.promptTokens ?? usage.inputTokens;
 }
 
-export function getUsageOutputTokens(usage: UsageLike): number | undefined {
+function getUsageOutputTokens(usage: UsageLike): number | undefined {
   return usage.completionTokens ?? usage.outputTokens;
 }
 
@@ -73,7 +73,7 @@ export function getUsageTotalTokens(usage: UsageLike): number | undefined {
   );
 }
 
-export function estimateMessageTextTokens(text: string): number {
+function estimateMessageTextTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 

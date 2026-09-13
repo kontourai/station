@@ -2,8 +2,8 @@ name: Nightly native staging
 
 # Phase one of the native cohort: the caller supplies an already source-gated
 # revision, and this workflow reserves the cohort identity, then builds, signs,
-# and stages the Android AAB, the notarized macOS assets, and the signed iOS
-# package as run artifacts with content-bound stage receipts. Nothing here
+# and stages the Android AAB, notarized macOS assets, the Windows NSIS installer,
+# and the signed iOS package as run artifacts with content-bound stage receipts. Nothing here
 # publishes: no Play upload, no release asset, no tag move, no TestFlight
 # upload, no ledger write. It therefore needs only the fast source gate, and
 # runs in parallel with the canonical full-regression receipt that phase two
@@ -115,18 +115,23 @@ jobs:
           esac
       - id: decide
         name: Decide one cohort rather than independent native ships
+        env:
+          NIGHTLY_REBUILD_INDEX: ${{ inputs.rebuild_index }}
         run: |
+          set -euo pipefail
           head_sha=$(git rev-parse HEAD)
           android_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly^{commit}' || true)
           desktop_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly-desktop^{commit}' || true)
           normalized_android_sha=$(node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$android_sha")
           normalized_desktop_sha=$(node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$desktop_sha")
-          if [ "$normalized_android_sha" = "$android_sha" ] && [ "$normalized_desktop_sha" = "$desktop_sha" ] && [ -z "${{ inputs.rebuild_index }}" ]; then
-            echo 'build=false' >> "$GITHUB_OUTPUT"
-            echo 'No native cohort is needed for this source.' >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo 'build=true' >> "$GITHUB_OUTPUT"
-          fi
+          # A marker at HEAD is not proof the platform shipped verified: macOS
+          # moves nightly-desktop before its claim step, so a failed claim
+          # leaves the marker at HEAD with no ledger row (#1780). The decision
+          # therefore requires a deploy-ledger row per platform at the marker
+          # SHA, read from origin/main (fetched in the source step): ledger
+          # rows land on main AFTER the ship, so the checkout at the source
+          # SHA can never contain the row for its own marker.
+          node scripts/nightly-cohort-decide.mjs --head-sha "$head_sha" --android-marker "$android_sha" --android-candidate "$normalized_android_sha" --desktop-marker "$desktop_sha" --desktop-candidate "$normalized_desktop_sha" --rebuild-index "$NIGHTLY_REBUILD_INDEX" --ledger-ref origin/main
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.decide.outputs.build == 'true'
         with: { node-version-file: .nvmrc }
@@ -215,7 +220,7 @@ jobs:
           name: nightly-cohort-plan-${{ github.run_id }}
           path: cohort
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -227,7 +232,7 @@ jobs:
         # cargo rounds per night. Quoted because a flow-map comma list is
         # parsed as separate keys and the action then installs one target.
         with: { targets: 'aarch64-linux-android' }
-      - uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-desktop
           key: android-aarch64
@@ -273,6 +278,8 @@ jobs:
           node scripts/apply-android-release-signing.mjs
           node scripts/apply-android-channel-icons.mjs nightly
           node scripts/apply-android-native-bootstrap.mjs
+          node scripts/apply-android-pairing-scheme.mjs nightly
+          node scripts/apply-android-network-policy.mjs
           node scripts/write-android-build-manifest.mjs
           keystore="$RUNNER_TEMP/station-nightly.keystore"; printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
           export TAURI_ANDROID_KEYSTORE_PATH="$keystore" NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
@@ -290,6 +297,7 @@ jobs:
           # The retained sibling APK is a separate packaging surface.
           node scripts/read-android-build-provenance.mjs cohort-android/station-nightly-universal.apk --expected src-desktop/station-client-build.json
           aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/aapt"; apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/apksigner"
+          "$aapt" dump xmltree "$apk" AndroidManifest.xml | grep -E 'android:usesCleartextTraffic.*0xffffffff'
           "$aapt" dump badging "$apk" | grep -F "package: name='io.kontourai.station.nightly'"
           node scripts/verify-android-aab-signature.mjs cohort-android/station-nightly-universal.aab "$ANDROID_UPLOAD_CERT_SHA256"
           node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"
@@ -344,14 +352,14 @@ jobs:
           name: nightly-cohort-plan-${{ github.run_id }}
           path: cohort
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-apple-darwin }
-      - uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-desktop
           key: macos-aarch64
@@ -409,21 +417,20 @@ jobs:
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
-            cohort-macos/latest.json
             cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz
             cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig
             cohort-macos/station-nightly-desktop-macos-aarch64.dmg
             cohort-macos/station-client-build.json
-      - name: Bind the exact staged macOS inventory into a receipt
-        run: |
-          node scripts/release-cohort-workflow.mjs stage-input macos-stage-input.json cohort/cohort-plan.json macos latest.json=cohort-macos/latest.json station-nightly-desktop-macos-aarch64.app.tar.gz=cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig station-nightly-desktop-macos-aarch64.dmg=cohort-macos/station-nightly-desktop-macos-aarch64.dmg
-          node scripts/release-cohort.mjs stage-receipt cohort/cohort-plan.json macos-stage-input.json > macos-stage-receipt.json
+      - run: cp cohort-macos/station-client-build.json macos-build-identity.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nightly-cohort-macos-${{ github.run_id }}
           path: |
-            cohort-macos/
-            macos-stage-receipt.json
+            cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz
+            cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig
+            cohort-macos/station-nightly-desktop-macos-aarch64.dmg
+            cohort-macos/station-client-build.json
+            macos-build-identity.json
           if-no-files-found: error
           retention-days: 14
 
@@ -456,3 +463,112 @@ jobs:
       update_action_kind: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
       update_action_origins: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
     secrets: inherit
+
+  stage-windows:
+    name: Build Windows NSIS installer (updater sign + verify)
+    needs: plan-cohort
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
+    runs-on: windows-latest
+    environment: native-release
+    timeout-minutes: 120
+    permissions: { contents: read, id-token: write, attestations: write }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: '${{ inputs.source_sha }}', fetch-depth: 0, persist-credentials: false }
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { targets: x86_64-pc-windows-msvc }
+      - uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
+        with: { workspaces: src-desktop, key: windows-nightly-x64 }
+      - run: npm run dependencies:ci
+      - name: Build the exact reserved Windows version
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          BUNDLE_VERSION: ${{ needs.plan-cohort.outputs.bundle_version }}
+          WINDOWS_SIGN_COMMAND: ${{ vars.WINDOWS_SIGN_COMMAND }}
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
+        run: |
+          $signed = (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) -or (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) -or (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_COMMAND))
+          ./scripts/build-windows-nightly.ps1 -SourceSha $env:SOURCE_SHA -BundleVersion ([int]$env:BUNDLE_VERSION) -SignUpdater -RequireSigning:$signed
+      - name: Retain packaging evidence even when signing authority is absent
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-nightly-build-${{ github.run_id }}
+          path: |
+            dist-windows-nightly/*-setup.exe
+            dist-windows-nightly/*.sig
+            dist-windows-nightly/*receipt.json
+            dist-windows-nightly/station-client-build.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Require updater-signed bytes before desktop admission
+        shell: pwsh
+        run: |
+          $receipt = Get-Content -Raw dist-windows-nightly/windows-build-receipt.json | ConvertFrom-Json
+          if ($receipt.updaterPayloadState -ne 'VERIFIED' -or $receipt.platformSigningState -notin @('VERIFIED', 'NOT_SIGNED')) { throw 'Windows updater signature or publisher signing status is invalid; desktop publication withheld' }
+          New-Item -ItemType Directory cohort-windows | Out-Null
+          foreach ($suffix in @('', '.sig')) {
+            Copy-Item (Join-Path dist-windows-nightly ($receipt.installer + $suffix)) (Join-Path cohort-windows ('station-nightly-desktop-windows-x86_64-setup.exe' + $suffix))
+          }
+          Copy-Item dist-windows-nightly/windows-build-receipt.json cohort-windows/
+          Copy-Item dist-windows-nightly/windows-build-receipt.json windows-stage-metadata.json
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with: { subject-path: 'cohort-windows/*' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-cohort-windows-${{ github.run_id }}
+          path: |
+            cohort-windows/
+            windows-stage-metadata.json
+          if-no-files-found: error
+          retention-days: 14
+
+  assemble-desktop:
+    name: Assemble one desktop manifest
+    needs: [plan-cohort, stage-macos, stage-windows]
+    runs-on: ubuntu-22.04
+    environment: native-release
+    permissions: { contents: read, id-token: write, attestations: write }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: '${{ inputs.source_sha }}', persist-credentials: false }
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      - run: npm run dependencies:ci
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { pattern: 'nightly-cohort-*', path: cohort, merge-multiple: true }
+      - name: Verify both updater signatures and assemble the current cohort
+        env: { TAURI_SIGNING_PUBLIC_KEY: '${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}' }
+        run: |
+          set -euo pipefail
+          printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$RUNNER_TEMP/station-updater.pub"
+          node scripts/assemble-nightly-desktop.mjs cohort "$RUNNER_TEMP/station-updater.pub"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with: { subject-path: cohort/cohort-macos/latest.json }
+      - name: Bind the complete desktop inventory into platform receipts
+        run: |
+          node scripts/release-cohort-workflow.mjs stage-input macos-stage-input.json cohort/cohort-plan.json macos latest.json=cohort/cohort-macos/latest.json station-nightly-desktop-macos-aarch64.app.tar.gz=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig station-nightly-desktop-macos-aarch64.dmg=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg
+          node scripts/release-cohort.mjs stage-receipt cohort/cohort-plan.json macos-stage-input.json > macos-stage-receipt.json
+          node scripts/release-cohort-workflow.mjs stage-input windows-stage-input.json cohort/cohort-plan.json windows station-nightly-desktop-windows-x86_64-setup.exe=cohort/cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe station-nightly-desktop-windows-x86_64-setup.exe.sig=cohort/cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe.sig windows-build-receipt.json=cohort/cohort-windows/windows-build-receipt.json
+          node scripts/release-cohort.mjs stage-receipt cohort/cohort-plan.json windows-stage-input.json > windows-stage-receipt.json
+          mkdir -p cohort-macos
+          cp cohort/cohort-macos/latest.json cohort-macos/latest.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-cohort-desktop-manifest-${{ github.run_id }}
+          path: |
+            cohort-macos/latest.json
+            macos-stage-receipt.json
+            windows-stage-receipt.json
+          if-no-files-found: error
+          retention-days: 14

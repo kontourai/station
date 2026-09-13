@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { setTimeout as setNodeTimeout } from 'node:timers';
 import { updateOwnedInstance } from '@kontourai/station-shared/instance-registry';
 import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
+import { createDesktopCompanion } from './desktop-companion.js';
 import {
   type CollectedChildStatus,
   type CollectedInstanceStatus,
@@ -16,6 +17,7 @@ import {
 import type { ServiceLifecycleArgs } from './service.js';
 
 export interface SupervisorDependencies {
+  desktopCompanion?: { check: () => void };
   collect?: typeof collectInstanceStatus;
   exit?: (code: number) => void;
   /**
@@ -141,6 +143,11 @@ export async function superviseService(
   dependencies: SupervisorDependencies = {},
 ): Promise<void> {
   const instanceName = lifecycle.instanceName ?? 'default';
+  const desktopCompanion =
+    dependencies.desktopCompanion ??
+    createDesktopCompanion(lifecycle.baseDir, {
+      stationRoot: lifecycle.stationRoot,
+    });
   const startInstance = dependencies.start ?? start;
   const stopInstance = dependencies.stop ?? stop;
   const collect = dependencies.collect ?? collectInstanceStatus;
@@ -576,6 +583,7 @@ export async function superviseService(
     for (const name of ['server', 'ui'] as const) {
       await evaluateChildHealth(name, current[name]);
     }
+    if (!shuttingDown) desktopCompanion.check();
     if (shuttingDown) return;
     timer = setTimer(() => {
       void check().catch((error) => {

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -26,6 +26,7 @@ describe('Feedback Routes', () => {
 
   afterEach(() => {
     svc.stop();
+    vi.restoreAllMocks();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -33,6 +34,101 @@ describe('Feedback Routes', () => {
     const body = await json(await app.request('/ratings'));
     expect(body.success).toBe(true);
     expect(body.data).toEqual([]);
+  });
+
+  test('POST /test analyzes an isolated sample without changing saved feedback', async () => {
+    svc.rateMessage({
+      agentSlug: 'a',
+      conversationId: 'saved',
+      messageIndex: 0,
+      messagePreview: 'real feedback',
+      rating: 'thumbs_up',
+    });
+    svc.setAnalyzeCallback(async (prompt) =>
+      prompt.includes('JSON array')
+        ? '[{"index":1,"analysis":"real analysis"}]'
+        : '{"reinforce":["saved preference"],"avoid":[]}',
+    );
+    await svc.runAnalysisPipeline();
+    const file = join(dir, 'feedback', 'feedback.json');
+    const before = readFileSync(file, 'utf8');
+    const summary = svc.getSummary();
+    svc.setAnalyzeCallback(async (prompt) =>
+      prompt.includes('JSON array')
+        ? '[{"index":1,"analysis":"sample analysis"}]'
+        : '{"reinforce":["diagnostic only"],"avoid":[]}',
+    );
+    const res = await app.request('/test', { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(svc.getSummary()).toEqual(summary);
+    expect(readFileSync(file, 'utf8')).toBe(before);
+    const body = await json(res);
+    expect(body.data).toMatchObject({
+      isolated: true,
+      analysisRan: true,
+      guidelinesGenerated: true,
+      totalRatings: 1,
+    });
+  });
+
+  test('POST /test without an analyzer does not create a feedback file', async () => {
+    const file = join(dir, 'feedback', 'feedback.json');
+    expect(existsSync(file)).toBe(false);
+    const res = await app.request('/test', { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(existsSync(file)).toBe(false);
+    expect((await json(res)).data).toMatchObject({
+      isolated: true,
+      agentAvailable: false,
+      analysisRan: false,
+    });
+  });
+
+  test('POST /test failure does not leave a synthetic rating behind', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    svc.setAnalyzeCallback(async () => {
+      throw new Error('model unavailable');
+    });
+    const res = await app.request('/test', { method: 'POST' });
+    expect(res.status).toBe(500);
+    expect(svc.getRatings()).toEqual([]);
+  });
+
+  test.each([
+    '{',
+    '[]',
+    '{"maxReinforce":"bad"}',
+    '{"maxAvoid":1.5}',
+    '{"maxAvoid":51}',
+  ])(
+    'POST /analyze rejects invalid options %s before invoking the model',
+    async (body) => {
+      const analyze = vi.fn(async () => '[]');
+      svc.setAnalyzeCallback(analyze);
+      const response = await app.request('/analyze', { method: 'POST', body });
+      expect(response.status).toBe(400);
+      expect(analyze).not.toHaveBeenCalled();
+    },
+  );
+
+  test('POST /analyze reports a missing callback instead of claiming success', async () => {
+    const response = await app.request('/analyze', { method: 'POST' });
+    expect(response.status).toBe(503);
+  });
+
+  test('POST /analyze bounds its optional request body', async () => {
+    const response = await app.request('/analyze', {
+      method: 'POST',
+      body: ' '.repeat(4097),
+    });
+    expect(response.status).toBe(413);
+  });
+
+  test('POST /analyze still accepts an omitted body for a configured analyzer', async () => {
+    svc.setAnalyzeCallback(async () => '[]');
+    const response = await app.request('/analyze', { method: 'POST' });
+    expect(response.status).toBe(200);
+    expect((await json(response)).data).toBeNull();
   });
 
   test('POST /rate creates a rating', async () => {

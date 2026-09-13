@@ -14,6 +14,10 @@ import {
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS,
 } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  publishHistoryForCapture,
+  removeHistoryForCapture,
+} from './replay/capture-tap';
 
 function eventKey(item: OrchestrationSequencedEvent): string {
   return item.event.eventId || `sequence:${item.sequence}`;
@@ -30,7 +34,7 @@ function mergePages(
   );
 }
 
-export interface SessionEventWindowReader {
+interface SessionEventWindowReader {
   events: OrchestrationSequencedEvent[];
   /** Present for conversation reads when the newest lineage child is known. */
   currentSessionId?: string;
@@ -72,7 +76,7 @@ async function readConversationWindow(
     return await fetchOrchestrationConversationEventWindow(
       conversationId,
       apiBase,
-      input,
+      { ...input, direction: 'newest' },
       options,
     );
   } catch (error) {
@@ -87,7 +91,7 @@ async function readConversationWindow(
     const legacy = await fetchOrchestrationSessionEventWindow(
       legacySessionId,
       apiBase,
-      input,
+      { ...input, direction: 'newest' },
       options,
     );
     return {
@@ -107,6 +111,9 @@ export function useSessionEventWindow(
   reconcileRevision = 0,
   legacySessionId?: string,
 ): SessionEventWindowReader {
+  const readerKey = threadId
+    ? JSON.stringify([apiBase, threadId, legacySessionId])
+    : undefined;
   const [events, setEvents] = useState<OrchestrationSequencedEvent[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>();
   const [sessionLineage, setSessionLineage] =
@@ -278,7 +285,6 @@ export function useSessionEventWindow(
   }, [apiBase, legacySessionId, reload, threadId]);
 
   useEffect(() => {
-    const readerKey = threadId ? `${apiBase}\u0000${threadId}` : undefined;
     if (readerKeyRef.current === readerKey) return;
     readerKeyRef.current = readerKey;
     generation.current += 1;
@@ -309,7 +315,7 @@ export function useSessionEventWindow(
       }
       readerKeyRef.current = undefined;
     };
-  }, [apiBase, reload, threadId]);
+  }, [readerKey, reload, threadId]);
 
   const previousRevision = useRef(reconcileRevision);
   useEffect(() => {
@@ -318,18 +324,56 @@ export function useSessionEventWindow(
     if (threadId) void reload();
   }, [reconcileRevision, reload, threadId]);
 
-  return {
+  // Effects reset the request after commit. Do not expose the prior reader's
+  // authority or transcript during the first render of a different identity.
+  const currentReader = Boolean(threadId) && readerKeyRef.current === readerKey;
+  useEffect(() => {
+    if (!threadId || !currentReader) return;
+    publishHistoryForCapture(apiBase, threadId, {
+      events,
+      currentSessionId,
+      sessionLineage,
+      handoffs,
+      contextBoundaries,
+      hasMore: Boolean(cursor),
+      loading,
+      settled,
+      upgradeRequired,
+      errorMessage: error?.message,
+    });
+  }, [
+    apiBase,
+    threadId,
+    currentReader,
     events,
-    ...(currentSessionId ? { currentSessionId } : {}),
-    ...(sessionLineage ? { sessionLineage } : {}),
+    currentSessionId,
+    sessionLineage,
     handoffs,
     contextBoundaries,
-    hasMore: Boolean(cursor),
-    loadOlder,
-    reload,
-    upgradeRequired,
+    cursor,
     loading,
     settled,
+    upgradeRequired,
     error,
+  ]);
+  useEffect(
+    () => () => {
+      if (threadId) removeHistoryForCapture(apiBase, threadId);
+    },
+    [apiBase, threadId],
+  );
+  return {
+    events: currentReader ? events : [],
+    ...(currentReader && currentSessionId ? { currentSessionId } : {}),
+    ...(currentReader && sessionLineage ? { sessionLineage } : {}),
+    handoffs: currentReader ? handoffs : [],
+    contextBoundaries: currentReader ? contextBoundaries : [],
+    hasMore: currentReader && Boolean(cursor),
+    loadOlder,
+    reload,
+    upgradeRequired: currentReader && upgradeRequired,
+    loading: currentReader ? loading : Boolean(threadId),
+    settled: currentReader && settled,
+    error: currentReader ? error : undefined,
   };
 }

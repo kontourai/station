@@ -40,11 +40,13 @@ interface RegistryActionInput {
    * source and carries the answer here. Ignored for plain agent installs.
    */
   consent?: {
+    grantRevision?: string;
     permissions: string[];
     contentDigest: string;
     dependencies: string[];
     dependencyApprovals?: Array<{
       id: string;
+      grantRevision?: string;
       permissions: string[];
       contentDigest: string;
       dependencies: string[];

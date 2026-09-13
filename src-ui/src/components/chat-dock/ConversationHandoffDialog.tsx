@@ -352,6 +352,7 @@ export function ConversationHandoffDialog({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       ariaLabel="Continue with another Agent"
       panelClassName="conversation-handoff-dialog"
       overlayClassName="conversation-handoff-dialog__overlay"

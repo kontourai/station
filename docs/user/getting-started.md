@@ -144,6 +144,12 @@ visible. Run `station doctor` for a local diagnosis.
 
 ## Continue an Attached Session
 
+Open the terminal Session in **Activity**, then choose **Continue in Station**.
+Claude and Codex create independent children, so the original terminal Session
+can keep running. Codex starts from the latest completed turn Station has
+observed; wait for a completed turn if the action is disabled. Station also
+shows a reason when the engine or source configuration is unavailable.
+
 An attached terminal Session stays read only. The first eligible **Continue in
 Station** action launches the bounded `continue-session` Starter: Station
 validates the exact source Session, reuses the orchestration adoption ledger

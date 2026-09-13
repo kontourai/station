@@ -14,7 +14,6 @@ use std::time::Duration;
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 const INSTANCE_PROBE_TIMEOUT: Duration = Duration::from_millis(750);
-const MAX_JS_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
 #[derive(Clone, Debug, Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -46,112 +45,10 @@ pub enum DefaultServiceResolution {
     InvalidDefaultProfile(String),
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StationProfileStoreDocument {
-    schema_version: u8,
-    revision: u64,
-    // `Option<Option<_>>` preserves the shared contract distinction: omitted
-    // is invalid, while an explicit JSON null means no default is selected.
-    default_profile: Option<Option<String>>,
-    profiles: Vec<StationProfileDocument>,
-    // Required even though service resolution does not select by project. Its
-    // presence proves this is the current shared CLI/Desktop store contract.
-    project_profiles: std::collections::HashMap<String, String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct StationProfileDocument {
-    schema_version: u8,
-    name: String,
-    endpoint: String,
-    credential_ref: Option<StationProfileCredentialRef>,
-    environment_id: Option<String>,
-    local_service: Option<StationProfileLocalService>,
-    setup_source: String,
-    configuration_state: String,
-    created_at: f64,
-    updated_at: f64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct StationProfileCredentialRef {
-    kind: String,
-    id: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct StationProfileLocalService {
-    instance_id: String,
-    base_dir: String,
-    server_port: u16,
-    ui_port: u16,
-}
-
-fn valid_profile_store_document(store: &StationProfileStoreDocument) -> bool {
-    let _ = store.revision;
-    for profile in &store.profiles {
-        let _ = &profile.environment_id;
-    }
-    if store.schema_version != 1
-        || store.revision > MAX_JS_SAFE_INTEGER
-        || store.default_profile.is_none()
-        || store.profiles.iter().any(|profile| {
-            profile.schema_version != 1
-                || profile.name.is_empty()
-                || profile.endpoint.is_empty()
-                || !matches!(
-                    profile.setup_source.as_str(),
-                    "local" | "existing" | "hosted" | "paired" | "manual"
-                )
-                || !matches!(
-                    profile.configuration_state.as_str(),
-                    "configured" | "requires-auth" | "unconfigured"
-                )
-                || !profile.created_at.is_finite()
-                || !profile.updated_at.is_finite()
-                || profile.credential_ref.as_ref().is_some_and(|reference| {
-                    reference.kind != "station-bearer" || reference.id.is_empty()
-                })
-                || profile.local_service.as_ref().is_some_and(|local| {
-                    local.instance_id.is_empty()
-                        || local.base_dir.is_empty()
-                        || local.server_port == 0
-                        || local.ui_port == 0
-                })
-        })
-        || store
-            .project_profiles
-            .iter()
-            .any(|(project, profile)| project.is_empty() || profile.is_empty())
-    {
-        return false;
-    }
-    let mut names = std::collections::HashSet::new();
-    if store
-        .profiles
-        .iter()
-        .any(|profile| !names.insert(profile.name.to_lowercase()))
-    {
-        return false;
-    }
-    let has_profile = |name: &str| names.contains(&name.to_lowercase());
-    store
-        .default_profile
-        .as_ref()
-        .is_some_and(|default| default.as_deref().is_none_or(has_profile))
-        && store
-            .project_profiles
-            .values()
-            .all(|profile| has_profile(profile))
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IdentityProbe {
     pub instance_id: Option<String>,
+    pub boot_id: Option<String>,
     pub outcome: ProbeOutcome,
     pub status: Option<u16>,
 }
@@ -167,6 +64,7 @@ impl IdentityProbe {
     pub fn refused() -> Self {
         Self {
             instance_id: None,
+            boot_id: None,
             outcome: ProbeOutcome::Refused,
             status: None,
         }
@@ -175,6 +73,7 @@ impl IdentityProbe {
     pub fn unknown() -> Self {
         Self {
             instance_id: None,
+            boot_id: None,
             outcome: ProbeOutcome::Unknown,
             status: None,
         }
@@ -344,11 +243,11 @@ pub fn spawned_station_root(
     // "the same directory" and withhold a root that may be genuinely
     // different, silently handing the child one derived from its own home.
     let same = match (
-        lexical_absolute(station_root),
-        lexical_absolute(station_home),
+        canonical_path_through_existing_ancestor(station_root),
+        canonical_path_through_existing_ancestor(station_home),
     ) {
         (Ok(root), Ok(home)) => root == home,
-        _ => station_root == station_home,
+        _ => false,
     };
     if same {
         return None;
@@ -461,6 +360,20 @@ fn same_or_descendant(path: &Path, parent: &Path) -> bool {
 /// Existing ancestors are canonicalized before comparison so symlink aliases
 /// cannot bypass the same boundary.
 pub fn admit_station_runtime_home_for_root(home: &Path, root: &Path) -> Result<PathBuf, String> {
+    let explicit_root = env::var_os("STATION_ROOT").filter(|value| !value.to_string_lossy().trim().is_empty());
+    let explicit_home = env::var_os("STATION_HOME").filter(|value| !value.to_string_lossy().trim().is_empty());
+    // Match the TypeScript admission contract: equality is legitimate only
+    // when the root was derived from this explicitly selected runtime home.
+    let derived = explicit_root.is_none() && explicit_home.as_ref().is_some_and(|value| {
+        match (canonical_path_through_existing_ancestor(Path::new(value)), canonical_path_through_existing_ancestor(home)) {
+            (Ok(configured), Ok(selected)) => configured == selected,
+            _ => false,
+        }
+    });
+    admit_station_runtime_home_with_root(home, root, derived)
+}
+
+fn admit_station_runtime_home_with_root(home: &Path, root: &Path, root_derived_from_home: bool) -> Result<PathBuf, String> {
     let lexical_home = lexical_absolute(home)?;
     let lexical_root = lexical_absolute(root)?;
     match fs::symlink_metadata(&lexical_home) {
@@ -505,7 +418,7 @@ pub fn admit_station_runtime_home_for_root(home: &Path, root: &Path) -> Result<P
             }
         }
     }
-    if same_or_descendant(&root, &home) {
+    if same_or_descendant(&root, &home) && !(root_derived_from_home && home == root) {
         return Err("runtime home is the shared Station root or an ancestor of it".into());
     }
     for name in ["config", "cache", "installs"] {
@@ -627,25 +540,15 @@ pub fn resolve_default_service(home: &Path) -> DefaultServiceResolution {
             ))
         }
     };
-    let store = match serde_json::from_str::<StationProfileStoreDocument>(&raw) {
-        Ok(store) if valid_profile_store_document(&store) => store,
-        Ok(_) => {
-            return DefaultServiceResolution::InvalidDefaultProfile(
-                "saved Station store schema is unsupported".into(),
-            )
-        }
+    let store = match crate::parse_station_profile_store(&raw) {
+        Ok(store) => store,
         Err(error) => {
             return DefaultServiceResolution::InvalidDefaultProfile(format!(
                 "parse saved Station store: {error}"
             ))
         }
     };
-    let Some(default_profile) = store.default_profile else {
-        return DefaultServiceResolution::InvalidDefaultProfile(
-            "saved Station store has no defaultProfile field".into(),
-        );
-    };
-    let Some(default_name) = default_profile else {
+    let Some(default_name) = store.default_profile else {
         return DefaultServiceResolution::NoDefaultProfile;
     };
     let Some(profile) = store
@@ -748,11 +651,8 @@ pub fn resolve_runtime_owned_service(
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(format!("read saved Station store: {error}")),
     };
-    let store = serde_json::from_str::<StationProfileStoreDocument>(&raw)
+    let store = crate::parse_station_profile_store(&raw)
         .map_err(|error| format!("parse saved Station store: {error}"))?;
-    if !valid_profile_store_document(&store) {
-        return Err("saved Station store schema is unsupported".into());
-    }
     let mut matches = Vec::new();
     for profile in &store.profiles {
         let Some(local) = &profile.local_service else {
@@ -995,20 +895,37 @@ pub fn probe_identity(host: &str, port: u16, path: &str) -> IdentityProbe {
         Err(_) => return IdentityProbe::unknown(),
     };
     let status = response.status().as_u16();
-    let instance_id = response
-        .body_mut()
-        .read_to_string()
-        .ok()
-        .and_then(|body| serde_json::from_str::<Value>(&body).ok())
-        .and_then(|body| body.get("instanceId")?.as_str().map(str::to_owned));
+    let body = response.body_mut().with_config().limit(8192).read_to_string().ok()
+        .and_then(|body| serde_json::from_str::<Value>(&body).ok());
+    let instance_id = body.as_ref().and_then(|body| body.get("instanceId")?.as_str().map(str::to_owned));
+    let boot_id = body.as_ref().and_then(|body| body.get("bootId")?.as_str().filter(|value| !value.is_empty() && value.len() <= 512).map(str::to_owned));
     IdentityProbe {
         instance_id,
+        boot_id,
         outcome: ProbeOutcome::Responded,
         status: Some(status),
     }
 }
 
 pub fn probe_service(manifest: Option<&ServiceManifest>) -> ServiceHealth {
+    probe_service_with_local_proof(manifest, &|_| false)
+}
+
+fn health_with_local_proof(manifest: &ServiceManifest, server: &IdentityProbe, ui: &IdentityProbe, prove: &dyn Fn(&str) -> bool) -> ServiceHealth {
+    if matches!(server.status, Some(401 | 403)) && ui.status == Some(200) && ui.instance_id.as_deref() == Some(&manifest.instance_id) {
+        if let Some(boot_id) = &ui.boot_id {
+            if prove(boot_id) {
+                // The existing local-grant proof bound the API to this home,
+                // environment, instance and UI boot; no bearer was minted.
+                let proven = IdentityProbe { instance_id: Some(manifest.instance_id.clone()), boot_id: Some(boot_id.clone()), status: Some(200), outcome: ProbeOutcome::Responded };
+                return derive_health(Some(manifest), &proven, ui);
+            }
+        }
+    }
+    derive_health(Some(manifest), server, ui)
+}
+
+pub fn probe_service_with_local_proof(manifest: Option<&ServiceManifest>, prove: &dyn Fn(&str) -> bool) -> ServiceHealth {
     let Some(manifest) = manifest else {
         return ServiceHealth::NotInstalled;
     };
@@ -1021,7 +938,7 @@ pub fn probe_service(manifest: Option<&ServiceManifest>) -> ServiceHealth {
     }
     let server = probe_identity(&manifest.host, manifest.server_port, "/api/system/identity");
     let ui = probe_identity(&manifest.host, manifest.ui_port, "/__station/identity");
-    let health = derive_health(Some(manifest), &server, &ui);
+    let health = health_with_local_proof(manifest, &server, &ui, prove);
     // Debug, not info: the tray poll thread calls this on every tick (as
     // often as ~every second while `Running`), so logging every probe at a
     // level enabled by default would flood the file the moment the app is
@@ -1184,6 +1101,7 @@ mod tests {
     fn probe(status: Option<u16>, instance_id: Option<&str>) -> IdentityProbe {
         IdentityProbe {
             status,
+            boot_id: None,
             instance_id: instance_id.map(str::to_owned),
             outcome: if status.is_some() {
                 ProbeOutcome::Responded
@@ -1191,6 +1109,20 @@ mod tests {
                 ProbeOutcome::Unknown
             },
         }
+    }
+
+    #[test]
+    fn protected_service_health_requires_an_exact_local_proof() {
+        let manifest = manifest();
+        let server = probe(Some(401), None);
+        let mut ui = probe(Some(200), Some("default"));
+        ui.boot_id = Some("owned-boot".into());
+        assert_eq!(health_with_local_proof(&manifest, &server, &ui, &|boot| boot == "owned-boot"), ServiceHealth::Running);
+        assert_eq!(health_with_local_proof(&manifest, &server, &ui, &|_| false), ServiceHealth::Unhealthy);
+        ui.instance_id = Some("another-instance".into());
+        assert_eq!(health_with_local_proof(&manifest, &server, &ui, &|_| panic!("foreign UI must not request proof")), ServiceHealth::Unhealthy);
+        ui.instance_id = Some("default".into()); ui.boot_id = None;
+        assert_eq!(health_with_local_proof(&manifest, &server, &ui, &|_| panic!("missing boot must not request proof")), ServiceHealth::Unhealthy);
     }
 
     struct TempHome(tempfile::TempDir);
@@ -1401,6 +1333,9 @@ mod tests {
                     "schemaVersion": 1,
                     "name": "local",
                     "endpoint": "http://127.0.0.1:4011",
+                    "developmentHttpOrigin": "http://127.0.0.1:4011",
+                    "clientInstanceId": "4db8d8b2-2222-4444-8888-123456789abc",
+                    "credentialRef": { "kind": "station-bearer", "id": "local-proof" },
                     "setupSource": "local",
                     "configurationState": "configured",
                     "createdAt": 1,
@@ -2005,5 +1940,31 @@ mod tests {
         assert_eq!(entries[0], node_dir);
         assert!(entries.contains(&PathBuf::from("C:\\Tools")));
         assert!(!entries.contains(&PathBuf::from("C:\\Windows\\System32")));
+    }
+}
+
+#[cfg(test)] mod standalone_home_tests {
+    use super::*;
+    #[test] fn only_explicitly_self_rooted_homes_can_equal_the_root() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().join("standalone");
+        assert!(admit_station_runtime_home_with_root(&home, &home, true).is_ok());
+        assert!(admit_station_runtime_home_with_root(&home, &home, false).is_err());
+        assert!(admit_station_runtime_home_for_root(&home, &home).is_err());
+        assert!(admit_station_runtime_home_with_root(directory.path(), &home, true).is_err());
+    }
+}
+
+#[cfg(all(test, unix))] mod spawned_root_alias_tests {
+    use super::*;
+    #[test] fn a_parent_alias_does_not_turn_a_derived_root_into_an_explicit_root() {
+        let directory = tempfile::tempdir().unwrap();
+        let real = directory.path().join("real");
+        std::fs::create_dir_all(real.join("home")).unwrap();
+        let alias = directory.path().join("alias");
+        std::os::unix::fs::symlink(&real, &alias).unwrap();
+        let home = real.join("home").canonicalize().unwrap();
+        assert_eq!(spawned_station_root(&alias.join("home"), &home, None), None);
+        assert!(spawned_station_root(&alias.join("home"), &home, Some(alias.join("home").into_os_string())).is_some());
     }
 }

@@ -24,7 +24,7 @@
 import { getPathForView } from '../../app-shell/routing';
 import type { NavigationView } from '../../types';
 
-export interface FirstRunTourStep {
+interface FirstRunTourStep {
   id: string;
   title: string;
   /** One sentence. Why the evidence is here, not what the button does. */

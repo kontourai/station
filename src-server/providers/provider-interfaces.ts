@@ -1,7 +1,4 @@
-import type {
-  ACPConnectionConfig,
-  ACPConnectionRegistryEntry,
-} from '@kontourai/station-contracts/acp';
+import type { ACPConnectionRegistryEntry } from '@kontourai/station-contracts/acp';
 import type {
   AuthStatus,
   RenewResult,
@@ -210,39 +207,10 @@ export interface NotificationStatusUpdate {
   actionId?: string;
 }
 
-export interface ILayoutTypeProvider {
-  readonly id: string;
-  readonly displayName: string;
-  readonly icon: string;
-  getConfigSchema?(): unknown;
-  getDefaultConfig(): Record<string, unknown>;
-}
-
-export interface IACPConnectionsProvider {
-  getConnections(): ACPConnectionConfig[];
-}
-
 export interface IACPConnectionRegistryProvider {
   readonly id?: string;
   readonly displayName?: string;
   listAvailable(): ACPConnectionRegistryEntry[];
-}
-
-export interface Template {
-  id: string;
-  icon: string;
-  label: string;
-  description: string;
-  type: 'agent' | 'layout';
-  form: Record<string, any>;
-  tabs?: Array<{ id: string; label: string; component: string }>;
-  source?: string;
-}
-
-export interface ITemplateProvider {
-  readonly id: string;
-  readonly displayName: string;
-  listTemplates(): Promise<Template[]>;
 }
 
 export interface IProviderAdapterRegistry {
@@ -252,7 +220,7 @@ export interface IProviderAdapterRegistry {
   onChange?(listener: () => void): () => void;
 }
 
-export type ProviderCardinality = 'singleton' | 'additive';
+type ProviderCardinality = 'singleton' | 'additive';
 
 export const PROVIDER_TYPE_META: Record<string, ProviderCardinality> = {
   auth: 'singleton',

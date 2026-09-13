@@ -324,8 +324,38 @@ describe('TurnProvenanceCard', () => {
     // not replace the checkable breakdown.
     expand();
     const usage = valueFor('Usage');
+    expect(usage).toContain('10,130 total input');
+    expect(usage).toContain('30 uncached input');
+    expect(usage).not.toContain('130 in+out');
     expect(usage).toContain('9400 cache read');
     expect(usage).toContain('700 cache write');
+  });
+
+  it("does not present Claude's two residual tokens as the full prompt", () => {
+    render(
+      <TurnProvenanceCard
+        provenance={envelope({
+          usage: {
+            state: 'observed',
+            value: {
+              inputTokens: 2,
+              outputTokens: 5,
+              totalTokens: 7,
+              cacheReadTokens: 59477,
+              cacheWriteTokens: 91,
+            },
+            observedFrom: [
+              { eventId: 'cache-proof', method: 'token-usage.updated' },
+            ],
+          },
+        })}
+      />,
+    );
+    expand();
+    const usage = valueFor('Usage');
+    expect(usage.startsWith('59,570 total input')).toBe(true);
+    expect(usage).toContain('2 uncached input');
+    expect(usage).not.toContain('7 in+out');
   });
 
   it("keeps an 'unverified' provider's own total unsummed on the collapsed line", () => {

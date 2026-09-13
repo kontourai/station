@@ -12,6 +12,7 @@ import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { type LanguageModel, streamText } from 'ai';
 import { resolveModelRequestOptions } from '../../runtime/frameworks/framework-model-factory.js';
 import { throwIfAborted } from '../../utils/bounded-async.js';
+import { createLogger } from '../../utils/logger.js';
 import { providerHttpErrorStatus } from '../registries/catalog-http.js';
 import type {
   ILLMProvider,
@@ -20,6 +21,8 @@ import type {
   LLMStreamOpts,
   ModelCatalogRequest,
 } from './model-provider-types.js';
+
+const logger = createLogger({ name: 'ai-sdk-llm-provider' });
 
 export interface AiSdkProviderConfig {
   apiKey?: string;
@@ -368,7 +371,10 @@ export abstract class AiSdkLLMProvider implements ILLMProvider {
       return (await this.listModels(options)).length >= 1;
     } catch (e) {
       throwIfAborted(options?.signal);
-      console.debug(`Failed to check ${this.id} provider health:`, e);
+      logger.debug('Failed to check provider health', {
+        provider: this.id,
+        error: e,
+      });
       return false;
     }
   }

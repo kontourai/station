@@ -11,6 +11,8 @@ import type {
   DevicePresentation,
   ExternalEngineReadinessProjection,
   HomeRecoveryDisclosure,
+  SystemRuntimeIdentity,
+  UpdateProvenanceIssue,
 } from '@kontourai/station-contracts/system-status';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
@@ -44,11 +46,13 @@ export {
   fetchFleetRoutingReceiptsForStation,
   fetchFleetServeReceiptsForStation,
   fetchMonitoringEvents,
+  fetchMonitoringEventWindow,
   fetchMonitoringMetrics,
   fetchMonitoringStats,
   fetchServerCapabilities,
   renewAuth,
   requestCoreUpdateStatus,
+  requestSystemIdentity,
   requestSystemStatus,
   verifyBedrockConnection,
   verifyManagedRuntimeConnection,
@@ -272,6 +276,25 @@ export interface CoreUpdateStatus {
   remoteUnreachable?: boolean;
   message?: string;
   error?: string;
+  /**
+   * The answering server's identity, when the server could state a complete
+   * one. Null on older servers and on a server that cannot prove its own
+   * triple — never inferred.
+   */
+  serverIdentity?: SystemRuntimeIdentity | null;
+  /** Why this install cannot state its update provenance; null otherwise. */
+  provenanceIssue?: UpdateProvenanceIssue | null;
+  /**
+   * The provenance detail or caught comparison diagnostic a message may have
+   * summarized. Filesystem paths live here, deliberately not in `message`.
+   */
+  technicalDetail?: string | null;
+  /**
+   * For a desktop bundle: why git-based self-update refuses this install,
+   * straight from the server's eligibility resolver. Null when eligible or
+   * not a bundle.
+   */
+  selfUpdateUnavailableReason?: string | null;
 }
 
 /** Correlates an accepted git-pull restart with its detached watchdog. */
@@ -629,13 +652,42 @@ export function useBrandingQuery(config?: QueryConfig<BrandingData>) {
   });
 }
 
+/**
+ * Optional correlation scope for the source-update check (update-ux PR4).
+ * Both fields are secret-free: no credential or credential-evidence object
+ * may enter the query key or these callbacks.
+ */
+export interface CoreUpdateStatusScope {
+  /**
+   * Joins the query key when present, so a cached comparison captured for
+   * one connection (or one answering boot) can never be served to another.
+   */
+  scopeKey?: string;
+  /**
+   * Checked immediately before the request is issued and again after it
+   * resolves. Throw to reject: an obsolete scope's completion must never
+   * resolve as current data for the scope that superseded it.
+   */
+  assertCurrent?: () => void;
+}
+
 export function useCoreUpdateStatusQuery(
   apiBase: string,
   config?: QueryConfig<CoreUpdateStatus>,
+  scope?: CoreUpdateStatusScope,
 ) {
+  // Read once per render; the callback identity is the caller's concern.
+  const assertCurrent = scope?.assertCurrent;
   return useQuery({
-    queryKey: ['core-update-check', apiBase],
-    queryFn: () => requestCoreUpdateStatus(apiBase),
+    queryKey: ['core-update-check', apiBase, scope?.scopeKey ?? null],
+    queryFn: async ({ signal }) => {
+      assertCurrent?.();
+      // PR2 added the signal parameter: an aborted/superseded fetch rejects
+      // here instead of settling a result nobody current asked for.
+      const result = await requestCoreUpdateStatus(apiBase, signal);
+      assertCurrent?.();
+      return result;
+    },
     enabled: !!apiBase && (config?.enabled ?? true),
     staleTime: config?.staleTime,
     gcTime: config?.gcTime,

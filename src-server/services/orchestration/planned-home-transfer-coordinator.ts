@@ -14,7 +14,7 @@ const NO_EXECUTION_AUTHORITY = {
   executionResumeAvailable: false,
 } as const;
 
-export interface PlannedHomeTransferCoordinatorOptions {
+interface PlannedHomeTransferCoordinatorOptions {
   readonly store: PlannedHomeTransferStore;
   /** Trusted controller namespace supplied by the composing authority. */
   readonly tenantId: string;
@@ -22,7 +22,7 @@ export interface PlannedHomeTransferCoordinatorOptions {
   readonly target: PlannedHomeTransferTargetOwner;
 }
 
-export interface PlannedHomeTransferSourceOwner {
+interface PlannedHomeTransferSourceOwner {
   /** Stable private identity used only to reject one owner in both roles. */
   readonly ownerIdentity: object;
   ensureClosed(intent: Readonly<PlannedHomeTransferIntent>): Promise<
@@ -39,7 +39,7 @@ export interface PlannedHomeTransferSourceOwner {
   >;
 }
 
-export interface PlannedHomeTransferTargetOwner {
+interface PlannedHomeTransferTargetOwner {
   /** Stable private identity used only to reject one owner in both roles. */
   readonly ownerIdentity: object;
   readSeal(
@@ -50,7 +50,7 @@ export interface PlannedHomeTransferTargetOwner {
   >;
 }
 
-export interface LocalProjectTaskRoomTransferOwnersInput {
+interface LocalProjectTaskRoomTransferOwnersInput {
   readonly source: {
     readonly history: Pick<ProjectTaskRoomHistory, 'sealSource'>;
     readonly grant: ProjectTaskRoomGrant<'home-transfer'>;
@@ -114,7 +114,7 @@ export type PlannedHomeTransferCoordinatorResult =
       readonly kind: 'denied' | 'unavailable' | 'conflict' | 'not-found';
     });
 
-export interface PlannedHomeTransferCoordinator {
+interface PlannedHomeTransferCoordinator {
   advance(operationId: string): Promise<PlannedHomeTransferCoordinatorResult>;
 }
 

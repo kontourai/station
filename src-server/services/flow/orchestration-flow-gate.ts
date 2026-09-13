@@ -17,6 +17,7 @@ import type {
   FlowGateVerdictEvent,
   FlowRunAttachedEvent,
 } from '@kontourai/station-contracts/runtime-events';
+import { errorMessage } from '../../utils/error-message.js';
 import type { CommandEvidenceRoutingPolicy } from '../evidence/command-evidence-routing-policy.js';
 import { flowRunArtifactReference } from '../evidence/local-artifact-paths.js';
 import type { FlowCommandEvidenceBridge } from './flow-command-evidence-bridge.js';
@@ -212,7 +213,7 @@ export async function attachFlowRunForSessionStart(options: {
     options.logger?.warn('Could not enrich Flow run attach with freshness', {
       threadId: input.threadId,
       runId,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     });
   }
 
@@ -372,7 +373,7 @@ async function attemptReadinessAutoAttach(options: {
       evaluation,
       autoReadiness: {
         outcome: 'error',
-        reason: error instanceof Error ? error.message : String(error),
+        reason: errorMessage(error),
       },
     };
   }
@@ -548,7 +549,7 @@ async function readRunFreshness(
     context.logger?.warn('Could not derive Flow run freshness for verdict', {
       threadId: context.threadId,
       runId: binding.runId,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     });
     return undefined;
   }

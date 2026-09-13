@@ -1,8 +1,11 @@
 # Agent Plugins contract
 
-This document defines Station's **target v1 authoring contract**. The current
-runtime still accepts the legacy Station manifest until #344, #346, and #348
-land; this document must not be read as a present conformance claim.
+This document defines Station's Agent Plugins authoring contract and retained
+compatibility boundary. The source consumes recognized Agent Plugins 1.0
+packages for portable Skills and MCP and normalizes validated Station namespace
+declarations through existing host contribution owners. Legacy Station manifests
+remain accepted. This does not claim that legacy fallback has been removed or
+that every feature in this source checkpoint is already released.
 
 Station targets the published **Agent Plugins 1.0.0** contract. The upstream
 1.1.0 document is a working draft and is not a supported package version until
@@ -12,8 +15,9 @@ vendored schemas; it must never fetch schemas while loading a plugin.
 Portable package data remains in the closed root `plugin.json` shape. Station
 reserves one client extension namespace, `io.kontourai.station`, for both the
 manifest entry and a future optional top-level extension directory. Runtime
-discovery of that directory belongs to #344. Other namespaces
-remain opaque and are ignored without validation.
+discovery now exposes that directory only after filesystem containment succeeds;
+later namespace-owned features decide its contents. Other namespaces remain
+opaque and are ignored without validation.
 
 ## Field classification
 
@@ -72,3 +76,66 @@ than teaching it as a second identifier grammar.
 `secretReferences` declares slots only. Secret values remain in Station's
 secret authority and are injected through a mediated capability. They are
 never written into `plugin.json`, `mcp.json` `env`, or MCP HTTP headers.
+
+## Current consumer behavior
+
+Station selects the vendored 1.0.0 manifest and MCP schemas from `$schema`; it
+resolves those assets relative to the source/bundled server module rather than
+the caller's working directory, caches the immutable compiled validators, and
+does not fetch schemas during load. Portable Skills are served read-only from
+immediate `skills/*/SKILL.md` children with `agent-plugin:<name>` provenance,
+and a local Project Skill with the same name wins. MCP servers are projected
+from the live package as stable, owner-qualified Station ToolDefs rather than
+copied into `integrations/`; installing one makes it available but does not
+attach it to an Agent. Probes return ephemeral health for these read-only
+definitions. Definition mutations such as enablement, tool filtering, OAuth
+health, edits, or deletion are refused until Station has an owner-bound overlay
+store; they never materialize a shadow integration that could outlive or mask
+the package.
+
+The loader supports stdio and Streamable HTTP. It reports and skips SSE,
+invalid Skills, and invalid individual server entries at their narrow failure
+boundaries. Stdio children receive persistent per-plugin `PLUGIN_DATA`, exact
+`PLUGIN_ROOT`, the plugin root as default cwd, and single-pass expansion of
+only those two placeholders. Code updates select a retained materialization
+while preserving the same independently scoped data directory. Removal
+withdraws future contributions and retains code/data; it does not claim that
+unmanaged descendants or remote work have ended. The separate
+[installation lifecycle](../design/plugin-installation-lifecycle.md) defines
+expected-revision publication, explicit reset, and reclamation limits.
+
+Recognized Agent Plugins take this path during directory or git installation.
+The old manifest parser remains only as an explicit compatibility fallback for
+packages without an Agent Plugins `$schema`. Removing that fallback and
+migrating the remaining legacy examples are separate completion requirements. Validated Station namespace declarations now use the existing host contribution
+owners. Their durable activation and retained recovery are described in the
+[installation lifecycle](../design/plugin-installation-lifecycle.md); full
+combined qualification remains required before publication.
+
+
+## Public author builds
+
+The shared `parseAgentPluginManifest` implementation performs manifest-only
+validation without deriving a Station home, provisioning data, loading package
+modules, or fetching schemas. Server loading and author builds share that parser.
+`buildPlugin` and `station plugin build` use only validated Station namespace
+build fields. An unknown root `entrypoint` does not become build authority.
+Invalid known Station namespace data is an authoring error, not an empty success.
+
+Runtime compatibility preserves the existing warning-and-ignore handling of a
+non-object `extensions` container. Author builds refuse that malformed container.
+That runtime recovery behavior is not a claim that the malformed document
+conforms to the upstream schema. Unknown namespace objects remain opaque.
+
+The standalone validators are generated from the unchanged vendored schemas by
+`node scripts/generate-agent-plugin-validators.mjs`. The generated file records
+schema hashes and tool versions and includes the bundled Ajv helper's license.
+`npm run agent-plugin:validators:gate` reproduces and compares the generated
+bytes; scoped pre-push and static verification run that check. Missing or stale
+output fails rather than downloading a schema or silently regenerating on use.
+
+The [Portable Author Kit](../../examples/portable-author-kit/README.md) provides
+an editable package and source-checkout CLI commands. Build validation is not
+installation consent or proof that runtime contributions activated. Installation
+still owns acquisition, content review, current permission decisions, and durable
+activation. The CLI carries parent and dependency grant revisions from preview.

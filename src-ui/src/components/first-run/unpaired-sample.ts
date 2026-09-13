@@ -8,7 +8,7 @@
 
 export const UNPAIRED_SAMPLE_PROJECT = 'Getting started';
 
-export const UNPAIRED_SAMPLE_SURFACES = {
+const UNPAIRED_SAMPLE_SURFACES = {
   'review-queue': {
     title: 'Sample Task',
     eyebrow: 'Waiting for a decision',
@@ -31,7 +31,7 @@ export const UNPAIRED_SAMPLE_SURFACES = {
   },
 } as const;
 
-export type UnpairedSampleSurfaceId = keyof typeof UNPAIRED_SAMPLE_SURFACES;
+type UnpairedSampleSurfaceId = keyof typeof UNPAIRED_SAMPLE_SURFACES;
 
 export function sampleSurfaceForAnchor(anchor: string) {
   if (Object.hasOwn(UNPAIRED_SAMPLE_SURFACES, anchor)) {

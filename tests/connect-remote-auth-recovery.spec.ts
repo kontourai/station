@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { buildStationProofMessage } from '@kontourai/station-contracts';
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { dismissSetupLauncher } from './helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 const ENVIRONMENT_ID = 'env-e2e-stable-301';
@@ -19,12 +20,6 @@ const STATUS_READY = {
     detected: { ollama: false, bedrock: false },
   },
 };
-
-async function removeSetupLauncher(page: Page) {
-  await page.evaluate(() => {
-    document.querySelector('[data-testid="setup-launcher"]')?.remove();
-  });
-}
 
 /**
  * Per-connection actions (Edit/Check/Forget) live behind a "More actions"
@@ -288,6 +283,7 @@ for (const fixture of [
     expect(statusAuthorizations).toEqual([]);
     expect(pluginAuthorizations).toEqual([]);
     const actionBox = await pairingAction.boundingBox();
+    expect(actionBox?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(actionBox?.x).toBeGreaterThanOrEqual(0);
     expect(actionBox && actionBox.x + actionBox.width).toBeLessThanOrEqual(
       fixture.viewport.width,
@@ -505,7 +501,7 @@ for (const fixture of [
 
     await page.goto('/');
     await expect(page.locator('body')).toBeVisible();
-    await removeSetupLauncher(page);
+    await dismissSetupLauncher(page);
     const connectionsCard = await openConnections(
       page,
       fixture.name === 'phone',
@@ -701,7 +697,7 @@ for (const fixture of [
       };
     });
     expect(activeAfterReload.activeName).toBe('Phone Station');
-    await removeSetupLauncher(page);
+    await dismissSetupLauncher(page);
     await openConnections(page, fixture.name === 'phone');
     await expect(
       connectionsCard.getByText('Phone Station', { exact: true }),
@@ -795,7 +791,7 @@ test('local same-origin startup requires an explicit credential', async ({
 
     await page.goto('/');
     await expect(
-      page.getByRole('heading', { name: 'Connect to your Station host' }),
+      page.getByRole('heading', { name: 'Connect to a Station' }),
     ).toBeVisible();
     expect(await context.cookies()).toEqual([]);
     expect(identityRequests).toEqual([{ authorization: null, cookie: null }]);

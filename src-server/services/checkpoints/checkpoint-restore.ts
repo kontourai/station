@@ -16,7 +16,7 @@ const RESTORE_GIT_TIMEOUT_MS = 60_000;
 export const RESTORE_LOCK_TIMEOUT_MS = 15 * 60_000;
 type AcquireRestoreLock = typeof acquireFileMutationLockAsync;
 
-export type CheckpointRestoreEvent = {
+type CheckpointRestoreEvent = {
   id: string;
   threadId: string;
   turnId: string;
@@ -28,7 +28,7 @@ export type CheckpointRestoreEvent = {
   restoredAt: string;
 };
 
-export type CheckpointRestoreReceipt = CheckpointRestoreEvent & {
+type CheckpointRestoreReceipt = CheckpointRestoreEvent & {
   restored: boolean;
 };
 
@@ -199,7 +199,7 @@ async function materializeTree(
   });
 }
 
-export class CheckpointRestoreError extends Error {
+class CheckpointRestoreError extends Error {
   constructor(
     readonly reason:
       | 'confirmation_required'

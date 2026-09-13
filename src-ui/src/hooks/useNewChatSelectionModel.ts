@@ -152,7 +152,10 @@ export function useNewChatSelectionModel({
   revalidateSelection?: boolean;
 }) {
   const { selectedProject: activeLayoutProject, selectedProjectLayout } =
-    useNavigation();
+    useNavigation((state) => ({
+      selectedProject: state.selectedProject,
+      selectedProjectLayout: state.selectedProjectLayout,
+    }));
   const appConfig = useConfig();
   const agentCatalog = useAgentsQuery();
   const projectCatalog = useProjectsQuery();

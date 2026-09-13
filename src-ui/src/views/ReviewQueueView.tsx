@@ -559,6 +559,7 @@ function IndependentReviewRunModal({
 
   return createPortal(
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabelledBy={titleId}
       overlayClassName="modal-overlay"

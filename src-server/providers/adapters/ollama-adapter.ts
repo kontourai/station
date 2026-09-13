@@ -14,6 +14,7 @@ import type {
 } from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { DEFAULT_OLLAMA_BASE_URL } from '../../constants.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type {
   ProviderAdapterShape,
   ProviderSendTurnInput,
@@ -448,11 +449,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
         // `finishReason: 'other'` unconditionally, which is
         // indistinguishable from an ordinary terminal completion and folded
         // the session to 'completed'.
-        this.publishTurnFailure(
-          input.threadId,
-          turnId,
-          err instanceof Error ? err.message : String(err),
-        );
+        this.publishTurnFailure(input.threadId, turnId, errorMessage(err));
       }
       this.clearCurrentTurn(input.threadId, turnId);
       throw err;

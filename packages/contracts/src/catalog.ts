@@ -164,9 +164,122 @@ export type SkillOrigin =
   | 'package'
   | 'migrated-playbook';
 
+/**
+ * Why Station will not write a skill's own package, as a code a reader may
+ * branch on.
+ *
+ * The DECISION belongs to the server (`SkillService.isSkillWritable`); this is
+ * that decision projected, never a second derivation of it. `source` and
+ * `origin` are close enough to be tempting and answer a different question: a
+ * registry install living in a writable root is perfectly writable, and an
+ * install record stating `source: 'local'` says nothing about which root the
+ * package actually sits in. The rule has moved once already: it stopped meaning
+ * "this name resolves to this one directory" and now means "this package sits
+ * in a root Station writes" (#1619) — so a client rebuilding it from those
+ * fields would have been wrong before that change and wrong again after it.
+ */
+export type SkillWriteRefusalReason =
+  /**
+   * A SOURCE serves it in place (a plugin's prompt file), not a directory
+   * Station owns. Its remedy is unlike the others': there is no registry entry
+   * to install, so the plugin that provides it is the thing to change.
+   */
+  | 'served-in-place'
+  /** It is served from a canonical package root, which ships read-only. */
+  | 'canonical-package'
+  /** Its package sits in some other root, which Station does not write. */
+  | 'outside-writable-root'
+  /**
+   * Discovery found its package in a directory whose NAME is not the skill's —
+   * by case, or because the frontmatter names it something else.
+   *
+   * Its own code because its remedy is unlike the others': the package is
+   * plainly the user's own and sits in a root Station writes, so "Station does
+   * not own this" would be a false explanation of a real refusal. What has to
+   * change is the directory name or the frontmatter name, so the two agree.
+   */
+  | 'directory-name-mismatch'
+  /**
+   * Where a write to it would land could not be determined — a dangling link,
+   * an unreadable ancestor, a loop.
+   *
+   * Its own code because it is NOT "sits outside a writable root", and the
+   * remedy for that one is unfollowable here: the package may be sitting inside
+   * a root Station writes with a broken path, where installing it again repairs
+   * nothing. Station refuses because it cannot tell where the bytes would go.
+   */
+  | 'containment-unreadable'
+  /**
+   * Its name cannot become a directory NAME, so Station cannot work out where
+   * it would write this package. Discovery registers a frontmatter `name`
+   * unvalidated, so this is reachable; the remedy is a rename, not an install.
+   *
+   * What could not be resolved is the WRITE TARGET. The package itself was
+   * discovered and its directory is known, so `packageDirectory` is populated
+   * here like anywhere else — a rename is not actionable without it.
+   */
+  | 'unresolvable-name';
+
+/** The server's refusal to write a skill package, with its own sentence about it. */
+export interface SkillWriteRefusal {
+  reason: SkillWriteRefusalReason;
+  /**
+   * WHAT is wrong, in Station's own words, as a complete sentence — for
+   * display. Readers render it rather than composing a description from
+   * `reason`, and nothing may branch on the text.
+   *
+   * It contains NO author-controlled text: not the skill's name, not its
+   * path, and not an exception message. That is the whole point of it. An
+   * earlier draft of this field interpolated the package directory, and review
+   * showed the mitigation had simply moved rather than held — a plugin names
+   * its own directories, so a refusal could be made to read as a session-expiry
+   * notice directing the reader to another domain, using a bland frontmatter
+   * name and hostile prose one level up in the path.
+   *
+   * Where the package sits is a fact a reader needs, so it is carried in
+   * `packageDirectory` and rendered as its own element. What to DO about the refusal
+   * belongs to `reason` — the remedies genuinely differ — so a reader switches
+   * on the code for the remedy and renders this for the description.
+   */
+  detail: string;
+  /**
+   * WHERE THE PACKAGE SITS — the directory the refused package was discovered
+   * in. Named for the package on purpose: a refusal involves two directories,
+   * this one and the place Station would have written instead, and a bare
+   * `directory` reads just as easily as the latter.
+   *
+   * REQUIRED, because every refusal has one. The rule answers "writable"
+   * outright when no package was discovered, so a refusal always has a
+   * discovered location behind it, and each of its refusal branches reports it.
+   *
+   * It was optional for one release cycle, on the theory that #1619 might add a
+   * reason with no directory to report. It did not — checked against the landed
+   * rule, branch by branch, rather than assumed — and an optional marker that
+   * can never be absent is a documented case that does not exist, which is the
+   * defect this whole projection was written to remove. A reader must not have
+   * to handle an absence the server cannot produce.
+   *
+   * AUTHOR-CONTROLLED, every segment of it: a plugin chooses its directory
+   * names and the last segment is usually the skill's own name. Surfaces must
+   * render it as its own element — a path, labelled as a path — and never
+   * splice it into `detail`'s sentence, because text that borrows the grammar
+   * of Station's explanation is read as Station speaking.
+   */
+  packageDirectory: string;
+}
+
 export interface Skill extends RegistryItem {
   name: string;
   source?: string;
+  /**
+   * May Station write this skill's own package — the server's writability
+   * predicate PROJECTED, never re-derived here. Absent means the server did
+   * not state it, and a reader must then treat the package as read-only: a
+   * missing decision is not a permissive one.
+   */
+  writable?: boolean;
+  /** Why `writable` is false. Absent whenever `writable` is not false. */
+  writeRefusal?: SkillWriteRefusal;
   path?: string;
   installedVersion?: string;
   updateAvailable?: boolean;

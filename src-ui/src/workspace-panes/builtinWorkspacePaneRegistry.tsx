@@ -483,7 +483,7 @@ function WorkspacePlanPane({ instance }: BuiltinWorkspacePaneProps) {
   const identity = useResolvedPaneIdentity(instance, false);
   const projectSlug =
     identity.state === 'resolved' ? identity.project.slug : '';
-  const { activeChat } = useNavigation();
+  const activeChat = useNavigation((state) => state.activeChat);
   const projectSessions = useDerivedSessions('', null, projectSlug);
   const flow = useFlowDefinitionsQuery(projectSlug);
   const planSession = useMemo(

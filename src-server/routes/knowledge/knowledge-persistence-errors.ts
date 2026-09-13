@@ -4,7 +4,7 @@ import {
   KnowledgeStoreUnavailableError,
 } from '../../knowledge-store/errors.js';
 
-export type KnowledgePersistenceErrorProjection = {
+type KnowledgePersistenceErrorProjection = {
   status: 409 | 503;
   error: string;
 };

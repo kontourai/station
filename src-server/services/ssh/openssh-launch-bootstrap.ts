@@ -51,7 +51,7 @@ export interface OpenSshLaunchResult {
   serverKind: 'managed' | 'external';
 }
 
-export interface OpenSshLaunchInput {
+interface OpenSshLaunchInput {
   alias: string;
   controlPath: string;
   remoteProjectPath: string;

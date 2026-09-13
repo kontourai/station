@@ -2,14 +2,14 @@ export type RegistryLayoutAction = 'install' | 'remove' | 'enable' | 'disable';
 
 import { Button } from '../Button';
 
-export interface RegistryLayoutItemLike {
+interface RegistryLayoutItemLike {
   name?: string;
   enabled?: boolean;
   installable?: boolean;
   lifecycle?: { state?: 'installed' | 'installable' | 'disabled' };
 }
 
-export function primaryLayoutAction(
+function primaryLayoutAction(
   item: RegistryLayoutItemLike,
 ): RegistryLayoutAction | 'use' {
   if (item.lifecycle?.state === 'disabled') return 'enable';

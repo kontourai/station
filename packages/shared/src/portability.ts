@@ -160,6 +160,16 @@ export function normalizeMcpToolDef(def: ToolDef): {
     });
   }
 
+  if (def.cwd || def.headers) {
+    losses.push({
+      code: 'omitted-field',
+      scope: 'integration',
+      path: def.id,
+      message: `Integration '${def.id}' has a live cwd or literal HTTP headers that this export format cannot preserve.`,
+      severity: 'warning',
+    });
+  }
+
   if (def.icon) {
     losses.push({
       code: 'omitted-field',

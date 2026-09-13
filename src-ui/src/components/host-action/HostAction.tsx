@@ -43,7 +43,7 @@ import {
 } from './host-action-copy';
 import './HostAction.css';
 
-export interface HostActionProps {
+interface HostActionProps {
   id: HostActionId;
   presentation: DevicePresentation | undefined;
   /**

@@ -107,6 +107,9 @@ export function AddMachineModal({
         onClose={close}
         checkHealth={checkServerHealthDetailed}
         checkCompatibility={checkHostCompatibility}
+        pairingClientChannel={
+          profile.channel === 'dev' ? 'stable' : profile.channel
+        }
         initialPanel="pair-host"
         originIsStation={!profile.isTauri}
         hostAppName={

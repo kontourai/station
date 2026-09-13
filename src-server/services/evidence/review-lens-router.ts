@@ -26,13 +26,13 @@ const POLICY_INPUTS = [
 ] as const;
 const SHA = /^[0-9a-f]{40}$/;
 
-export interface ReviewLensDefinition {
+interface ReviewLensDefinition {
   id: string;
   nodeIds: string[];
   instructions: string;
 }
 
-export interface ReviewLensPlan {
+interface ReviewLensPlan {
   kind: 'planned';
   lenses: ReviewLensDefinition[];
   /** Trusted registry snapshot for retaining prior lens IDs without reuse. */
@@ -58,7 +58,7 @@ export type ReviewLensRouting =
       changes: ReviewPathChange[];
     };
 
-export interface ReviewPathChange {
+interface ReviewPathChange {
   status: string;
   oldPath?: string;
   newPath?: string;

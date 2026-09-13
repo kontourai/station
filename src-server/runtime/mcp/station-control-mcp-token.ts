@@ -70,7 +70,7 @@ export const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000;
  * `session/new` payload — and a default would silently attribute one
  * channel's mints to the other on the one metric that can tell them apart.
  */
-export type StationControlMcpTokenChannel = 'url-token' | 'http-header-token';
+type StationControlMcpTokenChannel = 'url-token' | 'http-header-token';
 
 interface StationControlMcpTokenEntry {
   sessionId: string;
@@ -88,7 +88,7 @@ function digest(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
-export interface MintedStationControlMcpToken {
+interface MintedStationControlMcpToken {
   token: string;
   expiresAt: number;
 }

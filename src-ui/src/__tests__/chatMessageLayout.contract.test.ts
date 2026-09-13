@@ -100,15 +100,40 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
 
   test('handoff cards and completed-answer controls use the same responsive flow instead of a centered long action', () => {
     const handoff = rule(handoffCss, '.conversation-handoff-boundary');
-    const actions = chatCss;
     const task = rule(taskPicker, '.task-picker');
 
     expect(handoff).toContain('width: 100%');
     expect(handoff).toContain('margin: 12px 0');
     expect(handoff).toContain('text-align: left');
-    expect(actions).toContain('flex-wrap: wrap');
-    expect(actions).toContain('justify-content: flex-end');
-    expect(chatCss).toContain('@media (max-width: 480px)');
+    // Scoped to the actions cluster's OWN rule. `.turn-footer__actions` also
+    // appears as a descendant in the 480px block and under
+    // `.message-details__body`, so the selector is anchored to a line start:
+    // an unanchored `indexOf('.turn-footer__actions {')` resolves to the media
+    // block first. Whole-file `toContain('flex-wrap: wrap')` /
+    // `toContain('justify-content: flex-end')` used to stand here and were
+    // satisfied by unrelated rules elsewhere in this 2.4k-line sheet -- this
+    // cluster declares neither.
+    const actions = /\n\.turn-footer__actions\s*\{([^}]*)\}/.exec(chatCss)?.[1];
+    expect(actions, "the .turn-footer__actions rule's own body").toBeDefined();
+    expect(actions).toContain('align-self: flex-end');
+    expect(actions).toContain('flex: 0 0 auto');
+    // ...and the responsive half: at <=480px the footer is a column, so the
+    // cluster moves to the reading edge rather than staying at the far one.
+    //
+    // `.some(...)` over the 480px blocks is order-blind on purpose, and that
+    // is safe only because a sibling case pins the COUNT: 'narrow screens keep
+    // the footer actions at the reading edge' asserts exactly one 480px block
+    // declares `.turn-footer__actions`. Without that pin, a second block
+    // declaring the same selector later -- which would win the cascade -- could
+    // contradict this one and `.some` would still be satisfied.
+    expect(
+      atRules(chatCss, '@media (max-width: 480px)').some((body) =>
+        /\.turn-footer \.turn-footer__actions\s*\{[^}]*align-self:\s*flex-start;/s.test(
+          body,
+        ),
+      ),
+      'the 480px block moves .turn-footer__actions to align-self: flex-start',
+    ).toBe(true);
     expect(task).toContain('align-items: flex-start');
     const taskTrigger = rule(taskPicker, '.task-picker__trigger');
     expect(taskTrigger).toContain('min-width: 44px');
@@ -133,7 +158,7 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     expect(turnProvenanceCard).toContain('{shareContent}');
   });
 
-  test('hover-only footer collapse preserves keyboard access and touch targets', () => {
+  test('hover-only footer reveal reserves space and preserves keyboard access', () => {
     const hover = atRule(chatCss, '@media (hover: hover)');
     const resting = rule(hover, '.turn-footer__actions');
     const restored = rule(
@@ -143,11 +168,9 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     const touchRating = rule(chatCss, '.turn-footer__actions .message__rating');
     const hoverRating = rule(hover, '.turn-footer__actions .message__rating');
 
-    expect(resting).toContain('height: 0');
-    expect(resting).toContain('overflow: hidden');
+    expect(resting).not.toMatch(/(?:height|display|overflow):/);
     expect(resting).toContain('pointer-events: none');
-    expect(restored).toContain('height: auto');
-    expect(restored).toContain('overflow: visible');
+    expect(restored).not.toMatch(/(?:height|display|overflow):/);
     expect(restored).toContain('pointer-events: auto');
     expect(hoverRating).toContain('min-height: 0');
     expect(touchRating).toContain('min-height: 44px');

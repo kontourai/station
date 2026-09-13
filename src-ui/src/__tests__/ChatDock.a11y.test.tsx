@@ -160,19 +160,23 @@ function extractBalancedBody(source: string, anchor: string): string {
  */
 describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site pins)', () => {
   test('the badge project name is wired from resolveDockBadgeProjectName, not a literal or the raw session', () => {
-    expect(source).toMatch(/projectName=\{dockBadgeProjectName\}/);
+    expect(source).toMatch(
+      /projectName=\{\s*importedSessionId[\s\S]*?:\s*dockBadgeProjectName\s*\}/,
+    );
     expect(source).toMatch(
       /const dockBadgeProjectName = resolveDockBadgeProjectName\(/,
     );
     // The slug prop carries the switcher's aria-current "Current" marker and
     // the directory→coding-layout link guard — nulling it breaks both while
     // every rendered-name assertion stays green.
-    expect(source).toMatch(/projectSlug=\{dockProjectSlug\}/);
+    expect(source).toMatch(
+      /projectSlug=\{\s*importedSessionId\s*\?\s*\(importedSession\?\.projectSlug\s*\?\?\s*null\)\s*:\s*dockProjectSlug\s*\}/,
+    );
   });
 
   test('the mobile header project name is wired from the SAME dockBadgeProjectName the desktop badge uses', () => {
     expect(source).toMatch(
-      /projectName:\s*dockBadgeProjectName\s*\?\?\s*'No project'/,
+      /projectName:\s*importedSessionId[\s\S]*?:\s*\(dockBadgeProjectName\s*\?\?\s*'No project'\)/,
     );
   });
 
@@ -194,7 +198,9 @@ describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site
     // which `chat-dock-utils.test.ts` covers behaviourally, including the
     // discriminating case: a session that belongs to a DIFFERENT project than
     // the badge still reports its own directory.
-    expect(source).toMatch(/workingDirectory=\{dockProjectContextDirectory\}/);
+    expect(source).toMatch(
+      /workingDirectory=\{\s*importedSessionId\s*\?\s*\(importedSession\?\.cwd\s*\?\?\s*null\)\s*:\s*dockProjectContextDirectory\s*\}/,
+    );
     expect(source).toMatch(
       /resolveDockProjectContextDirectory\(\{\s*scopedProjectSlug,\s*sessionDisplayCwd,/,
     );
@@ -218,7 +224,7 @@ describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site
     );
     expect(source).not.toMatch(/handleOpenLayout\(\s*dockProjectSlug[\s,)]/);
     expect(source).toMatch(
-      /gitStatus=\{\s*scopedProjectSlug\s*\?\s*undefined\s*:\s*gitStatus\s*\}/,
+      /gitStatus=\{\s*importedSessionId\s*\|\|\s*scopedProjectSlug\s*\?\s*undefined\s*:\s*gitStatus\s*\}/,
     );
     // The pre-fix-reintroduction shape review actually caught, kept
     // as a named-regression tripwire too.
@@ -230,7 +236,7 @@ describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site
       /const sessionProjectMismatchLabel = resolveSessionProjectMismatchLabel\(/,
     );
     expect(source).toMatch(
-      /sessionProjectMismatchLabel=\{sessionProjectMismatchLabel\}/,
+      /sessionProjectMismatchLabel=\{\s*importedSessionId\s*\?\s*undefined\s*:\s*sessionProjectMismatchLabel\s*\}/,
     );
   });
 

@@ -119,7 +119,12 @@ export function createSystemOpenSshRunner(
       execFile(
         sshPath,
         [...args],
-        { timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer },
+        {
+          timeout: timeoutMs,
+          killSignal: 'SIGKILL',
+          maxBuffer,
+          windowsHide: true,
+        },
         (error, stdout, stderr) => {
           if (error) {
             rejectPromise(

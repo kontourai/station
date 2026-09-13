@@ -158,6 +158,8 @@ export const SESSION_AGENT_ICON_MAX_LENGTH = AGENT_ICON_TOKEN_MAX_LENGTH;
  */
 export const FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY =
   'firstTurnInstructionsComposed';
+export const WORKSPACE_PANE_HOST_ACTION_METADATA_KEY =
+  'workspacePaneHostAction';
 
 /**
  * Complete set of orchestration evidence fields a public caller may never
@@ -180,6 +182,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
 ] as const;
 
 /**
@@ -450,14 +453,13 @@ export const PROVIDER_MUSE = 'muse';
  *   reads `approvalMode`; `mapReasoningEffort` reads `effort`, falling back to
  *   `reasoningEffort` — both genuinely applied, so both are listed; `fastMode`
  *   is read directly (`codex-adapter.ts` ~lines 71-73, 555-633, 683-718).
- * - `acp` (`acp-adapter.ts`): reads `modelOptions` in exactly two places
- *   (~lines 579, 650), both `effectiveModelMetadata(...)` calls that only
- *   ECHO the bag into a display-only `session.configured`/`turn.started`
- *   metadata snapshot — no key changes ACP's actual session/turn behavior
- *   today, so the support list is empty. Deviation from an earlier draft
- *   that guessed `approvalMode` here: ACP's own approval flow is the
- *   interactive `session/request_permission` handshake, unrelated to a
- *   settable `modelOptions.approvalMode`.
+ * - `acp` (`acp-adapter.ts`): `modelOptions.mode` is the requested ACP
+ *   session mode (station#1945). The adapter applies it from the fresh
+ *   session catalog — `setConfigOption` when a `category: "mode"` option
+ *   exists, otherwise `session/set_mode`. Display-only
+ *   `effectiveModelMetadata` echoes still exist and do not add keys.
+ *   ACP's per-tool `session/request_permission` handshake is unrelated
+ *   to Station `approvalMode`, which remains unsupported here.
  * - `ollama`/`bedrock`: read only `modelOptions.systemPrompt` — system-prompt
  *   passthrough is explicitly excluded from archive#978's scope, so it is
  *   NOT added to either provider's support list; a caller-supplied
@@ -479,7 +481,7 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
       'autoMode',
     ],
     [PROVIDER_CODEX]: ['approvalMode', 'effort', 'reasoningEffort', 'fastMode'],
-    [PROVIDER_ACP]: [],
+    [PROVIDER_ACP]: ['mode'],
     [PROVIDER_OLLAMA]: [],
     [PROVIDER_BEDROCK]: [],
     // `muse-adapter.ts` reads `modelOptions` nowhere at all: `sendTurn` uses
@@ -596,8 +598,23 @@ export type SessionControlMode = 'station-owned' | 'read-only-attached';
  * Provider-specific discovery details remain outside the orchestration
  * contract so a source cannot leak local filesystem paths through APIs.
  */
+/** An opaque source-owned configuration identity; it is not a path or credential. */
+export interface ProviderSessionSourceAffinity {
+  kind: string;
+  ref: string;
+}
+
+/** A provider position backed by a completed-turn observation. */
+export interface ProviderSessionContinuationBoundary {
+  kind: 'completed-turn';
+  providerTurnId: string;
+  observedEventId: string;
+}
+
 export interface AttachedSessionSourceMetadata {
   kind: string;
+  affinity?: ProviderSessionSourceAffinity;
+  completedBoundary?: ProviderSessionContinuationBoundary;
   externalSessionId: string;
   revision?: string;
 }
@@ -830,6 +847,8 @@ export interface ProviderSessionAdoptInput
   /** Provider cursor of the read-only source. Never returned in adoption responses. */
   sourceSessionId: string;
   sourceKind: string;
+  sourceAffinity?: ProviderSessionSourceAffinity;
+  sourceBoundary?: ProviderSessionContinuationBoundary;
 }
 
 export interface ProviderSendTurnInput {

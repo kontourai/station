@@ -23,26 +23,26 @@ import {
 export type SessionQuery = { type: 'conversation'; threadId: string };
 
 /** One exact, completed assistant answer within a Session. */
-export type SessionAssistantTurnQuery = {
+type SessionAssistantTurnQuery = {
   type: 'assistant-turn';
   threadId: string;
   turnId: string;
 };
 
 /** One exact authored-input event within a Session. */
-export type SessionUserInputQuery = {
+type SessionUserInputQuery = {
   type: 'user-input';
   threadId: string;
   eventId: string;
 };
 
 /** One exact terminal tool result within a Session. */
-export type SessionToolResultQuery = {
+type SessionToolResultQuery = {
   type: 'tool-result';
   threadId: string;
   eventId: string;
 };
-export type SessionAnswerBasisQuery = {
+type SessionAnswerBasisQuery = {
   type: 'answer-basis';
   threadId: string;
   turnId: string;
@@ -75,11 +75,11 @@ export type SessionAnswerBasisQueryOutcome =
   | { status: 'unavailable' };
 
 /** Shared wire shapes deliberately exclude bytes, paths, handles, and producer metadata. */
-export type UserInputAttachmentProjection = TaskUserInputAttachmentProjection;
-export type UserInputProjection = TaskUserInputProjection;
+type UserInputAttachmentProjection = TaskUserInputAttachmentProjection;
+type UserInputProjection = TaskUserInputProjection;
 
 /** Descriptor-only EventStore fact; deliberately has no payload or bytes. */
-export interface SessionUserInputEventDescriptor {
+interface SessionUserInputEventDescriptor {
   eventId: string;
   threadId: string;
   turnId?: string;
@@ -89,7 +89,7 @@ export interface SessionUserInputEventDescriptor {
   attachments: readonly UserInputAttachmentProjection[];
 }
 
-export type SessionToolResultEventDescriptor = ToolCompletedEventDescriptor;
+type SessionToolResultEventDescriptor = ToolCompletedEventDescriptor;
 
 /** One exact-answer replay may never become an unbounded transcript read. */
 export const MAX_ASSISTANT_TURN_EVENTS = 1_000;
@@ -120,7 +120,7 @@ export interface SessionBasisTurnDescriptorEvent {
   tool?: SessionToolResultEventDescriptor;
 }
 
-export interface SessionConversationProjection {
+interface SessionConversationProjection {
   id: string;
   agentSlug: string;
   projectSlug?: string;
@@ -140,7 +140,7 @@ export interface SessionConversationProjection {
  * `unavailable` means the authorized query could not observe durable state;
  * callers that need a complete index must fail rather than silently omit it.
  */
-export type SessionQueryOutcome =
+type SessionQueryOutcome =
   | {
       status: 'found';
       conversation: SessionConversationProjection;
@@ -189,7 +189,7 @@ export type SessionToolResultQueryOutcome =
   | { status: 'unavailable' };
 
 /** The narrow durable/read-model facts the module needs for this intent. */
-export interface SessionConversationQuerySource<Session> {
+interface SessionConversationQuerySource<Session> {
   findSession(threadId: string): Promise<Session | null>;
   projectConversation(
     session: Session,

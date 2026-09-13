@@ -1,3 +1,4 @@
+import type { OrchestrationConversationStreamBinding } from '@kontourai/station-contracts/orchestration';
 import { isDeferredRetriableTurnError } from '@kontourai/station-contracts/runtime-events';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
@@ -10,12 +11,22 @@ import {
   handleFlowGateVerdictEvent,
   handleFlowRunAttachedEvent,
 } from './flowHandlers';
+import {
+  handleConversationForkedEvent,
+  handlePlatformMutationEvent,
+  handlePolicyHooksAttachedEvent,
+  handlePolicyStopVerdictEvent,
+  handleWorkflowStateChangedEvent,
+} from './governanceHandlers';
 import { handlePlanUpdatedEvent } from './planHandlers';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
+import { recordReplayRuntime } from './replay/capture-tap';
+import { isReplayThread } from './replay/replay-registry';
 import {
   handleSessionExitedEvent,
   handleSessionLifecycleEvent,
   handleSessionStateChangedEvent,
+  handleSessionStopSettledEvent,
 } from './sessionHandlers';
 import {
   handleReasoningDeltaEvent,
@@ -44,7 +55,30 @@ export function handleOrchestrationEvent(
    * degrades honestly instead of being partly believed here.
    */
   provenance?: unknown,
+  conversation?: OrchestrationConversationStreamBinding,
 ) {
+  if (
+    conversation?.currentSessionId === event.threadId &&
+    (event.method === 'session.started' ||
+      event.method === 'session.configured') &&
+    !isReplayThread(event.threadId)
+  ) {
+    const key = activeChatsStore.getChatKeyForExecutionSession(
+      conversation.conversationId,
+    );
+    if (
+      key &&
+      !isReplayThread(key) &&
+      activeChatsStore.getSnapshot()[key]?.currentSessionId !== event.threadId
+    )
+      activeChatsStore.updateChat(key, {
+        currentSessionId: event.threadId,
+        conversationId: conversation.conversationId,
+        conversationOpenPending: true,
+        conversationOpenFailed: false,
+      });
+  }
+  recordReplayRuntime(apiBase, event, provenance);
   // archive#1301: ingest BEFORE the `if (!chat) return` guard below —
   // a delegate session's events arrive on the delegate's own threadId, which
   // is never opened as a chat, so the guard would otherwise drop every event
@@ -53,7 +87,9 @@ export function handleOrchestrationEvent(
   // immediately for the high-frequency content.*-delta cases and returns the
   // identical state reference (no store notify) for every other no-op, so
   // this costs nothing for chats that never touch background tasks.
-  backgroundTasksStore.ingest(event);
+  if (!isReplayThread(event.threadId)) {
+    backgroundTasksStore.ingest(event);
+  }
 
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
@@ -116,7 +152,10 @@ export function handleOrchestrationEvent(
       // may resolve this turn without a new `turn.started`, so draining now
       // would fire a queued message while the "failed" turn is actually
       // still silently retrying.
-      if (!isDeferredRetriableTurnError(event)) {
+      if (
+        !isDeferredRetriableTurnError(event) &&
+        !isReplayThread(event.threadId)
+      ) {
         drainQueuedMessageOnTurnCompleted(
           apiBase,
           activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
@@ -142,5 +181,27 @@ export function handleOrchestrationEvent(
     case 'token-usage.updated':
       handleTokenUsageUpdatedEvent(event);
       return;
+    case 'session.stop-settled':
+      handleSessionStopSettledEvent(event);
+      return;
+    case 'policy.hooks-attached':
+      handlePolicyHooksAttachedEvent(event);
+      return;
+    case 'policy.stop-verdict':
+      handlePolicyStopVerdictEvent(event);
+      return;
+    case 'platform.mutation':
+      handlePlatformMutationEvent(event);
+      return;
+    case 'workflow.state-changed':
+      handleWorkflowStateChangedEvent(event);
+      return;
+    case 'conversation.forked':
+      handleConversationForkedEvent(event);
+      return;
+    default: {
+      const _exhaustive: never = event;
+      return _exhaustive;
+    }
   }
 }

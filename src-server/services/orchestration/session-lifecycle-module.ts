@@ -3,17 +3,17 @@ import type {
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import type {
-  InternalSessionReadScope,
-  SessionReadAuthority,
-} from '@kontourai/station-contracts/tenancy';
 import {
   foldedSessionLifecycleState,
   type SessionLifecycleState,
   type SessionTransitionReason,
   type SessionTransitionSource,
   validateSessionLifecycleTransition,
-} from '../../../packages/contracts/src/session-lifecycle.js';
+} from '@kontourai/station-contracts/session-lifecycle';
+import type {
+  InternalSessionReadScope,
+  SessionReadAuthority,
+} from '@kontourai/station-contracts/tenancy';
 import type { SessionExecutionCoordinator } from './session-execution-coordinator.js';
 
 type SessionReadScope = SessionReadAuthority | InternalSessionReadScope;
@@ -23,7 +23,7 @@ import {
   createManualSessionTransitionEvent,
 } from './session-lifecycle-service.js';
 
-export type SessionLifecycleTransitionInput = {
+type SessionLifecycleTransitionInput = {
   threadId: string;
   authority: SessionReadScope;
   to: SessionLifecycleState;

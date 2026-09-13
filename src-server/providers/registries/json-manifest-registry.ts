@@ -11,6 +11,7 @@ import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
 import { readPluginManifestFileSync } from '../../services/plugins/plugin-manifest-loader.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { execGitSync } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
 import type { InstallResult, RegistryItem } from '../provider-contracts.js';
@@ -568,7 +569,7 @@ export class JsonManifestRegistryProvider
     } catch (error) {
       this.logger?.warn('Registry integration manifest rejected', {
         integrationId: id,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return null;
     }

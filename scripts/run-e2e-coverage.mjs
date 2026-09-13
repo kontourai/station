@@ -56,7 +56,9 @@ export const BUCKETS = [
     script: 'test:e2e:starter-clean-install',
     weight: 5,
   },
-  { name: 'smoke-live', script: 'test:e2e:smoke-live', weight: 1 },
+  // Includes the 100-sample production performance reference and its browser
+  // state pool. It must not overlap ordinary geometry or latency assertions.
+  { name: 'smoke-live', script: 'test:e2e:smoke-live', weight: 6 },
   { name: 'extended', script: 'test:e2e:extended', weight: 5 },
   { name: 'screenshot', script: 'test:e2e:screenshot', weight: 1 },
   { name: 'android', script: 'test:android', weight: 5 },
@@ -703,7 +705,7 @@ export async function main() {
   }
 
   console.log(
-    `[e2e] scheduling ${selected.length} bucket(s) with capacity ${capacity}; output follows in manifest order.`,
+    `[e2e] scheduling ${selected.length} bucket(s) with capacity ${capacity}; each completed bucket emits its result immediately.`,
   );
   const controller = new AbortController();
   const removeSignalHandlers = ['SIGINT', 'SIGTERM'].map((signal) =>
@@ -722,6 +724,14 @@ export async function main() {
     results = await runBuckets(selected, {
       capacity,
       signal: controller.signal,
+      onEvent: ({ type, result }) => {
+        if (type !== 'finish') return;
+        // A later deadline must not erase evidence from completed buckets.
+        writeBucketOutputs([result]);
+        console.log(
+          `[e2e] ${result.name}: ${result.verdict} — ${formatCounts(result.counts)}`,
+        );
+      },
       env: {
         ...process.env,
         STATION_E2E_RUN_ID: runId,
@@ -760,8 +770,6 @@ export async function main() {
       force: true,
     });
   }
-  writeBucketOutputs(results);
-
   console.log('\n════ Playwright coverage summary ════');
   for (const r of results) {
     console.log(

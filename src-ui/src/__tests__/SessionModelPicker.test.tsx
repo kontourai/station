@@ -71,7 +71,11 @@ function renderNestedPicker(onOuterClose = vi.fn()) {
   function Harness() {
     const [pickerOpen, setPickerOpen] = useState(true);
     return (
-      <ResponsiveDialogSurface ariaLabel="New Chat" onClose={onOuterClose}>
+      <ResponsiveDialogSurface
+        layer="dialog"
+        ariaLabel="New Chat"
+        onClose={onOuterClose}
+      >
         <button type="button">Outer dialog control</button>
         {pickerOpen && (
           <SessionModelPicker
@@ -232,7 +236,11 @@ describe('SessionModelPicker', () => {
     function Harness() {
       const [open, setOpen] = useState(true);
       return (
-        <ResponsiveDialogSurface ariaLabel="New Chat" onClose={onOuterClose}>
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="New Chat"
+          onClose={onOuterClose}
+        >
           {open && (
             <SessionModelPicker
               models={[]}
@@ -264,7 +272,11 @@ describe('SessionModelPicker', () => {
     function Harness() {
       const [open, setOpen] = useState(false);
       return (
-        <ResponsiveDialogSurface ariaLabel="New Chat" onClose={vi.fn()}>
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="New Chat"
+          onClose={vi.fn()}
+        >
           <button type="button" onClick={() => setOpen(true)}>
             Configure model
           </button>

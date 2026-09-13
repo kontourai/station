@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -7,14 +7,27 @@ import {
   resolveRuntimeHome,
   resolveStationRoot,
 } from '@kontourai/station-shared/runtime-path-resolver';
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, describe, expect, test, vi } from 'vitest';
 import { initializeSourceBootstrap } from '../source-bootstrap.js';
 
 const wrapperUrl = pathToFileURL(resolve('scripts/station-cli.ts')).href;
 
+// These roots were fixed names in the shared system temp directory
+// (`/tmp/station-bootstrap-root`, `/tmp/station-bootstrap-parity`). Both reach
+// the runtime-home admission check, so an unrelated process leaving a regular
+// file at either name failed these tests for a reason with nothing to do with
+// the bootstrap (#1790). Own the root; the names remain absent leaves in it.
+const TEST_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-bootstrap-test-'));
+const BOOTSTRAP_ROOT = join(TEST_TEMP_ROOT, 'station-bootstrap-root');
+const PARITY_ROOT = join(TEST_TEMP_ROOT, 'station-bootstrap-parity');
+
+afterAll(() => {
+  rmSync(TEST_TEMP_ROOT, { force: true, recursive: true });
+});
+
 function sourceEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return {
-    STATION_ROOT: '/tmp/station-bootstrap-root',
+    STATION_ROOT: BOOTSTRAP_ROOT,
     ...overrides,
   };
 }
@@ -54,7 +67,7 @@ describe('source Station bootstrap', () => {
     expect(one.STATION_DEV_INSTANCE).toBe('alpha');
     expect(one.STATION_INSTANCE_ID).toBe('dev-alpha');
     expect(resolveRuntimeHome(one)).toBe(
-      '/tmp/station-bootstrap-root/instances/dev/dev-alpha',
+      join(BOOTSTRAP_ROOT, 'instances', 'dev', 'dev-alpha'),
     );
   });
 
@@ -91,7 +104,7 @@ describe('source Station bootstrap', () => {
       uiPort: 29000,
       consentPort: 29144,
     });
-    expect(env.STATION_ROOT).toBe('/tmp/station-bootstrap-root');
+    expect(env.STATION_ROOT).toBe(BOOTSTRAP_ROOT);
     expect(env.STATION_HOME).toBe(resolve('./runtime-home'));
     expect(resolveRuntimeHome(env)).toBe(resolve('./runtime-home'));
     expect(env.STATION_PORT).toBe('29141');
@@ -134,7 +147,7 @@ describe('source Station bootstrap', () => {
     );
     try {
       for (const key of keys) delete process.env[key];
-      process.env.STATION_ROOT = '/tmp/station-bootstrap-parity';
+      process.env.STATION_ROOT = PARITY_ROOT;
       vi.resetModules();
       const { initializeSourceBootstrap: initialize } = await import(
         '../source-bootstrap.js'

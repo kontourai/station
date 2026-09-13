@@ -12,9 +12,9 @@
  */
 import './WorkflowStatusLine.css';
 
-export type WorkflowMatchKind = 'workItemRef' | 'title-heuristic';
+type WorkflowMatchKind = 'workItemRef' | 'title-heuristic';
 
-export interface WorkflowStatusLineEntry {
+interface WorkflowStatusLineEntry {
   taskSlug: string;
   status: string;
   phase: string;

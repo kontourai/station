@@ -29,8 +29,8 @@ import {
 } from '../setup/guarded-setup-import-filesystem.js';
 import type { DeclaredOutputDescriptorRow, EventStore } from './event-store.js';
 
-export const SESSION_OUTPUTS_PAGE_MAX = 50;
-export const SESSION_OUTPUTS_PAGE_MAX_BYTES = 64 * 1024;
+const SESSION_OUTPUTS_PAGE_MAX = 50;
+const SESSION_OUTPUTS_PAGE_MAX_BYTES = 64 * 1024;
 const MAX_PREVIEW_TEXT_BYTES = 512 * 1024;
 const SHA256 = /^[a-f0-9]{64}$/;
 const TOKEN_MAX = 1_024;
@@ -40,15 +40,15 @@ type WorkspaceBinding = {
   rootDirectories: GuardedDirectoryBinding[];
 };
 
-export type SessionOutputsReadOutcome =
+type SessionOutputsReadOutcome =
   | { status: 'found'; page: SessionOutputsPage }
   | { status: 'not-found' }
   | { status: 'unavailable' };
-export type SessionOutputInspectOutcome =
+type SessionOutputInspectOutcome =
   | { status: 'found'; inspection: SessionOutputInspection }
   | { status: 'not-found' }
   | { status: 'unavailable' };
-export type SessionOutputKeepOutcome =
+type SessionOutputKeepOutcome =
   | {
       status: 'kept';
       version: typeof TASK_DECLARED_OUTPUT_KEEP_V1;

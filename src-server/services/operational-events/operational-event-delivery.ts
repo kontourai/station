@@ -13,7 +13,7 @@ import {
 import { operationalEventScopeKey } from './operational-event-outbox.js';
 
 export const MAX_OPERATIONAL_EVENT_CONSUMERS = 64;
-export const MAX_OPERATIONAL_EVENT_DELIVERY_ATTEMPTS = 5;
+const MAX_OPERATIONAL_EVENT_DELIVERY_ATTEMPTS = 5;
 export const MAX_OPERATIONAL_EVENT_DEAD_LETTERS = 100;
 
 const CONSUMER_ID = /^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$/;
@@ -33,7 +33,7 @@ export type OperationalEventDeliveryTransition =
   | { kind: 'invalid' }
   | { kind: 'unavailable' };
 
-export interface OperationalEventDeliveryClaim {
+interface OperationalEventDeliveryClaim {
   readonly journalSequence: number;
   readonly event: OperationalEventEnvelope;
   readonly idempotencyKey: string;
@@ -43,13 +43,13 @@ export interface OperationalEventDeliveryClaim {
   deadLetter(failureCode: string): OperationalEventDeliveryTransition;
 }
 
-export interface OperationalEventReplayGap {
+interface OperationalEventReplayGap {
   readonly requestedAfterJournalSequence: number;
   readonly earliestAvailableJournalSequence: number;
   acknowledge(): OperationalEventDeliveryTransition;
 }
 
-export interface OperationalEventDeadLetter {
+interface OperationalEventDeadLetter {
   journalSequence: number;
   eventId: string;
   idempotencyKey: string;
@@ -85,7 +85,7 @@ export type OperationalEventDeliveryOwner =
   | { id: string; pid: number; birth: string; identityKind: 'exact' }
   | { id: string; pid: number; identityKind: 'unverified' };
 
-export interface OperationalEventProcessIdentity {
+interface OperationalEventProcessIdentity {
   exact(pid: number): { pid: number; start: string } | null;
   probe(
     pid: number,
@@ -109,7 +109,7 @@ export interface OperationalEventDeliveryRecord {
   nextAttemptAt: string | null;
 }
 
-export interface OperationalEventSettlementFence {
+interface OperationalEventSettlementFence {
   settlementId: string;
   ownerId: string;
   ownerPid: number;
@@ -208,7 +208,7 @@ export interface OperationalEventDeliveryCoordinator {
 
 const activeOwners = new Set<string>();
 
-export function releaseOperationalEventDeliveryOwner(ownerId: string): void {
+function releaseOperationalEventDeliveryOwner(ownerId: string): void {
   activeOwners.delete(ownerId);
 }
 

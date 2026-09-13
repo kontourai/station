@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { incompleteDiagnosticReasons } from './changed-verification-diagnostics.mjs';
+import {
+  CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES,
+  incompleteDiagnosticReasons,
+} from './changed-verification-diagnostics.mjs';
 
 function diagnosticCountsAreValid(counts) {
   return [
@@ -64,6 +67,20 @@ function completeChangedDiagnosticIsConsistent(diagnostic) {
   if (!diagnosticCountsAreValid(diagnostic?.counts)) return false;
   const executions = diagnostic.executions;
   if (!Array.isArray(executions)) return false;
+  const preparation = diagnostic.preparation;
+  if (
+    preparation !== undefined &&
+    (!['related-discovery', 'resource-plan', 'resource-execution'].includes(
+      preparation?.phase,
+    ) ||
+      typeof preparation.childStarted !== 'boolean' ||
+      preparation.infrastructureError !== true ||
+      typeof preparation.error !== 'string' ||
+      Buffer.byteLength(preparation.error) >
+        CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES ||
+      typeof preparation.errorTruncated !== 'boolean')
+  )
+    return false;
   for (const execution of executions) {
     if (
       typeof execution?.kind !== 'string' ||
@@ -126,7 +143,8 @@ function completeChangedDiagnosticIsConsistent(diagnostic) {
     diagnostic.counts.skipped === total('skipped') &&
     diagnostic.counts.todo === total('todo') &&
     diagnostic.counts.infrastructureErrors ===
-      executions.filter((execution) => execution.infrastructureError).length &&
+      executions.filter((execution) => execution.infrastructureError).length +
+        (preparation?.infrastructureError === true ? 1 : 0) &&
     diagnostic.counts.parserErrors ===
       executions.filter((execution) => execution.error).length &&
     diagnostic.counts.emptyReports ===

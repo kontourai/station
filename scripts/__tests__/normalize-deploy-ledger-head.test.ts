@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  GENERATED_LEDGER_SUBJECT,
   isGeneratedDeployLedgerCommit,
   main,
   normalizeDeployLedgerHead,
@@ -86,6 +87,39 @@ describe('deploy-ledger head normalization', () => {
         '',
       ),
     ).toBe(C_SHA);
+  });
+
+  it.each([
+    'docs(ledger): record nightly-android 0.1.11-nightly.2442.5 from run 34252063142',
+    'docs(ledger): record nightly-desktop 0.1.11-nightly.2442.5 from run 34252063142',
+  ])(
+    "peels the cohort record job's canonical subject: %s (#1802)",
+    (subject) => {
+      expect(GENERATED_LEDGER_SUBJECT.test(subject)).toBe(true);
+      expect(
+        normalizeDeployLedgerHead(
+          L_SHA,
+          graph({ [L_SHA]: generatedLedgerCommit(C_SHA, { subject }) }),
+        ),
+      ).toBe(C_SHA);
+    },
+  );
+
+  it.each([
+    // The shape the cohort wrote before #1802: no `from run` suffix and a
+    // word the contract does not allow. Real history (f29d11af8, c8068daae)
+    // carries it and never peels; the fix is at the writer, not here.
+    'docs(ledger): record finalized nightly-desktop 0.1.11-nightly.2442.5',
+    'docs(ledger): record finalized nightly-android 0.1.11-nightly.2442.5 from run 34252063142',
+    'docs(ledger): record nightly-desktop 0.1.11-nightly.2442.5',
+  ])('refuses a subject outside the contract: %s', (subject) => {
+    expect(GENERATED_LEDGER_SUBJECT.test(subject)).toBe(false);
+    expect(
+      normalizeDeployLedgerHead(
+        L_SHA,
+        graph({ [L_SHA]: generatedLedgerCommit(C_SHA, { subject }) }),
+      ),
+    ).toBe(L_SHA);
   });
 
   it('does not suppress an arbitrary docs-only commit', () => {
