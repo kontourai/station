@@ -1,5 +1,8 @@
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
-import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
+import type {
+  ProjectInvitationPreview,
+  ProjectMembershipScope,
+} from '@kontourai/station-contracts/project-membership';
 import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod/v3';
@@ -19,6 +22,7 @@ export function createDeploymentAuthenticationRoutes(
     token: string,
     environment: unknown,
   ) => Promise<ProjectMembershipScope>,
+  previewInvitation?: (token: string) => Promise<ProjectInvitationPreview>,
 ) {
   const app = new Hono();
   const attempts = new RuntimeAuthFailureLimiter({ maxFailures: 120 });
@@ -75,16 +79,23 @@ export function createDeploymentAuthenticationRoutes(
       },
     });
   });
-  app.post('/accept-invitation', async (c) => {
-    if (!acceptInvitation)
+  const invitationOperation = async (
+    c: Context,
+    operation?: (
+      token: string,
+    ) => Promise<
+      | ProjectInvitationPreview
+      | { scope: ProjectMembershipScope; grantsDeviceAccess: false }
+    >,
+  ) => {
+    if (!operation)
       return c.json({ error: { code: 'project_sharing_unavailable' } }, 501);
     try {
       const body = z
         .object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) })
         .strict()
         .parse(await c.req.json());
-      const scope = await acceptInvitation(c.req.raw, body.token, c.env);
-      return c.json({ data: { scope, grantsDeviceAccess: false } });
+      return c.json({ data: await operation(body.token) });
     } catch (error) {
       if (error instanceof z.ZodError || error instanceof SyntaxError)
         return c.json({ error: { code: 'invalid_invitation_request' } }, 400);
@@ -99,7 +110,21 @@ export function createDeploymentAuthenticationRoutes(
         );
       return c.json({ error: { code: 'project_access_unavailable' } }, 503);
     }
-  });
+  };
+  app.post('/invitation-preview', (c) =>
+    invitationOperation(c, previewInvitation),
+  );
+  app.post('/accept-invitation', (c) =>
+    invitationOperation(
+      c,
+      acceptInvitation
+        ? async (token) => ({
+            scope: await acceptInvitation(c.req.raw, token, c.env),
+            grantsDeviceAccess: false,
+          })
+        : undefined,
+    ),
+  );
   const forward = (c: Context) => {
     // The mounted route path is stripped only at its fixed, Station-owned base.
     const path = new URL(c.req.url).pathname.slice(

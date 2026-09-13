@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  clearAccountEntryContinuation,
   INVITATION_STATE_KEY,
   readAccountEntryContinuation,
 } from '../account-entry-continuation';
@@ -12,6 +13,18 @@ afterEach(() => {
 });
 
 describe('account entry continuation', () => {
+  test('an older completion cannot clear a newer invitation', () => {
+    sessionStorage.setItem(
+      INVITATION_STATE_KEY,
+      JSON.stringify({ token: 'b'.repeat(43), until: Date.now() + 3600_000 }),
+    );
+    clearAccountEntryContinuation('a'.repeat(43));
+    expect(
+      JSON.parse(sessionStorage.getItem(INVITATION_STATE_KEY)!),
+    ).toMatchObject({ token: 'b'.repeat(43) });
+    clearAccountEntryContinuation('b'.repeat(43));
+    expect(sessionStorage.getItem(INVITATION_STATE_KEY)).toBeNull();
+  });
   test('removes the invitation from the visible URL and retains a bounded tab continuation', () => {
     const token = 'a'.repeat(43);
     window.history.replaceState(null, '', `/account/join#invitation=${token}`);
