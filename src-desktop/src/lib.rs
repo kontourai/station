@@ -13936,7 +13936,7 @@ mod tests {
         ] {
             let encoded = crate::windows_path_trust::base64_utf8(&target.to_string_lossy());
             let script = format!(
-                r#"$ErrorActionPreference='Stop'; $p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{encoded}')); $acl=Get-Acl -LiteralPath $p; $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new('S-1-1-0'),[Security.AccessControl.FileSystemRights]::Read,[Security.AccessControl.AccessControlType]::Allow)); Set-Acl -LiteralPath $p -AclObject $acl"#,
+                r#"$ErrorActionPreference='Stop'; $p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{encoded}')); $directory=[IO.Directory]::Exists($p); $acl=if($directory){{[IO.Directory]::GetAccessControl($p)}}else{{[IO.File]::GetAccessControl($p)}}; $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new('S-1-1-0'),[Security.AccessControl.FileSystemRights]::Read,[Security.AccessControl.AccessControlType]::Allow)); if($directory){{[IO.Directory]::SetAccessControl($p,$acl)}}else{{[IO.File]::SetAccessControl($p,$acl)}}"#,
             );
             let output =
                 std::process::Command::new(crate::windows_path_trust::powershell_path().unwrap())

@@ -244,7 +244,7 @@ mod tests {
             "foreach($r in @($acl.Access)){[void]$acl.RemoveAccessRuleAll($r)}; $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,[Security.AccessControl.FileSystemRights]::Modify,[Security.AccessControl.AccessControlType]::Allow))",
             "$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,[Security.AccessControl.FileSystemRights]::Read,[Security.AccessControl.AccessControlType]::Deny))",
         ] {
-            let program = format!("$ErrorActionPreference='Stop'; $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User; $p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{encoded}')); $acl=Get-Acl -LiteralPath $p; {mutation}; Set-Acl -LiteralPath $p -AclObject $acl");
+            let program = format!("$ErrorActionPreference='Stop'; $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User; $p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{encoded}')); $acl=[IO.File]::GetAccessControl($p); {mutation}; [IO.File]::SetAccessControl($p,$acl)");
             let output = std::process::Command::new(super::powershell_path().unwrap())
                 .args(super::encoded_powershell_command(&program)).creation_flags(0x08000000).output().unwrap();
             assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
