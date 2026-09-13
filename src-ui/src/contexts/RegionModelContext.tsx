@@ -24,11 +24,13 @@ import {
   DOCK_REGION_IDS,
   type DockRegionId,
   dockMirrorDiff,
+  moveRegionPanes as moveRegionPanesInArrangement,
   placeSurface as placeSurfaceInArrangement,
   REGION_SURFACE_REGISTRY,
   type RegionArrangement,
   type RegionId,
   type RegionState,
+  removeRegionPane,
   revealSurface,
   seedRegionArrangementFromDock,
   selectRegionPane,
@@ -90,6 +92,19 @@ interface RegionModelValue {
    * no visibility; a surface the region does not hold is ignored.
    */
   selectPane(regionId: RegionId, surfaceId: string): void;
+  /**
+   * Close a pane's tab (#2046 2b, `removeRegionPane`): the surface leaves the
+   * region and is placed nowhere; the region keeps its other panes. A
+   * surface the region does not hold is ignored.
+   */
+  removePane(regionId: RegionId, surfaceId: string): void;
+  /**
+   * Move a dock region's whole pane set — tab order and selection — into
+   * another dock region (#2046 2b, `moveRegionPanes`): the region bar's
+   * placement control. The destination is shown and becomes the last shown
+   * region.
+   */
+  moveRegionPanes(from: DockRegionId, to: DockRegionId): void;
   /**
    * The surface's toggle — its chord, its row in the folded Regions menu, its
    * dock control's show/hide half. Decided once here, by the pure
@@ -318,6 +333,24 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     regionsRef.current = next;
     setRegions(next);
   }, []);
+
+  const removePane = useCallback((regionId: RegionId, surfaceId: string) => {
+    const next = removeRegionPane(regionsRef.current, regionId, surfaceId);
+    if (next === regionsRef.current) return;
+    regionsRef.current = next;
+    setRegions(next);
+  }, []);
+
+  const moveRegionPanes = useCallback(
+    (from: DockRegionId, to: DockRegionId) => {
+      const next = moveRegionPanesInArrangement(regionsRef.current, from, to);
+      if (next === regionsRef.current) return;
+      regionsRef.current = next;
+      setLastShownRegion(to);
+      setRegions(next);
+    },
+    [],
+  );
 
   const showSurface = useCallback(
     (surfaceId: string, intent?: SurfaceIntent) => {
@@ -622,6 +655,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       placeSurface,
       showSurface,
       selectPane,
+      removePane,
+      moveRegionPanes,
       toggleSurface,
       surfaceIntents,
       consumeSurfaceIntent,
@@ -635,6 +670,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       placeSurface,
       showSurface,
       selectPane,
+      removePane,
+      moveRegionPanes,
       toggleSurface,
       surfaceIntents,
       consumeSurfaceIntent,

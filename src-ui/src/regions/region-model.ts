@@ -200,15 +200,19 @@ export function syncRegionArrangementFromDock(
     return updateRegion(next, currentChatRegion, { visible: isDockOpen });
   }
 
-  const freeRegion = (['bottom', 'left', 'right'] as const).find((id) =>
-    regionIsEmpty(next[id]),
+  // Chat is in no region (#2046 2b: its tab was closed, which unplaces it).
+  // Navigation saying the dock is CLOSED asks for nothing — an unplaced Chat
+  // is not shown — so the arrangement stands; re-placing it hidden here would
+  // undo the close on the next navigation change. `dock=open` (a
+  // `focusSession` reveal, a deep link) places it the way `revealSurface`
+  // would: into the first free dock region, else joining the requested one.
+  if (!isDockOpen) return next;
+  return placeSurface(
+    next,
+    'chat',
+    firstFreeDockRegion(next, placement) ?? placement,
+    true,
   );
-  return freeRegion
-    ? updateRegion(next, freeRegion, {
-        visible: isDockOpen,
-        occupant: 'chat',
-      })
-    : next;
 }
 
 /**
@@ -278,18 +282,31 @@ export function placeSurface(
     maximized: false,
   });
   if (!previousRegion) return next;
-  // Take the surface out of the region it left. A region left with other
-  // panes keeps them and its visibility; when the pane leaving was the
-  // selected one, the pane at its position (or the last) is selected, the
-  // way closing a tab selects its neighbour. An emptied dock region hides
-  // (and a hide clears its maximize); an emptied `main` stays visible — the
-  // outlet treats a null occupant as Home.
-  const previous = next[previousRegion];
+  return withoutRegionPane(next, previousRegion, surfaceId);
+}
+
+/**
+ * Take `surfaceId` out of `regionId`'s panes. A region left with other panes
+ * keeps them and its visibility; when the pane leaving was the selected one,
+ * the pane at its position (or the last) is selected, the way closing a tab
+ * selects its neighbour. An emptied dock region hides (and a hide clears its
+ * maximize); an emptied `main` stays visible — the outlet treats a null
+ * occupant as Home. Shared by `placeSurface` (the region a surface leaves)
+ * and `removeRegionPane` (a closed tab), so the two cannot select different
+ * neighbours.
+ */
+function withoutRegionPane(
+  arrangement: RegionArrangement,
+  regionId: RegionId,
+  surfaceId: string,
+): RegionArrangement {
+  const previous = arrangement[regionId];
   const index = previous.panes.indexOf(surfaceId);
+  if (index === -1) return arrangement;
   const panes = previous.panes.filter((pane) => pane !== surfaceId);
   return updateRegion(
-    next,
-    previousRegion,
+    arrangement,
+    regionId,
     panes.length
       ? {
           panes,
@@ -301,10 +318,78 @@ export function placeSurface(
       : {
           panes,
           occupant: null,
-          visible: previousRegion === 'main',
+          visible: regionId === 'main',
           maximized: false,
         },
   );
+}
+
+/**
+ * Close a pane's tab (#2046 2b): `surfaceId` leaves `regionId` and becomes
+ * the occupant of NO region — unplaced, the state `main`'s displacement
+ * already produces (#928 C2a) — rather than hidden in place. Hiding is what
+ * the region's visibility toggle does and it hides every pane of the region;
+ * a closed tab is one pane leaving while the others stay on screen. An
+ * unplaced surface reads as "show" to its chord, its toolbar row and
+ * `showSurface`, each of which places it afresh (`revealSurface`: its
+ * previous region when free, else its default), so a closed Chat comes back
+ * with ⌘D. The region keeps its other panes and selects the closed pane's
+ * neighbour (`withoutRegionPane`); a surface the region does not hold is
+ * ignored and the arrangement returned unchanged.
+ */
+export function removeRegionPane(
+  arrangement: RegionArrangement,
+  regionId: RegionId,
+  surfaceId: string,
+): RegionArrangement {
+  return withoutRegionPane(arrangement, regionId, surfaceId);
+}
+
+/**
+ * Move every pane of dock region `from` into dock region `to` (#2046 2b: the
+ * region bar's placement control moves the REGION — its tab order and its
+ * selection go with it — where the pre-2b header moved the one surface it
+ * belonged to). The panes join `to` after any it already holds, in `from`'s
+ * order, and `from`'s selected pane is selected there; `to` is shown, and
+ * both ends come out restored, the same rule `placeSurface` applies to a
+ * relocation (#1385). A pane that does not declare `to` (`surfaceMayOccupy`)
+ * stays behind, so `from` is emptied — and hides — only when everything
+ * moved. The same region, or an empty `from`, is returned unchanged.
+ */
+export function moveRegionPanes(
+  arrangement: RegionArrangement,
+  from: DockRegionId,
+  to: DockRegionId,
+): RegionArrangement {
+  if (from === to) return arrangement;
+  const source = arrangement[from];
+  if (regionIsEmpty(source)) return arrangement;
+  const target = arrangement[to];
+  const moving = source.panes.filter(
+    (pane) => !target.panes.includes(pane) && surfaceMayOccupy(pane, to),
+  );
+  const staying = source.panes.filter((pane) => !moving.includes(pane));
+  if (moving.length === 0) return arrangement;
+  const movedSelected =
+    source.occupant !== null && moving.includes(source.occupant);
+  let next = updateRegion(arrangement, to, {
+    panes: [...target.panes, ...moving],
+    occupant: movedSelected ? source.occupant : target.occupant,
+    visible: true,
+    maximized: false,
+  });
+  next = updateRegion(
+    next,
+    from,
+    staying.length
+      ? {
+          panes: staying,
+          occupant: movedSelected ? staying[0] : source.occupant,
+          maximized: false,
+        }
+      : { panes: [], occupant: null, visible: false, maximized: false },
+  );
+  return next;
 }
 
 /**
@@ -497,6 +582,12 @@ export function dockMirrorDiff(
     : false;
   if (placement && next[placement].visible !== previousVisible)
     result.visible = next[placement].visible;
+  // Chat in no region (#2046 2b: its tab closed) is Chat not showing, and
+  // navigation must say so — `focusSession`'s `setDockState(true, …)` is a
+  // CHANGE only against a closed mirror, and that change is what re-places
+  // Chat (`syncRegionArrangementFromDock`). Emitted once, on the leave.
+  if (!placement && previousPlacement && previousVisible)
+    result.visible = false;
   if (
     placement &&
     next[placement].visible &&

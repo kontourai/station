@@ -6,11 +6,13 @@ import {
   dockMirrorDiff,
   firstFreeDockRegion,
   foldedDockRegion,
+  moveRegionPanes,
   occupiedDockRegion,
   occupiedRegion,
   placeSurface,
   REGION_IDS,
   REGION_SURFACE_REGISTRY,
+  removeRegionPane,
   revealSurface,
   seedRegionArrangementFromDock,
   selectRegionPane,
@@ -1071,5 +1073,142 @@ describe('region model', () => {
     const after = updateRegion(before, 'right', { size: 517 });
 
     expect(dockMirrorDiff(before, after)).toEqual({});
+  });
+
+  // #2046 2b: the tab strip's close and the region bar's placement.
+  describe('closing a tab and moving a region', () => {
+    const both = updateRegion(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'bottom'),
+      'bottom',
+      { visible: true },
+    );
+
+    test('removeRegionPane unplaces the pane and selects its neighbour; the last pane empties and hides the region', () => {
+      expect(both.bottom).toMatchObject({
+        panes: ['chat', 'activity'],
+        occupant: 'activity',
+      });
+      // The selected pane closes: its neighbour is selected, the region
+      // stays visible, and the closed surface is in NO region.
+      const closed = removeRegionPane(both, 'bottom', 'activity');
+      expect(closed.bottom).toMatchObject({
+        panes: ['chat'],
+        occupant: 'chat',
+        visible: true,
+      });
+      expect(occupiedRegion(closed, 'activity')).toBeUndefined();
+      // Unplaced reads as "show" to its toggle, and the show places it
+      // afresh — the way back from a closed tab.
+      expect(
+        toggleSurface(closed, 'activity', 'right', {
+          lastShownRegion: null,
+          bottomOnly: false,
+        }),
+      ).toEqual({ kind: 'show' });
+      expect(revealSurface(closed, 'activity', 'right').region).toBe('right');
+
+      // A pane behind the selected one closes: the selection stays.
+      const behind = removeRegionPane(both, 'bottom', 'chat');
+      expect(behind.bottom).toMatchObject({
+        panes: ['activity'],
+        occupant: 'activity',
+      });
+
+      // The last pane: the region empties and hides.
+      const emptied = removeRegionPane(behind, 'bottom', 'activity');
+      expect(emptied.bottom).toMatchObject({
+        panes: [],
+        occupant: null,
+        visible: false,
+      });
+      // A surface the region does not hold: unchanged, by reference.
+      expect(removeRegionPane(both, 'right', 'chat')).toBe(both);
+    });
+
+    test('moveRegionPanes carries the whole pane set, its order and its selection, and empties the source', () => {
+      const moved = moveRegionPanes(both, 'bottom', 'right');
+      expect(moved.right).toMatchObject({
+        panes: ['chat', 'activity'],
+        occupant: 'activity',
+        visible: true,
+        maximized: false,
+      });
+      expect(moved.bottom).toMatchObject({
+        panes: [],
+        occupant: null,
+        visible: false,
+      });
+      // Chat's mirror sees the move as Chat's placement.
+      expect(dockMirrorDiff(both, moved)).toEqual({
+        placement: 'right',
+        size: { right: 400 },
+      });
+      // Into a region already holding a pane: the moved panes join after
+      // it, the moved selection wins, and both ends come out restored.
+      const bottomMax = updateRegion(both, 'bottom', { maximized: true });
+      const withLeft = updateRegion(bottomMax, 'left', {
+        panes: ['fixture'],
+        occupant: 'fixture',
+        visible: false,
+      });
+      const joined = moveRegionPanes(withLeft, 'bottom', 'left');
+      expect(joined.left).toMatchObject({
+        panes: ['fixture', 'chat', 'activity'],
+        occupant: 'activity',
+        visible: true,
+        maximized: false,
+      });
+      expect(joined.bottom.maximized).toBe(false);
+      // The same region, or an empty source: unchanged, by reference.
+      expect(moveRegionPanes(both, 'bottom', 'bottom')).toBe(both);
+      expect(moveRegionPanes(both, 'left', 'right')).toBe(both);
+    });
+
+    test('a closed Chat tab closes the navigation mirror, and a closed dock does not re-place it', () => {
+      const closed = removeRegionPane(both, 'bottom', 'chat');
+      // Chat left a VISIBLE region for no region: navigation must read the
+      // dock as closed, so a later `setDockState(true)` is a change.
+      expect(dockMirrorDiff(both, closed)).toEqual({ visible: false });
+      // Chat leaving a hidden region says nothing new.
+      const hiddenBoth = updateRegion(both, 'bottom', { visible: false });
+      expect(
+        dockMirrorDiff(
+          hiddenBoth,
+          removeRegionPane(hiddenBoth, 'bottom', 'chat'),
+        ),
+      ).toEqual({});
+
+      // The inbound sync with the dock closed leaves an unplaced Chat alone
+      // (re-placing it hidden would undo the close on the next navigation
+      // change)…
+      const settings = { chatDockHeight: 320, chatDockWidth: 400 };
+      expect(
+        syncRegionArrangementFromDock(closed, settings, false, 'bottom'),
+      ).toBe(closed);
+      // …and with the dock OPEN places it the way a reveal would: the first
+      // free dock region, else joining the requested one.
+      const reopened = syncRegionArrangementFromDock(
+        closed,
+        settings,
+        true,
+        'bottom',
+      );
+      expect(reopened.right).toMatchObject({
+        panes: ['chat'],
+        occupant: 'chat',
+        visible: true,
+      });
+      const noFree = updateRegion(
+        updateRegion(closed, 'right', {
+          panes: ['fixture'],
+          occupant: 'fixture',
+        }),
+        'left',
+        { panes: ['other'], occupant: 'other' },
+      );
+      expect(
+        syncRegionArrangementFromDock(noFree, settings, true, 'bottom').bottom,
+      ).toMatchObject({ panes: ['activity', 'chat'], occupant: 'chat' });
+    });
   });
 });
