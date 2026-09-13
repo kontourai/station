@@ -147,7 +147,7 @@ export const DEVICE_CODE_MAX_LIVE_LOGINS = 4;
 const DEVICE_CODE_RECORD_RETENTION_MS = 10 * 60_000;
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: terminal escape sequences are exactly what this strips
-const ANSI_PATTERN = /\[[0-?]*[ -/]*[@-~]|[@-Z\\-_]/g;
+const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-Z\\-_]/g;
 
 /**
  * A short, human-transcribable approval code: RFC 8628's user code, as both
