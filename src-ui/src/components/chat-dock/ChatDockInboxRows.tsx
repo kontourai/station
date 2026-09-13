@@ -1,4 +1,11 @@
-import { useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
@@ -29,6 +36,9 @@ import './ChatDockInboxPanel.css';
  * mobile portaled sheet (`MobileTaskSwitcher`). Only the chrome stays
  * host-owned — panel scroll/footer vs sheet portal, focus trap, sticky
  * header, and visual-viewport sizing (the #1051 fixes live in the sheet).
+ *
+ * The row's metadata hover card (`ChatInboxHoverCard`) is part of the shared
+ * anatomy: hover/focus opens it on either host, touch pointers never do.
  *
  * The `chat-dock-inbox__*` class family is the single styling source; the
  * sheet host wraps the list in `.chat-dock-inbox--touch`, which converts the
@@ -90,6 +100,69 @@ export function inboxRowIconAgent(
   if (!agents || !item.agentSlug) return null;
   return agents.find((agent) => agent.slug === item.agentSlug) ?? null;
 }
+
+/**
+ * The row's metadata hover card (`ChatInboxHoverCard`), lazily chunk-loaded
+ * on first open so the dock's eager bundle never carries the card's data
+ * imports. Hover opens it after the same delay `GitTooltip` uses; focus
+ * opens it immediately, which is the keyboard path. Touch/pen pointers
+ * never open it — the sheet's touch chrome has no hover to be honest about.
+ *
+ * State is per-row on purpose: only the hovered row mounts a card, so two
+ * cards can never be open at once without a coordinator.
+ */
+const INBOX_HOVER_OPEN_DELAY_MS = 300;
+
+function useInboxRowHoverCard() {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const timeout = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(
+    () => () => {
+      clearTimeout(timeout.current);
+    },
+    [],
+  );
+  const open = useCallback((node: HTMLElement) => {
+    clearTimeout(timeout.current);
+    setAnchor(node);
+  }, []);
+  const close = useCallback(() => {
+    clearTimeout(timeout.current);
+    setAnchor(null);
+  }, []);
+  const onPointerEnter = useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
+      clearTimeout(timeout.current);
+      const target = event.currentTarget;
+      timeout.current = setTimeout(
+        () => setAnchor(target),
+        INBOX_HOVER_OPEN_DELAY_MS,
+      );
+    },
+    [],
+  );
+  const onPointerLeave = close;
+  // focusin/focusout bubble, so a focus move BETWEEN the row's own controls
+  // (open button → snooze) must not close the card: only a focus leaving the
+  // row entirely does.
+  const onFocus = useCallback(
+    (event: React.FocusEvent<HTMLElement>) => {
+      open(event.currentTarget);
+    },
+    [open],
+  );
+  const onBlur = useCallback(
+    (event: React.FocusEvent<HTMLElement>) => {
+      if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+      close();
+    },
+    [close],
+  );
+  return { anchor, open, close, onPointerEnter, onPointerLeave, onFocus, onBlur };
+}
+
+const LazyChatInboxHoverCard = lazy(() => import('./ChatInboxHoverCard'));
 
 function SnoozeActions({
   item,
@@ -202,6 +275,15 @@ interface InboxRowProps {
    * `memo()` wrap compares it shallowly.
    */
   agents?: readonly SessionIconAgent[];
+  /**
+   * The row's local session working directory, resolved by the host from its
+   * session records for the row's `orchestrationThreadId`. Absent (chat-only
+   * rows, hosts without session data, remote rows) renders no git section in
+   * the hover card — never a guess. Deliberately NOT a `HomeWorkItem` field:
+   * that type is the workspace-home projection surface, and widening it
+   * invalidates every existing grant.
+   */
+  cwd?: string;
 }
 
 export function InboxRow({
@@ -214,8 +296,10 @@ export function InboxRow({
   onSnoozeWake,
   onCloseChat,
   agents,
+  cwd,
 }: InboxRowProps) {
   const iconAgent = inboxRowIconAgent(item, agents);
+  const hover = useInboxRowHoverCard();
   // The icon COLUMN is reserved for the whole list, not per row: a host that
   // supplies a catalog is a host that shows agent icons, and rows whose
   // agent does not resolve must still line their text up with the rows whose
@@ -227,6 +311,10 @@ export function InboxRow({
     <div
       className={`chat-dock-inbox__row${isCurrent ? ' is-current' : ''}`}
       data-testid="inbox-row"
+      onPointerEnter={hover.onPointerEnter}
+      onPointerLeave={hover.onPointerLeave}
+      onFocus={hover.onFocus}
+      onBlur={hover.onBlur}
     >
       <button
         type="button"
@@ -327,6 +415,17 @@ export function InboxRow({
           )}
         </div>
       )}
+      {hover.anchor && (
+        <Suspense fallback={null}>
+          <LazyChatInboxHoverCard
+            item={item}
+            now={now}
+            cwd={cwd}
+            anchor={hover.anchor}
+            onClose={hover.close}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -355,6 +454,14 @@ export interface InboxGroupListProps {
   onCloseChat?: InboxRowProps['onCloseChat'];
   /** Live agent catalog for the rows' leading icons — see `InboxRowProps`. */
   agents?: InboxRowProps['agents'];
+  /**
+   * Local session working directories by thread id — the host's session
+   * records, passed once. Rows resolve their own `cwd` from their
+   * `orchestrationThreadId`; a row that resolves nothing gets no git
+   * section (see `InboxRowProps.cwd`). Must be referentially stable across
+   * renders for the same reason `agents` is.
+   */
+  cwdByThreadId?: ReadonlyMap<string, string>;
 }
 
 export function InboxGroupList({
@@ -369,6 +476,7 @@ export function InboxGroupList({
   onSnoozeWake,
   onCloseChat,
   agents,
+  cwdByThreadId,
 }: InboxGroupListProps) {
   return (
     <>
@@ -430,12 +538,17 @@ export function InboxGroupList({
                   isOpenChat={Boolean(
                     item.chatSessionId && openChatIds.has(item.chatSessionId),
                   )}
-                  now={now}
-                  onActivate={onActivate}
-                  onSnoozeWake={onSnoozeWake}
-                  onCloseChat={onCloseChat}
-                  agents={agents}
-                />
+                   now={now}
+                   onActivate={onActivate}
+                   onSnoozeWake={onSnoozeWake}
+                   onCloseChat={onCloseChat}
+                   agents={agents}
+                   cwd={
+                     cwdByThreadId?.get(
+                       item.orchestrationThreadId ?? item.chatSessionId ?? '',
+                     ) ?? undefined
+                   }
+                 />
               ))}
           </section>
         );

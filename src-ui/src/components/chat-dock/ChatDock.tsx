@@ -502,6 +502,20 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     status: orchestrationSessionsStatus,
     refetch: refetchOrchestrationSessions,
   } = useOrchestrationSessionsQuery();
+  // The inbox rows' hover cards resolve git facts against the row's local
+  // session working directory (only local sessions have one worth answering:
+  // `useOrchestrationSessionsQuery` never carries remote environments'
+  // sessions, so a remote row cannot resolve a cwd here at all). Referentially
+  // stable for the panel's `memo()` wrap, like `openInboxChatSessionIds`.
+  const cwdByThreadId = useMemo(
+    () =>
+      new Map(
+        orchestrationSessions
+          .filter((session) => !!session.cwd)
+          .map((session) => [session.threadId, session.cwd as string]),
+      ),
+    [orchestrationSessions],
+  );
   const openChatItems = useOpenChats(agents, orchestrationSessions);
   const inventory = useConversationInventoryQuery();
   const acknowledgeConversation = useAcknowledgeConversationMutation();
@@ -2231,6 +2245,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         exiting: inboxPresence.exiting,
                         items: taskItems,
                         agents,
+                        cwdByThreadId,
                         activeChatSessionId:
                           importedSessionId ?? activeSessionId,
                         openChatSessionIds: openInboxChatSessionIds,
