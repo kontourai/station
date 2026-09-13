@@ -24,7 +24,9 @@ test('development config, native identity, and regenerated Info.plist register o
     config.identifier.slice('io.kontourai.station.dev.'.length),
   );
   const scheme = `station-dev-${suffix}`;
-  expect(config.plugins['deep-link'].mobile).toEqual([{ scheme }]);
+  expect(config.plugins['deep-link'].mobile).toEqual([
+    { scheme: [scheme], appLink: false },
+  ]);
   const plist = readFileSync(
     `src-desktop/${config.bundle.iOS.infoPlist}`,
     'utf8',

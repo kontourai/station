@@ -6,6 +6,8 @@
     "iOS": { "infoPlist": "Info.ios-dev.plist" }
   },
   "plugins": {
-    "deep-link": { "mobile": [{ "scheme": "station-dev-instance" }] }
+    "deep-link": {
+      "mobile": [{ "scheme": ["station-dev-instance"], "appLink": false }]
+    }
   }
 }

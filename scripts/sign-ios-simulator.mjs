@@ -73,7 +73,7 @@ export function signIosSimulator(
     throw new Error(
       'Simulator archive does not match the development configuration.',
     );
-  const expectedSchemes = config.plugins['deep-link'].mobile.map(
+  const expectedSchemes = config.plugins['deep-link'].mobile.flatMap(
     (item) => item.scheme,
   );
   const schemes = info.CFBundleURLTypes?.flatMap(
