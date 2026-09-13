@@ -2416,3 +2416,20 @@ types, and `MobileDeviceRequestError` with an HTTP status. Both use the existing
 capture refuses mismatched targets and returns a timestamped PNG, not stream
 readiness or foreground-app provenance. See [Mobile device inspection](../guides/mobile-device-workspace.md)
 for host setup, access scopes, limits, and the web/desktop integration boundary.
+
+## Experimental encrypted-channel transport consumer
+
+`@kontourai/station-connect/application-channel` supplies a Fetch-shaped adapter
+for the SDK's existing host credential/transport resolver. It accepts a fixed
+Station origin, a connection lifetime signal, an owner-provided authenticated
+channel opener and a current endpoint-trust check. It does not resolve a person,
+issue a Device grant or sign an account continuation. The existing
+`ApplicationSessionClient` owns those proof headers, and the Station still
+verifies them.
+
+This adapter is opt-in and currently qualified by the
+[local SDK framing fixture](../guides/local-collaboration-lab.md#sdk-application-framing-over-the-encrypted-channel),
+with explicit request/frame bounds and a separate full-runtime acceptance gap.
+Connection owners must retain ordinary SDK authority guards, bound channel
+counts/lifetimes, and close the transport when its endpoint trust retires. An
+uncertain dispatched mutation must not be retried automatically.
