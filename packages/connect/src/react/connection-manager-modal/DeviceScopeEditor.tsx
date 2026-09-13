@@ -2,6 +2,7 @@ import {
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
+  PAIRING_SCOPE_ENGINE_LOGIN,
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_PRESETS,
   type PairingScope,
@@ -111,14 +112,10 @@ const ELEVATED_GRANTS: ReadonlyArray<{
     elevated: true,
   },
   {
-    // A literal, like `inference:invoke` above. This package compiles with tsc
-    // and depends on the published contracts package, so importing a constant
-    // newer than that release would fail at load time for any consumer still
-    // resolving the older contracts.
-    token: 'engine:login' as PairingScope,
+    token: PAIRING_SCOPE_ENGINE_LOGIN,
     label: 'Start engine sign-in',
     detail:
-      "Can start an engine's own device-code sign-in on this Station and see the code to approve. The engine keeps the resulting credential; Station never holds it.",
+      "Can start an engine's own device-code sign-in on this Station and see the code to approve. The engine stores the account in this Station's credential profile, so agents using that profile run as it; Station never sees the token.",
     elevated: true,
   },
 ];

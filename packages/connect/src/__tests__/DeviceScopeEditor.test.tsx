@@ -19,8 +19,8 @@ import {
  *
  * The model these pin: the base ladder is ORCHESTRATION access (with a real
  * "none" rung), and everything that composes freely with it — fleet
- * inference, home transfer, and the two operator-promotion grants — is a
- * capability. An
+ * inference, home transfer, and the operator-promotion grants (pairing
+ * approval, consent, engine sign-in) — is a capability. An
  * earlier version modelled inference as a base rung, which made valid MIXED
  * scopes unrepresentable and silently dropped tokens on Apply.
  */
