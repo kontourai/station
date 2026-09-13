@@ -189,11 +189,17 @@ With that port configured, a new append obtains admission inside the local
 write transaction after checking local authority, existing proposal identity,
 source seal and capacity. Local authority is checked again after admission.
 Committed and duplicate outcomes settle only from the validated durable receipt;
-a lost settlement acknowledgement returns unavailable and can be retried after
-reopening the room. Duplicate replay does not request new admission. Calls are
-bounded to one second, below the worker's five-second budget. A timeout never
-clears an unresolved controller record. Unmanaged rooms retain their original
-write path.
+a lost settlement acknowledgement returns unavailable, and the same intent can
+be retried on the open room, where it replays through the duplicate path.
+Duplicate replay does not request new admission. Each port call is bounded to
+one second. The admission phase as a whole (the local authority check, the port
+call and the repeated authority check) runs while the worker holds the write
+transaction and shares the worker's pre-existing five-second request budget;
+the authority checks are not separately bounded. A timeout never clears an
+unresolved controller record. Rooms without the port write through the same
+transaction without requesting admission. For every room, with or without the
+port, a commit-time local authority check that is unavailable now returns
+unavailable rather than denied.
 
 This is private integration infrastructure: production runtime composition and
 Agent launch paths are not yet connected to the controller journal. Integrators must verify a durable local effect
