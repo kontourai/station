@@ -312,17 +312,19 @@ describe('native platform boundary', () => {
     expect(unlistened).toBe(true);
   });
 
-  test('subscribes to only the three closed tray destinations and unlistens exactly once', async () => {
+  test('subscribes to only the five closed tray destinations and unlistens exactly once', async () => {
     // #963 moved tray navigation from direct payload delivery to a native
     // replay the renderer must take and acknowledge, so the payload no longer
     // carries the destination. The closed set is now enforced against the
-    // REPLAY, which is what this case pins: a fourth destination outside the
-    // set is refused rather than delivered.
+    // REPLAY, which is what this case pins: a destination outside the set —
+    // including an arbitrary path — is refused rather than delivered.
     const replays: unknown[] = [
       { id: 1, destination: 'connections' },
       { id: 2, destination: 'pairedDevices' },
       { id: 3, destination: 'coreUpdates' },
-      { id: 4, destination: '/settings' },
+      { id: 4, destination: 'desktopUpdates' },
+      { id: 5, destination: 'serverUpdates' },
+      { id: 6, destination: '/settings' },
     ];
     let eventName = '';
     let wake: TauriEventHandler<unknown> | undefined;
@@ -350,7 +352,12 @@ describe('native platform boundary', () => {
 
     // Subscription drains first; each later click wakes the same drain path.
     await vi.waitFor(() => expect(received).toEqual(['connections']));
-    for (const expected of ['pairedDevices', 'coreUpdates']) {
+    for (const expected of [
+      'pairedDevices',
+      'coreUpdates',
+      'desktopUpdates',
+      'serverUpdates',
+    ]) {
       wake?.({ payload: null });
       await vi.waitFor(() => expect(received).toContain(expected));
     }
@@ -362,7 +369,13 @@ describe('native platform boundary', () => {
     subscription.dispose();
     subscription.dispose();
     expect(eventName).toBe('station://tray-navigation');
-    expect(received).toEqual(['connections', 'pairedDevices', 'coreUpdates']);
+    expect(received).toEqual([
+      'connections',
+      'pairedDevices',
+      'coreUpdates',
+      'desktopUpdates',
+      'serverUpdates',
+    ]);
     expect(unlisten).toHaveBeenCalledOnce();
   });
 

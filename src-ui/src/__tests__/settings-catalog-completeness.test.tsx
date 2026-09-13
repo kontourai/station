@@ -736,6 +736,40 @@ describe('settings catalog completeness', () => {
     ).toBe(true);
   });
 
+  test('the tray update destinations land on their catalog highlights through the real navigation store', async () => {
+    isDesktop = true;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: () => ({ matches: true }),
+    });
+    Element.prototype.scrollIntoView = vi.fn();
+    const { trayNavigationTarget } = await import('../lib/trayNavigation');
+    const { navigationStore } = await import('../contexts/navigation-store');
+    const { container } = await renderSettings();
+
+    // The tray emits closed destinations, not URLs. Drive the canonical
+    // store exactly as DeferredAppOverlays' navigate does and require both
+    // update rows to resolve: the desktop row is desktop-only, so this also
+    // proves the desktop-platform mock shape renders it.
+    for (const [destination, id] of [
+      ['desktopUpdates', 'desktop-app-updates'],
+      ['serverUpdates', 'core-app-updates'],
+    ] as const) {
+      const target = trayNavigationTarget(destination);
+      expect(target?.pathname).toBe('/settings');
+      navigationStore.navigate(target!.pathname, target!.params);
+      await waitFor(() =>
+        expect(document.activeElement).toBe(container.querySelector(`#${id}`)),
+      );
+      expect(
+        container
+          .querySelector(`#${id}`)
+          ?.classList.contains('settings__highlight-pulse'),
+      ).toBe(true);
+    }
+    await waitFor(() => expect(window.location.search).toBe('?view=system'));
+  });
+
   test('a desktop-only row highlight outside the desktop shell strips itself with the honest reason', async () => {
     Element.prototype.scrollIntoView = vi.fn();
     window.history.replaceState(
