@@ -602,14 +602,13 @@ export function createAppHomeRoutes(deps?: {
   /**
    * Device-code enrolment (start / read / cancel).
    *
-   * These three leaves are the one place Station spawns an engine's login.
-   * That is a deliberate reversal of the "returned, never spawned" rule the
-   * route above still follows, and the reasoning is recorded in
-   * `credential-enrolment.ts`'s module docblock: a login the user pressed a
-   * button to start is not a silent spawn, and device code is the only
-   * mechanism that can be finished on the device the user is holding. Station
-   * still registers no OAuth client, still chooses no flow, and still never
-   * sees a token — the CLI authenticates as itself and writes its own store.
+   * These three leaves start the engine's own login, on explicit request,
+   * with the device-code flag its help output was observed to offer. Device
+   * code is the mechanism that can be finished on a device other than the
+   * host: the CLI prints a URL and a code, the user approves wherever they
+   * are, and the CLI writes its own credential store. The route above still
+   * returns a command rather than running it, because a browser-based login
+   * would open its browser on the host.
    *
    * `POST` is single-flight per profile: a second start while one is live
    * returns the SAME login rather than a second process.
