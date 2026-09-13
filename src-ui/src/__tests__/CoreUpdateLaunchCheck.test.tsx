@@ -10,12 +10,23 @@ let desktopStatus:
       installKind?: 'source-checkout' | 'desktop-bundle' | 'unknown';
       applyMethod?: 'git-pull' | 'reinstall' | 'self-update';
       behind?: number;
+      ahead?: number;
+      currentHash?: string;
+      remoteHash?: string;
       channel?: string;
     }
   | undefined;
 const { useCoreUpdateStatusQuery } = vi.hoisted(() => ({
   useCoreUpdateStatusQuery: vi.fn(),
 }));
+
+/** The scoped third argument the launch check now forwards (update-ux PR4). */
+const SCOPE_ARGS = [
+  expect.objectContaining({
+    scopeKey: 'scope:station.test\u0000no-boot',
+    assertCurrent: expect.any(Function),
+  }),
+];
 const { useConnectedServerUpdateContext } = vi.hoisted(() => ({
   useConnectedServerUpdateContext: vi.fn(),
 }));
@@ -35,9 +46,13 @@ const connectedServerContext = vi.hoisted(() => ({
   },
 }));
 vi.mock('@kontourai/station-sdk', () => ({ useCoreUpdateStatusQuery }));
-vi.mock('../hooks/useConnectedServerUpdateContext', () => ({
-  useConnectedServerUpdateContext,
-}));
+vi.mock('../hooks/useConnectedServerUpdateContext', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../hooks/useConnectedServerUpdateContext')
+    >();
+  return { ...actual, useConnectedServerUpdateContext };
+});
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isMobile, isDesktop }),
 }));
@@ -111,12 +126,13 @@ describe('CoreUpdateLaunchCheck', () => {
       installKind: 'source-checkout',
       applyMethod: 'git-pull',
       behind: 3,
+      ahead: 0,
     };
 
     renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
 
     expect((await screen.findByRole('status')).textContent).toContain(
-      'Station update available — 3 commits behind.',
+      'Server checkout is 3 commits behind its configured upstream.',
     );
     expect(
       screen.getByRole('link', { name: 'Review update' }).getAttribute('href'),
@@ -124,26 +140,63 @@ describe('CoreUpdateLaunchCheck', () => {
     expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
       'http://station.test',
       expect.objectContaining({ enabled: true }),
+      ...SCOPE_ARGS,
     );
   });
 
-  test('does not advertise a stamped-bundle channel difference as a released desktop update', async () => {
+  test('a SHA-inequality stamp difference can never produce a desktop release banner', async () => {
     desktopStatus = {
       updateAvailable: true,
       installKind: 'desktop-bundle',
       applyMethod: 'reinstall',
       channel: 'nightly',
+      currentHash: 'aaaaaaa',
+      remoteHash: 'bbbbbbb',
     };
 
     renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
 
     // The query itself runs (source-checkout facts are still legitimate for
-    // this shell), but a build-stamp difference is not a release claim until
-    // PR4 renders explicit comparison facts.
+    // this shell), but a build-stamp difference is a build-stamp fact: it
+    // does not establish that an installable release exists.
     expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
       'http://station.test',
       expect.objectContaining({ enabled: true }),
+      ...SCOPE_ARGS,
     );
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
+  });
+
+  test('a source checkout behind shows the exact source wording and the server-card link, with singular commits', async () => {
+    desktopStatus = {
+      updateAvailable: true,
+      installKind: 'source-checkout',
+      applyMethod: 'git-pull',
+      behind: 1,
+      ahead: 0,
+    };
+
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+
+    expect((await screen.findByRole('status')).textContent).toContain(
+      'Server checkout is 1 commit behind its configured upstream.',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Review update' }).getAttribute('href'),
+    ).toBe('/settings?view=system&highlight=core-app-updates');
+  });
+
+  test('a diverged checkout is manual work, not an offered update', async () => {
+    desktopStatus = {
+      updateAvailable: true,
+      installKind: 'source-checkout',
+      applyMethod: 'git-pull',
+      behind: 3,
+      ahead: 2,
+    };
+
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
     expect(bannerStore.getSnapshot()).toHaveLength(0);
   });
@@ -169,6 +222,7 @@ describe('CoreUpdateLaunchCheck', () => {
     expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
       'http://station.test',
       expect.objectContaining({ enabled: false }),
+      ...SCOPE_ARGS,
     );
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
     expect(bannerStore.getSnapshot()).toHaveLength(0);
@@ -194,6 +248,7 @@ describe('CoreUpdateLaunchCheck', () => {
     expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
       'http://station.test',
       expect.objectContaining({ enabled: false }),
+      ...SCOPE_ARGS,
     );
     expect(bannerStore.getSnapshot()).toHaveLength(0);
   });
@@ -210,6 +265,7 @@ describe('CoreUpdateLaunchCheck', () => {
     expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
       'http://station.test',
       expect.objectContaining({ enabled: false }),
+      ...SCOPE_ARGS,
     );
   });
 
@@ -223,6 +279,7 @@ describe('CoreUpdateLaunchCheck', () => {
     expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
       'http://station.test',
       expect.objectContaining({ enabled: false }),
+      ...SCOPE_ARGS,
     );
 
     // Browser shell: identity stays off, while the server-facts source query
@@ -245,6 +302,7 @@ describe('CoreUpdateLaunchCheck', () => {
     expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
       'http://station.test',
       expect.objectContaining({ enabled: true }),
+      ...SCOPE_ARGS,
     );
   });
 
@@ -261,6 +319,7 @@ describe('CoreUpdateLaunchCheck', () => {
     expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
       'http://station.test',
       expect.objectContaining({ enabled: false }),
+      ...SCOPE_ARGS,
     );
     expect(bannerStore.getSnapshot()).toHaveLength(0);
   });

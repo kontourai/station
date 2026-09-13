@@ -12,7 +12,13 @@ import type { StationProfileStore } from '@kontourai/station-contracts';
  * profile projection, exactly as production composes it.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConnectedServerUpdateContext } from '../hooks/useConnectedServerUpdateContext';
 import { NativeStationProfileStorage } from '../platform/native/stationProfileStorage';
@@ -195,6 +201,7 @@ let identityQueue: Array<{
   signal: AbortSignal | null;
 }>;
 let rendererCalls: string[];
+let coreUpdateBody: () => unknown = () => ({ updateAvailable: false });
 
 function identityResponseFor(over: Record<string, unknown> = {}) {
   return {
@@ -222,6 +229,7 @@ async function renderHarness({
   identityFailure: failureStatus = undefined,
   queueIdentity = false,
   profileOverrides = {},
+  coreUpdate = () => ({ updateAvailable: false }),
 }: {
   store?: StationProfileStore;
   bundledStatus?: BundledServerStatus | null;
@@ -230,6 +238,7 @@ async function renderHarness({
   identityFailure?: number;
   queueIdentity?: boolean;
   profileOverrides?: Partial<typeof DESKTOP_PROFILE>;
+  coreUpdate?: () => unknown;
 } = {}) {
   identityBody = identity;
   identityMode = queueIdentity ? 'queue' : 'auto';
@@ -238,6 +247,7 @@ async function renderHarness({
   transportCalls = [];
   identityQueue = [];
   rendererCalls = [];
+  coreUpdateBody = coreUpdate;
   Object.assign(profile, DESKTOP_PROFILE, profileOverrides);
   native.bundledStatus = bundledStatus;
   native.repository = new NativeStationProfileStorage({
@@ -352,9 +362,9 @@ describe('ConnectedServerUpdates', () => {
         const url = String(input);
         transportCalls.push(url);
         if (url.includes('/api/system/core-update')) {
-          // The mounted CoreUpdateCheck's own source query; nothing here
-          // asserts its body beyond a parseable, current status.
-          return Response.json({ updateAvailable: false });
+          // The mounted CoreUpdateCheck's own source query; the fixture body
+          // is writer-shaped per test.
+          return Response.json(coreUpdateBody());
         }
         if (!url.includes('/api/system/identity')) {
           throw new Error(`unexpected native transport call: ${url}`);
@@ -924,5 +934,194 @@ describe('ConnectedServerUpdates', () => {
         .getAll()
         .some((entry) => entry.queryKey[1] === scopeA1),
     ).toBe(false);
+  });
+
+  describe('source-check facts and the advanced source disclosure (update-ux PR4)', () => {
+    /** The exact shape a PR2-era server writes for a missing stamp. */
+    const MISSING_STAMP_BODY = () => ({
+      installKind: 'unknown',
+      updateAvailable: false,
+      message:
+        'This install carries no update provenance, so updates cannot be checked from here.',
+      technicalDetail:
+        'no git checkout and no station-nightly-source.json build stamp near /bundle/dist-server',
+      provenanceIssue: 'missing',
+      serverIdentity: null,
+      selfUpdateUnavailableReason: null,
+    });
+
+    /** A production writer's stamp, then corrupted — the invalid-stamp shape. */
+    const INVALID_STAMP_BODY = () => ({
+      installKind: 'unknown',
+      updateAvailable: false,
+      message: 'This server’s update provenance is invalid.',
+      technicalDetail: 'a build stamp exists at /b/x but is malformed',
+      provenanceIssue: 'invalid-stamp',
+      serverIdentity: null,
+      selfUpdateUnavailableReason: null,
+    });
+
+    it('a missing stamp and an invalid stamp render distinct refusal copy on the mounted card', async () => {
+      await renderHarness({
+        store: PAIRED_STORE,
+        profileOverrides: { supervisesBundledServer: false },
+        identity: () =>
+          identityResponseFor({
+            instanceId: 'remote-instance',
+            bootId: 'remote-boot',
+            devicePresentation: {
+              deviceClass: 'paired',
+              hostName: 'Office host',
+            },
+          }),
+        coreUpdate: MISSING_STAMP_BODY,
+      });
+      await waitConnected();
+      await waitIdentitySettled();
+      expect(
+        await screen.findByText(
+          'This server install has no usable update provenance. Station cannot determine whether a server update is available. Use the installation method that manages this server.',
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText(
+          'This server’s update provenance is invalid. Station cannot determine whether a server update is available. Use the installation method that manages this server.',
+        ),
+      ).toBeNull();
+    });
+
+    it('the built-in default suppresses even a corrupted-stamp source result', async () => {
+      await renderHarness({
+        bundledStatus: sidecarStatus(),
+        coreUpdate: INVALID_STAMP_BODY,
+      });
+      await waitConnected();
+      expect(
+        await screen.findByText(
+          'Built-in server — updated with this desktop app.',
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText(/provenance/i)).toBeNull();
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(
+        transportCalls.filter((url) => url.includes('/api/system/core-update')),
+      ).toHaveLength(0);
+    });
+
+    it('opening the advanced disclosure requests source details only then, and shows the invalid-stamp copy with its technical detail', async () => {
+      await renderHarness({
+        bundledStatus: sidecarStatus(),
+        coreUpdate: INVALID_STAMP_BODY,
+      });
+      await waitConnected();
+      expect(
+        await screen.findByText(
+          'Built-in server — updated with this desktop app.',
+        ),
+      ).toBeTruthy();
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      // Closed disclosure: no source request has been made at all.
+      expect(
+        transportCalls.filter((url) => url.includes('/api/system/core-update')),
+      ).toHaveLength(0);
+
+      fireEvent.click(screen.getByText('Source installation details'));
+
+      await waitFor(() =>
+        expect(
+          transportCalls.some((url) => url.includes('/api/system/core-update')),
+        ).toBe(true),
+      );
+      // P4/P5, rendered inside the disclosure from the poisoned result.
+      expect(
+        await screen.findByText(
+          'This server’s update provenance is invalid. Station cannot determine whether a server update is available. Use the installation method that manages this server.',
+        ),
+      ).toBeTruthy();
+      // The affected host is named from the correlated identity response.
+      expect(
+        screen.getByText(/Affected server: desktop-sidecar-stable/),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByText('Technical details'));
+      expect(
+        screen.getByText('a build stamp exists at /b/x but is malformed'),
+      ).toBeTruthy();
+    });
+
+    it('the disclosure offers the bundle-source rebuild only to an eligible, identity-matching install', async () => {
+      await renderHarness({
+        bundledStatus: sidecarStatus(),
+        coreUpdate: () => ({
+          installKind: 'desktop-bundle',
+          applyMethod: 'self-update',
+          channel: 'nightly',
+          currentHash: 'aaaaaaa',
+          remoteHash: 'bbbbbbb',
+          updateAvailable: true,
+          serverIdentity: {
+            instanceId: 'desktop-sidecar-stable',
+            bootId: 'boot-1',
+            sha: SHA,
+          },
+          provenanceIssue: null,
+          technicalDetail: null,
+          selfUpdateUnavailableReason: null,
+        }),
+      });
+      await waitConnected();
+      expect(
+        await screen.findByText(
+          'Built-in server — updated with this desktop app.',
+        ),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByText('Source installation details'));
+      expect(
+        await screen.findByText(
+          'Rebuild and reinstall desktop app from source…',
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(
+          'This build differs from the configured source ref. This check does not establish whether an installable release is available.',
+        ),
+      ).toBeTruthy();
+    });
+
+    it('an ineligible install shows the verified refusal reason instead of the rebuild action', async () => {
+      await renderHarness({
+        bundledStatus: sidecarStatus(),
+        coreUpdate: () => ({
+          installKind: 'desktop-bundle',
+          applyMethod: 'self-update',
+          channel: 'nightly',
+          currentHash: 'aaaaaaa',
+          remoteHash: 'bbbbbbb',
+          updateAvailable: true,
+          serverIdentity: {
+            instanceId: 'desktop-sidecar-stable',
+            bootId: 'boot-1',
+            sha: SHA,
+          },
+          provenanceIssue: null,
+          technicalDetail: null,
+          selfUpdateUnavailableReason: 'source checkout is not verified',
+        }),
+      });
+      await waitConnected();
+      expect(
+        await screen.findByText(
+          'Built-in server — updated with this desktop app.',
+        ),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByText('Source installation details'));
+      expect(
+        await screen.findByText(
+          'Source update cannot be applied here: source checkout is not verified.',
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText('Rebuild and reinstall desktop app from source…'),
+      ).toBeNull();
+    });
   });
 });
