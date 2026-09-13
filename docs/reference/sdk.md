@@ -826,6 +826,104 @@ Fetches live ACP slash-command autocomplete options.
 
 ---
 
+## Portable Project identity
+
+The React-free `@kontourai/station-sdk/project-identity` entry point exports
+`getProjectIdentity`, `prepareProjectIdentity`, and `attachProject`. Each takes
+an explicit Station API base and `ClientRequestOptions`; pass the authenticated
+request scope and credential options for that particular Station. Identity reads
+use the Project family's read permission; preparation and attachment require its
+operate permission. These operations do not grant remote access or membership.
+
+`getProjectIdentity(apiBase, slug, options)` reads an existing portable identity
+without writing. A legacy Project with no identity returns an error until
+`prepareProjectIdentity` explicitly derives one. The local Project ID remains
+unchanged. A `ProjectPortableIdentity` snapshot contains the portable ID,
+repository references and timestamps; it contains no checkout path or grant.
+
+```ts
+import {
+  attachProject,
+  prepareProjectIdentity,
+} from '@kontourai/station-sdk/project-identity';
+import type { ClientRequestOptions } from '@kontourai/station-sdk/client';
+
+async function attachProjectOnStation(
+  source: { apiBase: string; slug: string; options: ClientRequestOptions },
+  destination: { apiBase: string; options: ClientRequestOptions },
+) {
+  const { identity } = await prepareProjectIdentity(
+    source.apiBase, source.slug, source.options,
+  );
+  return attachProject(destination.apiBase, {
+    name: 'Example',
+    slug: 'example',
+    workingDirectory: '/srv/projects/example',
+    identity,
+  }, destination.options);
+}
+```
+
+The destination directory must already exist on that Station and satisfy the
+primary resource. Attachment does not clone, synchronize files, copy credentials
+or move a room's authority. The server publishes the new local Project and its
+identity together; the result distinguishes `created` from an unchanged
+`existing` attachment. Its association contains the shared `portableProjectId`
+and the receiver-owned `localProjectId`/`localProjectSlug`.
+
+A same-slug Project with different identity or configuration is a conflict; a
+matching Git remote never merges existing Projects or private history. Changed
+configuration needs its existing explicit update/bind operation. Multiple local
+names are not an automatic execution-selection policy. A timed-out write may
+have committed: inspect the requested local association before deciding on a new
+operation. A read cannot recreate a deleted Project.
+
+The SDK validates the returned version, resource shape and association and
+captures attachment input before asynchronous work. An incompatible or older
+server produces an error, never an ordinary local-creation fallback. The full
+portable target picker, shared-member authorization and cross-machine execution
+admission remain separate consumers of this identity API.
+
+## Project access administration and account entry
+
+`@kontourai/station-sdk/project-access-client` exports `getProjectAccess` and
+`changeProjectAccess`. Both take the selected Station API base, local Project
+slug and explicit `ClientRequestOptions`. Reads return the acting principal,
+exact Station/local/portable Project scope, members and invitations. Commands
+enable sharing, invite or revoke invitations, change a member, or transfer
+ownership. Capture the returned scope and member revision for writes; do not
+reconstruct authority from a slug or email. Enabling requires the expected local
+Project ID and current Station operator authority.
+
+`@kontourai/station-sdk/project-access` also exports `useProjectAccess(slug,
+requestScope)`. Its query keys include the selected Station and authority, and
+its mutations capture that scope before asynchronous work. Do not persist
+administrative projections or invitation tokens in application caches. Project
+administration grants no Station settings, device or compute authority.
+
+`@kontourai/station-sdk/account-authentication` exports
+`getAccountAuthentication(apiBase)`, `getAccountSession(apiBase)` and
+`runAccountOperation(apiBase, endpoint, body, invitation?)`. These use the fixed
+account namespace with account cookies and explicitly omit ambient operator
+bearers. Use the account page's own browser origin. A session read returns
+`null` for an unauthenticated account; an unavailable or incompatible service
+remains an error. Choose operations from the provider descriptor; the optional
+invitation argument is registration eligibility, not authentication or membership.
+The [deployment authentication guide](../guides/deployment-authentication.md)
+defines the provider interface and separate invitation-acceptance operation.
+
+An invitation command's `email: null` explicitly creates a single-use link for
+any authenticated holder. A string restricts acceptance to that verified email;
+do not silently omit or clear a requested restriction. The descriptor may select
+`username-password` login so local account registration needs no email service.
+
+`@kontourai/station-sdk/local-accounts` exports `getLocalAccounts(apiBase,
+options)` and `changeLocalAccount(apiBase, accountId, action, options)` for current
+Station operators. Actions disable/enable sign-in, revoke sessions or create a
+one-time recovery link. Capture the selected Station request scope, require
+explicit confirmation and keep recovery links out of persisted caches. External
+providers return a guidance projection instead of local account controls.
+
 ## Plugin Query Hooks
 
 React Query wrappers for plugin management. Use these instead of raw `useQuery`.

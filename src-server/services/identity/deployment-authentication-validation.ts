@@ -60,6 +60,20 @@ const descriptorSchema = z
     version: z.literal(DEPLOYMENT_AUTHENTICATION_VERSION),
     issuer: text(2048),
     displayName: text(256),
+    login: z
+      .discriminatedUnion('kind', [
+        z
+          .object({
+            kind: z.enum(['email-password', 'username-password']),
+            signInPath: z.string(),
+            signUpPath: z.string().optional(),
+          })
+          .strict(),
+        z
+          .object({ kind: z.literal('redirect'), startPath: z.string() })
+          .strict(),
+      ])
+      .optional(),
     sessionCookies: z
       .array(
         z
@@ -78,7 +92,11 @@ const descriptorSchema = z
           .object({
             path: text(256)
               .refine((value) => /^\/[a-z0-9][a-z0-9/_-]*$/.test(value))
-              .refine((path) => path !== '/session' && !path.includes('//')),
+              .refine(
+                (path) =>
+                  !['/session', '/accept-invitation'].includes(path) &&
+                  !path.includes('//'),
+              ),
             methods: z
               .array(z.enum(['GET', 'POST']))
               .min(1)
@@ -112,6 +130,7 @@ export function readDeploymentAuthenticationDescriptor(
     displayName: provider.displayName,
     endpoints: provider.endpoints,
     sessionCookies: provider.sessionCookies,
+    login: provider.login,
   });
   if (
     !parsed.success ||
@@ -121,6 +140,25 @@ export function readDeploymentAuthenticationDescriptor(
     throw new Error('Unsupported deployment authentication provider contract.');
   }
   const descriptor = parsed.data;
+  const login = descriptor.login;
+  const declared = (path: string, method: 'GET' | 'POST', operation: string) =>
+    descriptor.endpoints.some(
+      (endpoint) =>
+        endpoint.path === path &&
+        endpoint.methods.includes(method) &&
+        endpoint.operation === operation,
+    );
+  if (
+    login?.kind === 'redirect' &&
+    !declared(login.startPath, 'GET', 'begin-login')
+  )
+    throw new Error('Browser login endpoint is not declared.');
+  if (
+    (login?.kind === 'email-password' || login?.kind === 'username-password') &&
+    (!declared(login.signInPath, 'POST', 'begin-login') ||
+      (login.signUpPath && !declared(login.signUpPath, 'POST', 'register')))
+  )
+    throw new Error('Browser password endpoints are not declared.');
   const issuer = new URL(descriptor.issuer);
   if (
     issuer.username ||

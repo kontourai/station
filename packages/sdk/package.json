@@ -39,6 +39,10 @@
     "./error-state": "./src/components/ErrorState.tsx",
     "./app-config": "./src/app-config.ts",
     "./developer-runtime": "./src/query-domains/developerRuntime.ts",
+    "./project-identity": "./src/client/project-identity.ts",
+    "./project-access": "./src/project-access.ts",
+    "./project-access-client": "./src/client/project-access.ts",
+    "./account-authentication": "./src/client/account-authentication.ts",
     "./project-task-rooms": "./src/query-domains/projectTaskRooms.ts",
     "./live-activity": "./src/live-activity.ts",
     "./action-operations": "./src/action-operations.ts",
@@ -49,7 +53,8 @@
     "./quote-source": "./src/client/quote-source.ts",
     "./pull-request-review": "./src/client/pull-request-review.ts",
     "./conversation-pull-request-links": "./src/client/conversation-pull-request-links.ts",
-    "./input-reply": "./src/client/input-reply.ts"
+    "./input-reply": "./src/client/input-reply.ts",
+    "./local-accounts": "./src/client/local-accounts.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",

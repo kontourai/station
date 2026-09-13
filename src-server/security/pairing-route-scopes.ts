@@ -239,6 +239,47 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  {
+    id: '/api/operator/accounts:operator-read',
+    method: 'GET',
+    prefix: '/api/operator/accounts',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/accounts/:accountId/actions:operator-action',
+    method: 'POST',
+    prefix: '/api/operator/accounts/:accountId/actions',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/projects/:slug/access:member-administration-read',
+    method: 'GET',
+    prefix: '/api/projects/:slug/access',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  ...[
+    '/api/projects/:slug/access/enable',
+    '/api/projects/:slug/access/invitations',
+    '/api/projects/:slug/access/invitations/:invitationId/revoke',
+    '/api/projects/:slug/access/members',
+    '/api/projects/:slug/access/transfer',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:member-administration`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+
   ...[
     '/api/home-authority/channels/:channelId/bindings',
     '/api/home-authority/channels/:channelId/bindings/:controllerDeviceId/inspect',
@@ -2295,6 +2336,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/orchestration/sessions/read-model' },
     { method: 'GET', path: '/api/projects' },
     { method: 'POST', path: '/api/projects' },
+    // Portable identity reads do not mutate; preparation and attachment retain
+    // the Project family's operate scope and grant no peer/member authority.
+    { method: 'GET', path: '/api/projects/:slug/identity' },
+    { method: 'POST', path: '/api/projects/:slug/identity/prepare' },
+    { method: 'POST', path: '/api/projects/attach' },
     // Reorders this Station's own project list and returns it. A mutation
     // within its family and no more sensitive than the rest of it: it reads
     // and writes nothing beyond the local ordering, and discloses no peer or

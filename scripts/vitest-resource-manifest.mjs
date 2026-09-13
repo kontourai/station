@@ -117,6 +117,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Launches real descendant trees and verifies signal/early-exit cleanup.
+  'scripts/__tests__/dev-desktop-process.test.ts',
   // Real framework signal handlers run in bounded, isolated child processes.
   'src-server/runtime/bootstrap/__tests__/runtime-signal-ownership.test.ts',
   // Owns bounded TLS endpoints, OpenSSL children and TCP relay processes.
@@ -146,6 +148,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Hono routes composed with the real Task and transcript worker owners.
   'src-server/services/search/__tests__/runtime-search.test.ts',
   'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
+  // Creates and observes real Git checkouts through the portable identity owner.
+  'src-server/services/projects/__tests__/project-identity-service.test.ts',
   // Owns real CPU-blocking worker_threads and canonical TaskGraph file fixtures.
   'src-server/services/search/__tests__/isolated-task-search.test.ts',
   // Type-only child_process import; the macro's spawn boundary is simulated

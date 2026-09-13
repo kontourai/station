@@ -8,10 +8,54 @@ requests cannot register an authentication authority.
 This interface supplies account login operations and a verified person. Device
 grants, Project membership, private Session access and execution offers remain
 independent. An account cookie alone cannot load the personal Project catalog.
-Station-local account enrollment, email delivery, invitation management and
-the operator/Project-admin UI are tracked under #1981 and #488. Configurable
-OIDC is #1983; the official hosted identity contract is #489. This adapter
-boundary does not claim those user journeys complete.
+Built-in username/password accounts and manually shared invitation links work
+without a mail service. The implemented administration and membership boundaries
+are described below; complete shared-content/device admission remains under #488.
+Configurable OIDC is #1983; the official hosted identity contract is #489.
+Optional provider integration does not make hosted identity a core prerequisite.
+
+## Enable local accounts without email
+
+Choose this built-in configuration instead of an authentication module:
+
+```sh
+export STATION_PROJECT_SHARING=1
+export STATION_LOCAL_ACCOUNTS=1
+export STATION_AUTHENTICATION_ORIGIN=https://station.example.com
+export ALLOWED_ORIGINS=https://station.example.com
+```
+
+Leave `STATION_AUTHENTICATION_MODULE` unset. HTTP loopback origins are supported
+for local development. This configuration does not provision public reachability
+or TLS. Solo local operation still requires neither accounts nor a provider when
+these opt-ins are absent.
+
+The operator enables sharing in a Project's **People and access** section,
+chooses a role and creates a single-use invitation link. Share the link manually;
+no email is sent. The default link may be accepted by any authenticated person
+who possesses it, once, before its expiry. Cancel a pending link from that same
+section. An optional email restriction requires provider-verified contact
+evidence; a local username alone cannot satisfy it.
+
+The recipient opens the link, creates a username/password account, signs in and
+explicitly accepts the invitation. Local accounts use Better Auth's maintained
+username/password and session implementation. Passwords never enter Project
+records or SDK responses. Account subjects are opaque persisted IDs, qualified by
+this Station's issuer. Better Auth's required internal email column uses a
+reserved `.invalid` address; it is never emitted as contact or identity evidence.
+
+**Settings → Station configuration → Accounts and sign-in** lets an operator
+disable sign-in, revoke account sessions or create a password-recovery link.
+Confirm the person's identity before sharing that recovery link privately. The
+link expires after 20 minutes and can reset the password once; reset revokes old
+account sessions. These controls do not delete Project membership or device
+grants. A Project administrator does not inherit Station operator authority.
+
+The authentication secret and account store live in private SQLite files beneath
+this Station home's `authentication` directory. Restart preserves existing
+account identity and unexpired cookies. Another Station identity or a missing
+authority secret for an existing account store is refused. Preserve that whole
+private directory under the Station home backup/recovery procedure.
 
 ## Configure a deployment
 
@@ -62,7 +106,12 @@ and implement idempotent resource closure.
 - `endpoints` lists exact relative paths, GET/POST methods and their login,
   callback, registration, contact-verification, recovery, refresh or revocation
   purpose. An explicit POST logout operation is required. The core `/session`
-  path is reserved.
+  and `/accept-invitation` paths are reserved.
+- Optional `login` selects the standard browser entry: `email-password` or
+  `username-password` names
+  declared POST `signInPath` and optional `signUpPath` operations; `redirect`
+  names a declared GET `startPath`. Station validates their operation purposes.
+  Omit this capability when the adapter owns its own entry interface.
 - `authenticate(request)` receives copied headers, URL, method and an abort
   signal, with no destination request body. It checks current account/session
   state and returns `absent`, `invalid`, `unavailable` or `authenticated`.
@@ -101,6 +150,15 @@ issuer, expiry and verified contacts. It exposes neither a session token nor
 the private session record ID. With no adapter configured, these routes return
 501. A missing/invalid account returns 401; provider unavailability returns 503.
 
+`POST /api/account-auth/accept-invitation` accepts a single invitation token
+using the current authenticated account. Email-restricted invitations additionally
+require matching verified contact evidence. When Project
+sharing is configured, its membership owner checks the current Project and
+inviter authority, then consumes the invitation with the membership write.
+The response explicitly reports `grantsDeviceAccess: false`. Without that
+membership owner the route returns 501. Account authentication and invitation
+possession alone cannot approve a device or access private Project content.
+
 Other GET/POST paths under this namespace reach only declared adapter operations.
 Unknown operations return 404. Bodies are limited to 32 KiB, responses use
 `Cache-Control: no-store`, and the owner reserves a bounded per-peer attempt
@@ -118,6 +176,30 @@ continue to require their existing credential and authorization. Current
 account identity is carried through the runtime's bounded-body replacement and
 used by its principal-resolution owner. Project sharing still needs the separate
 member/resource authorization implementation.
+
+## Browser invitation entry
+
+`/account/join#invitation=<token>` opens the account entry independently of the
+personal Station provider tree and persisted Project query cache. It uses the
+same browser origin's account service and attaches no operator bearer. Sign-in
+and invitation acceptance are separate user actions. Password registration is
+offered only with an invitation and a declared registration operation; the
+provider still owns registration eligibility and its configured contact policy.
+
+The page removes invitation and password-reset proof from the visible URL.
+Invitation continuation stays in this tab's session storage for at most one hour
+so a provider redirect can return to it. The server's invitation expiry and
+single-use checks remain authoritative. Password-reset proof stays only in the
+open page's memory. An invalid new invitation cannot select a prior invitation
+saved in the tab. `/account/reset#token=<proof>` uses the provider's declared
+recovery operation and returns to sign-in after success.
+
+This entry currently confirms membership; the complete shared-work/device
+admission journey remains under #488. Optional native opening, compatible
+platform downloads and installation continuation are required follow-up
+acceptance under #488 and #497. Their completion requires real browser/native
+evidence and published artifacts; the account page does not establish that an
+app is installed or that a device has been approved.
 
 ## Verify an implementation
 

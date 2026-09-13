@@ -329,6 +329,26 @@
       "entry": "src-server/tools/station-control-delegation.ts :: workingDirectory :: projectPath ??= project.workingDirectory;",
       "category": 4,
       "reason": "Deliberately NOT locally expanded, by design: this value names a directory on a REMOTE Station (target.apiBase), documented at lines 1119-1126 (\"this resolves a project belonging to target.apiBase, which is routinely a remote Station... The remote Station applies its own check when it starts the session\"). Applying local expandTilde()/homedir() here would resolve against the WRONG (local operator's) home directory."
+    },
+    {
+      "entry": "src-server/services/projects/project-identity-service.ts :: workingDirectory :: ...(input.workingDirectory === undefined",
+      "category": 1,
+      "reason": "Presence check when capturing an attachment request; no filesystem access. The following DTO preserves the authored path spelling, and verifyDirectory expands before statSync or the checkout reader."
+    },
+    {
+      "entry": "src-server/services/projects/project-identity-service.ts :: workingDirectory :: : { workingDirectory: input.workingDirectory }),",
+      "category": 2,
+      "reason": "Captures the authored path for persistence and exact unchanged-attachment comparison. ProjectIdentityService.verifyDirectory applies expandTilde then resolve before statSync and readRemotes. The tilde attachment regression verifies the absolute Git-reader input and unchanged stored spelling."
+    },
+    {
+      "entry": "src-server/services/projects/project-identity-service.ts :: workingDirectory :: await this.verifyDirectory(config.workingDirectory, identity);",
+      "category": 2,
+      "reason": "ProjectIdentityService.verifyDirectory expands this input with expandTilde, requires an absolute path, and resolves it before statSync and readRemotes. The tilde attachment regression exercises that actual caller with a real temporary directory."
+    },
+    {
+      "entry": "src-server/services/projects/project-identity-service.ts :: workingDirectory :: project.workingDirectory !== config.workingDirectory",
+      "category": 4,
+      "reason": "Deliberately exact comparison of existing and requested local configuration for unchanged attachment reuse. It does not access the filesystem. Expanding here would silently accept a different authored configuration; the tilde retry regression requires that spelling change to remain a conflict."
     }
   ]
 }
