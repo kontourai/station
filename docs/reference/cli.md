@@ -2762,7 +2762,7 @@ to revoke its binding; existing grants are not silently linked.
 ### Portable Project identity and attachment
 
 Export a Project identity from one enrolled Station and attach it to an existing
-checkout on another. Saved Station profiles supply their existing credentials;
+checkout on another. The CLI uses credentials already stored for each saved Station;
 attachment requires an explicit destination.
 
 ```sh
