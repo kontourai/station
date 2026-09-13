@@ -3,6 +3,7 @@ import {
   type ReactNode,
   type RefObject,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -145,10 +146,10 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
     }
   }, [scrollElement]);
 
-  // The host ref is assigned during the same commit as this adapter. Ask the
-  // virtualizer to measure after that commit so the first paint includes the
-  // initial window rather than an empty spacer.
-  useLayoutEffect(() => {
+  // The parent host ref is attached after child layout effects. Wait until
+  // the commit finishes before enabling the scroll/resize subscriptions;
+  // otherwise the initial null ref permanently leaves the first range frozen.
+  useEffect(() => {
     setScrollReady(scrollElement.current !== null);
     virtualizer.measure();
   }, [scrollElement, virtualizer]);

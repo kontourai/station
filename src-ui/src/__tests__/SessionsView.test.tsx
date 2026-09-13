@@ -139,7 +139,13 @@ vi.mock('@kontourai/station-sdk', () => ({
   createAdoptOrchestrationSessionIntent: () => adoptionIntent,
   getStarterWork: (starterId: string, apiBase?: string) =>
     getStarterWork(starterId, apiBase),
-  useProjectQuery: () => ({ data: undefined }),
+  // Delegation waits for this Project's authoritative routing defaults.
+  useProjectQuery: (slug: string) => ({
+    data: slug === 'station' ? { slug, name: 'Station' } : undefined,
+    isSuccess: slug === 'station',
+    isError: false,
+    refetch: vi.fn(),
+  }),
   // The open-chats refactor (archive#2683) renders shared membership metadata.
   useAgentsQuery: () => ({ data: [], isLoading: false }),
   useOrchestrationSessionsQuery: (config?: unknown) => {
