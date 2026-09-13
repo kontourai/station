@@ -147,21 +147,23 @@ export async function signStationConnectionProof(input: {
   if (!sameEnrollment(binding, trust) || !Number.isSafeInteger(now) || now < 0)
     return refuse();
   const kid = await calculateJwkThumbprint(trust.signingKey, 'sha256');
-  return new SignJWT({ version: 1, binding })
-    .setProtectedHeader({
-      alg: 'ES256',
-      typ: STATION_CONNECTION_PROOF_TYPE,
-      kid,
-    })
-    .setIssuer(`urn:station:${trust.stationId}`)
-    .setAudience(STATION_CONNECTION_PROOF_AUDIENCE)
-    // This is a correlation ID, not a credential or secret challenge. The
-    // independently generated client nonce and exact binding prevent replay.
-    .setJti(randomCorrelationId())
-    .setIssuedAt(now)
-    .setNotBefore(now)
-    .setExpirationTime(now + STATION_CONNECTION_PROOF_LIFETIME_SECONDS)
-    .sign(signingKey);
+  return (
+    new SignJWT({ version: 1, binding })
+      .setProtectedHeader({
+        alg: 'ES256',
+        typ: STATION_CONNECTION_PROOF_TYPE,
+        kid,
+      })
+      .setIssuer(`urn:station:${trust.stationId}`)
+      .setAudience(STATION_CONNECTION_PROOF_AUDIENCE)
+      // This is a correlation ID, not a credential or secret challenge. The
+      // independently generated client nonce and exact binding prevent replay.
+      .setJti(randomCorrelationId())
+      .setIssuedAt(now)
+      .setNotBefore(now)
+      .setExpirationTime(now + STATION_CONNECTION_PROOF_LIFETIME_SECONDS)
+      .sign(signingKey)
+  );
 }
 
 /**
