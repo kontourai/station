@@ -233,8 +233,11 @@ describe('inbox hover card opening (through the real row)', () => {
 
   it('focus opens it immediately and blur closes it', async () => {
     renderRow(workItem());
+    // Focus runs no reveal timer: the card mounts as soon as its chunk
+    // resolves (first open pays the import), with no hover dwell anywhere in
+    // the path — no pointerEnter has happened in this test.
     fireEvent.focus(screen.getByTestId('inbox-row'));
-    expect(screen.getByTestId('inbox-row-hover-card')).toBeTruthy();
+    await screen.findByTestId('inbox-row-hover-card');
     fireEvent.blur(screen.getByTestId('inbox-row'));
     expect(screen.queryByTestId('inbox-row-hover-card')).toBeNull();
   });

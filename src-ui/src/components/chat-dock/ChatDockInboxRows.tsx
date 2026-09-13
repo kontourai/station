@@ -1,12 +1,4 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
@@ -16,6 +8,7 @@ import {
 } from '../home/LifecycleStatusChip';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ReturnGlyph, TimeGlyph } from '../icons/Glyph';
+import { LazyBoundary } from '../LazyBoundary';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -171,7 +164,7 @@ function useInboxRowHoverCard() {
   };
 }
 
-const LazyChatInboxHoverCard = lazy(() => import('./ChatInboxHoverCard'));
+const loadChatInboxHoverCard = () => import('./ChatInboxHoverCard');
 
 function SnoozeActions({
   item,
@@ -428,16 +421,18 @@ export function InboxRow({
         </div>
       )}
       {hover.anchor && (
-        <Suspense fallback={null}>
-          <LazyChatInboxHoverCard
-            item={item}
-            now={now}
-            cwd={cwd}
-            anchor={hover.anchor}
-            onClose={hover.close}
-            id={hoverCardId}
-          />
-        </Suspense>
+        <LazyBoundary
+          load={loadChatInboxHoverCard}
+          pending={null}
+          componentProps={{
+            item,
+            now,
+            cwd,
+            anchor: hover.anchor,
+            onClose: hover.close,
+            id: hoverCardId,
+          }}
+        />
       )}
     </div>
   );
