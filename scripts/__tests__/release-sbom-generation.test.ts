@@ -431,22 +431,25 @@ describe('release SBOM generation', () => {
     expect(lifecycle.purlsByScope).toEqual({
       portable: [
         'pkg:npm/esbuild@0.28.1',
+        'pkg:npm/esbuild@0.28.2',
         'pkg:npm/node-pty@1.1.0',
         'pkg:npm/protobufjs@7.6.5',
       ],
       desktop: [
         'pkg:npm/esbuild@0.28.1',
+        'pkg:npm/esbuild@0.28.2',
         'pkg:npm/node-pty@1.1.0',
         'pkg:npm/protobufjs@7.6.5',
       ],
       mobile: [
         'pkg:npm/esbuild@0.28.1',
+        'pkg:npm/esbuild@0.28.2',
         'pkg:npm/node-pty@1.1.0',
         'pkg:npm/protobufjs@7.6.5',
       ],
-      // #1719: the root bump to 0.28.2 reaches only this unpruned scope. The
-      // production scopes above still carry 0.28.1 because their esbuild is
-      // `packages/shared`'s own dependency, not the root devDependency.
+      // Production includes shared's 0.28.1 and better-auth's locked optional
+      // vitest -> vite -> esbuild 0.28.2 chain. The unpruned container also
+      // retains development-only native dependencies.
       container: [
         'pkg:npm/cpu-features@0.0.10',
         'pkg:npm/esbuild@0.25.12',

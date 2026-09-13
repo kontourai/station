@@ -232,9 +232,9 @@ describe('the nightly workflow records what it ships', () => {
 });
 
 describe('the desktop nightly workflow records what it ships (station#575)', () => {
-  it('records desktop only after the macOS provider receipt and protected final receipt', () => {
+  it('records desktop only after the desktop provider receipts and protected final receipt', () => {
     const publish = nightly.indexOf(
-      'name: Promote all four admitted macOS assets and bind the rolling tag',
+      'name: Upload both desktops, then publish latest.json last',
     );
     const providerReceipt = nightly.indexOf(
       'name: Record only a reported-success macOS provider state',
@@ -243,6 +243,16 @@ describe('the desktop nightly workflow records what it ships (station#575)', () 
     expect(publish).toBeGreaterThanOrEqual(0);
     expect(providerReceipt).toBeGreaterThan(publish);
     expect(ledger).toBeGreaterThan(providerReceipt);
+    expect(
+      stepBlock(nightly, 'Upload both desktops, then publish latest.json last'),
+    ).toContain('node scripts/publish-nightly-desktop.mjs');
+    const provider = stepBlock(
+      nightly,
+      'Record only a reported-success macOS provider state',
+    );
+    expect(provider).toContain('provider-claim macos-claim.json');
+    expect(provider).toContain('provider-claim windows-claim.json');
+    expect(provider).toContain('group-desktop-states');
     const step = stepBlock(nightly, NIGHTLY_DESKTOP_LEDGER_STEP);
     expect(step).toContain(COMMIT_SCRIPT);
     expect(step).toContain(LEDGER_SCRIPT);

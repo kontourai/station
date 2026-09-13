@@ -70,6 +70,11 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
   // initialized concurrently before the opens and must not share an outer
   // Vitest pool with another bootstrap-heavy file.
   'src-server/routes/environments/__tests__/remote-home-transfer-decision.test.ts',
+  // Repeated real cold boots own SQLite homes and search workers. One readiness
+  // case exceeded its unchanged 30s bound in the two-worker pool, while the
+  // entire 18-case file completed in 28s alone. Keep other bootstrap-heavy
+  // Vitest files out of this lifecycle/cleanup measurement.
+  'src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts',
 ]);
 
 export const CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES = Object.freeze([
@@ -572,7 +577,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // One private Node child with exposed GC proves strong lease custody. No
   // shared state or latency assertion; collection is explicitly requested.
   'src-server/services/plugins/__tests__/plugin-composition-custody-gc.test.ts',
-  'src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts',
   // station#2928: retains the durable ConfigLoader/registry adoption seam;
   // production's default CLI detection reaches child_process transitively.
   'src-server/runtime/bootstrap/__tests__/native-engine-adoption.test.ts',

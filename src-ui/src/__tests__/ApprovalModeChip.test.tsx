@@ -50,6 +50,24 @@ function option(name: RegExp) {
 }
 
 describe('ApprovalModeChip', () => {
+  test('an inherited mode keeps Default visible when the engine receipt arrives', () => {
+    const { rerender } = render(
+      <ApprovalModeChip engineConnectionId="codex" onChange={vi.fn()} />,
+    );
+    expect(trigger().textContent).toBe('Default');
+    rerender(
+      <ApprovalModeChip
+        engineConnectionId="codex"
+        lastAppliedApprovalMode="never"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(trigger().textContent).toBe('Default');
+    expect(trigger().getAttribute('title')).toContain(
+      'Never ask (full access)',
+    );
+    expect(trigger().getAttribute('aria-label')).toContain('Default');
+  });
   test('projects producer matrices: ACP is partial while Station is fully bound', () => {
     const { rerender } = render(
       <ApprovalModeChip
@@ -119,7 +137,9 @@ describe('ApprovalModeChip', () => {
     );
 
     expect(
-      screen.getByRole('button', { name: /^Approval mode: Ask first/ }),
+      screen.getByRole('button', {
+        name: /^Approval mode: Default — Ask first/,
+      }),
     ).toBeTruthy();
   });
 
@@ -166,7 +186,7 @@ describe('ApprovalModeChip', () => {
     );
 
     expect(
-      screen.getByRole('button', { name: /^Approval mode: Auto\./ }),
+      screen.getByRole('button', { name: /^Approval mode: Default — Auto\./ }),
     ).toBeTruthy();
     await openSheet();
     expect(option(/^Auto/).getAttribute('aria-checked')).toBe('true');
@@ -187,7 +207,7 @@ describe('ApprovalModeChip', () => {
 
     expect(
       screen.getByRole('button', {
-        name: /^Approval mode: Connection default\./,
+        name: /^Approval mode: Default — Connection default\./,
       }),
     ).toBeTruthy();
     await openSheet();
@@ -607,7 +627,7 @@ describe('ApprovalModeChip', () => {
 
     const chip = screen.getByRole('button', { name: /^Approval mode:/ });
     expect(chip.getAttribute('aria-label')).toContain(
-      'Approval mode: Connection default. Engine approval control.',
+      'Approval mode: Default — Connection default. Engine approval control.',
     );
     expect(
       chip.querySelector('.chat-input__approval-chip-label')?.textContent,

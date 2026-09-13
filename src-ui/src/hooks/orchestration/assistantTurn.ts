@@ -11,6 +11,7 @@ import { buildAssistantTurnContent, upsertTextPart } from './messageParts';
  * frame rather than waiting for the next REST projection.
  */
 interface FinalizedTurnProvenance {
+  createdAt?: string;
   turnId?: string;
   provenance?: unknown;
   answerEligible?: boolean;
@@ -132,11 +133,14 @@ export function finalizeAssistantTurn(
   // chat's `latestChatTimestamp` reduced to 0 for every finalized assistant
   // turn too — the live conversation sorted dead last and a finished chat
   // skipped "Just finished" straight into "Earlier".
+  // Preserve event time across reconnect/replay; playback wall time would
+  // sort archived answers after all of their recorded questions.
+  const completedAt = Date.parse(turnProvenance?.createdAt ?? '');
   const finalizedMessage = {
     role: 'assistant' as const,
     content: committedContent,
     contentParts: committedContentParts,
-    timestamp: Date.now(),
+    timestamp: Number.isFinite(completedAt) ? completedAt : Date.now(),
     // The live terminal path must carry the same row-scoped execution
     // Session identity as the durable projection. Otherwise a conversation
     // that later replaces its active Session would attach this historical

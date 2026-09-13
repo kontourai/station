@@ -9,13 +9,18 @@ import {
   setReplayHistory,
   setReplayHistoryLoader,
 } from './history';
-import { collectReplayObservation, type ReplayObservation } from './observe';
+import {
+  collectReplayObservation,
+  collectReplayScroll,
+  type ReplayObservation,
+} from './observe';
 import {
   type ReplayRenderMeasurement,
   waitForReplayRender,
 } from './render-observation';
 import { isReplayThread } from './replay-registry';
 import { rewriteEventThreadId } from './rewrite';
+import { replayScrollIssue } from './scroll-observation';
 import { type ReplayFrame, replayFrames, type SessionTape } from './tape';
 
 export class SessionTapePlayer {
@@ -33,6 +38,7 @@ export class SessionTapePlayer {
     'unknown';
   private connectionAtMs = 0;
   private measurement?: ReplayRenderMeasurement;
+  private scrollIssue?: import('./observation-types').ReplayIssue;
 
   constructor(
     readonly tape: SessionTape,
@@ -76,6 +82,7 @@ export class SessionTapePlayer {
       previous: this.lastObservation,
       hasMore: getReplayHistory(this.replayId)?.hasMore,
     });
+    if (this.scrollIssue) observation.issues.push(this.scrollIssue);
     const frame = this.frames[this.cursor];
     observation.frame = {
       kind: frame?.kind ?? 'start',
@@ -105,6 +112,7 @@ export class SessionTapePlayer {
     if (this.cursor >= this.eventCount - 1)
       return this.observe(transcriptElement);
     this.cursor += 1;
+    this.scrollIssue = undefined;
     this.measurement = undefined;
     const started = performance.now();
     this.applyCurrent();
@@ -131,6 +139,7 @@ export class SessionTapePlayer {
     );
     const started = performance.now();
     this.refoldTo(clamped);
+    this.scrollIssue = undefined;
     this.foldMs = performance.now() - started;
     return this.notify(transcriptElement);
   }
@@ -320,8 +329,36 @@ export class SessionTapePlayer {
   async stepRendered(
     element: () => HTMLElement | null,
   ): Promise<ReplayObservation> {
-    this.step();
-    return this.observeRendered(element);
+    const container = element();
+    const before = collectReplayScroll(container);
+    const cursor = this.cursor;
+    let readerInput = false;
+    const onInput = () => {
+      readerInput = true;
+    };
+    const doc = container?.ownerDocument;
+    const events = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
+    for (const name of events) doc?.addEventListener(name, onInput, true);
+    try {
+      this.step();
+      const observation = await this.observeRendered(element);
+      if (
+        !readerInput &&
+        element() === container &&
+        this.cursor === cursor + 1 &&
+        observation.performance?.render?.phase === 'observed'
+      ) {
+        const issue = replayScrollIssue(before, observation.scroll);
+        if (issue) {
+          this.scrollIssue = issue;
+          observation.issues.push(issue);
+          observation.delta?.issueCodesAdded.push(issue.code);
+        }
+      }
+      return observation;
+    } finally {
+      for (const name of events) doc?.removeEventListener(name, onInput, true);
+    }
   }
 
   pause(): void {
