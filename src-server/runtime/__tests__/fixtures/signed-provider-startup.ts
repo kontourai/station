@@ -8,12 +8,12 @@ import {
   registerPluginRegistryProvider,
   replacePluginProvidersForSource,
 } from '../../../providers/registries/registry.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
+import { derivePluginConsentBasis } from '../../../services/plugins/plugin-install-consent.js';
 import {
   capturePluginRegistryAcquisition,
   installPluginFromSource,
 } from '../../../services/plugins/plugin-install-transaction.js';
-import { EventStore } from '../../../services/orchestration/event-store.js';
-import { derivePluginConsentBasis } from '../../../services/plugins/plugin-install-consent.js';
 import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
 import { grantPermissions } from '../../../services/plugins/plugin-permissions.js';
 import { capturePluginRuntimeArtifact } from '../../../services/plugins/plugin-runtime-artifact.js';
