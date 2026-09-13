@@ -100,6 +100,10 @@ describe('resolveEstablishedServerKind', () => {
           generation: null,
           bootId: null,
         }),
+        // The identity must answer AS the claimed owner; otherwise sameOwner
+        // fails before the ssh exclusion is ever reached and the test cannot
+        // see it.
+        identity: identity({ instanceId: 'svc-instance-1' }),
         selection: {
           ownerId: 'svc-instance-1',
           selectedAccessIsDirectHttp: true,

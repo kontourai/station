@@ -283,6 +283,21 @@ export function useConnectedServerUpdateContext(
         issuedEvidence.origin,
         signal,
       );
+      // Defense-in-depth post-check (plan correlation step 5). In the current
+      // composition this guard is unreachable-as-stale: every evidence field
+      // it re-evaluates — connectionId, activation epoch, authority
+      // generation, origin and native binding — is part of scopeKey, so any
+      // staleness flips the key and the scope-change effect cancels and
+      // removes the entry before a settle could land. The one currency input
+      // outside the tuple is credentialState, and that divergence is
+      // independently rejected at settle time by the SDK transport's
+      // request-authority boundary before this line could decide anything —
+      // so no current fixture can drive THIS check stale without omitting a
+      // field from the scope tuple, which would weaken the A→B→A isolation
+      // the key exists to provide. Accepted gap: untested as a distinct
+      // behavior; kept so the correlation layer stays correct if scopeKey and
+      // evidence evaluation ever diverge (e.g. a future scope field not
+      // derived from the evidence tuple). (Verifier finding, 2026-09-13.)
       if (!issuedIsCurrent()) throw supersededError();
       return identity;
     },
