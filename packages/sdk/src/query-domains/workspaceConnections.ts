@@ -975,7 +975,8 @@ export interface EnrolmentStatus {
   authState: EnrolmentAuthState;
   detail?: string;
   command: EnrolmentCommand;
-  login: EngineLoginSurface;
+  /** Absent from servers that predate device-code login. */
+  login?: EngineLoginSurface;
 }
 
 /**

@@ -75,7 +75,19 @@ export type DeviceCodeStartResult =
   /** A login was already running for this profile; no second process. */
   | { readonly kind: 'existing'; readonly record: DeviceCodeLoginRecord }
   | { readonly kind: 'unsupported'; readonly reason: string }
-  | { readonly kind: 'busy'; readonly reason: string };
+  | { readonly kind: 'busy'; readonly reason: string }
+  /** Cancelled while Station was still preparing to spawn it; nothing was spawned. */
+  | { readonly kind: 'cancelled'; readonly record: DeviceCodeLoginRecord }
+  /** Could not be started at all; the record carries the reason. */
+  | { readonly kind: 'failed'; readonly record: DeviceCodeLoginRecord }
+  /**
+   * The profile is already signed in. A login would let whoever approves the
+   * code replace that account, and its completion could not be told apart
+   * from the credential that was already there.
+   */
+  | { readonly kind: 'already-signed-in'; readonly reason: string }
+  /** The engine could not say whether the profile is signed in, so that risk cannot be ruled out. */
+  | { readonly kind: 'sign-in-state-unknown'; readonly reason: string };
 
 /** The child-process surface this module uses — narrow so tests can stand it up. */
 export interface DeviceCodeChildProcess {
@@ -146,18 +158,53 @@ export const DEVICE_CODE_MAX_LIVE_LOGINS = 4;
 /** How long a finished record stays readable before it is pruned. */
 const DEVICE_CODE_RECORD_RETENTION_MS = 10 * 60_000;
 
-// biome-ignore lint/suspicious/noControlCharactersInRegex: terminal escape sequences are exactly what this strips
-const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-Z\\-_]/g;
+// OSC sequences first (ESC ] ... BEL or ESC \): an OSC 8 hyperlink wraps a
+// URL, and stripping only its first two bytes left the rest inside the URL.
+const ANSI_PATTERN =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: terminal escape sequences are exactly what this strips
+  /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-Z\\-_]/g;
 
 /**
  * A short, human-transcribable approval code: RFC 8628's user code, as both
- * observed CLIs actually spell it. Uppercase and digits, optionally grouped
- * with hyphens, and never all digits — a bare number on its own line is a
- * version or a count, not a code.
+ * observed CLIs actually spell it. Uppercase and digits in hyphen-separated
+ * groups, and never all digits — a bare number on its own line is a version
+ * or a count, not a code. The hyphen is required: both observed CLIs and
+ * RFC 8628's own examples group the code, while an ungrouped capitalised word
+ * printed between the URL and the code ("WARNING") is prose.
  */
-const USER_CODE_PATTERN = /^[A-Z0-9]{3,8}(?:-[A-Z0-9]{3,8}){0,3}$/;
-/** Only https. A verification URL offered over plaintext is not one Station relays. */
+const USER_CODE_PATTERN = /^[A-Z0-9]{3,8}(?:-[A-Z0-9]{3,8}){1,3}$/;
+/** A candidate only. `relayableVerificationUri` decides whether it is sent anywhere. */
 const HTTPS_URL_PATTERN = /https:\/\/[^\s"'<>)\]]+/;
+/**
+ * Long enough for any real verification URL (Muse embeds its code in the
+ * query), short enough that a runaway line is never relayed to a client.
+ */
+const MAX_VERIFICATION_URI_LENGTH = 2048;
+// Control characters and bidi overrides. A relayed URL is rendered on another
+// device, where either can disguise where it points.
+const UNSAFE_URI_CHARACTERS =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting these is the point
+  /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
+
+/**
+ * The URL Station is willing to relay to a client, or nothing. It must parse,
+ * use https, name a host, carry no userinfo (`https://auth.example@evil/`
+ * reads as one host and goes to another), stay under a length bound, and hold
+ * no control or bidi characters.
+ */
+function relayableVerificationUri(candidate: string): string | undefined {
+  if (candidate.length > MAX_VERIFICATION_URI_LENGTH) return undefined;
+  if (UNSAFE_URI_CHARACTERS.test(candidate)) return undefined;
+  let url: URL;
+  try {
+    url = new URL(candidate);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== 'https:' || !url.hostname) return undefined;
+  if (url.username || url.password) return undefined;
+  return candidate;
+}
 
 export interface DeviceCodePrompt {
   readonly verificationUri: string;
@@ -183,11 +230,18 @@ export function parseDeviceCodePrompt(
   const lines = output.replace(ANSI_PATTERN, '').split(/\r?\n/);
   let verificationUri: string | undefined;
   for (const line of lines) {
-    if (!verificationUri) {
-      const url = HTTPS_URL_PATTERN.exec(line);
-      if (url) verificationUri = url[0].replace(/[.,;:]+$/, '');
+    const url = HTTPS_URL_PATTERN.exec(line);
+    if (url) {
+      // The LAST relayable URL before the code, not the first: a CLI can print
+      // an unrelated link (an update notice) ahead of its prompt, and the URL
+      // a code belongs to is the one immediately preceding it.
+      const relayable = relayableVerificationUri(
+        url[0].replace(/[.,;:]+$/, ''),
+      );
+      if (relayable) verificationUri = relayable;
       continue;
     }
+    if (!verificationUri) continue;
     const candidate = line.trim();
     if (!USER_CODE_PATTERN.test(candidate)) continue;
     const payload = candidate.replace(/-/g, '');
@@ -207,6 +261,10 @@ interface LoginSession {
   settled: boolean;
   cancelTimers: Array<() => void>;
   finishedAtMs?: number;
+}
+
+function busyReason(): string {
+  return `${DEVICE_CODE_MAX_LIVE_LOGINS} device logins are already waiting for approval on this host.`;
 }
 
 function isLive(record: DeviceCodeLoginRecord): boolean {
@@ -247,14 +305,8 @@ export class DeviceCodeLoginManager {
     if (existing && isLive(existing.record)) {
       return { kind: 'existing', record: existing.record };
     }
-    const liveCount = [...this.#sessions.values()].filter((session) =>
-      isLive(session.record),
-    ).length;
-    if (liveCount >= DEVICE_CODE_MAX_LIVE_LOGINS) {
-      return {
-        kind: 'busy',
-        reason: `${DEVICE_CODE_MAX_LIVE_LOGINS} device logins are already waiting for approval on this host.`,
-      };
+    if (this.#liveCount() >= DEVICE_CODE_MAX_LIVE_LOGINS) {
+      return { kind: 'busy', reason: busyReason() };
     }
 
     const capabilities = await this.#deps.capabilities(engine);
@@ -267,11 +319,34 @@ export class DeviceCodeLoginManager {
           `The installed ${engine} CLI does not offer a device-code login.`,
       };
     }
-    // Re-check after the await: a concurrent caller may have registered while
-    // the capability probe was in flight.
+    // Refuse a login into a profile that is already signed in, or that the
+    // engine cannot vouch for. Starting one would hand the account to whoever
+    // approves the code, and a later "authenticated" could not be told apart
+    // from the credential that was already there. Refusing here is what lets
+    // `#onExit` read `authenticated` as this login's own result.
+    const current = await this.#currentAuthState(engine, profileDir);
+    if (current === 'authenticated') {
+      return {
+        kind: 'already-signed-in',
+        reason: `This credential profile is already signed in to ${engine}, so Station did not start a login that would replace that account.`,
+      };
+    }
+    if (current !== 'unauthenticated') {
+      return {
+        kind: 'sign-in-state-unknown',
+        reason: `The ${engine} CLI could not report whether this credential profile is already signed in, so Station did not start a login that might replace an account.`,
+      };
+    }
+    // Re-check everything the awaits above could have changed. Registration
+    // below is synchronous, so a check made here holds until the session is in
+    // the map: this is where single-flight and the cap are actually enforced,
+    // and the checks at the top are only a fast path.
     const raced = this.#sessions.get(profileDir);
     if (raced && isLive(raced.record)) {
       return { kind: 'existing', record: raced.record };
+    }
+    if (this.#liveCount() >= DEVICE_CODE_MAX_LIVE_LOGINS) {
+      return { kind: 'busy', reason: busyReason() };
     }
 
     const startedAt = this.#deps.now();
@@ -291,7 +366,22 @@ export class DeviceCodeLoginManager {
     };
     this.#sessions.set(profileDir, session);
 
-    const baseEnv = await this.#deps.baseEnv();
+    let baseEnv: Awaited<ReturnType<DeviceCodeLoginDeps['baseEnv']>>;
+    try {
+      baseEnv = await this.#deps.baseEnv();
+    } catch {
+      this.#fail(
+        session,
+        `The ${engine} login could not be started: Station could not prepare its environment.`,
+      );
+      return { kind: 'failed', record: session.record };
+    }
+    // The session was registered before that await, so a cancel can land while
+    // the environment is being prepared. It found no child to kill; spawning
+    // now would start a process that nothing tracks or bounds.
+    if (session.settled) {
+      return { kind: 'cancelled', record: session.record };
+    }
     const args = [
       ...enrolmentLoginArgs(engine),
       ...(evidence.argument ? [evidence.argument] : []),
@@ -307,7 +397,7 @@ export class DeviceCodeLoginManager {
       });
     } catch {
       this.#fail(session, `The ${engine} login could not be started.`);
-      return { kind: 'started', record: session.record };
+      return { kind: 'failed', record: session.record };
     }
     session.child = child;
 
@@ -358,7 +448,9 @@ export class DeviceCodeLoginManager {
         );
       }, DEVICE_CODE_PROMPT_TIMEOUT_MS),
       this.#deps.schedule(() => {
-        if (session.settled) return;
+        // Once the process has exited, the code was either approved or not and
+        // the engine is being asked which. That answer outranks the clock.
+        if (session.settled || session.record.phase === 'verifying') return;
         this.#kill(session);
         this.#fail(session, 'The device code expired before it was approved.');
       }, DEVICE_CODE_LOGIN_TIMEOUT_MS),
@@ -376,7 +468,7 @@ export class DeviceCodeLoginManager {
     return session.record;
   }
 
-  /** Kill every live login. For runtime shutdown. */
+  /** Kill every live login. Runtime shutdown reaches this through `cancelSharedDeviceCodeLogins`. */
   cancelAll(): void {
     for (const profileDir of [...this.#sessions.keys()]) {
       this.cancel(profileDir);
@@ -410,6 +502,8 @@ export class DeviceCodeLoginManager {
       verification = { state: 'unknown' };
     }
     if (session.settled) return;
+    // `start` only proceeds for a profile the engine reported signed out, so
+    // `authenticated` here is this login's own result, not a prior credential.
     if (verification.state === 'authenticated') {
       this.#settle(session, {
         ...session.record,
@@ -424,6 +518,25 @@ export class DeviceCodeLoginManager {
         ? `The ${engine} CLI reports this credential profile is still signed out.`
         : `The ${engine} CLI could not report whether the sign-in succeeded.`,
     );
+  }
+
+  #liveCount(): number {
+    let count = 0;
+    for (const session of this.#sessions.values()) {
+      if (isLive(session.record)) count += 1;
+    }
+    return count;
+  }
+
+  async #currentAuthState(
+    engine: EnrolmentEngine,
+    profileDir: string,
+  ): Promise<EnrolmentAuthState> {
+    try {
+      return (await this.#deps.verify(engine, profileDir)).state;
+    } catch {
+      return 'unknown';
+    }
   }
 
   #fail(session: LoginSession, reason: string): void {
@@ -478,4 +591,12 @@ let shared: DeviceCodeLoginManager | undefined;
 export function deviceCodeLoginManager(): DeviceCodeLoginManager {
   shared ??= new DeviceCodeLoginManager();
   return shared;
+}
+
+/**
+ * Kill every live login held by the runtime's manager. A no-op when no login
+ * was ever requested: shutdown must not construct a manager to find it empty.
+ */
+export function cancelSharedDeviceCodeLogins(): void {
+  shared?.cancelAll();
 }

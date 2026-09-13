@@ -234,6 +234,27 @@ describe('scoped pairing (station#1098)', () => {
    * prevent. Pinned literally so adding a token to that constant has to be a
    * deliberate edit here too.
    */
+  test('the read-only preset is exactly orchestration:read', () => {
+    expect(PAIRING_SCOPE_PRESETS['read-only']).toEqual([
+      PAIRING_SCOPE_ORCHESTRATION_READ,
+    ]);
+    expect(pairingScopePresetString('read-only')).toBe('orchestration:read');
+  });
+
+  test('the standard preset grants read, operate, and terminal but withholds access:manage', () => {
+    expect(PAIRING_SCOPE_PRESETS.standard).toEqual([
+      PAIRING_SCOPE_ORCHESTRATION_READ,
+      PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      PAIRING_SCOPE_TERMINAL_OPERATE,
+    ]);
+    expect(pairingScopePresetString('standard')).toBe(
+      'orchestration:read orchestration:operate terminal:operate',
+    );
+    expect(PAIRING_SCOPE_PRESETS.standard).not.toContain(
+      PAIRING_SCOPE_ACCESS_MANAGE,
+    );
+  });
+
   /*
    * The backward-compatibility constraint that decided this token's grant
    * path, asserted rather than described. `parsePairingScope` refuses a whole

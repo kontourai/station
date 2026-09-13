@@ -663,8 +663,29 @@ export function createAppHomeRoutes(deps?: {
       if (result.kind === 'unsupported') {
         return c.json({ success: false, error: result.reason }, 409);
       }
+      if (
+        result.kind === 'already-signed-in' ||
+        result.kind === 'sign-in-state-unknown'
+      ) {
+        return c.json(
+          { success: false, error: result.reason, outcome: result.kind },
+          409,
+        );
+      }
       if (result.kind === 'busy') {
         return c.json({ success: false, error: result.reason }, 429);
+      }
+      if (result.kind === 'failed') {
+        // Nothing is waiting for approval, so this is not a success carrying a
+        // failed record inside it.
+        return c.json(
+          {
+            success: false,
+            error: result.record.reason ?? 'The login could not be started.',
+            data: { outcome: result.kind, login: result.record },
+          },
+          502,
+        );
       }
       return c.json({
         success: true,

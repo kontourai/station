@@ -999,7 +999,7 @@ describe('device-code enrolment routes', () => {
     };
   }
 
-  function routes(options: { deviceCode?: boolean } = {}) {
+  function routes(options: { deviceCode?: boolean; signedIn?: boolean } = {}) {
     const { service } = credentialRecoveryFixture();
     const spawned = fakeChild();
     const spawnLogin = vi.fn(() => spawned.child);
@@ -1021,7 +1021,11 @@ describe('device-code enrolment routes', () => {
                 },
               ],
       }),
-      verify: async () => ({ state: 'unauthenticated' as const }),
+      verify: async () => ({
+        state: options.signedIn
+          ? ('authenticated' as const)
+          : ('unauthenticated' as const),
+      }),
       now: () => new Date('2026-09-11T12:00:00.000Z'),
       schedule: () => () => undefined,
     });
@@ -1088,6 +1092,23 @@ describe('device-code enrolment routes', () => {
     );
 
     expect(res.status).toBe(409);
+    expect(spawnLogin).not.toHaveBeenCalled();
+  });
+
+  test('refuses, without spawning, a profile that is already signed in', async () => {
+    const { app, spawnLogin } = routes({ signedIn: true });
+
+    const res = await app.request(
+      '/agent/codex/enrolment/profile-a/device-code',
+      { method: 'POST' },
+    );
+    const body = await readJson<{ success: boolean; outcome: string }>(res);
+
+    expect(res.status).toBe(409);
+    expect(body).toMatchObject({
+      success: false,
+      outcome: 'already-signed-in',
+    });
     expect(spawnLogin).not.toHaveBeenCalled();
   });
 

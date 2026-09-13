@@ -107,9 +107,13 @@ const BASE_ENV = { PATH: '/usr/bin', TMPDIR: '/tmp/station-engine' };
 function harness(
   overrides: {
     capabilities?: EngineLoginCapabilities;
+    /** What the engine reports BEFORE the login is spawned. */
+    preAuthState?: EnrolmentAuthState;
+    /** What the engine reports once a login process has exited. */
     authState?: EnrolmentAuthState;
     authDetail?: string;
     schedule?: DeviceCodeLoginDeps['schedule'];
+    baseEnv?: DeviceCodeLoginDeps['baseEnv'];
   } = {},
 ) {
   const children: FakeChild[] = [];
@@ -120,13 +124,30 @@ function harness(
     windowsHide: boolean;
   }> = [];
   const scheduler = manualScheduler();
-  const verify = vi.fn(async () => ({
-    state: overrides.authState ?? ('authenticated' as EnrolmentAuthState),
-    ...(overrides.authDetail ? { detail: overrides.authDetail } : {}),
-  }));
+  // The engine is asked twice in a login's life: before the spawn (is this
+  // profile already signed in?) and after the process exits (did an account
+  // land?). The real answer changes exactly when a login process exits, so the
+  // harness answers `preAuthState` until one has, and `authState` after.
+  let exits = 0;
+  const verify = vi.fn(async () =>
+    exits === 0
+      ? {
+          state:
+            overrides.preAuthState ?? ('unauthenticated' as EnrolmentAuthState),
+        }
+      : {
+          state: overrides.authState ?? ('authenticated' as EnrolmentAuthState),
+          ...(overrides.authDetail ? { detail: overrides.authDetail } : {}),
+        },
+  );
   const spawnLogin = vi.fn((command: string, args: string[], options) => {
     spawned.push({ ...options, command, args });
     const child = new FakeChild();
+    const emitExit = child.emitExit.bind(child);
+    child.emitExit = (code: number | null) => {
+      exits += 1;
+      emitExit(code);
+    };
     children.push(child);
     return child as unknown as DeviceCodeChildProcess;
   });
@@ -135,7 +156,7 @@ function harness(
   );
   const deps: DeviceCodeLoginDeps = {
     spawnLogin: spawnLogin as never,
-    baseEnv: async () => ({ ...BASE_ENV }),
+    baseEnv: overrides.baseEnv ?? (async () => ({ ...BASE_ENV })),
     capabilities: capabilities as never,
     verify: verify as never,
     now: () => new Date('2026-09-11T12:00:00.000Z'),
@@ -384,7 +405,8 @@ describe('completion is the engine’s answer, not the exit code', () => {
 
     children[0].emitExit(2);
 
-    expect(verify).not.toHaveBeenCalled();
+    // Only the pre-start sign-in check ran; an exit before a code asks nothing.
+    expect(verify).toHaveBeenCalledTimes(1);
     expect(manager.status(PROFILE_DIR)).toMatchObject({
       phase: 'failed',
       reason:
@@ -469,7 +491,9 @@ describe('cancelling', () => {
     children[0].emitExit(0);
     await Promise.resolve();
 
-    expect(verify).not.toHaveBeenCalled();
+    // Exactly the pre-start sign-in check: the late exit asked nothing, so it
+    // had no answer it could revise the cancellation with.
+    expect(verify).toHaveBeenCalledTimes(1);
     expect(manager.status(PROFILE_DIR)?.phase).toBe('cancelled');
   });
 
@@ -488,5 +512,201 @@ describe('cancelling', () => {
     expect(restarted.kind).toBe('started');
     expect(spawnLogin).toHaveBeenCalledTimes(2);
     expect(children).toHaveLength(2);
+  });
+});
+
+type BaseEnv = Awaited<ReturnType<DeviceCodeLoginDeps['baseEnv']>>;
+
+/*
+ * Independent review of the first version found each of these reachable
+ * against the real manager: a cancel during environment preparation that still
+ * spawned an untracked process, a live-login cap that concurrent requests
+ * walked straight past, and a "completed" that was really the credential the
+ * profile already had. Each test here fails against that version.
+ */
+describe('a login starts only when it can be bounded and believed', () => {
+  test('a profile that is already signed in is refused, and nothing is spawned', async () => {
+    const { manager, spawnLogin } = harness({ preAuthState: 'authenticated' });
+
+    const result = await manager.start('codex', PROFILE_DIR);
+
+    expect(result.kind).toBe('already-signed-in');
+    expect(spawnLogin).not.toHaveBeenCalled();
+    expect(manager.status(PROFILE_DIR)).toBeUndefined();
+  });
+
+  test('a profile whose sign-in state the engine cannot report is refused', async () => {
+    const { manager, spawnLogin } = harness({ preAuthState: 'unknown' });
+
+    const result = await manager.start('codex', PROFILE_DIR);
+
+    expect(result.kind).toBe('sign-in-state-unknown');
+    expect(spawnLogin).not.toHaveBeenCalled();
+  });
+
+  test('cancelling while the environment is being prepared spawns nothing, and a restart spawns exactly one', async () => {
+    let releaseEnv: (() => void) | undefined;
+    let holdEnv = true;
+    const { manager, spawnLogin } = harness({
+      baseEnv: () =>
+        holdEnv
+          ? new Promise<BaseEnv>((resolve) => {
+              releaseEnv = () => resolve({ ...BASE_ENV });
+            })
+          : Promise.resolve({ ...BASE_ENV }),
+    });
+
+    const pending = manager.start('codex', PROFILE_DIR);
+    await vi.waitFor(() =>
+      expect(manager.status(PROFILE_DIR)?.phase).toBe('starting'),
+    );
+    expect(manager.cancel(PROFILE_DIR)?.phase).toBe('cancelled');
+    releaseEnv?.();
+
+    expect((await pending).kind).toBe('cancelled');
+    expect(spawnLogin).not.toHaveBeenCalled();
+
+    holdEnv = false;
+    expect((await manager.start('codex', PROFILE_DIR)).kind).toBe('started');
+    expect(spawnLogin).toHaveBeenCalledTimes(1);
+  });
+
+  test('an environment that cannot be prepared fails the login instead of parking it in starting', async () => {
+    let broken = true;
+    const { manager, spawnLogin } = harness({
+      baseEnv: async () => {
+        if (broken) throw new Error('login shell resolution failed');
+        return { ...BASE_ENV };
+      },
+    });
+
+    const result = await manager.start('codex', PROFILE_DIR);
+
+    expect(result.kind).toBe('failed');
+    expect(manager.status(PROFILE_DIR)?.phase).toBe('failed');
+    expect(spawnLogin).not.toHaveBeenCalled();
+    // It holds no slot and blocks nothing: the next start proceeds.
+    broken = false;
+    expect((await manager.start('codex', PROFILE_DIR)).kind).toBe('started');
+    expect(spawnLogin).toHaveBeenCalledTimes(1);
+  });
+
+  test('concurrent starts on different profiles never exceed the live-login cap', async () => {
+    const { manager, spawnLogin } = harness();
+    const overflow = 6;
+
+    const results = await Promise.all(
+      Array.from(
+        { length: DEVICE_CODE_MAX_LIVE_LOGINS + overflow },
+        (_, index) => manager.start('codex', `${PROFILE_DIR}-${index}`),
+      ),
+    );
+
+    expect(spawnLogin).toHaveBeenCalledTimes(DEVICE_CODE_MAX_LIVE_LOGINS);
+    expect(results.filter((result) => result.kind === 'busy')).toHaveLength(
+      overflow,
+    );
+  });
+
+  test('a spawn that throws is reported as a failure, not a start', async () => {
+    const { manager, spawnLogin } = harness();
+    spawnLogin.mockImplementationOnce(() => {
+      throw new Error('spawn EACCES');
+    });
+
+    const result = await manager.start('codex', PROFILE_DIR);
+
+    expect(result.kind).toBe('failed');
+    expect(manager.status(PROFILE_DIR)?.phase).toBe('failed');
+  });
+
+  test('the code expiring while the engine is being asked does not overrule its answer', async () => {
+    let answer: ((state: EnrolmentAuthState) => void) | undefined;
+    const { manager, children, scheduler, verify } = harness();
+    await manager.start('codex', PROFILE_DIR);
+    children[0].stdout.write(CODEX_DEVICE_CODE_STDOUT);
+    verify.mockImplementationOnce(
+      (() =>
+        new Promise((resolve) => {
+          answer = (state) => resolve({ state });
+        })) as never,
+    );
+
+    children[0].emitExit(0);
+    await vi.waitFor(() =>
+      expect(manager.status(PROFILE_DIR)?.phase).toBe('verifying'),
+    );
+    scheduler.fire(DEVICE_CODE_LOGIN_TIMEOUT_MS);
+    expect(manager.status(PROFILE_DIR)?.phase).toBe('verifying');
+
+    answer?.('authenticated');
+    await vi.waitFor(() =>
+      expect(manager.status(PROFILE_DIR)?.phase).toBe('completed'),
+    );
+  });
+});
+
+describe('only a URL fit to relay is relayed', () => {
+  const PROMPT_TAIL = ['2. Enter this one-time code', '   7IEZ-B1FLE', ''];
+  const EXPECTED = {
+    verificationUri: 'https://auth.openai.com/codex/device',
+    userCode: '7IEZ-B1FLE',
+  };
+
+  test('a link printed before the prompt, such as an update notice, is not the verification URL', () => {
+    const output = [
+      'A new version is available: https://github.com/openai/codex/releases/latest',
+      CODEX_DEVICE_CODE_STDOUT,
+    ].join('\n');
+
+    expect(parseDeviceCodePrompt(output)).toEqual(CODEX_DEVICE_CODE_EXPECTED);
+  });
+
+  test('a URL carrying userinfo is not relayed', () => {
+    const output = [
+      '   https://auth.openai.com@evil.example/device',
+      ...PROMPT_TAIL,
+    ].join('\n');
+
+    expect(parseDeviceCodePrompt(output)).toBeUndefined();
+  });
+
+  test('an OSC 8 hyperlink yields the bare URL with no escape residue', () => {
+    const osc = (text: string) => `\x1b]8;;${text}\x07`;
+    const output = [
+      `   ${osc(EXPECTED.verificationUri)}${EXPECTED.verificationUri}${osc('')}`,
+      ...PROMPT_TAIL,
+    ].join('\n');
+
+    expect(parseDeviceCodePrompt(output)).toEqual(EXPECTED);
+  });
+
+  test('a URL containing a bidi override is not relayed', () => {
+    const output = [
+      '   https://auth.openai.com/co\u202edex/device',
+      ...PROMPT_TAIL,
+    ].join('\n');
+
+    expect(parseDeviceCodePrompt(output)).toBeUndefined();
+  });
+
+  test('an oversized URL is not relayed', () => {
+    const output = [
+      `   https://auth.openai.com/${'a'.repeat(3000)}`,
+      ...PROMPT_TAIL,
+    ].join('\n');
+
+    expect(parseDeviceCodePrompt(output)).toBeUndefined();
+  });
+
+  test('an ungrouped word between the URL and the code is not read as the code', () => {
+    const output = [
+      `   ${EXPECTED.verificationUri}`,
+      'WARNING',
+      '   7IEZ-B1FLE',
+      '',
+    ].join('\n');
+
+    expect(parseDeviceCodePrompt(output)).toEqual(EXPECTED);
   });
 });
