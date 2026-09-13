@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  copyBoundedE2EEvidence,
   inspectE2EEvidenceDirectory,
   projectLatestE2EEvidence,
   validateLatestE2EEvidence,
@@ -42,6 +43,24 @@ afterEach(() =>
 );
 
 describe('latest E2E pointer projection', () => {
+  it('retains bounded lifecycle journals beside failing browser evidence', () => {
+    const root = fixture();
+    const source = join(root, 'evidence');
+    const destination = join(root, 'retained');
+    mkdirSync(source);
+    const journal = '{"type":"stop_result","result":"completed"}\n';
+    writeFileSync(join(source, 'lifecycle.ndjson'), journal);
+    expect(copyBoundedE2EEvidence(source, destination)).toEqual([
+      { path: 'lifecycle.ndjson', bytes: Buffer.byteLength(journal) },
+    ]);
+    expect(readFileSync(join(destination, 'lifecycle.ndjson'), 'utf8')).toBe(
+      journal,
+    );
+    expect(() =>
+      inspectE2EEvidenceDirectory(source, { maxTextBytes: 8 }),
+    ).toThrow('text file exceeds 8 bytes');
+  });
+
   it('keeps stable latest while atomically moving its pointer to an immutable payload', () => {
     const root = fixture();
     const source = join(root, 'evidence');

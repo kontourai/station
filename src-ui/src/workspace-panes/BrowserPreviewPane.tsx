@@ -13,7 +13,7 @@ import type {
 } from '../platform/native';
 import './BrowserPreviewPane.css';
 
-export interface BrowserPreviewPaneProps {
+interface BrowserPreviewPaneProps {
   /** Descriptive state owned by a future workspace/session integration. */
   preview: WorkspaceBrowserPreviewState;
   /** The owner opens the already-validated local target outside Station. */

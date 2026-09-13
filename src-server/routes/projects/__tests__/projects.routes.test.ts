@@ -2846,6 +2846,74 @@ describe('Project Routes', () => {
       expect(written?.state).toBe('bound');
     });
 
+    test('POST /:slug/bind refuses a Project changed before revision admission without recording a binding', async () => {
+      const checkout = createTempProjectHome();
+      const reader = vi.fn(remotesOk(['git@github.com:acme/api.git']));
+      const { app, storage, projectHomeDir, bindings } =
+        createResolutionApp(reader);
+      await saveProject(storage, 'acme');
+      writeManifest(projectHomeDir, 'acme', 'prj_acme', [
+        gitRepo('github.com/acme/api', 'primary'),
+      ]);
+      const concurrentStorage = new FileStorageAdapter(projectHomeDir);
+      const captureRevision = storage.projectRevision.bind(storage);
+      vi.spyOn(storage, 'projectRevision').mockImplementation((slug) => {
+        const captured = captureRevision(slug);
+        return {
+          ...captured,
+          withCurrentRead: async (operation) => {
+            const changed = concurrentStorage.projectRevision(slug);
+            await changed.replace({
+              ...changed.value,
+              name: 'Changed Project',
+            });
+            return captured.withCurrentRead!(operation);
+          },
+        };
+      });
+
+      const response = await app.request('/acme/bind', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: checkout }),
+      });
+
+      expect(response.status).toBe(409);
+      expect(reader).not.toHaveBeenCalled();
+      expect(
+        bindings.findBinding('prj_acme', 'github.com/acme/api'),
+      ).toBeUndefined();
+      expect(storage.getProject('acme').name).toBe('Changed Project');
+    });
+
+    test('POST /:slug/bind refuses an adapter without current revision admission', async () => {
+      const checkout = createTempProjectHome();
+      const reader = vi.fn(remotesOk(['git@github.com:acme/api.git']));
+      const { app, storage, projectHomeDir, bindings } =
+        createResolutionApp(reader);
+      await saveProject(storage, 'acme');
+      writeManifest(projectHomeDir, 'acme', 'prj_acme', [
+        gitRepo('github.com/acme/api', 'primary'),
+      ]);
+      const captureRevision = storage.projectRevision.bind(storage);
+      vi.spyOn(storage, 'projectRevision').mockImplementation((slug) => ({
+        ...captureRevision(slug),
+        withCurrentRead: undefined,
+      }));
+
+      const response = await app.request('/acme/bind', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: checkout }),
+      });
+
+      expect(response.status).toBe(503);
+      expect(reader).not.toHaveBeenCalled();
+      expect(
+        bindings.findBinding('prj_acme', 'github.com/acme/api'),
+      ).toBeUndefined();
+    });
+
     // ── archive#1503 review H2 — a PLUGIN may not anchor to a project repo ─
 
     test('applying a plugin layout REFUSES a repo-anchored namespace, before any write', async () => {

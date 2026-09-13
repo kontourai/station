@@ -6,6 +6,7 @@ import {
   attachmentKindForMimeType,
   type ChatAttachmentInput,
 } from '@kontourai/station-contracts/chat-attachment';
+import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import {
   type AttachmentStageUploadTransport,
   getAttachmentStagingCapability,
@@ -65,6 +66,7 @@ export async function stageComposerAttachments(
   signal?: AbortSignal,
   observer?: (update: ComposerAttachmentStageUpdate) => void,
   transport?: AttachmentStageUploadTransport,
+  requestScope?: ApiRequestScope,
 ): Promise<ComposerAttachmentDispatch> {
   const inputs = attachments.map(inputFor);
   if (inputs.length === 0) return { kind: 'legacy-inline', attachments: [] };
@@ -74,7 +76,10 @@ export async function stageComposerAttachments(
       state: 'queued',
       progress: 0,
     });
-  const capability = await getAttachmentStagingCapability(apiBase, { signal });
+  const capability = await getAttachmentStagingCapability(apiBase, {
+    signal,
+    requestScope,
+  });
   if (capability.state === 'legacy') {
     for (const input of inputs)
       observer?.({
@@ -106,6 +111,7 @@ export async function stageComposerAttachments(
         });
         const preparation = await prepareAttachmentStage(apiBase, input, {
           signal,
+          requestScope,
           timeoutMs: null,
         });
         observer?.({
@@ -121,6 +127,7 @@ export async function stageComposerAttachments(
           input.dataUrl,
           {
             signal,
+            requestScope,
             timeoutMs: null,
             transport,
             onProgress: ({ loaded, total }) =>

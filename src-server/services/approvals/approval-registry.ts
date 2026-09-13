@@ -17,7 +17,7 @@ import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
 import { approvalDuration, approvalOps } from '../../telemetry/metrics.js';
 import type { EventBus } from '../orchestration/event-bus.js';
 
-export interface ApprovalRequestMetadata {
+interface ApprovalRequestMetadata {
   agentName?: string;
   agentSlug?: string;
   conversationId?: string;
@@ -30,7 +30,7 @@ export interface ApprovalRequestMetadata {
   toolName?: string;
 }
 
-export interface ApprovalRegisterOptions {
+interface ApprovalRegisterOptions {
   /**
    * Private, server-owned context for a registry approval. It is deliberately
    * never copied into lifecycle events or notification metadata.
@@ -57,7 +57,7 @@ interface ApprovalBinding {
  * Private runtime callbacks. Route composition installs them after the
  * registry is bootstrapped, before hosted approvals can be registered.
  */
-export interface HostedApprovalAuthorization {
+interface HostedApprovalAuthorization {
   /** Runtime composition declares when tenant-safe binding is required. */
   isHosted: () => boolean;
   /** Validates a session binding before a hosted approval is registered. */

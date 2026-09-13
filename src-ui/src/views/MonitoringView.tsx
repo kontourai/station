@@ -35,6 +35,7 @@ function MonitoringView() {
     connectionStatus,
     isLoading,
     readError,
+    historyTruncated,
     retryRead,
   } = useMonitoring();
   // audit 6-OPS-26: Monitoring's two summary numbers now come from the SAME
@@ -365,6 +366,7 @@ function MonitoringView() {
             filteredEvents={filteredEvents}
             isLoading={isLoading}
             readError={readError}
+            historyTruncated={historyTruncated}
             onRetryRead={retryRead}
             newEventIds={newEventIds}
             selectedTraceId={selectedTraceId}

@@ -3,30 +3,13 @@
  * (`SyntaxHighlighterContext`) and the async worker client. This module must
  * stay free of Shiki and worker imports — it is reachable from the entry
  * chunk; the worker bootstrap is deliberately NOT (see highlight-client.ts).
+ *
+ * The preload language list used to live here and no longer does: only
+ * `core-highlighter` reads it, that module is lazy, and eighteen string
+ * literals nothing in the entry chunk uses are eighteen too many.
  */
 
 export const THEME = 'github-dark';
-
-export const PRELOAD_LANGS = [
-  'typescript',
-  'javascript',
-  'tsx',
-  'jsx',
-  'json',
-  'html',
-  'css',
-  'python',
-  'rust',
-  'go',
-  'java',
-  'bash',
-  'yaml',
-  'toml',
-  'sql',
-  'markdown',
-  'xml',
-  'dockerfile',
-] as const;
 
 /** FNV-1a 32-bit hash — cache-key component for highlighted code. */
 export function fnv1a(str: string): number {

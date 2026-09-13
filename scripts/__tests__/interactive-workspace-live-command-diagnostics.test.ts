@@ -148,3 +148,59 @@ test.each(['leave-state', 'ingress-clock', 'send-clock'])(
     expect((error as Error).message).not.toContain('private-token');
   },
 );
+
+test('an owner-absence failure observes the owner stream instead of the successfully departed peer', async () => {
+  const peer = {
+    url: () => 'http://fixture.invalid/tasks/task-one',
+    waitForFunction: async () => ({
+      jsonValue: async () => 'actor',
+      dispose: async () => {},
+    }),
+    getByRole: () => ({
+      isEnabled: async () => true,
+      waitFor: async () => {},
+      click: async () => {},
+    }),
+    waitForResponse: async () => ({
+      status: () => 200,
+      json: async () => ({
+        success: true,
+        data: { kind: 'available', result: { outcome: 'DEPARTED' } },
+      }),
+    }),
+    evaluate: vi.fn(async () => ({
+      stream: 'LIVE',
+      join: 'ENABLED',
+      announce: 'DISABLED',
+      dialog: 'NONE',
+      telemetry: 'NONE',
+    })),
+  };
+  const owner = {
+    locator: () => ({
+      waitFor: async () => {
+        throw new Error('private owner detail');
+      },
+    }),
+    evaluate: vi.fn(async () => ({
+      stream: 'TERMINAL',
+      join: 'DISABLED',
+      announce: 'DISABLED',
+      dialog: 'NONE',
+      telemetry: 'NONE',
+    })),
+  };
+  const failure = await publishPeerPresence(
+    peer,
+    owner,
+    16,
+    peer.url(),
+    'task-one',
+  ).catch((error: unknown) => error);
+  expect((failure as Error).message).toContain(
+    'owner-absence failed; iteration=16; joinOutcome=NOT_OBSERVED; stream=TERMINAL;',
+  );
+  expect(owner.evaluate).toHaveBeenCalledOnce();
+  expect(peer.evaluate).not.toHaveBeenCalled();
+  expect((failure as Error).message).not.toContain('private');
+});

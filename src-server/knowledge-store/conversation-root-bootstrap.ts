@@ -41,7 +41,7 @@ import type {
   KnowledgeStoreRootPersistence,
 } from './knowledge-store-provider.js';
 
-export interface EnsureConversationKnowledgeRootDeps {
+interface EnsureConversationKnowledgeRootDeps {
   provider: KnowledgeStoreProvider;
   /** The same `KnowledgeStoreRootPersistence` the provider itself was
    * constructed with (`FileStorageAdapter` in production) — a direct

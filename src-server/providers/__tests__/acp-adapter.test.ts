@@ -17,8 +17,8 @@ import {
   engineControlPlaneCapability,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
-import type { SessionLifecycleState } from '../../../packages/contracts/src/session-lifecycle.js';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import {
   builtinStationControlServerPath,
@@ -35,7 +35,7 @@ const GENUINE_STATION_CONTROL_TOOLSERVER = {
   args: [builtinStationControlServerPath()],
 };
 
-import { validateSessionLifecycleTransition } from '../../../packages/contracts/src/session-lifecycle.js';
+import { validateSessionLifecycleTransition } from '@kontourai/station-contracts/session-lifecycle';
 import {
   ACPProcess,
   type ACPProcessOptions,
@@ -75,6 +75,7 @@ class FakeAcpProcess {
   initResult:
     | {
         protocolVersion: number;
+        agentInfo?: { name: string; version?: string };
         agentCapabilities: {
           promptCapabilities: { image: boolean };
           loadSession?: boolean;
@@ -85,6 +86,12 @@ class FakeAcpProcess {
     protocolVersion: 1,
     agentCapabilities: { promptCapabilities: { image: true } },
   };
+  sessionId: string | null = null;
+  readonly extMethodCalls: Array<{
+    method: string;
+    params: Record<string, unknown>;
+  }> = [];
+  extMethodError?: unknown;
   destroyed = false;
   destroyCalls = 0;
   cancelCalls = 0;
@@ -110,6 +117,16 @@ class FakeAcpProcess {
   newSessionCalls = 0;
   /** archive#1182: overridable per-test to simulate an agent's own reported model config option. */
   newSessionConfigOptions: unknown[] = [];
+  /** station#1945: older ACP `modes` catalog when no mode config option exists. */
+  newSessionModes?: {
+    availableModes: Array<{ id: string; name: string; description?: string }>;
+    currentModeId?: string;
+  };
+  readonly setModeCalls: string[] = [];
+
+  async setMode(modeId: string): Promise<void> {
+    this.setModeCalls.push(modeId);
+  }
 
   /**
    * archive#1684: makes `session/new` REJECT, so the no-retry claim has
@@ -122,9 +139,13 @@ class FakeAcpProcess {
     this.newSessionCalls += 1;
     this.newSessionMcpServers = mcpServers;
     if (this.newSessionError) throw this.newSessionError;
+    this.sessionId = `native-${this.opts.command}`;
     return {
-      sessionId: `native-${this.opts.command}`,
-      modes: { availableModes: [], currentModeId: 'default' },
+      sessionId: this.sessionId,
+      modes: this.newSessionModes ?? {
+        availableModes: [],
+        currentModeId: 'default',
+      },
       configOptions: this.newSessionConfigOptions,
     };
   }
@@ -144,6 +165,7 @@ class FakeAcpProcess {
     this.loadSessionCalls += 1;
     this.loadSessionArgs = { sessionId, cwd, mcpServers };
     if (this.loadSessionError) throw this.loadSessionError;
+    this.sessionId = sessionId;
     await this.loadSessionPromise;
   }
 
@@ -191,6 +213,15 @@ class FakeAcpProcess {
     await this.cancelPromise;
   }
 
+  async extMethod(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
+    this.extMethodCalls.push({ method, params });
+    if (this.extMethodError) throw this.extMethodError;
+    return {};
+  }
+
   async destroy(): Promise<void> {
     this.destroyCalls += 1;
     if (this.destroyError) throw this.destroyError;
@@ -228,6 +259,8 @@ function createAdapter(
     logger?: any;
     /** archive#1182: `newSession`'s response configOptions, injected at process-construction time. */
     newSessionConfigOptions?: unknown[];
+    /** station#1945: `newSession` modes catalog when no mode config option exists. */
+    newSessionModes?: FakeAcpProcess['newSessionModes'];
     /** archive#1684: what the connected CLI advertises at `initialize`.
      * `undefined` leaves `mcpCapabilities` off the handshake entirely — the
      * ordinary shape for a CLI that does not support HTTP MCP. */
@@ -278,6 +311,9 @@ function createAdapter(
       }
       if (options.newSessionConfigOptions) {
         proc.newSessionConfigOptions = options.newSessionConfigOptions;
+      }
+      if (options.newSessionModes) {
+        proc.newSessionModes = options.newSessionModes;
       }
       if (options.newSessionError !== undefined) {
         proc.newSessionError = options.newSessionError;
@@ -3424,6 +3460,183 @@ describe('station#1182: runtime-reported model', () => {
     expect(processes[0].setConfigOptionCalls).toEqual([]);
   });
 
+  test('applies an advertised session mode via setConfigOption (station#1945)', async () => {
+    const { adapter, processes } = createAdapter({
+      newSessionConfigOptions: [
+        {
+          id: 'mode',
+          category: 'mode',
+          currentValue: 'build',
+          options: [
+            { value: 'build', name: 'Build' },
+            { value: 'plan', name: 'Plan' },
+          ],
+        },
+      ],
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-mode-applied',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+      modelOptions: { mode: 'plan' },
+    });
+    await nextEvent(iterator, 'session.started');
+    const configured = await nextEvent(iterator, 'session.configured');
+
+    expect(processes[0].setConfigOptionCalls).toEqual([
+      { configId: 'mode', value: 'plan' },
+    ]);
+    expect(processes[0].setModeCalls).toEqual([]);
+    expect(configured).toMatchObject({
+      method: 'session.configured',
+      metadata: {
+        acpSessionMode: 'plan',
+        acpSessionModes: [
+          { id: 'build', name: 'Build' },
+          { id: 'plan', name: 'Plan' },
+        ],
+      },
+    });
+
+    await adapter.stopAll();
+  });
+
+  test('applies an advertised session mode via setMode when only the older catalog exists', async () => {
+    const { adapter, processes } = createAdapter({
+      newSessionModes: {
+        currentModeId: 'ask',
+        availableModes: [
+          { id: 'ask', name: 'Ask' },
+          { id: 'code', name: 'Code' },
+        ],
+      },
+    });
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-mode-setmode',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+      modelOptions: { mode: 'code' },
+    });
+
+    expect(processes[0].setModeCalls).toEqual(['code']);
+    expect(processes[0].setConfigOptionCalls).toEqual([]);
+
+    await adapter.stopAll();
+  });
+
+  test('refuses a session mode the fresh catalog did not advertise', async () => {
+    const { adapter, processes } = createAdapter({
+      newSessionModes: {
+        availableModes: [{ id: 'build', name: 'Build' }],
+      },
+    });
+
+    await expect(
+      adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-mode-unsupported',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        modelOptions: { mode: 'yolo' },
+      }),
+    ).rejects.toThrow('ACP mode value unsupported');
+    expect(processes[0].setModeCalls).toEqual([]);
+  });
+
+  test('session.configured reports advertised modes when none was requested', async () => {
+    const { adapter, processes } = createAdapter({
+      newSessionModes: {
+        currentModeId: 'ask',
+        availableModes: [
+          { id: 'ask', name: 'Ask' },
+          { id: 'code', name: 'Code' },
+        ],
+      },
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-mode-reported',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    const configured = await nextEvent(iterator, 'session.configured');
+
+    expect(processes[0].setModeCalls).toEqual([]);
+    expect(configured).toMatchObject({
+      method: 'session.configured',
+      metadata: {
+        acpSessionMode: 'ask',
+        acpSessionModes: [
+          { id: 'ask', name: 'Ask' },
+          { id: 'code', name: 'Code' },
+        ],
+      },
+    });
+
+    await adapter.stopAll();
+  });
+
+  test('applies a later advertised session mode on the next turn (station#1945)', async () => {
+    const { adapter, processes } = createAdapter({
+      newSessionModes: {
+        currentModeId: 'ask',
+        availableModes: [
+          { id: 'ask', name: 'Ask' },
+          { id: 'code', name: 'Code' },
+        ],
+      },
+    });
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-mode-turn',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    expect(processes[0].setModeCalls).toEqual([]);
+
+    await adapter.sendTurn({
+      threadId: 'thread-mode-turn',
+      input: 'hi',
+      modelOptions: { mode: 'code' },
+    });
+    expect(processes[0].setModeCalls).toEqual(['code']);
+    processes[0].resolvePrompt('end_turn');
+
+    await adapter.stopAll();
+  });
+
+  test('sendTurn refuses a mode when the live session advertised none', async () => {
+    const { adapter, processes } = createAdapter();
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-mode-turn-absent',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+
+    await expect(
+      adapter.sendTurn({
+        threadId: 'thread-mode-turn-absent',
+        input: 'hi',
+        modelOptions: { mode: 'plan' },
+      }),
+    ).rejects.toThrow('ACP mode option unavailable');
+    expect(processes[0].setModeCalls).toEqual([]);
+    expect(processes[0].setConfigOptionCalls).toEqual([]);
+
+    await adapter.stopAll();
+  });
+
   test('fails closed when the engine response does not confirm the requested currentValue', async () => {
     const { adapter, processes } = createAdapter({
       newSessionConfigOptions: [
@@ -4483,6 +4696,178 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
       headers: [{ name: 'Authorization', value: `Bearer ${TOKEN}` }],
     });
 
+    await adapter.stopAll();
+  });
+});
+
+describe('AcpAdapter.steerTurn', () => {
+  test('Kiro injects via _session/steer and keeps the in-flight prompt', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-kiro-steer',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-kiro-steer',
+      input: 'start',
+    });
+    await nextEvent(iterator, 'turn.started');
+
+    await adapter.steerTurn('thread-kiro-steer', 'go left', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([
+      {
+        method: '_session/steer',
+        params: {
+          sessionId: 'native-kiro-cli',
+          message: '<user_message>\ngo left\n</user_message>',
+        },
+      },
+    ]);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    expect(processes[0]?.promptContents).toHaveLength(1);
+    await expect(
+      nextEvent(iterator, 'steer turn.started'),
+    ).resolves.toMatchObject({
+      method: 'turn.started',
+      turnId: turn.turnId,
+      prompt: 'go left',
+      inputKind: 'steer',
+    });
+
+    processes[0]?.resolvePrompt('end_turn');
+    await expect(nextEvent(iterator, 'turn.completed')).resolves.toMatchObject({
+      method: 'turn.completed',
+      turnId: turn.turnId,
+    });
+    await adapter.stopAll();
+  });
+
+  test('Grok injects via _x.ai/interject without cancelling the turn', async () => {
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [
+        { id: 'kiro', command: 'grok', args: ['agent', 'stdio'] },
+      ],
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-grok-steer',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-grok-steer',
+      input: 'start',
+    });
+    await nextEvent(iterator, 'turn.started');
+
+    await adapter.steerTurn('thread-grok-steer', 'course correct', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([
+      {
+        method: '_x.ai/interject',
+        params: { sessionId: 'native-grok', text: 'course correct' },
+      },
+    ]);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    expect(processes[0]?.promptContents).toHaveLength(1);
+    await adapter.stopAll();
+  });
+
+  test('unknown ACP cancels and re-prompts on the same turn', async () => {
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-acp-fallback',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-acp-fallback',
+      input: 'start',
+    });
+    await nextEvent(iterator, 'turn.started');
+
+    await adapter.steerTurn(
+      'thread-acp-fallback',
+      'take this instead',
+      turn.turnId,
+    );
+
+    expect(processes[0]?.extMethodCalls).toEqual([]);
+    expect(processes[0]?.cancelCalls).toBe(1);
+    expect(processes[0]?.promptContents).toHaveLength(2);
+    expect(processes[0]?.promptContents[1]).toEqual([
+      { type: 'text', text: 'take this instead' },
+    ]);
+    await expect(
+      nextEvent(iterator, 'steer turn.started'),
+    ).resolves.toMatchObject({
+      method: 'turn.started',
+      turnId: turn.turnId,
+      inputKind: 'steer',
+    });
+
+    processes[0]?.resolvePrompt('end_turn');
+    await Promise.resolve();
+    await expect(
+      adapter.sendTurn({
+        threadId: 'thread-acp-fallback',
+        input: 'must still be the same turn',
+      }),
+    ).rejects.toThrow('already has an active turn');
+    processes[0]?.resolvePrompt('end_turn');
+    await expect(nextEvent(iterator, 'turn.completed')).resolves.toMatchObject({
+      method: 'turn.completed',
+      turnId: turn.turnId,
+    });
+    await adapter.stopAll();
+  });
+
+  test('Grok falls back to cancel-reprompt when interject is not implemented', async () => {
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [{ id: 'kiro', command: 'grok' }],
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-grok-fallback',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-grok-fallback',
+      input: 'start',
+    });
+    await nextEvent(iterator, 'turn.started');
+    const missing = Object.assign(new Error('Method not found'), {
+      code: -32601,
+    });
+    processes[0]!.extMethodError = missing;
+
+    await adapter.steerTurn('thread-grok-fallback', 'now', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls.map((call) => call.method)).toEqual([
+      '_x.ai/interject',
+      'x.ai/interject',
+    ]);
+    expect(processes[0]?.cancelCalls).toBe(1);
+    expect(processes[0]?.promptContents).toHaveLength(2);
     await adapter.stopAll();
   });
 });

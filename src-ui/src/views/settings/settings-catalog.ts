@@ -37,7 +37,7 @@ export interface SettingsCatalogEntry {
     | 'temporary'
     | 'informational';
   /** The target exists only for the named runtime condition. */
-  conditional?: 'mobile';
+  conditional?: 'mobile' | 'desktop';
 }
 
 export const SETTINGS_SECTIONS = [
@@ -142,8 +142,15 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['builtinAgentEngineConnectionId'],
   },
   {
+    id: 'desktop-app-updates',
+    title: 'Desktop app updates',
+    section: 'system',
+    keywords: ['desktop app updater signed release channel'],
+    conditional: 'desktop',
+  },
+  {
     id: 'core-app-updates',
-    title: 'Core App Updates',
+    title: 'Connected Station server',
     section: 'system',
     keywords: ['update channel'],
   },
@@ -330,6 +337,7 @@ const SETTINGS_MESSAGES = {
   scopeInformational: 'Status and guidance for this Station.',
   unavailableMobile:
     'Available on a mobile device with haptic feedback support.',
+  unavailableDesktop: 'Available in the desktop app.',
   unavailableStatus: 'Unavailable',
   targetUnavailable: 'That Settings target is no longer available.',
   targetTimedOut:
@@ -411,6 +419,8 @@ export interface SettingsPaletteCommand {
   scope: NonNullable<SettingsCatalogEntry['scope']>;
   /** An unavailable target still explains itself; it never pretends to navigate. */
   unavailable?: boolean;
+  /** Which runtime condition withholds the target, for the honest explanation. */
+  unavailableReason?: 'mobile' | 'desktop';
   view: SettingsSectionId;
   highlight: SettingsCatalogId;
 }
@@ -462,10 +472,15 @@ export function matchingSettingsRows(
   });
 }
 
-export function visibleCatalogIds(options: { isMobile: boolean }) {
-  return SETTINGS_CATALOG.filter(
-    (entry) => entry.conditional !== 'mobile' || options.isMobile,
-  ).map((entry) => entry.id);
+export function visibleCatalogIds(options: {
+  isMobile: boolean;
+  isDesktop: boolean;
+}) {
+  return SETTINGS_CATALOG.filter((entry) => {
+    if (entry.conditional === 'mobile') return options.isMobile;
+    if (entry.conditional === 'desktop') return options.isDesktop;
+    return true;
+  }).map((entry) => entry.id);
 }
 
 /**
@@ -475,9 +490,15 @@ export function visibleCatalogIds(options: { isMobile: boolean }) {
  */
 export function settingsPaletteCommands(options: {
   isMobile: boolean;
+  isDesktop: boolean;
 }): readonly SettingsPaletteCommand[] {
   return SETTINGS_CATALOG.map((entry) => {
-    const unavailable = entry.conditional === 'mobile' && !options.isMobile;
+    const unavailable =
+      entry.conditional === 'mobile' && !options.isMobile
+        ? ('mobile' as const)
+        : entry.conditional === 'desktop' && !options.isDesktop
+          ? ('desktop' as const)
+          : undefined;
     return {
       id: `settings:${entry.id}` as SettingsPaletteCommand['id'],
       label: entry.title,
@@ -489,7 +510,9 @@ export function settingsPaletteCommands(options: {
         ...(entry.searchKeywords ?? []),
         ...(entry.configKeys ?? []),
       ],
-      ...(unavailable ? { unavailable: true } : {}),
+      ...(unavailable
+        ? { unavailable: true, unavailableReason: unavailable }
+        : {}),
       scope: entry.scope ?? 'informational',
       view: entry.section,
       highlight: entry.id as SettingsCatalogId,

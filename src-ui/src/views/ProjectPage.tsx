@@ -14,9 +14,11 @@ import {
 } from '@kontourai/station-sdk';
 import { useMemo, useReducer, useState } from 'react';
 import { selectChatReadyAgents } from '../components/agent-selection-policy';
+import { Button } from '../components/Button';
+import { BranchGlyph } from '../components/icons/Glyph';
+import { PageCallout, PageCalloutStack } from '../components/PageCallout';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
-import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { useGitLog, useGitStatus } from '../hooks/useGitStatus';
@@ -41,10 +43,10 @@ import { ProjectPageHeader } from './project-page/ProjectPageHeader';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
 import { projectChatCta } from './project-page/projectChatCta';
 import type { AvailableLayout, ConversationRecord } from './project-page/types';
+import './project-page-frame.css';
 import './ProjectPage.css';
 
 export function ProjectPage({ slug }: { slug: string }) {
-  const { apiBase } = useApiBase();
   const { setLayout, setConversation, navigate, setDockState } =
     useNavigation();
 
@@ -264,7 +266,6 @@ export function ProjectPage({ slug }: { slug: string }) {
     <div className="project-page">
       <div className="project-page__inner">
         <ProjectPageHeader
-          apiBase={apiBase}
           project={project}
           gitStatus={gitStatus}
           editingDir={editingDir}
@@ -281,32 +282,39 @@ export function ProjectPage({ slug }: { slug: string }) {
         <ProjectLiveWorkSection slug={slug} />
 
         {conversations.length === 0 && !navigator.webdriver && chatCta && (
-          <div className="project-page__chat-cta">
-            <div className="project-page__chat-cta-text">
-              <strong>{chatCta.headline}</strong>
-              <span>{chatCta.detail}</span>
-            </div>
-            <button
-              type="button"
-              className="project-page__chat-cta-btn"
-              onClick={() => {
-                // Reveal the dock first: its New Chat dialog renders inside
-                // the dock shell, which is collapsed to its header strip
-                // while closed. Then ask the dock to route — it focuses a
-                // chat already bound to this project, or opens the picker
-                // preselected to it. `setDockState(true)` alone was the bug:
-                // it just revealed whatever conversation was last active.
-                setDockState(true);
-                requestProjectChat({
-                  projectSlug: slug,
-                  projectName: project.name || slug,
-                  source: 'project-page-cta',
-                });
-              }}
+          // In a stack even as the only callout: the stack owns the rhythm
+          // between a callout and the page under it, so a page that renders
+          // one directly loses the space the card it replaces had.
+          <PageCalloutStack>
+            <PageCallout
+              calloutId="project-chat-cta"
+              ariaLabel="Start a chat in this project"
+              title={chatCta.headline}
+              action={
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    // Reveal the dock first: its New Chat dialog renders inside
+                    // the dock shell, which is collapsed to its header strip
+                    // while closed. Then ask the dock to route — it focuses a
+                    // chat already bound to this project, or opens the picker
+                    // preselected to it. `setDockState(true)` alone was the bug:
+                    // it just revealed whatever conversation was last active.
+                    setDockState(true);
+                    requestProjectChat({
+                      projectSlug: slug,
+                      projectName: project.name || slug,
+                      source: 'project-page-cta',
+                    });
+                  }}
+                >
+                  {chatCta.actionLabel}
+                </Button>
+              }
             >
-              {chatCta.actionLabel}
-            </button>
-          </div>
+              {chatCta.detail}
+            </PageCallout>
+          </PageCalloutStack>
         )}
 
         {gitStatus && gitStatus.isRepo === false && (
@@ -321,7 +329,8 @@ export function ProjectPage({ slug }: { slug: string }) {
           <div className="project-page__git-section">
             <div className="project-page__section-header">
               <span className="project-page__section-label">
-                ⎇ {gitStatus.branch}
+                <BranchGlyph className="project-page__section-label-icon" />{' '}
+                {gitStatus.branch}
                 {gitStatus.changes.length > 0 && (
                   <span className="project-page__git-section-dirty">
                     {' '}
@@ -413,7 +422,6 @@ export function ProjectPage({ slug }: { slug: string }) {
         />
 
         <ProjectKnowledgeSection
-          apiBase={apiBase}
           slug={slug}
           projectWorkingDirectory={project.workingDirectory}
           docs={docs}

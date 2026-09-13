@@ -1,8 +1,8 @@
-export type MarkdownBlockKind = 'settled' | 'provisional';
+type MarkdownBlockKind = 'settled' | 'provisional';
 
-export type MarkdownBlockFlavor = 'plain' | 'fence' | 'table';
+type MarkdownBlockFlavor = 'plain' | 'fence' | 'table';
 
-export type MarkdownBlockProvisionalReason =
+type MarkdownBlockProvisionalReason =
   | 'tail'
   | 'open-fence'
   | 'incomplete-table';

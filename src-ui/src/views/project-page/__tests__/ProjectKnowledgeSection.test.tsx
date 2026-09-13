@@ -50,7 +50,6 @@ function renderSection(
   return render(
     <QueryClientProvider client={client}>
       <ProjectKnowledgeSection
-        apiBase="http://test.local"
         slug="demo"
         docs={[]}
         namespaces={[{ id: 'rules', label: 'Rules', behavior: 'inject' }]}

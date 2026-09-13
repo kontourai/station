@@ -37,50 +37,93 @@ describe('Tauri tray navigation replay', () => {
     ]);
     expect(listener).toHaveBeenCalledWith({ destination: 'coreUpdates' });
 
-    replay = { id: 2, destination: 'connections' };
+    replay = { id: 2, destination: 'desktopUpdates' };
     wake?.({ payload: null });
     await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(2));
+    expect(listener).toHaveBeenLastCalledWith({
+      destination: 'desktopUpdates',
+    });
+
+    replay = { id: 3, destination: 'serverUpdates' };
+    wake?.({ payload: null });
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(3));
+    expect(listener).toHaveBeenLastCalledWith({ destination: 'serverUpdates' });
+
+    replay = { id: 4, destination: 'connections' };
+    wake?.({ payload: null });
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(4));
     expect(listener).toHaveBeenLastCalledWith({ destination: 'connections' });
     subscription.dispose();
   });
 
-  it('does not acknowledge a native replay lease when disposal wins the invoke race', async () => {
-    let resolveReplay: ((value: unknown) => void) | undefined;
+  it('refuses a replay whose destination is outside the closed set', async () => {
     const bridge: TauriEventBridge = {
-      invoke: vi.fn(
-        () =>
-          new Promise((resolve) => {
-            resolveReplay = resolve;
-          }) as never,
-      ),
+      invoke: vi.fn(async (_command, args) => {
+        if ((args as { id?: number } | undefined)?.id === 12) {
+          return true as never;
+        }
+        return {
+          id: 12,
+          destination: '/settings?highlight=desktop-app-updates',
+        } as never;
+      }),
       listen: vi.fn().mockResolvedValue(vi.fn()),
     };
     const listener = vi.fn();
     const onError = vi.fn();
     const adapter = new TauriNativePlatformAdapter(bridge);
 
-    const subscription = adapter.subscribeToTrayNavigation(listener, onError);
-    await vi.waitFor(() =>
-      expect(bridge.invoke).toHaveBeenCalledWith(
-        'take_pending_tray_navigation',
-      ),
-    );
-    subscription.dispose();
-    resolveReplay?.({ id: 7, destination: 'connections' });
-    await Promise.resolve();
-    await Promise.resolve();
+    adapter.subscribeToTrayNavigation(listener, onError);
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
 
     expect(listener).not.toHaveBeenCalled();
-    expect(bridge.invoke).not.toHaveBeenCalledWith(
-      'ack_pending_tray_navigation',
-      expect.anything(),
-    );
     expect(onError).toHaveBeenCalledWith({
       code: 'listener-registration-failed',
       message:
-        'Station deferred tray navigation because its renderer subscription was disposed before delivery.',
+        'Station refused a malformed tray navigation replay; the native lease was left for renderer recovery.',
     });
   });
+
+  it.each(['connections', 'desktopUpdates', 'serverUpdates'] as const)(
+    'does not acknowledge a %s replay lease when disposal wins the invoke race',
+    async (destination) => {
+      let resolveReplay: ((value: unknown) => void) | undefined;
+      const bridge: TauriEventBridge = {
+        invoke: vi.fn(
+          () =>
+            new Promise((resolve) => {
+              resolveReplay = resolve;
+            }) as never,
+        ),
+        listen: vi.fn().mockResolvedValue(vi.fn()),
+      };
+      const listener = vi.fn();
+      const onError = vi.fn();
+      const adapter = new TauriNativePlatformAdapter(bridge);
+
+      const subscription = adapter.subscribeToTrayNavigation(listener, onError);
+      await vi.waitFor(() =>
+        expect(bridge.invoke).toHaveBeenCalledWith(
+          'take_pending_tray_navigation',
+        ),
+      );
+      subscription.dispose();
+      resolveReplay?.({ id: 7, destination });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(listener).not.toHaveBeenCalled();
+      expect(bridge.invoke).not.toHaveBeenCalledWith(
+        'ack_pending_tray_navigation',
+        expect.anything(),
+      );
+      expect(onError).toHaveBeenCalledWith({
+        code: 'listener-registration-failed',
+        message:
+          'Station deferred tray navigation because its renderer subscription was disposed before delivery.',
+      });
+    },
+  );
 
   it('acknowledges before listener disposal can hand the destination to a successor', async () => {
     const calls: string[] = [];

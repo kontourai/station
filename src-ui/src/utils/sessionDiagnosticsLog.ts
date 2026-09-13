@@ -1,4 +1,5 @@
 import { flowRunDisplayIdentity } from '@kontourai/station-contracts';
+import { isBoundExtensionNotification } from '@shared/extension-notification-bindings';
 import type { OrchestrationEvent } from '../hooks/orchestration/types';
 
 /**
@@ -55,6 +56,24 @@ function describeEvent(event: OrchestrationEvent): string {
       return event.gateId
         ? `${event.verdict} · ${event.gateId}`
         : event.verdict;
+    case 'extension.notification': {
+      const tuple = `${event.namespace}/${event.type}`;
+      return isBoundExtensionNotification(event.namespace, event.type)
+        ? tuple
+        : `${tuple} (unbound)`;
+    }
+    case 'policy.stop-verdict':
+      return event.verdict;
+    case 'platform.mutation':
+      return `${event.outcome} · ${event.tool}`;
+    case 'workflow.state-changed':
+      return `${event.status} · ${event.trigger}`;
+    case 'session.stop-settled':
+      return event.outcome;
+    case 'policy.hooks-attached':
+      return event.profile;
+    case 'conversation.forked':
+      return event.targetConversationId;
     default:
       return '';
   }

@@ -975,6 +975,11 @@ describe('AttentionProjectionService', () => {
           title:
             'The agent asked a question: Which environment should I deploy to?',
           requestType: 'input',
+          inputReference: expect.objectContaining({
+            threadId: 'thread-input',
+            requestId: expect.any(String),
+            requestEventId: expect.any(String),
+          }),
         }),
       );
     });

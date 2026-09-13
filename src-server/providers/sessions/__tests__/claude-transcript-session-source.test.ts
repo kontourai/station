@@ -1,6 +1,8 @@
 import {
   mkdirSync,
   mkdtempSync,
+  realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -8,7 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { projectSessionLifecycle } from '../../../services/orchestration/session-lifecycle-service.js';
 import { ClaudeTranscriptSessionSource } from '../claude-transcript-session-source.js';
 
@@ -25,11 +27,123 @@ function record(value: unknown): string {
 }
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const dir of dirs.splice(0))
     rmSync(dir, { recursive: true, force: true });
 });
 
 describe('ClaudeTranscriptSessionSource', () => {
+  test('an isolated history root does not scan the authenticated CLI home', async () => {
+    const authenticatedHome = fixtureDir();
+    const isolatedHistory = fixtureDir();
+    const directory = join(authenticatedHome, 'projects', 'project');
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      join(directory, 'host-session.jsonl'),
+      record({
+        type: 'user',
+        uuid: 'user-1',
+        sessionId: 'host-session',
+        cwd: '/workspace',
+        timestamp: '2026-09-08T00:00:00Z',
+        message: { role: 'user', content: 'Host-only history' },
+      }),
+    );
+    vi.stubEnv('CLAUDE_CONFIG_DIR', authenticatedHome);
+    vi.stubEnv('STATION_EXTERNAL_CLAUDE_SOURCE_ROOT', isolatedHistory);
+    expect(
+      (await new ClaudeTranscriptSessionSource().discover()).sessions,
+    ).toHaveLength(0);
+    expect(
+      (
+        await new ClaudeTranscriptSessionSource({
+          configDir: authenticatedHome,
+        }).discover()
+      ).sessions,
+    ).toHaveLength(1);
+    expect(process.env.CLAUDE_CONFIG_DIR).toBe(authenticatedHome);
+  });
+  test('exposes its stable source-owned kind', () => {
+    const source = new ClaudeTranscriptSessionSource({
+      configDir: fixtureDir(),
+    });
+
+    expect(source.provider).toBe('claude');
+    expect(source.kind).toBe('claude-transcript');
+  });
+
+  test('binds descriptors to one opaque Claude config home across restart and rejects home replacement', async () => {
+    const root = fixtureDir();
+    const directory = join(root, 'projects', 'encoded-project');
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      join(directory, 'session-a.jsonl'),
+      record({
+        type: 'user',
+        uuid: 'user-1',
+        sessionId: 'session-a',
+        cwd: '/workspace/project',
+        timestamp: '2026-09-06T00:00:00.000Z',
+        message: { role: 'user', content: 'authored fixture' },
+      }),
+    );
+    const source = new ClaudeTranscriptSessionSource({ configDir: root });
+    const [session] = (await source.discover()).sessions;
+
+    expect(session.affinity).toMatchObject({
+      kind: 'claude-config-home',
+      ref: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(JSON.stringify(session.affinity)).not.toContain(root);
+    expect(source.resolveSourceHome(session.affinity)).toBe(realpathSync(root));
+
+    const restarted = new ClaudeTranscriptSessionSource({ configDir: root });
+    const [rediscovered] = (await restarted.discover()).sessions;
+    expect(rediscovered.affinity).toEqual(session.affinity);
+    expect(restarted.resolveSourceHome(session.affinity)).toBe(
+      realpathSync(root),
+    );
+
+    const otherRoot = fixtureDir();
+    mkdirSync(join(otherRoot, 'projects'), { recursive: true });
+    const other = new ClaudeTranscriptSessionSource({ configDir: otherRoot });
+    expect(other.resolveSourceHome(session.affinity)).toBeNull();
+    expect(
+      source.resolveSourceHome({
+        kind: 'codex-config-home',
+        ref: session.affinity!.ref,
+      }),
+    ).toBeNull();
+    expect(
+      source.resolveSourceHome({
+        kind: 'claude-config-home',
+        ref: 'not-an-affinity',
+      }),
+    ).toBeNull();
+    expect(
+      await source.read({ ...session, affinity: rediscovered.affinity }),
+    ).toMatchObject({ outcome: 'ok' });
+    expect(
+      await source.read({
+        ...session,
+        affinity: {
+          kind: 'claude-config-home',
+          ref: '0'.repeat(64),
+        },
+      }),
+    ).toMatchObject({ outcome: 'rejected_candidate', events: [] });
+
+    const movedRoot = `${root}-original`;
+    dirs.push(movedRoot);
+    renameSync(root, movedRoot);
+    mkdirSync(join(root, 'projects'), { recursive: true });
+    expect(source.resolveSourceHome(session.affinity)).toBeNull();
+    expect(await source.read(session)).toMatchObject({
+      outcome: 'rejected_candidate',
+      events: [],
+    });
+  });
+
   test('emits byte-real Claude per-message usage, cache split, service tier, and request ID', async () => {
     const root = fixtureDir();
     const directory = join(root, 'projects', 'encoded-project');

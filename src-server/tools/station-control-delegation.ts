@@ -67,6 +67,7 @@ import {
   matchVerifiedRemoteProjectPath,
   resolveExecutionTarget,
 } from '../services/execution-target/execution-target-resolver.js';
+import { captureExecutionWorkspaceBinding } from '../services/orchestration/execution-workspace-binding.js';
 import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
@@ -93,6 +94,35 @@ interface ApiEnvelope<T> {
   receipt?: unknown;
   receiptStatus?: unknown;
   session?: unknown;
+}
+
+/** A local execution view uses the same binding owner as engine admission. */
+async function readExecutionProject(
+  access: EnvironmentAccess,
+  slug: string,
+  orchestrationService: OrchestrationService,
+) {
+  const project = (await getProject(
+    access.apiBase,
+    slug,
+    access.requestOptions,
+  )) as
+    | {
+        workingDirectory?: string;
+        defaultWorkspaceIsolation?: 'shared' | 'worktree';
+      }
+    | undefined;
+  if (
+    !project ||
+    access.kind !== 'current' ||
+    !orchestrationService.resolveProjectSessionDirectory
+  )
+    return project;
+  return {
+    ...project,
+    workingDirectory:
+      await orchestrationService.resolveProjectSessionDirectory(slug),
+  };
 }
 
 interface StationHandshake {
@@ -3093,11 +3123,8 @@ export async function delegateTask(
       )) as ExecutionTargetAgentView,
     getConnection: async (access, id) =>
       readConnection(access as DelegationTarget, id),
-    getProject: async (access, slug) =>
-      (await getProject(access.apiBase, slug, access.requestOptions)) as {
-        workingDirectory?: string;
-        defaultWorkspaceIsolation?: 'shared' | 'worktree';
-      },
+    getProject: (access, slug) =>
+      readExecutionProject(access, slug, orchestrationService),
     getProviderAdapter: (provider) =>
       orchestrationService.getProviderAdapter(provider),
   } satisfies Parameters<typeof resolveExecutionTarget>[1];
@@ -3192,6 +3219,11 @@ export async function delegateTask(
             environmentName: target.environmentName,
             taskId: sessionId,
             ...(project?.slug ? { projectSlug: project.slug } : {}),
+            // Preserve the resolved creation policy for continuation. The
+            // current Project default cannot certify an earlier launch.
+            ...(resolved.workspace?.kind === 'project'
+              ? { workspaceIsolation: resolved.workspace.workspaceIsolation }
+              : {}),
             // archive#1463: record the resolved project join on every Agent.
             ...(project?.slugJoin ? { projectSlugJoin: project.slugJoin } : {}),
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
@@ -3401,17 +3433,39 @@ export async function executeExecutionTargetMessage(
           throw new ForegroundInvocationUnavailableError();
         return structuredClone(capturedProject);
       }
-      return (await getProject(
-        access.apiBase,
-        slug,
-        access.requestOptions,
-      )) as {
-        workingDirectory?: string;
-        defaultWorkspaceIsolation?: 'shared' | 'worktree';
-      };
+      return readExecutionProject(access, slug, orchestrationService);
     },
     getProviderAdapter: (provider) =>
       orchestrationService.getProviderAdapter(provider),
+    ...(admission
+      ? {
+          admitWorktreeProvisioning: (
+            threadId: string,
+            effect: () => Promise<
+              | import('@kontourai/station-contracts/workspace-isolation').WorktreeSessionMetadata
+              | null
+            >,
+          ) =>
+            admission.invoke(
+              'provision',
+              {
+                threadId,
+                agentId: admission.agentId,
+                projectSlug: admission.project.slug,
+              },
+              effect,
+            ),
+        }
+      : {}),
+    canContinueConversation: (
+      access: EnvironmentAccess,
+      conversationId: string,
+      userId: string,
+    ) =>
+      access.kind === 'current' &&
+      readAuthority.mode === 'personal' &&
+      readAuthority.userId === userId &&
+      orchestrationService.canUserReadSession(conversationId, readAuthority),
     readSessionBinding: async (
       _access: EnvironmentAccess,
       sessionId: string,
@@ -3613,6 +3667,25 @@ export async function executeExecutionTargetMessage(
       ) {
         throw new Error('Foreground execution identity was not resolved');
       }
+      const retainedWorktree = startInput.metadata?.worktree;
+      const workspaceProject = startInput.metadata?.projectSlug;
+      const workspaceOwner = retainedWorktree
+        ? await orchestrationService.readSession(conversationId, readAuthority)
+        : undefined;
+      const executionWorkspace =
+        retainedWorktree &&
+        typeof workspaceProject === 'string' &&
+        startInput.cwd
+          ? await captureExecutionWorkspaceBinding({
+              threadId: startInput.threadId,
+              ownerThreadId:
+                workspaceOwner?.session.threadId ?? startInput.threadId,
+              projectSlug: workspaceProject,
+              cwd: startInput.cwd,
+              worktree:
+                retainedWorktree as import('@kontourai/station-contracts/workspace-isolation').WorktreeSessionMetadata,
+            })
+          : undefined;
       const started = await orchestrationService.startSessionInternal(
         { type: 'start-session', input: startInput },
         dispatchContextForAuthority(
@@ -3621,6 +3694,7 @@ export async function executeExecutionTargetMessage(
           input.principal,
         ),
         {
+          ...(executionWorkspace ? { executionWorkspace } : {}),
           ...(ephemeral ? { ephemeralSessionVisibility: true } : {}),
           ...(admission ? { foregroundInvocationAdmission: admission } : {}),
           resourceAdmissionIntent:
@@ -3670,6 +3744,8 @@ export async function executeExecutionTargetMessage(
         sessionId: started.session.threadId,
       };
     },
+    nativeMemoryOwnsTranscript:
+      orchestrationService.supportsNativeMemoryContinuity?.() === true,
     sendTurn: async (_access: EnvironmentAccess, turnInput, context) => {
       const command = { type: 'sendTurn' as const, input: turnInput };
       const dispatchContext = dispatchContextForAuthority(
@@ -3681,11 +3757,15 @@ export async function executeExecutionTargetMessage(
         ? await orchestrationService.dispatchWithReceipt(
             command,
             dispatchContext,
-            { foregroundInvocationAdmission: admission },
+            {
+              foregroundInvocationAdmission: admission,
+              nativeMemoryReadAuthority: readAuthority,
+            },
           )
         : await orchestrationService.dispatchWithReceipt(
             command,
             dispatchContext,
+            { nativeMemoryReadAuthority: readAuthority },
           );
       if (!dispatched.result || !('turnId' in dispatched.result)) {
         throw new ForegroundMessageTurnIdentityUnavailableError(

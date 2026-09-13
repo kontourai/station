@@ -3,12 +3,13 @@ import {
   type ReactNode,
   type RefObject,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
 } from 'react';
 
-export interface VirtualTranscriptRow {
+interface VirtualTranscriptRow {
   readonly id: string;
   readonly kind: string;
 }
@@ -45,11 +46,28 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   revealRowId,
 }: TranscriptVirtualizerProps<Row>) {
   const [scrollReady, setScrollReady] = useState(false);
+  const spacerRef = useRef<HTMLDivElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+  // The transcript can contain history controls before the virtual rows.
+  // TanStack offsets include that prefix; row transforms remain spacer-relative.
+  useLayoutEffect(() => {
+    void rows;
+    void scrollReady;
+    const container = scrollElement.current;
+    const spacer = spacerRef.current;
+    if (!container || !spacer) return;
+    setScrollMargin(
+      spacer.getBoundingClientRect().top -
+        container.getBoundingClientRect().top +
+        container.scrollTop,
+    );
+  }, [rows, scrollReady, scrollElement]);
   const virtualAnchorRef = useRef<
     { id: string; index: number; offset: number } | undefined
   >(undefined);
   const virtualizerOptions = {
     count: rows.length,
+    scrollMargin,
     getScrollElement: () => (scrollReady ? scrollElement.current : null),
     estimateSize: (index: number) =>
       ESTIMATED_ROW_HEIGHT[rows[index]?.kind] ?? 96,
@@ -128,10 +146,10 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
     }
   }, [scrollElement]);
 
-  // The host ref is assigned during the same commit as this adapter. Ask the
-  // virtualizer to measure after that commit so the first paint includes the
-  // initial window rather than an empty spacer.
-  useLayoutEffect(() => {
+  // The parent host ref is attached after child layout effects. Wait until
+  // the commit finishes before enabling the scroll/resize subscriptions;
+  // otherwise the initial null ref permanently leaves the first range frozen.
+  useEffect(() => {
     setScrollReady(scrollElement.current !== null);
     virtualizer.measure();
   }, [scrollElement, virtualizer]);
@@ -281,6 +299,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
 
   return (
     <div
+      ref={spacerRef}
       data-testid="virtualized-transcript-spacer"
       data-transcript-row-count={rows.length}
       style={{
@@ -303,7 +322,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
               top: 0,
               left: 0,
               width: '100%',
-              transform: `translateY(${item.start}px)`,
+              transform: `translateY(${item.start - scrollMargin}px)`,
             }}
           >
             {renderRow(row)}

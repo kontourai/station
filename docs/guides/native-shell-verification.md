@@ -6,6 +6,31 @@ admitted to public Pages: it names implementation seams and verification
 boundaries rather than providing an end-user recovery path. Use [Recover a
 desktop start](../user/native-recovery.md) for that public path.
 
+## Build a development iOS simulator app
+
+On an Apple Silicon Mac with Xcode and an installed simulator runtime:
+
+```sh
+npm run dependencies:ci
+npm run build:ios:simulator
+```
+
+The command initializes and builds with `tauri.ios.dev.conf.json`, giving the
+app the separate `io.kontourai.station.dev.instance` identifier and matching
+`station-dev-instance` pairing scheme. The additional development Info.plist
+retains Station's privacy descriptions and its pairing association when the
+Xcode project is regenerated.
+
+The build embeds the simulator's application and private keychain group in
+the executable's `__TEXT,__entitlements` section using simulator-only linker
+settings. These iOS rights must not be put in the macOS code signature of the
+simulator process. The verifier reads the actual section bytes, checks the
+app identity, pairing scheme, and simulator platform, then seals resources
+with an ordinary ad-hoc signature. It refuses device or non-development
+artifacts. This requires no distribution certificate and does not produce a
+device, TestFlight, or App Store package. The command prints the resulting
+`.app` path. Archive that app to upload it to a device workspace.
+
 ## What can run today
 
 Run the changed selector first, then the exact focused checks it selects:
@@ -110,6 +135,21 @@ Do not invent a `tauri-driver` command or claim that the browser test exercises 
 Those gaps are [#2006](https://github.com/kontourai/station/issues/2006).
 
 ## Logs and diagnosis boundary
+
+For the Windows permission-helper regression, use an **unelevated** PowerShell
+in the repository and a new proof directory:
+
+```powershell
+./scripts/verify-windows-path-trust.ps1 -ProofRoot (Join-Path $env:TEMP ('station-acl-proof-' + [guid]::NewGuid()))
+```
+
+This executes the native ACL program against current-user-owned directories
+and files that initially grant Modify rather than FullControl. Their owner
+can harden the DACL without requesting an unnecessary ownership change.
+The check also verifies that unrelated access rules are rejected and file
+contents are preserved. It refuses elevated execution so administrator
+privileges cannot hide the regression. This is helper evidence; native GUI
+startup and in-app installation/relaunch remain separate checks.
 
 The desktop host writes its own log through `tauri-plugin-log`. The configured
 application identifier selects the shell log directory, so each release channel

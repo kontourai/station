@@ -56,7 +56,7 @@ export interface ActionOperationStore {
   ): Promise<T>;
 }
 
-export interface FileActionOperationStoreOptions {
+interface FileActionOperationStoreOptions {
   readonly acquireLock?: typeof acquireFileMutationLockAsync;
   /** Fault seam immediately before the atomic rename commit. */
   readonly beforeCommit?: () => void | Promise<void>;
@@ -137,19 +137,19 @@ export interface UpdateActionOperation {
   readonly reentry?: ActionOperationReentry;
 }
 
-export type ActionOperationUpdateResult =
+type ActionOperationUpdateResult =
   | { readonly kind: 'updated'; readonly operation: ActionOperation }
   | { readonly kind: 'stale'; readonly operation: ActionOperation }
   | { readonly kind: 'terminal'; readonly operation: ActionOperation }
   | { readonly kind: 'not-found' }
   | { readonly kind: 'invalid' };
 
-export interface ActionOperationListOptions {
+interface ActionOperationListOptions {
   readonly cursor?: string;
   readonly limit?: number;
 }
 
-export type ActionOperationCancellationOutcome =
+type ActionOperationCancellationOutcome =
   | { readonly kind: 'cancelled' }
   | { readonly kind: 'indeterminate' }
   | { readonly kind: 'refused' };
@@ -162,7 +162,7 @@ export interface ActionOperationCancellationAdapter {
   ): Promise<ActionOperationCancellationOutcome>;
 }
 
-export interface ActionOperationServiceOptions {
+interface ActionOperationServiceOptions {
   readonly now?: () => Date;
   readonly staleActiveMs?: number;
   readonly cancellationAdapters?: readonly ActionOperationCancellationAdapter[];

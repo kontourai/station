@@ -73,7 +73,7 @@ import {
 const VALID_ROLES = new Set(['system', 'user', 'assistant']);
 const PROVIDER_CAPABILITIES = new Set(['llm', 'embedding', 'vectordb']);
 
-export interface FleetInferenceServiceDeps {
+interface FleetInferenceServiceDeps {
   /** Slice 1's contributed-subset projection — the only allowlist. */
   getFleetContributionManifest(): Promise<FleetContributionManifest>;
   getConnection(id: string): Promise<ConnectionConfig | null>;
@@ -84,7 +84,7 @@ export interface FleetInferenceServiceDeps {
   now?: () => Date;
 }
 
-export type FleetInferenceOutcome =
+type FleetInferenceOutcome =
   | { kind: 'completed'; response: FleetInferenceCompletionResponse }
   | { kind: 'refused'; refusal: FleetInferenceRefusal };
 

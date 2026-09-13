@@ -7,11 +7,15 @@ import {
   useProjectLayoutQuery,
   useProjectQuery,
 } from '@kontourai/station-sdk';
+import { useWorkspacePaneHostActionsQuery } from '@kontourai/station-sdk/workspace-pane';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ErrorState } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
-import { useApiBase } from '../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { LAST_PROJECT_LAYOUT_KEY } from '../contexts/navigation-store';
 import { SDKAdapter } from '../core/SDKAdapter';
@@ -21,6 +25,8 @@ import {
 } from '../hooks/useActiveChatSessions';
 import { useSlashCommandHandler } from '../hooks/useSlashCommandHandler';
 import { LayoutRenderer } from '../layouts';
+import { focusWorkspacePaneHostAction } from '../workspace-panes/workspacePaneHostActionFocus';
+import './LayoutView.css';
 import {
   annotateUnavailableAgentLabel,
   type ProjectAgentFilterState,
@@ -80,6 +86,34 @@ export function LayoutView({
   // forever, so launches stay refused rather than failing open.
   const { data: projectConfig, isSuccess: projectConfigReady } =
     useProjectQuery(projectSlug);
+  const hostAuthority = useHostRequestAuthorityScope();
+  const hostActions = useWorkspacePaneHostActionsQuery(projectSlug, {
+    requestScope: hostAuthority,
+    enabled: Boolean(hostAuthority),
+  });
+  const packageId = layoutData?.config?.plugin;
+  // Plugin-owned launches always belong to captured server admission. A
+  // catalog is display evidence, never permission to revive saved actions.
+  const hostOwnsGlobalActions = typeof packageId === 'string';
+  const noticeScope = JSON.stringify([packageId, projectSlug, layoutSlug]);
+  const [pluginActionNotice, setPluginActionNotice] = useState<{
+    scope: string;
+    message: string;
+  }>();
+  const hasSavedPluginGlobals =
+    hostOwnsGlobalActions &&
+    Boolean(
+      layoutData?.config?.actions?.length ||
+        layoutData?.config?.globalSkills?.length,
+    );
+  const notice = hostOwnsGlobalActions
+    ? ((pluginActionNotice?.scope === noticeScope
+        ? pluginActionNotice.message
+        : undefined) ??
+      (hasSavedPluginGlobals
+        ? 'Run supported plugin actions from the workspace action bar. Other saved actions are unavailable until the plugin is updated.'
+        : undefined))
+    : undefined;
   const projectAgentFilterAgents = projectConfig?.agents;
   const projectAgentFilter: ProjectAgentFilterState = useMemo(
     () =>
@@ -105,6 +139,17 @@ export function LayoutView({
       projectAgentFilter,
     );
 
+  const reviewPluginAction = <T extends { label: string }>(item: T): T =>
+    hostOwnsGlobalActions
+      ? {
+          ...item,
+          type: 'prompt',
+          label: item.label.startsWith('Review ')
+            ? item.label
+            : `Review ${item.label}`,
+        }
+      : item;
+
   // Map LayoutConfig → workspace shape
   const layout = layoutData
     ? {
@@ -118,13 +163,20 @@ export function LayoutView({
           component: t.component,
           icon: t.icon,
           description: t.description,
-          actions: (t.actions ?? []).map(annotateAgentRef),
-          skills: (t.skills ?? []).map(annotateAgentRef),
+          actions: (t.actions ?? [])
+            .map(annotateAgentRef)
+            .map(reviewPluginAction),
+          skills: (t.skills ?? [])
+            .map(annotateAgentRef)
+            .map(reviewPluginAction),
         })),
-        globalSkills: (layoutData.config?.globalSkills ?? []).map(
-          annotateAgentRef,
-        ),
-        actions: layoutData.config?.actions?.map(annotateAgentRef),
+        globalSkills: (hostOwnsGlobalActions
+          ? []
+          : (layoutData.config?.globalSkills ?? [])
+        ).map(annotateAgentRef),
+        actions: hostOwnsGlobalActions
+          ? []
+          : layoutData.config?.actions?.map(annotateAgentRef),
         defaultAgent: layoutData.config?.defaultAgent,
         availableAgents: layoutData.config?.availableAgents,
         // Host-owned, read-only metadata used by the builtin standard-view
@@ -184,6 +236,32 @@ export function LayoutView({
 
   const handleLaunchPrompt = useCallback(
     async (prompt: any) => {
+      // Even a stale renderer callback cannot select an unqualified Agent
+      // after uninstall, withdrawal, or a catalog/SSE race.
+      if (typeof packageId === 'string') {
+        const actionId =
+          typeof prompt.id === 'string' && prompt.id.startsWith(`${packageId}:`)
+            ? prompt.id.slice(packageId.length + 1)
+            : undefined;
+        const contribution = hostActions.data?.contributions.find(
+          ({ projection }) => projection.owner.pluginId === packageId,
+        );
+        if (
+          actionId &&
+          hostAuthority?.isCurrent() &&
+          contribution?.projection.actions.some(
+            (action) => action.id === actionId,
+          ) &&
+          focusWorkspacePaneHostAction(projectSlug, packageId, actionId)
+        )
+          return;
+        setPluginActionNotice({
+          scope: noticeScope,
+          message:
+            'This saved plugin action is unavailable. Use a supported workspace action, or update or reinstall the plugin.',
+        });
+        return;
+      }
       // Never a silent launch (archive#1004): resolves only
       // to an agent actually available in THIS project — an agent owned by
       // a different project is refused here even if it was somehow still
@@ -213,6 +291,10 @@ export function LayoutView({
       await sendMessage(sessionId, targetAgent.slug, undefined, promptText);
     },
     [
+      packageId,
+      noticeScope,
+      hostActions.data,
+      hostAuthority,
       agents,
       layout?.defaultAgent,
       createChatSession,
@@ -324,6 +406,11 @@ export function LayoutView({
         activeTabId={activeTabId}
         layoutSlug={layout?.slug}
       >
+        {notice ? (
+          <p className="layout-action-notice" role="status">
+            {notice}
+          </p>
+        ) : null}
         <LayoutRenderer
           layout={layout}
           activeTab={activeTabObject}

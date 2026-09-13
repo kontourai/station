@@ -15,12 +15,12 @@ import {
 /** The subset of `Logger` the crash path needs. Deliberately narrow — see
  * `src-server/utils/logger.ts`'s `Pick<Logger, ...>` pattern elsewhere in
  * this seam. */
-export interface CrashLogger {
+interface CrashLogger {
   fatal(msg: string, context?: unknown): void;
   error(msg: string, context?: unknown): void;
 }
 
-export interface InstallCrashHandlersDeps {
+interface InstallCrashHandlersDeps {
   /** Best-effort synchronous drain of the durable log sink, called after a
    * `fatal` line so it survives a process that exits immediately after. */
   flushSync: () => void;

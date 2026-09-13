@@ -24,7 +24,7 @@ export const OPEN_PROJECT_CHATS_EVENT = 'station:open-project-chats';
  * name and the dock reports what it was told. A second dispatcher gets its own
  * entry here rather than being mislabelled as this one.
  */
-export type ProjectChatEntrySource = 'project-page-cta';
+type ProjectChatEntrySource = 'project-page-cta';
 
 export type OpenProjectChatsDetail = {
   projectSlug?: string;

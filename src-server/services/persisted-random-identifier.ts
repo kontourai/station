@@ -1,8 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import {
+  chmod,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 
-export const PERSISTED_RANDOM_IDENTIFIER_PATTERN =
+const PERSISTED_RANDOM_IDENTIFIER_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function readValidIdentifier(path: string): Promise<string | undefined> {
@@ -61,7 +68,16 @@ export async function persistedRandomIdentifierHash(
         mode: 0o600,
         flag: 'wx',
       });
-      await rename(replacement, path);
+      try {
+        await rename(replacement, path);
+      } catch (error) {
+        // The replacement name carries a fresh UUID, so a leaked one is
+        // never reused and never reaped -- and this path runs on the boot
+        // that could not read its own identifier, which is exactly the boot
+        // most likely to repeat.
+        await rm(replacement, { force: true }).catch(() => {});
+        throw error;
+      }
       identifier = await readValidIdentifier(path);
     }
   }

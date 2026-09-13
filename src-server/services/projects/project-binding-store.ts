@@ -64,7 +64,11 @@ import {
   type ProjectBinding,
   type ProjectBindingStore,
 } from '@kontourai/station-contracts/project-identity';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  type FileMutationLock,
+} from '@kontourai/station-shared/lifecycle-events';
+import { isRecord } from '../../utils/is-record.js';
 import { JsonFileStore } from '../infra/json-store.js';
 
 /** Reserved until archive#1392 introduces real membership (§3.5). */
@@ -107,16 +111,9 @@ export interface UpsertProjectBindingInput {
   state: ProjectBinding['state'];
 }
 
-// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
-// so a contended acquisition yields the event loop; sync test fakes remain
-// assignable (awaiting a non-promise is a no-op).
-type ProjectBindingMutationLock = (
-  lockPath: string,
-) => (() => void | Promise<void>) | Promise<() => void | Promise<void>>;
-
 export interface ProjectBindingsStoreOptions {
   /** Injectable only for deterministic store concurrency tests. */
-  acquireMutationLock?: ProjectBindingMutationLock;
+  acquireMutationLock?: FileMutationLock;
 }
 
 /**
@@ -176,10 +173,6 @@ export function canonicalizeCheckoutRemotes(
   return canonical;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function requireNonEmptyString(
   value: unknown,
   field: string,
@@ -198,7 +191,7 @@ function validateBindingStore(
   filePath: string,
 ): ProjectBindingStore {
   const problems: string[] = [];
-  if (!isPlainObject(value)) {
+  if (!isRecord(value)) {
     throw new ProjectBindingStoreShapeError(filePath, ['must be an object']);
   }
   // schemaVersion gates everything else and is never cast (§2.5).
@@ -209,7 +202,7 @@ function validateBindingStore(
   }
   requireNonEmptyString(value.memberId, 'memberId', problems);
 
-  if (!isPlainObject(value.hostAliases)) {
+  if (!isRecord(value.hostAliases)) {
     problems.push('hostAliases: must be an object');
   } else {
     for (const [alias, host] of Object.entries(value.hostAliases)) {
@@ -227,7 +220,7 @@ function validateBindingStore(
   } else {
     value.bindings.forEach((binding, index) => {
       const at = `bindings[${index}]`;
-      if (!isPlainObject(binding)) {
+      if (!isRecord(binding)) {
         problems.push(`${at}: must be an object`);
         return;
       }
@@ -271,7 +264,7 @@ function validateBindingStore(
   } else {
     value.credentialBindings.forEach((credential, index) => {
       const at = `credentialBindings[${index}]`;
-      if (!isPlainObject(credential)) {
+      if (!isRecord(credential)) {
         problems.push(`${at}: must be an object`);
         return;
       }
@@ -304,7 +297,7 @@ function validateBindingStore(
 export class ProjectBindingsStore {
   private readonly filePath: string;
   private readonly store: JsonFileStore<ProjectBindingStore>;
-  private readonly acquireMutationLock: ProjectBindingMutationLock;
+  private readonly acquireMutationLock: FileMutationLock;
 
   constructor(homeDir: string, options: ProjectBindingsStoreOptions = {}) {
     this.filePath = projectBindingStorePath(homeDir);

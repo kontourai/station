@@ -18,7 +18,7 @@ describe('Tauri embedded WebDriver boundary', () => {
 
     expect(cargo).toContain('webdriver = ["dep:tauri-plugin-wdio-webdriver"]');
     expect(cargo).toContain(
-      'tauri-plugin-wdio-webdriver = { version = "=1.3.0", optional = true }',
+      'tauri-plugin-wdio-webdriver = { version = "=1.4.0", optional = true }',
     );
     expect(rust).toContain('#[cfg(all(not(mobile), feature = "webdriver"))]');
     expect(rust).toContain(
@@ -61,8 +61,11 @@ describe('Tauri embedded WebDriver boundary', () => {
   });
 
   test('does not install unrelated external browser drivers', () => {
-    const lock = JSON.parse(read('package-lock.json'));
-    expect(lock.packages).not.toHaveProperty('node_modules/edgedriver');
-    expect(lock.packages).not.toHaveProperty('node_modules/geckodriver');
+    // Station has one pnpm lockfile. Reading a removed npm lockfile made this
+    // policy test fail before it could establish anything about the resolved
+    // dependency graph.
+    const lock = read('pnpm-lock.yaml');
+    expect(lock).not.toMatch(/^\s{2}edgedriver@/m);
+    expect(lock).not.toMatch(/^\s{2}geckodriver@/m);
   });
 });

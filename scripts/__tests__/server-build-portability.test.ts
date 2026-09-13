@@ -13,8 +13,9 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
+import { hostname, tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -368,6 +369,11 @@ function launchDesktopServer(release: string, root: string, port: number) {
     sha: stagedBuild.sha,
     shaSource: 'build-stamp' as const,
     bootId: randomUUID(),
+    // A bare bearer authenticates the probe without proving host-local presence.
+    devicePresentation: {
+      deviceClass: 'paired',
+      hostName: hostname().split('.')[0],
+    },
   };
   const child = spawn(process.execPath, ['dist-server/command-station.js'], {
     cwd: release,
@@ -764,6 +770,142 @@ describe('server build package portability', () => {
         budget: { maxBytes: Number.MAX_SAFE_INTEGER, maxFiles: 0 },
       }),
     ).toThrow(/exceeds its release budget/);
+  });
+
+  it('reuses a compatible nearest ancestor instead of duplicating its dependency tree', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-runtime-ancestor-'));
+    temporaryRoots.push(root);
+    const project = join(root, 'project');
+    const output = join(root, 'release');
+    const put = (
+      path: string,
+      name: string,
+      version: string,
+      dependencies = {},
+      entry = `module.exports = '${version}';`,
+    ) => {
+      mkdirSync(path, { recursive: true });
+      writeFileSync(
+        join(path, 'package.json'),
+        JSON.stringify({ name, version, dependencies, main: 'index.cjs' }),
+      );
+      writeFileSync(join(path, 'index.cjs'), entry);
+    };
+    put(join(project, 'node_modules/shared'), 'shared', '2.0.0');
+    put(join(project, 'node_modules/bridge'), 'bridge', '2.0.0');
+    const owner = join(project, 'node_modules/owner');
+    put(owner, 'owner', '1.0.0', { shared: '1.0.0', bridge: '1.0.0' });
+    put(join(owner, 'node_modules/shared'), 'shared', '1.0.0');
+    put(
+      join(owner, 'node_modules/bridge'),
+      'bridge',
+      '1.0.0',
+      { shared: '1.0.0' },
+      "module.exports = require('shared');",
+    );
+    stageDesktopServerRuntime({
+      projectRoot: project,
+      outputRoot: output,
+      packages: ['shared', 'bridge', 'owner'],
+    });
+    const bridge = join(
+      output,
+      'node_modules/owner/node_modules/bridge/index.cjs',
+    );
+    const request = createRequire(bridge);
+    expect(request(bridge)).toBe('1.0.0');
+    expect(request.resolve('shared')).toBe(
+      realpathSync(
+        join(output, 'node_modules/owner/node_modules/shared/index.cjs'),
+      ),
+    );
+    expect(existsSync(join(dirname(bridge), 'node_modules/shared'))).toBe(
+      false,
+    );
+  });
+
+  it('plans sibling shadows before hoisting a child dependency', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-runtime-shadow-'));
+    temporaryRoots.push(root);
+    const project = join(root, 'project');
+    const output = join(root, 'release');
+    const put = (
+      path: string,
+      name: string,
+      version: string,
+      dependencies = {},
+      entry = `module.exports = '${version}';`,
+    ) => {
+      mkdirSync(path, { recursive: true });
+      writeFileSync(
+        join(path, 'package.json'),
+        JSON.stringify({ name, version, dependencies, main: 'index.cjs' }),
+      );
+      writeFileSync(join(path, 'index.cjs'), entry);
+    };
+    const shared = join(project, 'node_modules/shared');
+    put(shared, 'shared', '1.0.0');
+    put(join(project, 'node_modules/child'), 'child', '2.0.0');
+    const owner = join(project, 'node_modules/owner');
+    put(owner, 'owner', '1.0.0', { child: '1.0.0', shared: '2.0.0' });
+    put(join(owner, 'node_modules/shared'), 'shared', '2.0.0');
+    const child = join(owner, 'node_modules/child');
+    put(
+      child,
+      'child',
+      '1.0.0',
+      { shared: '1.0.0' },
+      "module.exports = require('shared');",
+    );
+    mkdirSync(join(child, 'node_modules'), { recursive: true });
+    symlinkSync(
+      shared,
+      join(child, 'node_modules/shared'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    stageDesktopServerRuntime({
+      projectRoot: project,
+      outputRoot: output,
+      packages: ['shared', 'child', 'owner'],
+    });
+    const entry = join(
+      output,
+      'node_modules/owner/node_modules/child/index.cjs',
+    );
+    expect(createRequire(entry)(entry)).toBe('1.0.0');
+  });
+
+  it('reserves explicit runtime roots before their transitive versions', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-runtime-roots-'));
+    temporaryRoots.push(root);
+    const project = join(root, 'project');
+    const output = join(root, 'release');
+    for (const [path, name, version, dependencies] of [
+      ['owner', 'owner', '1.0.0', { shared: '1.0.0' }],
+      ['owner/node_modules/shared', 'shared', '1.0.0', {}],
+      ['shared', 'shared', '2.0.0', {}],
+    ] as const) {
+      const target = join(project, 'node_modules', path);
+      mkdirSync(target, { recursive: true });
+      writeFileSync(
+        join(target, 'package.json'),
+        JSON.stringify({ name, version, dependencies, main: 'index.cjs' }),
+      );
+      writeFileSync(
+        join(target, 'index.cjs'),
+        `module.exports = '${version}';`,
+      );
+    }
+    stageDesktopServerRuntime({
+      projectRoot: project,
+      outputRoot: output,
+      packages: ['owner', 'shared'],
+    });
+    const request = createRequire(join(output, 'entry.cjs'));
+    expect(request('shared')).toBe('2.0.0');
+    expect(
+      createRequire(join(output, 'node_modules/owner/index.cjs'))('shared'),
+    ).toBe('1.0.0');
   });
 
   it('uses shallow WiX sources while preserving deep runtime destinations', () => {

@@ -8,7 +8,6 @@ import {
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
-import { SSE_KEEPALIVE_INTERVAL_MS } from '../../constants.js';
 import { SchedulerJobConflictError } from '../../services/scheduling/builtin-scheduler.js';
 import { SchedulerStorageUnavailableError } from '../../services/scheduling/scheduler-ledger.js';
 import type {
@@ -26,7 +25,7 @@ import {
   param,
   validate,
 } from '../schemas/schemas.js';
-import { streamSSE } from '../sse-response.js';
+import { sseKeepalive, streamSSE } from '../sse-response.js';
 
 function publicManualRunMessage(
   outcome: SchedulerManualRunReceipt['outcome'],
@@ -99,12 +98,9 @@ export function createSchedulerRoutes(
           .writeSSE({ data })
           .catch((e) => logger.error('SSE write failed', { error: e }));
       });
-      // Keep alive
-      const keepAlive = setInterval(() => {
-        stream
-          .writeSSE({ event: 'ping', data: '' })
-          .catch((e) => logger.error('SSE ping failed', { error: e }));
-      }, SSE_KEEPALIVE_INTERVAL_MS);
+      const stopKeepAlive = sseKeepalive(stream, undefined, {
+        onWriteError: (e) => logger.error('SSE ping failed', { error: e }),
+      });
       // Wait until client disconnects
       try {
         await new Promise((_, reject) => {
@@ -114,7 +110,7 @@ export function createSchedulerRoutes(
         logger.debug('SSE client disconnected', { error: e });
         /* client disconnected */
       }
-      clearInterval(keepAlive);
+      stopKeepAlive();
       unsub();
     });
   });

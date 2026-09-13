@@ -3,6 +3,7 @@ import {
   sshEnvironmentConnectDuration,
   sshEnvironmentOps,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   discoverOpenSshHosts,
   type ResolvedOpenSshHost,
@@ -220,7 +221,7 @@ function mapTunnelState(state: OpenSshTunnelState): SshEnvironmentState {
 }
 
 function classifyWorkerFailure(error: unknown): ErrorReason {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   if (/station-authentication-required/.test(message))
     return 'station-authentication-required';
   if (/identity-mismatch/.test(message)) return 'identity-mismatch';

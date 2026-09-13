@@ -1,10 +1,20 @@
 import { randomUUID } from 'node:crypto';
+import {
+  ACCOUNT_AUTHENTICATION_FAILURE_HEADER,
+  APPLICATION_SESSION_HEADER,
+  APPLICATION_SESSION_PROOF_HEADER,
+} from '@kontourai/station-contracts/application-session';
 import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin';
+import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
 import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
 import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { KNOWLEDGE_ROOT_IDENTITY_HEADER } from '@kontourai/station-shared/knowledge-root-identity';
-import { sanitizeError } from '@kontourai/station-shared/redaction';
+import {
+  redactDeep,
+  sanitizeError,
+  sanitizeFreeText,
+} from '@kontourai/station-shared/redaction';
 import { type HonoServerConfig } from '@voltagent/server-hono';
 import { cors } from 'hono/cors';
 import {
@@ -38,6 +48,7 @@ import {
   setBudgetPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../security/runtime-request-security.js';
+import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import {
   deviceSessionAuthorizations,
@@ -49,6 +60,7 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
+import { isRouteError, type RouteError } from '../../utils/route-error.js';
 import {
   buildRuntimeRouteVocabulary,
   labelRuntimeRoutePath,
@@ -77,6 +89,10 @@ function allowlistedAuthClientMessage(error: unknown): string | undefined {
 
 type RuntimeErrorResponseContext = {
   json: (body: unknown, status: 500) => Response;
+};
+
+type RouteErrorResponseContext = {
+  json: (body: unknown, status: RouteError['status']) => Response;
 };
 
 function unexpectedRuntimeErrorResponse(
@@ -110,6 +126,75 @@ function unexpectedRuntimeErrorResponse(
   );
 }
 
+/**
+ * Answers a route's own typed refusal.
+ *
+ * `RouteError` is the reviewed exception to the generic envelope
+ * {@link unexpectedRuntimeErrorResponse} answers with: the
+ * route has said this text is safe to show the caller and named the status it
+ * deserves. The message is still run through `sanitizeFreeText` here, because
+ * a reviewed literal is routinely built by interpolating a filename, a slug,
+ * or a service's own text — the sanitizer covers the interpolated half.
+ *
+ * `error` stays a **string** and `code`/`details`/`correlationId` stay
+ * top-level: that is exactly where every existing client reader already
+ * looks, so a route moving onto this contract changes no reader.
+ *
+ * A 4xx is the caller's fault and logs at `warn` with no payload beyond what
+ * the caller was already told. A 5xx is ours: it logs at `error` with the
+ * sanitized `cause`, so the operator keeps the underlying failure the caller
+ * never sees.
+ */
+function routeErrorResponse(
+  c: RouteErrorResponseContext,
+  logger: Logger,
+  error: RouteError,
+): Response {
+  const correlationId = randomUUID();
+  const clientMessage = sanitizeFreeText(error.clientMessage);
+  const context = {
+    correlationId,
+    status: error.status,
+    ...(error.code === undefined ? {} : { code: error.code }),
+    clientMessage,
+  };
+  if (error.status >= 500) {
+    const cause = error.cause;
+    try {
+      logger.error('Route error', {
+        ...context,
+        error: sanitizeError(cause instanceof Error ? cause : error),
+      });
+    } catch {
+      // Mirrors the guard in {@link unexpectedRuntimeErrorResponse} above:
+      // a cause whose shape the sanitizer rejects must not turn a chosen
+      // status into an unhandled throw out of `onError`, which is where the
+      // response would be lost.
+      logger.fatal('Route error sanitizer rejected an error shape', context);
+    }
+  } else {
+    logger.warn('Route error', context);
+  }
+  return c.json(
+    {
+      success: false,
+      error: clientMessage,
+      ...(error.code === undefined ? {} : { code: error.code }),
+      // `details` is structure, not a sentence, so `sanitizeFreeText` cannot
+      // walk it. `redactDeep` applies the same redaction to every string it
+      // contains, at any depth. A route is supposed to put its own literals
+      // and ids here and never error-derived data -- this is the line for
+      // when it does anyway, and `scripts/route-error-egress-gate.mjs` now
+      // reviews these constructor arguments so the rule has a gate too.
+      ...(error.details === undefined
+        ? {}
+        : { details: redactDeep(error.details) }),
+      correlationId,
+    },
+    error.status,
+  );
+}
+
 interface RuntimeHttpContext {
   app: RuntimeApp;
   logger: Logger;
@@ -123,7 +208,31 @@ export function configureRuntimeHttp({
   eventBus,
   security,
 }: RuntimeHttpContext): void {
+  app.use('*', async (c, next) => {
+    await next();
+    const authentication = security?.deploymentAuthentication;
+    const initial = authentication?.admittedPrincipalSnapshot(c.req.raw);
+    if (authentication && initial && c.res.status < 400) {
+      c.res = await guardAccountResponse(c.res, async () => {
+        const latest = await authentication.authenticate(c.req.raw);
+        if (latest.kind === 'unavailable') return 'unavailable';
+        return latest.kind === 'authenticated' &&
+          latest.principal.id === initial.id
+          ? 'current'
+          : 'invalid';
+      });
+    }
+  });
   app.onError((err, c) => {
+    // Before the auth allow-list, deliberately. The allow-list matches on
+    // message text (`isAuthError` substring-matches "unauthorized", "401",
+    // "authentication failed"), so a route that threw a typed 403 whose
+    // reviewed message happens to contain one of those words would otherwise
+    // be rewritten into a 401 that discards its code, details, and status.
+    // A route that named its own answer outranks a text match on ours.
+    if (isRouteError(err)) {
+      return routeErrorResponse(c, logger, err);
+    }
     const authMessage = allowlistedAuthClientMessage(err);
     if (authMessage) {
       return c.json({ success: false, error: authMessage }, 401);
@@ -159,11 +268,44 @@ export function configureRuntimeHttp({
     const streaming = (c.res.headers.get('content-type') ?? '').startsWith(
       'text/event-stream',
     );
-    logger.info(
-      `${c.req.method} ${c.req.path} ${c.res.status} ${
-        streaming ? `stream-open-after=${elapsedMs}ms` : `${elapsedMs}ms`
-      } origin=${c.req.header('origin') ? 'present' : 'none'}`,
-    );
+    const method = c.req.method;
+    const status = c.res.status;
+    // A successful read is the one request shape that carries no information
+    // once it is over: nothing changed, nothing failed, and the connection is
+    // closed. An idle desktop still produced ~70k of these a day, each one a
+    // synchronous `writeSync` into the NDJSON store, and they buried the
+    // lines an operator opens the log FOR.
+    //
+    // Be exact about what demoting them to `debug` does. The logger seam
+    // gates on `isLevelEnabled` BEFORE it writes the durable store line
+    // (`utils/logger.ts`), and the resolved level defaults to `info`, so at
+    // the default these lines are not written anywhere — they are dropped,
+    // not filed one level down. The Developer Logs level filter is a
+    // READ-side floor over what the store already holds and cannot bring
+    // back a line that was never written. Retaining them is a WRITE-side
+    // setting chosen before the fact: `STATION_LOG_LEVEL=debug`, or
+    // `logLevel` in `app.json`. That is the trade — a successful read stops
+    // being free-standing history and becomes something an operator opts
+    // into while reproducing.
+    //
+    // Everything else stays at `info`: any non-2xx/304, every mutation
+    // whether or not it succeeded, and every streaming response — an SSE
+    // connection opening is the start of something long-lived, not a
+    // completed read.
+    const routineRead =
+      !streaming &&
+      (method === 'GET' || method === 'HEAD') &&
+      (status === 304 || (status >= 200 && status < 300));
+    // One line, one shape, whichever level carries it: a reader filtering by
+    // level must never also have to parse two formats.
+    const line = `${method} ${c.req.path} ${status} ${
+      streaming ? `stream-open-after=${elapsedMs}ms` : `${elapsedMs}ms`
+    } origin=${c.req.header('origin') ? 'present' : 'none'}`;
+    if (routineRead) {
+      logger.debug(line);
+    } else {
+      logger.info(line);
+    }
   });
 
   if (security) {
@@ -189,11 +331,7 @@ export function configureRuntimeHttp({
   app.use('*', async (c, next) => {
     await next();
 
-    if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(c.req.method)) {
-      return;
-    }
-
-    const keys = getInvalidationKeysForPath(c.req.path);
+    const keys = getInvalidationKeysForRequest(c.req.method, c.req.path);
     if (keys.length > 0) {
       eventBus.emit(SERVER_EVENTS.DATA_CHANGED, { keys });
     }
@@ -325,6 +463,10 @@ function configureRuntimeSecurity(
 
     if (origin) {
       c.header('Access-Control-Allow-Origin', origin);
+      c.header(
+        'Access-Control-Expose-Headers',
+        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After`,
+      );
       c.header('Vary', 'Origin');
       c.header('Access-Control-Allow-Credentials', 'true');
     }
@@ -337,7 +479,7 @@ function configureRuntimeSecurity(
         // Last-Event-ID: set by the SDK's fetchSSE reconnect loop and consumed
         // by the orchestration resume cursor — omitting it preflight-blocks
         // every cross-origin SSE reconnect (#169).
-        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}${
+        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
           process.env.STATION_PERFORMANCE_REFERENCE === '1'
             ? `, ${INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER}`
             : ''
@@ -377,6 +519,54 @@ function configureRuntimeSecurity(
         timestamp: security.now?.() ?? Date.now(),
       });
       return c.json({ error: { code: 'insufficient_scope' } }, 403);
+    }
+    const accountOperation =
+      c.req.path === DEPLOYMENT_AUTHENTICATION_BASE_PATH ||
+      c.req.path.startsWith(`${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/`);
+    if (
+      !security.deploymentAuthentication &&
+      !accountOperation &&
+      (c.req.raw.headers.has(APPLICATION_SESSION_HEADER) ||
+        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER))
+    ) {
+      c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
+      return c.json(
+        { error: { code: 'application_sessions_unsupported' } },
+        401,
+      );
+    }
+    if (security.deploymentAuthentication && !accountOperation) {
+      const hasAccount = security.deploymentAuthentication.hasCredential(
+        c.req.raw,
+      );
+      if (hasAccount) {
+        const retryAfter = limiter.retryAfterSeconds(limiterKey);
+        if (retryAfter !== undefined) {
+          c.header('Retry-After', String(retryAfter));
+          return c.json({ error: { code: AUTH_RATE_LIMITED_ERROR_CODE } }, 429);
+        }
+        // Reserve before asynchronous verification; parallel attempts cannot
+        // all enter the adapter before the first failure has been counted.
+        limiter.recordFailure(limiterKey);
+      }
+      const account = await security.deploymentAuthentication.authenticate(
+        c.req.raw,
+      );
+      if (account.kind === 'authenticated') limiter.clear(limiterKey);
+      if (account.kind === 'invalid') {
+        c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
+        return c.json(
+          {
+            error: {
+              code: 'account_authentication_invalid',
+              reason: account.reason,
+            },
+          },
+          401,
+        );
+      }
+      if (account.kind === 'unavailable')
+        return c.json({ error: { code: 'authentication_unavailable' } }, 503);
     }
     if (
       requiredCapability.capability === 'public' ||
@@ -711,6 +901,7 @@ function configureRuntimeSecurity(
         body: bodyResult,
         duplex: 'half',
       });
+      security.deploymentAuthentication?.transferRequest(raw, c.req.raw);
       // The request was deliberately rewrapped after bounded body buffering.
       // Carry the already middleware-verified principal to that replacement;
       // route handlers must never fall back to reparsing bearer/cookie input.
@@ -778,7 +969,10 @@ async function readBoundedBody(
 export function parseDeviceSessionCookie(
   value: string | undefined,
 ): string | undefined {
-  if (!value || value.length > 4_096) return undefined;
+  // Cookie jars are shared across ports. Other localhost applications can
+  // legitimately contribute several KiB; bound the header at the Node HTTP
+  // default while still validating only one exact Station credential below.
+  if (!value || value.length > 16 * 1024) return undefined;
   const matches: string[] = [];
   for (const segment of value.split(';')) {
     const separator = segment.indexOf('=');
@@ -867,7 +1061,23 @@ export function resolveRuntimeCorsOrigin(
   return allowedOrigins.includes(origin) ? origin : null;
 }
 
-function getInvalidationKeysForPath(path: string): string[] {
+// These handlers use POST to carry query input, not to change resource data.
+// Broadcasting their own cache key makes an active query refetch itself until
+// it exhausts the request quota. Keep exact read leaves separate from writes;
+// authentication and request budgets still apply unchanged.
+const READ_ONLY_DATA_POST_ROUTES = [
+  /^\/api\/projects\/[^/]+\/file-preview(?:\/download)?\/?$/,
+  /^\/api\/projects\/[^/]+\/knowledge\/(?:ns\/[^/]+\/)?search\/?$/,
+  /^\/api\/knowledge\/(?:search|index\/search|roots\/validate)\/?$/,
+];
+
+function getInvalidationKeysForRequest(method: string, path: string): string[] {
+  if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) return [];
+  if (
+    method === 'POST' &&
+    READ_ONLY_DATA_POST_ROUTES.some((route) => route.test(path))
+  )
+    return [];
   const keys: string[] = [];
 
   if (path.startsWith('/agents')) keys.push('agents');

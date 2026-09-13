@@ -194,7 +194,6 @@ describe('the readers cannot diverge again', () => {
     join(SRC_SERVER, 'runtime', 'plugins', 'runtime-provider-resolution.ts'),
     join(SRC_SERVER, 'runtime', 'bootstrap', 'runtime-initialize.ts'),
     join(SRC_SERVER, 'runtime', 'agents', 'agent-hooks.ts'),
-    join(SRC_SERVER, 'runtime', 'tools', 'tool-execution-usage.ts'),
     join(SRC_SERVER, 'runtime', 'conversation', 'usage-stats.ts'),
     join(SRC_SERVER, 'routes', 'connections', 'bedrock.ts'),
   ];

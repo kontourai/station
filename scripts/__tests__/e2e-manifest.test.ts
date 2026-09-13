@@ -152,10 +152,13 @@ describe('e2e manifest', () => {
       'tests/agents-new-model-turn.spec.ts',
       'tests/paired-device-chat.spec.ts',
       'tests/pr-smoke-live-chat-send.spec.ts',
+      'tests/native-conversation-restart.spec.ts',
+      'tests/chat-multi-turn-context.spec.ts',
       'tests/agents-new-cli-turn.spec.ts',
       'tests/agents-new-muse-echo-turn.spec.ts',
       'tests/csp-shell.spec.ts',
       'tests/plugin-bundle-csp.spec.ts',
+      'tests/workspace-pane-host-actions-live.spec.ts',
       'tests/bundled-plugin-registry-lifecycle.spec.ts',
       'tests/ui-crud-smoke.spec.ts',
       'tests/knowledge-onboarding-smoke.spec.ts',
@@ -181,6 +184,7 @@ describe('e2e manifest', () => {
 
     expect(PRODUCT_E2E_EXECUTION_PROFILE.parallelWorkers).toBe(2);
     expect(PRODUCT_E2E_EXECUTION_PROFILE.parallelSafetyExceptions).toEqual({
+      'tests/chat-history-reopen.spec.ts': expect.any(String),
       'tests/sidebar-geometry.spec.ts': expect.any(String),
       'tests/mobile-dock-clearance.spec.ts': expect.any(String),
       'tests/flow-gate-verdicts.spec.ts': expect.any(String),
@@ -268,6 +272,10 @@ describe('e2e manifest', () => {
       flakePolicy: 'fail-and-fix-no-retry',
     });
     expect(PR_BROWSER_SMOKE_CONTRACT.journeys).toEqual([
+      expect.objectContaining({ path: 'tests/connect-modal.spec.ts' }),
+      expect.objectContaining({
+        path: 'tests/connect-remote-auth-recovery.spec.ts',
+      }),
       expect.objectContaining({ path: 'tests/csp-shell.spec.ts' }),
       expect.objectContaining({ path: 'tests/ui-crud-smoke.spec.ts' }),
       expect.objectContaining({
@@ -290,17 +298,7 @@ describe('e2e manifest', () => {
       (entry) => entry.bucket === 'quarantine',
     );
 
-    // #574: chat-multi-turn-context.spec.ts is RED BY DESIGN — it
-    // proves a real multi-turn context-retention defect, not spec rot — so it
-    // cannot sit in a running bucket (smoke-live / verify:e2e:full) without
-    // permanently redding the gate. Quarantine is the manifest's own home for
-    // exactly this; `replacement` must still name the tracking issue.
-    expect(quarantined).toEqual([
-      expect.objectContaining({
-        path: 'tests/chat-multi-turn-context.spec.ts',
-        replacement: '#574',
-      }),
-    ]);
+    expect(quarantined).toEqual([]);
   });
 
   it('lets the runner list supported suites without starting Station', () => {

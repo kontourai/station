@@ -182,7 +182,7 @@ export function applyPersistedQueryGcTimeDefaults(
  * (very old WebViews, some SSR/test contexts) so app boot never depends on
  * it — persistence is a progressive enhancement, not a requirement.
  */
-export function createIdbQueryStorage(): AsyncStorage<string> {
+function createIdbQueryStorage(): AsyncStorage<string> {
   if (typeof indexedDB === 'undefined') {
     return {
       getItem: async () => undefined,
@@ -198,10 +198,7 @@ export function createIdbQueryStorage(): AsyncStorage<string> {
   };
 }
 
-export type QueryPersistOptions = Omit<
-  PersistQueryClientOptions,
-  'queryClient'
->;
+type QueryPersistOptions = Omit<PersistQueryClientOptions, 'queryClient'>;
 
 /**
  * Builds the `persistOptions` prop for `<PersistQueryClientProvider>` (the
@@ -253,7 +250,7 @@ export function buildPersistOptions(options?: {
   };
 }
 
-export interface QueryPersistenceHandle {
+interface QueryPersistenceHandle {
   /** Stops persisting further cache changes. Does not clear already-written data. */
   unsubscribe: () => void;
   /** Resolves once the initial restore attempt (hydrated, discarded, or errored) settles. */

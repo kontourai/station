@@ -39,6 +39,27 @@ describe('useActiveChatSelector', () => {
     clearChats();
   });
 
+  test('re-selects when the selector identity changes, with no store write', () => {
+    // ACPChatPanel's selector closes over `agentSlug` through a useCallback
+    // dependency, so a panel that swaps agents produces a new selector with
+    // the store untouched. Caching on the snapshot alone kept the transcript
+    // built for the previous agent until something else wrote to the store.
+    const { result, rerender } = renderHook(
+      ({ label }: { label: string }) =>
+        useActiveChatSelector(
+          SESSION_ID,
+          (state) => `${label}:${state?.agentSlug ?? 'none'}`,
+        ),
+      { wrapper: ActiveChatsProvider, initialProps: { label: 'first' } },
+    );
+
+    expect(result.current).toBe('first:agent-one');
+
+    rerender({ label: 'second' });
+
+    expect(result.current).toBe('second:agent-one');
+  });
+
   test('re-renders and updates when the selected field changes', () => {
     let renderCount = 0;
     const { result } = renderHook(

@@ -10,7 +10,7 @@ import { relativeTimeAgo } from '../../utils/relativeTime';
 import { SkeletonList } from '../state';
 import './ActionOperationsSection.css';
 
-export interface ActionOperationGroups {
+interface ActionOperationGroups {
   readonly inProgress: readonly ActionOperation[];
   readonly needsAttention: readonly ActionOperation[];
   readonly recent: readonly ActionOperation[];

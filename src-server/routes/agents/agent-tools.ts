@@ -4,6 +4,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { registryOwnsAgentAtHome } from '../../domain/agent-registry.js';
 import { isExternalEngineBoundAgent } from '../../runtime/agents/agent-engine-classification.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import { toolDefinitionOps } from '../../telemetry/metrics.js';
 import {
   addToolSchema,
@@ -18,7 +19,6 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
-import { runtimeAgentKey } from './runtime-agent-identity.js';
 
 type ToolWithDescription = { description?: string; [key: string]: any };
 
@@ -122,7 +122,7 @@ export function createAgentToolRoutes(ctx: RuntimeContext) {
           try {
             parameters = zodToJsonSchema(parameters);
           } catch (e) {
-            console.debug('Failed to convert Zod schema:', e);
+            ctx.logger.debug('Failed to convert Zod schema', { error: e });
           }
         }
         return {

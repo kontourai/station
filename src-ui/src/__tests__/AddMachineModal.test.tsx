@@ -123,7 +123,7 @@ describe('AddMachineModal', () => {
   });
 
   test('the SSH branch opens the creator, in the shared dialog chrome (CI-R19)', () => {
-    const { container } = render(<AddMachineModal isOpen onClose={vi.fn()} />);
+    render(<AddMachineModal isOpen onClose={vi.fn()} />);
     fireEvent.click(screen.getByText('Run work on another computer over SSH'));
 
     expect(
@@ -132,7 +132,7 @@ describe('AddMachineModal', () => {
       }),
     ).toBeTruthy();
     // The shared surface, not the old bespoke uncentred panel with no scrim.
-    expect(container.querySelector('.station-dialog__overlay')).toBeTruthy();
-    expect(container.querySelector('.ssh-environment-modal')).toBeNull();
+    expect(document.querySelector('.station-dialog__overlay')).toBeTruthy();
+    expect(document.querySelector('.ssh-environment-modal')).toBeNull();
   });
 });

@@ -26,12 +26,12 @@ import {
  */
 export const CONSENT_SESSION_COOKIE = 'station-consent';
 
-export type ConsentChannelState =
+type ConsentChannelState =
   | { readonly status: 'listening'; readonly port: number }
   | { readonly status: 'unavailable'; readonly reason: string };
 
 /** The path the consent listener serves a review at, for URL construction. */
-export function consentReviewPath(transactionId: string): string {
+function consentReviewPath(transactionId: string): string {
   return `/consent/${encodeURIComponent(transactionId)}`;
 }
 

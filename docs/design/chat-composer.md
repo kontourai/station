@@ -5,6 +5,28 @@
 > This is the contract for the chat composer/dock and for the principle it
 > enforces. Revise this doc — not just the code — when direction changes.
 
+## Interaction stability and conversation continuity
+
+Every conversation uses the chat dock's reading surface and header, including
+conversations discovered in another coding app. A quiet "Started in Claude Code"
+(or the observed app name) identifies origin. Discovery is not evidence of running
+work; history uses source-event time and remains separate from active work.
+
+Opening a conversation or typing does not migrate it. The composer accepts a
+normal draft. Send (or Enter, except during IME composition) opens a one-time
+"Continue here?" confirmation; Cancel preserves the draft and Shift+Enter adds a
+line. Confirmation opens the continuation through the normal dock controller
+and hands the exact draft to the normal sender once. The original conversation
+remains available in its original app. A failed opening retains the reader and offers a
+retry that does not create another continuation. Metadata is available through
+an explicit Details action.
+
+Message action rows reserve their layout space. Hover and keyboard focus may
+reveal controls, but must not change bubble size or the position of later messages.
+The shared popover shell opens toward the roomier viewport edge, including when
+the dock is maximized. A narrow Activity region shows its list or its selected
+detail, with a Back to list control, instead of squeezing both columns.
+
 ## 1. The principle: if an agent can't drive it, it's broken
 
 Station's thesis is agents doing real work with receipts. That obligates Station's own UI
@@ -135,3 +157,7 @@ project-switcher journey in `tests/cross-runtime-chat-switching.spec.ts`.
 Changing or removing these primary actions requires an explicit product-contract
 change; a fixed button count is not the acceptance criterion. The required
 pre-merge browser smoke must exercise the journey rather than wait for Nightly.
+
+An indeterminate wait may show elapsed observation time, clearly identified as time waiting in this view. It must not invent a completion estimate. Access requests with a persisted expiry show a countdown from that expiry; the clock itself is not a live-region announcement.
+
+Discovered Codex rollouts continue through app-server `thread/fork`, returning a distinct native child ID. Cleanup archives the confirmed child. This is separate from resuming an existing Station-owned Codex session, which uses `thread/resume`.

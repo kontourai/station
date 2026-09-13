@@ -22,6 +22,12 @@ This is a **different concept** from the existing
 already use — see [Distinction from `.station/instances/*`](#distinction-from-stationinstances) below. Same word, two different scopes; this section exists so a
 future reader who finds one does not assume it is the same thing as the other.
 
+An instance is a Station process/lifecycle record, not a physical machine,
+saved Station entry, authenticated environment, principal, tenant, Project
+binding, room home, or execution offer. One machine can run several instances.
+The cross-concept topology and authority boundary is defined in
+[station-topology.md](station-topology.md).
+
 ## Schema
 
 ```json

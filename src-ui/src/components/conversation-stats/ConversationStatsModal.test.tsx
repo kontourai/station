@@ -76,6 +76,35 @@ describe('ConversationStatsModal — measured figures', () => {
 
     expect(screen.getByText('Total: $0.0000')).toBeTruthy();
   });
+
+  test('keeps per-model missing measurements distinct from measured zeroes', () => {
+    renderModal({
+      ...MEASURED,
+      modelStats: {
+        'missing-model': { turns: 1, toolCalls: 0 },
+        'zero-model': {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          turns: 0,
+          toolCalls: 0,
+          estimatedCost: 0,
+          contextTokens: 0,
+        },
+      } as unknown as ConversationStatsSnapshot['modelStats'],
+    });
+
+    expect(screen.getByText('missing-model')).toBeTruthy();
+    expect(screen.getByText('zero-model')).toBeTruthy();
+    expect(screen.getByText('In: —')).toBeTruthy();
+    expect(screen.getByText('Out: —')).toBeTruthy();
+    expect(screen.getByText('Total: —')).toBeTruthy();
+    expect(screen.getByText('Cost: —')).toBeTruthy();
+    expect(screen.getByText('In: 0')).toBeTruthy();
+    expect(screen.getByText('Out: 0')).toBeTruthy();
+    expect(screen.getByText('Total: 0')).toBeTruthy();
+    expect(screen.getByText('Cost: $0.0000')).toBeTruthy();
+  });
 });
 
 describe('ConversationStatsModal — unmeasured figures', () => {

@@ -178,10 +178,11 @@ test.describe('Skill commands', () => {
     await composer.click();
     await composer.pressSequentially('/');
 
-    const dock = page.locator('#chat-dock, #chat-workspace-pane');
-    await expect(dock.getByText(`/${COMMAND}`, { exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(
+      page
+        .getByRole('listbox', { name: 'Suggestions' })
+        .getByText(`/${COMMAND}`, { exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
   });
 
   test('a command word nobody can type is refused, and the refusal says the naming rule', async ({

@@ -11,8 +11,10 @@ type SkillRecord = {
   agent?: string;
   global?: boolean;
   source?: string;
+  origin?: 'user' | 'project' | 'registry';
   path?: string;
   installed?: boolean;
+  writable?: boolean;
   version?: string;
 };
 
@@ -28,6 +30,8 @@ async function seedSkillRoutes(page: Page) {
         tags: ['review'],
         global: true,
         source: 'local',
+        writable: true,
+        origin: 'user',
         path: '/tmp/skills/review/SKILL.md',
         installed: true,
       },
@@ -39,6 +43,7 @@ async function seedSkillRoutes(page: Page) {
         description: 'Installed from registry',
         body: 'Registry managed body',
         source: 'registry',
+        origin: 'registry',
         path: 'registry://registry-skill',
         installed: true,
         version: '1.0.0',
@@ -93,6 +98,8 @@ async function seedSkillRoutes(page: Page) {
       const skill = {
         ...body,
         source: 'local',
+        writable: true,
+        origin: 'user',
         installed: true,
         path: `/tmp/skills/${body.name}/SKILL.md`,
       };
@@ -171,7 +178,9 @@ test.describe('Skills (via Registry + API)', () => {
     ).toBeVisible();
 
     await page.getByRole('button', { name: 'Review Skill' }).click();
-    await expect(page.getByText('Workspace-authored skill')).toBeVisible();
+    await expect(
+      page.locator('.skill-detail').getByText('This machine', { exact: true }),
+    ).toBeVisible();
     await expect(page.locator('.skill-detail textarea')).toHaveValue(
       'Review {{diff}}',
     );
@@ -190,9 +199,11 @@ test.describe('Skills (via Registry + API)', () => {
     // `SkillsView.tsx:351-355`), which the next line already asserts. `exact`
     // keeps this off "Browse Registry Skills".
     await page
-      .getByRole('button', { name: 'Registry Skill', exact: true })
+      .getByRole('button', { name: /^Registry Skill Registry$/ })
       .click();
-    await expect(page.getByText('Installed read-only skill')).toBeVisible();
+    await expect(
+      page.locator('.skill-detail').getByText('Registry', { exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save' })).not.toBeVisible();
     await expect(page.locator('.skill-detail textarea')).toBeDisabled();
   });
@@ -223,6 +234,8 @@ async function seedCommandSkillRoutes(page: Page) {
         description: 'Ship a release',
         body: 'Ship {{ticket}}',
         source: 'local',
+        writable: true,
+        origin: 'user',
         path: '/tmp/skills/release-check/SKILL.md',
         installed: true,
         variables: [{ name: 'ticket', description: 'Jira key' }],
@@ -236,6 +249,8 @@ async function seedCommandSkillRoutes(page: Page) {
         description: 'Not a command',
         body: 'Just a skill',
         source: 'local',
+        writable: true,
+        origin: 'user',
         path: '/tmp/skills/plain-skill/SKILL.md',
         installed: true,
       },

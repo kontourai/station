@@ -189,6 +189,34 @@ export const PAIRING_SCOPE_HOME_TRANSFER = 'home:transfer' as const;
  */
 export const PAIRING_SCOPE_HOME_CONTROL = 'home:control' as const;
 
+/**
+ * Start, read and cancel a device-code login for an engine credential profile
+ * (station#device-code). Deliberately its own token rather than a reuse of
+ * `access:manage`.
+ *
+ * WHY OPERATOR PROMOTION, AND NOT A PRESET. `access:manage` was the obvious
+ * reuse and is wrong in both directions: the `standard` preset withholds it,
+ * so gating here would close the flow to exactly the paired phone device code
+ * exists for, while {@link DEFAULT_GRANT_PAIRING_SCOPE} carries it, so the
+ * population that could start a login would be the migrated and
+ * scope-omitting one that never chose it.
+ *
+ * Adding this token to `standard` instead looks right and breaks older peers.
+ * `parsePairingScope` returns null for a whole scope string on a single
+ * unknown token, so every newly issued standard grant would be unparseable to
+ * any peer built before this token existed — the mixed-version failure
+ * `inference` and `home-transfer` avoid by taking their own presets. This
+ * token cannot take that route either: a device needs it IN ADDITION to
+ * orchestration, not instead of it, and a preset is all-or-nothing.
+ *
+ * So it is granted after pairing, deliberately, per device — the
+ * `access:approve` posture. What that authority amounts to is bounded: a
+ * verification URL and a short code that sign in whoever approves them.
+ * Station holds no token before or after, and the login process is
+ * single-flight, capped, and killed on a deadline.
+ */
+export const PAIRING_SCOPE_ENGINE_LOGIN = 'engine:login' as const;
+
 export const PAIRING_SCOPES = [
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
@@ -199,6 +227,7 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_HOME_CONTROL,
+  PAIRING_SCOPE_ENGINE_LOGIN,
 ] as const;
 
 export type PairingScope = (typeof PAIRING_SCOPES)[number];
@@ -365,6 +394,17 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   [PAIRING_SCOPE_CONSENT_DECIDE]: ['operator-promotion'],
   [PAIRING_SCOPE_HOME_TRANSFER]: ['preset'],
   [PAIRING_SCOPE_HOME_CONTROL]: ['operator-promotion'],
+  // Operator promotion only, for the same reason as the two tokens above --
+  // and for one more that is specific to adding a token to a preset at all:
+  // `parsePairingScope` refuses a WHOLE scope string containing one unknown
+  // token, so putting this in `standard` would make every newly issued
+  // standard grant unparseable to any peer built before this token existed.
+  // That is the mixed-version break `inference` and `home-transfer` avoid by
+  // taking their own presets. This token cannot take that route either,
+  // because a device needs it IN ADDITION to orchestration rather than
+  // instead of it, so promotion after pairing is the only shape that is both
+  // additive and backward-compatible.
+  [PAIRING_SCOPE_ENGINE_LOGIN]: ['operator-promotion'],
 };
 
 export const DEFAULT_PAIRING_SCOPE_PRESET: PairingScopePreset = 'standard';
@@ -605,7 +645,19 @@ export interface ConnectedClientProjection {
   transports: readonly ['events-sse'];
 }
 
+/** Explicit operator approval to recognize this device as a verified person.
+ * Separate from wire scopes and Project membership; valid only while its device
+ * grant is active. Historical requester provenance alone never creates it. */
+export interface DevicePrincipalBinding {
+  readonly provider: 'tailscale-serve';
+  readonly subject: string;
+  readonly approvedAt: number;
+  readonly approvalId: string;
+  readonly approvedBy: string;
+}
+
 export interface PairedDevice {
+  readonly principalBinding?: DevicePrincipalBinding;
   id: string;
   name: string;
   /**
@@ -948,3 +1000,7 @@ export function parsePublicStationHandshake(
   }
   return value as unknown as PublicStationHandshake;
 }
+
+/** Same-user native access decisions; requires direct loopback and this boot's local proof. */
+export const PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH =
+  '/.well-known/station/v1/pairing/local-access';

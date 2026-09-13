@@ -256,6 +256,7 @@ export async function pairBrowser(
  */
 export const LOADING_MARKER_SELECTORS = [
   '.skeleton',
+  '.route-pending',
   '[role="status"][aria-busy="true"]',
   '.fs-screen',
   '.station-spinner',
@@ -270,6 +271,16 @@ export async function countVisibleLoadingMarkers(page) {
   total += await page
     .getByText("Checking this browser's Station access")
     .count();
+  const mainText = await page
+    .locator('main')
+    .filter({ visible: true })
+    .allTextContents();
+  if (
+    mainText.length > 0 &&
+    mainText.every((text) => !text.trim()) &&
+    (await page.getByRole('dialog').filter({ visible: true }).count()) === 0
+  )
+    total += 1;
   return total;
 }
 
@@ -294,10 +305,18 @@ export async function settlePageReason(page, timeoutMs) {
   if (!landmarkVisible) {
     return 'no <main> or setup launcher became visible';
   }
+  // A transient empty shell between route mounts is not settled content.
+  let clearObservations = 0;
   const loadingGone = await poll(
     'loading markers to clear',
     timeoutMs,
-    async () => (await countVisibleLoadingMarkers(page)) === 0,
+    async () => {
+      clearObservations =
+        (await countVisibleLoadingMarkers(page)) === 0
+          ? clearObservations + 1
+          : 0;
+      return clearObservations >= 3;
+    },
   ).then(
     () => true,
     () => false,

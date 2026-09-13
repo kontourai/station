@@ -1,6 +1,6 @@
 /*
- * First-run chapter: Home's re-offer card, and the chapter dialog's own scrim
- * and panel.
+ * First-run chapter: the chapter dialog's own scrim and panel. Home's
+ * re-offer card is a `PageCallout` (#1582 C4) and owns no styles here.
  *
  * `ResponsiveDialogSurface` owns the layer, the focus trap, Escape, and the
  * mobile sheet geometry (`.responsive-surface-overlay` /
@@ -14,34 +14,6 @@
  * `--layer-dialog` with `!important`. Nothing here re-declares it: a first-run
  * surface that picks its own layer is the SHELL-12 defect.
  */
-
-.first-run-home-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4, 16px);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-4, 16px);
-  padding: var(--space-4, 16px);
-  border: 1px solid var(--color-border-strong, var(--color-border));
-  border-radius: var(--radius-lg, 10px);
-  background: var(--color-surface-raised, var(--color-surface));
-}
-
-.first-run-home-card__title {
-  margin: 0 0 var(--space-1, 4px);
-  font-size: var(--font-size-md, 15px);
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.first-run-home-card__body {
-  margin: 0;
-  max-width: 60ch;
-  font-size: var(--font-size-sm, 13px);
-  line-height: 1.5;
-  color: var(--color-text-secondary);
-}
 
 .first-run-chapter__overlay {
   position: fixed;
@@ -78,10 +50,26 @@
 }
 
 /*
+ * #1582 A3: the inventory is behind a disclosure, so the first screen of the
+ * first run is one derived sentence and two named choices rather than the
+ * whole generated schema.
+ */
+.first-run-disclosure__inventory {
+  margin-bottom: var(--space-4, 16px);
+}
+
+.first-run-disclosure__inventory > summary {
+  cursor: pointer;
+  padding: var(--space-2, 8px) 0;
+  font-size: var(--font-size-sm, 13px);
+  color: var(--color-text-secondary, var(--text-secondary));
+}
+
+/*
  * The disclosure step scrolls its OWN body rather than the panel.
  *
  * The inventory is generated server-side and grows with the event list; left
- * to the panel's scroll it pushes "I understand" below the fold, which is the
+ * to the panel's scroll it pushes the decision below the fold, which is the
  * exact failure the standalone dialog's `modal-dialog--scrollable` exists to
  * prevent. The two actions stay on screen with the list moving under them.
  */
@@ -91,6 +79,14 @@
   margin-bottom: var(--space-4, 16px);
   padding-right: var(--space-2, 8px);
   font-size: var(--font-size-sm, 13px);
+}
+
+/* The step region's own focus ring — it takes focus when a step swaps, so it
+   has to show where focus went, exactly as the engines report's does
+   (`EnginesStep.css`). */
+.first-run-chapter__step:focus-visible {
+  outline: 2px solid var(--color-accent, var(--color-primary));
+  outline-offset: 2px;
 }
 
 .first-run-chapter__actions {

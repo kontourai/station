@@ -81,7 +81,6 @@ export function isBundledDistribution(): boolean {
 export const CONTRIBUTOR_COMMANDS: readonly string[] = [
   'build',
   'dev',
-  'doctor',
   'fresh',
   'home',
   'link',
@@ -120,6 +119,13 @@ export function assertCommandAvailable(
   args: readonly string[] = [],
 ): void {
   if (!isBundledDistribution()) return;
+  // Installed-service control stays with the OS service manager. Installation,
+  // removal and source builds remain outside the packaged client.
+  if (
+    command === 'service' &&
+    ['status', 'start', 'stop'].includes(args[0] ?? '')
+  )
+    return;
   if (CONTRIBUTOR_COMMANDS.includes(command)) {
     throw new Error(contributorCommandMessage(command, args));
   }
@@ -140,14 +146,11 @@ function isHostEnvironmentInvocation(args: readonly string[]): boolean {
   const positionals = parseCoreArgs(
     normalizeEnvironmentArgsForParsing([...args]),
   ).positionals;
-  if (positionals[0] === 'offer') return true;
-  if (positionals[0] === 'access')
-    return ['list', 'approve', 'deny'].includes(positionals[1] ?? '');
+  if (positionals[0] === 'offer') return false;
+  if (positionals[0] === 'access') return false;
   return (
     positionals[0] === 'peers' ||
-    (positionals[0] === 'show' && positionals.length === 1) ||
-    (positionals[0] === 'credential' &&
-      ['show', 'rotate'].includes(positionals[1] ?? '')) ||
+    (positionals[0] === 'credential' && positionals[1] === 'rotate') ||
     positionals[0] === 'reset'
   );
 }
@@ -179,7 +182,7 @@ export function bundledAvailabilityNote(): string[] {
     'Not available in the packaged client — these manage a Station checkout:',
     `  ${CONTRIBUTOR_COMMANDS.join(', ')}`,
     'Run them from the repo root as `./station <command>`.',
-    'Host pairing offer/approval also requires that host launcher:',
+    'Local pairing offer/approval is supported with an existing Station home:',
     '  station environment offer | station environment access list|approve|deny',
     'Use `station environment access request` or `station setup existing <name> <host-url> --pair` from this client.',
   ];

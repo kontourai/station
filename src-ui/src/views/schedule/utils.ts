@@ -155,9 +155,9 @@ export function buildEnrichedSchedulerJobs({
  * - `unknown` — neither. We do not know whether the server was reached, so
  *   nothing here may claim that it was not.
  */
-export type SchedulerFailureKind = 'answered' | 'unreachable' | 'unknown';
+type SchedulerFailureKind = 'answered' | 'unreachable' | 'unknown';
 
-export interface SchedulerFailureNotice {
+interface SchedulerFailureNotice {
   kind: SchedulerFailureKind;
   title: string;
   description: string;

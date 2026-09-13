@@ -26,7 +26,7 @@
       "uiPort": 18000,
       "desktopIconSource": "src-desktop/icons",
       "androidIconSource": "src-desktop/icons/stable/android",
-      "iosIconSource": "src-desktop/icons/icon.png",
+      "iosIconSource": "src-desktop/icons/stable/ios",
       "iosStatus": "release-enabled"
     },
     "beta": {
@@ -40,7 +40,7 @@
       "uiPort": 28000,
       "desktopIconSource": "src-desktop/icons/beta",
       "androidIconSource": "src-desktop/icons/beta/android",
-      "iosIconSource": "src-desktop/icons/beta/icon.png",
+      "iosIconSource": "src-desktop/icons/beta/ios",
       "iosStatus": "source-configured; provider-NOT_VERIFIED until the protected Beta App ID, profile, group, and TestFlight receipt exist"
     },
     "nightly": {
@@ -54,7 +54,7 @@
       "uiPort": 38000,
       "desktopIconSource": "src-desktop/icons/nightly",
       "androidIconSource": "src-desktop/icons/nightly/android",
-      "iosIconSource": "src-desktop/icons/nightly/icon.png",
+      "iosIconSource": "src-desktop/icons/nightly/ios",
       "iosStatus": "source-configured; provider-NOT_VERIFIED until the protected Nightly App ID, profile, group, and TestFlight receipt exist"
     }
   }

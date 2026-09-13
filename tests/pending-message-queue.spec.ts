@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import {
+  dismissSetupLauncher,
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
@@ -162,16 +163,6 @@ async function seedRuntimeRoutes(
     ),
     page.route('**/events', (route) => route.abort()),
   ]);
-}
-
-async function dismissSetupLauncher(page: import('@playwright/test').Page) {
-  const continueBtn = page.getByRole('button', {
-    name: 'Continue Without Setup',
-  });
-  if (await continueBtn.isVisible().catch(() => false)) {
-    await continueBtn.click({ force: true });
-    await expect(continueBtn).not.toBeVisible({ timeout: 5_000 });
-  }
 }
 
 async function openRuntimeSession(page: import('@playwright/test').Page) {

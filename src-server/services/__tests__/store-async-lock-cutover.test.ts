@@ -122,6 +122,30 @@ function productionTypeScriptFiles(directory: string): string[] {
   });
 }
 
+/**
+ * Drop comment-only lines before the identifier scans below. The ratchets
+ * red on a bare content regex, so a doc comment that merely NAMES a sync API
+ * reads as an offender — #1837 tripped exactly that way when its docblock
+ * started mentioning `acquireStationHomeMaintenanceLease` in prose. The
+ * identifier scans are about code: a line that begins with a comment token
+ * cannot call anything, so excluding it cannot hide a real offender, while
+ * any code line containing the identifier (import or call site) still
+ * matches.
+ */
+function stripCommentLines(source: string): string {
+  return source
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trimStart();
+      return (
+        !trimmed.startsWith('//') &&
+        !trimmed.startsWith('*') &&
+        !trimmed.startsWith('/*')
+      );
+    })
+    .join('\n');
+}
+
 const CASES: StoreSeamCase[] = [
   {
     label: 'Kit observability lifecycle registry',
@@ -292,7 +316,9 @@ it('keeps synchronous file-mutation lock acquisition out of server production', 
     ...productionTypeScriptFiles(join(process.cwd(), 'src-server')),
     ...movedStoragePrimitives,
   ].filter((path) =>
-    /\bacquireFileMutationLock\b/.test(readFileSync(path, 'utf8')),
+    /\bacquireFileMutationLock\b/.test(
+      stripCommentLines(readFileSync(path, 'utf8')),
+    ),
   );
   expect(offenders).toEqual([]);
 });
@@ -304,7 +330,9 @@ it('keeps synchronous Station-home maintenance out of server production', () => 
   const offenders = productionTypeScriptFiles(
     join(process.cwd(), 'src-server'),
   ).filter((path) =>
-    /\bacquireStationHomeMaintenanceLease\b/.test(readFileSync(path, 'utf8')),
+    /\bacquireStationHomeMaintenanceLease\b/.test(
+      stripCommentLines(readFileSync(path, 'utf8')),
+    ),
   );
   expect(offenders).toEqual([]);
 });

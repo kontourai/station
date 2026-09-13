@@ -94,14 +94,12 @@ export function savedConnectionsToKnownEnvironments(
  * most recent attempt having failed with `authentication-failed` count as NOT
  * yet able to control the target.
  */
-export function isPairedConnectionAuthorized(
-  connection: SavedConnection,
-): boolean {
+function isPairedConnectionAuthorized(connection: SavedConnection): boolean {
   if (connection.lastError?.reason === 'authentication-failed') return false;
   return connection.credentialState !== 'required';
 }
 
-export interface PairedAuthorizationLookup {
+interface PairedAuthorizationLookup {
   /** Keyed by the raw `SavedConnection.id` (matches a standalone, not-yet-merged `paired:<id>` `KnownEnvironment.id`). */
   byConnectionId: ReadonlyMap<string, boolean>;
   /** Keyed by the connection's own learned `environmentId`, when set (matches a merged card whose winning identity came from elsewhere — the SSH profile, or a manual entry that handshaked first). */

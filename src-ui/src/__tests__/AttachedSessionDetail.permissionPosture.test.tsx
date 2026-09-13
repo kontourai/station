@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
+vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
+
 const adoptOrchestrationSession = vi.hoisted(() => vi.fn());
 /**
  * `importOriginal`, not a bare factory. A factory mock makes every unlisted
@@ -68,6 +70,8 @@ const ev = (
   ({ eventId: `e${n++}`, ...base, ...e }) as unknown as CanonicalRuntimeEvent;
 
 function renderAttached({
+  presentation = 'inspector',
+  onAdopted = vi.fn(),
   connected = true,
   upgradeRequired,
   streamError,
@@ -77,6 +81,8 @@ function renderAttached({
   onRetryCapabilityRecovery,
   session: sessionOverrides,
 }: {
+  presentation?: 'inspector' | 'chat';
+  onAdopted?: (...args: any[]) => void;
   connected?: boolean;
   upgradeRequired?: boolean;
   streamError?: Error;
@@ -97,17 +103,26 @@ function renderAttached({
       <ToastProvider>
         <AttachedSessionDetail
           apiBase="http://station.test"
+          presentation={presentation}
           session={
             {
               threadId: 'external:claude:raw-thread-id',
               provider: 'claude',
               controlMode: 'read-only-attached',
+              attachedSource: {
+                kind: 'claude-transcript',
+                externalSessionId: 'fixture-native-source',
+                affinity: {
+                  kind: 'fixture-home',
+                  ref: 'verified-fixture-home',
+                },
+              },
               createdAt: '2026-06-27T00:00:00.000Z',
               updatedAt: '2026-06-27T00:00:00.000Z',
               ...sessionOverrides,
             } as any
           }
-          onAdopted={vi.fn()}
+          onAdopted={onAdopted}
           getSelectionIntent={() => 0}
           events={[
             ev({ method: 'turn.started', turnId: 'r1', prompt: 'list files' }),
@@ -132,7 +147,137 @@ function renderAttached({
   );
 }
 
+test('reply intent offers continuation in the normal composer without changing the conversation automatically', () => {
+  adoptOrchestrationSession.mockClear();
+  renderAttached({ presentation: 'chat' });
+  const composer = screen.getByRole('textbox', {
+    name: 'Message',
+  }) as HTMLTextAreaElement;
+  expect(composer.disabled).toBe(false);
+  expect(composer.readOnly).toBe(false);
+  expect(screen.getByText('Sure.')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Continue here' })).toBeNull();
+  fireEvent.focus(composer);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.change(composer, { target: { value: 'Keep my draft' } });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  expect(
+    screen.getByRole('button', { name: 'Continue and send' }),
+  ).toBeTruthy();
+  expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
+  expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(composer.value).toBe('Keep my draft');
+  expect(screen.queryByRole('button', { name: 'Continue here' })).toBeNull();
+  expect(screen.getByText('Sure.')).toBeTruthy();
+  expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+});
+
+test('Enter confirms the exact draft only after consent; Shift+Enter and IME do not', async () => {
+  adoptOrchestrationSession.mockClear();
+  const child = { threadId: 'continued' };
+  adoptOrchestrationSession.mockResolvedValue(child);
+  const onAdopted = vi.fn();
+  renderAttached({ presentation: 'chat', onAdopted });
+  const composer = screen.getByRole('textbox', { name: 'Message' });
+  fireEvent.keyDown(composer, { key: 'Enter' });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.change(composer, { target: { value: 'My exact\nmessage' } });
+  fireEvent.keyDown(composer, { key: 'Enter', shiftKey: true });
+  fireEvent.keyDown(composer, { key: 'Enter', isComposing: true });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.keyDown(composer, { key: 'Enter' });
+  expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+  await waitFor(() =>
+    expect(onAdopted).toHaveBeenCalledWith(
+      child,
+      expect.any(Number),
+      'My exact\nmessage',
+    ),
+  );
+  expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
+});
+
 describe('AttachedSessionDetail permission-posture row badge (station#1424)', () => {
+  test('keeps continuation disabled until source affinity is observed', () => {
+    adoptOrchestrationSession.mockClear();
+    renderAttached({
+      session: {
+        attachedSource: {
+          kind: 'claude-transcript',
+          externalSessionId: 'unverified-source',
+        },
+      },
+    });
+    const button = screen.getByRole('button', { name: 'Continue in Station' });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      screen.getByText('Waiting for the source configuration to be verified.'),
+    ).toBeTruthy();
+    fireEvent.click(button);
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+  });
+
+  test.each(['bedrock', 'future-engine'])(
+    'keeps unsupported or unknown %s continuation visible and disabled',
+    (provider) => {
+      adoptOrchestrationSession.mockClear();
+      renderAttached({ session: { provider } });
+      const button = screen.getByRole('button', {
+        name: 'Continue in Station',
+      });
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(
+        screen.getByText(
+          'Station has not established independent continuation support for this engine.',
+        ),
+      ).toBeTruthy();
+      fireEvent.click(button);
+      expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([false, true])(
+    'Codex continuation requires an observed completed boundary: %s',
+    (completed) => {
+      renderAttached({
+        session: {
+          provider: 'codex',
+          attachedSource: {
+            kind: 'codex-rollout',
+            externalSessionId: 'fixture-native-source',
+            affinity: {
+              kind: 'codex-config-home',
+              ref: 'verified-fixture-home',
+            },
+            ...(completed
+              ? {
+                  completedBoundary: {
+                    kind: 'completed-turn',
+                    providerTurnId: 't1',
+                    observedEventId: 'e1',
+                  },
+                }
+              : {}),
+          },
+        },
+      });
+      const button = screen.getByRole('button', {
+        name: 'Continue in Station',
+      });
+      expect((button as HTMLButtonElement).disabled).toBe(!completed);
+      if (!completed)
+        expect(
+          screen.getByText(
+            'No completed source turn is available for continuation.',
+          ),
+        ).toBeTruthy();
+    },
+  );
+
   test('every assistant row is annotated "Read only" — this view only ever shows a read-only-attached session', () => {
     renderAttached();
     // The user turn (from the prompt) never gets the badge.

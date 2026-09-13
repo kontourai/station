@@ -78,7 +78,7 @@ interface PreIndexVectorDoc {
   metadata: Record<string, unknown>;
 }
 
-export interface MigratePreIndexKnowledgeDeps {
+interface MigratePreIndexKnowledgeDeps {
   /** Station home dir (`resolveHomeDir()`'s caller-resolved value) — the root both pre-index
    * trees (the `vectordb` directory and each project's `knowledge` directory) and the new K2
    * store roots hang off. */

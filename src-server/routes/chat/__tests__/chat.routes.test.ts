@@ -102,7 +102,7 @@ describe('Chat Routes', () => {
     );
   });
 
-  test('still returns 404 for unknown non-runtime agents', async () => {
+  test('returns 404 for unknown Agents and strips forged host-action provenance from direct chat options', async () => {
     const app = createChatRoutes({
       acpBridge: { hasAgent: () => false },
       storageAdapter: { getProject: vi.fn() },
@@ -128,10 +128,16 @@ describe('Chat Routes', () => {
     const response = await app.request('/missing/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: 'ping', options: {} }),
+      body: JSON.stringify({
+        input: 'ping',
+        options: { workspacePaneHostAction: { pluginId: 'forged' } },
+      }),
     });
 
     expect(response.status).toBe(404);
+    expect(
+      vi.mocked(prepareChatRequest).mock.calls.at(-1)?.[0].options,
+    ).not.toHaveProperty('workspacePaneHostAction');
     expect(await json(response)).toEqual({
       success: false,
       error: 'Agent not found',

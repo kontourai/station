@@ -1,14 +1,10 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   lstatSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   realpathSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
 } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
@@ -33,10 +29,20 @@ import {
 } from '@kontourai/station-contracts/layout';
 import {
   isCanonicalPluginId,
+  type PluginInstallationReadiness,
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
-import { parsePluginManifest } from './plugin-manifest-loader.js';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
+import { createLogger } from '../../utils/logger.js';
+import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
+import {
+  listPluginCatalogIdentities,
+  readPluginCatalogInstallation,
+  readPluginCatalogInstallationAsync,
+} from './plugin-catalog-installation.js';
+
+const logger = createLogger({ name: 'distribution-profile-service' });
 
 const SAFE_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const LIFECYCLE_FILE = ['config', 'distribution-lifecycle.json'] as const;
@@ -49,6 +55,8 @@ interface PluginLayoutEntry {
 }
 
 interface ParsedPluginLayout {
+  installationReady?: boolean;
+  installationReadiness?: PluginInstallationReadiness;
   manifest: PluginManifest;
   definition: ResolvedCatalogLayout['definition'];
 }
@@ -57,6 +65,7 @@ export interface InstalledPluginWorkspacePaneContribution {
   id: string;
   pluginName: string;
   enabled: boolean;
+  installationReadiness?: PluginInstallationReadiness;
   descriptor: WorkspacePaneDescriptor;
   /**
    * Exact catalog contribution snapshot for occurrence issuance. The renderer
@@ -103,25 +112,6 @@ function isSafeRelativeFilePath(value: string): boolean {
     !isAbsolute(value) &&
     !value.split(/[\\/]+/).some((segment) => segment === '' || segment === '..')
   );
-}
-
-function resolvePluginDirectory(
-  projectHomeDir: string,
-  pluginName: string,
-): string | null {
-  const pluginsDir = resolve(projectHomeDir, 'plugins');
-  const pluginDir = resolve(pluginsDir, pluginName);
-  try {
-    if (!lstatSync(pluginsDir).isDirectory()) return null;
-    if (!lstatSync(pluginDir).isDirectory()) return null;
-    const realPluginsDir = realpathSync(pluginsDir);
-    const realPluginDir = realpathSync(pluginDir);
-    return isContainedPath(realPluginsDir, realPluginDir)
-      ? realPluginDir
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 function readContainedRegularFile(pluginDir: string, source: string): string {
@@ -206,35 +196,48 @@ function parseLayoutDefinition(
 function readPluginManifestFile(
   projectHomeDir: string,
   pluginName: string,
-): { manifest: PluginManifest; pluginDir: string } {
-  const pluginDir = resolvePluginDirectory(projectHomeDir, pluginName);
-  if (!pluginDir) throw new Error('Plugin directory is unavailable');
-  const manifestPath = resolve(pluginDir, 'plugin.json');
-  const manifest = parsePluginManifest(
-    readContainedRegularFile(pluginDir, 'plugin.json'),
-    manifestPath,
+  journal?: PackageMcpAdmissionJournal,
+): {
+  manifest: PluginManifest;
+  pluginDir: string;
+  installationReady: boolean;
+  installationReadiness: PluginInstallationReadiness;
+} {
+  const catalog = readPluginCatalogInstallation(
+    join(projectHomeDir, 'plugins'),
+    pluginName,
+    journal,
   );
-  return { manifest, pluginDir };
+  if (!catalog) throw new Error('Plugin installation is unavailable');
+  return {
+    manifest: catalog.manifest,
+    pluginDir: catalog.packageRoot,
+    installationReady: catalog.readiness.state === 'ready',
+    installationReadiness: catalog.readiness,
+  };
 }
 
 function readPluginLayoutFiles(
-  projectHomeDir: string,
+  observed: ReturnType<typeof readPluginManifestFile>,
   pluginName: string,
 ): ParsedPluginLayout {
-  const { manifest, pluginDir } = readPluginManifestFile(
-    projectHomeDir,
-    pluginName,
-  );
+  const { manifest, pluginDir, installationReady, installationReadiness } =
+    observed;
   const layoutSource = manifest.layout?.source || 'layout.json';
   const layout = readContainedRegularJson(pluginDir, layoutSource);
   return {
     manifest,
+    installationReady,
+    installationReadiness,
     definition: parseLayoutDefinition(layout, manifest, pluginName),
   };
 }
 
 function logInvalidPlugin(pluginName: string, error: unknown): void {
-  console.debug('Failed to read installed plugin layout:', pluginName, error);
+  logger.debug('Failed to read installed plugin layout', {
+    plugin: pluginName,
+    error,
+  });
 }
 
 function cloneProfile(profile: DistributionProfile): DistributionProfile {
@@ -351,10 +354,77 @@ export function resolveDistributionProfile(
  */
 export class DistributionProfileService {
   readonly profile: DistributionProfile;
+  private catalogManifests?: Map<
+    string,
+    ReturnType<typeof readPluginManifestFile> | Error
+  >;
+
+  /** Inert request snapshot. Each package is observed once, with no cross-request cache. */
+  async captureCatalog(): Promise<DistributionCatalogReadView> {
+    const snapshot = new DistributionProfileService(
+      this.projectHomeDir,
+      this.profile,
+      this.journal,
+    );
+    const manifests = new Map<
+      string,
+      ReturnType<typeof readPluginManifestFile> | Error
+    >();
+    const pluginsDir = join(this.projectHomeDir, 'plugins');
+    for (const name of listPluginCatalogIdentities(pluginsDir, this.journal)) {
+      if (!isCanonicalPluginId(name) || !this.pluginIsAllowed(name)) continue;
+      try {
+        const catalog = await readPluginCatalogInstallationAsync(
+          pluginsDir,
+          name,
+          this.journal,
+        );
+        if (!catalog) throw new Error('Plugin installation is unavailable');
+        manifests.set(name, {
+          manifest: catalog.manifest,
+          pluginDir: catalog.packageRoot,
+          installationReady: catalog.readiness.state === 'ready',
+          installationReadiness: catalog.readiness,
+        });
+      } catch (error) {
+        manifests.set(
+          name,
+          error instanceof Error
+            ? error
+            : new Error('Plugin installation is unavailable'),
+        );
+      }
+    }
+    snapshot.catalogManifests = manifests;
+    // Expose only inert readers. Applying layouts or authorizing execution must
+    // use the live service and its fresh installation observation.
+    return {
+      listLayouts: () => snapshot.listLayouts(),
+      listPluginWorkspacePaneContributions: () =>
+        snapshot.listPluginWorkspacePaneContributions(),
+      resolveForCatalog: (id) => snapshot.resolveForCatalog(id),
+    };
+  }
+
+  private readManifest(
+    pluginName: string,
+  ): ReturnType<typeof readPluginManifestFile> {
+    if (!this.catalogManifests)
+      return readPluginManifestFile(
+        this.projectHomeDir,
+        pluginName,
+        this.journal,
+      );
+    const observed = this.catalogManifests.get(pluginName);
+    if (!observed || observed instanceof Error)
+      throw observed ?? new Error('Plugin installation is unavailable');
+    return observed;
+  }
 
   constructor(
     private readonly projectHomeDir: string,
     selection?: DistributionProfileSelection,
+    private readonly journal?: PackageMcpAdmissionJournal,
   ) {
     this.profile = resolveDistributionProfile(selection);
   }
@@ -390,27 +460,22 @@ export class DistributionProfileService {
       return [];
     }
     const result: InstalledPluginWorkspacePaneContribution[] = [];
-    for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
-      if (
-        !entry.isDirectory() ||
-        !isCanonicalPluginId(entry.name) ||
-        !this.pluginIsAllowed(entry.name)
-      ) {
-        continue;
-      }
+    for (const name of listPluginCatalogIdentities(pluginsDir, this.journal)) {
+      const entry = { name };
+      if (!isCanonicalPluginId(name) || !this.pluginIsAllowed(name)) continue;
       try {
-        const { manifest } = readPluginManifestFile(
-          this.projectHomeDir,
-          entry.name,
-        );
+        const { manifest, installationReady, installationReadiness } =
+          this.readManifest(entry.name);
         for (const descriptor of manifest.workspacePanes ?? []) {
           const id = pluginPaneContributionId(entry.name, descriptor.id);
           const policy = this.policyFor(id);
           const override = this.readOverrides().items[id] ?? {};
           result.push({
             id,
+            installationReadiness,
             pluginName: entry.name,
-            enabled: override.enabled ?? policy.enabled ?? true,
+            enabled:
+              installationReady && (override.enabled ?? policy.enabled ?? true),
             descriptor,
             contribution: {
               id,
@@ -433,7 +498,15 @@ export class DistributionProfileService {
 
   getLayout(id: string): LayoutCatalogItem | undefined {
     assertSafeCatalogId(id);
-    return this.listLayouts().find((item) => item.id === id);
+    if (id.startsWith('builtin:')) {
+      if (!this.hasBuiltinSource()) return undefined;
+      const layout = BUILTIN_PROJECT_LAYOUTS.find(
+        (entry) => `builtin:${entry.slug}` === id,
+      );
+      const item = layout ? this.toBuiltinItem(layout) : undefined;
+      return item?.visible ? item : undefined;
+    }
+    return this.pluginLayoutForId(id)?.item;
   }
 
   resolveForApply(id: string): ResolvedCatalogLayout {
@@ -453,7 +526,9 @@ export class DistributionProfileService {
    * project must use `resolveForApply` instead.
    */
   resolveForCatalog(id: string): ResolvedCatalogLayout {
-    const item = this.getLayout(id);
+    assertSafeCatalogId(id);
+    const plugin = this.pluginLayoutForId(id);
+    const item = id.startsWith('plugin:') ? plugin?.item : this.getLayout(id);
     if (
       !item ||
       (item.lifecycle.state !== 'installed' &&
@@ -474,7 +549,6 @@ export class DistributionProfileService {
         },
       };
     }
-    const plugin = this.readPluginLayout(item.plugin!);
     if (!plugin)
       throw new Error('Known plugin layout descriptor is unavailable');
     return {
@@ -488,7 +562,7 @@ export class DistributionProfileService {
     assertPluginName(pluginName);
     if (!this.pluginIsAllowed(pluginName)) return undefined;
     try {
-      return readPluginManifestFile(this.projectHomeDir, pluginName).manifest;
+      return this.readManifest(pluginName).manifest;
     } catch (error) {
       logInvalidPlugin(pluginName, error);
       return undefined;
@@ -573,14 +647,9 @@ export class DistributionProfileService {
       return [];
     }
     const result: LayoutCatalogItem[] = [];
-    for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
-      if (
-        !entry.isDirectory() ||
-        !isCanonicalPluginId(entry.name) ||
-        !this.pluginIsAllowed(entry.name)
-      ) {
-        continue;
-      }
+    for (const name of listPluginCatalogIdentities(pluginsDir, this.journal)) {
+      const entry = { name };
+      if (!isCanonicalPluginId(name) || !this.pluginIsAllowed(name)) continue;
       const plugin = this.readPluginLayout(entry.name);
       if (plugin) result.push(plugin.item);
     }
@@ -600,12 +669,22 @@ export class DistributionProfileService {
     assertPluginName(pluginName);
     let parsed: ParsedPluginLayout;
     try {
-      parsed = readPluginLayoutFiles(this.projectHomeDir, pluginName);
+      parsed = readPluginLayoutFiles(this.readManifest(pluginName), pluginName);
     } catch (error) {
       logInvalidPlugin(pluginName, error);
       return null;
     }
     return this.projectPluginLayout(pluginName, parsed);
+  }
+
+  /** Resolve one identity without scanning unrelated installed package bytes. */
+  private pluginLayoutForId(id: string): PluginLayoutEntry | null {
+    const match = /^plugin:([^:]+):/.exec(id);
+    const name = match?.[1];
+    if (!name || !isCanonicalPluginId(name) || !this.pluginIsAllowed(name))
+      return null;
+    const plugin = this.readPluginLayout(name);
+    return plugin?.item.visible && plugin.item.id === id ? plugin : null;
   }
 
   private projectPluginLayout(
@@ -616,9 +695,12 @@ export class DistributionProfileService {
     const id = `plugin:${pluginName}:${definition.slug}`;
     const policy = this.policyFor(id);
     const override = this.readOverrides().items[id] ?? {};
-    const enabled = override.enabled ?? policy.enabled ?? true;
+    const enabled =
+      parsed.installationReady !== false &&
+      (override.enabled ?? policy.enabled ?? true);
     const visible = policy.visible ?? true;
     const item: LayoutCatalogItem = {
+      installationReadiness: parsed.installationReadiness,
       source: 'plugin',
       plugin: pluginName,
       name: definition.name,
@@ -702,12 +784,14 @@ export class DistributionProfileService {
     };
     const path = this.lifecyclePath();
     mkdirSync(join(this.projectHomeDir, 'config'), { recursive: true });
-    const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
-    try {
-      writeFileSync(temporary, JSON.stringify(next, null, 2), 'utf-8');
-      renameSync(temporary, path);
-    } finally {
-      rmSync(temporary, { force: true });
-    }
+    // Same two-space document; the shared durable writer adds the exclusive
+    // temporary, the data fsync and the directory fsync.
+    writeJsonDurably(path, next, { trailingNewline: false });
   }
 }
+
+/** Catalog declarations carry no execution or mutation authority. */
+export type DistributionCatalogReadView = Pick<
+  DistributionProfileService,
+  'listLayouts' | 'listPluginWorkspacePaneContributions' | 'resolveForCatalog'
+>;

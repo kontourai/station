@@ -293,7 +293,7 @@ export function useAgentsViewModel({
   // bounded window; this exposes the two outcomes the pane has to tell apart —
   // still activating, or activation is not coming.
   const {
-    data: agentTools = [],
+    data: agentTools,
     isError: agentToolsFailed,
     error: agentToolsError,
     failureReason: agentToolsFailureReason,
@@ -316,9 +316,10 @@ export function useAgentsViewModel({
     !agentToolsFailed && isAgentToolsActivatingError(agentToolsFailureReason);
   const toolsActivationTimedOut =
     !!agentToolsFailed && isAgentToolsActivatingError(agentToolsError);
-  const [integrationTools, setIntegrationTools] = useState<
-    Record<string, Tool[]>
-  >({});
+  const integrationTools = useMemo(
+    () => groupAgentToolsByServer(agentTools ?? []),
+    [agentTools],
+  );
 
   const allAgents = liveAgents.length > 0 ? liveAgents : agents;
   const filteredAgents = useMemo(() => {
@@ -455,10 +456,6 @@ export function useAgentsViewModel({
           },
     );
   }, [defaultManagedRuntimeId, isCreating]);
-
-  useEffect(() => {
-    setIntegrationTools(groupAgentToolsByServer(agentTools));
-  }, [agentTools]);
 
   /**
    * Whether THIS engine delivers a system prompt of its own — the matrix

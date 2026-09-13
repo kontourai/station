@@ -2,6 +2,7 @@ import {
   createAccessEndpoint,
   createDirectHttpAccessMethod,
   defaultStorage,
+  httpDevelopmentOrigin,
   type SavedConnection,
   type StationHandshakeIdentity,
   type StorageAdapter,
@@ -55,7 +56,10 @@ export interface VerifiedStationProfilePairing {
   nextCredentialRef?: StationProfileCredentialRef;
 }
 
-function normalizedPairingEndpoint(value: string): string {
+function normalizedPairingEndpoint(
+  value: string,
+  developmentHttpOrigin?: string,
+): string {
   let url: URL;
   try {
     url = new URL(value);
@@ -70,7 +74,9 @@ function normalizedPairingEndpoint(value: string): string {
     /^127(?:\.\d{1,3}){3}$/.test(url.hostname);
   if (
     (url.protocol !== 'http:' && url.protocol !== 'https:') ||
-    (url.protocol === 'http:' && !strictLoopbackHttp) ||
+    (url.protocol === 'http:' &&
+      !strictLoopbackHttp &&
+      developmentHttpOrigin !== url.origin) ||
     url.username ||
     url.password ||
     url.pathname !== '/' ||
@@ -87,7 +93,12 @@ function normalizedPairingEndpoint(value: string): string {
 function credentialBearingEndpointIsSafe(profile: StationProfile): boolean {
   if (!profile.credentialRef) return true;
   try {
-    return normalizedPairingEndpoint(profile.endpoint) === profile.endpoint;
+    return (
+      normalizedPairingEndpoint(
+        profile.endpoint,
+        profile.developmentHttpOrigin,
+      ) === profile.endpoint
+    );
   } catch {
     return false;
   }
@@ -152,6 +163,9 @@ export interface NativeStationProfileRepository {
     pairing: VerifiedStationProfilePairing,
   ): Promise<string>;
   makeDefault(connectionId: string): Promise<StationProfile>;
+  updateProfile(
+    input: import('@kontourai/station-connect').SavedStationEdit,
+  ): Promise<void>;
   /**
    * Makes a saved Station the native credential projection for this UI
    * client only. `explicit` records deliberate per-client intent without
@@ -324,8 +338,10 @@ export class NativeStationProfileStorage
         retainedProfile.credentialRef?.kind === retained?.credentialRef.kind &&
         retainedProfile.credentialRef?.id === retained?.credentialRef.id &&
         retainedProfile.environmentId === retained?.environmentId &&
-        normalizedPairingEndpoint(retainedProfile.endpoint) ===
-          retained?.exactOrigin,
+        normalizedPairingEndpoint(
+          retainedProfile.endpoint,
+          retainedProfile.developmentHttpOrigin,
+        ) === retained?.exactOrigin,
     );
     if (!preservesBinding) this.activeRequestBinding = undefined;
     this.profileStore = store;
@@ -473,7 +489,12 @@ export class NativeStationProfileStorage
     }
     const matches = this.profileStore.profiles.filter((profile) => {
       try {
-        return normalizedPairingEndpoint(profile.endpoint) === exactOrigin;
+        return (
+          normalizedPairingEndpoint(
+            profile.endpoint,
+            profile.developmentHttpOrigin,
+          ) === exactOrigin
+        );
       } catch {
         return false;
       }
@@ -528,7 +549,10 @@ export class NativeStationProfileStorage
     second: StationProfile,
   ): boolean {
     try {
-      const secondEndpoint = normalizedPairingEndpoint(second.endpoint);
+      const secondEndpoint = normalizedPairingEndpoint(
+        second.endpoint,
+        second.developmentHttpOrigin,
+      );
       const secondUrl = new URL(secondEndpoint);
       const host = secondUrl.hostname;
       const strictLoopbackHttp =
@@ -538,7 +562,10 @@ export class NativeStationProfileStorage
           /^127(?:\.\d{1,3}){3}$/.test(host));
       return (
         strictLoopbackHttp &&
-        normalizedPairingEndpoint(first.endpoint) === secondEndpoint
+        normalizedPairingEndpoint(
+          first.endpoint,
+          first.developmentHttpOrigin,
+        ) === secondEndpoint
       );
     } catch {
       return false;
@@ -588,6 +615,106 @@ export class NativeStationProfileStorage
 
   remove(key: string): void {
     this.values.delete(key);
+  }
+
+  async updateProfile(
+    input: import('@kontourai/station-connect').SavedStationEdit,
+  ): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const current = await this.readProfileStore();
+      const profile = current.profiles.find(
+        (candidate) => profileConnectionId(candidate) === input.connectionId,
+      );
+      if (!profile || profile.localService)
+        throw new Error('This Station cannot be edited here.');
+      if (
+        profile.name !== input.expected.name ||
+        profile.endpoint !== input.expected.url
+      )
+        throw new Error(
+          'This Station changed while you were editing. Reopen it and try again.',
+        );
+      const name = input.name.trim();
+      const endpoint = normalizedPairingEndpoint(
+        input.url.trim(),
+        profile.developmentHttpOrigin,
+      );
+      if (
+        !name ||
+        current.profiles.some(
+          (candidate) =>
+            candidate !== profile &&
+            candidate.name.toLowerCase() === name.toLowerCase(),
+        )
+      )
+        throw new Error('Choose a unique Station name.');
+      const addressChanged = endpoint !== profile.endpoint;
+      const updated: StationProfile = {
+        ...profile,
+        name,
+        endpoint,
+        updatedAt: Date.now(),
+      };
+      if (addressChanged) {
+        // A credential is bound to its old exact origin. Editing metadata must
+        // never send it to the newly typed address, even if it claims the same id.
+        delete updated.credentialRef;
+        delete updated.environmentId;
+        if (updated.developmentHttpOrigin !== endpoint)
+          delete updated.developmentHttpOrigin;
+        updated.setupSource = 'manual';
+        updated.configurationState = 'unconfigured';
+      }
+      const renamed = (value: string) =>
+        value.toLowerCase() === profile.name.toLowerCase() ? name : value;
+      const next: StationProfileStore = {
+        ...current,
+        revision: current.revision + 1,
+        profiles: current.profiles.map((candidate) =>
+          candidate === profile ? updated : candidate,
+        ),
+        defaultProfile: current.defaultProfile
+          ? renamed(current.defaultProfile)
+          : null,
+        projectProfiles: Object.fromEntries(
+          Object.entries(current.projectProfiles).map(([project, value]) => [
+            project,
+            renamed(value),
+          ]),
+        ),
+      };
+      if (!isStationProfileStore(next))
+        throw new Error('The Station name or address is invalid.');
+      const restoreBinding =
+        !addressChanged &&
+        this.activeRequestBinding?.connectionId === input.connectionId;
+      let committed = false;
+      try {
+        await this.writeProfileStore(next, current.revision);
+        committed = true;
+        const nextId = profileConnectionId(updated);
+        if (this.values.get(ACTIVE_KEY) === input.connectionId)
+          this.values.set(ACTIVE_KEY, nextId);
+        if (this.explicitProcessSelection === input.connectionId) {
+          this.explicitProcessSelection = nextId;
+          this.persistExplicitSelection(nextId);
+        }
+        this.replaceProfileStore(next);
+        if (
+          restoreBinding &&
+          nextId !== input.connectionId &&
+          this.values.get(ACTIVE_KEY) === nextId
+        )
+          await this.authorizeActiveConnection(nextId);
+        return;
+      } catch (error) {
+        if (committed)
+          throw new Error(
+            `Station saved, but its connection could not be restored: ${String(error)}`,
+          );
+        if (!this.isRevisionConflict(error) || attempt === 2) throw error;
+      }
+    }
   }
 
   async makeDefault(connectionId: string): Promise<StationProfile> {
@@ -644,7 +771,10 @@ export class NativeStationProfileStorage
     this.values.set(ACTIVE_KEY, connectionId);
     if (!profile.credentialRef) return false;
     try {
-      const exactOrigin = normalizedPairingEndpoint(profile.endpoint);
+      const exactOrigin = normalizedPairingEndpoint(
+        profile.endpoint,
+        profile.developmentHttpOrigin,
+      );
       const result = await this.bridge.invoke<unknown>(
         'station_profile_authorize_active',
         { profileName: profile.name },
@@ -756,7 +886,11 @@ export class NativeStationProfileStorage
         'Refusing to persist an unverified Station pairing identity.',
       );
     }
-    const endpoint = normalizedPairingEndpoint(pairing.endpoint);
+    const developmentHttpOrigin = httpDevelopmentOrigin(pairing.endpoint);
+    const endpoint = normalizedPairingEndpoint(
+      pairing.endpoint,
+      developmentHttpOrigin,
+    );
     for (let attempt = 0; attempt < 3; attempt += 1) {
       // Never mutate from the bootstrap snapshot: a CLI can add or select a
       // profile while Desktop is open. Re-read within every explicit mutation,
@@ -813,6 +947,7 @@ export class NativeStationProfileStorage
           createdAt: now,
         }),
         endpoint,
+        developmentHttpOrigin,
         credentialRef: nextRef,
         environmentId: pairing.handshake.environmentId,
         clientInstanceId: pairing.clientInstanceId,
@@ -949,7 +1084,10 @@ export class NativeStationProfileStorage
 
       this.replaceProfileStore(nextStore);
       const connectionId = profileConnectionId(updatedProfile);
-      const exactOrigin = normalizedPairingEndpoint(updatedProfile.endpoint);
+      const exactOrigin = normalizedPairingEndpoint(
+        updatedProfile.endpoint,
+        updatedProfile.developmentHttpOrigin,
+      );
       const result = await this.bridge.invoke<unknown>(
         'station_profile_authorize_active',
         { profileName: updatedProfile.name },
@@ -1025,12 +1163,6 @@ export class NativeStationProfileStorage
     await this.bridge.invoke('credential_vault_delete_unreferenced', {
       reference,
     });
-  }
-
-  credentialReferences(): StationProfile['credentialRef'][] {
-    return this.profileStore.profiles.flatMap((profile) =>
-      profile.credentialRef ? [profile.credentialRef] : [],
-    );
   }
 
   credentialEntries(): Array<{

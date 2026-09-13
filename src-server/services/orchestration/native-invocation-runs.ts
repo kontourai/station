@@ -74,7 +74,7 @@ export function releaseNativeInvocationOwner(ownerId: string): void {
   releasedOwners.add(ownerId);
 }
 
-export interface NativeInvocationRunClaim {
+interface NativeInvocationRunClaim {
   /** Must succeed immediately before the external provider call. */
   beginInvocation(now: string): Transition;
   completed(now: string): Transition;

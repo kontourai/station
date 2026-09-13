@@ -1,4 +1,4 @@
-export interface AttemptBudgetDecision {
+interface AttemptBudgetDecision {
   readonly kind: 'admitted' | 'rate-limited';
   readonly retryAfterSeconds?: number;
   readonly overflow: boolean;

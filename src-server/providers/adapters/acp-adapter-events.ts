@@ -32,6 +32,7 @@ import type {
   CanonicalRuntimeEvent,
   ProviderSession,
 } from '../adapter-shape.js';
+import { observeInboundExtensionNotification } from '../extension-notification-observe.js';
 import type { AcpToolUpdateSupervisor } from './acp-tool-update-supervisor.js';
 
 /**
@@ -384,6 +385,11 @@ export function mapAcpExtensionNotification(
   ctx: AcpMapperContext,
 ): void {
   const { namespace, type } = splitExtensionMethod(method);
+  observeInboundExtensionNotification({
+    provider: ctx.provider,
+    namespace,
+    type,
+  });
   const binding = extensionNotificationBinding(namespace, type);
   const suppressed = ctx.state?.turnErrorNotificationsSuppressed === true;
   if (

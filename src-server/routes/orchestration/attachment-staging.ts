@@ -39,7 +39,7 @@ const reconcileSchema = z.object({
   stageIds: z.array(z.string().min(1).max(128)).max(CHAT_ATTACHMENT_MAX_COUNT),
 });
 
-export interface AttachmentStagingRouteDeps {
+interface AttachmentStagingRouteDeps {
   service: AttachmentStagingService;
   /** Auth identity only; no tenant path or grant reaches the route Interface. */
   currentOwner: (context: {

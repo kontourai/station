@@ -1923,3 +1923,57 @@ describe('identity slugs reach the rows that display them', () => {
     expect(item.agentSlug).toBeUndefined();
   });
 });
+
+test('Open chats labels use the exact current child model instead of a persisted predecessor observation', () => {
+  const chats = {
+    tab: {
+      conversationId: 'conversation',
+      currentSessionId: 'claude-child',
+      agentSlug: 'claude',
+      agentName: 'Claude Code',
+      model: 'opus-current',
+      orchestrationModel: 'gpt-predecessor',
+      input: '',
+      attachments: [],
+      queuedMessages: [],
+      inputHistory: [],
+      hasUnread: false,
+    },
+  };
+  // Fully typed through a base summary, not cast: archive#1778 keeps the
+  // shape's required members enforced on every fixture.
+  const base: OrchestrationSessionSummary = {
+    threadId: 'conversation',
+    conversationId: 'conversation',
+    provider: 'codex',
+    status: 'ready',
+    controlMode: 'station-owned',
+    lifecycleState: 'needs_input',
+    pendingReview: false,
+    createdAt: '2026-09-06T00:00:00Z',
+    updatedAt: '2026-09-06T01:00:00Z',
+    isLoaded: true,
+    isPersisted: true,
+    answerability: { answerable: true },
+    eventCount: 1,
+  };
+  const sessions: OrchestrationSessionSummary[] = [
+    { ...base, model: 'gpt-newer-root-event' },
+    {
+      ...base,
+      threadId: 'claude-child',
+      provider: 'claude',
+      reportedModel: 'opus-reported',
+      model: 'opus-retained',
+      updatedAt: '2026-09-06T00:00:00Z',
+    },
+  ];
+  const [row] = buildActiveChatTaskItems({
+    chats,
+    agents: [],
+    sessions,
+    resolveModelLabel: (model) => model ?? 'Unknown',
+  });
+  expect(row?.model).toBe('opus-reported');
+  expect(row?.modelLabel).toBe('opus-reported');
+});

@@ -5,9 +5,41 @@
   "description": "Default starter layout that demonstrates agents, chat dock control, navigation, and toast feedback without external services.",
   "entrypoint": "src/index.tsx",
   "capabilities": ["chat", "navigation"],
-  "permissions": ["navigation.dock"],
+  "permissions": ["navigation.dock", "agents.invoke"],
   "layout": {
     "slug": "getting-started",
     "source": "./layout.json"
+  },
+  "agents": [
+    {
+      "slug": "getting-started-starter-assistant",
+      "source": "./agents/getting-started-starter-assistant/agent.json"
+    }
+  ],
+  "workspacePaneHost": {
+    "version": "station.workspace-pane-host-contribution/v1",
+    "actions": [
+      {
+        "id": "explain-workspace",
+        "label": "Explain this workspace",
+        "presentation": "action",
+        "intent": {
+          "kind": "prompt",
+          "prompt": "Explain how this starter plugin is structured and what I should customize first."
+        }
+      }
+    ],
+    "agentSelection": {
+      "availableAgents": [
+        {
+          "kind": "own-plugin-agent",
+          "agentId": "getting-started-starter-assistant"
+        }
+      ],
+      "defaultAgent": {
+        "kind": "own-plugin-agent",
+        "agentId": "getting-started-starter-assistant"
+      }
+    }
   }
 }

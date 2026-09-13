@@ -21,14 +21,23 @@ import {
   activeTurnProgress,
   orchestrationLifecycleLabel,
 } from '../../utils/session-state';
-import { sessionProjectLabel, sessionTitle } from '../../utils/sessionDisplay';
+import {
+  sessionProjectLabel,
+  sessionRecency,
+  sessionTitle,
+} from '../../utils/sessionDisplay';
 
 export interface HomeWorkItem {
   id: string;
   /** Durable conversation identity when this row represents one. */
   conversationId?: string;
   kind: 'task' | 'chat' | 'orchestration' | 'remote-session';
-  kindLabel: 'Durable Task' | 'Direct chat' | 'Session' | 'Remote session';
+  kindLabel:
+    | 'Durable Task'
+    | 'Direct chat'
+    | 'Session'
+    | 'Remote session'
+    | 'Conversation';
   title: string;
   projectLabel: string;
   agentLabel: string;
@@ -219,7 +228,7 @@ function safeAgentLabel({
  * sessions, as returned by the server's `/api/environments/ssh/sessions`
  * aggregation endpoint (`useRemoteSessionsQuery`, `@kontourai/station-sdk`).
  */
-export interface RemoteHomeEnvironmentSessions {
+interface RemoteHomeEnvironmentSessions {
   environmentId: string;
   environmentName: string;
   sessions: OrchestrationSessionSummary[];
@@ -348,7 +357,11 @@ function buildSessionWorkItem(
       ? { conversationId: session.conversationId }
       : {}),
     kind: provenance ? 'remote-session' : 'orchestration',
-    kindLabel: provenance ? 'Remote session' : 'Session',
+    kindLabel: provenance
+      ? 'Remote session'
+      : session.controlMode === 'read-only-attached'
+        ? 'Conversation'
+        : 'Session',
     // archive#3227 A2: `sessionTitle` is the one name a session is listed
     // under, and its contract is that no branch may return a raw thread id.
     // Home carried a private copy with a different taskId regex that
@@ -378,11 +391,7 @@ function buildSessionWorkItem(
     model: session.reportedModel ?? session.effectiveModel ?? session.model,
     ...(cwdLabel ? { cwdLabel: `…/${cwdLabel}` } : {}),
     turnProgress: activeTurnProgress(session),
-    updatedAt: Math.max(
-      timestamp(session.updatedAt),
-      timestamp(session.lastEventAt),
-      timestamp(session.createdAt),
-    ),
+    updatedAt: sessionRecency(session),
     lifecycleLabel,
     // The basis behind an `'Unanswerable'` chip. Carried on the item rather
     // than recomputed at render so the row and the label come from one read
@@ -853,6 +862,9 @@ export function buildActiveChatTaskItems({
   resolveModelLabel?: ResolveModelLabel;
 }): HomeWorkItem[] {
   const turnByThread = new Map<string, ChatSessionCorrelation>();
+  const sessionByThread = new Map(
+    sessions.map((session) => [session.threadId, session]),
+  );
   for (const session of sessions) {
     const entry: ChatSessionCorrelation = {
       hasActiveTurn: session.hasActiveTurn === true,
@@ -881,6 +893,14 @@ export function buildActiveChatTaskItems({
           chat.agentName ||
           agents.find((agent) => agent.slug === chat.agentSlug)?.name,
       });
+      const currentExecution = sessionByThread.get(
+        chat.currentSessionId ?? chat.conversationId ?? id,
+      );
+      const observedModel =
+        currentExecution?.reportedModel ??
+        currentExecution?.model ??
+        currentExecution?.appliedModel;
+      const model = observedModel ?? chat.orchestrationModel ?? chat.model;
       return {
         id: chat.conversationId || id,
         ...(chat.conversationId ? { conversationId: chat.conversationId } : {}),
@@ -894,11 +914,11 @@ export function buildActiveChatTaskItems({
           chat.title?.trim() || (agentLabel ? `${agentLabel} Chat` : 'Task'),
         projectLabel: chat.projectName || chat.projectSlug || 'No project',
         agentLabel,
-        modelLabel: resolveModelLabel(chat.orchestrationModel || chat.model),
+        modelLabel: resolveModelLabel(model),
         // archive#3391: the id itself, not only its label — the label is a
         // derivation of this, and a consumer that needs the model (reopen)
         // must not have to parse a display string back into one.
-        model: chat.orchestrationModel || chat.model,
+        model,
         updatedAt: latestChatTimestamp(chat),
         lifecycleLabel: chatLifecycleLabel(chat, id, turnByThread),
         // Bound to the label in both directions, like unanswerableNotice: a

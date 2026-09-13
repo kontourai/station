@@ -10,6 +10,7 @@ import {
   resolveGuidanceTab,
 } from './guidance-tab';
 import { SkillsView } from './SkillsView';
+import { SKILLS_SUBTITLE } from './skills/skill-view-utils';
 
 type GuidanceRoute = Extract<NavigationView, { type: 'guidance' }>;
 
@@ -40,8 +41,7 @@ type GuidanceRoute = Extract<NavigationView, { type: 'guidance' }>;
  */
 const TAB_HEADERS: Record<GuidanceTab, { subtitle: string }> = {
   skills: {
-    subtitle:
-      'Author workspace skills here; discover and install new skills in Registry.',
+    subtitle: SKILLS_SUBTITLE,
   },
   commands: {
     subtitle: 'Slash commands available to agents in chat.',

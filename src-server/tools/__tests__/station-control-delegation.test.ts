@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
+  ProviderSessionStartInput,
 } from '../../providers/adapter-shape.js';
 import { AsyncEventQueue } from '../../providers/sessions/async-event-queue.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
@@ -188,7 +189,7 @@ class ContinuationFakeAdapter implements ProviderAdapterShape {
   >();
   private readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
   private readonly startedThreadIds: string[] = [];
-  readonly startSession = vi.fn(async (input: { threadId: string }) => {
+  readonly startSession = vi.fn(async (input: ProviderSessionStartInput) => {
     this.startedThreadIds.push(input.threadId);
     const session = {
       provider: this.provider,
@@ -198,6 +199,17 @@ class ContinuationFakeAdapter implements ProviderAdapterShape {
       updatedAt: new Date().toISOString(),
     };
     this.sessions.set(input.threadId, session);
+    // Like the real adapter, publish the server-owned start metadata used
+    // to authorize native history; a session row alone has no Agent binding.
+    this.events.push({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: input.threadId,
+      sessionId: input.threadId,
+      method: 'session.started',
+      createdAt: session.createdAt,
+      metadata: input.metadata,
+    });
     return session;
   });
   readonly sendTurn = vi.fn(async (input: { threadId: string }) => ({
@@ -372,7 +384,7 @@ function localDelegatedTaskService(
   };
 }
 
-function installCurrentStationFetch() {
+function installCurrentStationFetch(projectDirectory?: string) {
   fetchMock.mockImplementation(async (input) => {
     const url = String(input);
     if (url === `${CURRENT_API}/.well-known/station/v1`) {
@@ -382,6 +394,12 @@ function installCurrentStationFetch() {
       return json({
         success: true,
         data: { slug: 'reviewer', name: 'Reviewer', available: true },
+      });
+    }
+    if (projectDirectory && url === `${CURRENT_API}/api/projects/workspace`) {
+      return json({
+        success: true,
+        data: { workingDirectory: projectDirectory },
       });
     }
     throw new Error(`Unexpected request: ${url}`);
@@ -650,6 +668,111 @@ describe('Station Control canonical Environment + Agent execution', () => {
     ).resolves.toMatchObject({
       project: { slug: 'workspace', slugJoin: 'directory-corroborated' },
     });
+  });
+
+  test.each(['shared', 'worktree'] as const)(
+    'persists the resolved %s Project isolation at delegated creation',
+    async (mode) => {
+      installCurrentStationFetch();
+      const original = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation(async (input, init) =>
+        String(input) === `${CURRENT_API}/api/projects/workspace`
+          ? json({
+              success: true,
+              data: {
+                workingDirectory: '/tmp/workspace',
+                defaultWorkspaceIsolation: mode,
+              },
+            })
+          : original(input, init),
+      );
+      const service = localService();
+      const { delegateTask } = await import('../station-control-delegation.js');
+      await delegateTask(
+        {
+          prompt: 'Retain the resolved Project policy',
+          target: {
+            ...currentTarget(),
+            workspace: { kind: 'project', projectSlug: 'workspace' },
+          },
+        },
+        service as never,
+      );
+      expect(service.sessionCommands.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            workspaceIsolation: expect.objectContaining({ mode }),
+            metadata: expect.objectContaining({
+              projectSlug: 'workspace',
+              workspaceIsolation: expect.objectContaining({ mode }),
+            }),
+          }),
+        }),
+        expect.anything(),
+      );
+    },
+  );
+
+  test.each(['foreground', 'delegation'] as const)(
+    '%s uses receiver binding resolution before constructing a start',
+    async (kind) => {
+      installCurrentStationFetch('/tmp/legacy');
+      const rebound = join(tmpdir(), 'station-rebound-fixture');
+      const resolveProjectSessionDirectory = vi.fn(async () => rebound);
+      const service = { ...localService(), resolveProjectSessionDirectory };
+      const { delegateTask, executeExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      const target = {
+        ...currentTarget(),
+        workspace: { kind: 'project' as const, projectSlug: 'workspace' },
+      };
+      if (kind === 'foreground') {
+        await executeExecutionTargetMessage(
+          { target, message: 'Use this Project' },
+          service as never,
+        );
+      } else {
+        await delegateTask(
+          { target, prompt: 'Use this Project' },
+          service as never,
+        );
+      }
+      expect(resolveProjectSessionDirectory).toHaveBeenCalledWith('workspace');
+      expect(service.startSessionInternal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({ cwd: rebound }),
+        }),
+        expect.anything(),
+        expect.anything(),
+      );
+    },
+  );
+
+  test('binding refusal prevents foreground planning from retaining the legacy cwd', async () => {
+    installCurrentStationFetch('/tmp/legacy');
+    const service = {
+      ...localService(),
+      resolveProjectSessionDirectory: vi.fn(async () => {
+        throw new Error('binding missing');
+      }),
+    };
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    await expect(
+      executeExecutionTargetMessage(
+        {
+          target: {
+            ...currentTarget(),
+            workspace: { kind: 'project', projectSlug: 'workspace' },
+          },
+          message: 'Use this Project',
+        },
+        service as never,
+      ),
+    ).rejects.toThrow('binding missing');
+    expect(service.startSessionInternal).not.toHaveBeenCalled();
   });
 
   test('executes a local delegation through the injected canonical service', async () => {
@@ -1481,6 +1604,9 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(orchestrationService.dispatchWithReceipt).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'sendTurn' }),
       expect.anything(),
+      expect.objectContaining({
+        nativeMemoryReadAuthority: expect.objectContaining({ userId: '' }),
+      }),
     );
   });
 
@@ -1573,6 +1699,9 @@ describe('Station Control canonical Environment + Agent execution', () => {
         }),
       }),
       expect.anything(),
+      expect.objectContaining({
+        nativeMemoryReadAuthority: expect.objectContaining({ userId: '' }),
+      }),
     );
   });
 
@@ -2416,6 +2545,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
 
   test('continues an ended task through a child Session rather than reopening its predecessor', async () => {
     installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
     const service = localDelegatedTaskService('completed');
     const { continueDelegatedTask } = await import(
       '../station-control-delegation.js'
@@ -2426,7 +2556,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
         {
           taskId: 'task-alpha',
           message: 'One more thing',
-          readAuthority: hostedAuthority('alpha'),
+          readAuthority: authority,
         },
         service as never,
       ),
@@ -2457,11 +2587,13 @@ describe('Station Control canonical Environment + Agent execution', () => {
         }),
       }),
       expect.anything(),
+      expect.objectContaining({ nativeMemoryReadAuthority: authority }),
     );
   });
 
   test('defers model-option capability to the current continuation resolver, not the predecessor provider (station#3414)', async () => {
     installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
     const baseImplementation = fetchMock.getMockImplementation()!;
     const installCurrentEngine = (provider: 'codex' | 'acp') => {
       fetchMock.mockImplementation(async (input, init) => {
@@ -2509,7 +2641,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
           taskId: 'task-alpha',
           message: 'Continue with current engine',
           modelOptions: { reasoningEffort: 'high' },
-          readAuthority: hostedAuthority('alpha'),
+          readAuthority: authority,
         },
         accepted as never,
       ),
@@ -2521,6 +2653,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
         }),
       }),
       expect.anything(),
+      expect.objectContaining({ nativeMemoryReadAuthority: authority }),
     );
 
     // The inverse proves the old predecessor can no longer launder an option

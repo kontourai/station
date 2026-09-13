@@ -18,13 +18,14 @@ import {
 
 /** Database owner only. Callers must still apply the live SessionAuthorization policy. */
 export interface IsolatedTranscriptReads
-  extends Pick<OwnedSearchReadWorker, 'close' | 'inspect'> {
+  extends Pick<OwnedSearchReadWorker, 'close' | 'inspect' | 'whenReady'> {
   readMessagePage(
     input: {
       threadId: string;
       matchedEventId: string;
       ownerUserId: string;
       legacyOwnerUserId?: string;
+      ownerUserIds?: readonly string[];
       tenantId?: string;
       continuation?: string;
     },
@@ -35,6 +36,7 @@ export interface IsolatedTranscriptReads
       query: string;
       ownerUserId: string;
       legacyOwnerUserId?: string;
+      ownerUserIds?: readonly string[];
       tenantId?: string;
       projectId?: string;
       limit: number;
@@ -47,6 +49,7 @@ export interface IsolatedTranscriptReads
       matchedEventId: string;
       ownerUserId: string;
       legacyOwnerUserId?: string;
+      ownerUserIds?: readonly string[];
       tenantId?: string;
     },
     signal?: AbortSignal,
@@ -56,6 +59,7 @@ export interface IsolatedTranscriptReads
       threadId: string;
       ownerUserId: string;
       legacyOwnerUserId?: string;
+      ownerUserIds?: readonly string[];
       tenantId?: string;
     },
     signal?: AbortSignal,
@@ -93,6 +97,7 @@ export function createIsolatedTranscriptReads(
   return {
     inspect: worker.inspect,
     close: worker.close,
+    whenReady: worker.whenReady,
     async readMessagePage(input, signal) {
       const result = await execute(
         (id) =>

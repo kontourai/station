@@ -33,12 +33,18 @@ import {
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  awaitSessionAttachmentSettled,
+  awaitSessionRecoveryCompleted,
+} from '../../../__test-utils__/session-runtime-barriers.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { MonitoringEmitter } from '../../../monitoring/emitter.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
   ProviderAdoptionHooks,
   ProviderInterruptTurnResult,
+  ProviderNativeSessionIdentity,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
@@ -72,6 +78,7 @@ import {
   tenantExecutionContextOutcomes,
   turnProvenanceProjections,
 } from '../../../telemetry/metrics.js';
+import { execGitSync } from '../../../utils/git-exec.js';
 import { createLogger } from '../../../utils/logger.js';
 import { LOG_BINDING_KEYS } from '../../../utils/logger-correlation.js';
 import { AgentPolicyService } from '../../agents/agent-policy-service.js';
@@ -81,7 +88,7 @@ import { buildSyntheticTrustBundle } from '../../evidence/trust-bundle.js';
 import { VeritasReadinessService } from '../../evidence/veritas-readiness-service.js';
 import { WorkflowSidecarService } from '../../evidence/workflow-sidecar-service.js';
 import { FlowRunService } from '../../flow/flow-run-service.js';
-import { receiptBus, waitForReceipt } from '../../infra/receipt-bus.js';
+import { receiptBus } from '../../infra/receipt-bus.js';
 import { createRuntimeResourcePostureController } from '../../infra/resource-posture.js';
 import { createServerLogReader } from '../../infra/server-log-reader.js';
 import {
@@ -89,7 +96,10 @@ import {
   resetServerLogSinkForTests,
 } from '../../infra/server-log-store.js';
 import { NotificationService } from '../../notifications/notification-service.js';
+import { ProjectBindingsStore } from '../../projects/project-binding-store.js';
+import { ProjectManifestStore } from '../../projects/project-manifest-store.js';
 import type { CwdShadowSample } from '../../projects/project-resource-shadow.js';
+import { createProjectSessionDirectoryResolver } from '../../projects/project-session-directory.js';
 import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import type { AdoptionLedger } from '../adoption-ledger.js';
@@ -97,6 +107,7 @@ import { recoverCompletedTaskDispatches } from '../completed-task-dispatch-recov
 import { canResolveConversationContinuation } from '../conversation-lineage.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
+import * as nativeMemoryContinuity from '../native-memory-continuity.js';
 import {
   AdoptionContinuationInProgressError,
   OrchestrationCommandDispatchError,
@@ -225,6 +236,23 @@ class FakeAdapter implements ProviderAdapterShape {
         maxEntries?: number;
       }) => Promise<Array<{ id: string; name: string; originalId: string }>>
     >();
+  readonly nativeSessionIdentity = vi.fn<
+    (cursor: unknown) => ProviderNativeSessionIdentity | undefined
+  >((cursor) => {
+    if (typeof cursor === 'string') return { sessionId: cursor };
+    if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) {
+      return undefined;
+    }
+    const value = cursor as Record<string, unknown>;
+    const sessionId = value.claudeSessionId ?? value.codexThreadId;
+    return typeof sessionId === 'string'
+      ? {
+          sessionId,
+          affinity:
+            value.sourceAffinity as ProviderNativeSessionIdentity['affinity'],
+        }
+      : undefined;
+  });
 
   constructor(
     readonly provider:
@@ -773,6 +801,48 @@ describe('OrchestrationService', () => {
     receiptBus.resetForTest();
   });
 
+  test('stream routing names only the current lineage session and omits per-token routing work', () => {
+    const root = 'stream-routing-root';
+    const child = 'stream-routing-child';
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: root,
+      status: 'closed',
+      createdAt: '2026-09-12T00:00:00Z',
+      updatedAt: '2026-09-12T00:00:00Z',
+    });
+    eventStore.reserveConversationHandoff({
+      conversationId: root,
+      predecessorSessionId: root,
+      sessionId: child,
+      idempotencyKey: 'stream-routing',
+      targetAgentId: 'claude',
+      targetEnvironmentId: 'environment-current',
+      messageDigest: 'stream-routing-digest',
+      createdAt: '2026-09-12T00:01:00Z',
+    });
+    expect(
+      service.conversationStreamBinding({
+        threadId: root,
+        method: 'session.configured',
+      }),
+    ).toBeUndefined();
+    expect(
+      service.conversationStreamBinding({
+        threadId: child,
+        method: 'session.configured',
+      }),
+    ).toEqual({ conversationId: root, currentSessionId: child });
+    const lookup = vi.spyOn(eventStore, 'conversationForSession');
+    expect(
+      service.conversationStreamBinding({
+        threadId: child,
+        method: 'content.text-delta',
+      }),
+    ).toBeUndefined();
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
   test('public session metadata cannot mint a room execution binding', async () => {
     const threadId = 'public-metadata-binding';
     const result = await service.sessionCommands.execute(
@@ -794,7 +864,7 @@ describe('OrchestrationService', () => {
     expect(result.status).toBe('accepted');
     // A metadata-derived binding would make this exact server association conflict.
     expect(
-      eventStore.bindProjectTaskRoomExecution({
+      await eventStore.bindProjectTaskRoomExecution({
         projectId: 'real-project',
         taskId: 'real-task',
         sessionId: threadId,
@@ -3531,7 +3601,7 @@ describe('OrchestrationService', () => {
       { isCurrent: () => true },
     )!;
     const scope = authority.bindNativeCall(grant, 'native-deferred-call')!;
-    privateService.nativeOutputTurnGenerations.set(
+    privateService.nativeTurnGenerations.set(
       'native-deferred-thread',
       'native-deferred-turn',
     );
@@ -6102,9 +6172,7 @@ describe('OrchestrationService', () => {
       updatedAt: '2026-03-28T00:00:05.000Z',
     });
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await awaitSessionRecoveryCompleted(service);
     // The precondition this fix exists for: restored, so no adapter is bound.
     expect(claude.startSession).not.toHaveBeenCalled();
 
@@ -6235,9 +6303,7 @@ describe('OrchestrationService', () => {
       updatedAt: '2026-03-28T00:00:05.000Z',
     });
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await awaitSessionRecoveryCompleted(service);
 
     await (
       service as unknown as {
@@ -7823,12 +7889,6 @@ describe('OrchestrationService', () => {
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     const threadId = 'forged-model-selection-receipt';
-    let attachmentSettlements = 0;
-    const bothAttachmentsSettled = waitForReceipt(
-      (receipt) =>
-        receipt.kind === 'session.attachment.settled' &&
-        ++attachmentSettlements === 2,
-    );
 
     await acpService.dispatch({
       type: 'startSession',
@@ -7881,9 +7941,7 @@ describe('OrchestrationService', () => {
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     recoveryService.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await awaitSessionRecoveryCompleted(recoveryService);
     // archive#3476: the forged-receipt strip is proved on the lazy start.
     await materializeBySendingATurn(recoveryService, threadId);
     await waitFor(
@@ -7897,7 +7955,13 @@ describe('OrchestrationService', () => {
         }),
       }),
     );
-    await bothAttachmentsSettled;
+    // Both runtimes, each awaited on its own barrier: a count of receipts on
+    // the shared bus cannot say WHICH runtime settled twice (station#1707).
+    // `acpService` is initialized by its own `dispatch` above.
+    await Promise.all([
+      awaitSessionAttachmentSettled(acpService),
+      awaitSessionAttachmentSettled(recoveryService),
+    ]);
     await recoveryService.shutdown();
     await acpService.shutdown();
   });
@@ -8461,9 +8525,7 @@ describe('OrchestrationService', () => {
     // the metrics mock is shared and never globally cleared.
     vi.mocked(modelLaunchResolutionTotal.add).mockClear();
     recoveryService.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await awaitSessionRecoveryCompleted(recoveryService);
     await materializeBySendingATurn(
       recoveryService,
       'station-agent-adapter-retained-resume',
@@ -9627,9 +9689,7 @@ describe('OrchestrationService', () => {
     // `afterEach` (`eventStore.close()`), which the archive#1101 fix elsewhere in
     // this file documents the same way.
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await awaitSessionRecoveryCompleted(service);
 
     const totalSessions = 300;
     for (let i = 0; i < totalSessions; i++) {
@@ -9728,9 +9788,7 @@ describe('OrchestrationService', () => {
       // would race the seeding loop and contaminate this test's query count
       // with its own (unrelated, one-time) per-session reads.
       perfService.initialize();
-      await waitForReceipt(
-        (receipt) => receipt.kind === 'session.recovery.completed',
-      );
+      await awaitSessionRecoveryCompleted(perfService);
 
       const totalSessions = 400;
       for (let i = 0; i < totalSessions; i++) {
@@ -9827,17 +9885,17 @@ describe('OrchestrationService', () => {
         [...shapeCounts.entries()]
           .filter(([shape]) => shape.includes(needle))
           .reduce((sum, [, count]) => sum + count, 0);
-      // fetchRankedMethodFacts: the two-phase, payload-deferred ranking over
-      // PROJECTION_FOLD_METHODS.
+      // Each projection query runs once for the whole population. Method
+      // bounds and latest-any use indexed seeks rather than window ranking.
+      expect(countOfShapeContaining('methods(method) AS (VALUES')).toBe(1);
       expect(
-        countOfShapeContaining(
-          'PARTITION BY thread_id, method ORDER BY sequence DESC',
-        ),
-      ).toBe(1);
-      // fetchLatestAnyEvent: same two-phase shape, unfiltered by method (no
-      // comma before ORDER BY distinguishes it from the query above).
-      expect(
-        countOfShapeContaining('PARTITION BY thread_id ORDER BY sequence DESC'),
+        [...shapeCounts.entries()]
+          .filter(
+            ([shape]) =>
+              shape.includes('requested(thread_id)') &&
+              !shape.includes('methods(method)'),
+          )
+          .reduce((sum, [, count]) => sum + count, 0),
       ).toBe(1);
       // fetchFirstTurnStartedWithPrompt: the JSON-predicate query, still one
       // shot for the whole population.
@@ -10008,6 +10066,10 @@ describe('OrchestrationService', () => {
   });
 
   test('binds an authorized Station-agent turn correlation before crossing the internal chat relay', async () => {
+    const captureMemory = vi.spyOn(
+      nativeMemoryContinuity,
+      'captureNativeMemoryContinuity',
+    );
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response('data: [DONE]\n\n', {
         status: 200,
@@ -10036,10 +10098,21 @@ describe('OrchestrationService', () => {
         input: {
           threadId: 'fleet-authorized-session',
           provider: 'station-agent',
-          metadata: { agentId: 'reviewer' },
+          cwd: tmp,
+          metadata: {
+            agentId: 'reviewer',
+            agentSlug: 'reviewer',
+            projectSlug: 'project-a',
+          },
         },
       },
       { userId: 'account-a' },
+      {
+        conversationIdentity: {
+          conversationId: 'fleet-authorized-session',
+          environmentId: 'local-environment',
+        },
+      },
     );
     // The HTTP route stamps this server-derived owner before it calls the
     // service. This unit test enters the service directly, so model that
@@ -10065,6 +10138,13 @@ describe('OrchestrationService', () => {
         },
       },
       { userId: 'account-a' },
+      {
+        nativeMemoryReadAuthority: sessionReadAuthorityFromRequest(
+          'account-a',
+          undefined,
+          undefined,
+        ),
+      },
     );
     const redelivery = await stationService.dispatch(
       {
@@ -10076,6 +10156,13 @@ describe('OrchestrationService', () => {
         },
       },
       { userId: 'account-a' },
+      {
+        nativeMemoryReadAuthority: sessionReadAuthorityFromRequest(
+          'account-a',
+          undefined,
+          undefined,
+        ),
+      },
     );
 
     const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<
@@ -10101,7 +10188,170 @@ describe('OrchestrationService', () => {
     expect(correlation?.correlationId).toMatch(/^fleet:[0-9a-f]{64}$/u);
     expect(redelivery.turnId).toBe(turn.turnId);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(captureMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: expect.objectContaining({
+          projectSlug: 'project-a',
+          cwd: tmp,
+          environmentId: 'local-environment',
+        }),
+      }),
+      expect.anything(),
+    );
     expect(JSON.stringify(headers)).not.toContain('private prompt');
+  });
+
+  test('native history capture uses fresh point reads without host-wide work per lineage leg', async () => {
+    const measure = async (count: number, unrelated: number) => {
+      const store = new EventStore(join(tmp, `native-cost-${count}.sqlite`));
+      const native = new FakeAdapter('station-agent');
+      const owned = new OrchestrationService({
+        adapterRegistry: createRegistry([native]),
+        eventBus: new EventBus(),
+        eventStore: store,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const root = `native-cost-${count}-0`;
+      const current = `native-cost-${count}-${count - 1}`;
+      const createdAt = '2026-09-06T00:00:00.000Z';
+      for (let index = 0; index < count; index++) {
+        const id = `native-cost-${count}-${index}`;
+        if (index)
+          store.reserveNextConversationSession({
+            conversationId: root,
+            predecessorSessionId: `native-cost-${count}-${index - 1}`,
+            proposedSessionId: id,
+            createdAt,
+          });
+        store.upsertSession({
+          threadId: id,
+          provider: 'station-agent',
+          status: 'ready',
+          cwd: tmp,
+          persistSession: true,
+          createdAt,
+          updatedAt: createdAt,
+        });
+        store.appendEvent({
+          eventId: `${id}-start`,
+          threadId: id,
+          sessionId: id,
+          provider: 'station-agent',
+          method: 'session.started',
+          createdAt,
+          metadata: {
+            agentSlug: 'reviewer',
+            userId: 'account-a',
+            projectSlug: 'project-a',
+          },
+        });
+        // Old streaming history must not be read just to recertify identity.
+        for (let delta = 0; delta < 20; delta++)
+          store.appendEvent({
+            eventId: `${id}-delta-${delta}`,
+            threadId: id,
+            provider: 'station-agent',
+            method: 'content.text-delta',
+            createdAt,
+            turnId: 'historical',
+            itemId: 'text',
+            delta: 'retained transcript',
+          });
+      }
+      for (let index = 0; index < unrelated; index++)
+        store.upsertSession({
+          threadId: `unrelated-${count}-${index}`,
+          provider: 'claude',
+          status: 'closed',
+          createdAt,
+          updatedAt: createdAt,
+        });
+      await owned.listSessions(
+        sessionReadAuthorityFromRequest('account-a', undefined, undefined),
+      );
+      // listSessions starts boot recovery asynchronously. Measure the
+      // request owner after that existing one-time startup pass settles.
+      await waitFor(
+        () =>
+          (owned as unknown as { sessionAttachmentSettled: boolean })
+            .sessionAttachmentSettled,
+        (settled) => settled,
+      );
+      const adapterLists = vi.spyOn(native, 'listSessions');
+      const allRows = vi.spyOn(store, 'readSessions');
+      const fullEvents = vi.spyOn(store, 'listEvents');
+      const pointFacts = vi.spyOn(store, 'listSessionProjectionEvents');
+      const authority = sessionReadAuthorityFromRequest(
+        'account-a',
+        undefined,
+        undefined,
+      );
+      // Exercise the real OrchestrationService owner used by dispatch, with
+      // SQLite and its actual authorization/projection paths, not a fake
+      // readSession callback supplied to the continuity helper.
+      const capture = owned as unknown as {
+        captureNativeMemoryHistory(
+          id: string,
+          scope: SessionReadAuthority,
+          current: () => boolean,
+        ): Promise<
+          import('../../../runtime/conversation/native-memory-history.js').NativeMemoryHistoryCompanion
+        >;
+      };
+      try {
+        const history = await capture.captureNativeMemoryHistory(
+          current,
+          authority,
+          () => true,
+        );
+        expect(await history.isCurrent()).toBe(true);
+        const facts = pointFacts.mock.calls.length;
+        expect(adapterLists).toHaveBeenCalledTimes(1);
+        expect(allRows).not.toHaveBeenCalled();
+        expect(fullEvents).not.toHaveBeenCalled();
+        expect(new Set(pointFacts.mock.calls.map(([id]) => id)).size).toBe(
+          count,
+        );
+        // A new durable identity observation must invalidate the retained
+        // binding without another host-wide enumeration.
+        store.appendEvent({
+          eventId: `${current}-project-change`,
+          threadId: current,
+          sessionId: current,
+          provider: 'station-agent',
+          method: 'session.configured',
+          createdAt: '2026-09-06T00:01:00.000Z',
+          metadata: {
+            agentSlug: 'reviewer',
+            userId: 'account-a',
+            projectSlug: 'project-b',
+          },
+        });
+        expect(await history.isCurrent()).toBe(false);
+        expect(adapterLists).toHaveBeenCalledTimes(1);
+        await expect(
+          capture.captureNativeMemoryHistory(
+            current,
+            sessionReadAuthorityFromRequest(
+              'other-account',
+              undefined,
+              undefined,
+            ),
+            () => true,
+          ),
+        ).rejects.toMatchObject({
+          code: 'native_memory_continuity_unavailable',
+        });
+        return facts;
+      } finally {
+        await owned.shutdown();
+        store.close();
+      }
+    };
+    const small = await measure(4, 32);
+    const large = await measure(8, 256);
+    expect(small).toBeGreaterThan(0);
+    expect(large).toBeLessThanOrEqual(small * 2);
   });
 
   test('sendTurn composes ambient context into the model-facing input at the dispatch choke point (#685)', async () => {
@@ -11090,6 +11340,157 @@ describe('OrchestrationService', () => {
     });
   });
 
+  describe('destination Project bindings at the actual engine start', () => {
+    async function fixture(bind = true) {
+      const home = join(tmp, 'binding-home');
+      const oldPath = join(tmp, 'old-checkout');
+      const boundPath = join(tmp, 'bound-checkout');
+      const remote = 'https://github.com/example/portable.git';
+      for (const path of [oldPath, boundPath]) {
+        mkdirSync(path, { recursive: true });
+        execGitSync(['init', path]);
+        execGitSync(['remote', 'add', 'origin', remote], { cwd: path });
+      }
+      const storage = new FileStorageAdapter(home);
+      const project = {
+        id: randomUUID(),
+        slug: 'portable',
+        name: 'Portable',
+        workingDirectory: oldPath,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await storage.createProject(project);
+      const manifests = new ProjectManifestStore(home, storage);
+      await manifests.ensureProjectManifest(project);
+      const manifest = manifests.readProjectManifest(project.slug);
+      if (!manifest) throw new Error('fixture did not create its manifest');
+      const bindings = new ProjectBindingsStore(home);
+      if (bind)
+        await bindings.upsertProjectBinding({
+          projectId: manifest.id,
+          resourceId: manifest.repos[0].id,
+          kind: 'git-checkout',
+          path: boundPath,
+          remotes: [remote],
+          verifiedAt: Date.now(),
+          state: 'bound',
+        });
+      const engine = new FakeAdapter('claude');
+      const runtime = new OrchestrationService({
+        adapterRegistry: createRegistry([engine]),
+        eventBus,
+        eventStore,
+        listProjects: () => storage.listProjects(),
+        resolveProjectSessionDirectory: createProjectSessionDirectoryResolver(
+          home,
+          storage,
+        ),
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const start = (cwd?: string) =>
+        runtime.dispatch({
+          type: 'startSession',
+          input: {
+            threadId: randomUUID(),
+            provider: 'claude',
+            modelId: 'claude-sonnet',
+            metadata: { projectSlug: project.slug },
+            ...(cwd ? { cwd } : {}),
+          },
+        });
+      return { engine, start, boundPath, oldPath, storage, project };
+    }
+
+    test('uses the current binding instead of the legacy workingDirectory', async () => {
+      const { engine, start, boundPath } = await fixture();
+      await start();
+      expect(engine.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({ cwd: boundPath }),
+      );
+    });
+
+    test('refuses a missing binding even when the legacy checkout still exists', async () => {
+      const { engine, start, boundPath } = await fixture();
+      rmSync(boundPath, { recursive: true });
+      await expect(start()).rejects.toThrow(/cannot start here \(missing\)/);
+      expect(engine.startSession).not.toHaveBeenCalled();
+    });
+
+    test('refuses a different repository before engine invocation', async () => {
+      const { engine, start, boundPath } = await fixture();
+      execGitSync(
+        ['remote', 'set-url', 'origin', 'https://github.com/example/other.git'],
+        { cwd: boundPath },
+      );
+      await expect(start()).rejects.toThrow(/cannot start here \(drifted\)/);
+      expect(engine.startSession).not.toHaveBeenCalled();
+    });
+
+    test.each(['local-only', 'git'] as const)(
+      'distinguishes an unbound %s Project from an execution target',
+      async (kind) => {
+        const { engine, start, storage, project } = await fixture(false);
+        const directoryless = { ...project, workingDirectory: undefined };
+        await storage.projectRevision(project.slug).replace(directoryless);
+        // The existing sidecar remains intentional identity on an unattached runner.
+        const home = join(tmp, 'binding-home');
+        const manifests = new ProjectManifestStore(home, storage);
+        const manifest = manifests.readProjectManifest(project.slug);
+        if (!manifest) throw new Error('missing fixture manifest');
+        if (kind === 'local-only') {
+          // Separate organizational Project created through the real storage owner.
+          await storage.createProject({
+            ...directoryless,
+            id: randomUUID(),
+            slug: 'organizational',
+          });
+          const resolveDirectory = createProjectSessionDirectoryResolver(
+            home,
+            storage,
+          );
+          const runtime = new OrchestrationService({
+            adapterRegistry: createRegistry([engine]),
+            eventBus,
+            eventStore,
+            listProjects: () => storage.listProjects(),
+            resolveProjectSessionDirectory: resolveDirectory,
+            logger: { debug: vi.fn(), warn: vi.fn() },
+          });
+          await runtime.dispatch({
+            type: 'startSession',
+            input: {
+              threadId: randomUUID(),
+              provider: 'claude',
+              modelId: 'claude-sonnet',
+              metadata: { projectSlug: 'organizational' },
+            },
+          });
+          expect(engine.startSession).toHaveBeenCalledWith(
+            expect.objectContaining({ cwdDefaulted: true }),
+          );
+        } else {
+          await expect(start()).rejects.toThrow(
+            /cannot start here \(unbound\)/,
+          );
+          expect(engine.startSession).not.toHaveBeenCalled();
+        }
+      },
+    );
+
+    test('checks caller-supplied directories against the rebound root', async () => {
+      const { engine, start, oldPath, boundPath } = await fixture();
+      await expect(start(oldPath)).rejects.toThrow(/outside project/);
+      expect(engine.startSession).not.toHaveBeenCalled();
+      const subdir = join(boundPath, 'src');
+      mkdirSync(subdir);
+      await start(subdir);
+      expect(engine.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({ cwd: subdir }),
+      );
+    });
+  });
+
   test('startSession expands a stored literal-~ working directory before it reaches the adapter (#686 review HIGH-1)', async () => {
     // Project workingDirectory is persisted with a literal `~` (see
     // terminal-service); adapters spawn/chdir with the value, so the
@@ -11731,9 +12132,7 @@ describe('OrchestrationService', () => {
         logger: { debug: vi.fn(), warn: vi.fn() },
       });
       recoveryService.initialize();
-      await waitForReceipt(
-        (receipt) => receipt.kind === 'session.recovery.completed',
-      );
+      await awaitSessionRecoveryCompleted(recoveryService);
       // archive#3476: the cwd re-settlement moved with the rest of the start
       // pipeline to first use, so drive it the way a user does.
       await materializeBySendingATurn(
@@ -12444,7 +12843,7 @@ describe('OrchestrationService', () => {
     await localService.shutdown();
   });
 
-  test('startSession strips a client-forged metadata.capabilityDelivery before resolution (#895)', async () => {
+  test('startSession strips client-forged capability and host-action provenance before resolution', async () => {
     const resolveSessionAgent = vi.fn(async (input: any) => ({
       ...input,
       agent: { slug: 'my-agent' },
@@ -12467,6 +12866,11 @@ describe('OrchestrationService', () => {
         metadata: {
           agentSlug: 'my-agent',
           capabilityDelivery: { agentSlug: 'forged-agent' },
+          workspacePaneHostAction: {
+            pluginId: 'forged',
+            actionId: 'forged',
+            installationGeneration: 'forged',
+          },
         },
       },
     });
@@ -12477,6 +12881,9 @@ describe('OrchestrationService', () => {
       }),
       undefined,
     );
+    expect(
+      resolveSessionAgent.mock.calls.at(-1)?.[0].metadata,
+    ).not.toHaveProperty('workspacePaneHostAction');
     expect(claude.startSession).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({ agentSlug: 'my-agent' }),
@@ -12494,6 +12901,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'session-1',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -12579,6 +12987,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-ambiguous',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
@@ -12606,6 +13015,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-source',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -12687,26 +13097,29 @@ describe('OrchestrationService', () => {
   });
 
   test('rejects an unavailable retained adoption plan before readiness or provider fork', async () => {
-    const sourceThreadId = 'external:bedrock:unavailable-adoption';
+    // A qualified engine reaches model-plan validation; an unqualified one
+    // would fail at the earlier continuation-support gate and mask this seam.
+    const sourceThreadId = 'external:claude:unavailable-adoption';
     const projectRoot = join(tmp, 'unavailable-adoption-project');
     mkdirSync(projectRoot, { recursive: true });
     installStationDeliveryFlow(projectRoot);
     configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
     eventStore.upsertSession({
-      provider: 'bedrock',
+      provider: 'claude',
       threadId: sourceThreadId,
       status: 'ready',
       cwd: projectRoot,
       model: 'source-model',
       controlMode: 'read-only-attached',
       attachedSource: {
-        kind: 'bedrock-transcript',
+        kind: 'claude-transcript',
         externalSessionId: 'source-session',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
     });
-    bedrock.metadata.modelLaunch = {
+    claude.metadata.modelLaunch = {
       defaultAtStart: 'station-resolved',
       omissionAtResume: 'retain-session-model',
       omissionPerTurn: 'retain-session-model',
@@ -12716,7 +13129,7 @@ describe('OrchestrationService', () => {
       // Deliberately absent: a retained Station-backed selector cannot be
       // accepted without the execution connection that validates it.
     };
-    const readiness = vi.spyOn(bedrock, 'getPrerequisites');
+    const readiness = vi.spyOn(claude, 'getPrerequisites');
     vi.mocked(modelLaunchResolutionTotal.add).mockClear();
 
     await expect(
@@ -12726,12 +13139,12 @@ describe('OrchestrationService', () => {
     );
 
     expect(readiness).not.toHaveBeenCalled();
-    expect(bedrock.adoptSession).not.toHaveBeenCalled();
+    expect(claude.adoptSession).not.toHaveBeenCalled();
     expect(modelLaunchResolutionTotal.add).toHaveBeenCalledTimes(1);
     expect(modelLaunchResolutionTotal.add).toHaveBeenCalledWith(
       1,
       expect.objectContaining({
-        provider: 'bedrock',
+        provider: 'claude',
         lifecycle: 'resume',
         requested_override: 'false',
         outcome: 'rejected',
@@ -12794,6 +13207,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-source-1165',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-28T00:00:00.000Z',
       updatedAt: '2026-07-28T00:00:00.000Z',
@@ -12861,9 +13275,32 @@ describe('OrchestrationService', () => {
     ).toBe(false);
   });
 
-  test('refuses adoption when the source provider lacks independent-continuation support', async () => {
-    const sourceThreadId = 'external:bedrock:source';
+  test('refuses adoption when a qualified provider adapter lacks its continuation method', async () => {
+    const sourceThreadId = 'external:claude:source';
     const projectRoot = join(tmp, 'project');
+    mkdirSync(projectRoot, { recursive: true });
+    configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: sourceThreadId,
+      status: 'ready',
+      cwd: projectRoot,
+      controlMode: 'read-only-attached',
+      attachedSource: { kind: 'test', externalSessionId: 'vendor-source' },
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    Object.defineProperty(claude, 'adoptSession', { value: undefined });
+
+    await expect(
+      service.dispatch({ type: 'adoptSession', sourceThreadId }),
+    ).rejects.toThrow('does not support continuing attached sessions');
+    expect(claude.startSession).not.toHaveBeenCalled();
+  });
+
+  test('refuses an unqualified source engine even when its adapter implements continuation', async () => {
+    const sourceThreadId = 'external:bedrock:unqualified-source';
+    const projectRoot = join(tmp, 'unqualified-source-project');
     mkdirSync(projectRoot, { recursive: true });
     configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
     eventStore.upsertSession({
@@ -12876,12 +13313,19 @@ describe('OrchestrationService', () => {
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
     });
-    Object.defineProperty(bedrock, 'adoptSession', { value: undefined });
+    const readiness = vi.spyOn(bedrock, 'getPrerequisites');
+    expect(bedrock.adoptSession).toBeTypeOf('function');
+    expect(bedrock.discardSession).toBeTypeOf('function');
 
     await expect(
       service.dispatch({ type: 'adoptSession', sourceThreadId }),
-    ).rejects.toThrow('does not support continuing attached sessions');
+    ).rejects.toThrow(
+      'Station has not established independent continuation support for this engine.',
+    );
+    expect(readiness).not.toHaveBeenCalled();
+    expect(bedrock.adoptSession).not.toHaveBeenCalled();
     expect(bedrock.startSession).not.toHaveBeenCalled();
+    expect(eventStore.listCommandReceipts(sourceThreadId)).toEqual([]);
   });
 
   test('adoption does not inspect or depend on a Flow workspace', async () => {
@@ -12898,6 +13342,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-flow-source',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -12930,6 +13375,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-concurrent',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -12986,6 +13432,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-distinct-intents',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -13039,6 +13486,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-restart',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -13091,6 +13539,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-cross-process-winner',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -13158,6 +13607,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-cross-process-pending',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -13197,6 +13647,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-terminal-continuation',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -13242,6 +13693,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-child',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -13272,6 +13724,100 @@ describe('OrchestrationService', () => {
       service.dispatch({ type: 'adoptSession', sourceThreadId: aliasThreadId }),
     ).rejects.toThrow('Attached session not found');
     expect(claude.adoptSession).not.toHaveBeenCalled();
+  });
+
+  test('evicts a source-bound attached alias through the adapter cursor identity', async () => {
+    const projectRoot = join(tmp, 'source-bound-recovered-collision');
+    const affinity = { kind: 'claude-config-home', ref: 'a'.repeat(64) };
+    mkdirSync(projectRoot, { recursive: true });
+    configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
+    const aliasThreadId = 'external:claude:source-bound-child';
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: aliasThreadId,
+      status: 'ready',
+      cwd: projectRoot,
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'claude-transcript',
+        externalSessionId: 'source-bound-child',
+        affinity,
+      },
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: 'station-source-bound-child',
+      status: 'ready',
+      cwd: projectRoot,
+      resumeCursor: {
+        claudeSessionId: 'source-bound-child',
+        sourceAffinity: affinity,
+      },
+      continuationSourceThreadId: 'external:claude:original-source',
+      persistSession: true,
+      createdAt: '2026-07-22T00:00:01.000Z',
+      updatedAt: '2026-07-22T00:00:01.000Z',
+    });
+
+    service.initialize();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(
+      (await service.listSessionReadModel()).map((item) => item.threadId),
+    ).not.toContain(aliasThreadId);
+    expect(
+      eventStore.readSessions().map((item) => item.threadId),
+    ).not.toContain(aliasThreadId);
+  });
+
+  test('keeps a same-id attached alias when the owned cursor proves another home', async () => {
+    const projectRoot = join(tmp, 'other-home-no-collision');
+    mkdirSync(projectRoot, { recursive: true });
+    configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
+    const aliasThreadId = 'external:claude:other-home-child';
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: aliasThreadId,
+      status: 'ready',
+      cwd: projectRoot,
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'claude-transcript',
+        externalSessionId: 'same-native-id',
+        affinity: { kind: 'claude-config-home', ref: 'a'.repeat(64) },
+      },
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: 'station-other-home-child',
+      status: 'ready',
+      cwd: projectRoot,
+      resumeCursor: {
+        claudeSessionId: 'same-native-id',
+        sourceAffinity: {
+          kind: 'claude-config-home',
+          ref: 'b'.repeat(64),
+        },
+      },
+      continuationSourceThreadId: 'external:claude:original-source',
+      persistSession: true,
+      createdAt: '2026-07-22T00:00:01.000Z',
+      updatedAt: '2026-07-22T00:00:01.000Z',
+    });
+
+    service.initialize();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(
+      (await service.listSessionReadModel()).map((item) => item.threadId),
+    ).toContain(aliasThreadId);
+    expect(eventStore.readSessions().map((item) => item.threadId)).toContain(
+      aliasThreadId,
+    );
   });
 
   // archive#1867: `listSessionReadModel` feeds the SSE `/events` snapshot and
@@ -13445,6 +13991,9 @@ describe('OrchestrationService', () => {
       createdAt: now,
       cwd: projectRoot,
       resumeCursor: undefined,
+      sourceAffinity: undefined,
+      sourceKind: 'claude-transcript',
+      sourceSessionId: 'vendor-ambiguous',
     });
     expect(claude.adoptSession).not.toHaveBeenCalled();
   });
@@ -13464,6 +14013,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-rollback-retry',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
@@ -14169,6 +14719,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-tenant-adoption',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       tenantExecutionContext: alpha,
       createdAt: '2026-08-01T00:00:00.000Z',
@@ -14222,6 +14773,7 @@ describe('OrchestrationService', () => {
       attachedSource: {
         kind: 'claude-transcript',
         externalSessionId: 'vendor-tenant-idempotent',
+        affinity: { kind: 'test', ref: 'fixture' },
       },
       tenantExecutionContext: alpha,
       createdAt: '2026-08-01T00:00:00.000Z',
@@ -15905,12 +16457,8 @@ describe('OrchestrationService', () => {
     });
 
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.attachment.settled',
-    );
+    await awaitSessionRecoveryCompleted(service);
+    await awaitSessionAttachmentSettled(service);
 
     expect(claude.startSession).not.toHaveBeenCalled();
 
@@ -15953,9 +16501,7 @@ describe('OrchestrationService', () => {
       updatedAt: '2026-03-28T00:00:05.000Z',
     });
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await awaitSessionRecoveryCompleted(service);
 
     // Hold the start open so both turns are genuinely in flight across it.
     const defaultStart = claude.startSession.getMockImplementation()!;
@@ -16005,9 +16551,7 @@ describe('OrchestrationService', () => {
         updatedAt: '2026-03-28T00:00:05.000Z',
       });
       service.initialize();
-      await waitForReceipt(
-        (receipt) => receipt.kind === 'session.recovery.completed',
-      );
+      await awaitSessionRecoveryCompleted(service);
     };
 
     test('stopSession closes it out as resumable without spawning an engine to kill', async () => {
@@ -16049,9 +16593,7 @@ describe('OrchestrationService', () => {
         updatedAt: '2026-03-28T00:00:05.000Z',
       });
       service.initialize();
-      await waitForReceipt(
-        (receipt) => receipt.kind === 'session.recovery.completed',
-      );
+      await awaitSessionRecoveryCompleted(service);
 
       await expect(
         service.dispatch({ type: 'stopSession', threadId }),
@@ -16383,9 +16925,7 @@ describe('OrchestrationService', () => {
         updatedAt: '2026-03-28T00:00:05.000Z',
       });
       service.initialize();
-      await waitForReceipt(
-        (receipt) => receipt.kind === 'session.recovery.completed',
-      );
+      await awaitSessionRecoveryCompleted(service);
 
       await service.dispatch({ type: 'stopSession', threadId });
 
@@ -16448,9 +16988,7 @@ describe('OrchestrationService', () => {
     // settle. Under load a single tick is not guaranteed to be enough
     // (archive#1045), and it's provably not a signal of anything in particular
     // when it IS enough. Await the actual milestone instead.
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await awaitSessionRecoveryCompleted(service);
 
     // archive#3476: restoring state starts no engine...
     expect(claude.startSession).not.toHaveBeenCalled();
@@ -16551,9 +17089,7 @@ describe('OrchestrationService', () => {
     recoveryService.initialize();
     // archive#1101: was a fixed setTimeout(0) tick — see the first
     // recovery-milestone conversion above for the rationale.
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await awaitSessionRecoveryCompleted(recoveryService);
     // archive#3476: the metadata replay + agent resolution now run when the
     // conversation is first used, not at boot.
     await materializeBySendingATurn(recoveryService, 'thread-recovery-agent');
@@ -16621,9 +17157,7 @@ describe('OrchestrationService', () => {
     });
 
     recoveryService.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await awaitSessionRecoveryCompleted(recoveryService);
     await materializeBySendingATurn(
       recoveryService,
       'thread-recovery-latest-metadata',
@@ -16664,9 +17198,7 @@ describe('OrchestrationService', () => {
     });
 
     recoveryService.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await awaitSessionRecoveryCompleted(recoveryService);
     await materializeBySendingATurn(
       recoveryService,
       'thread-recovery-resolver-throws',
@@ -17029,13 +17561,14 @@ describe('OrchestrationService', () => {
 
   test('enforces mid-turn steer capability and active-turn state before adapter dispatch', async () => {
     const codex = new FakeAdapter('codex');
+    const muse = new FakeAdapter('muse');
     const routingService = new OrchestrationService({
-      adapterRegistry: createRegistry([claude, codex]),
+      adapterRegistry: createRegistry([claude, codex, muse]),
       eventBus,
       eventStore,
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
-    for (const adapter of [claude, codex]) {
+    for (const adapter of [claude, codex, muse]) {
       adapter.sessions.set(`thread-${adapter.provider}`, {
         provider: adapter.provider,
         threadId: `thread-${adapter.provider}`,
@@ -17047,9 +17580,10 @@ describe('OrchestrationService', () => {
     const event = (
       threadId: string,
       turnId: string,
+      provider: 'claude' | 'codex' | 'muse' = 'claude',
     ): CanonicalRuntimeEvent => ({
       eventId: `event-${threadId}`,
-      provider: 'claude',
+      provider,
       threadId,
       createdAt: '2026-08-14T00:00:00.000Z',
       method: 'turn.started',
@@ -17057,6 +17591,7 @@ describe('OrchestrationService', () => {
       prompt: 'initial',
     });
     eventStore.appendEvent(event('thread-claude', 'turn-live'));
+    eventStore.appendEvent(event('thread-codex', 'turn-codex-live', 'codex'));
     claude.steerTurn.mockImplementation(async (threadId, input, turnId) => {
       eventStore.appendEvent({
         eventId: 'event-steer',
@@ -17113,12 +17648,29 @@ describe('OrchestrationService', () => {
         threadId: 'thread-codex',
         input: 'redirect',
       }),
+    ).resolves.toEqual({
+      outcome: 'steered',
+      threadId: 'thread-codex',
+      turnId: 'turn-codex-live',
+    });
+    expect(codex.steerTurn).toHaveBeenCalledWith(
+      'thread-codex',
+      'redirect',
+      'turn-codex-live',
+    );
+
+    await expect(
+      routingService.dispatch({
+        type: 'steerTurn',
+        threadId: 'thread-muse',
+        input: 'redirect',
+      }),
     ).resolves.toMatchObject({
       outcome: 'unsupported-engine',
-      engineId: 'codex',
-      engineName: 'Codex',
+      engineId: 'muse',
+      engineName: 'Muse Code',
     });
-    expect(codex.steerTurn).not.toHaveBeenCalled();
+    expect(muse.steerTurn).not.toHaveBeenCalled();
 
     await expect(
       routingService.dispatch({
@@ -18880,9 +19432,7 @@ describe('OrchestrationService', () => {
     // pass finishes regardless of per-session outcome, so it's the correct
     // signal here too — this test exercises the FAILURE path (startSession
     // rejects) rather than the happy path the other two conversions cover.
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await awaitSessionRecoveryCompleted(service);
     // archive#3476: the refused resume now happens on first use. The turn
     // fails loudly rather than reporting success into nothing, and the
     // durable archive#1090 evidence below is unchanged.
@@ -18950,9 +19500,7 @@ describe('OrchestrationService', () => {
     } as any);
 
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await awaitSessionRecoveryCompleted(service);
     await materializeBySendingATurn(service, 'thread-recovered-cwd');
 
     expect(claude.startSession).toHaveBeenCalledWith(
@@ -19081,6 +19629,7 @@ describe('OrchestrationService', () => {
         attachedSource: {
           kind: 'claude-transcript',
           externalSessionId: 'vendor-flow-adopt',
+          affinity: { kind: 'test', ref: 'fixture' },
         },
         createdAt: '2026-07-22T00:00:00.000Z',
         updatedAt: '2026-07-22T00:00:00.000Z',
@@ -19119,6 +19668,7 @@ describe('OrchestrationService', () => {
         attachedSource: {
           kind: 'claude-transcript',
           externalSessionId: 'vendor-no-station-delivery',
+          affinity: { kind: 'test', ref: 'fixture' },
         },
         createdAt: '2026-07-22T00:00:00.000Z',
         updatedAt: '2026-07-22T00:00:00.000Z',
@@ -19145,6 +19695,7 @@ describe('OrchestrationService', () => {
         attachedSource: {
           kind: 'claude-transcript',
           externalSessionId: 'vendor-persist-failure',
+          affinity: { kind: 'test', ref: 'fixture' },
         },
         createdAt: '2026-07-22T00:00:00.000Z',
         updatedAt: '2026-07-22T00:00:00.000Z',

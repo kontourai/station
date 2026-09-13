@@ -16,7 +16,7 @@ export const TASK_SEARCH_LIMITS = Object.freeze({
   workerMemoryMb: 128,
 });
 
-export interface TaskSearchRequest {
+interface TaskSearchRequest {
   type: 'task-search';
   id: number;
   query: string;
@@ -32,7 +32,7 @@ export interface TaskOpenRequest {
   projectId: string;
   taskId: string;
 }
-export type TaskReadRequest = TaskSearchRequest | TaskOpenRequest;
+type TaskReadRequest = TaskSearchRequest | TaskOpenRequest;
 
 function data(value: unknown, keys: readonly string[]) {
   if (!value || typeof value !== 'object' || types.isProxy(value)) return null;
