@@ -6,12 +6,15 @@ a Cargo lockfile by hand.
 
 ## Release updates
 
-In the desktop shell, Settings → System → **Check for Desktop Updates** checks
-the signed update channel embedded in the installed app. An available update
-can be installed with **Install and restart**. Manual checks expose failures
-and can be retried; the automatic launch check remains quiet on check failure.
+In the desktop shell, Settings → System → **Desktop app updates** →
+**Check for desktop app updates** checks the signed update channel embedded in
+the installed app. An available update can be installed with **Install desktop
+app update and restart**. Manual checks expose failures and can be retried; the
+automatic launch check remains quiet on check failure. The desktop package
+includes the built-in Station server, so installing this update replaces the
+app and its embedded server together.
 
-**Connected Station updates** is a separate server operation. Its source
+**Connected Station server** is a separate server operation. Its source
 checkout/build-stamp provenance does not establish the installed desktop app's
 update channel. A GitHub DMG must not require a local Git checkout or a fabricated
 `station-nightly-source.json` stamp to check its signed release feed.
