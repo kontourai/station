@@ -80,12 +80,7 @@ export function readSkillOrigin(value: unknown): SkillOrigin | undefined {
  * would be a second chance to emit a file the spec parser refuses — or, worse,
  * one whose unescaped `description` forges a `command:` block.
  */
-export {
-  serializeSkillCommandLines,
-  serializeSkillMarkdown,
-  serializeSkillVariableLines,
-  yamlScalar,
-} from '@kontourai/station-contracts/skill-markdown';
+export { serializeSkillMarkdown } from '@kontourai/station-contracts/skill-markdown';
 
 /** What an imported `.md` file contributes to a new local skill. */
 export interface ImportedSkillMarkdown {
@@ -171,13 +166,10 @@ export type {
   SkillPackageDirectoryReport,
 } from '../../domain/skill-paths.js';
 export {
-  assertSafeProjectSlug,
   assertSafeSkillName,
   assertSkillPackageDirectory,
-  isDirectoryPhysicallyWithin,
   isDirectoryWithin,
   isSafeSkillName,
-  PROTOTYPE_AFFECTING_KEYS,
   resolveSkillDirectory,
   skillPackageDirectoryReport,
   skillsRootDir,

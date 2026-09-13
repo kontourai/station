@@ -7,7 +7,7 @@ import {
   enumerateBoundDirectory,
 } from './bound-directory-enumeration.js';
 
-export const LOCAL_SKILL_REVISION_VERSION = 1;
+const LOCAL_SKILL_REVISION_VERSION = 1;
 export const LOCAL_SKILL_REVISION_LIMITS = {
   entries: 256,
   fileBytes: 1024 * 1024,
