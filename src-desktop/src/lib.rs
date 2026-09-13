@@ -1725,15 +1725,52 @@ fn station_profile_store_is_initialized(root: &std::path::Path) -> Result<bool, 
         Err(error) => return Err(format!("inspect saved Station root: {error}")),
         Ok(_) => {}
     }
-    if !validate_profile_store_genesis_marker(root)? {
-        return Ok(false);
+    #[cfg(windows)]
+    {
+        let marker = profile_store_genesis_marker_path(root);
+        match std::fs::symlink_metadata(&marker) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(format!("inspect saved Station genesis marker: {error}")),
+            Ok(_) => {}
+        }
+        let config = root.join("config");
+        let path = config.join("profiles.json");
+        if let Err(error) = std::fs::symlink_metadata(&path) {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                return Err("saved Station metadata is missing from an initialized or in-progress shared root; restore profiles.json before launching Station".into());
+            }
+            return Err(format!("inspect saved Station metadata: {error}"));
+        }
+        // Every observation still verifies every live filesystem boundary.
+        // Batch the four targets so each access starts PowerShell only once.
+        use crate::windows_path_trust::TrustKind;
+        crate::windows_path_trust::verify(&[
+            (TrustKind::Directory, root),
+            (TrustKind::File, &marker),
+            (TrustKind::Directory, &config),
+            (TrustKind::File, &path),
+        ])?;
+        let signature = std::fs::read_to_string(&marker)
+            .map_err(|error| format!("read saved Station genesis marker: {error}"))?;
+        if signature != STATION_PROFILE_STORE_GENESIS_SIGNATURE {
+            return Err("saved Station genesis marker is invalid".into());
+        }
+        let contents = std::fs::read_to_string(&path)
+            .map_err(|error| format!("read saved Station metadata: {error}"))?;
+        parse_station_profile_store(&contents).map(|_| true)
     }
-    match read_station_profile_store(&root.join("config").join("profiles.json")) {
-        Ok(contents) => parse_station_profile_store(&contents).map(|_| true),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(
-            "saved Station metadata is missing from an initialized or in-progress shared root; restore profiles.json before launching Station".to_string(),
-        ),
-        Err(error) => Err(format!("read saved Station metadata: {error}")),
+    #[cfg(not(windows))]
+    {
+        if !validate_profile_store_genesis_marker(root)? {
+            return Ok(false);
+        }
+        match read_station_profile_store(&root.join("config").join("profiles.json")) {
+            Ok(contents) => parse_station_profile_store(&contents).map(|_| true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(
+                "saved Station metadata is missing from an initialized or in-progress shared root; restore profiles.json before launching Station".to_string(),
+            ),
+            Err(error) => Err(format!("read saved Station metadata: {error}")),
+        }
     }
 }
 
@@ -13874,6 +13911,54 @@ mod tests {
         assert!(station_profile_store_is_initialized(&root)
             .unwrap_err()
             .contains("marker is invalid"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn initialized_windows_profile_store_verifies_every_batched_target() {
+        use crate::windows_path_trust::TrustKind;
+        use std::os::windows::process::CommandExt;
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".station");
+        let config = root.join("config");
+        let path = config.join("profiles.json");
+        let marker = profile_store_genesis_marker_path(&root);
+        ensure_station_profile_store_root(&root).unwrap();
+        crate::windows_path_trust::ensure(&[(TrustKind::Directory, &config)]).unwrap();
+        write_profile_store_genesis_marker(&root).unwrap();
+        write_empty_station_profile_store(&path).unwrap();
+        assert!(station_profile_store_is_initialized(&root).unwrap());
+        for (kind, target) in [
+            (TrustKind::Directory, &root),
+            (TrustKind::File, &marker),
+            (TrustKind::Directory, &config),
+            (TrustKind::File, &path),
+        ] {
+            let encoded = crate::windows_path_trust::base64_utf8(&target.to_string_lossy());
+            let script = format!(
+                r#"$ErrorActionPreference='Stop'; $p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{encoded}')); $acl=Get-Acl -LiteralPath $p; $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new('S-1-1-0'),[Security.AccessControl.FileSystemRights]::Read,[Security.AccessControl.AccessControlType]::Allow)); Set-Acl -LiteralPath $p -AclObject $acl"#,
+            );
+            let output =
+                std::process::Command::new(crate::windows_path_trust::powershell_path().unwrap())
+                    .args(crate::windows_path_trust::encoded_powershell_command(
+                        &script,
+                    ))
+                    .creation_flags(0x08000000)
+                    .output()
+                    .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                station_profile_store_is_initialized(&root).is_err(),
+                "untrusted target accepted: {}",
+                target.display()
+            );
+            crate::windows_path_trust::ensure(&[(kind, target)]).unwrap();
+            assert!(station_profile_store_is_initialized(&root).unwrap());
+        }
     }
 
     #[cfg(all(not(mobile), unix))]
