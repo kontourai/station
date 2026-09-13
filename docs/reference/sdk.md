@@ -835,6 +835,13 @@ request scope and credential options for that particular Station. Identity reads
 use the Project family's read permission; preparation and attachment require its
 operate permission. These operations do not grant remote access or membership.
 
+`parseProjectPortableIdentity(value)` on
+`@kontourai/station-sdk/project-identity` validates imported portable snapshots
+using the same closed rules as identity response reads. The CLI's identity and
+attachment commands consume it before calling the existing `attachProject` API.
+Unknown fields and local binding data are refused; receiver authorization and
+live checkout validation remain at the receiving Station.
+
 `getProjectIdentity(apiBase, slug, options)` reads an existing portable identity
 without writing. A legacy Project with no identity returns an error until
 `prepareProjectIdentity` explicitly derives one. The local Project ID remains
@@ -935,6 +942,12 @@ remains an error. Choose operations from the provider descriptor; the optional
 invitation argument is registration eligibility, not authentication or membership.
 The [deployment authentication guide](../guides/deployment-authentication.md)
 defines the provider interface and separate invitation-acceptance operation.
+
+The same account-authentication entry exports `getProjectInvitationPreview(apiBase,
+token)`. It uses a POST body, validates the minimal Project/inviter/role projection,
+and rejects incompatible role/action combinations. Keep the proof out of query
+cache keys and persisted data. Preview success does not authenticate a person,
+consume the invitation or grant membership.
 
 An invitation command's `email: null` explicitly creates a single-use link for
 any authenticated holder. A string restricts acceptance to that verified email;
@@ -2444,10 +2457,31 @@ capture refuses mismatched targets and returns a timestamped PNG, not stream
 readiness or foreground-app provenance. See [Mobile device inspection](../guides/mobile-device-workspace.md)
 for host setup, access scopes, limits, and the web/desktop integration boundary.
 
+## Experimental encrypted-channel transport consumer
 
-`parseProjectPortableIdentity(value)` on
-`@kontourai/station-sdk/project-identity` validates imported portable snapshots
-using the same closed rules as identity response reads. The CLI's identity and
-attachment commands consume it before calling the existing `attachProject` API.
-Unknown fields and local binding data are refused; receiver authorization and
-live checkout validation remain at the receiving Station.
+`@kontourai/station-connect/application-channel` supplies a Fetch-shaped adapter
+for the SDK's existing host credential/transport resolver. It accepts a fixed
+Station origin, a connection lifetime signal, an owner-provided authenticated
+channel opener and a current endpoint-trust check. It does not resolve a person,
+issue a Device grant or sign an account continuation. The existing
+`ApplicationSessionClient` owns those proof headers, and the Station still
+verifies them.
+
+This adapter is opt-in and currently qualified by the
+[local SDK framing fixture](../guides/local-collaboration-lab.md#sdk-application-framing-over-the-encrypted-channel),
+with explicit request/frame bounds and a separate full-runtime acceptance gap.
+Configure the Device credential on the host resolver for channel calls. Passing
+`credential` together with `credentialOrigin` as per-call options deliberately
+bypasses that resolver and uses direct HTTP; an `ApplicationSessionClient` on
+this transport instead uses the configured resolver with `requireCredential`.
+The adapter retains explicit SDK headers separately from a browser `Request`,
+whose header guard removes `Origin` in anticipation of a later HTTP network step.
+The encrypted browser fixture checks that the original client Origin reaches
+the receiver.
+
+Connection owners must retain ordinary SDK authority guards and the selected
+account's request scope, bound channel counts/lifetimes, and close the transport
+when its endpoint trust retires. Transport readiness alone does not partition
+account or Project data. An
+uncertain dispatched mutation must not be retried automatically.
+

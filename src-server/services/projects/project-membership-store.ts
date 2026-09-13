@@ -254,6 +254,14 @@ export class ProjectMembershipStore {
     return scope;
   }
 
+  invitationPreview(token: string) {
+    return this.transaction(() => {
+      const { scope, invitation } = this.pendingInvitation(token);
+      this.requireGrant(scope, invitation.invitedBy, invitation.role);
+      return { scope, invitation: this.invitationView(invitation) };
+    });
+  }
+
   /** Eligibility for account enrollment; does not consume the invitation or grant membership. */
   mayRegister(token: string, email?: string): boolean {
     try {

@@ -7,6 +7,11 @@ import {
   isPrincipalRef,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
+import {
+  PROJECT_MEMBER_ACTIONS,
+  PROJECT_MEMBER_ROLES,
+  type ProjectInvitationPreview,
+} from '@kontourai/station-contracts/project-membership';
 import { z } from 'zod/v3';
 import { apiErrorMessage } from './api-error-message';
 import { getJson, mutateJson, StationHttpError } from './http';
@@ -137,4 +142,31 @@ export async function runAccountOperation(
       structuredClone(body),
     ),
   );
+}
+
+/** Preview proof stays in the POST body, never an HTTP URL or query cache key. */
+export async function getProjectInvitationPreview(
+  apiBase: string,
+  token: string,
+): Promise<ProjectInvitationPreview> {
+  const parsed = z
+    .object({
+      projectName: z.string().min(1).max(512),
+      inviterName: z.string().min(1).max(512),
+      role: z.enum(['viewer', 'contributor', 'admin']),
+      actions: z.array(z.enum(PROJECT_MEMBER_ACTIONS)),
+      expiresAt: z.string().datetime(),
+      recipientEmail: z.string().email().nullable(),
+    })
+    .strict()
+    .parse(
+      await runAccountOperation(apiBase, '/invitation-preview', { token }),
+    );
+  const expected = PROJECT_MEMBER_ROLES[parsed.role];
+  if (
+    parsed.actions.length !== expected.length ||
+    !expected.every((action) => parsed.actions.includes(action))
+  )
+    throw new Error('Invitation permissions are incompatible.');
+  return parsed;
 }
