@@ -49,23 +49,45 @@ import { GuidedConnect } from '../components/GuidedConnect';
 
 describe('GuidedConnect', () => {
   beforeEach(() => {
+    vi.unstubAllEnvs();
     native.isTauri = false;
     native.productName = 'Station';
+  });
+
+  test('offers only the production app, even from a Nightly web build', () => {
+    vi.stubEnv('VITE_NATIVE_APP_UPDATE_CHANNEL', 'nightly');
+    render(<GuidedConnect />);
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByText('Installed app')).toBeNull();
+    expect(screen.queryByText('Station Nightly')).toBeNull();
+    expect(
+      screen
+        .getByRole('link', { name: 'Open in the Station app' })
+        .getAttribute('href'),
+    ).toBe('station-stable://open-browser');
+    expect(
+      screen.getByRole('link', { name: 'Get Station' }).getAttribute('href'),
+    ).toBe('https://station.kontourai.io/#start');
+  });
+
+  test('does not offer desktop app installation inside the native app', () => {
+    native.isTauri = true;
+    render(<GuidedConnect />);
+    expect(
+      screen.queryByRole('link', { name: 'Open in the Station app' }),
+    ).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Get Station' })).toBeNull();
   });
 
   test('renders the first-run welcome copy without error framing', () => {
     render(<GuidedConnect />);
 
-    expect(screen.getByText('Connect to your Station host')).toBeTruthy();
+    expect(screen.getByText('Connect to a Station')).toBeTruthy();
     expect(
-      screen.getByText(
-        'Station runs on your computer or server. Connect this device to start working with your agents.',
-      ),
+      screen.getByText('Choose the computer where you want to work.'),
     ).toBeTruthy();
     expect(
-      screen.getByText(
-        "On the same network? Use your host's IP address, not localhost.",
-      ),
+      screen.getByRole('region', { name: 'Another Station' }),
     ).toBeTruthy();
     expect(screen.queryByTestId('connection-manager')).toBeNull();
   });

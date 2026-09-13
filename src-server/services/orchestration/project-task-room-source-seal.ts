@@ -1,4 +1,5 @@
 import type { HomeTransferClosingSeal } from '@kontourai/station-contracts/cloud-move';
+import { isSqliteContentionError } from '../../utils/sqlite-wal.js';
 
 /** Private source-side barrier. This receipt grants no target authority. */
 export type ProjectTaskRoomSourceSeal = HomeTransferClosingSeal;
@@ -33,7 +34,7 @@ export function initializeProjectTaskRoomSourceSeals(db: SealDatabase): void {
 export function bindProjectTaskRoomExecution(
   db: SealDatabase,
   input: { projectId: string; taskId: string; sessionId: string },
-): { kind: 'bound' | 'conflict' | 'unavailable' } {
+): { kind: 'bound' | 'conflict' | 'unavailable' | 'busy' } {
   if (
     !Object.values(input).every(
       (value) =>
@@ -78,11 +79,11 @@ export function bindProjectTaskRoomExecution(
     ).run(input.sessionId, input.projectId, input.taskId);
     db.exec('COMMIT');
     return { kind: 'bound' };
-  } catch {
+  } catch (error) {
     try {
       db.exec('ROLLBACK');
     } catch {}
-    return { kind: 'unavailable' };
+    return { kind: isSqliteContentionError(error) ? 'busy' : 'unavailable' };
   }
 }
 

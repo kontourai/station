@@ -27,6 +27,7 @@ import {
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { resolveAgentConfigSlug } from '../../domain/config-loader-agents.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
+import { isExternalEngineBoundAgent } from '../../runtime/agents/agent-engine-classification.js';
 import { agentOps } from '../../telemetry/metrics.js';
 
 export interface AgentMetadata {
@@ -399,8 +400,69 @@ export class AgentService {
     ];
   }
 
+  /** One request-scoped read owns both registered and store-only projections.
+   * External-engine availability still belongs to the enriched runtime route.
+   */
+  async getAgentCatalog(
+    coreAgents: Array<{ id: string; [key: string]: any }>,
+    resolveAgentAvailability?: (spec: AgentSpec) => string | null,
+  ): Promise<EnrichedAgent[]> {
+    agentOps.add(1, { operation: 'list' });
+    const entries = (await this.configLoader.readAgentCatalog()).map(
+      ({ metadata, spec }) => ({
+        metadata,
+        spec: projectStationEngineBinding(
+          metadata.slug,
+          spec,
+          this.agentMetadataMap,
+        ),
+      }),
+    );
+    const specs = new Map(
+      entries.map(({ metadata, spec }) => [metadata.slug, spec]),
+    );
+    const enrichedAgents = await this.getEnrichedAgents(coreAgents, specs);
+    const registeredSlugs = new Set(enrichedAgents.map((agent) => agent.slug));
+
+    const storeOnly: EnrichedAgent[] = [];
+    for (const { metadata, spec } of entries) {
+      if (registeredSlugs.has(metadata.slug)) {
+        continue;
+      }
+      const externalEngineBound = isExternalEngineBoundAgent(spec);
+      const reason = externalEngineBound
+        ? null
+        : (resolveAgentAvailability?.(spec) ?? null);
+      storeOnly.push({
+        id: metadata.slug,
+        slug: metadata.slug,
+        name: metadata.name ?? spec.name ?? metadata.slug,
+        prompt: spec.prompt,
+        description: spec.description ?? metadata.description,
+        model: spec.model,
+        region: spec.region,
+        guardrails: spec.guardrails,
+        maxSteps: spec.maxSteps,
+        icon: spec.icon,
+        commands: spec.commands,
+        toolsConfig: spec.tools,
+        execution: spec.execution,
+        updatedAt: metadata.updatedAt,
+        ...(externalEngineBound
+          ? {}
+          : {
+              available: false,
+              unavailableReason: reason ?? 'Agent is not currently launchable.',
+            }),
+        ...(spec.project !== undefined ? { project: spec.project } : {}),
+      });
+    }
+    return [...enrichedAgents, ...storeOnly];
+  }
+
   async getEnrichedAgents(
     coreAgents: Array<{ id: string; [key: string]: any }>,
+    specs?: ReadonlyMap<string, AgentSpec>,
   ): Promise<EnrichedAgent[]> {
     const enriched = await Promise.all(
       coreAgents.map(async (agent: { id: string; [key: string]: any }) => {
@@ -408,7 +470,10 @@ export class AgentService {
         if (!metadata) return null;
 
         try {
-          const spec = await this.getAgent(metadata.slug);
+          const spec = specs
+            ? specs.get(metadata.slug)
+            : await this.getAgent(metadata.slug);
+          if (!spec) return null;
           return {
             ...agent,
             slug: metadata.slug,

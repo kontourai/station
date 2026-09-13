@@ -1,13 +1,13 @@
 import type { ACPConnectionInfo } from '../../hooks/useACPConnections';
 
-export type ACPConnectionReadiness =
+type ACPConnectionReadiness =
   | 'Checking'
   | 'Ready'
   | 'Setup needed'
   | 'Unavailable'
   | 'Off';
 
-export type ACPConnectionStatusTone =
+type ACPConnectionStatusTone =
   | 'ready'
   | 'checking'
   | 'setup-needed'

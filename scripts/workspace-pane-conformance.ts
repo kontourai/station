@@ -16,7 +16,7 @@ function sameContribution(left: unknown, right: unknown): boolean {
  * surface. It deliberately uses data-only alternatives: no plugin module,
  * tool call, resource read, or host permission is involved in this command.
  */
-export function runWorkspacePaneConformance(): void {
+function runWorkspacePaneConformance(): void {
   const contribution = {
     id: 'plugin:review-kit:issues',
     version: '1.4.0',

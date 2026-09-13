@@ -103,13 +103,22 @@ vi.mock('../../../contexts/ToastContext', () => ({
 vi.mock('../../../contexts/ActiveChatsContext', () => ({
   useAllActiveChats: () => ({}),
 }));
-vi.mock('../../../contexts/NavigationContext', () => ({
-  useNavigation: () => ({
+vi.mock('../../../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({
     setProject: vi.fn(),
     setLayout: vi.fn(),
     navigate: vi.fn(),
-  }),
-}));
+  });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 
 /**
  * Three transient notifications: enough to cross the `>= 3` threshold that

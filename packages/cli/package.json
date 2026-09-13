@@ -41,7 +41,7 @@
     "@kontourai/station-contracts": "^0.7.0",
     "@kontourai/station-sdk": "^0.7.0",
     "@kontourai/station-shared": "^0.7.0",
-    "commander": "^11.1.0",
+    "commander": "^15.0.0",
     "esbuild": "^0.28.1",
     "tsx": "^4.23.13"
   },

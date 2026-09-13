@@ -17,8 +17,22 @@ import {
 
 vi.mock('@kontourai/station-connect', () => ({
   QRDisplay: () => <div />,
-  useConnections: () => ({ activeConnection: { name: 'Local' } }),
+  useConnections: () => ({
+    activeConnection: {
+      name: 'Local',
+      ownerId: null,
+      accessMethods: [],
+      selectedAccessMethodId: null,
+    },
+    apiBase: 'http://station.test',
+    captureCredentialEvidence: () => null,
+    isCredentialEvidenceCurrent: () => false,
+  }),
   useHostUrl: () => ({ hostUrl: 'http://station.test', isDetecting: false }),
+  // The settings view tree now reaches ConnectedServerUpdates → its context
+  // hook's health composition; the catalog under test is the enumeration, so
+  // a stable connected status is the neutral answer here.
+  useConnectionStatus: () => ({ status: 'connected' }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch: vi.fn(),
@@ -27,6 +41,18 @@ vi.mock('@kontourai/station-sdk', () => ({
   useAnswerSharesQuery: () => ({ data: [] }),
   useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
   useConfigProvenanceQuery: () => ({ data: {} }),
+  // Settings mounts `UsageTelemetryDisclosure`, and #1608 made its decision
+  // hook read the shared `['config']` query and its write path so the offered
+  // choice cannot contradict a setting changed since the inventory was
+  // fetched. Both are reached before the disclosure's own early return, so
+  // this factory has to answer them even though the surface renders nothing
+  // in this file. The shapes are the ORDINARY case — config in hand, nothing
+  // in flight, no error — because the state under test here is the settings
+  // catalog, and a loading or failed telemetry read would make the decision
+  // hook derive an unsettled state that is not what any assertion below is
+  // about.
+  useConfigQuery: () => ({ data: { telemetryEnabled: true } }),
+  useUpdateConfigMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useInvalidateQuery: () => vi.fn(),
   useSystemStatusForApiBaseQuery: () => ({
     data: {
@@ -77,6 +103,8 @@ const updateAppLogLevel = vi.fn();
 vi.mock('@kontourai/station-sdk/app-config', () => ({ updateAppLogLevel }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  // This catalog fixture has no request-scoped account administration authority.
+  useHostRequestAuthorityScope: () => null,
 }));
 const updateConfig = vi.fn();
 const INITIAL_CONFIG = { logLevel: 'info', templateVariables: [] };
@@ -110,8 +138,9 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
   useDeviceSettingsActions: () => ({ setDeviceSetting: vi.fn() }),
 }));
 let isMobile = false;
+let isDesktop = false;
 vi.mock('../platform/PlatformProfileContext', () => ({
-  usePlatformProfile: () => ({ isMobile }),
+  usePlatformProfile: () => ({ isMobile, isDesktop }),
 }));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
@@ -172,6 +201,7 @@ vi.mock('../views/settings/CoreUpdateCheck', () => ({
 describe('settings catalog completeness', () => {
   beforeEach(() => {
     isMobile = false;
+    isDesktop = false;
     updateConfig.mockReset();
     updateAppLogLevel.mockReset();
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
@@ -260,19 +290,20 @@ describe('settings catalog completeness', () => {
     const { SettingsView } = await import('../views/SettingsView');
     expect(String(SettingsView)).toContain('configData');
     const rendered = await renderedCatalogIds();
-    const expected = visibleCatalogIds({ isMobile: false });
+    const expected = visibleCatalogIds({ isMobile: false, isDesktop });
     expectExactCatalog(rendered, expected);
     // 37 at the merge base; +2 from archive#3313 (feature-previews,
     // enable-developer-tools) and +1 from the chat-dock lane's
-    // sidebar-sections, and +1 from station#585 smooth answer reveal. Counted
-    // from the merged catalog, not added up.
-    expect(SETTINGS_CATALOG).toHaveLength(41);
+    // sidebar-sections, +1 from station#585 smooth answer reveal, +1 from the
+    // update-ownership split (desktop-app-updates). Counted from the merged
+    // catalog, not added up.
+    expect(SETTINGS_CATALOG).toHaveLength(42);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
     isMobile = true;
     const rendered = await renderedCatalogIds();
-    const expected = visibleCatalogIds({ isMobile: true });
+    const expected = visibleCatalogIds({ isMobile: true, isDesktop });
     expectExactCatalog(rendered, expected);
     expect(rendered).toContain('haptic-feedback');
   });
@@ -632,7 +663,10 @@ describe('settings catalog completeness', () => {
   test('an unknown ?view= falls back to the overview and strips itself', async () => {
     window.history.replaceState({}, '', '/settings?view=not-a-section');
     const rendered = await renderedCatalogIds();
-    expectExactCatalog(rendered, visibleCatalogIds({ isMobile: false }));
+    expectExactCatalog(
+      rendered,
+      visibleCatalogIds({ isMobile: false, isDesktop }),
+    );
     expect(window.location.search).toBe('');
   });
 
@@ -664,6 +698,88 @@ describe('settings catalog completeness', () => {
         .querySelector('#core-app-updates')
         ?.classList.contains('settings__highlight-pulse'),
     ).toBe(true);
+  });
+
+  test('the desktop-only update row deep-links and pulses when desktop', async () => {
+    isDesktop = true;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: () => ({ matches: true }),
+    });
+    Element.prototype.scrollIntoView = vi.fn();
+    window.history.replaceState(
+      {},
+      '',
+      '/settings?keep=1&view=system&highlight=desktop-app-updates',
+    );
+    const { SettingsView } = await import('../views/SettingsView');
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SettingsView onBack={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        container.querySelector('#desktop-app-updates'),
+      ),
+    );
+    expect(
+      container
+        .querySelector('#desktop-app-updates')
+        ?.classList.contains('settings__highlight-pulse'),
+    ).toBe(true);
+  });
+
+  test('the tray update destinations land on their catalog highlights through the real navigation store', async () => {
+    isDesktop = true;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: () => ({ matches: true }),
+    });
+    Element.prototype.scrollIntoView = vi.fn();
+    const { trayNavigationTarget } = await import('../lib/trayNavigation');
+    const { navigationStore } = await import('../contexts/navigation-store');
+    const { container } = await renderSettings();
+
+    // The tray emits closed destinations, not URLs. Drive the canonical
+    // store exactly as DeferredAppOverlays' navigate does and require both
+    // update rows to resolve: the desktop row is desktop-only, so this also
+    // proves the desktop-platform mock shape renders it.
+    for (const [destination, id] of [
+      ['desktopUpdates', 'desktop-app-updates'],
+      ['serverUpdates', 'core-app-updates'],
+    ] as const) {
+      const target = trayNavigationTarget(destination);
+      expect(target?.pathname).toBe('/settings');
+      navigationStore.navigate(target!.pathname, target!.params);
+      await waitFor(() =>
+        expect(document.activeElement).toBe(container.querySelector(`#${id}`)),
+      );
+      expect(
+        container
+          .querySelector(`#${id}`)
+          ?.classList.contains('settings__highlight-pulse'),
+      ).toBe(true);
+    }
+    await waitFor(() => expect(window.location.search).toBe('?view=system'));
+  });
+
+  test('a desktop-only row highlight outside the desktop shell strips itself with the honest reason', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.history.replaceState(
+      {},
+      '',
+      '/settings?view=system&highlight=desktop-app-updates',
+    );
+    const { SettingsView } = await import('../views/SettingsView');
+    const { container } = await render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SettingsView onBack={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(window.location.search).toBe('?view=system'));
+    expect(container.querySelector('#desktop-app-updates')).toBeNull();
+    expect(screen.getByText('Available in the desktop app.')).toBeTruthy();
   });
 
   test('repeats the same mounted leaf request and focuses its editable control', async () => {

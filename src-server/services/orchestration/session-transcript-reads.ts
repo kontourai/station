@@ -28,17 +28,18 @@ import { createIsolatedSessionTranscriptSearch } from './isolated-session-transc
 // durable fix is exporting the union from contracts/tenancy beside its two
 // constituents, tracked on the epic).
 import type { SessionReadScope } from './orchestration-service.js';
+import type { SessionAuthorization } from './session-authorization.js';
 import { messageSearchExcerpt } from './transcript-search-queries.js';
 
 /** The documented freshness allowance relative to the requested window end. */
-export const USAGE_COVERAGE_STALE_AFTER_MS = 24 * 60 * 60 * 1_000;
+const USAGE_COVERAGE_STALE_AFTER_MS = 24 * 60 * 60 * 1_000;
 export const USAGE_COVERAGE_EVIDENCE_CAP = 1_000;
 const COVERAGE_CAP_REASON =
   'coverage evidence cap reached (1000 observations); additional provider evidence is missing';
 const STALE_OBSERVATION_REASON =
   'provider observations are older than the 24-hour freshness threshold for this window';
 
-export interface SessionTranscriptReadsDeps {
+interface SessionTranscriptReadsDeps {
   canReadSession: (threadId: string, authority: SessionReadScope) => boolean;
   isEphemeralSession: (threadId: string) => boolean;
   sessionAttributionFor: (
@@ -52,6 +53,7 @@ export interface SessionTranscriptReadsDeps {
   listUsageCoverageEvents: EventStore['listUsageCoverageEvents'];
   // Derived from the store's own method type — no re-declared row shape.
   searchConversationMessages: EventStore['searchConversationMessages'];
+  transcriptOwnerConstraint?: SessionAuthorization['transcriptOwnerConstraint'];
   readSessionThreadIds: (authority: SessionReadScope) => string[];
   requireTenantExecutionContext: () => boolean;
   /**
@@ -118,7 +120,9 @@ export class SessionTranscriptReads {
     if (!isSessionReadAuthority(authority)) return [];
     const rows = this.deps.searchConversationMessages({
       query,
-      ownerUserId: authority.userId,
+      ...(this.deps.transcriptOwnerConstraint?.(authority) ?? {
+        ownerUserId: authority.userId,
+      }),
       ...(authority.mode === 'hosted' && authority.tenantExecutionContext
         ? { tenantId: authority.tenantExecutionContext.tenantId }
         : {}),

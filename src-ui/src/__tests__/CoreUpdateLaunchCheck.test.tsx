@@ -3,21 +3,58 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let isMobile = false;
+let isDesktop = false;
 let desktopStatus:
   | {
       updateAvailable: boolean;
       installKind?: 'source-checkout' | 'desktop-bundle' | 'unknown';
       applyMethod?: 'git-pull' | 'reinstall' | 'self-update';
       behind?: number;
+      ahead?: number;
+      currentHash?: string;
+      remoteHash?: string;
       channel?: string;
     }
   | undefined;
 const { useCoreUpdateStatusQuery } = vi.hoisted(() => ({
   useCoreUpdateStatusQuery: vi.fn(),
 }));
+
+/** The scoped third argument the launch check now forwards (update-ux PR4). */
+const SCOPE_ARGS = [
+  expect.objectContaining({
+    scopeKey: 'scope:station.test\u0000no-boot',
+    assertCurrent: expect.any(Function),
+  }),
+];
+const { useConnectedServerUpdateContext } = vi.hoisted(() => ({
+  useConnectedServerUpdateContext: vi.fn(),
+}));
+const connectedServerContext = vi.hoisted(() => ({
+  current: {
+    scopeKey: 'scope:station.test',
+    apiBase: 'http://station.test',
+    connectionName: 'station',
+    reachability: 'connected',
+    kind: 'remote-server',
+    identity: null,
+    identitySettled: true,
+    identityReady: true,
+    nativeObservationPending: false,
+    claimedOwnerUnresolved: false,
+    isCurrent: () => true,
+  },
+}));
 vi.mock('@kontourai/station-sdk', () => ({ useCoreUpdateStatusQuery }));
+vi.mock('../hooks/useConnectedServerUpdateContext', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../hooks/useConnectedServerUpdateContext')
+    >();
+  return { ...actual, useConnectedServerUpdateContext };
+});
 vi.mock('../platform/PlatformProfileContext', () => ({
-  usePlatformProfile: () => ({ isMobile }),
+  usePlatformProfile: () => ({ isMobile, isDesktop }),
 }));
 
 const { CoreUpdateLaunchCheck, compareVersions, validateNativeUpdateFeed } =
@@ -45,11 +82,25 @@ describe('CoreUpdateLaunchCheck', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     isMobile = false;
+    isDesktop = false;
     desktopStatus = undefined;
+    connectedServerContext.current = {
+      ...connectedServerContext.current,
+      reachability: 'connected',
+      kind: 'remote-server',
+      identitySettled: true,
+      identityReady: true,
+      nativeObservationPending: false,
+      claimedOwnerUnresolved: false,
+    };
     useCoreUpdateStatusQuery.mockClear();
     useCoreUpdateStatusQuery.mockImplementation(() => ({
       data: desktopStatus,
     }));
+    useConnectedServerUpdateContext.mockReset();
+    useConnectedServerUpdateContext.mockImplementation(
+      () => connectedServerContext.current,
+    );
     bannerStore.clear();
   });
 
@@ -75,12 +126,13 @@ describe('CoreUpdateLaunchCheck', () => {
       installKind: 'source-checkout',
       applyMethod: 'git-pull',
       behind: 3,
+      ahead: 0,
     };
 
     renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
 
     expect((await screen.findByRole('status')).textContent).toContain(
-      'Station update available — 3 commits behind.',
+      'Server checkout is 3 commits behind its configured upstream.',
     );
     expect(
       screen.getByRole('link', { name: 'Review update' }).getAttribute('href'),
@@ -88,24 +140,210 @@ describe('CoreUpdateLaunchCheck', () => {
     expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
       'http://station.test',
       expect.objectContaining({ enabled: true }),
+      ...SCOPE_ARGS,
     );
   });
 
-  test('does not claim a reinstall-only bundle can apply from the banner', async () => {
+  test('a SHA-inequality stamp difference can never produce a desktop release banner', async () => {
     desktopStatus = {
       updateAvailable: true,
       installKind: 'desktop-bundle',
       applyMethod: 'reinstall',
       channel: 'nightly',
+      currentHash: 'aaaaaaa',
+      remoteHash: 'bbbbbbb',
+    };
+
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+
+    // The query itself runs (source-checkout facts are still legitimate for
+    // this shell), but a build-stamp difference is a build-stamp fact: it
+    // does not establish that an installable release exists.
+    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
+      'http://station.test',
+      expect.objectContaining({ enabled: true }),
+      ...SCOPE_ARGS,
+    );
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
+  });
+
+  test('a desktop-bundle behind-count with a differing stamp never becomes a release banner', async () => {
+    // Injection-gap fixture: a bundle that ALSO carries behind>0. The banner
+    // filter keys on the install kind, not on the presence of a behind
+    // count — a stamped build's counts are stamp facts, not release facts.
+    desktopStatus = {
+      updateAvailable: true,
+      installKind: 'desktop-bundle',
+      applyMethod: 'reinstall',
+      channel: 'nightly',
+      currentHash: 'aaaaaaa',
+      remoteHash: 'bbbbbbb',
+      behind: 3,
+      ahead: 0,
+    };
+
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    expect(screen.queryByText(/commits? behind/)).toBeNull();
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
+  });
+
+  test('a source checkout behind shows the exact source wording and the server-card link, with singular commits', async () => {
+    desktopStatus = {
+      updateAvailable: true,
+      installKind: 'source-checkout',
+      applyMethod: 'git-pull',
+      behind: 1,
+      ahead: 0,
     };
 
     renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
 
     expect((await screen.findByRole('status')).textContent).toContain(
-      'A Station nightly update is available.',
+      'Server checkout is 1 commit behind its configured upstream.',
     );
-    expect(screen.getByRole('link', { name: 'Review update' })).toBeTruthy();
-    expect(screen.queryByRole('link', { name: 'Update Station' })).toBeNull();
+    expect(
+      screen.getByRole('link', { name: 'Review update' }).getAttribute('href'),
+    ).toBe('/settings?view=system&highlight=core-app-updates');
+  });
+
+  test('a diverged checkout is manual work, not an offered update', async () => {
+    desktopStatus = {
+      updateAvailable: true,
+      installKind: 'source-checkout',
+      applyMethod: 'git-pull',
+      behind: 3,
+      ahead: 2,
+    };
+
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
+  });
+
+  test('does not query the source or raise a banner for an established embedded sidecar', async () => {
+    isDesktop = true;
+    desktopStatus = {
+      updateAvailable: true,
+      installKind: 'source-checkout',
+      applyMethod: 'git-pull',
+      behind: 2,
+    };
+    connectedServerContext.current = {
+      ...connectedServerContext.current,
+      kind: 'embedded-sidecar',
+    };
+
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+
+    expect(useConnectedServerUpdateContext).toHaveBeenCalledWith({
+      identityEnabled: true,
+    });
+    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
+      'http://station.test',
+      expect.objectContaining({ enabled: false }),
+      ...SCOPE_ARGS,
+    );
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
+  });
+
+  test('does not query the source when identity errored, even with a running observed sidecar', () => {
+    // Desktop shell, an observed running sidecar, but the identity request
+    // FAILED (503): settled but never ready. The gate must read
+    // identityReady — reverting to identitySettled re-enables the source
+    // query against a server the correlation could not name.
+    isDesktop = true;
+    connectedServerContext.current = {
+      ...connectedServerContext.current,
+      kind: 'unresolved',
+      identitySettled: true,
+      identityReady: false,
+      nativeObservationPending: false,
+      claimedOwnerUnresolved: false,
+    };
+
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+
+    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
+      'http://station.test',
+      expect.objectContaining({ enabled: false }),
+      ...SCOPE_ARGS,
+    );
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
+  });
+
+  test('holds the desktop source query while a native observation is still pending', () => {
+    isDesktop = true;
+    connectedServerContext.current = {
+      ...connectedServerContext.current,
+      nativeObservationPending: true,
+    };
+
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+
+    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
+      'http://station.test',
+      expect.objectContaining({ enabled: false }),
+      ...SCOPE_ARGS,
+    );
+  });
+
+  test('issues no identity request plumbing on launch checks without desktop native ownership', () => {
+    // Mobile shell: the release feed owns updates; no identity, no source query.
+    isMobile = true;
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+    expect(useConnectedServerUpdateContext).toHaveBeenCalledWith({
+      identityEnabled: false,
+    });
+    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
+      'http://station.test',
+      expect.objectContaining({ enabled: false }),
+      ...SCOPE_ARGS,
+    );
+
+    // Browser shell: identity stays off, while the server-facts source query
+    // keeps its pre-correlation behavior.
+    isMobile = false;
+    desktopStatus = {
+      updateAvailable: true,
+      installKind: 'source-checkout',
+      applyMethod: 'git-pull',
+      behind: 1,
+    };
+    useCoreUpdateStatusQuery.mockClear();
+    useCoreUpdateStatusQuery.mockImplementation(() => ({
+      data: desktopStatus,
+    }));
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+    expect(useConnectedServerUpdateContext).toHaveBeenCalledWith({
+      identityEnabled: false,
+    });
+    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
+      'http://station.test',
+      expect.objectContaining({ enabled: true }),
+      ...SCOPE_ARGS,
+    );
+  });
+
+  test('holds the desktop source query while identity correlation is pending', () => {
+    isDesktop = true;
+    connectedServerContext.current = {
+      ...connectedServerContext.current,
+      identitySettled: false,
+      identityReady: false,
+    };
+
+    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
+
+    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
+      'http://station.test',
+      expect.objectContaining({ enabled: false }),
+      ...SCOPE_ARGS,
+    );
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
   });
 
   test('desktop check stays quiet when the selected Station is current', () => {

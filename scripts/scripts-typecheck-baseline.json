@@ -55,7 +55,6 @@
     "scripts/__tests__/station-dogfood-reconcile/locking.behavior.ts",
     "scripts/__tests__/station-dogfood-reconcile/recovery-supervision.behavior.ts",
     "scripts/__tests__/station-dogfood-remote-auth-smoke.test.ts",
-    "scripts/__tests__/timing-reliability.test.ts",
     "scripts/__tests__/verification-coordinator.test.ts",
     "scripts/__tests__/verification-handoff-gc.test.ts",
     "scripts/__tests__/verification-host-pressure.test.ts",

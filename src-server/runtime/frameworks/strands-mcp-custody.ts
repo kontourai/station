@@ -1,3 +1,4 @@
+import type { ToolDef } from '@kontourai/station-contracts/tool';
 import {
   type MCPLocalClaim,
   MCPLocalCustodyError,
@@ -20,6 +21,7 @@ export function isStrandsClientCurrent(client: McpClient): boolean {
 export function createCustodiedStrandsClient(
   claim: MCPLocalClaim,
   parameters: ConstructorParameters<typeof StdioClientTransport>[0],
+  definition?: ToolDef,
 ): McpClient {
   let transport: StdioClientTransport | undefined;
   let client: McpClient | undefined;
@@ -116,7 +118,7 @@ export function createCustodiedStrandsClient(
       return closing;
     },
   };
-  claim.attach(resource); // Before either constructor, including partial failure.
+  claim.attach(resource, definition); // Before either constructor, including partial failure.
   try {
     assertCurrent();
     transport = new StdioClientTransport(parameters);

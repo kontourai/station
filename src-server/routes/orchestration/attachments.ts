@@ -3,7 +3,7 @@ import { isAttachmentBlobRef } from '../../services/orchestration/attachment-blo
 import { attachmentBlobRequests } from '../../telemetry/metrics.js';
 import { param } from '../schemas/schemas.js';
 
-export interface AttachmentRouteDeps {
+interface AttachmentRouteDeps {
   /**
    * One attachment's bytes by content reference, or `undefined` when they are
    * no longer stored. Deliberately not the blob store: this route reads, and

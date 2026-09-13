@@ -75,6 +75,44 @@ function dependencies(): ExecutionTargetExecutionDependencies {
 }
 
 describe('executeForegroundMessage', () => {
+  test('a request-bound sharing decision permits a paired continuation and rejects an unrelated caller', async () => {
+    const deps = dependencies();
+    deps.readSessionBinding = vi.fn(async () => ({
+      environmentId: 'environment-kontour',
+      agentId: 'station',
+      userId: 'phone-owner',
+    }));
+    deps.canContinueConversation = vi.fn(
+      (_access, id, userId) =>
+        id === 'conversation:shared' && userId === 'desktop-reader',
+    );
+    await executeForegroundMessage(
+      {
+        target: { environment: { kind: 'current' }, agent: agentId('station') },
+        conversationId: 'conversation:shared',
+        message: 'Continue from my other device',
+        userId: 'desktop-reader',
+      },
+      deps,
+    );
+    expect(deps.sendTurn).toHaveBeenCalledOnce();
+    expect(deps.canContinueConversation).toHaveBeenCalledOnce();
+    await expect(
+      executeForegroundMessage(
+        {
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+          },
+          conversationId: 'conversation:shared',
+          message: 'Unrelated device',
+          userId: 'stranger',
+        },
+        deps,
+      ),
+    ).rejects.toThrow('belongs to a different Environment');
+    expect(deps.sendTurn).toHaveBeenCalledOnce();
+  });
   test('handoff retry after an accepted boundary start sends once without starting another successor', async () => {
     const deps = dependencies();
     deps.readSessionBinding = vi.fn(async () => ({
@@ -336,6 +374,11 @@ describe('executeForegroundMessage', () => {
         conversationId: 'conversation:test',
         clientTurnId: 'client-turn-9',
         message: 'inspect this',
+        expectedInputRequest: {
+          threadId: 'conversation:test:child-2',
+          requestId: 'input-a',
+          requestEventId: 'opened-a',
+        },
         resolveAttachments,
       },
       deps,
@@ -347,7 +390,14 @@ describe('executeForegroundMessage', () => {
     });
     expect(deps.sendTurn).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ threadId: 'conversation:test:child-2' }),
+      expect.objectContaining({
+        threadId: 'conversation:test:child-2',
+        expectedInputRequest: {
+          threadId: 'conversation:test:child-2',
+          requestId: 'input-a',
+          requestEventId: 'opened-a',
+        },
+      }),
       undefined,
     );
   });
@@ -689,6 +739,56 @@ describe('executeForegroundMessage', () => {
       sessionId: 'conversation:existing:session:1',
     });
   });
+
+  test.each(
+    [undefined, 'native-cursor'].flatMap((resumeCursor) =>
+      [undefined, 'explicit-new-model'].map((override) => ({
+        resumeCursor,
+        override,
+      })),
+    ),
+  )(
+    'continuation preserves the observed model unless overridden (%j)',
+    async ({ resumeCursor, override }) => {
+      const deps = dependencies();
+      deps.getAgent = async () => ({
+        slug: 'station',
+        available: true,
+        execution: { modelId: 'agent-default-sonnet' },
+      });
+      deps.readSessionBinding = vi.fn(async () => ({
+        environmentId: 'environment-kontour',
+        agentId: 'station',
+      }));
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'conversation:cursor:child',
+        startRequired: true,
+        ...(resumeCursor
+          ? { resumeCursor }
+          : { transcriptSeed: 'Earlier context' }),
+        resumeModel: 'observed-opus',
+      }));
+      await executeForegroundMessage(
+        {
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+            ...(override ? { model: { override } } : {}),
+          },
+          conversationId: 'conversation:cursor',
+          message: 'Continue',
+        },
+        deps,
+      );
+      expect(deps.startSession).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          modelId: override ?? 'observed-opus',
+          ...(resumeCursor ? { resumeCursor } : {}),
+        }),
+      );
+    },
+  );
 
   test('uses a server-owned predecessor cursor for same-engine continuation', async () => {
     const deps = dependencies();
@@ -1270,6 +1370,7 @@ describe('executeForegroundMessage', () => {
       deps.readSessionBinding = vi.fn(async () => ({
         environmentId: 'environment-kontour',
         agentId: 'station',
+        projectSlug: 'station',
         cwd: repoPath,
         workspaceIsolation: { mode: 'worktree' as const },
         worktree: worktree!,
@@ -1299,6 +1400,7 @@ describe('executeForegroundMessage', () => {
       deps.readSessionBinding = vi.fn(async () => ({
         environmentId: 'environment-kontour',
         agentId: 'station',
+        projectSlug: 'station',
         cwd: worktree!.path,
         workspaceIsolation: { mode: 'worktree' as const },
         worktree: worktree!,
@@ -1542,6 +1644,7 @@ describe('executeForegroundMessage', () => {
       deps.readSessionBinding = vi.fn(async () => ({
         environmentId: 'environment-kontour',
         agentId: 'station',
+        projectSlug: 'station',
         ...partialBinding,
       }));
       deps.getProject = vi.fn(async (_access, slug) => ({
@@ -1574,6 +1677,7 @@ describe('executeForegroundMessage', () => {
     deps.readSessionBinding = vi.fn(async () => ({
       environmentId: 'environment-kontour',
       agentId: 'station',
+      projectSlug: 'station',
       cwd: process.cwd(),
       workspaceIsolation: { mode: 'worktree' as const },
       worktree: {
@@ -1617,6 +1721,7 @@ describe('executeForegroundMessage', () => {
     deps.readSessionBinding = vi.fn(async () => ({
       environmentId: 'environment-kontour',
       agentId: 'station',
+      projectSlug: 'station',
       cwd: `${process.cwd()}/.`,
       workspaceIsolation: { mode: 'worktree' as const },
       worktree: {

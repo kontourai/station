@@ -25,6 +25,7 @@
  * level (unit tests) and is ready for a real batched-summary surface should
  * one land later.
  */
+
 import type {
   Notification,
   ServerEventName,
@@ -33,6 +34,7 @@ import type {
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { classifyNotificationCategory } from '@kontourai/station-shared/notification-priority';
 import { webPushSends } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { EventBus } from '../orchestration/event-bus.js';
 import { composeWebPushPayload } from './push-payload-composer.js';
 import type { WebPushService } from './web-push-service.js';
@@ -50,16 +52,12 @@ interface WebPushDeliveryLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
 }
 
-export interface WebPushDeliveryOptions {
+interface WebPushDeliveryOptions {
   /**
    * Hosted paired-device records have no durable tenant binding. Keep their
    * delivery listener absent until subscriptions can be tenant-authorized.
    */
   enabled?: boolean;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function wireWebPushDelivery(

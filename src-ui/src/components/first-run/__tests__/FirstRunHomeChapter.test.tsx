@@ -964,6 +964,7 @@ describe('first useful chat handoff', () => {
   test.each([
     ['Start your first chat', 'station:open-new-chat', 'done'],
     ['Take the tour', 'station-start-first-run-tour', 'tour'],
+    ['Connect another device', 'station:open-connections-modal', 'done'],
   ] as const)(
     '%s saves intentional answers before its canonical intent',
     async (label, eventName, chapter) => {
@@ -1007,6 +1008,11 @@ describe('first useful chat handoff', () => {
         ).toBe(true);
         await act(async () => finishSave());
         expect(intent).toHaveBeenCalledTimes(1);
+        if (eventName === 'station:open-connections-modal') {
+          expect((intent.mock.calls[0][0] as CustomEvent).detail).toEqual({
+            mode: 'pair-host',
+          });
+        }
         expect(otherIntent).not.toHaveBeenCalled();
         expect(firstRunStore.getSnapshot().chapter).toBe(chapter);
         expect(screen.queryByTestId('first-run-about-you')).toBeNull();

@@ -339,6 +339,7 @@ export function JobFormModal({
 
   const pending = addJob.isPending || editJob.isPending;
   const mutationError = addJob.error ?? editJob.error;
+  const nameValid = /^[a-z0-9-]+$/.test(form.name);
   const scheduleValid =
     form.scheduleKind === 'cron'
       ? form.cron.trim().length > 0
@@ -384,7 +385,7 @@ export function JobFormModal({
               // The runnability half waits for the catalog to answer: an
               // unanswered catalog cannot refuse anything (#1536 H1-2).
               (!isEdit &&
-                (!form.name.trim() ||
+                (!nameValid ||
                   !form.prompt.trim() ||
                   (agentRunnabilityKnown && !namedAgentRunnability.runnable)))
             }
@@ -423,7 +424,7 @@ export function JobFormModal({
               onChange={set('name')}
               placeholder="my-daily-briefing"
             />
-            {form.name && !/^[a-z0-9-]+$/.test(form.name) && (
+            {form.name && !nameValid && (
               <span className="schedule__field-error">
                 Lowercase letters, numbers, and hyphens only
               </span>
@@ -467,7 +468,9 @@ export function JobFormModal({
             />
             {agentRunnabilityKnown && !jobAgentRunnability.runnable && (
               <span className="schedule__field-error">
-                {jobAgentRunnability.reason}
+                {!isEdit && !init.agent && !agentOptions.defaultSlug
+                  ? 'Set up an agent in Agents before adding a job.'
+                  : jobAgentRunnability.reason}
               </span>
             )}
             {agentOptions.excludedEngineAgents.length > 0 && (
@@ -667,6 +670,7 @@ export function JobFormModal({
               <ScheduleModeEditor
                 value={form.cron}
                 onChange={(v) => setForm((f) => ({ ...f, cron: v }))}
+                timezone={cronTimezone ?? 'UTC'}
               />
               <CronPreview
                 schedule={{

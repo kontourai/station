@@ -13,7 +13,6 @@ import type {
 } from '@kontourai/station-contracts/catalog';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
-  type CredentialProfileRegistryState,
   type CredentialRecoveryGroupProjection,
   resolveCredentialProfileApplicationCapability,
 } from '@kontourai/station-contracts/connection-recovery';
@@ -58,7 +57,7 @@ export type RuntimeConnectionProjection = Omit<AgentConnectionView, 'id'> & {
  * the same handshake now also feeds `controlPlaneObservation` below — the
  * binding/picker layer's evidence half. Still NOT the session-delivery map,
  * which stays static per matrix (agent-engine-unification.md §4.1b). */
-export type ACPConnectionCapabilitiesStatus = {
+type ACPConnectionCapabilitiesStatus = {
   loadSession?: boolean;
   mcpCapabilities?: { http?: boolean; sse?: boolean };
   promptCapabilities?: {
@@ -143,19 +142,12 @@ export function toModelConnection(
   };
 }
 
-/** Drops malformed persisted recovery state before it reaches a runtime view. */
-export function sanitizeCredentialRecoverySettings(
-  value: unknown,
-): CredentialProfileRegistryState {
-  return normalizeCredentialProfileRegistry(value);
-}
-
 export function credentialRecoveryProjectionForAdapter(
   adapter: ProviderAdapterShape,
   value: unknown,
 ): CredentialRecoveryGroupProjection {
   return projectCredentialProfileRegistry(
-    sanitizeCredentialRecoverySettings(value),
+    normalizeCredentialProfileRegistry(value),
     resolveCredentialProfileApplicationCapability(adapter.metadata.recovery),
   );
 }

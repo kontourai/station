@@ -94,9 +94,7 @@ export function writeConversationContextBoundaryUiState(
   return stored;
 }
 
-export function clearConversationContextBoundaryUiState(
-  conversationId: string,
-): void {
+function clearConversationContextBoundaryUiState(conversationId: string): void {
   try {
     window.localStorage.removeItem(contextBoundaryUiStorageKey(conversationId));
   } catch {

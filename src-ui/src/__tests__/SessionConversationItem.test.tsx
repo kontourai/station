@@ -226,6 +226,12 @@ describe('SessionConversationItem', () => {
 
   // archive#3341: "Copied" and the haptic used to fire for a write that never
   // resolved — including the insecure-origin case where there is no clipboard.
+  // ONE failure case here, not the primitive's matrix. Which clipboard states
+  // resolve `false` (absent, no `writeText`, rejected, throwing) is
+  // `copyToClipboard`'s own contract, pinned in
+  // `src-ui/src/lib/__tests__/clipboard.test.ts` -- 'resolves false when the
+  // origin has no clipboard API at all'. What is this row's to prove is that
+  // it derives its affordance from that boolean rather than from the call.
   it('a refused write never claims a copy and never buzzes', async () => {
     clipboardRefuses();
     renderItem(true, { id: 'conversation:debug-123' });
@@ -238,17 +244,6 @@ describe('SessionConversationItem', () => {
     expect(screen.getByRole('status').textContent).toContain(
       'refused clipboard access',
     );
-  });
-
-  it('an insecure origin with no clipboard API never claims a copy', async () => {
-    clipboardAbsent();
-    renderItem(true, { id: 'conversation:debug-123' });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Copy thread ID' }));
-
-    await waitFor(() => expect(screen.getByText("Can't copy")).toBeTruthy());
-    expect(screen.queryByText('Copied')).toBeNull();
-    expect(triggerHapticMock).not.toHaveBeenCalled();
   });
 
   it('MED-2: an ACP-type conversation with a resolved engine renders the engine name, never the literal "ACP"', () => {

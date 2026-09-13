@@ -5,7 +5,8 @@ import type { DockMode } from '../types';
  * The single source of truth for the mobile breakpoint, mirroring the
  * `--bp-mobile` documentation token in `tokens.css`. CSS media queries cannot
  * read a custom property, so this literal must stay byte-identical to the
- * condition on every mobile `@media` block across the stylesheets.
+ * condition on general mobile-layout `@media` blocks. Short-window adaptations
+ * can use its exact height-and-pointer branch to narrow that same population.
  *
  * The second clause exists because width alone was wrong. A phone in landscape
  * is ~855 CSS px wide, so `max-width: 768px` reported it as a desktop and
@@ -36,8 +37,9 @@ const EVERY_EDGE: readonly DockMode[] = ['left', 'right', 'bottom'];
  * mobile breakpoint (archive#3928).
  *
  * They ask different questions. `MOBILE_MEDIA_QUERY` asks "is this a phone",
- * and it has to stay byte-identical to the condition on every mobile `@media`
- * block or the stylesheets and the components disagree about the same device.
+ * and general mobile-layout media queries must match it so the stylesheets and
+ * components classify the same devices. Short-window overrides use its exact
+ * height-and-pointer branch.
  * This asks "can this device usefully put the dock on a side", and the answer
  * is no for ANY coarse pointer, including a wide touchscreen laptop that is
  * emphatically not a phone. Deriving one from the other means widening the

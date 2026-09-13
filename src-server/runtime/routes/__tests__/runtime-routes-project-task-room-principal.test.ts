@@ -147,6 +147,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
       },
     });
     const context = deepStub({
+      deploymentAuthentication: undefined,
       app,
       port: 4321,
       appConfig: {},

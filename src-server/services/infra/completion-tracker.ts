@@ -5,8 +5,7 @@
  * the order completions actually arrive in (dispatches for different keys
  * can finish out of creation order under concurrency > 1).
  *
- * This is the shared idle/marker primitive behind DrainableWorker's
- * `drain()`/`marker()` and KeyedCoalescingWorker's
+ * This is the shared idle/marker primitive behind KeyedCoalescingWorker's
  * `drain()`/`drainKey()`/`marker()`: "resolve once every unit of work that
  * existed at call time has finished" without caring how many new units show
  * up afterward.

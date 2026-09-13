@@ -47,7 +47,9 @@ describe('nightly version codes are monotonic and bounded', () => {
   });
 
   it('is identical for any two moments on the same UTC day', () => {
-    // The schedule runs at a fixed UTC hour, but a manual re-run does not.
+    // Identity is the UTC day, not the wall-clock hour. Extra same-day
+    // ships take the rebuild index so they do not collide with the day's
+    // first reservation.
     // Deriving from the wall clock rather than the day would produce a fresh
     // code for a rebuild of identical content.
     expect(nightlyVersionCode(new Date('2026-08-09T00:00:00Z'))).toBe(
@@ -70,7 +72,6 @@ describe('nightly version codes are monotonic and bounded', () => {
     expect(code).toBeLessThan(MAX_ANDROID_VERSION_CODE / 100);
     // The scheme this replaced: 2026080900 is 96% of the ceiling, and a
     // version code can never be lowered.
-    expect(2_026_080_900).toBeGreaterThan(MAX_ANDROID_VERSION_CODE * 0.9);
   });
 
   it('stays under the ceiling well past any plausible horizon', () => {
@@ -375,6 +376,12 @@ describe('the tauri config overlay', () => {
       productName: 'Station Nightly',
       version: '0.1.0-nightly.2412.2',
       identifier: 'io.kontourai.station.nightly',
+      plugins: {
+        'deep-link': {
+          mobile: [{ scheme: ['station-nightly'], appLink: false }],
+          desktop: { schemes: ['station-nightly'] },
+        },
+      },
       bundle: {
         android: { versionCode: 241_202 },
         macOS: { bundleVersion: '241202' },
@@ -447,6 +454,10 @@ describe('the desktop tauri config overlay (station#575)', () => {
         macOS: { bundleVersion: '241203' },
       },
       plugins: {
+        'deep-link': {
+          mobile: [{ scheme: ['station-nightly'], appLink: false }],
+          desktop: { schemes: ['station-nightly'] },
+        },
         updater: {
           pubkey: 'trusted-public-key',
           endpoints: [
@@ -566,10 +577,10 @@ describe('the nightly workflow keeps its promises', () => {
     )
     .join('\n');
 
-  it('is scheduled daily rather than triggered by pushes', () => {
+  it('is scheduled every six hours rather than triggered by pushes', () => {
     // The whole point of the channel: "nightly" is a claim about cadence.
     expect(callerWorkflow).toMatch(
-      /schedule:\s*\n\s*(#[^\n]*\n\s*)*- cron: '0 9 \* \* \*'/,
+      /schedule:\s*\n\s*(#[^\n]*\n\s*)*- cron: '0 \*\/6 \* \* \*'/,
     );
     expect(callerWorkflow).not.toMatch(/^\s{2}push:/m);
   });
@@ -693,7 +704,18 @@ describe('the nightly workflow keeps its promises', () => {
     expect(decide).toContain(
       'node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$android_sha"',
     );
-    expect(decide).toContain('[ "$normalized_android_sha" = "$android_sha" ]');
+    // #1780: the decision is the CLI's, from markers AND the ledger. The
+    // rebuild index reaches it as an argument, not a shell-inlined test.
+    expect(decide).toContain(
+      'node scripts/nightly-cohort-decide.mjs --head-sha "$head_sha" --android-marker "$android_sha" --android-candidate "$normalized_android_sha" --desktop-marker "$desktop_sha" --desktop-candidate "$normalized_desktop_sha" --rebuild-index "$NIGHTLY_REBUILD_INDEX" --ledger-ref origin/main',
+    );
+    expect(decide).toContain(
+      'NIGHTLY_REBUILD_INDEX: $' + '{{ inputs.rebuild_index }}',
+    );
+    expect(decide).not.toContain(
+      '[ "$normalized_android_sha" = "$android_sha" ]',
+    );
+    expect(decide).not.toContain("echo 'build=");
   });
 
   it('uses an explicit non-boolean rebuild input and validates it before the nightly job builds', () => {
@@ -1027,7 +1049,7 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     // that never happened — and desktop has no rebuild input to recover
     // with, so a hand-deleted tag would be the only fix.
     const publish = desktopReleasePath.indexOf(
-      'name: Promote all four admitted macOS assets and bind the rolling tag',
+      'name: Upload both desktops, then publish latest.json last',
     );
     const advance = desktopReleasePath.indexOf(
       'name: Record only a reported-success macOS provider state',
@@ -1043,7 +1065,7 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
   it('refuses draft and unbootstrapped rolling releases rather than asking GITHUB_TOKEN to create a workflow-changing ref', () => {
     const publish = desktopReleasePath.slice(
       desktopReleasePath.indexOf(
-        'name: Promote all four admitted macOS assets and bind the rolling tag',
+        'name: Upload both desktops, then publish latest.json last',
       ),
       desktopReleasePath.indexOf(
         'name: Record only a reported-success macOS provider state',
@@ -1057,43 +1079,24 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     expect(publish).not.toContain('--target');
   });
 
-  it('uploads latest.json as its OWN gh release upload invocation, after the binaries invocation completes (station#575 MED-3)', () => {
+  it('delegates desktop uploads to the manifest-last publisher (station#575 MED-3)', () => {
     const publish = desktopReleasePath.slice(
       desktopReleasePath.indexOf(
-        'name: Promote all four admitted macOS assets and bind the rolling tag',
+        'name: Upload both desktops, then publish latest.json last',
       ),
       desktopReleasePath.indexOf(
         'name: Record only a reported-success macOS provider state',
       ),
     );
-    expect(publish).toContain('gh release view "$tag"');
-    expect(publish).toContain('--clobber');
-    const invocations = publish.match(/gh release upload "\$tag"/g) ?? [];
-    // Exactly two: merging latest.json into the binaries' command (which
-    // uploads its arguments concurrently) would collapse this to one.
-    expect(invocations).toHaveLength(2);
-    // The second invocation is a single physical line naming ONLY
-    // latest.json — no trailing `\` continuation and no binary asset name
-    // on that line — so it cannot be the same shell command as the
-    // binaries' multi-line upload above it.
-    const manifestUploadLine = publish
-      .split('\n')
-      .find(
-        (line) =>
-          line.includes('gh release upload "$tag"') &&
-          line.includes('latest.json'),
-      );
-    expect(manifestUploadLine).toBeDefined();
-    expect(manifestUploadLine).not.toContain('\\');
-    expect(manifestUploadLine).not.toContain('.dmg');
-    expect(manifestUploadLine).not.toContain('.app.tar.gz');
-    const binariesIndex = publish.indexOf(
-      'gh release upload nightly-desktop --repo "$' +
-        '{{ github.repository }}" --clobber \\\n            release-assets/station-nightly-desktop-macos-aarch64.dmg',
+    // Actual upload ordering and corrupt readbacks are exercised through the
+    // publisher's injected GitHub adapter in publish-nightly-desktop.test.ts.
+    expect(publish).toContain(
+      'node scripts/publish-nightly-desktop.mjs cohort desktop-publication github-release-observation.json',
     );
-    const manifestIndex = publish.lastIndexOf(manifestUploadLine ?? '');
-    expect(publish).toContain('station-nightly-desktop-macos-aarch64.dmg');
-    expect(manifestIndex).toBeGreaterThan(binariesIndex);
+    expect(publish).not.toContain('gh release upload');
+    expect(publish.indexOf('publish-nightly-desktop.mjs')).toBeLessThan(
+      publish.indexOf('gh api --method PATCH'),
+    );
   });
 
   it('agrees on one release tag across the notarize step, the manifest step, and the upload asset names (station#575 MED-2)', () => {
@@ -1116,16 +1119,14 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     );
     const publish = desktopReleasePath.slice(
       desktopReleasePath.indexOf(
-        'name: Promote all four admitted macOS assets and bind the rolling tag',
+        'name: Upload both desktops, then publish latest.json last',
       ),
       desktopReleasePath.indexOf(
         'name: Record only a reported-success macOS provider state',
       ),
     );
-    expect(publish).toContain('station-nightly-desktop-macos-aarch64.dmg');
-    expect(publish).toContain(
-      'station-nightly-desktop-macos-aarch64.app.tar.gz',
-    );
+    expect(publish).toContain('scripts/publish-nightly-desktop.mjs');
+    expect(desktopReleasePath).toContain('cohort/windows-stage-receipt.json');
   });
 
   it('verifies the nightly product name and bundle id on the notarized app (station#575 L6)', () => {
@@ -1169,7 +1170,7 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
 
   it('records the desktop ship in the deploy ledger after publish, at the decided SHA', () => {
     const publish = desktopReleasePath.indexOf(
-      'name: Promote all four admitted macOS assets and bind the rolling tag',
+      'name: Upload both desktops, then publish latest.json last',
     );
     const ledger = desktopReleasePath.indexOf(
       'name: Record durable completion only after the verified final receipt',
@@ -1223,4 +1224,47 @@ describe('CLI publications do not collide within a UTC day', () => {
       expect(() => nightlyCliVersion('0.6.0', date, runId)).toThrow(/run ID/);
     },
   );
+});
+
+describe('writeCliNightlyVersion (nightly CLI identity without npm version)', async () => {
+  const { writeCliNightlyVersion } = await import(
+    '../lib/nightly-build-identity.mjs'
+  );
+  const { mkdtempSync, readFileSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const manifestWith = (text: string) => {
+    const path = join(
+      mkdtempSync(join(tmpdir(), 'station-cli-version-')),
+      'package.json',
+    );
+    writeFileSync(path, text);
+    return path;
+  };
+  it('rewrites only the version field and keeps key order and the trailing newline', () => {
+    const path = manifestWith(
+      '{\n  "name": "@kontourai/station-cli",\n  "version": "0.6.0",\n  "bin": { "station": "dist/index.js" }\n}\n',
+    );
+    expect(writeCliNightlyVersion(path, '0.6.0-nightly.2442.34196525973')).toBe(
+      '0.6.0-nightly.2442.34196525973',
+    );
+    expect(readFileSync(path, 'utf8')).toBe(
+      '{\n  "name": "@kontourai/station-cli",\n  "version": "0.6.0-nightly.2442.34196525973",\n  "bin": {\n    "station": "dist/index.js"\n  }\n}\n',
+    );
+  });
+  it('refuses a version that is not a nightly identity, leaving the file untouched', () => {
+    const text = '{"name":"x","version":"0.6.0"}';
+    const path = manifestWith(text);
+    expect(() => writeCliNightlyVersion(path, '1.2.3')).toThrow(/non-nightly/);
+    expect(() => writeCliNightlyVersion(path, '0.6.0-nightly.2442')).toThrow(
+      /non-nightly/,
+    );
+    expect(readFileSync(path, 'utf8')).toBe(text);
+  });
+  it('refuses a manifest without a version field', () => {
+    const path = manifestWith('{"name":"x"}');
+    expect(() => writeCliNightlyVersion(path, '0.6.0-nightly.1.2')).toThrow(
+      /no version field/,
+    );
+  });
 });

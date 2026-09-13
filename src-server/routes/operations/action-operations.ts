@@ -8,7 +8,7 @@ import { param } from '../schemas/schemas.js';
 
 const MAX_QUERY_LENGTH = 64;
 
-export interface ActionOperationRouteDeps {
+interface ActionOperationRouteDeps {
   readonly operations: Pick<
     ActionOperationService,
     'get' | 'list' | 'watch' | 'cancel'

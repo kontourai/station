@@ -8,6 +8,7 @@ import {
   modelControlOptionsMatch,
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
+import { finalizeAssistantTurn } from './assistantTurn';
 import type { OrchestrationEvent } from './types';
 
 export function handleSessionLifecycleEvent(
@@ -44,6 +45,10 @@ export function handleSessionLifecycleEvent(
     orchestrationProvider: event.provider,
     orchestrationSessionStarted: true,
     ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
+    ...(event.method === 'session.configured' &&
+    typeof event.metadata?.acpSessionMode === 'string'
+      ? { currentModeId: event.metadata.acpSessionMode }
+      : {}),
     ...(effectiveModel
       ? { model: effectiveModel, orchestrationModel: effectiveModel }
       : {}),
@@ -132,6 +137,16 @@ export function handleSessionExitedEvent(
   event: Extract<OrchestrationEvent, { method: 'session.exited' }>,
   store: SessionActivityStore = activeChatsStore,
 ) {
+  const chat = store.getSnapshot()[event.threadId];
+  if (chat?.streamingMessage || chat?.orchestrationTurnOpen) {
+    // Engine death used to tear down the streaming shell without committing
+    // the buffered answer (replay: in-flight-content-dropped-on-session-exit).
+    finalizeAssistantTurn(event.threadId, undefined, {
+      turnId: chat.openTurnId,
+      createdAt: event.createdAt,
+      answerEligible: false,
+    });
+  }
   store.updateChat(event.threadId, {
     status: 'idle',
     orchestrationStatus: 'exited',
@@ -140,4 +155,17 @@ export function handleSessionExitedEvent(
     activityHint: undefined,
     backgroundTasks: undefined,
   });
+}
+
+export function handleSessionStopSettledEvent(
+  event: Extract<OrchestrationEvent, { method: 'session.stop-settled' }>,
+) {
+  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  if (chat?.streamingMessage || chat?.orchestrationTurnOpen) {
+    finalizeAssistantTurn(event.threadId, undefined, {
+      turnId: event.turnId ?? chat.openTurnId,
+      createdAt: event.createdAt,
+      answerEligible: false,
+    });
+  }
 }

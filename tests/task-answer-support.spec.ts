@@ -7,11 +7,13 @@ import {
   composeBasisProjection,
   parseBasisProjection,
 } from '@kontourai/surface/basis';
-import { expect, type Locator, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { buildMcpAppsSandboxProxyDocument } from '../src-server/runtime/mcp/mcp-ui-frame-server';
 import { expectNoBlockingAccessibilityViolations } from './helpers/accessibility';
 import { contrastRatio } from './helpers/color-contrast';
 import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 const taskId = 'answer-support-ui';
 const referenceId = 'answer-reference-ui';
@@ -360,7 +362,7 @@ async function seedStationAccess(page: Page) {
       body: 'data: {"event":"connected"}\n\n',
     }),
   );
-  await page.route('**/api/**', (route) => {
+  await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/system/status')
       return route.fulfill(
@@ -383,9 +385,51 @@ async function seedStationAccess(page: Page) {
           sha: '1111111111111111111111111111111111111111',
         }),
       );
-    if (path === '/api/plugins')
-      return route.fulfill(json({ success: true, data: [] }));
-    return route.fulfill(json({ success: true, data: [] }));
+    if (path === '/api/plugins') return route.fulfill(json({ plugins: [] }));
+    if (route.request().method() === 'GET' && path === '/api/projects') {
+      await route.fulfill(
+        json({
+          success: true,
+          data: [
+            {
+              id: 'project-ui',
+              slug: 'project-ui',
+              name: 'UI project',
+              description: '',
+              hasWorkingDirectory: false,
+              layoutCount: 0,
+              hasKnowledge: false,
+            },
+          ],
+        }),
+      );
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      (path === '/api/projects/project-ui/layouts' ||
+        /^\/api\/tasks\/(?:answer-support-ui|pinned-input-ui|pinned-input-revoked)\/(?:outputs|user-input-references)$/.test(
+          path,
+        ))
+    ) {
+      await route.fulfill(json({ success: true, data: [] }));
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      /^\/api\/tasks\/pinned-input-(?:ui|revoked)\/room$/.test(path)
+    ) {
+      await route.fulfill({
+        status: 503,
+        ...json({
+          success: false,
+          error: 'Room unavailable in this input-projection fixture',
+        }),
+      });
+      return;
+    }
+    if (await fulfillStationShellRead(route)) return;
+    return rejectUnexpectedFixtureRequest(route);
   });
 }
 

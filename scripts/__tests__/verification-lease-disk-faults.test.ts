@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { verificationLeaseOwnership } from '../lib/verification-lease-ownership.mjs';
 
@@ -94,6 +94,26 @@ afterEach(() => {
   faults.renameMatch = null;
   warnSpy.mockRestore();
   rmSync(root, { recursive: true, force: true });
+});
+
+test('reads the preserved lease file during a Windows replacement gap', () => {
+  const file = join(root, 'lease.json');
+  mkdirSync(`${file}.previous-directory`);
+  writeFileSync(
+    join(root, 'unrelated.previous-record'),
+    JSON.stringify({ owner: 'wrong' }),
+  );
+  writeFileSync(
+    `${file}.previous-owned`,
+    JSON.stringify({ owner: 'prior', generation: 7 }),
+  );
+  expect(readJson(file)).toEqual({ owner: 'prior', generation: 7 });
+  expect(readJson(relative(process.cwd(), file))).toEqual({
+    owner: 'prior',
+    generation: 7,
+  });
+  writeFileSync(file, JSON.stringify({ owner: 'current', generation: 8 }));
+  expect(readJson(file)).toEqual({ owner: 'current', generation: 8 });
 });
 
 function requestDirectory() {

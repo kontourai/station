@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { SSE_KEEPALIVE_INTERVAL_MS } from '../../../constants.js';
 import { SchedulerJobConflictError } from '../../../services/scheduling/builtin-scheduler.js';
 import {
   SchedulerStorageCorruptError,
@@ -597,5 +598,41 @@ describe('Scheduler Routes', () => {
     );
     expect(body).toEqual({ success: true });
     expect(svc.removeJob).toHaveBeenCalledWith('daily-report');
+  });
+
+  /**
+   * THE WIRE VALUE, end to end. `sseKeepalive` and `SSE_KEEPALIVE_FRAME`
+   * (`routes/sse-response.ts`) are unit-tested against the frame OBJECT, which
+   * cannot notice the event name changing — renaming it leaves this suite and
+   * `orchestration.routes.test.ts` green while breaking live consumers:
+   * `packages/sdk/src/client/project-task-rooms.ts` dispatches on
+   * `message.event === 'ping'`, and the CLI's `consumeSseFrames`
+   * (`packages/cli/src/commands/session-client.ts`) tolerates the frame only
+   * because its `data` line is EMPTY — a non-empty payload would reach its
+   * `JSON.parse` and be handed to `onFrame` as a chat event.
+   *
+   * So both fields are asserted, against the bytes Hono actually emits.
+   */
+  test('the /events keepalive is exactly an `event: ping` frame with an empty data line', async () => {
+    vi.useFakeTimers();
+    try {
+      const { app } = setup();
+      const response = await app.request('/events');
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toContain(
+        'text/event-stream',
+      );
+
+      const reader = response.body!.getReader();
+      // Nothing is written until a full interval elapses: the subscription is
+      // a no-op mock, so the first bytes on this stream are the keepalive.
+      await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE_INTERVAL_MS);
+      const { value } = await reader.read();
+
+      expect(new TextDecoder().decode(value)).toBe('event: ping\ndata: \n\n');
+      await reader.cancel();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

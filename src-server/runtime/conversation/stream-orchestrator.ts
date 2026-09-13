@@ -10,7 +10,6 @@ import { parseToolName } from '../../utils/tool-name-normalizer.js';
 import { CompletionHandler } from '../streaming/handlers/CompletionHandler.js';
 import { MetadataHandler } from '../streaming/handlers/MetadataHandler.js';
 import { ReasoningHandler } from '../streaming/handlers/ReasoningHandler.js';
-import { TextDeltaHandler } from '../streaming/handlers/TextDeltaHandler.js';
 import { ToolCallHandler } from '../streaming/handlers/ToolCallHandler.js';
 import type { InjectableStream } from '../streaming/InjectableStream.js';
 import { StreamPipeline } from '../streaming/StreamPipeline.js';
@@ -138,7 +137,6 @@ export function createStreamingPipeline(
   // Add handlers in order (elicitation handled via callback + injectable stream)
   pipeline
     .use(new ReasoningHandler({ enableThinking: true }))
-    .use(new TextDeltaHandler())
     .use(new ToolCallHandler())
     .use(metadataHandler)
     .use(completionHandler);
@@ -147,6 +145,12 @@ export function createStreamingPipeline(
 }
 
 /**
+ * Named for its stream. `src-server/constants.ts` exports its own
+ * `SSE_KEEPALIVE_INTERVAL_MS` (30s) for the long-lived operations streams —
+ * `/api/orchestration/events`, monitoring and scheduler — and two exported
+ * constants with the same name and different values is a reference a reader
+ * has to resolve by import path. Neither cadence changes here.
+ *
  * archive#1207: how often the `/chat` SSE stream emits a keepalive comment
  * while the agent is between content events — e.g. a long tool call
  * (delegateTask sub-agent, a slow MCP/shell tool) that legitimately
@@ -161,7 +165,7 @@ export function createStreamingPipeline(
  * client gives up — one dropped frame (network jitter, a slow event-loop
  * tick) must never look like a dead server.
  */
-export const SSE_KEEPALIVE_INTERVAL_MS = 15_000;
+export const CHAT_STREAM_KEEPALIVE_INTERVAL_MS = 15_000;
 
 /**
  * A standard SSE comment line. Deliberately NOT a `data: ` frame: every SSE
@@ -186,21 +190,28 @@ export function startSSEKeepalive(streamWriter: any): () => void {
     void Promise.resolve(streamWriter.write(SSE_KEEPALIVE_FRAME)).catch(
       () => {},
     );
-  }, SSE_KEEPALIVE_INTERVAL_MS);
+  }, CHAT_STREAM_KEEPALIVE_INTERVAL_MS);
   return () => clearInterval(timer);
 }
 
 /**
- * Write SSE chunk to stream
+ * Write SSE chunk to stream.
+ *
+ * The awaited write is the whole contract. This used to append
+ * `await new Promise((r) => setTimeout(r, 0))` under a comment claiming a
+ * `setTimeout` flushes network buffers — it does not. Nothing in Node's
+ * stream/socket path is driven by a timer expiring; the write is handed to
+ * the transport by `write()` itself and `cork`/`uncork` (or the response
+ * body's own backpressure) is what defers it. What the timer actually
+ * bought was a full macrotask turn per SSE frame, so a turn emitting N
+ * token deltas paid N event-loop round trips (≥1ms each, `setTimeout(0)`
+ * being clamped to 1ms) purely to wait.
  */
 export async function writeSSEChunk(
   streamWriter: any,
   chunk: any,
 ): Promise<void> {
   await streamWriter.write(`data: ${JSON.stringify(chunk)}\n\n`);
-  // Force flush by yielding to event loop with setTimeout(0)
-  // setImmediate doesn't flush network buffers, but setTimeout does
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 /**

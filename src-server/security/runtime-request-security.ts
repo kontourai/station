@@ -5,6 +5,7 @@ import {
   parseClientReportedOrigin,
 } from '@kontourai/station-contracts/client-origin';
 import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
+import type { DeploymentAuthenticationService } from '../services/identity/deployment-authentication-service.js';
 
 export type RuntimePeerClass = 'loopback' | 'remote' | 'absent';
 export type PairedDeviceLastSeenFrom = 'loopback' | 'lan' | 'tailnet';
@@ -151,6 +152,7 @@ export interface RuntimeSecurityAuditRecord {
 }
 
 export interface RuntimeHttpSecurityOptions {
+  deploymentAuthentication?: DeploymentAuthenticationService;
   verifyCredential: (
     credential: string,
     request?: {

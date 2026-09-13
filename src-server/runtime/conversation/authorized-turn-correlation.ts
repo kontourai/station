@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
 import type { DispatchReceipt } from '@kontourai/dispatch';
 import type { NativeOutputRelayCompanion } from '../native-output-turn-grant.js';
+import type { NativeForegroundRelayCompanion } from './native-foreground-invocation.js';
 import type { NativeMemoryHistoryCompanion } from './native-memory-history.js';
 
 /**
@@ -37,6 +38,7 @@ const relayHandoffs = new Map<
   {
     correlation: AuthorizedTurnCorrelation;
     nativeOutput?: NativeOutputRelayCompanion;
+    nativeForeground?: NativeForegroundRelayCompanion;
     nativeMemory?: NativeMemoryHistoryCompanion;
     expiresAt: number;
   }
@@ -149,6 +151,7 @@ export function issueAuthorizedTurnCorrelationHandoff(
   correlation: AuthorizedTurnCorrelation,
   nativeOutput?: NativeOutputRelayCompanion,
   nativeMemory?: NativeMemoryHistoryCompanion,
+  nativeForeground?: NativeForegroundRelayCompanion,
 ): string {
   const exact = parseAuthorizedTurnCorrelation(correlation);
   if (!exact) {
@@ -166,6 +169,7 @@ export function issueAuthorizedTurnCorrelationHandoff(
   relayHandoffs.set(handoffId, {
     correlation: exact,
     ...(nativeOutput ? { nativeOutput } : {}),
+    ...(nativeForeground ? { nativeForeground } : {}),
     ...(nativeMemory ? { nativeMemory } : {}),
     expiresAt: now + RELAY_HANDOFF_TTL_MS,
   });
@@ -180,6 +184,15 @@ export function readNativeOutputRelayCompanion(
   const handoff = relayHandoffs.get(handoffId);
   if (!handoff || handoff.expiresAt <= Date.now()) return undefined;
   return handoff.nativeOutput;
+}
+
+export function readNativeForegroundRelayCompanion(
+  handoffId: string | undefined,
+): NativeForegroundRelayCompanion | undefined {
+  if (!handoffId || handoffId.length > 128) return undefined;
+  const handoff = relayHandoffs.get(handoffId);
+  if (!handoff || handoff.expiresAt <= Date.now()) return undefined;
+  return handoff.nativeForeground;
 }
 
 /** Private history access travels only with its existing opaque relay handoff. */

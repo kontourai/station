@@ -73,7 +73,7 @@ const COALESCE_CONSUMER = 'console_bridge';
  */
 const DEFAULT_FLUSH_CONCURRENCY = 8;
 
-export interface ConsoleBridgeConfig {
+interface ConsoleBridgeConfig {
   /** Console hub base URL; enables the `POST /records` sink. */
   hubUrl?: string;
   /** Enables the workspace `.kontourai/console/events/**` JSONL sink. */
@@ -106,7 +106,7 @@ interface ConsoleBridgeLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
 }
 
-export interface ConsoleBridgeServiceOptions {
+interface ConsoleBridgeServiceOptions {
   eventBus: EventBus;
   eventStore: EventStore;
   logger: ConsoleBridgeLogger;
@@ -130,7 +130,7 @@ const CONSOLE_SESSION_STATUSES = new Set([
   'blocked',
 ]);
 
-export interface ConsoleBridgeFileSystem {
+interface ConsoleBridgeFileSystem {
   existsSync(path: string): boolean;
   mkdirSync(path: string, options: { recursive: true }): void;
   readFileSync(path: string, encoding: 'utf8'): string;
@@ -478,7 +478,22 @@ export class ConsoleBridgeService {
       } else {
         const tempPath = `${segmentPath}.${process.pid}.${Date.now()}.tmp`;
         this.fileSystem.writeFileSync(tempPath, segmentContent, 'utf8');
-        this.fileSystem.renameSync(tempPath, segmentPath);
+        try {
+          this.fileSystem.renameSync(tempPath, segmentPath);
+        } catch (error) {
+          // The export retries the same segment, and this failure is the path
+          // it retries from. Without the cleanup each attempt leaves a
+          // distinctly-named `.tmp` (the name carries a timestamp), so a
+          // segment that fails repeatedly fills the events directory with
+          // orphans that nothing reaps -- the manifest writer below has
+          // always cleaned up after itself; this one did not.
+          try {
+            this.fileSystem.unlinkSync(tempPath);
+          } catch {
+            // The rename error is the one that matters.
+          }
+          throw error;
+        }
       }
       consoleEmissions.add(pending.length, {
         sink: 'file',

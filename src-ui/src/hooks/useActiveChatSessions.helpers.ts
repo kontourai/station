@@ -3,11 +3,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { ChatMessage } from '../contexts/active-chats-state';
 import type { FileAttachment } from '../types';
 
-export type CompletionNoticeKind =
-  | 'tool-calls'
-  | 'length'
-  | 'unexpected'
-  | null;
+type CompletionNoticeKind = 'tool-calls' | 'length' | 'unexpected' | null;
 
 type ConversationMessage = Pick<ChatMessage, 'role' | 'content'> & {
   contentParts?: Array<{

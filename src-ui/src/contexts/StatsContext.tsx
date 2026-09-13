@@ -5,6 +5,15 @@ export function useStats(
   conversationId: string,
   _apiBase?: string,
   shouldFetch: boolean = true,
+  /**
+   * Poll cadence while the read is enabled. The server writes conversation
+   * stats from a turn-end hook, several awaits after the transcript the client
+   * counts — so a caller that refreshes on message count alone can read the
+   * previous turn's numbers and keep showing them. React Query owns the poll:
+   * it is inert while `enabled` is false, and `refetchIntervalInBackground`
+   * defaults to false, so a hidden tab is not polled either.
+   */
+  refetchIntervalMs?: number,
 ) {
   const {
     data: stats,
@@ -13,6 +22,9 @@ export function useStats(
     isLoading,
   } = useStatsQuery(agentSlug, conversationId, {
     enabled: shouldFetch && !!agentSlug,
+    ...(refetchIntervalMs === undefined
+      ? {}
+      : { refetchInterval: refetchIntervalMs }),
   });
 
   return {

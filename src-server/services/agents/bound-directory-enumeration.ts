@@ -142,7 +142,7 @@ function parseEntries(value: unknown, limits: BoundDirectoryEnumerationLimits) {
   });
 }
 
-export type BoundDirectoryEnumerationLimits = {
+type BoundDirectoryEnumerationLimits = {
   entries: number;
   fileBytes: number;
   totalBytes: number;

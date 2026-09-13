@@ -9,6 +9,7 @@ import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
+import { errorMessage } from '../../utils/error-message.js';
 import type {
   SessionStartBoundaryClaim,
   TaskDispatchBoundaryClaim,
@@ -26,7 +27,7 @@ import type {
  * It deliberately does not live in TaskDispatchInput: browser/API callers
  * cannot grant an unattended task more authority by naming monitor limits.
  */
-export type MonitorTaskDispatchIntent = Readonly<{
+type MonitorTaskDispatchIntent = Readonly<{
   /** The monitor's configured Task Agent; it must equal TaskDispatchInput.agentId. */
   agentId: string;
   /** Scheduler stop and the monitor wall deadline, already combined by its owner. */
@@ -41,7 +42,7 @@ export type MonitorTaskDispatchIntent = Readonly<{
   onSessionAbandoned?: (sessionId: string) => void;
 }>;
 
-export type DispatchIntent = TaskDispatchInput & {
+type DispatchIntent = TaskDispatchInput & {
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
   readonly monitor?: MonitorTaskDispatchIntent;
@@ -518,10 +519,6 @@ async function awaitDispatchPhase<T>(
       },
     );
   });
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function createTaskDispatcher(

@@ -346,7 +346,7 @@ for (const viewport of [
     // only after the server projection returns.
     await renamedBackup
       .getByText('Allow automatic recovery selection', { exact: true })
-      .click({ force: true });
+      .click();
     await expect(enrollmentCheckbox).toBeChecked();
 
     await page

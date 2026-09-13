@@ -1,12 +1,36 @@
 import type {
+  PluginInstallationReadiness,
+  PluginInstallationRevision,
+  PluginInstallResult,
   PluginManifest,
+  PluginPermissionPrompt,
   RejectedInstalledPluginRecord,
 } from '@kontourai/station-contracts/plugin';
-import { type ClientRequestOptions, getJson } from './http';
+import {
+  type ClientRequestOptions,
+  envelopeErrorMessage,
+  getJson,
+  mutateJson,
+} from './http';
 
 export type InstalledPluginRecord =
-  | (PluginManifest & { hasBundle?: boolean })
+  | (PluginManifest & {
+      hasBundle?: boolean;
+      retainedOnRemoval?: boolean;
+      installationReadiness?: PluginInstallationReadiness;
+    })
   | RejectedInstalledPluginRecord;
+
+function isPluginInstallationReadiness(
+  value: unknown,
+): value is PluginInstallationReadiness {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return row.state === 'pending'
+    ? row.recovery === 'review' && exactFields(row, ['state', 'recovery'])
+    : (row.state === 'ready' || row.state === 'unavailable') &&
+        exactFields(row, ['state']);
+}
 
 const REJECTION_CODES = new Set([
   'manifest-missing',
@@ -150,11 +174,132 @@ export async function listPlugins(
       }
       if ('status' in record) return true;
       return (
-        typeof record.name !== 'string' || typeof record.version !== 'string'
+        typeof record.name !== 'string' ||
+        typeof record.version !== 'string' ||
+        (record.installationReadiness !== undefined &&
+          !isPluginInstallationReadiness(record.installationReadiness)) ||
+        (record.retainedOnRemoval !== undefined &&
+          typeof record.retainedOnRemoval !== 'boolean')
       );
     })
   ) {
     throw new Error('Plugin collection response is malformed');
   }
   return result.plugins as InstalledPluginRecord[];
+}
+
+/**
+ * The operator's pre-install decision (station#4288), taken from the preview
+ * the operator actually read. `contentDigest` is what makes it a decision
+ * about BYTES rather than about a name: the server re-derives it from its own
+ * staged copy and refuses — before writing anything — if the two differ.
+ */
+export interface PluginInstallConsent {
+  grantRevision?: string;
+  permissions: string[];
+  contentDigest: string;
+  dependencies: string[];
+  dependencyApprovals?: Array<{
+    id: string;
+    grantRevision?: string;
+    permissions: string[];
+    contentDigest: string;
+    dependencies: string[];
+  }>;
+}
+
+export type PluginRecoveryConsent = Omit<
+  PluginInstallConsent,
+  'grantRevision' | 'dependencyApprovals'
+> & {
+  grantRevision: string;
+  dependencyApprovals?: Array<
+    NonNullable<PluginInstallConsent['dependencyApprovals']>[number] & {
+      grantRevision: string;
+    }
+  >;
+};
+export interface PluginRecoveryInput {
+  recoveryRevision: string;
+  consent: PluginRecoveryConsent;
+}
+export interface PluginRecoveryPreview {
+  manifest: PluginManifest;
+  expectedInstallation: PluginInstallationRevision;
+  recoveryRevision: string;
+  contentDigest: string;
+  grantRevision: string;
+  permissions: {
+    required: string[];
+    autoGranted: string[];
+    pendingConsent: PluginPermissionPrompt[];
+  };
+  dependencies: Array<{
+    id: string;
+    expectedInstallation: PluginInstallationRevision;
+    consent: {
+      contentDigest: string;
+      permissions: string[];
+      dependencies: string[];
+      grantRevision: string;
+    };
+  }>;
+  skip: string[];
+}
+export type PluginRecoveryResult = PluginInstallResult & {
+  /** Acceptance-time receipt, not a live activation subscription. */
+  configurationActivation?: { status: 'applied' | 'pending'; reason?: string };
+};
+
+export async function previewPluginRecovery(
+  apiBase: string,
+  name: string,
+  opts?: ClientRequestOptions,
+): Promise<PluginRecoveryPreview> {
+  const response = await getJson(
+    `${apiBase}/api/plugins/${encodeURIComponent(name)}/recovery-preview`,
+    opts,
+  );
+  const result: unknown = await response.json();
+  if (!response.ok)
+    throw new Error(
+      envelopeErrorMessage(result, 'Could not preview plugin recovery'),
+    );
+  if (!result || typeof result !== 'object' || Array.isArray(result))
+    throw new Error('Plugin recovery preview response is malformed');
+  if ('success' in result && result.success === false)
+    throw new Error(
+      envelopeErrorMessage(result, 'Could not preview plugin recovery'),
+    );
+  return result as PluginRecoveryPreview;
+}
+
+export async function recoverPlugin(
+  apiBase: string,
+  name: string,
+  input: PluginRecoveryInput,
+  opts?: ClientRequestOptions,
+): Promise<PluginRecoveryResult> {
+  const response = await mutateJson(
+    `${apiBase}/api/plugins/${encodeURIComponent(name)}/recover`,
+    'POST',
+    opts,
+    {
+      recoveryRevision: input.recoveryRevision,
+      consent: input.consent,
+    },
+  );
+  const result = (await response.json()) as PluginRecoveryResult;
+  // The server uses 202 + success:false for persisted work awaiting activation.
+  if (
+    !response.ok ||
+    (!result.success &&
+      !(
+        response.status === 202 &&
+        result.configurationActivation?.status === 'pending'
+      ))
+  ) {
+    throw new Error(envelopeErrorMessage(result, 'Could not recover plugin'));
+  }
+  return result;
 }

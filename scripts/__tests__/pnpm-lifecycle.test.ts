@@ -1,4 +1,5 @@
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -11,11 +12,13 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  check,
   pnpmInvocation,
   preflightInstalledLifecycle,
 } from '../dependency-lifecycle.mjs';
 import {
   evaluateLifecyclePolicy,
+  readLifecycleImporters,
   readPnpmLifecycleNodes,
 } from '../lib/dependency-lifecycle-policy.mjs';
 import { readPnpmLockfile, readPnpmWorkspace } from '../lib/pnpm-lockfile.mjs';
@@ -41,9 +44,13 @@ function fixture() {
   );
   temporary.push(root);
   const entry = {
+    // Select the root-hoisted entry by PATH, not by version: this fixture
+    // writes a lock whose only importer is `.`, so it must model the hoisted
+    // copy. Selecting by version picked whichever entry happened to be first
+    // once #1719 split esbuild across workspace importers, which handed the
+    // fixture an `<importer>/node_modules/...` path its own lock cannot name.
     ...policy.entries.find(
-      (entry: { name: string; version: string }) =>
-        entry.name === 'esbuild' && entry.version === '0.28.1',
+      (entry: { path: string }) => entry.path === 'node_modules/esbuild',
     ),
     lock: 'pnpm-lock.yaml',
   };
@@ -242,6 +249,113 @@ describe('pnpm lifecycle boundary', () => {
     ).toEqual([]);
     expect(preflightInstalledLifecycle(allowlist, { cwd: root })).toHaveLength(
       1,
+    );
+  });
+
+  // #1718: a script-bearing dependency that pnpm materializes under a
+  // workspace importer's own node_modules (root esbuild diverged from the
+  // example's exact pin) is inventoried as `<importer>/node_modules/<pkg>`;
+  // an allowlist entry naming that path must approve it end to end.
+  function importerFixture() {
+    const { root, entry, packageRoot } = fixture();
+    const importer = 'examples/viewer';
+    // The lock is one pnpm 11.25.0 actually wrote for a workspace with this
+    // importer (esbuild dependency), a dependency-less `packages/empty`, and
+    // a dependency-less root, so the cold-bootstrap importer reader and the
+    // parsed lock are exercised against the real writer's shape.
+    copyFileSync(
+      resolve(
+        import.meta.dirname,
+        'fixtures/pnpm-lock/workspace-importers.pnpm-lock.yaml',
+      ),
+      join(root, 'pnpm-lock.yaml'),
+    );
+    // That committed lock owns the esbuild identity for this fixture, so bind
+    // the entries and both installed manifests to what IT records rather than
+    // to whatever version the repository's own root entry currently carries.
+    const [key, meta] = Object.entries(
+      readPnpmLockfile(root).packages as Record<
+        string,
+        { resolution: { integrity: string } }
+      >,
+    ).find(([name]) => name.startsWith('esbuild@')) as [
+      string,
+      { resolution: { integrity: string } },
+    ];
+    const version = key.slice('esbuild@'.length);
+    const locked = {
+      ...entry,
+      version,
+      integrity: meta.resolution.integrity,
+      purl: `pkg:npm/esbuild@${version}`,
+    };
+    const nestedEntry = { ...locked, path: `${importer}/node_modules/esbuild` };
+    const allowlist = { schemaVersion: 1, entries: [locked, nestedEntry] };
+    writeFileSync(
+      join(root, 'config/dependency-lifecycle-allowlist.json'),
+      JSON.stringify(allowlist),
+    );
+    writeFileSync(
+      join(root, 'pnpm-workspace.yaml'),
+      `packages:\n  - ${importer}\nverifyDepsBeforeRun: false\nignoreScripts: true\n`,
+    );
+    const manifest = JSON.stringify({
+      name: locked.name,
+      version,
+      scripts: { postinstall: 'node install.js' },
+    });
+    writeFileSync(join(packageRoot, 'package.json'), manifest);
+    const nestedRoot = join(root, importer, 'node_modules/esbuild');
+    mkdirSync(nestedRoot, { recursive: true });
+    writeFileSync(join(nestedRoot, 'package.json'), manifest);
+    return { root, importer, allowlist };
+  }
+
+  it('approves an install-script package materialized under a workspace importer', () => {
+    const { root, importer, allowlist } = importerFixture();
+    const nodes = readPnpmLifecycleNodes(root);
+    expect(nodes.map((node) => node.path)).toEqual([
+      `${importer}/node_modules/esbuild`,
+      'node_modules/esbuild',
+    ]);
+    const importers = readLifecycleImporters(root);
+    expect(importers).toEqual(new Set(['.', importer, 'packages/empty']));
+    expect(evaluateLifecyclePolicy({ allowlist, nodes, importers })).toEqual(
+      [],
+    );
+    // Without the importer set the same entry is malformed: the acceptance
+    // above is earned by the lockfile, not by a looser path rule.
+    expect(evaluateLifecyclePolicy({ allowlist, nodes }).join('\n')).toContain(
+      'allowlist entries[1] has an invalid package path: expected node_modules/<package> or <workspace importer>/node_modules/<package>',
+    );
+    expect(
+      evaluateLifecyclePolicy({
+        allowlist,
+        nodes,
+        importers: new Set(['.', 'examples/other']),
+      }).join('\n'),
+    ).toContain('allowlist entries[1] has an invalid package path');
+    // The hook preflight resolves the nested package on disk and binds its
+    // exact reviewed hook, so the approval reaches execution.
+    expect(preflightInstalledLifecycle(allowlist, { cwd: root })).toHaveLength(
+      2,
+    );
+  });
+
+  it('threads the lockfile importers through both CLI check phases', () => {
+    const { root, allowlist } = importerFixture();
+    // Cold bootstrap (before any install) and the full post-install check
+    // both accept the importer-prefixed entry from the same lockfile keys.
+    expect(check({ cwd: root, bootstrap: true, allowlist })).toBe(allowlist);
+    expect(check({ cwd: root, allowlist })).toBe(allowlist);
+    // A prefix the lockfile does not list as an importer fails both phases.
+    const foreign = structuredClone(allowlist);
+    foreign.entries[1].path = 'examples/other/node_modules/esbuild';
+    expect(() =>
+      check({ cwd: root, bootstrap: true, allowlist: foreign }),
+    ).toThrow('invalid package path');
+    expect(() => check({ cwd: root, allowlist: foreign })).toThrow(
+      'invalid package path',
     );
   });
 

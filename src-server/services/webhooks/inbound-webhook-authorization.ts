@@ -16,7 +16,7 @@ import {
  * Five minutes absorbs ordinary CI/tunnel delivery delay while keeping a
  * captured request useful for only one short, named interval.
  */
-export const INBOUND_WEBHOOK_REPLAY_WINDOW_MS = 5 * 60_000;
+const INBOUND_WEBHOOK_REPLAY_WINDOW_MS = 5 * 60_000;
 
 /**
  * Review L1: everything needed for the checks that never touch the request
@@ -24,13 +24,13 @@ export const INBOUND_WEBHOOK_REPLAY_WINDOW_MS = 5 * 60_000;
  * format/freshness. The route can run these, and refuse, before it ever
  * reads a byte of the body.
  */
-export interface InboundWebhookHeaderAuthorizationRequest {
+interface InboundWebhookHeaderAuthorizationRequest {
   tokenId?: string;
   timestamp?: string;
   nonce?: string;
 }
 
-export type InboundWebhookHeaderAuthorizationResult =
+type InboundWebhookHeaderAuthorizationResult =
   | {
       allowed: true;
       token: InboundWebhookToken;
@@ -45,7 +45,7 @@ export type InboundWebhookHeaderAuthorizationResult =
     };
 
 /** Review L1: the remaining checks, which need the raw bytes only for the HMAC. */
-export interface InboundWebhookBodyAuthorizationRequest {
+interface InboundWebhookBodyAuthorizationRequest {
   token: InboundWebhookToken;
   timestamp: string;
   nonce: string;
@@ -55,7 +55,7 @@ export interface InboundWebhookBodyAuthorizationRequest {
   projectSlug?: string;
 }
 
-export type InboundWebhookAuthorizationResult =
+type InboundWebhookAuthorizationResult =
   | { allowed: true; token: InboundWebhookToken }
   | {
       allowed: false;
@@ -89,7 +89,7 @@ function canonicalSignatureInput(
 }
 
 /** The only signature comparison. It checks equal lengths before Node's constant-time primitive. */
-export function signatureMatches(
+function signatureMatches(
   secret: string,
   timestamp: string,
   nonce: string,

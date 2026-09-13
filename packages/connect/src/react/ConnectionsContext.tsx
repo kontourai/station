@@ -15,6 +15,7 @@ import type {
   ConnectionCredentialProvider,
   InjectedConnection,
   SavedConnection,
+  SavedStationEdit,
   StationHandshakeIdentity,
   StorageAdapter,
 } from '../core/types';
@@ -80,6 +81,7 @@ interface ConnectionsContextType {
   }) => Promise<string | undefined>;
   /** Explicit host action that promotes one shared Station to the CLI default. */
   makeDefaultProfile?: (connectionId: string) => Promise<void>;
+  updateSharedProfile?: (input: SavedStationEdit) => Promise<void>;
   setCredential: (id: string, credential: string) => void;
   markDeviceSession: (id: string) => void;
   removeCredential: (id: string) => void;
@@ -244,6 +246,7 @@ export function ConnectionsProvider({
   connectionStorageRevision,
   commitVerifiedPairing,
   makeDefaultProfile,
+  updateSharedProfile,
   prepareActiveConnection,
   nativeShell,
 }: {
@@ -270,6 +273,7 @@ export function ConnectionsProvider({
   commitVerifiedPairing?: ConnectionsContextType['commitVerifiedPairing'];
   /** Host-owned explicit shared-default mutation. Never called by selection. */
   makeDefaultProfile?: ConnectionsContextType['makeDefaultProfile'];
+  updateSharedProfile?: ConnectionsContextType['updateSharedProfile'];
   /**
    * Optional host-owned preparation for a transient active-connection choice.
    * It must not persist a CLI/shared default. The provider awaits it before
@@ -369,8 +373,27 @@ export function ConnectionsProvider({
       updateConnection: (id, changes) => resolvedStore.update(id, changes),
       reconcileHandshake: (id, handshake) =>
         resolvedStore.reconcileHandshake(id, handshake),
-      ...(commitVerifiedPairing ? { commitVerifiedPairing } : {}),
+      ...(commitVerifiedPairing
+        ? {
+            commitVerifiedPairing: async (input) => {
+              const id = await commitVerifiedPairing(input);
+              if (id) resolvedStore.nativeCredentialCommitted(id);
+              return id;
+            },
+          }
+        : {}),
       ...(makeDefaultProfile ? { makeDefaultProfile } : {}),
+      ...(updateSharedProfile
+        ? {
+            updateSharedProfile: async (input: SavedStationEdit) => {
+              try {
+                await updateSharedProfile(input);
+              } finally {
+                resolvedStore.reload();
+              }
+            },
+          }
+        : {}),
       setCredential: (id, credential) =>
         resolvedStore.setCredential(id, credential),
       markDeviceSession: (id) => resolvedStore.markDeviceSession(id),
@@ -476,6 +499,7 @@ export function ConnectionsProvider({
       nativeShell,
       commitVerifiedPairing,
       makeDefaultProfile,
+      updateSharedProfile,
       prepareActiveConnection,
       advanceActivation,
     ],

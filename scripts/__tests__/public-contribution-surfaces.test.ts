@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { BACKLOG_POLICY } from '../backlog-priority-policy.mjs';
 import {
@@ -27,6 +27,129 @@ function findingsWith(
   }) as unknown as typeof readFileSync;
   return collectPublicContributionSurfaceFindings({ root, exists, read });
 }
+
+describe('a module a workflow runs in-process must be a trust root', () => {
+  /**
+   * The registry check compares CODEOWNERS against TRUST_ROOTS and nothing
+   * else, so a privileged module missing from BOTH passes it (#1811 shipped
+   * exactly that). This derives the requirement from the workflow instead.
+   */
+  function findingsForWorkflow(source: string) {
+    const read = ((path: unknown, encoding: unknown) => {
+      const target = String(path);
+      if (target.endsWith('.github/workflows/synthetic.yml')) return source;
+      return readFileSync(target, encoding as BufferEncoding);
+    }) as unknown as typeof readFileSync;
+    const list = (() => ['synthetic.yml']) as unknown as typeof readdirSync;
+    return collectPublicContributionSurfaceFindings({
+      root: process.cwd(),
+      read,
+      list,
+    }).filter((finding) => finding.includes('synthetic.yml'));
+  }
+
+  const workflow = (module: string) => `name: Synthetic
+on: { workflow_dispatch: {} }
+jobs:
+  act:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@0000000000000000000000000000000000000000
+        with:
+          script: |
+            const mod = await import(\`\${process.env.GITHUB_WORKSPACE}/${module}\`);
+            await mod.run();
+`;
+
+  it('rejects an unregistered module imported into a github-script step', () => {
+    expect(
+      findingsForWorkflow(workflow('scripts/not-a-trust-root.mjs')),
+    ).toEqual([
+      ".github/workflows/synthetic.yml runs 'scripts/not-a-trust-root.mjs' inside a github-script step, so it must be an approved narrow trust root.",
+    ]);
+  });
+
+  it('accepts a registered one', () => {
+    expect(
+      findingsForWorkflow(workflow('scripts/main-health-comment-policy.mjs')),
+    ).toEqual([]);
+    expect(
+      findingsForWorkflow(workflow('scripts/issue-lifecycle-reducer.mjs')),
+    ).toEqual([]);
+  });
+
+  // The shapes a regex over the body alone missed silently. Each names a
+  // module the registry never approved; the gate must refuse rather than skip.
+  it.each([
+    [
+      'a template segment',
+      'const n = "x"; await import(`${process.env.GITHUB_WORKSPACE}/scripts/${n}.mjs`);',
+    ],
+    [
+      'string concatenation',
+      "await import(process.env.GITHUB_WORKSPACE + '/scripts/' + 'x' + '.mjs');",
+    ],
+    ['a repo-relative literal', "await import('./scripts/x.mjs');"],
+  ])('refuses %s, which it cannot resolve to an owner', (_label, body) => {
+    const findings = findingsForWorkflow(`name: Synthetic
+on: { workflow_dispatch: {} }
+jobs:
+  act:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@0000000000000000000000000000000000000000
+        with:
+          script: |
+            ${body}
+`);
+    // Exactly one refusal. A repo-relative literal also trips the path scan,
+    // which is correct but is not the property under test here.
+    expect(
+      findings.filter((finding) =>
+        finding.includes('this gate cannot resolve'),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('allows a bare package specifier, which loads no repository file', () => {
+    expect(
+      findingsForWorkflow(`name: Synthetic
+on: { workflow_dispatch: {} }
+jobs:
+  act:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@0000000000000000000000000000000000000000
+        with:
+          script: |
+            const { readFile } = await import('node:fs/promises');
+            await readFile('x');
+`),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ['a module outside scripts/', 'packages/evil/index.mjs'],
+    ['a non-.mjs extension', 'scripts/not-a-trust-root.js'],
+  ])('flags %s, which the path scan alone let through', (_label, module) => {
+    expect(findingsForWorkflow(workflow(module))).toEqual([
+      `.github/workflows/synthetic.yml runs '${module}' inside a github-script step, so it must be an approved narrow trust root.`,
+    ]);
+  });
+
+  it('does not police a plain node subprocess, which holds no token', () => {
+    expect(
+      findingsForWorkflow(`name: Synthetic
+on: { workflow_dispatch: {} }
+jobs:
+  act:
+    runs-on: ubuntu-latest
+    steps:
+      - run: node scripts/not-a-trust-root.mjs
+`),
+    ).toEqual([]);
+  });
+});
 
 describe('public contribution surfaces', () => {
   it('accepts the checked-in contract and protects only existing narrow roots', () => {

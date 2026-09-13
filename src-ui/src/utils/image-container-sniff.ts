@@ -1,4 +1,4 @@
-export type ImageContainer = 'bmff' | 'jpeg' | 'png' | 'webp' | 'other';
+type ImageContainer = 'bmff' | 'jpeg' | 'png' | 'webp' | 'other';
 
 /** Read only a tiny prefix before MIME/extension-based admission. */
 export async function sniffImageContainer(file: Blob): Promise<ImageContainer> {

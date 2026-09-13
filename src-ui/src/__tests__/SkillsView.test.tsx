@@ -67,13 +67,22 @@ vi.mock('@kontourai/station-sdk', () => ({
 const navigateMock = vi.fn();
 const showToastMock = vi.fn();
 
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({
     navigate: navigateMock,
     setDockState: setDockStateMock,
     setActiveChat: setActiveChatMock,
-  }),
-}));
+  });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [{ slug: 'station', name: 'Station', skills: [] }],
@@ -268,6 +277,7 @@ describe('SkillsView', () => {
         description: 'Installed locally',
         version: '1.0.0',
         source: 'local',
+        writable: true,
       },
     ];
     registrySkillsMock = [
@@ -311,10 +321,25 @@ describe('SkillsView', () => {
   // so a builder-only assertion would pass with neither on screen.
   test('every row says which root it was loaded from, banded by source', () => {
     localSkillsMock = [
-      { name: 'built-in-skill', source: 'flow-agents', origin: 'package' },
-      { name: 'machine-skill', source: 'local', origin: 'user' },
-      { name: 'workspace-skill', source: 'local', origin: 'project' },
-      { name: 'unrecorded-skill', source: 'local' },
+      {
+        name: 'built-in-skill',
+        source: 'flow-agents',
+        origin: 'package',
+        writable: false,
+      },
+      {
+        name: 'machine-skill',
+        source: 'local',
+        origin: 'user',
+        writable: true,
+      },
+      {
+        name: 'workspace-skill',
+        source: 'local',
+        origin: 'project',
+        writable: true,
+      },
+      { name: 'unrecorded-skill', source: 'local', writable: true },
     ];
 
     const { container } = render(<SkillsView />);
@@ -360,6 +385,7 @@ describe('SkillsView', () => {
         source: 'local',
         origin: 'user',
         installed: true,
+        writable: true,
       },
     ];
     editableSkillMock = { name: 'machine-skill', body: 'do the thing' };
@@ -373,9 +399,17 @@ describe('SkillsView', () => {
   // The Skills editor owns the whole authoring surface: the command switch,
   // the body's variables, usage counters, and test/export.
   describe('command skills', () => {
+    /**
+     * The server states a writability decision for every row it serves
+     * (#1655), so these fixtures state one. `writable: true` is the DEFAULT
+     * here because this block's subject is the command surface, and a caller
+     * that is about writability overrides it — the packaged-skill case below
+     * does. The field itself is the subject of its own describe block, where
+     * nothing is defaulted.
+     */
     function selectSkill(skill: any, detail?: any) {
       selectionState.selectedId = skill.name;
-      localSkillsMock = [skill];
+      localSkillsMock = [{ writable: true, ...skill }];
       editableSkillMock = detail ?? skill;
     }
 
@@ -510,7 +544,16 @@ describe('SkillsView', () => {
     // switch that fails on save.
     test('offers the install action, not a switch, on a read-only skill', () => {
       selectSkill(
-        { name: 'packaged-skill', source: 'package' },
+        {
+          name: 'packaged-skill',
+          source: 'package',
+          writable: false,
+          writeRefusal: {
+            reason: 'canonical-package',
+            detail:
+              "'packaged-skill' is served from the package at /pkgs/packaged-skill, which ships read-only",
+          },
+        },
         { name: 'packaged-skill', source: 'package', body: 'Read only' },
       );
 
@@ -546,8 +589,13 @@ describe('SkillsView', () => {
 
     test('the commands filter narrows the list to command skills', () => {
       localSkillsMock = [
-        { name: 'plain-skill', source: 'local' },
-        { name: 'release-check', source: 'local', command: { enabled: true } },
+        { name: 'plain-skill', source: 'local', writable: true },
+        {
+          name: 'release-check',
+          source: 'local',
+          writable: true,
+          command: { enabled: true },
+        },
       ];
 
       render(<SkillsView filter="commands" />);
@@ -565,7 +613,9 @@ describe('SkillsView', () => {
     // the CURRENT TAB's pre-query collection, not the whole (both-tabs)
     // skills list.
     test('a typed query on an empty Commands tab shows the tab-empty state, not FilteredEmpty', () => {
-      localSkillsMock = [{ name: 'plain-skill', source: 'local' }];
+      localSkillsMock = [
+        { name: 'plain-skill', source: 'local', writable: true },
+      ];
 
       render(<SkillsView filter="commands" />);
       fireEvent.change(screen.getByPlaceholderText('Search skills...'), {
@@ -607,8 +657,8 @@ describe('SkillsView', () => {
     // pane waits (skeleton), A's body is gone, and every body-bound action is
     // disabled.
     test("selecting a second skill with its detail pending clears the first skill's body and disables the actions", () => {
-      const skillA = { name: 'skill-a', source: 'local' };
-      const skillB = { name: 'skill-b', source: 'local' };
+      const skillA = { name: 'skill-a', source: 'local', writable: true };
+      const skillB = { name: 'skill-b', source: 'local', writable: true };
       selectionState.selectedId = 'skill-a';
       localSkillsMock = [skillA, skillB];
       editableSkillMock = { name: 'skill-a', source: 'local', body: 'A body' };
@@ -652,8 +702,8 @@ describe('SkillsView', () => {
     test('a failed detail read renders the error with retry and keeps actions disabled', () => {
       selectionState.selectedId = 'skill-b';
       localSkillsMock = [
-        { name: 'skill-a', source: 'local' },
-        { name: 'skill-b', source: 'local' },
+        { name: 'skill-a', source: 'local', writable: true },
+        { name: 'skill-b', source: 'local', writable: true },
       ];
       editableSkillMock = undefined;
       detailErrorMock = new Error('detail read failed');
@@ -670,6 +720,477 @@ describe('SkillsView', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       expect(refetchDetailMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /**
+   * #1655 — the editor offers Save from the SERVER's writability decision.
+   *
+   * Every fixture here is one where `writable` and the fields the view used to
+   * derive editability from DISAGREE, because a fixture where they coincide
+   * passes under both derivations and therefore proves nothing. The exact
+   * payload shapes are the ones
+   * `src-server/routes/agents/__tests__/skills.routes.writable.test.ts` asserts
+   * the route emits, so the two halves of the seam are pinned against the same
+   * bytes rather than against each other's imagination.
+   */
+  describe('the Save action follows the server writability decision', () => {
+    /**
+     * RESIDUAL, not a style choice: `any` here and on `selectSkill` above means
+     * no fixture in this file is typechecked against `SkillListing` or
+     * `SkillWriteRefusal`. Two untyped helpers, not one — the drift below is
+     * split across both.
+     *
+     * TWO STALE FIXTURES SURVIVE, and an earlier version of this note claimed
+     * the instances were fixed:
+     *   - 'an unresolvable name gets its own sentence, not an internal
+     *     diagnostic' (this describe): says the name "cannot locate a package
+     *     of its own to write"; the server says "cannot work out where it
+     *     would write this package".
+     *   - 'offers the install action, not a switch, on a read-only skill',
+     *     via `selectSkill`: interpolates BOTH the skill name and
+     *     `/pkgs/packaged-skill` into `detail` — precisely the shape
+     *     `LOCAL_BUT_NOT_WRITABLE`'s comment says the server stopped
+     *     producing, sitting in a fixture. The server's text is 'It is served
+     *     from a package that ships read-only.'
+     * Left as-is deliberately: correcting fixtures is a change with its own
+     * review, and this note exists so nobody reads silence as absence.
+     *
+     * On `packageDirectory`, which the contract REQUIRES (deliberately
+     * de-optionalised — see its docblock in `catalog.ts`): 5 of the 12
+     * `writeRefusal` fixtures IN THIS FILE omit it. The scope is the file, not
+     * this describe — one of the twelve sits outside it (and it is one of the
+     * five omissions), so a reader counting from inside this describe finds
+     * eleven. (Round 10 widened the scope with the number and left the word
+     * "here" behind; round 11 says which.)
+     *
+     * Only ONE of the five omissions is deliberate. The casts are not the same
+     * cast, and the difference decides it:
+     *   - 'a refusal without the package directory renders no path element'
+     *     casts the WHOLE `writeRefusal` object (`} as never`). The omission is
+     *     the point of the test, and the cast is what expresses it.
+     *   - the unknown-reason-code test and the inherited-key table cast only
+     *     the REASON (`reason: … as never`). That cast is deliberate about the
+     *     reason, which is orthogonal; their missing `packageDirectory` is
+     *     incidental and compiles today only because these helpers take `any`.
+     *     A type probe against the real contract reds that shape with
+     *     TS2741 — `Property 'packageDirectory' is missing` — while the
+     *     whole-object cast passes.
+     * So: 1 deliberate, 4 incidental. An earlier version of this note said
+     * 3 and 2, by treating "casts `as never`" as one category.
+     *
+     * Typing the helpers would therefore red FOUR of the five, not two, and
+     * would have to preserve exactly one deliberate cast. That is a larger
+     * change than "the fix" suggests, and nobody has measured what else it
+     * reds.
+     */
+    function selectRow(row: any, detail?: any) {
+      selectionState.selectedId = row.name;
+      localSkillsMock = [row];
+      editableSkillMock = detail ?? { ...row, body: 'Body' };
+    }
+
+    /** A registry install in the workspace root: `source: 'registry'`, writable. */
+    const REGISTRY_BUT_WRITABLE = {
+      name: 'bought-in',
+      description: 'From the registry',
+      source: 'registry',
+      origin: 'registry' as const,
+      writable: true,
+    };
+
+    /**
+     * A package in the plugins root whose own install record says
+     * `source: 'local'`. Station does not write that root, so `PUT` answers 409.
+     */
+    const LOCAL_BUT_NOT_WRITABLE = {
+      name: 'vendor-tool',
+      description: 'From a plugin root',
+      source: 'local',
+      writable: false,
+      writeRefusal: {
+        reason: 'outside-writable-root' as const,
+        // The shape the server actually emits: prose with no author-controlled
+        // text, and the path in its own field. A fixture that inlined the path
+        // would agree with a claim the server stopped making.
+        detail:
+          'Station does not write the directory this package resolves to.',
+        packageDirectory: '/station/plugins/vendor/skills/vendor-tool',
+      },
+    };
+
+    /** A plugin serves this one in place: no registry entry exists to install. */
+    const SERVED_IN_PLACE = {
+      name: 'vendor-prompt',
+      source: 'plugin',
+      writable: false,
+      writeRefusal: {
+        reason: 'served-in-place' as const,
+        detail:
+          'A plugin serves it in place, from a directory Station does not own.',
+        packageDirectory: '/station/plugins/vendor',
+      },
+    };
+
+    test("offers Save on a writable package the old derivation called read-only (source: 'registry')", () => {
+      selectRow(REGISTRY_BUT_WRITABLE);
+
+      render(<SkillsView />);
+
+      expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+      // Editable fields follow the same decision, not just the button.
+      expect(
+        (
+          screen.getByLabelText('Description', {
+            selector: 'input',
+          }) as HTMLInputElement
+        ).disabled,
+      ).toBe(false);
+      expect(screen.queryByText(/^Read-only:/)).toBeNull();
+    });
+
+    test("withholds Save on a package the server refuses, even though source is 'local'", () => {
+      selectRow(LOCAL_BUT_NOT_WRITABLE);
+
+      render(<SkillsView />);
+
+      // The whole defect: this used to render a Save the route answers 409 for.
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+      expect(
+        (
+          screen.getByLabelText('Description', {
+            selector: 'input',
+          }) as HTMLInputElement
+        ).disabled,
+      ).toBe(true);
+    });
+
+    test("states the SERVER's reason rather than an explanation composed here", () => {
+      selectRow(LOCAL_BUT_NOT_WRITABLE);
+
+      render(<SkillsView />);
+
+      // The server's own sentence, verbatim. Prose composed in the view would be
+      // a second derivation of a decision the view does not make.
+      expect(
+        screen.getByText(
+          new RegExp(
+            LOCAL_BUT_NOT_WRITABLE.writeRefusal.detail.replace(
+              /[.*+?^${}()|[\]\\]/g,
+              '\\$&',
+            ),
+          ),
+        ),
+      ).toBeTruthy();
+      // The remedy for THIS reason, chosen by the code rather than appended to
+      // every reason alike.
+      expect(
+        screen.getByText(/Install it into your workspace to author it here\./),
+      ).toBeTruthy();
+      // And not the generic sentence that used to stand in for every refusal.
+      expect(
+        screen.queryByText(/Browse Registry to discover or install skills/),
+      ).toBeNull();
+    });
+
+    test('a server that states no decision is read-only, not permissively writable', () => {
+      // Fail-closed: `writable` absent is not a grant. The old derivation read
+      // `source: 'local'` here and offered Save.
+      selectRow({ name: 'undecided', source: 'local' });
+
+      render(<SkillsView />);
+
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+      // With no reason to state, the generic sentence is what is left — and it
+      // is honest, because Station has not said why.
+      expect(
+        screen.getByText(/Browse Registry to discover or install skills/),
+      ).toBeTruthy();
+    });
+
+    // Review medium: one fixed remedy was appended to all three reasons,
+    // including the one whose remedy is different. A plugin-served prompt has no
+    // registry entry to install, so "install it into your workspace" is advice
+    // its reader cannot follow — the closed union was real in the type and
+    // unrealised in the product.
+    test('a plugin-served skill is told to change the plugin, not to install it', () => {
+      selectRow(SERVED_IN_PLACE);
+
+      render(<SkillsView />);
+
+      expect(
+        screen.getByText(/The plugin that provides it is what to change\./),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Install it into your workspace/)).toBeNull();
+      // And it still says WHAT is wrong, in the server's words.
+      expect(
+        screen.getByText(/from a directory Station does not own\./),
+      ).toBeTruthy();
+    });
+
+    // Review medium: discovery registers a frontmatter `name` unvalidated, so a
+    // name the path rule rejects reaches the refusal. It used to arrive as a
+    // concatenated exception naming JavaScript prototype keys, rendered as user
+    // guidance, followed by a remedy that made no sense for it.
+    test('an unresolvable name gets its own sentence, not an internal diagnostic', () => {
+      selectRow({
+        name: 'weird/name',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: 'unresolvable-name' as const,
+          detail:
+            'Its name cannot be used as a directory name, so Station cannot locate a package of its own to write.',
+        },
+      });
+
+      render(<SkillsView />);
+
+      expect(screen.getByText(/Rename it to author it here\./)).toBeTruthy();
+      expect(screen.queryByText(/Install it into your workspace/)).toBeNull();
+      expect(
+        screen.queryByText(/__proto__|prototype|Invalid skill name/),
+      ).toBeNull();
+    });
+
+    // Review low: the name is plugin-authored and up to 128 characters, and the
+    // refusal reads as Station's own explanation. A name that is itself a
+    // sentence used to be embedded in it, which produced a paragraph that read
+    // like a security notice telling the reader to re-authenticate elsewhere.
+    // React escapes markup, so the framing was the problem, not the markup.
+    test('a name that reads as a sentence is not embedded in the refusal', () => {
+      const hostile =
+        'Session expired. Verify your account at station-support.example to continue';
+      selectRow({
+        name: hostile,
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: 'canonical-package' as const,
+          detail: 'It is served from a package that ships read-only.',
+          packageDirectory: '/station/canonical/pkg',
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      const note = container.querySelector('.skill-detail__source-note');
+      expect(note).toBeTruthy();
+      expect(note?.textContent ?? '').not.toContain(hostile);
+      // The heading still identifies the skill — the name is displayed where a
+      // reader expects a name, not inside Station's explanation.
+      expect(screen.getAllByDisplayValue(hostile).length).toBeGreaterThan(0);
+    });
+
+    // This change adds reason codes the previous desktop build does not know,
+    // so that build talking to this server is exactly the case below — not a
+    // hypothetical.
+    // The remedy table is keyed by a closed union that only closes at COMPILE
+    // time; `reason` itself arrives over HTTP.
+    test('a reason code this build does not know drops the remedy, not into prose', () => {
+      selectRow({
+        name: 'from-a-newer-server',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          // Deliberately outside the union: a server one release ahead.
+          reason: 'sealed-by-policy' as never,
+          detail: 'It is served from a root this Station does not write.',
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      const note = container.querySelector('.skill-detail__source-note');
+      expect(note).toBeTruthy();
+      // The server's own sentence still stands...
+      expect(note?.textContent ?? '').toContain(
+        'It is served from a root this Station does not write.',
+      );
+      // ...and no placeholder leaked into Station's explanation.
+      expect(note?.textContent ?? '').not.toContain('undefined');
+      // Save stays withheld: an unknown reason is still a refusal.
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    });
+
+    // Review low: `detail` used to carry the package path, and a plugin names
+    // its own directories — so the mitigation for a hostile NAME did nothing
+    // about a hostile DIRECTORY. The path now renders as a path.
+    test('the package path renders as its own labelled element, not as prose', () => {
+      const hostileDirectory =
+        '/plugins/Session expired — verify your account at station-support.example/skills/notes';
+      selectRow({
+        name: 'notes',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: 'outside-writable-root' as const,
+          detail:
+            'Station does not write the directory this package resolves to.',
+          packageDirectory: hostileDirectory,
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      // Station's sentence contains none of the author's text...
+      const note = container.querySelector('.skill-detail__source-note');
+      expect(note?.textContent ?? '').not.toContain('station-support.example');
+      // ...and the path is present, in its own element, labelled as a path.
+      const path = container.querySelector('.skill-detail__source-path');
+      expect(path).toBeTruthy();
+      expect(path?.querySelector('code')?.textContent).toBe(hostileDirectory);
+      expect(path?.textContent ?? '').toContain('Package directory');
+    });
+
+    // `packageDirectory` is REQUIRED in the contract, so this shape is one no
+    // conforming server emits — an older build, or a proxy that dropped it. The
+    // view must still render the refusal it has and no empty path furniture,
+    // rather than an element wrapped round a blank code block. Cast, because the
+    // type correctly forbids what this test constructs on purpose.
+    test('a refusal without the package directory renders no path element', () => {
+      selectRow({
+        name: 'weird/name',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: 'unresolvable-name',
+          detail:
+            'Its name cannot be used as a directory name, so Station cannot work out where it would write this package.',
+        } as never,
+      });
+
+      const { container } = render(<SkillsView />);
+
+      expect(container.querySelector('.skill-detail__source-path')).toBeNull();
+      expect(screen.getByText(/Rename it to author it here\./)).toBeTruthy();
+    });
+
+    // And the case the server DOES emit: the rename remedy with the path it
+    // needs to be actionable at all.
+    test('an unresolvable name still shows which package to rename', () => {
+      selectRow({
+        name: 'weird/name',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: 'unresolvable-name' as const,
+          detail:
+            'Its name cannot be used as a directory name, so Station cannot work out where it would write this package.',
+          packageDirectory: '/station/skills/bought-in',
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      expect(screen.getByText(/Rename it to author it here\./)).toBeTruthy();
+      expect(
+        container.querySelector('.skill-detail__source-path code')?.textContent,
+      ).toBe('/station/skills/bought-in');
+    });
+
+    // Review low, same class as the `undefined` above: the remedy table is a
+    // plain object literal, so a reason code naming an INHERITED key used to
+    // render JavaScript source into Station's own explanation.
+    test.each([
+      ['constructor', /function Object|\[native code\]/],
+      ['toString', /function toString|\[native code\]/],
+      ['hasOwnProperty', /function hasOwnProperty|\[native code\]/],
+      ['__proto__', /\[object Object\]/],
+    ])('an inherited key (%s) renders no JavaScript', (reason, sourceShape) => {
+      selectRow({
+        name: 'from-a-newer-server',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: reason as never,
+          detail: 'It is served from a root this Station does not write.',
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      const text =
+        container.querySelector('.skill-detail__source-note')?.textContent ??
+        '';
+      expect(text).toContain(
+        'It is served from a root this Station does not write.',
+      );
+      expect(text).not.toMatch(sourceShape);
+      expect(text).not.toContain('undefined');
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    });
+
+    // The fifth reason code, added when the rule landed: the package is plainly
+    // the user's own and sits in a root Station writes, so the remedy is a
+    // rename of one side or the other — never "install it".
+    test('a directory-name mismatch is told to make the two names match', () => {
+      selectRow({
+        name: 'Bought-In',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: 'directory-name-mismatch' as const,
+          detail:
+            "The package discovery found for it sits in a directory whose name is not this skill's name.",
+          packageDirectory: '/station/skills/bought-in',
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      expect(
+        screen.getByText(/Rename the directory, or the skill's own name/),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Install it into your workspace/)).toBeNull();
+      // Not "Station does not own this": it plainly does. The view's own
+      // "Read-only." opener is its framing of every refusal and is correct here
+      // — the package cannot be saved as things stand — so only the ownership
+      // claim is excluded, not the whole phrase.
+      const note = container.querySelector('.skill-detail__source-note');
+      expect(note?.textContent ?? '').not.toMatch(
+        /does not own|ships read-only/i,
+      );
+      expect(
+        container.querySelector('.skill-detail__source-path code')?.textContent,
+      ).toBe('/station/skills/bought-in');
+    });
+
+    // Review H1: this used to be published as `outside-writable-root`, which
+    // told the reader the package sat somewhere Station does not write and to
+    // install it into their workspace. Both false for a broken path inside a
+    // root Station DOES write — installing repairs no link.
+    test('an unreadable path is not told to install itself into the workspace', () => {
+      selectRow({
+        name: 'ghost',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: 'containment-unreadable' as const,
+          detail:
+            'Where a write to it would land could not be determined, so Station will not write it.',
+          packageDirectory: '/station/skills/ghost',
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      expect(screen.getByText(/Check the path it sits at/)).toBeTruthy();
+      expect(screen.queryByText(/Install it into your workspace/)).toBeNull();
+      const note = container.querySelector('.skill-detail__source-note');
+      expect(note?.textContent ?? '').not.toMatch(/skills root|does not own/);
+    });
+
+    test('Create is still offered while authoring a new skill', () => {
+      // `isCreating` short-circuits the decision on purpose: nothing is
+      // discovered under a name that does not exist yet, so there is no package
+      // to refuse.
+      selectionState.selectedId = 'new';
+      localSkillsMock = [LOCAL_BUT_NOT_WRITABLE];
+
+      render(<SkillsView />);
+
+      expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
     });
   });
 });

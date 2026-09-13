@@ -20,6 +20,9 @@ import {
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger({ name: 'json-store' });
 
 export type JsonStoreCorruptionMode = 'default-value' | 'throw';
 
@@ -122,9 +125,9 @@ export class JsonFileStore<T> {
       const previousPath = `${this.filePath}.previous`;
       if (this.options.durableAtomicWrite && existsSync(previousPath)) {
         try {
-          console.error(
-            'JSON store primary is missing; recovering the prior complete value:',
-            this.filePath,
+          logger.error(
+            'JSON store primary is missing; recovering the prior complete value',
+            { filePath: this.filePath },
           );
           return JSON.parse(this.readText(previousPath));
         } catch (e) {
@@ -143,10 +146,9 @@ export class JsonFileStore<T> {
       if (this.options.onCorruption === 'throw') {
         throw new JsonFileStoreCorruptionError(this.filePath, e);
       }
-      console.debug(
-        'Failed to read JSON store file, using the configured default value:',
-        this.filePath,
-        e,
+      logger.debug(
+        'Failed to read JSON store file, using the configured default value',
+        { filePath: this.filePath, error: e },
       );
       return structuredClone(this.defaultValue);
     }

@@ -91,7 +91,7 @@ test('hides empty activity and renders published human/agent work with safe acti
 test('says "just you" for one client publishing nothing, in one line', () => {
   mocks.data = { connectedClients: 1, participants: [] };
   const { container } = render(<LiveCollaboratorsSection />);
-  expect(screen.getByText('Just you on this host')).toBeTruthy();
+  expect(screen.getByText('Only you are connected')).toBeTruthy();
   // The line it replaces is gone, not merely restyled: two renderings of one
   // pair of counts is how a surface starts disagreeing with itself.
   expect(screen.queryByText(/activity not published/)).toBeNull();
@@ -119,7 +119,7 @@ test('the details block says what connectedClients actually counts', () => {
 test('the sentence is derived from both counts, not from "no participants"', () => {
   // Only the exact pair (one client, nothing published) is "just you". Two
   // clients with nothing published is a different fact and must not claim it.
-  expect(liveCollaboratorSummary(1, 0)).toBe('Just you on this host');
+  expect(liveCollaboratorSummary(1, 0)).toBe('Only you are connected');
   expect(liveCollaboratorSummary(2, 0)).toBe(
     '2 clients, 0 publishing live work',
   );

@@ -7,6 +7,7 @@ import type {
   KnowledgeTreeNode,
 } from '@kontourai/station-contracts/knowledge';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
+import { createLogger } from '../../utils/logger.js';
 import type { ProjectWorkspacePathOptions } from '../projects/project-workspace-path.js';
 import {
   applyKnowledgeScanPatterns,
@@ -17,6 +18,8 @@ import {
   resolveKnowledgeScanPath,
 } from './knowledge-scan-utils.js';
 import { readKnowledgeDocuments } from './knowledge-storage.js';
+
+const logger = createLogger({ name: 'knowledge-filesystem' });
 
 export async function listKnowledgeDocuments({
   projectSlug,
@@ -196,7 +199,7 @@ export async function scanKnowledgeDirectories({
       );
       indexed += 1;
     } catch (error) {
-      console.debug('Failed to index file during directory scan:', error);
+      logger.debug('Failed to index file during directory scan', { error });
       skipped += 1;
     }
   }

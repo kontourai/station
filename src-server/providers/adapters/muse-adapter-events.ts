@@ -12,7 +12,7 @@
 
 import type { MuseProviderMode } from './muse-adapter-types.js';
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
@@ -37,7 +37,7 @@ export function extractStringField(
  * record_type, payload{kind, ...}}`; only `record_type` and the payload are
  * load-bearing for translation, so the rest is deliberately not modeled.
  */
-export interface MuseRecord {
+interface MuseRecord {
   recordType: string | null;
   payloadKind: string;
   payload: Record<string, unknown>;
@@ -63,7 +63,7 @@ export function parseMuseLine(line: string): MuseRecord | null {
   };
 }
 
-export type MuseTurnEffect =
+type MuseTurnEffect =
   | { kind: 'text-delta'; delta: string }
   | {
       kind: 'terminal';
@@ -241,6 +241,7 @@ export function splitMuseLines(
  */
 export function buildMuseExecArgs(input: {
   sessionId: string;
+  imagePaths?: string[];
   prompt: string;
   modelId?: string;
   cwd?: string;
@@ -276,6 +277,7 @@ export function buildMuseExecArgs(input: {
   if (input.cwd) {
     args.push('--workspace', input.cwd);
   }
+  for (const path of input.imagePaths ?? []) args.push('--image', path);
   args.push('--', input.prompt);
   return args;
 }

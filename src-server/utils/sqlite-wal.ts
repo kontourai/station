@@ -45,24 +45,23 @@ import { fixtureSqliteSynchronousOffForTest } from './sqlite-fixture-durability.
  */
 
 /** Just enough of `node:sqlite`'s DatabaseSync for this pragma. */
-export interface SqliteJournalModeDatabase {
+interface SqliteJournalModeDatabase {
   exec(sql: string): unknown;
 }
 
 /** …plus the read-back the shared wrapper reports. */
-export interface SqliteJournalModeReadableDatabase
-  extends SqliteJournalModeDatabase {
+interface SqliteJournalModeReadableDatabase extends SqliteJournalModeDatabase {
   prepare(sql: string): { get(): unknown };
 }
 
-export interface EnableWalJournalModeOptions {
+interface EnableWalJournalModeOptions {
   /** Total attempts, including the first. */
   readonly attempts?: number;
   /** Backoff before attempt N+1; doubles each time, capped at 128ms. */
   readonly initialBackoffMs?: number;
 }
 
-export interface WalJournalModeResult {
+interface WalJournalModeResult {
   /** The pragma ran without a contention refusal. */
   readonly enabled: boolean;
   /** How many attempts were made (1 when it succeeded immediately). */
@@ -173,8 +172,7 @@ function observedJournalMode(db: SqliteJournalModeDatabase): string | null {
   }
 }
 
-export interface ApplyWalJournalModeOptions
-  extends EnableWalJournalModeOptions {
+interface ApplyWalJournalModeOptions extends EnableWalJournalModeOptions {
   /** Names the database in the log line — `'scheduler ledger'`, etc. */
   readonly store: string;
   /**

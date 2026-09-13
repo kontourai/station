@@ -1,5 +1,5 @@
+import { resetLocalSelfProvisionLatchForTests } from '@kontourai/station-connect/local-self-provision';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { resetLocalSelfProvisionLatchForTests } from '../../../../../packages/connect/src/core/localSelfProvision';
 
 import { bootstrapBundledLocalProfile } from '../bundledLocalProfileBootstrap';
 

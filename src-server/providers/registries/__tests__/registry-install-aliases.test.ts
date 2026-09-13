@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -140,5 +146,24 @@ describe('registry install alias supply-chain records', () => {
     expect(() => readRegistryInstallAliases(home)).toThrow(
       RegistryInstallAliasFormatError,
     );
+  });
+
+  // `config/registry-installs.json` is two-space JSON WITH a trailing newline.
+  // Pinned so that changing the publication mechanism has to preserve the
+  // format, not merely keep the document parseable.
+  test('publishes two-space JSON with a trailing newline', () => {
+    const home = root();
+    const aliases = {
+      review: {
+        pluginName: 'review-plugin',
+        registryKey: 'https://registry.example.test/manifest.json',
+      },
+    };
+
+    writeRegistryInstallAliases(home, aliases);
+
+    expect(
+      readFileSync(join(home, 'config', 'registry-installs.json'), 'utf8'),
+    ).toBe(`${JSON.stringify(aliases, null, 2)}\n`);
   });
 });

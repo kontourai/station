@@ -61,7 +61,7 @@ export interface CodexToolServerSkip {
   detail?: string;
 }
 
-export interface ResolveCodexMcpServersResult {
+interface ResolveCodexMcpServersResult {
   /** Flattened `-c` flag pairs, ready to append to the `codex app-server`
    * spawn argv (each config override is TWO array entries: `'-c'` then the
    * `key=value` string — spawn's array-argv form, never a shell string, so

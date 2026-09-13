@@ -1067,7 +1067,7 @@ describe('TaskGraphService', () => {
     expect(restarted.readTaskAnswerNarrativePin(task.id, first.targetId)).toBe(
       3,
     );
-    expect(restarted.readTaskGraph(task.id)).resolves.toMatchObject({
+    await expect(restarted.readTaskGraph(task.id)).resolves.toMatchObject({
       links: [first],
     });
   });

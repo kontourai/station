@@ -20,6 +20,7 @@ interface MonitoringLogStreamProps {
    * and must not be drawn over a request that never succeeded.
    */
   readError: unknown;
+  historyTruncated?: boolean;
   onRetryRead: () => void;
   newEventIds: Set<string>;
   selectedTraceId: string | null;
@@ -40,6 +41,7 @@ export function MonitoringLogStream({
   filteredEvents,
   isLoading,
   readError,
+  historyTruncated,
   onRetryRead,
   newEventIds,
   selectedTraceId,
@@ -54,9 +56,9 @@ export function MonitoringLogStream({
   onCopyResult,
   onScrollToBottom,
 }: MonitoringLogStreamProps) {
-  const eventRows = filteredEvents.map((event, idx) => (
+  const eventRows = filteredEvents.map((event) => (
     <EventEntry
-      key={idx}
+      key={monitoringEventIdentity(event)}
       event={event}
       isNew={newEventIds.has(monitoringEventIdentity(event))}
       selectedTraceId={selectedTraceId}
@@ -71,6 +73,12 @@ export function MonitoringLogStream({
 
   return (
     <div className="log-stream" ref={logStreamRef}>
+      {historyTruncated && (
+        <p role="status">
+          Showing the latest 1,000 events. Search filters these loaded events;
+          narrow the time range to find older activity.
+        </p>
+      )}
       {isLoading && events.length === 0 ? (
         <div
           className="monitoring-log-state"
@@ -111,8 +119,14 @@ export function MonitoringLogStream({
         <Empty
           variant="compact"
           className="monitoring-log-state"
-          label="No events yet"
-          description="Waiting for agent activity..."
+          label={
+            events.length > 0 ? 'No matching loaded events' : 'No events yet'
+          }
+          description={
+            events.length > 0
+              ? 'Change the filters or time range.'
+              : 'Waiting for agent activity...'
+          }
         />
       ) : (
         eventRows

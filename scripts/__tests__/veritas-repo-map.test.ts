@@ -373,3 +373,57 @@ describe('veritas repo map (1.5)', () => {
     expect(result.unmatchedFiles).toEqual([]);
   });
 });
+
+/**
+ * Zone 1 byte stability.
+ *
+ * `policy-changes-require-attestation` binds HASHES of the protected standards,
+ * so a change that alters their bytes invalidates the attestation even when it
+ * alters no policy. #1787 did exactly that: a formatter sweep expanded
+ * single-line JSON arrays in `.veritas/repo-standards/`, `veritas.claims.json`
+ * and `.veritas/init-plans/explore.json`. All three remained semantically
+ * identical — I verified by parsing both revisions and comparing — and
+ * `veritas readiness` still went red on `main` for every contributor and every
+ * agent, while `CLAUDE.md` instructs all of them to clear FAIL lines before
+ * finishing (#1888).
+ *
+ * The formatter is the mechanism, so the formatter is where this is closed:
+ * Zone 1 is excluded in `biome.json`, and this test holds that exclusion in
+ * place. It is deliberately a property of the config rather than a reformat-
+ * and-diff check, because running the formatter to prove it would need the
+ * exclusion not to exist.
+ */
+describe('Veritas protected standards are not formatter-owned', () => {
+  const biome = readJson('biome.json');
+  const includes: string[] = biome?.files?.includes ?? [];
+
+  it.each(['!!.veritas/**', '!!veritas.claims.json'])(
+    'excludes %s from the formatter',
+    (pattern) => {
+      expect(includes).toContain(pattern);
+    },
+  );
+
+  it('keeps every attestation-bound path behind an exclusion', () => {
+    // The Zone 1 list from .veritas/GOVERNANCE.md. AGENTS.md and CLAUDE.md are
+    // omitted deliberately: they are Markdown the formatter does not rewrite in
+    // a hash-breaking way, and excluding them would stop lint:check reading
+    // them at all.
+    const zoneOne = [
+      '.veritas/repo-map.json',
+      '.veritas/repo-standards/default.repo-standards.json',
+      'veritas.claims.json',
+    ];
+    for (const path of zoneOne) {
+      expect(existsSync(resolve(rootDir, path))).toBe(true);
+      const covered = includes.some(
+        (pattern) =>
+          pattern === `!!${path}` ||
+          (pattern.startsWith('!!') &&
+            pattern.endsWith('/**') &&
+            path.startsWith(pattern.slice(2, -3))),
+      );
+      expect(covered, `${path} is not excluded from the formatter`).toBe(true);
+    }
+  });
+});

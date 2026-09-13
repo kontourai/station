@@ -19,6 +19,7 @@ import {
 import { cpus, platform, release, tmpdir, totalmem } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { installNodeHttpCompatibility } from '../packages/shared/src/node-http-compat.mjs';
 import {
   FOREGROUND_WORK_ACTIONS,
   FOREGROUND_WORK_COLLECTOR_UNSUPPORTED,
@@ -35,6 +36,8 @@ import {
   bridgeFixtureReasons,
   deriveBridgeFixtureEvidence,
 } from './lib/interactive-workspace-production-bridge.mjs';
+
+installNodeHttpCompatibility();
 
 export const PERFORMANCE_REPORT_VERSION = 2;
 export const REFERENCE_ENVIRONMENT_UNAVAILABLE =
@@ -662,11 +665,19 @@ const PERFORMANCE_RECEIPT_PRODUCT_MARK_COLLABORATION_ACTIONS = [
   'JOIN',
   'ANNOUNCE',
 ];
+// Closed failure labels do not turn a rejected/incomplete sample into acceptance.
 const PERFORMANCE_RECEIPT_PRODUCT_MARK_LIVE_OUTCOMES = [
   'DEPARTED',
   'JOINED',
   'UPDATED',
   'REFRESHED',
+  'CLEARED',
+  'PAUSED',
+  'INVALID',
+  'FORBIDDEN',
+  'IDENTITY_CHANGED',
+  'CAPACITY_EXCEEDED',
+  'RATE_LIMITED',
   'DEGRADED',
   'REFUSED',
   'UNAVAILABLE',

@@ -10,6 +10,7 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { navigationStore } from '../../../contexts/navigation-store';
 
 vi.mock('@kontourai/station-sdk', () => ({
   useCreateKnowledgeRootMutation: () => ({
@@ -41,7 +42,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   useProjectQuery: () => ({ data: { workingDirectory: null } }),
 }));
 
-const navigateMock = vi.fn();
+const navigateMock = vi.fn(
+  (...args: Parameters<typeof navigationStore.navigate>) =>
+    navigationStore.navigate(...args),
+);
 vi.mock('../../../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: navigateMock }),
 }));
@@ -49,20 +53,12 @@ vi.mock('../../../contexts/NavigationContext', () => ({
 import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
 import { KnowledgeSection } from '../KnowledgeSection';
 
-// Pass-through by default (the "not dirty" case) — the guard-intercept
-// coverage below renders `GuardedHarness` instead of a bare pass-through.
-const passthroughGuard = (callback: () => void) => callback();
-
-/**
- * `ProjectSettingsView.tsx`'s real shape: `useUnsavedGuard(isDirty)`'s
- * `guard` passed straight into `KnowledgeSection` — archive#settings-revamp
- * 1.
- */
+/** The parent registers its dirty state with the real navigation store. */
 function GuardedHarness({ dirty }: { dirty: boolean }) {
-  const { guard, DiscardModal } = useUnsavedGuard(dirty);
+  const { DiscardModal } = useUnsavedGuard(dirty);
   return (
     <>
-      <KnowledgeSection slug="demo-project" guard={guard} />
+      <KnowledgeSection slug="demo-project" />
       <DiscardModal />
     </>
   );
@@ -70,16 +66,14 @@ function GuardedHarness({ dirty }: { dirty: boolean }) {
 
 describe('project-settings/KnowledgeSection (#242 shell port)', () => {
   it('renders the no-working-directory state through the canonical Empty component, not a bespoke __empty paragraph', () => {
-    const { container } = render(
-      <KnowledgeSection slug="demo-project" guard={passthroughGuard} />,
-    );
+    const { container } = render(<KnowledgeSection slug="demo-project" />);
 
     expect(screen.getByText('No working directory configured.')).toBeTruthy();
     expect(container.querySelector('.knowledge-section__empty')).toBeNull();
   });
 
   it('leaves the pre-existing K5 KnowledgeStoreSubsection Empty usage untouched', () => {
-    render(<KnowledgeSection slug="demo-project" guard={passthroughGuard} />);
+    render(<KnowledgeSection slug="demo-project" />);
 
     expect(
       screen.getByText("This project doesn't have its own knowledge store yet"),
@@ -92,6 +86,7 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
   // archive#settings-revamp 1.
   describe('unsaved-guard wiring for the cross-links', () => {
     it('"Open Settings → My knowledge store" navigates with the section param when the page is not dirty', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty={false} />);
 
@@ -105,10 +100,12 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
         view: 'knowledge',
         highlight: 'personal-knowledge-store',
       });
+      expect(window.location.pathname).toBe('/settings');
       expect(screen.queryByText('Unsaved Changes')).toBeNull();
     });
 
     it('"Open Knowledge infrastructure" navigates to /connections/knowledge when the page is not dirty', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty={false} />);
 
@@ -117,10 +114,19 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
       );
 
       expect(navigateMock).toHaveBeenCalledWith('/connections/knowledge');
+      expect(window.location.pathname).toBe('/connections/knowledge');
       expect(screen.queryByText('Unsaved Changes')).toBeNull();
     });
 
+    // The interception is what this section wires; the resume is not. That the
+    // Discard button settles the deferred navigation to its target is
+    // `useUnsavedGuard`'s own contract, driven end to end in
+    // `src-ui/src/__tests__/useUnsavedGuard.test.tsx` -- 'a real Discard dialog
+    // closes without falsely superseding its own prepared navigation', which
+    // clicks a real Discard and asserts the browser reached the target path.
+    // The route this link carries is pinned by the clean-page case above.
     it('a dirty page intercepts the My-knowledge-store link with the discard-confirmation modal instead of silently navigating away', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty />);
 
@@ -130,11 +136,12 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
         }),
       );
 
-      expect(navigateMock).not.toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/guard-origin');
       expect(screen.getByText('Unsaved Changes')).toBeTruthy();
     });
 
     it('a dirty page intercepts the Knowledge-infrastructure link with the discard-confirmation modal instead of silently navigating away', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty />);
 
@@ -142,21 +149,23 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
         screen.getByRole('button', { name: 'Open Knowledge infrastructure' }),
       );
 
-      expect(navigateMock).not.toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/guard-origin');
       expect(screen.getByText('Unsaved Changes')).toBeTruthy();
     });
 
     it('confirming discard from a dirty page completes the deferred navigation', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty />);
 
       fireEvent.click(
         screen.getByRole('button', { name: 'Open Knowledge infrastructure' }),
       );
-      expect(navigateMock).not.toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/guard-origin');
 
       fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
       expect(navigateMock).toHaveBeenCalledWith('/connections/knowledge');
+      expect(window.location.pathname).toBe('/connections/knowledge');
     });
   });
 });

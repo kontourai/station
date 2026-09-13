@@ -2,7 +2,7 @@ import type { ServerLogReader } from '../../services/infra/server-log-reader.js'
 import { bootRecordsWritten } from '../../telemetry/metrics.js';
 import type { BuildProvenanceSnapshot } from './build-provenance.js';
 
-export const MAX_BOOT_HISTORY = 50;
+const MAX_BOOT_HISTORY = 50;
 const BOOT_RECORD_MESSAGE = 'Station boot record';
 const DERIVED_BOOT_CLUSTER_MS = 120_000;
 const LEGACY_BOOT_MARKERS = new Set([

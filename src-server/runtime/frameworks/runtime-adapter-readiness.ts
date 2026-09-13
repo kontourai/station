@@ -9,13 +9,13 @@ import {
 } from '../../providers/adapter-shape.js';
 import { adapterReadiness } from '../../telemetry/metrics.js';
 
-export type RuntimeAdapterReadinessState =
+type RuntimeAdapterReadinessState =
   | 'configured'
   | 'runtime_connection_missing'
   | 'unavailable_prerequisites'
   | 'unusable_for_chat';
 
-export interface RuntimeAdapterReadiness {
+interface RuntimeAdapterReadiness {
   state: RuntimeAdapterReadinessState;
   ready: boolean;
   enabled: boolean;

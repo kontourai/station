@@ -23,6 +23,31 @@ const facts = () => ({
 const lease = { isCurrent: () => true };
 
 describe('native output turn grants', () => {
+  test('trusted workspace capture is independent of optional output grant availability and never substitutes a missing root', () => {
+    const authority = createNativeOutputGrantAuthority();
+    const unavailable = { ...authority, issue: () => null };
+    const companion = createNativeOutputRelayCompanion({
+      authority: unavailable,
+      facts: { ...facts(), workspaceRoot: '/owned/session-worktree' },
+      sourceLease: lease,
+      workspaceRequired: true,
+    })!;
+    expect(companion.issueForRuntimeConfiguration({}, () => true)).toBeNull();
+    const workspace = companion.readExecutionWorkspace!('session-a')!;
+    expect(workspace.workspaceRoot).toBe('/owned/session-worktree');
+    expect(() => companion.readExecutionWorkspace!('other-session')).toThrow();
+    workspace.close();
+    expect(() => workspace.workspaceRoot).toThrow();
+    const missing = createNativeOutputRelayCompanion({
+      authority,
+      facts: facts(),
+      sourceLease: lease,
+      workspaceRequired: true,
+    })!;
+    expect(() => missing.readExecutionWorkspace!('session-a')).toThrow();
+    authority.dispose();
+  });
+
   test('accepts one real native call and keeps it commit-eligible after stream issuance closes', () => {
     const authority = createNativeOutputGrantAuthority();
     const grant = authority.issue(facts(), lease)!;

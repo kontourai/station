@@ -29,7 +29,7 @@ export interface SessionTurnBoundaryRecord {
 /** Unresolved provider acceptances are protected facts and are never pruned. */
 export const SESSION_TURN_ACCEPTED_CAPACITY = 64;
 
-export type SessionTurnBoundaryTransition =
+type SessionTurnBoundaryTransition =
   | { kind: 'applied' }
   | { kind: 'busy' }
   | { kind: 'ambiguous' }

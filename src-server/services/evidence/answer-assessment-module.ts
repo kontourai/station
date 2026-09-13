@@ -50,10 +50,8 @@ import { readBoundedRegularFile } from './task-answer-support-module.js';
 
 export {
   qualifiesStationAnswerContent,
-  STATION_ANSWER_CONTENT_PROFILE,
   stationAnswerAssessmentClaimProfile,
   stationAnswerAssessmentProfileTarget,
-  stationAnswerAssessmentTarget,
 } from './station-answer-assessment-profile.js';
 
 const MAX_BUNDLE_BYTES = 1_048_576;
@@ -75,7 +73,7 @@ export class AnswerAssessmentNotFoundError extends Error {}
  * separator ambiguity and keeps message IDs out of arbitrary bundle paths.
  */
 
-export type ProducerAssessmentInput = StationAnswerAssessmentPublishInput;
+type ProducerAssessmentInput = StationAnswerAssessmentPublishInput;
 
 type Record = {
   schemaVersion: 1;
@@ -97,7 +95,7 @@ type Record = {
 };
 type Index = { schemaVersion: 1; records: Record[] };
 
-export type AnswerAssessmentUpdate = StationAnswerAssessmentReceipt;
+type AnswerAssessmentUpdate = StationAnswerAssessmentReceipt;
 
 /** Private adapter input for Surface's reviewed-source Basis builder. */
 export type ReviewedSourceBasisFacts = {

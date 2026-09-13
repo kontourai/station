@@ -2,7 +2,6 @@ import { PathAutocomplete } from '../../components/PathAutocomplete';
 import type { KnowledgeNamespace } from './types';
 
 interface ProjectKnowledgeNamespaceConfigProps {
-  apiBase: string;
   namespace: KnowledgeNamespace & {
     storageDir?: string;
     writeFiles?: boolean;
@@ -16,7 +15,6 @@ interface ProjectKnowledgeNamespaceConfigProps {
 }
 
 export function ProjectKnowledgeNamespaceConfig({
-  apiBase,
   namespace,
   storageDirDraft,
   onStorageDirChange,
@@ -28,7 +26,6 @@ export function ProjectKnowledgeNamespaceConfig({
     <div className="project-page__ns-config">
       <span className="project-page__ns-config-label">Storage:</span>
       <PathAutocomplete
-        apiBase={apiBase}
         value={storageDirDraft}
         onChange={onStorageDirChange}
         onBlur={onStorageDirBlur}

@@ -4,6 +4,7 @@
 
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
+import { navigationStore } from '../contexts/navigation-store';
 
 let runtimeConnectionsMock: Array<{ id: string; name: string }> = [];
 
@@ -47,7 +48,10 @@ vi.mock('../utils/execution', () => ({
       : [],
 }));
 
-const navigateMock = vi.fn();
+const navigateMock = vi.fn(
+  (...args: Parameters<typeof navigationStore.navigate>) =>
+    navigationStore.navigate(...args),
+);
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: navigateMock }),
 }));
@@ -65,26 +69,17 @@ const baseProps = {
   onRegionChange: vi.fn(),
   // Pass-through by default (the "not dirty" case) — tests below that need
   // the intercepting behavior render `GuardedHarness` instead.
-  guard: (callback: () => void) => callback(),
 };
 
-/**
- * `SettingsView.tsx`'s real shape: `useUnsavedGuard(dirty)`'s `guard` passed
- * straight into `AgentDefaultsSection`, with `<DiscardModal />` rendered
- * alongside it — archive#settings-revamp 1's
- * repro ("dirty the Defaults model field, click 'Open Agents' → unsaved edit
- * silently discarded") reproduced and proven fixed against the REAL hook,
- * not a mock of it.
- */
+/** The parent registers its dirty state with the real navigation store. */
 function GuardedHarness({ dirty }: { dirty: boolean }) {
-  const { guard, DiscardModal } = useUnsavedGuard(dirty);
+  const { DiscardModal } = useUnsavedGuard(dirty);
   return (
     <>
       <AgentDefaultsSection
         {...baseProps}
         config={{ defaultModel: '' }}
         showRegion
-        guard={guard}
       />
       <DiscardModal />
     </>
@@ -168,6 +163,7 @@ describe('AgentDefaultsSection', () => {
   // archive#settings-revamp 1.
   describe('unsaved-guard wiring for the "Open Agents" cross-links', () => {
     test('both Default model and Default region captions navigate to /agents when the page is not dirty', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty={false} />);
 
@@ -176,22 +172,33 @@ describe('AgentDefaultsSection', () => {
 
       fireEvent.click(links[0]);
       expect(navigateMock).toHaveBeenCalledWith('/agents');
+      expect(window.location.pathname).toBe('/agents');
       expect(screen.queryByText('Unsaved Changes')).toBeNull();
 
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       fireEvent.click(links[1]);
       expect(navigateMock).toHaveBeenCalledWith('/agents');
+      expect(window.location.pathname).toBe('/agents');
       expect(screen.queryByText('Unsaved Changes')).toBeNull();
     });
 
+    // The interception is what this section wires; the resume is not. That the
+    // Discard button settles the deferred navigation to its target is
+    // `useUnsavedGuard`'s own contract, driven end to end in
+    // `src-ui/src/__tests__/useUnsavedGuard.test.tsx` -- 'a real Discard dialog
+    // closes without falsely superseding its own prepared navigation', which
+    // clicks a real Discard and asserts the browser reached the target path.
+    // The route this link carries is pinned by the clean-page case above.
     test('default-model caption: a dirty page intercepts navigation with the discard-confirmation modal instead of silently navigating away', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty />);
 
       const links = screen.getAllByRole('button', { name: 'Open Agents' });
       fireEvent.click(links[0]);
 
-      expect(navigateMock).not.toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/guard-origin');
       expect(screen.getByText('Unsaved Changes')).toBeTruthy();
       expect(
         screen.getByText('You have unsaved changes. Discard them?'),
@@ -199,27 +206,30 @@ describe('AgentDefaultsSection', () => {
     });
 
     test('region caption: a dirty page intercepts navigation with the discard-confirmation modal instead of silently navigating away', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty />);
 
       const links = screen.getAllByRole('button', { name: 'Open Agents' });
       fireEvent.click(links[1]);
 
-      expect(navigateMock).not.toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/guard-origin');
       expect(screen.getByText('Unsaved Changes')).toBeTruthy();
     });
 
     test('confirming discard from a dirty page completes the deferred navigation', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty />);
 
       fireEvent.click(
         screen.getAllByRole('button', { name: 'Open Agents' })[0],
       );
-      expect(navigateMock).not.toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/guard-origin');
 
       fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
       expect(navigateMock).toHaveBeenCalledWith('/agents');
+      expect(window.location.pathname).toBe('/agents');
     });
   });
 });

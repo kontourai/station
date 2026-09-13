@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import {
   assertPluginInstallConsent,
   derivePluginConsentBasis,
@@ -92,6 +92,19 @@ function refusalOf(run: () => void): PluginConsentRefusedError {
   }
   throw new Error('expected the consent check to refuse');
 }
+
+// The staging directory below must be ABSENT for "cannot be read" to be what
+// the assertion observes. `<tmpdir>/station-absent-staging` made that absence a
+// property of the shared host (#1790); a leaf inside a directory this file owns
+// is absent by construction.
+const ABSENT_STAGING_ROOT = mkdtempSync(
+  join(tmpdir(), 'station-absent-staging-test-'),
+);
+const ABSENT_STAGING = join(ABSENT_STAGING_ROOT, 'station-absent-staging');
+
+afterAll(() => {
+  rmSync(ABSENT_STAGING_ROOT, { force: true, recursive: true });
+});
 
 describe('derivePluginConsentBasis', () => {
   test('derives the permission set, its tiers and the dependency ids from a staged copy', () => {
@@ -183,7 +196,7 @@ describe('derivePluginConsentBasis', () => {
 
   test('reports no basis when the staged tree cannot be read', () => {
     expect(
-      derivePluginConsentBasis(join(tmpdir(), 'station-absent-staging'), {
+      derivePluginConsentBasis(ABSENT_STAGING, {
         name: 'demo',
       } as any),
     ).toBeNull();

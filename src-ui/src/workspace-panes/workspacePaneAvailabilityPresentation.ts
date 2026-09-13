@@ -47,7 +47,7 @@ export interface WorkspacePaneAvailabilityCatalogEntry {
   rendererResolution?: 'pending';
 }
 
-export interface WorkspacePaneAvailabilityPresentation {
+interface WorkspacePaneAvailabilityPresentation {
   state: WorkspacePaneAvailabilityState;
   stateLabel: string;
   reasonCode: WorkspacePaneAvailabilityReasonCode;
@@ -75,6 +75,10 @@ const REASON_LABELS: Record<WorkspacePaneAvailabilityReasonCode, string> = {
   ready: 'This pane is ready to open.',
   'coming-soon': 'This pane has not rolled out yet.',
   'rollout-unknown': 'This pane’s rollout status has not been confirmed.',
+  'installation-pending':
+    'Plugin activation is pending. Review recovery in Plugins.',
+  'installation-unavailable':
+    'The plugin installation is unavailable. Check its status in Plugins.',
   'distribution-disabled': 'This pane is disabled by its distribution policy.',
   'distribution-policy-unknown':
     'This pane’s distribution policy has not been confirmed.',
@@ -124,7 +128,7 @@ const ACTION_LABELS: Record<WorkspacePaneAvailabilityAction['code'], string> = {
  * Turns an authoritative, bounded availability result into shared copy. No
  * host diagnostics, paths, URLs, or renderer details enter this projection.
  */
-export const WORKSPACE_PANE_AVAILABILITY_PENDING_LABEL = 'Loading…';
+const WORKSPACE_PANE_AVAILABILITY_PENDING_LABEL = 'Loading…';
 
 export function presentWorkspacePaneAvailability(
   availability: WorkspacePaneAvailability,

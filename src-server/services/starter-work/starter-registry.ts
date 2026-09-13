@@ -118,7 +118,7 @@ function scheduledCheckPrepareFailure(
   }
 }
 
-export type StarterSessionOwner = {
+type StarterSessionOwner = {
   read(sessionId: string): Promise<{
     threadId: string;
     controlMode: 'read-only-attached' | 'station-owned';

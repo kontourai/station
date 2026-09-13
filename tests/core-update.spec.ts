@@ -1,6 +1,11 @@
 /**
  * Core update flow — verifies update detection and update execution in Settings.
  * Uses page.route to mock API responses for isolation from backend state.
+ *
+ * Fixtures use the typed writer shapes the PR2 server now emits
+ * (installKind/applyMethod/identity diagnostics); the mocked answering
+ * identity matches the identity route so the correlation-gated apply offer
+ * can appear exactly as it does against a real server.
  */
 import { expect, test } from '@playwright/test';
 
@@ -16,6 +21,30 @@ const STATUS_READY = JSON.stringify({
   },
 });
 
+const SHA = 'a'.repeat(40);
+const ANSWER_IDENTITY = {
+  instanceId: 'e2e-instance',
+  bootId: '11111111-1111-4111-8111-111111111111',
+  sha: SHA,
+};
+
+function checkoutStatus(behind: number, currentHash: string): string {
+  return JSON.stringify({
+    installKind: 'source-checkout',
+    applyMethod: 'git-pull',
+    branch: 'main',
+    currentHash,
+    remoteHash: 'def5678',
+    behind,
+    ahead: 0,
+    updateAvailable: behind > 0,
+    serverIdentity: ANSWER_IDENTITY,
+    provenanceIssue: null,
+    technicalDetail: null,
+    selfUpdateUnavailableReason: null,
+  });
+}
+
 function seedRoutes(page: import('@playwright/test').Page) {
   return Promise.all([
     page.route('**/api/system/status', (r) =>
@@ -23,6 +52,13 @@ function seedRoutes(page: import('@playwright/test').Page) {
         status: 200,
         contentType: 'application/json',
         body: STATUS_READY,
+      }),
+    ),
+    page.route('**/api/system/identity', (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(ANSWER_IDENTITY),
       }),
     ),
     page.route('**/api/agents', (r) =>
@@ -77,7 +113,9 @@ function seedRoutes(page: import('@playwright/test').Page) {
 }
 
 test.describe('Core Update Flow', () => {
-  test('shows update button when behind remote', async ({ page }) => {
+  test('shows the checkout apply offer when behind its upstream', async ({
+    page,
+  }) => {
     await seedRoutes(page);
 
     // Mock the check to return updateAvailable
@@ -86,33 +124,39 @@ test.describe('Core Update Flow', () => {
         return r.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({
-            currentHash: 'abc1234',
-            remoteHash: 'def5678',
-            branch: 'main',
-            behind: 3,
-            ahead: 0,
-            updateAvailable: true,
-          }),
+          body: checkoutStatus(3, 'abc1234'),
         });
       }
       return r.continue();
     });
 
     await page.goto('/settings');
-    await page.getByRole('button', { name: /Check for Updates/ }).click();
+    await page
+      .getByRole('button', { name: /Check for server updates/ })
+      .click();
 
-    // Should show the update button with commit count
+    // The launch banner AND the settings card both present the derived
+    // source wording (correct: two surfaces, one fact) — scope to the server
+    // updates card to keep the locator strict-mode clean.
+    const serverCard = page.locator('[data-catalog-id="core-app-updates"]');
+    // The checkout apply offer, with the behind count on the derived line.
     await expect(
-      page.getByRole('button', { name: /Update \(3 commits behind\)/ }),
+      serverCard.getByRole('button', { name: 'Update server checkout' }),
     ).toBeVisible({ timeout: 10000 });
-    // Should show branch and hash info
-    await expect(page.getByText('Branch: main')).toBeVisible();
-    await expect(page.getByText('Current: abc1234')).toBeVisible();
-    await expect(page.getByText('Latest: def5678')).toBeVisible();
+    await expect(
+      serverCard.getByText(
+        'Server checkout is 3 commits behind its configured upstream.',
+      ),
+    ).toBeVisible();
+    // Branch and hash info under the source-metadata labels.
+    await expect(serverCard.getByText('Branch: main')).toBeVisible();
+    await expect(serverCard.getByText('Checkout: abc1234')).toBeVisible();
+    await expect(serverCard.getByText('Source ref: def5678')).toBeVisible();
   });
 
-  test('executes core update and shows success', async ({ page }) => {
+  test('executes core update and shows the restart verification', async ({
+    page,
+  }) => {
     await seedRoutes(page);
 
     let postCalled = false;
@@ -135,26 +179,13 @@ test.describe('Core Update Flow', () => {
           return r.fulfill({
             status: 200,
             contentType: 'application/json',
-            body: JSON.stringify({
-              currentHash: 'def5678',
-              branch: 'main',
-              behind: 0,
-              ahead: 0,
-              updateAvailable: false,
-            }),
+            body: checkoutStatus(0, 'def5678'),
           });
         }
         return r.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({
-            currentHash: 'abc1234',
-            remoteHash: 'def5678',
-            branch: 'main',
-            behind: 3,
-            ahead: 0,
-            updateAvailable: true,
-          }),
+          body: checkoutStatus(3, 'abc1234'),
         });
       }
       if (r.request().method() === 'POST') {
@@ -165,7 +196,7 @@ test.describe('Core Update Flow', () => {
           body: JSON.stringify({
             success: true,
             hash: 'def5678',
-            message: 'Updated to def5678. Server restarting…',
+            message: 'Server update started.',
             restarting: true,
             restart,
           }),
@@ -175,25 +206,26 @@ test.describe('Core Update Flow', () => {
     });
 
     await page.goto('/settings');
-    await page.getByRole('button', { name: /Check for Updates/ }).click();
-    await expect(
-      page.getByRole('button', { name: /Update \(3 commits behind\)/ }),
-    ).toBeVisible({ timeout: 10000 });
-
     await page
-      .getByRole('button', { name: /Update \(3 commits behind\)/ })
+      .getByRole('button', { name: /Check for server updates/ })
       .click();
+    const apply = page.getByRole('button', { name: 'Update server checkout' });
+    await expect(apply).toBeVisible({ timeout: 10000 });
 
-    // Should show restarting message — archive#1903: the client no longer
-    // claims the update itself succeeded before the new server is verified.
+    await apply.click();
+
+    // The restart line claims a START, never a verified success — archive#1903:
+    // only the detached server watchdog's correlated verdict can confirm the
+    // new server, so the client must not either.
     await expect(
-      page.getByText('Restarting — verifying the new server…'),
+      page.getByText('Server restart started. Verifying the expected build…'),
     ).toBeVisible({
       timeout: 10000,
     });
+    await expect(page.getByText(/Server update verified/)).toHaveCount(0);
   });
 
-  test('shows up-to-date when no updates', async ({ page }) => {
+  test('shows the checkout match when no updates', async ({ page }) => {
     await seedRoutes(page);
 
     await page.route('**/api/system/core-update', (r) => {
@@ -201,21 +233,19 @@ test.describe('Core Update Flow', () => {
         return r.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({
-            currentHash: 'abc1234',
-            branch: 'main',
-            behind: 0,
-            ahead: 0,
-            updateAvailable: false,
-          }),
+          body: checkoutStatus(0, 'abc1234'),
         });
       }
       return r.continue();
     });
 
     await page.goto('/settings');
-    await page.getByRole('button', { name: /Check for Updates/ }).click();
-    await expect(page.getByText('Up to date')).toBeVisible({
+    await page
+      .getByRole('button', { name: /Check for server updates/ })
+      .click();
+    await expect(
+      page.getByText('Server checkout matches its configured upstream.'),
+    ).toBeVisible({
       timeout: 10000,
     });
   });

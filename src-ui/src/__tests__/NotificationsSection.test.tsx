@@ -12,6 +12,7 @@
 import { DEFAULT_NOTIFICATION_SOUND_PREFERENCES } from '@kontourai/station-contracts/device-settings';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
+import { navigationStore } from '../contexts/navigation-store';
 
 const toggleFeature = vi.fn();
 vi.mock('../hooks/useFeatureSettings', () => ({
@@ -24,7 +25,10 @@ vi.mock('../hooks/useFeatureSettings', () => ({
   }),
 }));
 
-const navigateMock = vi.fn();
+const navigateMock = vi.fn(
+  (...args: Parameters<typeof navigationStore.navigate>) =>
+    navigationStore.navigate(...args),
+);
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: navigateMock }),
 }));
@@ -32,20 +36,12 @@ vi.mock('../contexts/NavigationContext', () => ({
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { NotificationsSection } from '../views/settings/VoiceFeaturesSection';
 
-// Pass-through by default (the "not dirty" case) — the guard-intercept
-// coverage below renders `GuardedHarness` instead of a bare pass-through.
-const passthroughGuard = (callback: () => void) => callback();
-
-/**
- * `SettingsView.tsx`'s real shape: `useUnsavedGuard(hasChanges)`'s `guard`
- * passed straight into `NotificationsSection` — archive#settings-revamp
- * 1.
- */
+/** The parent registers its dirty state with the real navigation store. */
 function GuardedHarness({ dirty }: { dirty: boolean }) {
-  const { guard, DiscardModal } = useUnsavedGuard(dirty);
+  const { DiscardModal } = useUnsavedGuard(dirty);
   return (
     <>
-      <NotificationsSection apiBase="http://localhost:3141" guard={guard} />
+      <NotificationsSection apiBase="http://localhost:3141" />
       <DiscardModal />
     </>
   );
@@ -53,12 +49,7 @@ function GuardedHarness({ dirty }: { dirty: boolean }) {
 
 describe('NotificationsSection', () => {
   test('renders the push-notifications toggle and the notifications-inbox cross-link', () => {
-    render(
-      <NotificationsSection
-        apiBase="http://localhost:3141"
-        guard={passthroughGuard}
-      />,
-    );
+    render(<NotificationsSection apiBase="http://localhost:3141" />);
 
     expect(screen.getByText('Push notifications')).toBeTruthy();
     expect(
@@ -68,6 +59,7 @@ describe('NotificationsSection', () => {
 
   describe('unsaved-guard wiring for the "View the notifications inbox" cross-link', () => {
     test('navigates to /notifications when the page is not dirty', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty={false} />);
 
@@ -76,10 +68,19 @@ describe('NotificationsSection', () => {
       );
 
       expect(navigateMock).toHaveBeenCalledWith('/notifications');
+      expect(window.location.pathname).toBe('/notifications');
       expect(screen.queryByText('Unsaved Changes')).toBeNull();
     });
 
+    // The interception is what this section wires; the resume is not. That the
+    // Discard button settles the deferred navigation to its target is
+    // `useUnsavedGuard`'s own contract, driven end to end in
+    // `src-ui/src/__tests__/useUnsavedGuard.test.tsx` -- 'a real Discard dialog
+    // closes without falsely superseding its own prepared navigation', which
+    // clicks a real Discard and asserts the browser reached the target path.
+    // The route this link carries is pinned by the clean-page case above.
     test('a dirty page intercepts navigation with the discard-confirmation modal instead of silently navigating away', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty />);
 
@@ -87,21 +88,23 @@ describe('NotificationsSection', () => {
         screen.getByRole('button', { name: 'View the notifications inbox' }),
       );
 
-      expect(navigateMock).not.toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/guard-origin');
       expect(screen.getByText('Unsaved Changes')).toBeTruthy();
     });
 
     test('confirming discard from a dirty page completes the deferred navigation', () => {
+      navigationStore.navigate('/guard-origin');
       navigateMock.mockClear();
       render(<GuardedHarness dirty />);
 
       fireEvent.click(
         screen.getByRole('button', { name: 'View the notifications inbox' }),
       );
-      expect(navigateMock).not.toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/guard-origin');
 
       fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
       expect(navigateMock).toHaveBeenCalledWith('/notifications');
+      expect(window.location.pathname).toBe('/notifications');
     });
   });
 });

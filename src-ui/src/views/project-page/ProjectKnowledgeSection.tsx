@@ -37,7 +37,6 @@ import {
 } from './utils';
 
 export function ProjectKnowledgeSection({
-  apiBase,
   slug,
   projectWorkingDirectory,
   docs,
@@ -47,7 +46,6 @@ export function ProjectKnowledgeSection({
   namespaces,
   knowledgeStatus,
 }: {
-  apiBase: string;
   slug: string;
   projectWorkingDirectory?: string;
   docs: DocMeta[];
@@ -297,7 +295,6 @@ export function ProjectKnowledgeSection({
 
       {selectedNs && selectedNamespace && (
         <ProjectKnowledgeNamespaceConfig
-          apiBase={apiBase}
           namespace={
             selectedNamespace as KnowledgeNamespace & {
               storageDir?: string;

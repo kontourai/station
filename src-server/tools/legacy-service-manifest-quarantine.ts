@@ -6,6 +6,7 @@
  * removes one fully identified obsolete record before a desktop sidecar can
  * make an ownership decision.  Its public result contains no host paths.
  */
+
 import { createHash, randomUUID } from 'node:crypto';
 import {
   closeSync,
@@ -43,6 +44,7 @@ import {
   type StationHomeAsyncMaintenanceLease,
 } from '@kontourai/station-shared/station-home-lifecycle';
 import { withProfileStoreLock } from '../../packages/cli/src/commands/profile-store.js';
+import { isRecord } from '../utils/is-record.js';
 
 const LEGACY_SOURCE_RELATIVE_PATH = join('service', 'default.json');
 const SHARED_QUARANTINE_DIRECTORY = 'quarantine';
@@ -83,19 +85,19 @@ const LEGACY_MANIFEST_LABELS = [
   'io.kontourai.station.default',
 ] as const;
 
-export type LegacyServiceManifestDisposition =
+type LegacyServiceManifestDisposition =
   | 'absent'
   | 'new'
   | 'already'
   | 'recovered'
   | 'refused';
 
-export interface LegacyServiceManifestQuarantineResult {
+interface LegacyServiceManifestQuarantineResult {
   readonly kind: LegacyServiceManifestDisposition;
 }
 
 /** Test-only failpoints model a crash at each durable transaction boundary. */
-export interface LegacyServiceManifestQuarantineHooks {
+interface LegacyServiceManifestQuarantineHooks {
   /** Test-only process liveness seam; production uses `process.kill(pid, 0)`. */
   readonly registryProcessProbe?: (pid: number) => void;
   readonly beforePreparedFsync?: () => void;
@@ -298,10 +300,6 @@ function parseJson(raw: Buffer): unknown {
   }
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function hasExactKeys(
   value: Record<string, unknown>,
   keys: readonly string[],
@@ -317,7 +315,7 @@ function boundedString(value: unknown, maximum = 4096): value is string {
 }
 
 function isExactLegacyManifest(value: unknown, stationRoot: string): boolean {
-  if (!isObject(value) || !hasExactKeys(value, LEGACY_MANIFEST_KEYS))
+  if (!isRecord(value) || !hasExactKeys(value, LEGACY_MANIFEST_KEYS))
     return false;
   return (
     Array.isArray(value.allowedOrigins) &&
@@ -377,7 +375,7 @@ function receiptFor(state: Receipt['state'], source: FileObservation): Receipt {
 
 function isReceipt(value: unknown): value is Receipt {
   if (
-    !isObject(value) ||
+    !isRecord(value) ||
     !hasExactKeys(value, [
       'schemaVersion',
       'kind',
@@ -390,7 +388,7 @@ function isReceipt(value: unknown): value is Receipt {
   )
     return false;
   const source = value.source;
-  if (!isObject(source) || !hasExactKeys(source, ['dev', 'ino'])) return false;
+  if (!isRecord(source) || !hasExactKeys(source, ['dev', 'ino'])) return false;
   return (
     value.schemaVersion === 1 &&
     value.kind === LEGACY_MANIFEST_KIND &&
