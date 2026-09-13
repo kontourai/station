@@ -4,8 +4,12 @@ Status: **accepted direction with an implemented core** (owner decisions on
 station#928, 2026-09-01 through 2026-09-04). It describes `main` once the
 2026-09-04 placement batch has landed: the docked-capability pins, #1446 and
 #1420 are delivered by sibling pull requests that merge before this record. The two placement layers below
-ship today; the "arrangement" record and the "region occupant is a pane host"
-shape are direction for the remaining #928 slices. The vocabulary here is
+ship today, and so does the "arrangement" record. The "region occupant is a
+pane host" shape is implemented in its first slice (#2045, slice 1 of the
+tabbed-dock epic #2044): each dock region renders its occupant as a pane of
+the region's own pane-host document. What that slice does and does not yet
+make true is stated under "A region's occupant is a pane-host document"
+below. The vocabulary here is
 canonical: [`docs/glossary.md`](../glossary.md) carries the short definitions
 and `src-ui/src/__tests__/placement-vocabulary.test.ts` pins the retired names.
 
@@ -23,20 +27,22 @@ different owners.
 ┌ shell ───────────────────────────────────────────────────────────────┐
 │ toolbar / sidebar / palette                                          │
 │ ┌ left region ┐ ┌ main region ──────────────────┐ ┌ right region ──┐ │
-│ │ (surface)   │ │ route outlet, or a layout      │ │ surface:       │ │
-│ │             │ │ whose pane host is a tree:     │ │ activity       │ │
+│ │ (pane host) │ │ route outlet, or a layout      │ │ pane host:     │ │
+│ │             │ │ whose pane host is a tree:     │ │ tabs [activity]│ │
 │ │             │ │   split ─┬─ tabs [files]       │ │                │ │
 │ │             │ │          └─ tabs [diff, chat]  │ │                │ │
 │ └─────────────┘ └────────────────────────────────┘ └────────────────┘ │
 │ ┌ bottom region ───────────────────────────────────────────────────┐ │
-│ │ surface: chat  (its own pane host: tabs [chat])                   │ │
+│ │ pane host: tabs [chat]                                            │ │
 │ └───────────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
 **Layer 1: shell regions.** The shell owns four fixed slots: `main`, `left`,
 `right`, `bottom` (`REGION_IDS`, `src-ui/src/regions/region-model.ts`). Each
-holds at most one registered **surface**, plus `visible` and `size`. The
+holds at most one registered **surface**, plus `visible` and `size`. A dock
+region renders that surface as a pane of the region's own pane host (#2045,
+below). The
 three dock regions (`DOCK_REGION_IDS`) show and hide; `main` is always
 visible and is a choosable region since Home became a surface (#928 slice
 C2a, below). This layer is user-facing chrome: the region toolbar
@@ -107,16 +113,23 @@ plugin and SDK model: plugins contribute pane descriptors, not surfaces, and
 the contracts vocabulary (`supportedRegions`, composition `role`) describes
 positions inside this tree.
 
-The layers meet at one seam: the Chat surface is itself a pane host — a
-chromeless `WorkspacePaneHost` inside the region's `DockShell`
-(`AmbientChatDockPaneHost`) holding a one-pane tab group, persisted as
-`station:workspace-pane-host:v2:ambient:chat-dock`. Chat is the only pane that
-host renders: the legacy path that docked Home as a second pane inside the
-chat dock, with an occupant picker to switch between them, was deleted in
-slice C2b (owner decision, 2026-09-03) once Home became a region surface. The
-document and its key outlived that deletion — the key is a user's dock state
-on disk, and the document is the prototype of the per-region document below.
-That is why the direction below is cheap.
+The layers meet at one seam: a dock region IS a pane host. `RegionShells`
+mounts one `RegionPaneHost` per occupied dock region — the region's
+`DockShell` around a chromeless `WorkspacePaneHost` holding the region's
+document, `ambient:<region>` (persisted as
+`station:workspace-pane-host:v2:ambient:<region>`) — and the surface placed
+there is its one pane: Chat's renders through `renderAmbientChatPane`
+(`ChatDock.tsx`), Activity's through `ActivityDockPane`
+(`ActivityRegionShell.tsx`). Which surfaces have a pane at all is
+`REGION_SURFACE_PANES` (`src-ui/src/regions/region-surface-panes.ts`), pinned
+in both directions to the registry's dock-capable surfaces. Before #2045 the
+Chat surface alone was a pane host (`AmbientChatDockPaneHost`, document
+`ambient:chat-dock`) and Activity had a per-occupant shell of its own; the
+legacy path that docked Home as a second pane inside the chat dock, with an
+occupant picker to switch between them, was deleted in slice C2b (owner
+decision, 2026-09-03) once Home became a region surface. The Chat document
+and its key outlived both changes — see "Persistence today" for how a
+region adopts it.
 
 ## The words
 
@@ -162,7 +175,9 @@ map; anything not listed is a label.
 
 | declaration | vocabulary | readers |
 |---|---|---|
-| `REGION_SURFACE_REGISTRY` | surface ids | `RegionModelContext` (direct), `ActivityRegionShell` (direct), the region toolbar and `useRegionSurfaceMenu` via `regionModel.surfaces`, `CommandPalette` via the destination registry's `regionSurface` field |
+| `REGION_SURFACE_REGISTRY` | surface ids | `RegionModelContext` (direct), `ActivityRegionShell` (direct, for `main`'s frame title), `RegionShells` via `regionModel.surfaces` (a dock region mounts a host only for a registered occupant), the region toolbar and `useRegionSurfaceMenu` via `regionModel.surfaces`, `CommandPalette` via the destination registry's `regionSurface` field |
+| `REGION_SURFACE_PANES` (#2045) | surface id → canonical `WorkspacePaneInstance` | `RegionPaneHost`: the region's baseline document is the occupant's entry, and a persisted or opened pane is admitted only when `regionSurfaceOfPane` names the surface occupying the region (a stale document from a previous occupant restores as the current one's baseline); `region-surface-panes.test.ts` pins the keys to the registry's dock-capable surfaces both ways, which is what lets `RegionShells` decide "mount a host" from the registry alone |
+| `RegionState.occupant` (a surface id) | surface ids | everything above, and since #2045 `RegionPaneHost` — the region's document is DERIVED from it: one pane, the occupant's. The document carries no placement fact the arrangement does not (see below); it exists so that the render path, the persistence shape and the admission rule are already the per-region ones slice 2's tabs need |
 | `RegisteredSurface.regions` | `main`, `left`, `right`, `bottom` | `placeSurface` via `surfaceMayOccupy` (refuses an undeclared region), `RegionModelContext.placeSurface` (a refused placement does not navigate), the region toolbar (each region's menu lists the surfaces declaring it; `useRegionSurfaceMenu` lists dock toggles only) |
 | `WorkspacePanePlacement.supportedRegions` | `primary`, `secondary`, `standalone`, `docked` | parse validation; `instantiateWorkspaceComposition` (does a composition slot fit this pane); `isWorkspaceHomeRoleEligibleDescriptor` (`standalone` means "may be a route"); the docked-capability pins (`docked` means "may be a region surface"): `src-ui/src/__tests__/docked-capability-derivation.test.ts` over the built-in descriptor constants and `workspace-pane-known-declarations.test.ts` over the server's inline declarations |
 | `WorkspacePanePlacement.preferredRegion` | same | parse validation and canonical-identity equality only |
@@ -233,9 +248,42 @@ Two facts that follow from the map and are easy to get wrong:
   persistence.
 - **Pane hosts:** each host persists its own document in localStorage under
   `station:workspace-pane-host:v2:` plus a scope segment (project/layout, task,
-  or `ambient:chat-dock`). The parser rejects malformed data and reconstructs a
+  or `ambient:<id>`). The parser rejects malformed data and reconstructs a
   bounded recovery document rather than trusting storage
   (`packages/contracts/src/workspace-pane-host.ts`).
+- **Region documents (#2045):** a dock region's document is
+  `ambient:<region>` — `ambient:left`, `ambient:right`, `ambient:bottom` —
+  per REGION, not per occupant: a surface moving from `bottom` to `right`
+  leaves one document and joins another (its pane remounts; the pane's own
+  live state is the one thing a move no longer carries, and the region's
+  `DockShell` is a new node — `RegionShellParity.test.tsx` retired the
+  same-node pin with the per-occupant shell it described). The pre-#2045 Chat
+  document, `ambient:chat-dock`, is a user's dock state on disk and its key is
+  pinned (`RegionPaneHost.test.tsx`). It keeps restoring that state by
+  ADOPTION: when a region Chat occupies mounts and its own key has never been
+  written, `adoptLegacyChatDockDocument` restores the legacy document against
+  the Chat catalog, re-identifies it as the region's and persists it under the
+  region's key; the legacy key is left in place for an older build in the
+  same-device stale-tab window. Stated plainly: every build that ever wrote
+  `ambient:chat-dock` wrote it with Chat as its only pane, so its content
+  equals the region's baseline and the adoption carries nothing a fresh
+  baseline would not — it is the mechanism by which the key is honoured, not
+  a migration with data at stake. The model-less mount (`ChatDock` without a
+  region, the pre-region path App-level tests still take) is Chat alone and
+  keeps the legacy document as its own.
+  A region's document is derived from the arrangement's occupant this slice:
+  its one pane is the occupant's, and a persisted document naming another
+  surface's pane (a swap moved that surface out) restores as the current
+  occupant's baseline. The arrangement record is therefore still written as
+  `{ kind: 'surface', id }`; the reserved `{ kind: 'pane-host', documentId }`
+  variant is NOT written and NOT parsed into live state, because nothing
+  would read it — a region with one occupant is fully described by the
+  surface id, and a document id that named the same fact twice would be a
+  label nothing derives. The variant becomes real when a region can hold more
+  than one pane (slice 2): then the document, not the id, is what describes
+  the region, and the parser will need to resolve an occupant set from it.
+  `region-arrangement-record.test.ts` keeps pinning that an unknown `kind`
+  (`pane-host` included) reads as an empty region.
 - **Layouts:** server records per project (`LayoutConfig`); the shell restores
   the last project and layout on launch.
 
@@ -245,11 +293,10 @@ layout that repositions the dock, or a per-project memory, is the category
 error the region model was built to remove; per-project placement may return
 later as an explicit additive preference.
 
-## Direction: a region's occupant is a pane-host document
+## A region's occupant is a pane-host document
 
-Today a dock region holds a surface *id*. The direction for slices C2 and D is
-that a region holds a **pane-host document** whose panes are the surfaces
-placed there. That gives, from one mechanism:
+The direction, recorded on #928: a region holds a **pane-host document** whose
+panes are the surfaces placed there. That gives, from one mechanism:
 
 - any pane in any region (the epic's "maximum flexibility" decision);
 - tabs and splits inside a region, without a second container concept;
@@ -257,8 +304,26 @@ placed there. That gives, from one mechanism:
   document per occupied region), so slice D does not persist a single-id
   record that later slices would have to migrate.
 
-The surface registry keeps its id-keyed API until a slice needs the document;
-nothing in `region-model.ts` may preclude a region holding more than one pane.
+**Implemented by #2045 (slice 1 of #2044), 2026-09-13.** Each dock region
+owns one document (`ambient:<region>`) and renders its occupant as a pane of
+it through `RegionPaneHost`; Chat and Activity both go through that host, and
+the per-occupant shells (`AmbientChatDockPaneHost`, the dock branch of
+`ActivityRegionShell`) are gone. The surface-id API is unchanged —
+`placeSurface`, `showSurface`, `toggleSurface`, the toolbar, `?surface=`,
+chords and the region menu all still speak surface ids — and the host stays
+`presentation="chromeless"`. Externally the only differences are that a move
+between regions remounts the moved pane (the document is the region's), and
+that Activity's loading skeleton renders inside its shell rather than in
+place of it.
+
+**Still direction.** The model's `RegionState.occupant` is a surface id and
+the region's document is derived from it (one pane), so a region cannot yet
+hold more than one pane and the arrangement record's `pane-host` variant is
+not yet written or read (see "Persistence today" for why). Slice 2 turns the
+document into the source of what a region holds — tabs — and is where
+`occupant` stops being a single id. Nothing in `region-model.ts` may preclude
+that; the surface registry keeps its id-keyed API, and each registry entry
+maps to the pane the host opens for it through `REGION_SURFACE_PANES`.
 
 ## Failure shapes this design is meant to prevent
 
