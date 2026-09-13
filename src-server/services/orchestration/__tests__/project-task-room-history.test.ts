@@ -568,7 +568,15 @@ describe('ProjectTaskRoomHistory v2', () => {
       ).toThrow('write admission port is invalid');
     });
 
-    it('does not deliver a late local grant after the worker request times out', async () => {
+    // The worker's frozen five-second request budget terminates the worker
+    // before the delayed post-admission authority check resolves, so the late
+    // grant meets a terminal storage and no identity is recorded. The
+    // `pending.get(id) !== entry` guard in `respond` is not what stops it:
+    // every path that drops a pending entry sets `terminal` or `closed` first,
+    // and the worker serializes requests, so a result never races its own
+    // authorize callback. Removing that guard leaves this test green. The
+    // ~5s cost is the budget itself; `workerResponseMs` is not configurable.
+    it('terminates the worker before a late post-admission grant can record an identity', async () => {
       let delayPostAdmission = false;
       const authority: ProjectTaskRoomCapabilityAuthority = {
         async resolve(input) {
