@@ -3,6 +3,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applyAndroidInsets } from './lib/android-window-insets.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GENERATED_ANDROID = join('src-desktop', 'gen', 'android', 'app');
@@ -102,6 +103,7 @@ export function applyAndroidNativeBootstrap({ root = ROOT } = {}) {
   const current = readFileSync(activityPath, 'utf8');
   const next = activityWithNativeCredentialBootstrap(current, namespace);
   if (next !== current) writeFileSync(activityPath, next);
+  applyAndroidInsets(activityPath, namespace);
 
   const bridgePath = join(javaRoot, 'io', 'crates', 'keyring', 'Keyring.kt');
   if (existsSync(bridgePath)) {

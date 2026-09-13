@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./connection-proof": "./src/connection-proof.ts",
     "./mobile-device": "./src/mobile-device.ts",
     ".": "./src/index.ts",
     "./acp": "./src/acp.ts",
@@ -168,7 +169,8 @@
     "./workspace-file-preview": "./src/workspace-file-preview.ts",
     "./workspace-isolation": "./src/workspace-isolation.ts",
     "./cloud-move": "./src/cloud-move.ts",
-    "./local-accounts": "./src/local-accounts.ts"
+    "./local-accounts": "./src/local-accounts.ts",
+    "./application-session": "./src/application-session.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",

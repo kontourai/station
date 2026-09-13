@@ -231,6 +231,94 @@ tenant security boundary.
 
 ## Acceptance and decisions
 
+### Connection proof contract
+
+[#2000](https://github.com/kontourai/station/issues/2000) owns the independently
+admitted signing key and connection-proof lifecycle. The initial
+[contract](../../packages/contracts/src/connection-proof.ts),
+[shared JOSE verifier](../../packages/shared/src/connection-proof.ts) and
+[Station issuer](../../src-server/services/ssh/connection-proof-issuer.ts)
+are exercised by the browser transport fixture. Production key enrollment,
+Device approval/recovery and bootstrap issuance are not enabled by this slice.
+
+The [Station signing-key store](../../src-server/services/ssh/connection-signing-key-store.ts)
+owns private local custody in `security/connection-signing-key.json`. It reuses
+the existing environment identity and guarded JSON mutation/publication owner.
+The private PKCS8 key never appears in its public descriptor; the public key is
+derived through Node's crypto implementation. Existing keys survive reopening
+and concurrent initialization converges on one identity. A local rotation must
+match the observed Station, enrollment, generation and public key under the
+mutation lock; exactly one competing rotation can advance it.
+The issuer reloads current custody and refuses to sign with a retired generation.
+
+This is a local storage primitive, not an enrollment or administration API.
+Private-home access is required, and public descriptor export does not approve
+the key at a Device. Corrupt, oversized, linked, unsupported or wrong-Station
+records fail instead of being silently regenerated. A reset environment cannot
+adopt the old signing record. POSIX private file/directory permissions are
+checked; this does not claim Windows ACL or hostile-same-user isolation.
+
+Rotation changes the signing identity and requires the Device trust owner to
+admit the new generation through its approved path. It does not silently replace
+client trust, recall plaintext, terminate existing application work or rotate
+independent direct-access credentials. Key loss/backup restoration and active
+home fencing retain explicit recovery work. The shared publisher's rename is
+the visible commit point; directory-fsync limitations do not justify claiming
+perfect crash durability or automatically retrying an uncertain rotation.
+
+The [Device trust store](../../packages/connect/src/core/connectionTrust.ts)
+retains independently approved public keys and revoked generations in the
+browser's IndexedDB partition. It serializes revision comparisons across tabs
+and the browser rechecks this state and proof expiry before accepting a peer
+description. The [local lab guide](../guides/local-collaboration-lab.md#device-side-signing-trust)
+describes its operator-approval precondition, storage failures and recovery limits.
+This is a connection-layer component; it does not supply the production approval
+UI, recover a changed enrollment, or grant account/Project access.
+
+Use a separately admitted P-256 signing key with compact JWS/JWT `ES256` from
+the maintained `jose` implementation. Do not negotiate an algorithm from broker
+input or fetch signing keys from token headers. The protected header contains
+only `alg`, `typ` (`station-connection-proof+jwt`) and `kid` (the approved public
+JWK's SHA-256 thumbprint). The exact audience is
+`urn:station:connection-proof:v1`; the issuer is `urn:station:<stationId>`.
+This is transport proof, not a general login token.
+
+The closed version-1 binding names the Station, enrollment, positive generation,
+connection ID, client nonce, client and Station certificate fingerprints, and
+SHA-256 digests of the exact offer and answer bytes. The nonce and connection
+ID originate in the Device. Binding expectations and signing-key trust come
+from their local owners, never from decoded broker claims. Full gathering
+precedes signing; extra unsigned candidate updates are refused. A future
+trickle-ICE protocol needs its own authenticated update contract.
+
+Proofs use integer-second `iat`, `nbf` and `exp`, with `nbf = iat` and an exact
+30-second lifetime. Clock tolerance is zero in this initial contract. Expired,
+future-dated, wider-lifetime, wrong-audience, cross-Station, stale-generation,
+wrong-client, changed-SDP and changed-key proofs fail. Clock skew is an explicit
+connection refusal, not permission to extend a grant. The Station's trusted
+admission callback must permit issuance both before and after asynchronous
+signing. The verifier rechecks current local trust and expiry after asynchronous
+verification, then permits exactly one successful consumption per handshake;
+concurrent verification cannot consume the same handshake twice.
+
+An invalid attempt does not consume the challenge. After successful proof
+consumption, failed connection setup requires a fresh challenge/connection;
+reloading must not restore an already-consumed handshake. This in-memory
+verifier is not a durable Station bootstrap replay ledger. Production issuance
+and exchange still require the owning authorization transaction and replay
+record, separate from this cryptographic proof.
+
+The browser fixture supplies signing-key trust through its private controller
+to model independent admission. It checks the proof in real browser WebCrypto
+before accepting the SDP, refuses an altered proof and replay, and still
+requires actual DTLS certificate verification. It retains its explicit
+certificate pin as an additional test boundary; the fixture does not implement
+production signing-key or certificate rotation. Its Station admission callback
+is test-owned and does not verify an external account. No remotely selectable
+trust header, Project membership or operator credential is introduced.
+
+### Transport qualification
+
 The [browser transport evaluation](../guides/local-collaboration-lab.md#browser-transport-evaluation)
 establishes a candidate mechanism for the browser boundary: WebRTC DataChannels
 carry application data over SCTP/DTLS, while TURN forwards traffic without the

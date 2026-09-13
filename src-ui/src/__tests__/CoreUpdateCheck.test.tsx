@@ -130,34 +130,66 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     ).toBeTruthy();
   });
 
-  test('an unknown install renders its message without a bare "Current:" label', () => {
-    renderWith({
-      installKind: 'unknown',
-      updateAvailable: false,
-      // Exact wire bytes the server now sends: the refusal copy carries no
-      // filesystem paths (the resolver detail rides technicalDetail).
-      message:
-        'This install carries no update provenance, so updates cannot be checked from here.',
-      technicalDetail:
-        'no git checkout and no station-nightly-source.json build stamp near /bundle/dist-server',
-      provenanceIssue: 'missing',
-    });
-    // Exact match, not a substring: a server that re-embeds paths into the
-    // refusal message must break this fixture, not pass silently.
+  // Fixture fidelity: the exact bytes the real route emits for a stampless
+  // bundle (system-update-routes.ts). The refusal copy carries no filesystem
+  // paths; the resolver detail rides technicalDetail for the PR4 disclosure.
+  const UNKNOWN_REFUSAL = {
+    installKind: 'unknown' as const,
+    updateAvailable: false,
+    message:
+      'This install carries no update provenance, so updates cannot be checked from here.',
+    technicalDetail:
+      'no git checkout and no station-nightly-source.json build stamp near /bundle/dist-server',
+    provenanceIssue: 'missing' as const,
+  };
+
+  test('an unknown install renders the bounded refusal, never a raw diagnostic as explanation', () => {
+    renderWith(UNKNOWN_REFUSAL);
+    expect(screen.getByText('Server update check unavailable')).toBeTruthy();
+    const refusalBody = screen.getByText(/no usable update provenance/);
+    expect(refusalBody.closest('.settings__update-msg')?.className).toContain(
+      'settings__update-msg--warning',
+    );
+    // Exact wire bytes, not a substring: a server that re-embeds paths into
+    // the refusal message must break this fixture, not pass silently.
     expect(
       screen.getByText(
         'This install carries no update provenance, so updates cannot be checked from here.',
       ),
     ).toBeTruthy();
-    expect(screen.getByText(/no update provenance/).className).toContain(
-      'settings__update-msg--warning',
+    // The refusal message lives only inside the collapsed disclosure —
+    // diagnostic text, not the explanation. (technicalDetail — the resolver's
+    // path detail — is rendered by the PR4 disclosure work, not here yet.)
+    const details = screen.getByText('Technical details').closest('details');
+    expect(details).toBeTruthy();
+    expect(details!.open).toBe(false);
+    const diagnostic = screen.getByText(
+      'This install carries no update provenance, so updates cannot be checked from here.',
     );
-    // No provenance fields → no meta row at all, not empty labels.
+    expect(details!.contains(diagnostic)).toBe(true);
+    // No provenance fields → no meta row at all, and no apply path.
+    expect(screen.queryByRole('button', { name: /^Update \(/ })).toBeNull();
     expect(screen.queryByText(/Current:/)).toBeNull();
     expect(screen.queryByText(/Branch:/)).toBeNull();
     expect(
       screen.queryByText(/Pull latest changes from the git remote/),
     ).toBeNull();
+  });
+
+  test('opening Technical details reveals the refusal diagnostic', () => {
+    renderWith(UNKNOWN_REFUSAL);
+    const details = screen
+      .getByText('Technical details')
+      .closest('details') as HTMLDetailsElement;
+    fireEvent.click(screen.getByText('Technical details'));
+    expect(details.open).toBe(true);
+    expect(
+      screen.getByText(
+        'This install carries no update provenance, so updates cannot be checked from here.',
+      ),
+    ).toBeTruthy();
+    // The bounded refusal stays visible alongside the disclosure.
+    expect(screen.getByText('Server update check unavailable')).toBeTruthy();
   });
 
   test('remoteUnreachable renders the message as a warning, not an error', () => {
@@ -290,7 +322,9 @@ describe('git-based self-update affordances (#1624)', () => {
     expect(signal?.aborted).toBe(true);
     expect(screen.getByText(/could not verify the expected restarted server/));
     expect(queryState.refetch).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check for server updates' }),
+    );
     expect(
       screen.queryByText(/could not verify the expected restarted server/),
     ).toBeNull();
@@ -404,7 +438,9 @@ describe('git-based self-update affordances (#1624)', () => {
     beginRestart();
     await act(async () => {});
 
-    fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check for server updates' }),
+    );
     expect(signal?.aborted).toBe(true);
     expect(screen.queryByText(/Restarting — verifying/)).toBeNull();
   });
