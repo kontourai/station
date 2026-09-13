@@ -361,14 +361,22 @@ export function executeOwnedCommand(
       guardCloseOk: null,
       stdoutEof: false,
       stderrEof: false,
-      stdoutDrained: true,
-      stderrDrained: true,
+      // Drain flags are only ever observed from a launcher state message.
+      // They default to `null` (unknown), never `true`, so a record written
+      // after the launcher died or IPC broke before any state arrived cannot
+      // read as a drained snapshot nothing observed.
+      stdoutDrained: null,
+      stderrDrained: null,
       acknowledged: false,
       aborted: false,
       receiverOutputEof: false,
       treeSettlementAcknowledged: false,
       settlementProven: false,
     },
+    // Count of validated `owned-command-settlement-state` messages folded into
+    // `barriers`. Zero means the barrier fields above are coordinator
+    // defaults, not an observed launcher snapshot.
+    stateMessagesObserved: 0,
   };
   const abortSettlement = deferred();
   let completeSettledJob = false;
@@ -437,7 +445,10 @@ export function executeOwnedCommand(
           }
           if (message?.type === 'owned-command-settlement-state') {
             const state = windowsSettlementState(message.state);
-            if (state) Object.assign(settlementEvidence.barriers, state);
+            if (state) {
+              Object.assign(settlementEvidence.barriers, state);
+              settlementEvidence.stateMessagesObserved += 1;
+            }
             return;
           }
           if (message?.type === 'owned-command-bound') {

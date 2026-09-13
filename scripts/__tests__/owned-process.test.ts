@@ -491,11 +491,14 @@ describe('owned process lifecycle', () => {
       guard: { pid: 5152, start: guardStart },
     });
     expect(evidence).toMatchObject({
+      stateMessagesObserved: 1,
       barriers: {
         complete: true,
         guardClosed: true,
         stdoutEof: true,
         stderrEof: false,
+        stdoutDrained: true,
+        stderrDrained: true,
         acknowledged: false,
         receiverOutputEof: false,
         settlementProven: false,
@@ -512,6 +515,52 @@ describe('owned process lifecycle', () => {
       target: null,
       guard: null,
     });
+  });
+
+  test('leaves drain flags unknown and counts zero observations when no state message arrives', async () => {
+    const child = Object.assign(mockChild(), {
+      pid: 4242,
+      connected: true,
+      kill: () => true,
+      send: () => true,
+    });
+    const execution = executeOwnedCommand(
+      'phase.exe',
+      [],
+      (() => child) as never,
+      'fixture',
+      {
+        resolveParentIdentity: () => ({ pid: 99, start: 'parent-birth' }),
+        outputEofTimeoutMs: 1,
+      },
+      { platform: 'win32' },
+    );
+    // The launcher dies (or IPC breaks) before it ever publishes a state
+    // message: only the wrapper close and a missing receiver EOF are seen.
+    child.emit('close', 1, null);
+
+    await expect(execution.promise).resolves.toMatchObject({ status: null });
+    const evidence = execution.settlementEvidence();
+    expect(evidence.stateMessagesObserved).toBe(0);
+    expect(evidence.barriers).toMatchObject({
+      complete: false,
+      guardClosed: false,
+      stdoutEof: false,
+      stderrEof: false,
+      acknowledged: false,
+      settlementProven: false,
+    });
+    // `null`, not `true`: nothing observed a drain, so the record must not
+    // read as a drained snapshot.
+    expect(evidence.barriers.stdoutDrained).toBeNull();
+    expect(evidence.barriers.stderrDrained).toBeNull();
+    // A malformed state message is not an observation either.
+    child.emit('message', {
+      type: 'owned-command-settlement-state',
+      state: { stdoutDrained: true },
+    });
+    expect(execution.settlementEvidence().stateMessagesObserved).toBe(0);
+    expect(execution.settlementEvidence().barriers.stdoutDrained).toBeNull();
   });
 
   test('fails closed when a receiver output stream errors before EOF', async () => {
