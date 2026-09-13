@@ -104,7 +104,7 @@ export interface DeviceCodeLoginDeps {
   schedule: (run: () => void, delayMs: number) => () => void;
 }
 
-export function defaultDeviceCodeLoginDeps(): DeviceCodeLoginDeps {
+function defaultDeviceCodeLoginDeps(): DeviceCodeLoginDeps {
   return {
     spawnLogin: (command, args, options) =>
       spawn(command, args, {
@@ -138,13 +138,13 @@ export const DEVICE_CODE_LOGIN_TIMEOUT_MS = 15 * 60_000;
  */
 export const DEVICE_CODE_PROMPT_TIMEOUT_MS = 90_000;
 /** Between SIGTERM and SIGKILL. */
-export const DEVICE_CODE_KILL_GRACE_MS = 5_000;
+const DEVICE_CODE_KILL_GRACE_MS = 5_000;
 /** Output kept for parsing. A CLI that writes more than this is not prompting. */
-export const DEVICE_CODE_OUTPUT_MAX_CHARS = 64 * 1024;
+const DEVICE_CODE_OUTPUT_MAX_CHARS = 64 * 1024;
 /** Concurrent live logins across every profile. */
 export const DEVICE_CODE_MAX_LIVE_LOGINS = 4;
 /** How long a finished record stays readable before it is pruned. */
-export const DEVICE_CODE_RECORD_RETENTION_MS = 10 * 60_000;
+const DEVICE_CODE_RECORD_RETENTION_MS = 10 * 60_000;
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: terminal escape sequences are exactly what this strips
 const ANSI_PATTERN = /\[[0-?]*[ -/]*[@-~]|[@-Z\\-_]/g;

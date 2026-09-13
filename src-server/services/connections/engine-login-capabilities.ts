@@ -125,7 +125,7 @@ export interface EngineLoginCapabilityDeps {
   now: () => Date;
 }
 
-export function defaultEngineLoginCapabilityDeps(): EngineLoginCapabilityDeps {
+function defaultEngineLoginCapabilityDeps(): EngineLoginCapabilityDeps {
   return {
     runCommand: (command, args) => runCliCommand(command, args),
     findBinary: findCliBinaryAsync,
