@@ -300,8 +300,8 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
             "tray-connections" => open_station_connections(app),
             "tray-connected-clients" => open_paired_devices(app),
             "tray-access-requests" => crate::local_access_watch::review_next(app),
-            "tray-desktop-updates" => open_desktop_update_settings(app),
-            "tray-server-updates" => open_server_update_settings(app),
+            DESKTOP_UPDATE_SETTINGS_ID => open_desktop_update_settings(app),
+            SERVER_UPDATE_SETTINGS_ID => open_server_update_settings(app),
             "tray-service-action" => run_contextual_service_action(app),
             "tray-quit" => {
                 // The durable per-user service intentionally outlives Desktop.
@@ -570,6 +570,9 @@ fn apply_primary_health(
     );
     // Update enablement is its own derivation: the desktop item follows the
     // renderer's startup-readiness admission, never backend reachability.
+    // TWIN of the click-time admission re-derivation in
+    // `native_renderer_admitted`: keep the predicates identical — a divergence
+    // makes the item clickable while the click no-ops.
     let renderer_admitted = main_window_available && main_window_ready;
     let desktop_route = desktop_update_route(renderer_admitted);
     let server_route = server_update_route(renderer_admitted, &snapshot);
@@ -1118,6 +1121,10 @@ fn server_updates_label(route: TrayUpdateRoute) -> &'static str {
 /// The renderer the tray may navigate: the main webview window must exist and
 /// its startup-readiness admission must have completed. A protected window is
 /// never forced visible here.
+///
+/// TWIN of the poller enablement derivation in `apply_primary_health`: keep
+/// the predicates identical — a divergence makes the item clickable while the
+/// click no-ops (or greyed out while a click would have worked).
 fn native_renderer_admitted(app: &AppHandle) -> bool {
     app.get_webview_window("main").is_some() && crate::main_window_activation_available(app)
 }
@@ -2446,6 +2453,24 @@ mod tests {
             TrayUpdateMenuItem::Desktop.spec(),
             TrayUpdateMenuItem::Server.spec(),
             "the two update destinations stay independently addressable"
+        );
+    }
+
+    #[test]
+    fn update_item_ids_are_single_sourced_between_spec_and_dispatch() {
+        // The on_menu_event match arms dispatch on these same consts, so a
+        // spec rename can no longer leave a literal match arm behind as a
+        // silent no-op click. The literal pin keeps the wire ids themselves
+        // from drifting unnoticed.
+        assert_eq!(DESKTOP_UPDATE_SETTINGS_ID, "tray-desktop-updates");
+        assert_eq!(SERVER_UPDATE_SETTINGS_ID, "tray-server-updates");
+        assert_eq!(
+            TrayUpdateMenuItem::Desktop.spec().id,
+            DESKTOP_UPDATE_SETTINGS_ID
+        );
+        assert_eq!(
+            TrayUpdateMenuItem::Server.spec().id,
+            SERVER_UPDATE_SETTINGS_ID
         );
     }
 
