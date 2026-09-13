@@ -94,8 +94,11 @@ const descriptorSchema = z
               .refine((value) => /^\/[a-z0-9][a-z0-9/_-]*$/.test(value))
               .refine(
                 (path) =>
-                  !['/session', '/accept-invitation'].includes(path) &&
-                  !path.includes('//'),
+                  ![
+                    '/session',
+                    '/accept-invitation',
+                    '/invitation-preview',
+                  ].includes(path) && !path.includes('//'),
               ),
             methods: z
               .array(z.enum(['GET', 'POST']))

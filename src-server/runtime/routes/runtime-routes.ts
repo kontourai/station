@@ -1287,6 +1287,9 @@ export function configureRuntimeRoutes(
               },
             })
         : undefined,
+      context.projectMembership
+        ? (token) => context.projectMembership!.previewInvitation(token)
+        : undefined,
     ),
   );
   context.app.route(

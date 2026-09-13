@@ -829,6 +829,18 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         invitation: ProjectInvitationView;
       }>(offered);
       expect(invitation.recipientEmail).toBeNull();
+      const preview = await invoke('/api/account-auth/invitation-preview', {
+        token,
+      });
+      expect(preview.status, await preview.clone().text()).toBe(200);
+      expect(await responseData<unknown>(preview)).toEqual({
+        projectName: 'Example shared Project',
+        inviterName: view.members[0]!.principal.display,
+        role: 'viewer',
+        actions: ['view'],
+        expiresAt: invitation.expiresAt,
+        recipientEmail: null,
+      });
       const devicesBefore = h.pairing.listDevices();
       const user = {
         username: 'collaborator',
@@ -893,6 +905,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         }),
       );
       expect(h.pairing.listDevices()).toEqual(devicesBefore);
+      expect(
+        (await invoke('/api/account-auth/invitation-preview', { token }))
+          .status,
+      ).toBe(409);
       expect(
         (await invoke('/api/projects', undefined, { Cookie })).status,
       ).toBe(401);

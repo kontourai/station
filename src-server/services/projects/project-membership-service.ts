@@ -1,5 +1,6 @@
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
+  ProjectInvitationPreview,
   ProjectMemberRole,
   ProjectMembershipScope,
 } from '@kontourai/station-contracts/project-membership';
@@ -134,6 +135,25 @@ export class ProjectMembershipService {
     });
   }
 
+  async previewInvitation(token: string): Promise<ProjectInvitationPreview> {
+    const { scope } = this.members.invitationPreview(token);
+    return this.withProject(
+      scope.localProjectSlug,
+      scope,
+      async (_scope, projectName) => {
+        const { invitation } = this.members.invitationPreview(token);
+        return {
+          projectName,
+          inviterName: invitation.invitedBy.display,
+          role: invitation.role,
+          actions: invitation.actions,
+          expiresAt: invitation.expiresAt,
+          recipientEmail: invitation.recipientEmail,
+        };
+      },
+    );
+  }
+
   async changeMember(
     scope: ProjectMembershipScope,
     targetId: string,
@@ -215,7 +235,10 @@ export class ProjectMembershipService {
   private async withProject<T>(
     slug: string,
     expected: ProjectMembershipScope | undefined,
-    operation: (scope: ProjectMembershipScope) => Promise<T>,
+    operation: (
+      scope: ProjectMembershipScope,
+      projectName: string,
+    ) => Promise<T>,
     prepare?: (localId: string) => Promise<void>,
   ): Promise<T> {
     assertSafeLayoutPathSegment('project slug', slug);
@@ -249,7 +272,10 @@ export class ProjectMembershipService {
             expected.portableProjectId !== scope.portableProjectId)
         )
           throw new ProjectMembershipRefusal('conflict');
-        return { ok: true as const, value: await operation(scope) };
+        return {
+          ok: true as const,
+          value: await operation(scope, project.name),
+        };
       } catch (error) {
         // The file transaction owner wraps unexpected callback errors as
         // storage failures. Preserve deliberate authorization outcomes as data
