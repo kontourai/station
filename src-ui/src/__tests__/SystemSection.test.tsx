@@ -11,8 +11,8 @@ vi.mock('../views/settings/BuildProvenance', () => ({
   BuildProvenance: () => null,
   InstalledAppBuildProvenance: () => null,
 }));
-vi.mock('../views/settings/CoreUpdateCheck', () => ({
-  CoreUpdateCheck: () => null,
+vi.mock('../views/settings/ConnectedServerUpdates', () => ({
+  ConnectedServerUpdates: () => null,
 }));
 const platform = { isDesktop: false, isTauri: false };
 vi.mock('../platform/PlatformProfileContext', () => ({
