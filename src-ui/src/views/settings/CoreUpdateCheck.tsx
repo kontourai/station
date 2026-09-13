@@ -378,7 +378,7 @@ export function CoreUpdateCheck({
             ? status
               ? 'Re-checking…'
               : 'Checking…'
-            : 'Check for Updates'}
+            : 'Check for server updates'}
         </button>
         {canApply && (
           <button

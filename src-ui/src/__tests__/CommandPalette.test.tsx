@@ -961,6 +961,30 @@ describe('CommandPalette', () => {
     expect(commandFrecencyStorage.read()).toEqual([]);
   });
 
+  test('a desktop-only settings command stays listed and explains its desktop boundary', async () => {
+    // The palette lazily loads the real settings catalog on first query and
+    // projects it through the platform profile. This file's mocked
+    // usePlatformProfile returns { isMobile: false } with no isDesktop key, so
+    // the row goes unavailable because `!undefined` is truthy — exactly the
+    // shape a web/browser shell has, and the desktop reason must be the one
+    // announced, not the mobile one.
+    await renderCommandPalette();
+    open();
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'Desktop app updates' },
+    });
+    const option = await screen.findByRole('option', {
+      name: /Desktop app updates/,
+    });
+    expect(option.getAttribute('aria-disabled')).toBe('true');
+    expect(option.textContent).toContain('Available in the desktop app.');
+    fireEvent.click(option);
+    expect(screen.getByRole('status').textContent).toContain(
+      'Available in the desktop app.',
+    );
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
   test('reset keeps the palette open, reports local feedback, and restores baseline history', async () => {
     await renderCommandPalette();
     open();

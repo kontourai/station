@@ -349,6 +349,11 @@
       "entry": "src-server/services/projects/project-identity-service.ts :: workingDirectory :: project.workingDirectory !== config.workingDirectory",
       "category": 4,
       "reason": "Deliberately exact comparison of existing and requested local configuration for unchanged attachment reuse. It does not access the filesystem. Expanding here would silently accept a different authored configuration; the tilde retry regression requires that spelling change to remain a conflict."
+    },
+    {
+      "entry": "src-server/services/projects/project-session-directory.ts :: workingDirectory :: !project.workingDirectory &&",
+      "category": 1,
+      "reason": "Presence-only classification of a directory-less organizational Project; no path is used here. ProjectResourceResolver expands and verifies all paths before returning a bound result."
     }
   ]
 }

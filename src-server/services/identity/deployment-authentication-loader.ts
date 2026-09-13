@@ -7,6 +7,7 @@ import {
   type DeploymentAuthenticationHost,
   type DeploymentAuthenticationModule,
 } from '@kontourai/station-contracts/deployment-authentication';
+import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
 import { expandTilde } from '../../utils/paths.js';
 import { DeploymentAuthenticationService } from './deployment-authentication-service.js';
 
@@ -20,12 +21,33 @@ export function readDeploymentAuthenticationConfiguration(
     throw new Error(
       'Authentication requires both an operator module and a public origin.',
     );
-  return { modulePath, publicOrigin };
+  const allowedBrowserOrigins = readAuthenticationBrowserOrigins(environment);
+  return {
+    modulePath,
+    publicOrigin,
+    ...(allowedBrowserOrigins ? { allowedBrowserOrigins } : {}),
+  };
+}
+
+export function readAuthenticationBrowserOrigins(
+  environment: Readonly<Record<string, string | undefined>>,
+): readonly string[] | undefined {
+  const value = environment.STATION_AUTHENTICATION_BROWSER_ORIGINS;
+  if (value === undefined) return undefined;
+  const origins = value.split(',').map((item) => item.trim());
+  if (origins.length > 16 || origins.some((item) => !item))
+    throw new Error(
+      'Authentication application origins must be a bounded explicit list.',
+    );
+  return origins.map((item) =>
+    isStationNativeShellOrigin(item) ? item : authenticationOrigin(item),
+  );
 }
 
 export interface LoadedDeploymentAuthentication {
   service: DeploymentAuthenticationService;
   publicOrigin: string;
+  allowedBrowserOrigins?: readonly string[];
 }
 
 function authenticationOrigin(value: string): string {
@@ -77,11 +99,24 @@ async function authenticationStateDirectory(
 export async function createDeploymentAuthenticationHost(
   publicOrigin: string,
   host: { stationId: string; homeDirectory: string },
+  allowedBrowserOrigins: readonly string[] = [],
 ): Promise<Readonly<DeploymentAuthenticationHost>> {
+  if (allowedBrowserOrigins.length > 16)
+    throw new Error('Too many authentication application origins.');
   const origin = authenticationOrigin(publicOrigin);
   return Object.freeze({
     stationId: host.stationId,
     publicOrigin: origin,
+    allowedBrowserOrigins: Object.freeze([
+      ...new Set([
+        origin,
+        ...allowedBrowserOrigins.map((value) =>
+          isStationNativeShellOrigin(value)
+            ? value
+            : authenticationOrigin(value),
+        ),
+      ]),
+    ]),
     basePath: DEPLOYMENT_AUTHENTICATION_BASE_PATH,
     stateDirectory: await authenticationStateDirectory(host.homeDirectory),
   });
@@ -93,12 +128,14 @@ export async function loadDeploymentAuthentication(
   host: { stationId: string; homeDirectory: string },
 ): Promise<LoadedDeploymentAuthentication | undefined> {
   if (!configuration) return undefined;
-  const { modulePath, publicOrigin } = structuredClone(configuration);
+  const { modulePath, publicOrigin, allowedBrowserOrigins } =
+    structuredClone(configuration);
   if (!isAbsolute(modulePath))
     throw new Error('Authentication module path must be absolute.');
   const providerHost = await createDeploymentAuthenticationHost(
     publicOrigin,
     host,
+    allowedBrowserOrigins,
   );
   if (!(await lstat(modulePath)).isFile())
     throw new Error('Authentication module must be a regular file.');
@@ -120,6 +157,7 @@ export async function loadDeploymentAuthentication(
     return {
       service: new DeploymentAuthenticationService(provider),
       publicOrigin: providerHost.publicOrigin,
+      allowedBrowserOrigins: providerHost.allowedBrowserOrigins,
     };
   } catch (error) {
     if (provider && typeof provider.close === 'function')

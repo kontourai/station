@@ -20,12 +20,12 @@ vi.mock('../platform/PlatformProfileContext', () => ({
 }));
 vi.mock('../views/settings/DesktopUpdateCheck', () => ({
   DesktopUpdateCheck: () => (
-    <button type="button">Check for Desktop Updates</button>
+    <button type="button">Check for desktop app updates</button>
   ),
 }));
 
 describe('SystemSection', () => {
-  it('exposes native update checks only in the desktop shell', () => {
+  it('exposes separate desktop and server update cards', () => {
     const props = {
       apiBase: 'http://station.test',
       config: {} as never,
@@ -35,17 +35,37 @@ describe('SystemSection', () => {
       onResetToDefaults: vi.fn(),
     };
     const view = render(<SystemSection {...props} />);
+    // Browser/web: no desktop card at all, but the server card keeps its own
+    // label — the two update paths are distinct surfaces, not one row.
     expect(
-      screen.queryByRole('button', { name: 'Check for Desktop Updates' }),
+      screen.queryByRole('button', { name: 'Check for desktop app updates' }),
     ).toBeNull();
+    expect(screen.queryByText('Desktop app updates')).toBeNull();
+    expect(screen.getByText('Connected Station server')).not.toBeNull();
     platform.isDesktop = true;
     platform.isTauri = true;
     try {
       view.rerender(<SystemSection {...props} />);
       expect(
-        screen.getByRole('button', { name: 'Check for Desktop Updates' }),
+        screen.getByRole('button', { name: 'Check for desktop app updates' }),
       ).not.toBeNull();
-      expect(screen.getByText('Connected Station updates')).not.toBeNull();
+      // The desktop card is its own catalog row, rendered above the server.
+      const desktopCard = screen
+        .getByText('Desktop app updates')
+        .closest('[data-catalog-id]');
+      const serverCard = screen
+        .getByText('Connected Station server')
+        .closest('[data-catalog-id]');
+      expect(desktopCard?.getAttribute('data-catalog-id')).toBe(
+        'desktop-app-updates',
+      );
+      expect(serverCard?.getAttribute('data-catalog-id')).toBe(
+        'core-app-updates',
+      );
+      expect(
+        desktopCard!.compareDocumentPosition(serverCard!) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
     } finally {
       platform.isDesktop = false;
       platform.isTauri = false;

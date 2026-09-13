@@ -19,6 +19,7 @@
  * `packages/sdk/src/__tests__/client-entry-portability.test.ts`.
  */
 
+import { ACCOUNT_AUTHENTICATION_FAILURE_HEADER } from '@kontourai/station-contracts/application-session';
 import {
   type ConnectionRetryClassification,
   isTerminalConnectionStatus,
@@ -268,6 +269,8 @@ export type ClientCredential = {
    * is synchronous returns nothing and nothing changes.
    */
   onUnauthorized?: () => void | Promise<void>;
+  /** Account-session refusal does not revoke or erase the independently approved Device credential. */
+  onAccountUnauthorized?: () => void | Promise<void>;
   /**
    * Records that this Station accepted an authenticated request, and names the
    * URL it was accepted on. The URL matters to the recipient: a connection
@@ -744,7 +747,11 @@ async function reportUnauthorized(
     // user-visible contract the recovery suite pins ("the banner is gone the
     // moment the accepted response resolves") held only where the store
     // happened to be synchronous. Bounded — see `awaitCredentialReport`.
-    await awaitCredentialReport(configured.onUnauthorized?.());
+    await awaitCredentialReport(
+      response.headers.get(ACCOUNT_AUTHENTICATION_FAILURE_HEADER) === 'account'
+        ? configured.onAccountUnauthorized?.()
+        : configured.onUnauthorized?.(),
+    );
   }
 }
 

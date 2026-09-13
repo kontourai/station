@@ -4,6 +4,7 @@ import {
   DEPLOYMENT_AUTHENTICATION_VERSION,
   type DeploymentAuthenticationHost,
   type DeploymentAuthenticationProvider,
+  type DeploymentAuthenticationResult,
 } from '@kontourai/station-contracts/deployment-authentication';
 import { type BetterAuthOptions, betterAuth } from 'better-auth';
 import { getCookies } from 'better-auth/cookies';
@@ -57,7 +58,7 @@ export async function createLocalAccountProvider(
       secret,
       baseURL: host.publicOrigin,
       basePath: host.basePath,
-      trustedOrigins: [host.publicOrigin],
+      trustedOrigins: [...(host.allowedBrowserOrigins ?? [host.publicOrigin])],
       telemetry: { enabled: false },
       logger: { disabled: true },
       emailAndPassword: {
@@ -158,6 +159,49 @@ export async function createLocalAccountProvider(
     const migration = await getMigrations(options);
     await migration.runMigrations();
     const auth = betterAuth(options);
+    function resolveSession(
+      current: {
+        user: {
+          id: string;
+          name: string;
+          email: string;
+          emailVerified: boolean;
+          verifiedAt?: unknown;
+        };
+        session: { id: string; createdAt: Date; expiresAt: Date };
+      } | null,
+    ): DeploymentAuthenticationResult {
+      if (
+        !current ||
+        (!localUsername &&
+          (!current.user.emailVerified ||
+            !(current.user.verifiedAt instanceof Date)))
+      )
+        return { kind: 'invalid', reason: 'invalid-credential' };
+      if (current.session.expiresAt.getTime() <= Date.now())
+        return { kind: 'invalid', reason: 'expired' };
+      if (!administration.permits(current.user.id, current.session.createdAt))
+        return { kind: 'invalid', reason: 'revoked' };
+      return {
+        kind: 'authenticated',
+        session: {
+          subject: current.user.id,
+          displayName: current.user.name,
+          sessionId: current.session.id,
+          authenticatedAt: current.session.createdAt.toISOString(),
+          expiresAt: current.session.expiresAt.toISOString(),
+          contacts: localUsername
+            ? []
+            : [
+                {
+                  kind: 'email',
+                  value: current.user.email,
+                  verifiedAt: (current.user.verifiedAt as Date).toISOString(),
+                },
+              ],
+        },
+      };
+    }
     const signUpPath = localUsername ? '/sign-up/username' : '/sign-up/email';
     const signInPath = localUsername ? '/sign-in/username' : '/sign-in/email';
     const endpoints: DeploymentAuthenticationProvider['endpoints'] = [
@@ -236,38 +280,78 @@ export async function createLocalAccountProvider(
       },
       sessionCookies: [cookie],
       endpoints,
+      sessionReferences: {
+        async revoke(sessionId, signal) {
+          if (closed || signal.aborted)
+            throw new Error('Account session is unavailable.');
+          const row = database
+            .prepare('SELECT token FROM session WHERE id = ?')
+            .get(sessionId);
+          if (typeof row?.token !== 'string') return;
+          const context = await auth.$context;
+          await context.internalAdapter.deleteSession(row.token);
+        },
+        async verify(sessionId, signal) {
+          if (closed || signal.aborted) return { kind: 'unavailable' };
+          // The pinned library owns session parsing and user joins. Its bearer
+          // is looked up only inside this provider and never leaves the Station.
+          const row = database
+            .prepare('SELECT token FROM session WHERE id = ?')
+            .get(sessionId);
+          if (typeof row?.token !== 'string')
+            return { kind: 'invalid', reason: 'revoked' };
+          const context = await auth.$context;
+          const current = await context.internalAdapter.findSession(row.token);
+          if (closed || signal.aborted) return { kind: 'unavailable' };
+          return resolveSession(current);
+        },
+        ...(localUsername
+          ? {
+              async login(
+                request: Request,
+              ): Promise<DeploymentAuthenticationResult> {
+                if (closed || request.signal.aborted)
+                  return { kind: 'unavailable' };
+                const parsed = z
+                  .object({
+                    username: z.string().min(3).max(32),
+                    password: z.string().min(1).max(128),
+                  })
+                  .strict()
+                  .safeParse(await request.json());
+                if (!parsed.success)
+                  return { kind: 'invalid', reason: 'invalid-credential' };
+                // Use the maintained login endpoint. Set-Cookie stays inside this
+                // provider; a virtual transport never receives it or a bearer token.
+                const response = await auth.api.signInUsername({
+                  body: parsed.data,
+                  headers: request.headers,
+                  asResponse: true,
+                });
+                if (!response.ok)
+                  return { kind: 'invalid', reason: 'invalid-credential' };
+                const credentials = response.headers
+                  .getSetCookie()
+                  .filter((value) => value.startsWith(`${cookie}=`))
+                  .map((value) => value.split(';')[0])
+                  .join('; ');
+                const current = await auth.api.getSession({
+                  headers: new Headers({ Cookie: credentials }),
+                  query: { disableCookieCache: true, disableRefresh: true },
+                });
+                if (closed || request.signal.aborted)
+                  return { kind: 'unavailable' };
+                return resolveSession(current);
+              },
+            }
+          : {}),
+      },
       async authenticate(request) {
         const current = await auth.api.getSession({
           headers: request.headers,
           query: { disableCookieCache: true, disableRefresh: true },
         });
-        if (
-          !current ||
-          (!localUsername &&
-            (!current.user.emailVerified || !current.user.verifiedAt))
-        )
-          return { kind: 'invalid', reason: 'invalid-credential' };
-        if (!administration.permits(current.user.id, current.session.createdAt))
-          return { kind: 'invalid', reason: 'revoked' };
-        return {
-          kind: 'authenticated',
-          session: {
-            subject: current.user.id,
-            displayName: current.user.name,
-            sessionId: current.session.id,
-            authenticatedAt: current.session.createdAt.toISOString(),
-            expiresAt: current.session.expiresAt.toISOString(),
-            contacts: localUsername
-              ? []
-              : [
-                  {
-                    kind: 'email',
-                    value: current.user.email,
-                    verifiedAt: current.user.verifiedAt!.toISOString(),
-                  },
-                ],
-          },
-        };
+        return resolveSession(current);
       },
       async handle(request) {
         const path = new URL(request.url).pathname.slice(host.basePath.length);

@@ -1144,7 +1144,7 @@ export interface RecoveredSessionStartOptions {
    */
   resolveSessionCwd?: (
     input: ProviderSessionStartInput,
-  ) => ProviderSessionStartInput;
+  ) => ProviderSessionStartInput | Promise<ProviderSessionStartInput>;
   /**
    * Shared model boundary supplied by OrchestrationService. It is invoked
    * before readiness or any adapter callback, including recovery.
@@ -1209,7 +1209,7 @@ export async function startRecoveredOrchestrationSession(options: {
       metadata: recoveredMetadata,
     };
     if (deps.resolveSessionCwd) {
-      startInput = deps.resolveSessionCwd(startInput);
+      startInput = await deps.resolveSessionCwd(startInput);
     }
     startInput =
       deps.prepareModelLaunch?.(adapter, startInput, session.model) ??

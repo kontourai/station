@@ -29,6 +29,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./connection-proof": "./src/connection-proof.ts",
     ".": "./src/index.ts",
     "./agent-validation": "./src/agent-validation.ts",
     "./build": "./src/build.ts",
@@ -50,6 +51,7 @@
     "./return-focus": "./src/return-focus.ts",
     "./temp-dir": "./src/temp-dir.ts",
     "./fs-windows-compat": "./src/fs-windows-compat.ts",
+    "./windows-path-trust": "./src/windows-path-trust.ts",
     "./runtime-events": "./src/runtime-events.ts",
     "./runtime-path-resolver": "./src/runtime-path-resolver.ts",
     "./conversation-message": "./src/conversation-message.ts",
@@ -93,6 +95,7 @@
     "@kontourai/station-contracts": "^0.7.0",
     "@kontourai/thread": "0.5.0",
     "@modelcontextprotocol/client": "^2.0.0",
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "jose": "6.2.4"
   }
 }

@@ -17,6 +17,7 @@
       "types": "./dist/core/healthProbe.d.ts",
       "default": "./dist/core/healthProbe.js"
     },
+    "./connection-trust": "./src/core/connectionTrust.ts",
     "./device-pairing": "./src/core/devicePairing.ts",
     "./pairing-deep-link": "./src/core/pairingDeepLink.ts",
     "./local-self-provision": "./src/core/localSelfProvision.ts",

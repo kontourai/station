@@ -289,6 +289,9 @@ importers:
       idb-keyval:
         specifier: ^6.3.0
         version: 6.3.0
+      jose:
+        specifier: 6.2.4
+        version: 6.2.4
       js-yaml:
         specifier: ^5.4.1
         version: 5.4.1
@@ -744,6 +747,9 @@ importers:
       esbuild:
         specifier: ^0.28.1
         version: 0.28.1
+      jose:
+        specifier: 6.2.4
+        version: 6.2.4
 
 packages:
   '@node-datachannel/android-arm64@0.33.2':

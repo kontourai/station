@@ -769,7 +769,9 @@ describe('git-based checkout apply flow (#1624, update-ux PR4)', () => {
       screen.getByText(/Could not verify the expected server after restart/),
     );
     expect(queryState.refetch).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check for server updates' }),
+    );
     expect(
       screen.queryByText(/Could not verify the expected server after restart/),
     ).toBeNull();
@@ -897,7 +899,9 @@ describe('git-based checkout apply flow (#1624, update-ux PR4)', () => {
     beginRestart();
     await act(async () => {});
 
-    fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check for server updates' }),
+    );
     expect(signal?.aborted).toBe(true);
     expect(screen.queryByText(/Verifying the expected build/)).toBeNull();
   });
