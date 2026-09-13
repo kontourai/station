@@ -1013,3 +1013,27 @@
     max-height: 2.75rem;
   }
 }
+
+.sessions-detail--chat {
+  flex: 1;
+  height: 100%;
+  padding: 0;
+  gap: 0;
+}
+.external-chat-composer {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.sessions-detail--chat .sessions-detail__transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.imported-conversation-send-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 12px 12px;
+}

@@ -25,6 +25,7 @@ export function DeleteIntegrationModal({
   // context and event bubbling still follow the component tree.
   return createPortal(
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onCancel}
       ariaLabelledBy="delete-integration-title"
       overlayClassName="plugins__confirm-overlay"

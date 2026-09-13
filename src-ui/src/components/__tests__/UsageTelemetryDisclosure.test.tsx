@@ -52,6 +52,8 @@ import {
 } from '../UsageTelemetryDisclosure';
 
 test('DISCLOSURE CONTENT DRIFT DEFECT: Settings renders the server inventory and acknowledges it', async () => {
+  appConfig.current = undefined;
+  authenticatedFetch.mockReset();
   authenticatedFetch.mockResolvedValueOnce(
     new Response(
       JSON.stringify({
@@ -99,7 +101,11 @@ test('DISCLOSURE CONTENT DRIFT DEFECT: Settings renders the server inventory and
     screen.getByText('platform'),
     'Settings disclosure did not render the published property',
   ).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'I understand' }));
+  // #1600: the action names the decision it makes, here and in the modal, and
+  // keeping the state the host is already in writes only the receipt.
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Keep usage telemetry on' }),
+  );
   await waitFor(() =>
     expect(
       authenticatedFetch,
@@ -207,7 +213,9 @@ test('a persistently failing acknowledgement does not trap the user behind the f
   // Pin that there IS a dialog to be trapped by, so the dismissal assertion
   // below cannot pass by the dialog never having rendered.
   expect(await screen.findByRole('dialog')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'I understand' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Keep usage telemetry on' }),
+  );
 
   // The failure is disclosed and the action stays available as a retry.
   expect(
@@ -534,6 +542,191 @@ test('#1582 A3: a REFUSED setting write neither acknowledges nor advances', asyn
   expect(screen.getByRole('alert').textContent).toBe(
     'The usage telemetry setting could not be saved.',
   );
+  resetUsageTelemetryDisclosureDismissal();
+});
+
+/**
+ * The standalone surface, driven the same way the step is: the real component,
+ * the real query hooks, mocked only at the SDK boundary.
+ */
+function renderModal(
+  derived: {
+    endpointConfigured?: boolean;
+    telemetryEnabled?: boolean;
+    enabledSource?: 'config' | 'env' | 'default';
+  } = {},
+  config?: { telemetryEnabled?: boolean },
+) {
+  resetUsageTelemetryDisclosureDismissal();
+  authenticatedFetch.mockReset();
+  authenticatedFetch.mockImplementation(async (url: string) =>
+    String(url).endsWith('/acknowledgements')
+      ? inventoryResponse(true, derived)
+      : inventoryResponse(false, derived),
+  );
+  updateConfig.mockReset();
+  appConfig.current = config;
+  return render(
+    <QueryClientProvider client={new QueryClient()}>
+      <UsageTelemetryDisclosure firstRun />
+    </QueryClientProvider>,
+  );
+}
+
+test('#1600: the standalone modal leads with the derived sentence, not the inventory', async () => {
+  // The population that meets THIS surface — every home that upgraded into the
+  // disclosure, plus Settings — used to get the whole generated schema and two
+  // buttons that named neither choice, while the first-run step had already
+  // moved to a summary. Same disclosure, one presentation of its copy.
+  const view = renderModal({ endpointConfigured: false });
+
+  const modal = await screen.findByTestId('usage-telemetry-disclosure-modal');
+  expect(
+    screen.getByText(
+      'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+    ),
+    'the modal did not lead with the derived summary',
+  ).toBeTruthy();
+  const details = modal.querySelector('details');
+  expect(
+    details,
+    'the modal inventory is not behind a disclosure',
+  ).toBeTruthy();
+  expect(
+    details?.hasAttribute('open'),
+    'the modal still opens expanded on the inventory',
+  ).toBe(false);
+  expect(details?.querySelector('summary')?.textContent).toBe(
+    'See exactly what is sent',
+  );
+  // The schema is still reachable — an acknowledgement of something the reader
+  // cannot get to is worthless — just not what the surface leads with.
+  expect(details?.textContent).toContain('station_started');
+  expect(details?.textContent).toContain('platform');
+  // And the copy that named no decision is gone.
+  expect(
+    screen.queryByRole('button', { name: 'I understand' }),
+    'the modal still offers the acknowledgement that names no choice',
+  ).toBeNull();
+  view.unmount();
+  resetUsageTelemetryDisclosureDismissal();
+});
+
+test('#1600: the modal offers the turn-it-off decision, and writes it', async () => {
+  // The whole point of the issue: this population was never offered the
+  // decision at all. The write is `telemetryEnabled` through `PUT /config/app`
+  // — the Settings row's own key and the server's own emission gate — and the
+  // receipt follows the write rather than the click.
+  const view = renderModal({ telemetryEnabled: true });
+  await screen.findByRole('button', { name: 'Turn it off' });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Turn it off' }));
+
+  expect(updateConfig).toHaveBeenCalledTimes(1);
+  expect(updateConfig.mock.calls[0][0]).toEqual({ telemetryEnabled: false });
+  expect(
+    authenticatedFetch.mock.calls.filter((call) =>
+      String(call[0]).endsWith('/acknowledgements'),
+    ),
+    'the modal wrote the receipt before the setting',
+  ).toEqual([]);
+
+  await act(async () => {
+    updateConfig.mock.calls[0][1]?.onSuccess?.({});
+  });
+  await waitFor(() =>
+    expect(authenticatedFetch).toHaveBeenLastCalledWith(ACKNOWLEDGEMENTS_URL, {
+      method: 'POST',
+    }),
+  );
+  view.unmount();
+  resetUsageTelemetryDisclosureDismissal();
+});
+
+test('#1600: an already-off host is offered the decision it can make, and keeping an env-held state records it', async () => {
+  // Both derivations the step already had, reached through the modal: the
+  // labels follow the EFFECTIVE setting, and keeping a state only the
+  // environment holds writes it down, because a decision resting on
+  // `STATION_TELEMETRY_ENABLED` disappears the day that variable does.
+  const view = renderModal({ telemetryEnabled: false, enabledSource: 'env' });
+
+  expect(
+    await screen.findByRole('button', { name: 'Keep usage telemetry off' }),
+  ).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Turn it off' })).toBeNull();
+
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Keep usage telemetry off' }),
+  );
+  expect(
+    updateConfig.mock.calls.map((call) => call[0]),
+    'keeping an env-held state recorded nothing',
+  ).toEqual([{ telemetryEnabled: false }]);
+  view.unmount();
+  resetUsageTelemetryDisclosureDismissal();
+});
+
+test('#1600: a REFUSED setting write neither acknowledges nor closes the modal', async () => {
+  // `PUT /config/app` answers 2xx and reports a key it declined in
+  // `ignoredKeys`, so the obvious success path would write the receipt, close
+  // the modal, and leave the reader told telemetry was turned off while it is
+  // still on.
+  const view = renderModal({ telemetryEnabled: true });
+  await screen.findByRole('button', { name: 'Turn it off' });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Turn it off' }));
+  await act(async () => {
+    updateConfig.mock.calls[0][1]?.onSuccess?.({
+      ignoredKeys: [{ key: 'telemetryEnabled', reason: 'unknown' }],
+    });
+  });
+
+  expect(
+    authenticatedFetch.mock.calls.filter((call) =>
+      String(call[0]).endsWith('/acknowledgements'),
+    ),
+    'a refused setting write still wrote an acknowledgement receipt',
+  ).toEqual([]);
+  expect(screen.getByRole('alert').textContent).toBe(
+    'The usage telemetry setting could not be saved.',
+  );
+  expect(
+    screen.queryByRole('dialog'),
+    'the modal closed over a refused write',
+  ).toBeTruthy();
+  view.unmount();
+  resetUsageTelemetryDisclosureDismissal();
+});
+
+test('#1600: the modal keeps its own dismissal beside the decision', async () => {
+  // The step's exit that decides nothing is the chapter dialog's close; this
+  // surface carries its own "Not now", and it must survive gaining two named
+  // actions — it is the only way out that does not depend on a write.
+  const view = renderModal({ telemetryEnabled: true });
+  expect(await screen.findByRole('dialog')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Turn it off' })).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Keep usage telemetry on' }),
+  ).toBeTruthy();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(
+    updateConfig,
+    'dismissing the modal wrote the telemetry setting',
+  ).not.toHaveBeenCalled();
+  expect(
+    authenticatedFetch.mock.calls.filter((call) =>
+      String(call[0]).endsWith('/acknowledgements'),
+    ),
+    'dismissing the modal wrote an acknowledgement receipt',
+  ).toEqual([]);
+  expect(
+    localStorage.getItem(USAGE_TELEMETRY_SNOOZE_STORAGE_KEY),
+    'the dismissal wrote no snooze record',
+  ).toBeTruthy();
+  view.unmount();
   resetUsageTelemetryDisclosureDismissal();
 });
 

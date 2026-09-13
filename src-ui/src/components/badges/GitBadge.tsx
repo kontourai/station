@@ -1,3 +1,4 @@
+import { BranchGlyph } from '../icons/Glyph';
 import { GitTooltip } from './GitTooltip';
 
 interface GitData {
@@ -26,7 +27,9 @@ export function GitBadge({
   return (
     <GitTooltip git={git}>
       <span className={`git-badge ${className}`.trim()}>
-        <span className="git-badge__branch">⎇ {git.branch}</span>
+        <span className="git-badge__branch">
+          <BranchGlyph className="git-badge__branch-icon" /> {git.branch}
+        </span>
         {git.changes.length > 0 && (
           <span className="git-badge__dirty">+{git.changes.length}</span>
         )}

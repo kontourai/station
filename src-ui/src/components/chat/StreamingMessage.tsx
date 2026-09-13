@@ -1,18 +1,19 @@
-import { memo, useEffect, useMemo } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import type {
   ChatActivityHint,
   ChatContentPart,
 } from '../../contexts/active-chats-state';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useStreamingContent } from '../../hooks/useStreamingContent';
 import { useStreamingHaptics } from '../../hooks/useStreamingHaptics';
 import { deriveToolProgressSummary } from '../../utils/chat-progress';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
+import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
 import { ToolCallBatchBoundary } from './ToolCallBatchBoundary';
-import { ToolProgressIndicator } from './ToolProgressIndicator';
 import { splitToolCallRuns } from './tool-call-runs';
 import { UIBlockRenderer } from './UIBlockRenderer';
 
@@ -22,7 +23,11 @@ export type StreamingMessageProps = {
   agentIconStyle: React.CSSProperties;
   fontSize: number;
   showReasoning?: boolean;
-  renderToolCall?: (part: ChatContentPart, index: number) => React.ReactNode;
+  renderToolCall?: (
+    part: ChatContentPart,
+    index: number,
+    expanded?: boolean,
+  ) => React.ReactNode;
   renderReasoning?: (
     content: string,
     index: number,
@@ -30,6 +35,9 @@ export type StreamingMessageProps = {
   ) => React.ReactNode;
   /** Transient provider activity signal (thinking/compacting/…). */
   activityHint?: ChatActivityHint;
+  elapsedMs?: number;
+  suppressActivity?: boolean;
+  statusLabel?: string;
   /**
    * Row attribution (archive#1424 fix): shown from the FIRST
    * frame of streaming, not just after the turn settles into a persisted
@@ -75,11 +83,13 @@ export function StreamingMessageView({
   renderToolCall,
   renderReasoning,
   activityHint,
+  elapsedMs,
+  suppressActivity,
+  statusLabel,
   attributionAgent,
   owner,
   onContentChange,
   streamingText,
-  hasContent,
   contentParts,
   contentRevision,
 }: StreamingMessageProps & {
@@ -88,6 +98,8 @@ export function StreamingMessageView({
   contentParts: ChatContentPart[];
   contentRevision: number;
 }) {
+  const isMobile = useIsMobile();
+  const [waitingSince] = useState(Date.now);
   useStreamingHaptics(sessionId, streamingText.length);
   const progressSummary = deriveToolProgressSummary(contentParts);
   const hasReasoningPart = contentParts.some(
@@ -104,8 +116,8 @@ export function StreamingMessageView({
   const activityLabel = deriveActivityLabel(activityHint, hasReasoningPart);
   // Consecutive tool-call parts collapse into one batch while the turn is
   // still streaming too — classification (inside the lazy ToolCallBatch
-  // chunk) marks a batch in-progress (progressive-tense summary) whenever
-  // one of its calls is still `running`, so the collapsed summary never
+  // chunk) marks a batch in-progress (latest-call headline) whenever one
+  // of its calls is still `running`, so the collapsed summary never
   // claims a batch is done before it is.
   const blocks = useMemo(() => splitToolCallRuns(contentParts), [contentParts]);
   useEffect(() => {
@@ -116,16 +128,22 @@ export function StreamingMessageView({
   }, [contentRevision, onContentChange]);
 
   return (
-    <div className="streaming-message">
-      <div className="streaming-message-icon" style={agentIconStyle}>
-        {agentIcon}
-      </div>
+    <div
+      className={`streaming-message${isMobile ? ' message-row--compact' : ''}`}
+    >
+      {!isMobile && (
+        <div className="streaming-message-icon" style={agentIconStyle}>
+          {agentIcon}
+        </div>
+      )}
       <div className="message assistant" style={{ fontSize: `${fontSize}px` }}>
-        <MessageAttribution
-          agent={attributionAgent ?? null}
-          engine={null}
-          owner={owner}
-        />
+        {!isMobile && (
+          <MessageAttribution
+            agent={attributionAgent ?? null}
+            engine={null}
+            owner={owner}
+          />
+        )}
 
         {/* Render completed content parts in order */}
         {blocks.map((block) => {
@@ -133,17 +151,22 @@ export function StreamingMessageView({
             if (!renderToolCall) return null;
             // Same inline threshold as the settled renderer
             // (`MessageContent`'s INLINE_RUN_LIMIT) so a run does not
-            // change shape when the turn settles.
+            // change shape when the turn settles. Solo calls stay a
+            // row; 2+ consecutive calls become one updating line.
             if (block.calls.length <= INLINE_RUN_LIMIT) {
               return block.calls.map(({ part, index }) =>
                 renderToolCall(part, index),
               );
             }
+            const inlineRows = block.calls.map(({ part, index }) =>
+              renderToolCall(part, index),
+            );
             return (
               <ToolCallBatchBoundary
                 key={block.key}
                 run={block}
                 renderCall={renderToolCall}
+                pending={inlineRows}
               />
             );
           }
@@ -185,23 +208,26 @@ export function StreamingMessageView({
           </div>
         )}
 
-        {progressSummary && <ToolProgressIndicator summary={progressSummary} />}
-
-        {/* Loading indicator. Before any content arrives (redacted thinking,
-            SDK spawn latency) a bare dots row reads as "stuck" — pair it
-            with a live activity label so the agent never looks idle while
-            working. Once content flows, the compact dots row suffices; tool
-            activity is covered by ToolProgressIndicator above. */}
-        {hasContent ? (
-          <div className="streaming-loading">
-            <LoadingDots />
-          </div>
-        ) : (
-          <div className="streaming-activity" role="status">
-            <LoadingDots />
-            <span className="streaming-activity__label">{activityLabel}</span>
-          </div>
-        )}
+        {!suppressActivity &&
+          (statusLabel ||
+            (!hasAnswerText && !(progressSummary && renderToolCall))) && (
+            <div
+              className="streaming-activity"
+              role="status"
+              title={progressSummary?.toolName}
+            >
+              {!statusLabel && <LoadingDots />}
+              <ElapsedWait
+                label={
+                  statusLabel ??
+                  `${(progressSummary && !renderToolCall ? progressSummary.label : activityLabel).replace(/[.\u2026]+$/u, '')} for`
+                }
+                separator={statusLabel ? ' · ' : ' '}
+                startedAt={waitingSince}
+                elapsedMs={elapsedMs}
+              />
+            </div>
+          )}
       </div>
     </div>
   );

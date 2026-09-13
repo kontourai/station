@@ -9,7 +9,7 @@ type CapabilityFixtureValue = Readonly<{
   reason: string;
 }>;
 
-export type NativeCapabilityFixtureOverrides = Partial<
+type NativeCapabilityFixtureOverrides = Partial<
   Record<NativeCapabilityId, Partial<CapabilityFixtureValue>>
 >;
 

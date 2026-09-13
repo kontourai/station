@@ -277,6 +277,18 @@ test.describe('direct plugin Pane SDK context', () => {
     const plugin = plugins[0];
     const descriptorName = descriptorNames.get(plugin.id)!;
     const picker = page.getByRole('dialog', { name: 'Add workspace pane' });
+    // #1616: this route's chunk never loads views/ProjectPage.css, and the
+    // picker used to take its overlay geometry from there — so it rendered
+    // inline and unstyled HERE while looking correct on /projects/:slug. This
+    // spec was already the only place the picker opens from a /layouts/ route;
+    // one box measurement is what makes that coverage say so.
+    const overlay = picker.locator('xpath=..');
+    await expect(overlay).toBeVisible({ timeout: 20_000 });
+    expect(await overlay.boundingBox()).toEqual({
+      x: 0,
+      y: 0,
+      ...page.viewportSize()!,
+    });
     await picker
       .getByRole('listitem')
       .filter({ has: page.getByText(descriptorName, { exact: true }) })

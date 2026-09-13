@@ -17,7 +17,7 @@ export function hasWebSocketCredentialQuery(url: URL): boolean {
   return CREDENTIAL_QUERY_KEYS.some((key) => url.searchParams.has(key));
 }
 
-export type WebSocketAuthFrameResult =
+type WebSocketAuthFrameResult =
   | { ok: true; credential: string }
   | { ok: false; reason: 'invalid_frame' | 'frame_too_large' };
 

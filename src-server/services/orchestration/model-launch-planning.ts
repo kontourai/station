@@ -169,7 +169,7 @@ export function normalizeOmittedModelId<T extends { modelId?: string }>(
   return rest as T;
 }
 
-export interface ModelLaunchPlanningDeps {
+interface ModelLaunchPlanningDeps {
   /** The C7 read model's retained selector, for a resume that named none. */
   loadedSessionModel(threadId: string): string | undefined;
 }

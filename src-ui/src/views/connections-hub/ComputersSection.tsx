@@ -27,6 +27,7 @@ import {
   useRemoveSshEnvironmentMutation,
 } from '@kontourai/station-sdk';
 import { useSystemInstanceQuery } from '@kontourai/station-sdk/developer-runtime';
+import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
@@ -59,36 +60,28 @@ function SshForwardState({
   const instance = useSystemInstanceQuery(connection.url, {
     enabled: Boolean(forward),
   });
-  const [launcherError, setLauncherError] = useState<string>();
-  const [launcherUnknown, setLauncherUnknown] = useState(false);
-  useEffect(() => {
-    if (!forward) return;
-    let disposed = false;
-    const poll = () =>
-      void sshLauncher
-        .status(forward.launchId)
-        .then((status) => {
-          if (!disposed) {
-            setLauncherUnknown(false);
-            setLauncherError(
-              status.phase === 'failed' ? status.error : undefined,
-            );
-          }
-        })
-        .catch((cause) => {
-          if (!disposed) {
-            const message =
-              cause instanceof Error ? cause.message : String(cause);
-            setLauncherUnknown(message.includes('not found'));
-          }
-        });
-    poll();
-    const timer = window.setInterval(poll, 5_000);
-    return () => {
-      disposed = true;
-      window.clearInterval(timer);
-    };
-  }, [forward]);
+  // The launcher status is remote read state, so React Query owns its poll,
+  // its in-flight lifecycle and its last-good value — this used to be a raw
+  // five-second interval writing two pieces of local state, which is the
+  // bespoke fetch lifecycle the UI scope rules out. The derivations below are
+  // the same ones the effect wrote: a launcher that answers "not found" is
+  // unknown, and the last observed phase survives a failed poll because query
+  // data does.
+  const launcher = useQuery({
+    queryKey: ['ssh-launcher-status', forward?.launchId ?? ''],
+    enabled: Boolean(forward),
+    queryFn: () => sshLauncher.status(forward!.launchId),
+    refetchInterval: 5_000,
+    retry: false,
+  });
+  const launcherError =
+    launcher.data?.phase === 'failed' ? launcher.data.error : undefined;
+  const launcherUnknown = launcher.isError
+    ? (launcher.error instanceof Error
+        ? launcher.error.message
+        : String(launcher.error)
+      ).includes('not found')
+    : false;
   if (!forward) return null;
   const warning = sshForwardProvenanceWarning(
     forward.provenance.sha,

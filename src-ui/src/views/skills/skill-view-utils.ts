@@ -48,7 +48,7 @@ export const EMPTY_SKILL_FORM: SkillForm = {
  * LISTING does not (`body`, `category`, `tags`), and typing the form's input as
  * the listing's shape would claim the list rows carry them too.
  */
-export interface SkillDetailRecord {
+interface SkillDetailRecord {
   name?: string;
   description?: string;
   body?: string;

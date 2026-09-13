@@ -26,3 +26,38 @@ export function pluginAgentOwner(
     return null;
   }
 }
+
+/** Generation binding used for runtime admission, separate from the historical
+ * owner-only test used by resource cleanup. Missing/malformed markers refuse. */
+export function pluginAgentInstallationBinding(agentDir: string): {
+  plugin: string;
+  generation?: string;
+} | null {
+  try {
+    const value: unknown = JSON.parse(
+      readRegularFileNoFollow(
+        agentDir,
+        join(agentDir, PLUGIN_AGENT_OWNER_FILE),
+        { maxBytes: 1024 },
+      ),
+    );
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return null;
+    const marker = value as { plugin?: unknown; generation?: unknown };
+    if (
+      typeof marker.plugin !== 'string' ||
+      (marker.generation !== undefined &&
+        (typeof marker.generation !== 'string' ||
+          marker.generation.length > 256))
+    )
+      return null;
+    return {
+      plugin: marker.plugin,
+      ...(typeof marker.generation === 'string'
+        ? { generation: marker.generation }
+        : {}),
+    };
+  } catch {
+    return null;
+  }
+}

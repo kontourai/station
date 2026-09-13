@@ -1,5 +1,56 @@
 /* ═══ Notifications Page ═══ */
 
+.notifications-page__app-messages {
+  margin-block: 1rem;
+}
+
+.notifications-page__app-messages h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.notifications-page__app-messages > p,
+.notifications-page__app-message-meta {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.notifications-page__app-messages ol {
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notifications-page__app-messages li {
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  overflow-wrap: anywhere;
+}
+
+.notifications-page__app-messages li + li {
+  border-top: 1px solid var(--border-primary);
+}
+
+.notifications-page__app-messages li p {
+  margin: 0.35rem 0 0;
+}
+
+.notifications-page__app-message-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.notifications-page__app-message-tone.is-error {
+  color: var(--color-error);
+}
+
+.notifications-page__app-message-tone.is-warning {
+  color: var(--color-warning);
+}
+
 /* No `margin: 0 auto`. Centring a flex item that also shrinks to fit-content
    is what put this page's 350px column at x=665 with a 400px empty gutter
    beside it (SHELL-11) while every other page started at x=264. The frame

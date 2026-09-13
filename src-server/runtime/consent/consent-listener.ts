@@ -147,7 +147,7 @@ function reviewPage(
 </main></body></html>`;
 }
 
-export interface ConsentListenerDeps {
+interface ConsentListenerDeps {
   channel: ConsentChannelService;
   credentials: ConsentDecisionCredentialResolver;
   logger?: Logger;
@@ -518,7 +518,7 @@ export interface ConsentListener {
   close: () => Promise<void>;
 }
 
-export type ConsentListenerStart =
+type ConsentListenerStart =
   | { status: 'listening'; listener: ConsentListener }
   | { status: 'unavailable'; reason: string };
 

@@ -36,7 +36,7 @@
     "packages/connect/src/react/ConnectionManagerModalContent.tsx:283-306|packages/sdk/src/components/useDialogFocusTrap.ts:87-111",
     "src-server/knowledge-store/adapters/obsidian-store.ts:1471-1499|src-server/knowledge-store/adapters/obsidian-store.ts:1540-1568",
     "src-server/runtime/bootstrap/runtime-initialize-deps.ts:118-151|src-server/runtime/bootstrap/runtime-initialize.ts:210-251",
-    "packages/cli/src/commands/install-registry.ts:371-414|src-server/routes/plugins/plugin-source.ts:62-105",
+    "packages/cli/src/commands/install-registry.ts:371-414|src-server/services/plugins/plugin-source.ts:62-105",
     "src-server/routes/evidence/workflow-sidecars.ts:44-67|src-server/routes/orchestration/work-items.ts:46-68",
     "src-server/knowledge-store/adapters/default-store.ts:935-971|src-server/knowledge-store/adapters/obsidian-store.ts:1726-1762",
     "src-server/services/ssh/openssh-launch-bootstrap.ts:674-729|src-server/services/ssh/openssh-worker-probe.ts:208-278",

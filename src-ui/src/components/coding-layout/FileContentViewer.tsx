@@ -2,10 +2,8 @@ import { useCodingFileContentQuery } from '@kontourai/station-sdk';
 import DOMPurify from 'dompurify';
 import { useMemo } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
-import {
-  langFromFilePath,
-  useSyntaxHighlighter,
-} from '../../contexts/SyntaxHighlighterContext';
+import { useSyntaxHighlighter } from '../../contexts/SyntaxHighlighterContext';
+import { langFromFilePath } from '../../highlight/langFromFilePath';
 import { FilePreviewPane } from '../../workspace-panes/FilePreviewPane';
 import { CloseGlyph } from '../icons/Glyph';
 import { SkeletonBlock } from '../state';

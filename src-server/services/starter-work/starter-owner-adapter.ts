@@ -26,11 +26,11 @@ export type StarterOwnerResolution =
     }
   | { state: 'missing' | 'stale' | 'unavailable' | 'not_verified' };
 
-export type StarterOwnerCandidate =
+type StarterOwnerCandidate =
   | { state: 'current'; reference: StarterInspectionReference }
   | { state: 'missing' | 'unavailable' };
 
-export interface StarterOwnerAdapters {
+interface StarterOwnerAdapters {
   approvals: {
     list(): Promise<Notification[]>;
     observe(notification: Notification): ApprovalInboxObservation;

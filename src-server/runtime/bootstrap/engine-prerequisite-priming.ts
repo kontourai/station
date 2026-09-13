@@ -22,6 +22,8 @@
  * re-probes exactly as it does today.
  */
 
+import { errorMessage } from '../../utils/error-message.js';
+
 export interface EnginePrerequisitePrimingTarget {
   provider: string;
   /**
@@ -55,9 +57,9 @@ export async function primeEnginePrerequisites(
         await adapter.getPrerequisites(signal ? { signal } : undefined);
       } catch (error) {
         logger?.warn?.(
-          `Engine prerequisite priming for '${adapter.provider}' did not complete: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `Engine prerequisite priming for '${adapter.provider}' did not complete: ${errorMessage(
+            error,
+          )}`,
         );
       }
     }),

@@ -336,6 +336,7 @@ export function AgentsViewEditorPane({
                 </button>
                 {showOverflow && (
                   <ResponsiveDialogSurface
+                    layer="popover"
                     ariaLabel="Agent actions"
                     onClose={() => setShowOverflow(false)}
                     historyMode="entry"

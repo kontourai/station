@@ -24,12 +24,13 @@ import {
 } from '@kontourai/station-contracts';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { isRecord } from '../../utils/is-record.js';
 import { expandTilde } from '../../utils/paths';
 import type { TaskGraphService } from './task-graph-service.js';
 
-export const TASK_OUTPUT_MAX_BYTES = 5 * 1024 * 1024;
-export const TASK_OUTPUT_MAX_PER_TASK = 100;
-export const TASK_OUTPUT_MAX_HOME_BYTES = 512 * 1024 * 1024;
+const TASK_OUTPUT_MAX_BYTES = 5 * 1024 * 1024;
+const TASK_OUTPUT_MAX_PER_TASK = 100;
+const TASK_OUTPUT_MAX_HOME_BYTES = 512 * 1024 * 1024;
 const STORE_MAX_BYTES = 1024 * 1024;
 const STORE_MAX_OUTPUTS = 10_000;
 const STORE_MAX_RECEIPTS = 512;
@@ -83,7 +84,7 @@ export class TaskOutputNotFoundError extends Error {}
 /** A delayed identical create was deleted and must never recreate bytes. */
 export class TaskOutputDeletedOperationError extends Error {}
 /** Publication crossed rename but its durable readback could not be proven. */
-export class TaskOutputCommitUncertainError extends TaskOutputUnavailableError {}
+class TaskOutputCommitUncertainError extends TaskOutputUnavailableError {}
 
 /**
  * Deep personal-home authority for immutable Task workspace-file snapshots.
@@ -1331,9 +1332,6 @@ function assertOwnedRegularOrAbsent(path: string): void {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 function isExactRecord(
   value: unknown,
   keys: string[],

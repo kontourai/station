@@ -47,7 +47,7 @@ import { telemetry, useProjectLayoutQuery } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { Empty, ErrorState, SkeletonList } from '../components/state';
-import { useNavigation } from '../contexts/NavigationContext';
+import { useNavigationActions } from '../contexts/NavigationContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { LayoutRenderer } from '../layouts';
 import {
@@ -387,7 +387,7 @@ function BuiltinCodingLayoutHost({
   if (!workspacePaneRuntime.current)
     workspacePaneRuntime.current = new WorkspacePaneHostRuntime();
   const catalog = useResolvedWorkspacePaneCatalog(projectSlug);
-  const { navigate } = useNavigation();
+  const { navigate } = useNavigationActions();
   const projectId = catalog.projectId;
   const compact = useIsMobile();
   const popOut = useBuiltinCodingPanePopOut({

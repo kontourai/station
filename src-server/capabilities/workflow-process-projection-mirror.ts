@@ -95,7 +95,7 @@ export function handoffBlockers(
  * flow-agents' own `BundleCritique` type
  * (`src/lib/workflow-process-projection.ts`, pinned 5.3.0).
  */
-export interface BundleCritique {
+interface BundleCritique {
   verdict?: unknown;
   superseded_by?: unknown;
   workflow_subject_ref?: unknown;

@@ -261,7 +261,7 @@ describe('published CLI bundle', () => {
     // Pairing offers render a terminal QR code; qrcode is the reviewed,
     // runtime-only encoder used by that command.
     expect(manifest.dependencies ?? {}).toEqual({
-      '@napi-rs/keyring': '1.3.0',
+      '@napi-rs/keyring': '2.0.0',
       qrcode: '^1.5.4',
     });
     expect(optionalPeers).toContain('esbuild');
@@ -359,7 +359,15 @@ describe('published CLI bundle', () => {
     expect(result.stdout).toContain(
       'station triage [--context-only] [--agent=codex|claude] [--problem=<text>] [--search-issues]',
     );
-    expect(result.stdout).toContain('does not inspect local files');
+    // #1795 reworded this guarantee rather than dropping it: the phrase
+    // 'does not inspect local files' was replaced by the sentence below,
+    // which states the same fact about the packed client in the terms the
+    // help now uses. The assertion is repointed at the successor rather than
+    // deleted, so the suite still proves the packaged client's triage help
+    // tells a user it works remotely.
+    expect(result.stdout).toContain(
+      'The packaged client uses remote diagnostics',
+    );
   });
 
   it('runs a client verb that needs no checkout', () => {
@@ -570,8 +578,8 @@ describe('published CLI bundle', () => {
     expect(result.stdout).toContain('doctor');
   });
 
-  it('refuses host-local environment verbs by naming ./station', () => {
-    const result = runBundle(['environment', 'show']);
+  it('refuses credential mutation without a host management path', () => {
+    const result = runBundle(['environment', 'credential', 'rotate']);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       'require the Station repository launcher (./station)',

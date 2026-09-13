@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Station Dev",
+  "identifier": "io.kontourai.station.dev.instance",
+  "bundle": {
+    "iOS": { "infoPlist": "Info.ios-dev.plist" }
+  },
+  "plugins": {
+    "deep-link": {
+      "mobile": [{ "scheme": ["station-dev-instance"], "appLink": false }]
+    }
+  }
+}

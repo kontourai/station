@@ -6,6 +6,8 @@ import { act, render, renderHook, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const useStreamingContent = vi.fn();
+const mobile = vi.hoisted(() => ({ current: false }));
+vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => mobile.current }));
 
 vi.mock('../hooks/useStreamingContent', () => ({
   useStreamingContent: (sessionId: string) => useStreamingContent(sessionId),
@@ -22,6 +24,33 @@ import { StreamingMessage } from '../components/chat/StreamingMessage';
 describe('StreamingMessage', () => {
   beforeEach(() => {
     useStreamingContent.mockReset();
+    mobile.current = false;
+  });
+
+  test('mobile streaming uses the same compact message layout and omits elapsed wording', () => {
+    mobile.current = true;
+    useStreamingContent.mockReturnValue({
+      streamingText: '',
+      hasContent: false,
+      contentRevision: 0,
+      contentParts: [],
+    });
+    const view = render(
+      <StreamingMessage
+        sessionId="mobile"
+        agentIcon={<div>Avatar</div>}
+        agentIconStyle={{}}
+        fontSize={14}
+        attributionAgent={{ name: 'Codex' }}
+      />,
+    );
+    expect(
+      view.container.querySelector('.streaming-message.message-row--compact'),
+    ).not.toBeNull();
+    expect(screen.queryByText('Avatar')).toBeNull();
+    expect(screen.queryByText('Codex')).toBeNull();
+    expect(view.container.textContent).not.toContain('Elapsed');
+    expect(view.container.textContent).toContain('0:00');
   });
 
   test('the ordinary renderer is a true pass-through with no frame callback', () => {
@@ -76,7 +105,7 @@ describe('StreamingMessage', () => {
     expect(screen.getByRole('status').textContent).toContain(
       'Scanning project files',
     );
-    expect(screen.getByText('search files')).toBeTruthy();
+    expect(screen.getByTitle('search files')).toBeTruthy();
   });
 
   test('renders fallback progress text for a running tool without progress text', () => {

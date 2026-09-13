@@ -1,6 +1,7 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import type { WorkspacePaneHostActionProvenance } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 
 /**
  * Server-only capability. Public command JSON cannot supply it. Its owner
@@ -12,13 +13,21 @@ export interface ForegroundInvocationAdmission {
   readonly agentSpec: AgentSpec;
   readonly project: ProjectConfig;
   readonly message: string;
+  /** Minted only by canonical worktree provisioning, never public metadata. */
+  readonly provisionedWorkspace?: {
+    readonly threadId: string;
+    readonly projectSlug: string;
+    readonly cwd: string;
+  };
+  readonly source?: WorkspacePaneHostActionProvenance;
   invoke<R>(
-    phase: 'start' | 'turn',
+    phase: 'provision' | 'start' | 'turn' | 'native-relay',
     actual: {
       threadId: string;
       agentId: unknown;
       projectSlug: unknown;
       message?: string;
+      cwd?: string;
     },
     effect: () => Promise<R>,
   ): Promise<R>;

@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-shared/tool-request-preview';
 import type { INotificationProvider } from '../../providers/provider-interfaces.js';
 import { approvalInboxOps } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { NotificationService } from '../notifications/notification-service.js';
 import type { EventBus } from '../orchestration/event-bus.js';
 import type { RequestReplayOutcome } from '../orchestration/open-requests.js';
@@ -518,7 +519,7 @@ async function convergeHydratedOrchestrationApprovals(
       logger.warn('Could not replay an approval request during convergence', {
         threadId: target.threadId,
         requestId: target.requestId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       continue;
     }

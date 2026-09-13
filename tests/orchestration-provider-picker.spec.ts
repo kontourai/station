@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import {
   dismissSetupLauncher,
@@ -6,6 +7,7 @@ import {
   seedActiveChats,
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
+import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 
 test.describe('Orchestration Execution Settings', () => {
   test.beforeEach(async ({ page }) => {
@@ -40,23 +42,10 @@ test.describe('Orchestration Execution Settings', () => {
 
     await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
 
-    /*
-     * ONE click. The retry that used to wrap this clicked the gear again on
-     * every attempt, and the gear is a TOGGLE — a retry landing while the
-     * panel was mid-open closed it, so the workaround could produce the
-     * failure it was covering.
-     *
-     * archive#3770 read this as a swallowed click. It is not: the chunk and
-     * every module it pulls finish ~120ms after the click, the `.chat-dock`
-     * node is never replaced, and no pushState/popstate/back occurs. The
-     * panel nevertheless committed between 0.25s and 9.3s later, because a
-     * sustained render storm on this route (archive#3781) starved React's
-     * Suspense retry lane until it expired. That loop is fixed, and
-     * tests/project-layout-render-storm.spec.ts keeps it fixed, so this wait
-     * is bounded by the chunk fetch again rather than by the storm's worst
-     * observed case.
-     */
-    await page.getByTitle('Chat settings').click();
+    await page.getByRole('button', { name: 'More dock actions' }).click();
+    await page
+      .getByRole('menuitem', { name: 'Chat settings', exact: true })
+      .click();
     await expect(
       page.getByRole('heading', { name: 'Chat Settings' }),
     ).toBeVisible();
@@ -69,12 +58,18 @@ test.describe('Orchestration Execution Settings', () => {
     page,
   }) => {
     const executionRequests: Array<Record<string, unknown>> = [];
+    const model = 'gpt-5.3-codex';
+    const providerOptions = { reasoningEffort: 'xhigh', fastMode: true };
     await seedActiveChats(page, [
       {
         sessionId: 'session-1',
         conversationId: 'conv-1',
         agentSlug: 'dev-agent',
-        model: 'claude-sonnet',
+        model,
+        requestedModel: model,
+        requestedProviderOptions: providerOptions,
+        agentConnectionId: 'codex',
+        executionMode: 'external',
         provider: 'codex',
         projectSlug: 'dev',
         providerOptions: {
@@ -86,6 +81,61 @@ test.describe('Orchestration Execution Settings', () => {
         inputHistory: [],
       },
     ]);
+    await mockRuntimeConversation(page, {
+      id: 'conv-1',
+      agentSlug: 'dev-agent',
+      title: 'Dev Agent Chat',
+      projectSlug: 'dev',
+      provider: 'codex',
+      model,
+      canContinue: true,
+      turns: () => [],
+    });
+    const agent = {
+      slug: 'dev-agent',
+      name: 'Dev Agent',
+      execution: { agentConnectionId: 'codex' },
+    };
+    await page.route('**/api/agents', (route) =>
+      route.fulfill({ json: { success: true, data: [agent] } }),
+    );
+    await page.route('**/api/agents/dev-agent', (route) =>
+      route.fulfill({ json: { success: true, data: agent } }),
+    );
+    await page.route('**/api/connections/agents', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [
+            agentConnectionFixture({
+              id: 'codex',
+              name: 'Codex',
+              type: 'codex',
+              kind: 'agent',
+              enabled: true,
+              status: 'ready',
+              config: { engineId: 'codex' },
+              runtimeCatalog: {
+                source: 'live',
+                models: [
+                  {
+                    id: model,
+                    name: model,
+                    originalId: model,
+                    capabilities: {
+                      supportsEffort: true,
+                      supportedEffortLevels: ['xhigh'],
+                      supportsFastMode: true,
+                    },
+                  },
+                ],
+                builtInModels: [],
+              },
+            }),
+          ],
+        },
+      }),
+    );
     await page.route('**/api/orchestration/chat', async (route) => {
       const request = route.request().postDataJSON() as Record<string, unknown>;
       executionRequests.push(request);
@@ -129,9 +179,9 @@ test.describe('Orchestration Execution Settings', () => {
         // here, is that the persisted selection reaches the dispatch at all.
         workspace: { kind: 'project', projectSlug: 'dev' },
         model: {
-          override: 'claude-sonnet',
+          override: model,
           options: {
-            reasoningEffort: 'xhigh',
+            effort: 'xhigh',
             fastMode: true,
           },
         },

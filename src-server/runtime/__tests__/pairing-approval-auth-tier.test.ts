@@ -113,6 +113,10 @@ async function createHarness() {
     },
   });
   configureDevicePairingHostRoutes(app as never, security.devicePairing, {
+    verifyOperatorCredential: (credential) =>
+      security.verifyOperatorCredential(credential),
+    isApprovalCurrent: (request) =>
+      isRuntimeRequestPrincipalCurrent(request, security),
     isRequestPrincipalCurrent: (request) =>
       isRuntimeRequestPrincipalCurrent(request, security),
   });

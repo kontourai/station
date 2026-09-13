@@ -54,6 +54,7 @@ function makeMinimalService() {
     listSessionReadModel: vi.fn().mockResolvedValue([]),
     canUserReadSession: vi.fn().mockReturnValue(true),
     readEventStreamHead: () => 0,
+    conversationStreamBinding: () => undefined,
     readEventGlobalSequence: () => undefined,
     readEventStreamReplay: () => [],
   };

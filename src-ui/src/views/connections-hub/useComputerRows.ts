@@ -37,7 +37,7 @@ import {
   savedConnectionsToKnownEnvironments,
 } from './knownEnvironmentAdapters';
 
-export interface UseComputerRowsResult {
+interface UseComputerRowsResult {
   rows: ComputerRowModel[];
   /** The folded identities behind the rows, for callers that need the source. */
   environments: KnownEnvironment[];

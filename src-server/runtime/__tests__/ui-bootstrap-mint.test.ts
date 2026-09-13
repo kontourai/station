@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { type HttpBindings } from '@hono/node-server';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
+  PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
@@ -34,18 +35,15 @@ function createHarness(options: { uiBootstrapToken?: string } = {}) {
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   const secretPath = join(homeDir, 'runtime', 'local-grant.secret');
   const app = new Hono<{ Bindings: TestBindings }>();
-  configureDevicePairingPublicRoutes(
-    app as never,
-    new DevicePairingService({
-      homeDir,
-      environmentId: '11111111-1111-4111-8111-111111111111',
-    }),
-    {
-      localGrant: { secretPath },
-      allowedOrigins: ['https://station.example.test'],
-      ...options,
-    },
-  );
+  const pairing = new DevicePairingService({
+    homeDir,
+    environmentId: '11111111-1111-4111-8111-111111111111',
+  });
+  configureDevicePairingPublicRoutes(app as never, pairing, {
+    localGrant: { secretPath },
+    allowedOrigins: ['https://station.example.test'],
+    ...options,
+  });
   const request = (path: string, body: unknown, peer: string, headers = {}) =>
     app.request(
       path,
@@ -56,7 +54,7 @@ function createHarness(options: { uiBootstrapToken?: string } = {}) {
       },
       { incoming: { socket: { remoteAddress: peer } } } as TestBindings,
     );
-  return { request, secret: () => readFileSync(secretPath, 'utf8') };
+  return { request, pairing, secret: () => readFileSync(secretPath, 'utf8') };
 }
 
 async function mint(
@@ -375,5 +373,57 @@ describe('ui-bootstrap mint', () => {
       { Origin: 'https://station.example.test' },
     );
     expect(oldExchange.status).toBe(403);
+  });
+});
+
+describe('same-user native access decisions', () => {
+  test('requires both direct loopback and the exact boot secret', async () => {
+    const h = createHarness();
+    for (const [peer, secret, headers] of [
+      [remote(), h.secret(), {}],
+      [loopback(), 'wrong-secret', {}],
+      [loopback(), h.secret(), { 'x-forwarded-for': '127.0.0.1' }],
+    ] as const) {
+      expect(
+        (
+          await h.request(
+            PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
+            { action: 'list', secret },
+            peer,
+            headers,
+          )
+        ).status,
+      ).toBe(403);
+    }
+  });
+  test('lists and approves the exact request without returning a reusable credential', async () => {
+    const h = createHarness();
+    const offer = h.pairing.createOffer({ endpoint: 'http://localhost' });
+    const pending = h.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Test browser',
+      source: 'same-origin',
+      requesterPosition: 'unproven',
+    });
+    const listed = await h.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
+      { action: 'list', secret: h.secret() },
+      loopback(),
+    );
+    expect(listed.status).toBe(200);
+    const response = await h.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
+      { action: 'approve', requestId: pending.requestId, secret: h.secret() },
+      loopback(),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      requestId: pending.requestId,
+      status: 'confirmed',
+    });
+    expect(body).not.toHaveProperty('credential');
+    expect(body).not.toHaveProperty('proof');
   });
 });

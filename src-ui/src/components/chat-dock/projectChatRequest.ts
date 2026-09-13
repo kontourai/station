@@ -1,6 +1,6 @@
 import type { DockSnap } from './dockSnap';
 
-export type ProjectChatSession = {
+type ProjectChatSession = {
   id: string;
   conversationId?: string;
   projectSlug?: string;

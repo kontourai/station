@@ -17,6 +17,7 @@ import {
 } from '../components/state';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { useNotificationHistory } from '../contexts/ToastContext';
 import { useAttentionInbox } from '../hooks/useAttentionInbox';
 import {
   countPendingAttention,
@@ -96,6 +97,9 @@ export function NotificationsPage() {
       ? [exactApproval, ...pending]
       : pending;
   }, [exactApproval, filtered.items]);
+  const dismissibleItems = attentionItems.filter(
+    isAcknowledgeableAttentionItem,
+  );
   const activityNotifications = useMemo(
     () =>
       exactApprovalNotification &&
@@ -121,9 +125,9 @@ export function NotificationsPage() {
       // acknowledgement, and posting one anyway would report a failure for
       // every batch that contained it.
       const outcomes = await Promise.allSettled(
-        attentionItems
-          .filter(isAcknowledgeableAttentionItem)
-          .map((item) => acknowledgeAttentionItem(item.id, apiBase)),
+        dismissibleItems.map((item) =>
+          acknowledgeAttentionItem(item.id, apiBase),
+        ),
       );
       const failures = outcomes.filter(
         (outcome) => outcome.status === 'rejected',
@@ -187,6 +191,7 @@ export function NotificationsPage() {
             })
           }
         />
+        <RecentAppMessages />
         <SkeletonList count={4} label="Loading notifications" />
       </div>
     );
@@ -208,6 +213,7 @@ export function NotificationsPage() {
             })
           }
         />
+        <RecentAppMessages />
         <ErrorState
           title="Unable to load notifications"
           description={describeReadFailure(loadError)}
@@ -225,7 +231,7 @@ export function NotificationsPage() {
     <>
       <div className="notifications-page">
         <NotificationsHeader
-          attentionCount={attentionItems.length}
+          attentionCount={dismissibleItems.length}
           onDismissAll={() => setShowDismissConfirm(true)}
           isDismissing={dismissAllAttention.isPending}
           onOpenSettings={() =>
@@ -235,6 +241,7 @@ export function NotificationsPage() {
             })
           }
         />
+        <RecentAppMessages />
         {inbox.pendingCount === 0 &&
         inbox.notifications.length === 0 &&
         !approvalTarget ? (
@@ -243,7 +250,7 @@ export function NotificationsPage() {
           <Empty
             variant="prominent"
             label="All caught up"
-            description="Nothing needs you right now, and there is no activity yet."
+            description="Nothing needs your attention right now."
           />
         ) : (
           <>
@@ -294,9 +301,9 @@ export function NotificationsPage() {
         isOpen={showDismissConfirm}
         title={`${ACKNOWLEDGE_ATTENTION_ACTION.label} attention items`}
         message={`${ACKNOWLEDGE_ATTENTION_ACTION.label} ${
-          attentionItems.length
+          dismissibleItems.length
         } item${
-          attentionItems.length === 1 ? '' : 's'
+          dismissibleItems.length === 1 ? '' : 's'
         } needing attention? Activity stays.`}
         confirmLabel={`${ACKNOWLEDGE_ATTENTION_ACTION.label} all attention items`}
         variant="warning"
@@ -422,6 +429,49 @@ function NotificationHistoryFilterBar({
           From date must be on or before To date.
         </p>
       )}
+    </section>
+  );
+}
+
+function RecentAppMessages() {
+  const history = useNotificationHistory();
+  const messages = history.filter((item) =>
+    ['info', 'success', 'warning', 'error'].includes(item.type ?? 'info'),
+  );
+  if (!messages.length) return null;
+  return (
+    <section
+      className="notifications-page__app-messages"
+      aria-label="Recent app messages"
+    >
+      <h2>Recent app messages</h2>
+      <p>Messages from this app session, including ones you dismissed.</p>
+      <ol>
+        {messages.map((item) => (
+          <li key={item.id}>
+            <div className="notifications-page__app-message-meta">
+              <span
+                className={`notifications-page__app-message-tone is-${item.type ?? 'info'}`}
+              >
+                {item.type === 'error'
+                  ? 'Error'
+                  : item.type === 'warning'
+                    ? 'Warning'
+                    : item.type === 'success'
+                      ? 'Success'
+                      : 'Message'}
+              </span>
+              <time dateTime={new Date(item.timestamp).toISOString()}>
+                {new Date(item.timestamp).toLocaleTimeString([], {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </time>
+            </div>
+            <p>{item.message}</p>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }

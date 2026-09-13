@@ -28,7 +28,7 @@ function truncateUtf8(value: string, maxBytes: number): string {
   return result.trimEnd();
 }
 
-export interface AuthorizedMessageSearchMatch {
+interface AuthorizedMessageSearchMatch {
   conversationId: string;
   messageId: string;
   matchedEventId?: string;
@@ -38,7 +38,7 @@ export interface AuthorizedMessageSearchMatch {
   agentSlug?: string;
 }
 
-export interface StationMessageSearchSource {
+interface StationMessageSearchSource {
   /** Request-bound owner read. Runtime composition must select the isolated async reader;
    * the synchronous arm preserves compatibility for existing inert/test adapters only. */
   searchAuthorizedMessages(
@@ -53,11 +53,11 @@ export interface StationMessageSearchSource {
     | Promise<readonly AuthorizedMessageSearchMatch[]>;
 }
 
-export type StationMessageSearchAuthority =
+type StationMessageSearchAuthority =
   | { mode: 'personal'; stationId: string }
   | { mode: 'hosted'; stationId: string; tenantId: string };
 
-export interface PersonalTaskSearchSource {
+interface PersonalTaskSearchSource {
   /** Personal-mode TaskGraph list; hosted composition must not use this Adapter. */
   listAuthorizedTasks(): readonly TaskRecord[];
 }

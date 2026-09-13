@@ -2,7 +2,7 @@ import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { interruptibleTurnIdForEvents } from './session-lifecycle-service.js';
 
-export interface InternalStopSuppressionDeps {
+interface InternalStopSuppressionDeps {
   /** The narrowed durable read `arm()`'s docblock prescribes. */
   listActiveTurnFoldEventPayloads: (
     threadId: string,

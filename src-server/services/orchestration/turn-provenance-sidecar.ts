@@ -6,14 +6,15 @@ import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-
 // '../../telemetry/metrics.js'. A barrel or a different depth silently gets
 // the REAL counter under a mocked suite and reds an unrelated assertion.
 import { turnProvenanceProjections } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from './event-store.js';
 
 /** Narrow structural logger: this module warns, never debugs. */
-export type TurnProvenanceLogger = {
+type TurnProvenanceLogger = {
   warn?(message: string, meta?: Record<string, unknown>): void;
 };
 
-export interface TurnProvenanceSidecarDeps {
+interface TurnProvenanceSidecarDeps {
   /**
    * Called, not captured: the store is optional on the service options and a
    * swap after construction must be honoured. This module needs it for both
@@ -119,7 +120,7 @@ export class TurnProvenanceSidecar {
     } catch (error) {
       this.deps.logger?.warn?.(
         'turn-provenance: failed to assemble the live envelope for a completed turn',
-        { error: error instanceof Error ? error.message : String(error) },
+        { error: errorMessage(error) },
       );
       return {};
     }

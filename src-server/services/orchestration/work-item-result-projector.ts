@@ -20,8 +20,8 @@ import {
 } from './session-work-item-candidate.js';
 
 export const SESSION_WORK_ITEM_READ_MAX_OBSERVATIONS = 100;
-export const SESSION_WORK_ITEM_READ_MAX_ITEMS = 50;
-export const SESSION_WORK_ITEM_READ_MAX_ASSOCIATIONS_PER_ITEM = 20;
+const SESSION_WORK_ITEM_READ_MAX_ITEMS = 50;
+const SESSION_WORK_ITEM_READ_MAX_ASSOCIATIONS_PER_ITEM = 20;
 export const SESSION_WORK_ITEM_READ_MAX_SERIALIZED_BYTES = 64 * 1024;
 
 const provenanceBrand = Symbol('work-item-result-projector-provenance');
@@ -31,7 +31,7 @@ const githubOwner = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})?$/;
 const githubRepository = /^[A-Za-z0-9._-]{1,100}$/;
 
 /** Capability minted by the reviewed MCP loader seam. */
-export type WorkItemResultProjectorProvenance = {
+type WorkItemResultProjectorProvenance = {
   readonly serverId: 'github';
   readonly originalToolName: 'create_issue';
   /** The exact loader record remains current through projection. */
@@ -78,7 +78,7 @@ export type WorkItemResultProjectorInput = {
   content: unknown;
 };
 
-export type SessionWorkItemReadScope = {
+type SessionWorkItemReadScope = {
   sessionId: string;
   conversationId: string;
 };

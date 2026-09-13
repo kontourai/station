@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { usePruneActiveChats } from '../hooks/usePruneActiveChats';
+import { isShallowEqual } from '../utils/isShallowEqual';
 import {
   type ActiveChatMetadata,
   type ActiveChatsMap,
@@ -236,29 +237,6 @@ export function useActiveChatState(sessionId: string): ChatUIState | null {
   return chats[sessionId] || null;
 }
 
-function isShallowEqual<T>(a: T, b: T): boolean {
-  if (Object.is(a, b)) return true;
-  if (
-    typeof a !== 'object' ||
-    a === null ||
-    typeof b !== 'object' ||
-    b === null
-  ) {
-    return false;
-  }
-  const aRecord = a as Record<string, unknown>;
-  const bRecord = b as Record<string, unknown>;
-  const aKeys = Object.keys(aRecord);
-  const bKeys = Object.keys(bRecord);
-  if (aKeys.length !== bKeys.length) return false;
-  for (const key of aKeys) {
-    if (!Object.is(aRecord[key], bRecord[key])) {
-      return false;
-    }
-  }
-  return true;
-}
-
 /**
  * Selector-granular read of a single chat session.
  *
@@ -296,25 +274,32 @@ export function useActiveChatSelector<T>(
   const isEqualRef = useRef(isEqual);
   isEqualRef.current = isEqual;
 
-  const cacheRef = useRef<{ raw: ChatUIState | null; selected: T } | null>(
-    null,
-  );
+  const cacheRef = useRef<{
+    raw: ChatUIState | null;
+    selector: (state: ChatUIState | null) => T;
+    selected: T;
+  } | null>(null);
 
   const getSnapshot = useCallback((): T => {
     const raw = activeChatsStore.getSnapshot()[sessionId] || null;
+    const select = selectorRef.current;
     const cached = cacheRef.current;
-    if (cached && cached.raw === raw) {
+    // Keyed on the selector identity as well as the snapshot: ACPChatPanel's
+    // selector closes over `agentSlug` (a `useCallback` dependency), so a
+    // panel that swaps agents with no store write must re-select rather than
+    // keep a transcript built for the previous one.
+    if (cached && cached.raw === raw && cached.selector === select) {
       return cached.selected;
     }
-    const nextSelected = selectorRef.current(raw);
+    const nextSelected = select(raw);
     if (cached && isEqualRef.current(cached.selected, nextSelected)) {
       // Selected slice is equal by value — keep the old reference so
       // useSyncExternalStore (and any memoized consumer downstream) sees
       // no change.
-      cacheRef.current = { raw, selected: cached.selected };
+      cacheRef.current = { raw, selector: select, selected: cached.selected };
       return cached.selected;
     }
-    cacheRef.current = { raw, selected: nextSelected };
+    cacheRef.current = { raw, selector: select, selected: nextSelected };
     return nextSelected;
   }, [sessionId]);
 

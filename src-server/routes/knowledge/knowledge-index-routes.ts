@@ -57,7 +57,7 @@ import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
 import { errorMessage } from '../schemas/schemas.js';
 import { projectKnowledgePersistenceError } from './knowledge-persistence-errors.js';
 
-export interface KnowledgeIndexRouteDeps {
+interface KnowledgeIndexRouteDeps {
   store: KnowledgeStoreProvider;
   indexProvider: KnowledgeIndexProvider;
   /** Station home dir — the root both pre-index trees and K2 store roots hang off

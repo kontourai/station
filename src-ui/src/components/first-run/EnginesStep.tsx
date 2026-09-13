@@ -114,7 +114,7 @@ export function useFirstRunEngineOptions(): {
   return { options, settled: !isLoading && agentsSettled };
 }
 
-export interface EnginesStepProps {
+interface EnginesStepProps {
   options: readonly FirstRunEngineOption[];
   /**
    * Which machine is reading the chapter (archive#3843). The scan runs on the

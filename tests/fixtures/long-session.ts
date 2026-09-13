@@ -94,6 +94,8 @@ export interface LongSessionEventWindowOptions {
    * composer's existing session-scoped route.
    */
   conversationId?: string;
+  /** A continued Conversation reads old turns while its current execution advances. */
+  currentSessionId?: () => string;
 }
 
 /**
@@ -107,6 +109,7 @@ export function createLongSessionEventWindowHandler({
   availableTurns,
   onRequest,
   conversationId,
+  currentSessionId,
 }: LongSessionEventWindowOptions) {
   return (route: Route) => {
     const url = route.request().url();
@@ -133,7 +136,7 @@ export function createLongSessionEventWindowHandler({
         ...(conversationId
           ? {
               conversationId,
-              currentSessionId: threadId,
+              currentSessionId: currentSessionId?.() ?? threadId,
               handoffs: [],
               contextBoundaries: [],
             }

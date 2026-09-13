@@ -1,4 +1,4 @@
-export interface RuntimeAuthRouteCase {
+interface RuntimeAuthRouteCase {
   name: string;
   method: 'GET' | 'POST';
   path: string;

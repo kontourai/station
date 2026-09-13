@@ -5,9 +5,9 @@
  * legacy binding-dead case requires its exact diagnostic for the native
  * cursor this query actually attempted. Other failures remain unclassified.
  */
-export type ClaudeResultOutcome = 'ok' | 'failed' | 'binding-dead';
+type ClaudeResultOutcome = 'ok' | 'failed' | 'binding-dead';
 
-export interface ClaudeResultLike {
+interface ClaudeResultLike {
   type: 'result';
   is_error: boolean;
   result?: unknown;

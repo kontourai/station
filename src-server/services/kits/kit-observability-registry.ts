@@ -2,7 +2,10 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { kitObservabilityDescriptorDigest } from '@kontourai/flow-agents/kit-observability-contract';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  type FileMutationLock,
+} from '@kontourai/station-shared/lifecycle-events';
 import { JsonFileStore } from '../infra/json-store.js';
 import type {
   StationKitHostInput,
@@ -55,7 +58,7 @@ export class StationKitObservabilityRegistry {
   #scanning = false;
   #dirty = false;
   #mutationLockPath?: string;
-  #acquireMutationLock: (path: string) => Promise<() => Promise<void>>;
+  #acquireMutationLock: FileMutationLock;
   #staleDescriptorRefs = new Set<string>();
 
   constructor(

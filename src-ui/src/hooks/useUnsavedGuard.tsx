@@ -72,8 +72,10 @@ export function useUnsavedGuard(dirty: boolean) {
   const onConfirm = useCallback(() => {
     setShowDiscard(false);
     pendingCancel.current = undefined;
-    pendingRef.current?.();
+    const continuation = pendingRef.current;
     pendingRef.current = null;
+    // The callback may request another decision; do not erase its continuation.
+    continuation?.();
   }, []);
 
   const onCancel = useCallback(() => {

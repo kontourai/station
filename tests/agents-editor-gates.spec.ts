@@ -234,13 +234,9 @@ test.describe('agent editor gates', () => {
         page.getByText('Gates Broken Engine', { exact: false }).first(),
       ).toBeVisible({ timeout: 20_000 });
 
-      // Wait for the SENTENCE, not just the row. On a freshly started
-      // instance the managed runtime has not registered its engine agents
-      // yet, and for that window the rail answers from a different readiness
-      // source — every engine reads "not ready yet" and this agent reads
-      // Ready. Reading the rail's text before it settles asserted against the
-      // warmup state — observable when this file runs first against a
-      // just-started instance.
+      // The rail shows a compact state; the selected agent owns the full
+      // server explanation. Open it before checking human-facing diagnosis.
+      await page.getByText('Gates Broken Engine', { exact: true }).click();
       await expect(
         page
           .getByText(/the engine this agent runs on is no longer connected/i)
@@ -250,7 +246,7 @@ test.describe('agent editor gates', () => {
       // `innerText` reflects the badge's own text-transform, so match the
       // sentence rather than its casing.
       const shell = (await page.locator('body').innerText()).toLowerCase();
-      expect(shell).toContain('needs');
+      expect(shell).toContain('not set up');
       expect(shell).not.toContain('gates-nonexistent-engine');
       expect(shell).not.toContain('engine connection');
     } finally {

@@ -32,7 +32,7 @@ import type { KnowledgeStoreAdapter } from '@kontourai/station-contracts/knowled
 import * as yaml from 'js-yaml';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
-export interface ContractSuiteOptions {
+interface ContractSuiteOptions {
   /** Adapters that route by category-as-path (Obsidian) can't accept dotted collision
    * ids sharing an 8-char prefix in the SAME slug-path test the way the flat
    * `records/<id>.md` layout can — both adapters support explicit caller ids

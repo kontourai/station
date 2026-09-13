@@ -108,7 +108,7 @@ export const USAGE_TELEMETRY_EVENTS = {
 } as const;
 
 export type UsageTelemetryEvent = keyof typeof USAGE_TELEMETRY_EVENTS;
-export type UsageTelemetrySemVer =
+type UsageTelemetrySemVer =
   | `${number}.${number}.${number}`
   | `${number}.${number}.${number}-${string}`
   | `${number}.${number}.${number}+${string}`

@@ -76,7 +76,7 @@ export type CredentialReceiptAcknowledgement =
   | { kind: 'applied' }
   | { kind: 'unavailable' };
 
-export interface CredentialRecoveryObservation {
+interface CredentialRecoveryObservation {
   intent: ConnectionRecoveryIntent;
   /**
    * The dispatch Adapter's own replay shape, not a second copy of it: the two
@@ -87,7 +87,7 @@ export interface CredentialRecoveryObservation {
 }
 
 /** Total results keep callers from reconstructing compensation policy. */
-export type CredentialRecoveryOutcome =
+type CredentialRecoveryOutcome =
   | { kind: 'unnecessary' }
   | { kind: 'conflicted' }
   | { kind: 'restarted'; turnId: string }
@@ -95,7 +95,7 @@ export type CredentialRecoveryOutcome =
   | { kind: 'rolled-back' }
   | { kind: 'indeterminate' };
 
-export type CredentialRecoveryReconciliationOutcome =
+type CredentialRecoveryReconciliationOutcome =
   | { kind: 'reconciled'; recovered: number }
   | { kind: 'indeterminate'; pending: number };
 

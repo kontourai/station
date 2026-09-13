@@ -581,3 +581,115 @@ describe('Vitest corpus runner', () => {
     expect(result.results).toHaveLength(14);
   });
 });
+
+it('audit mode runs every independent group and retains every failure', async () => {
+  const calls: string[] = [];
+  const result = await runVitestCorpus({
+    groups: GROUPS,
+    platform: 'linux',
+    keepGoing: true,
+    onResult: () => {},
+    runGroup: async (group) => {
+      calls.push(group.resultName ?? group.name);
+      const failed = ['ordinary-1-of-8', 'process-heavy'].includes(
+        group.resultName ?? group.name,
+      );
+      return { name: group.name, passed: !failed, status: failed ? 1 : 0 };
+    },
+  });
+  expect(calls).toContain('dogfood-reconcile');
+  expect(result.results.filter((row) => !row.passed)).toHaveLength(2);
+  expect(result.passed).toBe(false);
+});
+it('audit mode stops on unsafe cleanup or cancellation', async () => {
+  const result = await runVitestCorpus({
+    groups: GROUPS,
+    platform: 'linux',
+    keepGoing: true,
+    onResult: () => {},
+    runGroup: async (group) => ({
+      name: group.name,
+      passed: false,
+      status: 1,
+      error: 'owned child did not settle',
+    }),
+  });
+  expect(result.results).toHaveLength(1);
+  expect(result.passed).toBe(false);
+  expect(parseVitestCorpusArguments(['--keep-going'])).toEqual({
+    keepGoing: true,
+  });
+  expect(() =>
+    parseVitestCorpusArguments(['--keep-going', '--keep-going']),
+  ).toThrow(/usage/);
+});
+
+it('audit mode enforces the cataloged group deadline and releases its timer', async () => {
+  const { FULL_REGRESSION_PHASES } = await import('../verification-lanes.mjs');
+  vi.useFakeTimers();
+  const parent = new AbortController();
+  let observed: AbortSignal | undefined;
+  const run = runVitestCorpus({
+    groups: GROUPS,
+    platform: 'linux',
+    keepGoing: true,
+    signal: parent.signal,
+    onResult: () => {},
+    runGroup: async (group, _files, { signal }) => {
+      observed = signal;
+      return new Promise<{
+        name: string;
+        passed: false;
+        status: null;
+        cancelled: true;
+        error: string;
+      }>((resolve) =>
+        signal!.addEventListener(
+          'abort',
+          () =>
+            resolve({
+              name: group.name,
+              passed: false,
+              status: null,
+              cancelled: true,
+              error: 'group expired',
+            }),
+          { once: true },
+        ),
+      );
+    },
+  });
+  try {
+    const budget = FULL_REGRESSION_PHASES.find(
+      (phase) => phase.id === 'test-full-ordinary-1-of-8',
+    )!.timeoutMs;
+    await vi.advanceTimersByTimeAsync(budget);
+    expect(observed?.aborted).toBe(true);
+    expect(parent.signal.aborted).toBe(false);
+    const result = await run;
+    expect(result.passed).toBe(false);
+    expect(result.results).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    parent.abort();
+    await run;
+    vi.useRealTimers();
+  }
+});
+
+it('Windows serialized diagnostics receive an execution bound and report timeout as cancellation', () => {
+  const spawnSync = vi.fn(() => ({
+    status: null,
+    signal: 'SIGTERM',
+    error: Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }),
+    stdout: '',
+    stderr: '',
+  }));
+  const result = runWindowsSerializedCorpus({ spawnSync, timeoutMs: 100 });
+  expect(spawnSync).toHaveBeenCalledWith(
+    process.execPath,
+    expect.any(Array),
+    expect.objectContaining({ timeout: 100 }),
+  );
+  expect(result).toMatchObject({ passed: false, cancelled: true });
+});

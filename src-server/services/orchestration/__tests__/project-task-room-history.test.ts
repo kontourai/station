@@ -568,7 +568,15 @@ describe('ProjectTaskRoomHistory v2', () => {
       ).toThrow('write admission port is invalid');
     });
 
-    it('does not deliver a late local grant after the worker request times out', async () => {
+    // The worker's frozen five-second request budget terminates the worker
+    // before the delayed post-admission authority check resolves, so the late
+    // grant meets a terminal storage and no identity is recorded. The
+    // `pending.get(id) !== entry` guard in `respond` is not what stops it:
+    // every path that drops a pending entry sets `terminal` or `closed` first,
+    // and the worker serializes requests, so a result never races its own
+    // authorize callback. Removing that guard leaves this test green. The
+    // ~5s cost is the budget itself; `workerResponseMs` is not configurable.
+    it('terminates the worker before a late post-admission grant can record an identity', async () => {
       let delayPostAdmission = false;
       const authority: ProjectTaskRoomCapabilityAuthority = {
         async resolve(input) {
@@ -1951,6 +1959,54 @@ it('source seal serializes behind an admitted transaction and closes at its comm
   }
 });
 
+it('dispatch binding yields while a room worker awaits main-thread authorization', async () => {
+  const events = new EventStore(databasePath());
+  let calls = 0;
+  let entered!: () => void;
+  let release!: () => void;
+  const holdingWrite = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const authorization = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const room = events.createProjectTaskRoomHistory({
+    capabilities: {
+      async resolve(input) {
+        calls += 1;
+        if (calls === 3) {
+          // The worker requests this final check inside BEGIN IMMEDIATE.
+          entered();
+          await authorization;
+        }
+        return capabilities.resolve(input);
+      },
+    },
+  });
+  const opening = room.open({ grant: grant('discover') });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await holdingWrite;
+    timer = setTimeout(release, 10);
+    await expect(
+      Promise.resolve(
+        events.bindProjectTaskRoomExecution({
+          projectId: scope.projectId,
+          taskId: scope.taskId,
+          sessionId: 'dispatch-during-open',
+        }),
+      ),
+    ).resolves.toEqual({ kind: 'bound' });
+    await expect(opening).resolves.toMatchObject({ kind: 'opened' });
+  } finally {
+    if (timer) clearTimeout(timer);
+    release();
+    await opening;
+    await room.close();
+    expect(events.close()).toEqual({ kind: 'closed' });
+  }
+}, 15_000);
+
 it('source closure joins durable provider admission and refuses a new bound turn before invocation', async () => {
   const events = new EventStore(databasePath());
   const room = events.createProjectTaskRoomHistory({ capabilities });
@@ -1961,11 +2017,14 @@ it('source closure joins durable provider admission and refuses a new bound turn
       taskId: scope.taskId,
       sessionId: 'bound-session',
     };
-    expect(events.bindProjectTaskRoomExecution(binding)).toEqual({
+    expect(await events.bindProjectTaskRoomExecution(binding)).toEqual({
       kind: 'bound',
     });
     expect(
-      events.bindProjectTaskRoomExecution({ ...binding, taskId: 'other-task' }),
+      await events.bindProjectTaskRoomExecution({
+        ...binding,
+        taskId: 'other-task',
+      }),
     ).toEqual({ kind: 'conflict' });
     const authority = events.sessionTurnBoundaryAuthority();
     const claimed = authority.claim(
@@ -1996,11 +2055,11 @@ it('source closure joins durable provider admission and refuses a new bound turn
     ).rejects.toThrow('no provider call was made');
     expect(invoked).toBe(false);
     // An existing association does not reopen sealed admission.
-    expect(events.bindProjectTaskRoomExecution(binding)).toEqual({
+    expect(await events.bindProjectTaskRoomExecution(binding)).toEqual({
       kind: 'unavailable',
     });
     expect(
-      events.bindProjectTaskRoomExecution({
+      await events.bindProjectTaskRoomExecution({
         ...binding,
         sessionId: 'new-session',
       }),
@@ -2022,7 +2081,7 @@ it('an indeterminate bound provider invocation prevents source closure after res
   };
   try {
     await room.open({ grant: grant('discover') });
-    expect(first.bindProjectTaskRoomExecution(binding)).toEqual({
+    expect(await first.bindProjectTaskRoomExecution(binding)).toEqual({
       kind: 'bound',
     });
     const claimed = first

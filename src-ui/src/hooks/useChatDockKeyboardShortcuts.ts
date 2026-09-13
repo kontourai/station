@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { isTurnInFlight } from '../contexts/active-chats-state';
-import { useNavigation } from '../contexts/NavigationContext';
 import { describeStopTurnOutcome } from './useActiveChatSessionMessaging';
 import { useCancelMessage } from './useActiveChatSessions';
 import { useKeyboardShortcut } from './useKeyboardShortcut';
@@ -33,10 +32,11 @@ interface DerivedSession {
 }
 
 interface UseChatDockKeyboardShortcutsOptions {
+  onCloseCurrent?: () => void;
   sessions: DerivedSession[];
   activeSessionId: string | null;
   activeSession: DerivedSession | null;
-  setActiveSessionId: (id: string | null) => void;
+  onNewChat: () => void;
   setShowSessionPicker: (v: boolean) => void;
   focusSession: (id: string) => void;
 }
@@ -58,30 +58,17 @@ interface UseChatDockKeyboardShortcutsOptions {
  */
 export function useChatDockKeyboardShortcuts({
   sessions,
+  onCloseCurrent,
   activeSessionId,
   activeSession,
-  setActiveSessionId,
+  onNewChat,
   setShowSessionPicker,
   focusSession,
 }: UseChatDockKeyboardShortcutsOptions) {
-  const { selectedAgent, setActiveChat } = useNavigation();
-  const { initChat, removeChat, addEphemeralMessage } = useActiveChatActions();
+  const { removeChat, addEphemeralMessage } = useActiveChatActions();
   const cancelMessage = useCancelMessage();
 
-  useDockShortcut(
-    'dock.newChat',
-    't',
-    ['cmd'],
-    'New chat',
-    useCallback(() => {
-      if (selectedAgent) {
-        const newSessionId = `session-${Date.now()}`;
-        initChat(newSessionId, (selectedAgent as any) ?? undefined);
-        setActiveSessionId(newSessionId);
-        setActiveChat(null); // New chat, no conversation yet
-      }
-    }, [selectedAgent, initChat, setActiveSessionId, setActiveChat]),
-  );
+  useDockShortcut('dock.newChat', 't', ['cmd'], 'New chat', onNewChat);
 
   useDockShortcut(
     'dock.openConversation',
@@ -99,6 +86,10 @@ export function useChatDockKeyboardShortcuts({
     ['cmd'],
     'Close tab',
     useCallback(() => {
+      if (onCloseCurrent) {
+        onCloseCurrent();
+        return;
+      }
       if (activeSessionId && sessions.length > 1) {
         const currentIndex = sessions.findIndex(
           (s) => s.id === activeSessionId,
@@ -108,7 +99,7 @@ export function useChatDockKeyboardShortcuts({
         if (nextSession) focusSession(nextSession.id);
         removeChat(activeSessionId);
       }
-    }, [activeSessionId, sessions, focusSession, removeChat]),
+    }, [activeSessionId, sessions, focusSession, removeChat, onCloseCurrent]),
   );
 
   // Session switching shortcuts (⌘1-9)

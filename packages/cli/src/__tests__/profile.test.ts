@@ -162,6 +162,25 @@ describe('shared saved Station store', () => {
   });
 
   test('publishes first-install metadata beneath a lexical macOS /tmp root', () => {
+    // The lexical `/tmp` is this test's SUBJECT, not an oversight. Do not
+    // convert it to `tmpdir()`: the discriminating property is that
+    // `dirname(home)` is ITSELF a symlink, which only `/tmp` gives here.
+    // `writeProfileStoreGenesisMarker` ends in
+    // `fsyncDirectorySync(realpathSync(dirname(home)))` (`profile-store.ts:246`)
+    // and `fsyncDirectorySync` opens `O_RDONLY | O_NOFOLLOW`
+    // (`fs-windows-compat.ts:31-38`); `open('/tmp', O_NOFOLLOW)` is ELOOP, while
+    // `/private/tmp` and `os.tmpdir()` both succeed. So this is the only test
+    // that reds if that `realpathSync` is dropped, and a regression surfaces as
+    // ELOOP from a durability fsync -- not as a home-admission refusal.
+    //
+    // "has a symlinked ancestor" is NOT the test to apply: `/var` is a symlink
+    // too, so `tmpdir()` (`/var/folders/.../T`) passes it while exercising
+    // nothing -- `O_NOFOLLOW` only refuses a symlink at the FINAL component.
+    //
+    // The pin is macOS-only, as the name says: on Linux `/tmp` is a real
+    // directory, so `O_NOFOLLOW` succeeds and this test passes for another
+    // reason. It cleans up after itself (`finally` below), and no lane runs this
+    // file on Windows (`scripts/prepush-test-manifest.mjs`).
     const temporaryHome = mkdtempSync('/tmp/station-profile-genesis-');
     try {
       upsertProfile(

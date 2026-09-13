@@ -213,10 +213,10 @@ describe('workspace dependency provenance preflight', () => {
     }
   });
 
-  it('does not start the changed-test compiler after a preflight failure', () => {
+  it('does not start the changed-test compiler after a preflight failure', async () => {
     const compile = vi.fn();
     const changedPaths = vi.fn();
-    expect(() =>
+    await expect(
       runChangedVerification(['--base=HEAD'], {
         assertDependencyProvenance: () => {
           throw new Error('injected provenance guard');
@@ -224,7 +224,7 @@ describe('workspace dependency provenance preflight', () => {
         changedPathsFn: changedPaths,
         run: compile,
       }),
-    ).toThrow('injected provenance guard');
+    ).rejects.toThrow('injected provenance guard');
     expect(changedPaths).not.toHaveBeenCalled();
     expect(compile).not.toHaveBeenCalled();
   });

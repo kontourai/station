@@ -22,7 +22,7 @@ export interface ReportContext {
   consoleEntries: CapturedConsoleEntry[];
 }
 
-export const REPORT_ISSUE_REPO = 'kontourai/station';
+const REPORT_ISSUE_REPO = 'kontourai/station';
 
 /**
  * GitHub rejects new-issue URLs somewhere past ~8k characters. Stay clearly
@@ -83,7 +83,7 @@ export function renderReportBundleText(context: ReportContext): string {
   return `# Station problem report\n\n${reportBody(context, 0)}`;
 }
 
-export interface IssueUrlResult {
+interface IssueUrlResult {
   url: string;
   /** Console entries dropped (oldest first) to fit the URL limit. */
   omittedEntryCount: number;

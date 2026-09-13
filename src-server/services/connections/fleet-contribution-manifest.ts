@@ -67,7 +67,7 @@ function carriedDiagnostic(
   };
 }
 
-export interface FleetContributionProjectionInput {
+interface FleetContributionProjectionInput {
   /** Wall-clock time this projection is being produced (never an age). */
   projectedAt: string;
   /** The persisted opt-in; `undefined` is the default-off state. */

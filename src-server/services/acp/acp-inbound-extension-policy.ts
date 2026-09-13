@@ -293,7 +293,7 @@ export class AcpInboundExtensionRegistry {
   }
 }
 
-export interface AcpInboundExtensionPolicyOptions {
+interface AcpInboundExtensionPolicyOptions {
   /** Defaults to a fresh empty registry — i.e. refuse everything. */
   registry?: AcpInboundExtensionRegistry;
   /**

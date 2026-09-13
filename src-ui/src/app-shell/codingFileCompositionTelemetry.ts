@@ -1,6 +1,6 @@
 import type { CodingFileCompositionReceipt } from '@kontourai/station-contracts/workspace-coding-file-composition';
 
-export type CodingFileCompositionTrack = (
+type CodingFileCompositionTrack = (
   event: string,
   properties: Record<string, string | number>,
 ) => void;

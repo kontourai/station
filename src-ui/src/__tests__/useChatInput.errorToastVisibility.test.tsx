@@ -251,6 +251,71 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
     );
   });
 
+  test('sends the saved quote with existing text and keeps it after refusal', async () => {
+    const quote = {
+      version: 1 as const,
+      origin: 'http://station.test',
+      sessionId: 'source-session',
+      turnId: 'source-turn',
+      messageId: 'source-answer',
+      revision: 'a'.repeat(64),
+      excerpt: 'Selected text',
+    };
+    chatDraftsStore.set(SESSION_ID, 'My reply');
+    chatDraftsStore.addQuote(SESSION_ID, quote);
+    activeChatsStore.updateChat(SESSION_ID, { input: 'My reply' });
+    sendMessageMock.mockResolvedValueOnce(undefined);
+    const { result } = renderHook(
+      () =>
+        useChatInput({
+          apiBase: 'http://station.test',
+          sessionId: SESSION_ID,
+          agentSlug: 'dev-agent',
+          availableModels: [],
+        }),
+      { wrapper },
+    );
+    await act(() => result.current.handleSend());
+    const sentText = sendMessageMock.mock.calls[0][3];
+    expect(sentText).toContain('My reply');
+    expect(sentText).toContain('> Selected text');
+    expect(sentText).toContain('#station-quote=');
+    expect(chatDraftsStore.getQuotes(SESSION_ID)).toEqual([quote]);
+    sendMessageMock.mockResolvedValueOnce(true);
+    await act(() => result.current.handleSend());
+    expect(chatDraftsStore.getQuotes(SESSION_ID)).toEqual([]);
+  });
+
+  test('a changed Station cannot send a retained source quote', async () => {
+    chatDraftsStore.clear(SESSION_ID);
+    chatDraftsStore.addQuote(SESSION_ID, {
+      version: 1,
+      origin: 'http://original.station.test',
+      sessionId: 'source-session',
+      turnId: 'source-turn',
+      messageId: 'answer',
+      revision: 'a'.repeat(64),
+      excerpt: 'Private saved context',
+    });
+    const { result } = renderHook(
+      () =>
+        useChatInput({
+          apiBase: 'http://station.test',
+          sessionId: SESSION_ID,
+          agentSlug: 'dev-agent',
+          availableModels: [],
+        }),
+      { wrapper },
+    );
+    await act(() => result.current.handleSend());
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    expect(showToastMock).toHaveBeenCalledWith(
+      expect.stringContaining('another Station'),
+      'error',
+    );
+    chatDraftsStore.clear(SESSION_ID);
+  });
+
   test('clears the persisted draft only after a successful send', async () => {
     chatDraftsStore.set(SESSION_ID, 'ready to send');
     activeChatsStore.updateChat(SESSION_ID, { input: 'ready to send' });

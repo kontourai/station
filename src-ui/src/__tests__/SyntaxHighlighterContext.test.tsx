@@ -5,7 +5,9 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 const { createHighlighter } = vi.hoisted(() => ({
   createHighlighter: vi.fn(),
 }));
-vi.mock('shiki', () => ({ createHighlighter }));
+vi.mock('../highlight/core-highlighter', () => ({
+  createChatHighlighter: createHighlighter,
+}));
 beforeEach(() => {
   vi.resetModules();
   createHighlighter.mockReset();

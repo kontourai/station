@@ -12,6 +12,7 @@ scripts/codeql-sarif-policy.mjs @briananderson1222
 scripts/codeql-sarif-normalize.mjs @briananderson1222
 scripts/dependency-advisory-exceptions.json @briananderson1222
 scripts/issue-lifecycle-reducer.mjs @briananderson1222
+scripts/main-health-comment-policy.mjs @briananderson1222
 scripts/issue-availability.mjs @briananderson1222
 scripts/source-availability-driver.mjs @briananderson1222
 scripts/lib/github-merged-issue-facts.mjs @briananderson1222

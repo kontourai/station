@@ -11,13 +11,13 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
-import { isSessionReadAuthority } from '@kontourai/station-contracts/tenancy';
-import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import {
   foldedSessionLifecycleState,
   isSessionLifecycleStateStopped,
-} from '../../../packages/contracts/src/session-lifecycle.js';
+} from '@kontourai/station-contracts/session-lifecycle';
+import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
+import { isSessionReadAuthority } from '@kontourai/station-contracts/tenancy';
+import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { conversationContinuationOutcomes } from '../../telemetry/metrics.js';
 import { projectConversationContextBoundary } from './conversation-context-boundary-module.js';
@@ -78,7 +78,7 @@ export function canResolveConversationContinuation(
   );
 }
 
-export interface ConversationLineageDeps {
+interface ConversationLineageDeps {
   // Value-typed deps, captured once at service construction (slice-3
   // precedent). Safe only while nothing mutates the service options
   // post-construction — nothing does today.
@@ -151,6 +151,7 @@ export class ConversationLineage {
     sessionId: string;
     startRequired: boolean;
     resumeCursor?: unknown;
+    resumeModel?: string;
     transcriptSeed?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
   }> {
@@ -936,7 +937,7 @@ function continuationLaunchContext(
   requested: { provider: EngineId; connectionId?: string },
   messages: readonly ConversationMessage[],
   resumeSupported?: boolean,
-): { resumeCursor?: unknown; transcriptSeed?: string } {
+): { resumeCursor?: unknown; resumeModel?: string; transcriptSeed?: string } {
   const sourceConnectionId = [...detail.events].reverse().flatMap((event) => {
     if (
       event.method !== 'session.started' &&
@@ -976,13 +977,23 @@ function continuationLaunchContext(
   // transcript-seed fresh child instead of a start the adapter must refuse.
   // `undefined` keeps the cursor path for every provider this observation
   // cannot speak for.
-  return sameExecutionIdentity &&
+  const canResume =
+    sameExecutionIdentity &&
     detail.session.resumeCursor !== undefined &&
     cursorBackedByTranscript &&
     !cursorDisprovenByEngine &&
-    resumeSupported !== false
-    ? { resumeCursor: detail.session.resumeCursor }
-    : { transcriptSeed: continuationTranscriptSeed(messages) };
+    resumeSupported !== false;
+  // A fresh process for the same engine still continues the user's model
+  // choice. A native cursor determines context delivery, not model selection.
+  const retainedModel = sameExecutionIdentity
+    ? (detail.session.reportedModel ?? detail.session.model)
+    : undefined;
+  return {
+    ...(retainedModel ? { resumeModel: retainedModel } : {}),
+    ...(canResume
+      ? { resumeCursor: detail.session.resumeCursor }
+      : { transcriptSeed: continuationTranscriptSeed(messages) }),
+  };
 }
 
 /**

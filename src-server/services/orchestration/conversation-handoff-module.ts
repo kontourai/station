@@ -35,7 +35,7 @@ export class ConversationHandoffConflictError extends Error {
   }
 }
 
-export interface ConversationHandoffPersistence {
+interface ConversationHandoffPersistence {
   reserve(input: ConversationHandoffMarker): {
     marker: ConversationHandoffMarker;
     outcome: 'created' | 'existing';

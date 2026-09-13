@@ -2,6 +2,7 @@ import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import { toolDenials } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
 import type {
   InvocationContext,
@@ -57,7 +58,7 @@ export type StagedPreToolPolicyEvaluator = (
   },
 ) => Promise<PreToolPolicyDecision>;
 
-export interface StagedPreToolPolicyDeps {
+interface StagedPreToolPolicyDeps {
   spec: AgentSpec;
   agentPolicyService?: AgentPolicyService;
   approvalGuardian?: ApprovalGuardianService;
@@ -367,7 +368,7 @@ export function createStagedPreToolPolicyEvaluator(
         toolName: tool.toolName,
         agentSlug: invocation.agentSlug,
         conversationId: invocation.conversationId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return deny(
         'policy_evaluation_failed',

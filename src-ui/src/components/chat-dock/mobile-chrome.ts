@@ -1,4 +1,4 @@
-export interface MobileDockFullscreenInput {
+interface MobileDockFullscreenInput {
   isMobile: boolean;
   isDockOpen: boolean;
   isDockMaximized: boolean;

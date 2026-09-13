@@ -983,6 +983,16 @@ export class ConnectionStore {
     this.bumpCounter(this.authorityPrefix, id);
   }
 
+  /** Wake health checks after a native vault has committed a new credential.
+   * This carries no secret and grants no authority; the next probe must prove it.
+   */
+  nativeCredentialCommitted(id: string): void {
+    this.invalidateCache();
+    if (!this.getAll().some((connection) => connection.id === id)) return;
+    this.recordCredentialAuthority(id);
+    this.notify();
+  }
+
   getCredential(id: string): string | null {
     const connection = this.getAll().find((item) => item.id === id);
     if (!connection) return null;

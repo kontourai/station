@@ -3,12 +3,13 @@ export const OPEN_CONNECTIONS_MODAL_EVENT = 'station:open-connections-modal';
 export type OpenConnectionsModalDetail = {
   /**
    * - `list` — the connection list (the default).
-   * - `pair-device` — device pairing (host approve surface).
+   * - `pair-device` — scan an invitation on the joining device.
+   * - `pair-host` — invite another device to the selected Station server.
    * - `request-access` — re-pairing for the ACTIVE connection, archive#3297.
    *   The connection indicator uses this: a device whose credential has gone
    *   stale needs the one exchange that replaces it, not a list to navigate.
    */
-  mode?: 'list' | 'pair-device' | 'request-access' | 'devices';
+  mode?: 'list' | 'pair-device' | 'request-access' | 'devices' | 'pair-host';
 };
 
 let pendingOpen: OpenConnectionsModalDetail | null = null;

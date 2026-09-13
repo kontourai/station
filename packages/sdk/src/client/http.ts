@@ -19,10 +19,12 @@
  * `packages/sdk/src/__tests__/client-entry-portability.test.ts`.
  */
 
+import { ACCOUNT_AUTHENTICATION_FAILURE_HEADER } from '@kontourai/station-contracts/application-session';
 import {
   type ConnectionRetryClassification,
   isTerminalConnectionStatus,
 } from '@kontourai/station-contracts/http';
+import { boundResponse } from './bounded-response.js';
 import { withClientOriginHeaders } from './client-origin.js';
 
 /**
@@ -72,7 +74,7 @@ export interface ClientRequestOptions {
   requireCredential?: boolean;
   /** Identity probes must not follow a response to another listener. */
   redirect?: 'error';
-  /** Optional byte ceiling for a GET response body. */
+  /** Optional byte ceiling for a JSON response body. */
   maxResponseBytes?: number;
   /**
    * Per-call request deadline in milliseconds. `null` (or `0`) opts the call
@@ -267,6 +269,8 @@ export type ClientCredential = {
    * is synchronous returns nothing and nothing changes.
    */
   onUnauthorized?: () => void | Promise<void>;
+  /** Account-session refusal does not revoke or erase the independently approved Device credential. */
+  onAccountUnauthorized?: () => void | Promise<void>;
   /**
    * Records that this Station accepted an authenticated request, and names the
    * URL it was accepted on. The URL matters to the recipient: a connection
@@ -743,7 +747,11 @@ async function reportUnauthorized(
     // user-visible contract the recovery suite pins ("the banner is gone the
     // moment the accepted response resolves") held only where the store
     // happened to be synchronous. Bounded — see `awaitCredentialReport`.
-    await awaitCredentialReport(configured.onUnauthorized?.());
+    await awaitCredentialReport(
+      response.headers.get(ACCOUNT_AUTHENTICATION_FAILURE_HEADER) === 'account'
+        ? configured.onAccountUnauthorized?.()
+        : configured.onUnauthorized?.(),
+    );
   }
 }
 
@@ -1009,11 +1017,7 @@ export async function getJson(
   const result =
     maximum === undefined
       ? response
-      : (await import('./bounded-response')).boundResponse(
-          response,
-          maximum,
-          assertAuthority,
-        );
+      : boundResponse(response, maximum, assertAuthority);
   return needsAuthorityGuard(url, requestOptions, configured)
     ? guardResponseAuthority(result, assertAuthority)
     : result;
@@ -1036,6 +1040,9 @@ export async function mutateJson(
   body?: unknown,
 ): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
+  const maximum = requestOptions?.maxResponseBytes;
+  if (maximum !== undefined && (!Number.isSafeInteger(maximum) || maximum < 1))
+    throw new Error('Invalid response byte limit');
   const hasBody = body !== undefined;
   const baseHeaders =
     hasBody || requestOptions?.headers
@@ -1092,9 +1099,13 @@ export async function mutateJson(
     requestOptions,
     assertAuthority,
   );
+  const result =
+    maximum === undefined
+      ? response
+      : boundResponse(response, maximum, assertAuthority);
   return needsAuthorityGuard(url, requestOptions, configured)
-    ? guardResponseAuthority(response, assertAuthority)
-    : response;
+    ? guardResponseAuthority(result, assertAuthority)
+    : result;
 }
 
 export interface FetchSseMessage {

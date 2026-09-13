@@ -7,7 +7,10 @@ import { createLLMProvider } from '../../providers/connection-factories.js';
 import { resolveExactModelSelector } from '../../providers/llm/model-catalog.js';
 import type { ILLMProvider } from '../../providers/llm/model-provider-types.js';
 import { providerOps } from '../../telemetry/metrics.js';
+import { createLogger } from '../../utils/logger.js';
 import { LaunchabilityRevision } from './launchability-revision.js';
+
+const logger = createLogger({ name: 'provider-service' });
 
 const INVALID_PROVIDER_FINGERPRINT = 'station:invalid-provider-config';
 
@@ -272,11 +275,10 @@ export class ProviderService {
       try {
         project = await this.storageAdapter.getProject(opts.projectSlug);
       } catch (e) {
-        console.debug(
-          'Failed to get project provider config:',
-          opts.projectSlug,
-          e,
-        );
+        logger.debug('Failed to get project provider config', {
+          projectSlug: opts.projectSlug,
+          error: e,
+        });
       }
       if (project?.defaultProviderId && project.defaultModel) {
         const providerId = project.defaultProviderId.trim();
@@ -360,7 +362,10 @@ export class ProviderService {
       try {
         project = await this.storageAdapter.getProject(projectSlug);
       } catch (e) {
-        console.debug('Failed to get project provider config:', projectSlug, e);
+        logger.debug('Failed to get project provider config', {
+          projectSlug,
+          error: e,
+        });
       }
       if (project?.defaultProviderId && project.defaultModel) {
         return project.defaultProviderId.trim();

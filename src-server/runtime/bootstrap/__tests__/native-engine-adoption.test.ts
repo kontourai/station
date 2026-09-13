@@ -13,8 +13,10 @@ import {
 } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import {
+  ADOPTION_PROBE_TIMEOUT_MS,
   adoptDetectedNativeEngines,
   NATIVE_ENGINE_CANDIDATES,
+  SUPPRESS_NATIVE_ENGINE_ADOPTION_ENV,
 } from '../native-engine-adoption.js';
 
 const homes: string[] = [];
@@ -31,6 +33,24 @@ afterEach(() => {
 });
 
 const silentLogger = { info: vi.fn(), warn: vi.fn() };
+
+/**
+ * How long the cases below wait for a probe to be invoked (station#1815).
+ *
+ * Stated rather than defaulted, and below vitest's own 30s `testTimeout` so
+ * it can fire FIRST: a wait equal to the framework's deadline can only ever
+ * be reported as "the test timed out", never as "the probes never ran",
+ * which is the diagnostic these waits exist to give.
+ *
+ * The number is also, coincidentally, the file mutation lock's admission
+ * deadline — which sits INSIDE the registry work every one of these waits
+ * spans. A single contended admission would make the wait fire first and
+ * blame the probes for lock contention. Not reachable in this file, because
+ * every case takes its own fresh home from `createLoader`, and recorded here
+ * rather than at one call site because it is a property of the value, not of
+ * whichever wait happens to carry the note.
+ */
+const PROBE_WAIT_MS = 10_000;
 
 /**
  * A `station` record as an OLDER build left it — carrying an engine binding.
@@ -230,13 +250,29 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
   it('settles promptly when the shutdown signal aborts a pending delay (#1575)', async () => {
     const loader = createLoader();
     const controller = new AbortController();
-    // All-absent detection: attempt 1 does zero registry I/O, so the run is
-    // deterministically INSIDE the 600s delay when the abort lands — a
-    // broken abort listener cannot hide behind the outer loop guard (the
-    // archive#1575 verifier proved the previous shape never reached the listener).
+    // All-absent detection: attempt 1's candidate loop does zero registry
+    // I/O, so once every candidate has been probed the run is INSIDE the 600s
+    // delay and a broken abort listener cannot hide behind the outer loop
+    // guard (the archive#1575 verifier proved the previous shape never
+    // reached the listener).
+    //
+    // Keyed on the probes rather than on a 20ms sleep (station#1815): the
+    // registry load and Station-Agent materialization that run BEFORE the
+    // loop are real file I/O, so on a loaded host the abort could land before
+    // any candidate was probed. That used to be invisible because the summary
+    // reported 'absent' either way; now that an unprobed candidate says
+    // 'interrupted', the assertion below is only true if the probes really
+    // ran, and this wait is what makes that so.
+    //
+    // What this case does NOT pin, and the sentence above should not be read
+    // as claiming: that the abort lands INSIDE the delay rather than at the
+    // top-of-iteration guard. Both settle promptly and produce this same
+    // summary. The #1815 round-2 reviewer injected the listener away and this
+    // case timed out, so on that host it was inside the delay and the
+    // listener was load-bearing — but that is poll granularity, not something
+    // asserted here.
     const detect = vi.fn(async () => false);
 
-    const startedAt = Date.now();
     const pending = adoptDetectedNativeEngines({
       configLoader: loader,
       logger: silentLogger,
@@ -245,16 +281,330 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       delaysMs: [0, 600_000],
       signal: controller.signal,
     });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await vi.waitFor(
+      () =>
+        expect(detect).toHaveBeenCalledTimes(NATIVE_ENGINE_CANDIDATES.length),
+      // Stated, not defaulted: the default is 1s and this wait spans a real
+      // registry load and Station-Agent materialization — file I/O, on
+      // exactly the loaded hosts that motivated replacing the sleep here.
+      // Below vitest's own 30s `testTimeout`, deliberately: a value equal to
+      // it can never fire first, and the diagnostic this wait was given
+      // ("the probes never ran") would be unreachable.
+      // See `PROBE_WAIT_MS` for why the number itself deserves a note.
+      { timeout: PROBE_WAIT_MS, interval: 5 },
+    );
+    // The span starts HERE, not at the call. Everything before the abort —
+    // the registry load, the Station-Agent materialization, three probes — is
+    // setup, and folding it into a promptness bound both inflates the bound
+    // and lets setup cost be attributed to the abort listener.
+    const abortedAt = Date.now();
     controller.abort();
 
     const summary = await pending;
-    expect(Date.now() - startedAt).toBeLessThan(5_000);
+    expect(Date.now() - abortedAt).toBeLessThan(5_000);
     expect(summary.outcomes).toEqual({
       claude: 'absent',
       codex: 'absent',
       muse: 'absent',
     });
+  });
+
+  it('carries the shutdown signal and a probe ceiling into every probe (#1815)', async () => {
+    const loader = createLoader();
+    const controller = new AbortController();
+    const detect = vi.fn(async () => false);
+
+    await adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0],
+      signal: controller.signal,
+    });
+
+    // Without the signal reaching `detectCliOnPath` there is no way to end a
+    // probe already running, and shutdown's only options were to hang or to
+    // stop waiting and release the home under it.
+    expect(detect).toHaveBeenCalledTimes(NATIVE_ENGINE_CANDIDATES.length);
+    for (const call of detect.mock.calls as unknown as Array<
+      [string, { signal?: AbortSignal; timeoutMs?: number } | undefined]
+    >) {
+      expect(call[1]?.signal).toBe(controller.signal);
+      expect(call[1]?.timeoutMs).toBe(ADOPTION_PROBE_TIMEOUT_MS);
+    }
+  });
+
+  it('does not adopt a probe that answered after the abort (#1815)', async () => {
+    const loader = createLoader();
+    const controller = new AbortController();
+    let answerProbe!: (found: boolean) => void;
+    const probed = new Promise<boolean>((resolve) => {
+      answerProbe = resolve;
+    });
+    // One probe, held open. The abort lands while it is in flight, which is
+    // exactly the window the runtime could not account for.
+    const detect = vi.fn(() => probed);
+
+    const pending = adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0],
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(1), {
+      timeout: PROBE_WAIT_MS,
+      interval: 5,
+    });
+    controller.abort();
+    // The real probe resolves false on abort; a detector that answers TRUE
+    // anyway is the discriminating case — it proves the write is stopped by
+    // the adoption's own guard and not merely by the probe's answer.
+    answerProbe(true);
+
+    const summary = await pending;
+    // 'interrupted', not 'absent'. `claude`'s probe answered TRUE and the
+    // guard stopped the write; `codex` and `muse` were never probed at all.
+    // Reporting any of those as absence would state a host fact nothing here
+    // observed, in the field where 'absent' means a probe said no.
+    expect(summary.outcomes).toEqual({
+      claude: 'interrupted',
+      codex: 'interrupted',
+      muse: 'interrupted',
+    });
+    // The observable is the WRITE, not a timer: nothing reached the registry.
+    const registry = await loadOrCreateAgentRegistry(loader);
+    expect(registry.engineConnections).toEqual([]);
+    // And no further candidate started a probe of its own under the abort.
+    expect(detect).toHaveBeenCalledTimes(1);
+  });
+
+  it('elides the next candidate probe when the abort lands during a write (#1815)', async () => {
+    const loader = createLoader();
+    const controller = new AbortController();
+    // The window the loop's pre-probe check covers on its own: candidate 1's
+    // probe answered and was NOT aborted, so the post-probe check let it
+    // through, and the abort lands inside the registry write that probe
+    // authorised. By the time the loop reaches candidate 2 the check before
+    // its probe is the only one left.
+    //
+    // Hermetic, which three earlier rounds of the guard's comment claimed it
+    // could not be, on the argument that reaching this window needs a CLI
+    // genuinely installed on the host. It does not: `deps.detect` is injected,
+    // so no host tool can supply the answer whatever is on PATH.
+    //
+    // What the injected detector must do is mirror the shipped one in the one
+    // respect this window turns on — `detectCliOnPath` resolves falsy when its
+    // signal is already aborted — so candidate 2 takes the same path it would
+    // on a host that has the CLI. What is injected is the "yes, it is
+    // installed" answer, not the control flow. An earlier attempt at this case
+    // returned a bare `true` instead, which is why it looked contrived and was
+    // withdrawn.
+    const detect = vi.fn(
+      async (_cli: string, options?: { signal?: AbortSignal }) =>
+        !options?.signal?.aborted,
+    );
+    // `materializeEngineAgent` is the only caller of `listAgents` on this
+    // path, so the abort lands once, inside a real await, after candidate 1's
+    // connection write has returned and while its agent materialization is
+    // still running. Deterministic, not tuned to an instant.
+    //
+    // Forwards with the proxy as receiver, like the `never throws when the
+    // registry write fails` proxy below it. Safe because `ConfigLoader` has no
+    // private fields; if that changes, both change together.
+    const abortingDuringWrite = new Proxy(loader, {
+      get(target, prop, receiver) {
+        if (prop === 'listAgents') {
+          return async () => {
+            controller.abort();
+            return await loader.listAgents();
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as ConfigLoader;
+
+    const summary = await adoptDetectedNativeEngines({
+      configLoader: abortingDuringWrite,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0],
+      signal: controller.signal,
+    });
+
+    // The whole observable difference. Without the pre-probe check candidate 2
+    // is probed, its detector returns falsy because the signal is aborted, and
+    // the post-probe check then breaks — so the outcomes below are identical
+    // either way and the call count is the only thing that moves.
+    expect(detect).toHaveBeenCalledTimes(1);
+    expect(summary.outcomes).toEqual({
+      claude: 'adopted',
+      codex: 'interrupted',
+      muse: 'interrupted',
+    });
+    // Candidate 1's writes completed: the check stops the NEXT candidate, it
+    // does not abandon a write already under way. Both halves are asserted,
+    // because the connection write had already RETURNED when the abort
+    // landed — the write actually under way was the agent materialization,
+    // and asserting only the connection would not have covered the sentence
+    // above it.
+    const registry = await loadOrCreateAgentRegistry(loader);
+    expect(registry.engineConnections.map((c) => c.id)).toEqual(['claude']);
+    await expect(loader.loadAgent('claude')).resolves.toMatchObject({
+      execution: { agentConnectionId: 'claude' },
+    });
+  });
+
+  it('reports a probe CANCELLED in flight as interrupted, not absent (#1815)', async () => {
+    const loader = createLoader();
+    const controller = new AbortController();
+    let answerProbe!: (found: boolean) => void;
+    const probed = new Promise<boolean>((resolve) => {
+      answerProbe = resolve;
+    });
+    const detect = vi.fn(() => probed);
+
+    const pending = adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0],
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(1), {
+      timeout: PROBE_WAIT_MS,
+      interval: 5,
+    });
+    controller.abort();
+    // FALSE, which is what the real probe does here: `detectCliOnPath`
+    // resolves false on abort rather than rejecting. This is the common
+    // shape by a wide margin — an abort lands inside the `which` child for
+    // the probe's whole duration, while the guards on either side of it are
+    // a few instructions — and the first version of this fix reported it as
+    // 'absent' for a `claude` that may well be installed.
+    answerProbe(false);
+
+    const summary = await pending;
+    expect(summary.outcomes).toEqual({
+      claude: 'interrupted',
+      codex: 'interrupted',
+      muse: 'interrupted',
+    });
+    expect(detect).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an earlier observed absence a later cancelled probe cannot correct (#1815)', async () => {
+    const loader = createLoader();
+    const controller = new AbortController();
+    let calls = 0;
+    // Attempt 1 observes all three absent. Attempt 2 finds `claude` present
+    // and is stopped before it can write — so the summary must carry the
+    // LATER observation for `claude`, which the backfill's `??=` could never
+    // have done, while `codex` and `muse` keep the absence attempt 1 really
+    // did observe.
+    const detect = vi.fn(async () => {
+      calls += 1;
+      if (calls <= NATIVE_ENGINE_CANDIDATES.length) return false;
+      controller.abort();
+      return true;
+    });
+
+    const summary = await adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0, 1],
+      signal: controller.signal,
+    });
+    expect(summary.outcomes).toEqual({
+      claude: 'interrupted',
+      codex: 'absent',
+      muse: 'absent',
+    });
+    const registry = await loadOrCreateAgentRegistry(loader);
+    expect(registry.engineConnections).toEqual([]);
+  });
+
+  it('reports the screenshot containment as suppressed, not absent (#1815)', async () => {
+    const loader = createLoader();
+    const detect = vi.fn(async () => true);
+
+    const summary = await adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0],
+      env: {
+        [SUPPRESS_NATIVE_ENGINE_ADOPTION_ENV]: '1',
+        STATION_HOME_SOURCE: '--temp-home',
+        STATION_INSTANCE_ID: 'e2e-screenshot-mes5x00-abc123',
+      },
+    });
+
+    // Zero probes were made, so an absence would be a claim about a host
+    // nothing looked at — and this path made it for all three candidates.
+    expect(detect).not.toHaveBeenCalled();
+    expect(summary.outcomes).toEqual({
+      claude: 'suppressed',
+      codex: 'suppressed',
+      muse: 'suppressed',
+    });
+    // The containment itself is unchanged: nothing was adopted.
+    const registry = await loadOrCreateAgentRegistry(loader);
+    expect(registry.engineConnections).toEqual([]);
+  });
+
+  it('leaves a partially adopted registry the next run completes (#1815)', async () => {
+    const loader = createLoader();
+    const controller = new AbortController();
+    // The abort lands while the SECOND candidate's probe is in flight, so
+    // `claude` is adopted and `codex`/`muse` are not. That partial registry is
+    // the whole cost of the new abort guards, and it is only acceptable if the
+    // next run repairs it — the existing idempotency case covers the
+    // all-or-nothing shape and cannot say anything about this one.
+    const detect = vi.fn(async (cli: string) => {
+      if (cli === 'codex') controller.abort();
+      return true;
+    });
+
+    const interrupted = await adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0],
+      signal: controller.signal,
+    });
+    expect(interrupted.outcomes).toEqual({
+      claude: 'adopted',
+      codex: 'interrupted',
+      muse: 'interrupted',
+    });
+    const partial = await loadOrCreateAgentRegistry(loader);
+    expect(partial.engineConnections.map((c) => c.id)).toEqual(['claude']);
+
+    const repaired = await adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect: async () => true,
+      delaysMs: [0],
+    });
+    expect(repaired.outcomes).toEqual({
+      claude: 'exists',
+      codex: 'adopted',
+      muse: 'adopted',
+    });
+    const registry = await loadOrCreateAgentRegistry(loader);
+    expect(registry.engineConnections.map((c) => c.id).sort()).toEqual([
+      'claude',
+      'codex',
+      'muse',
+    ]);
+    // The Agents behind them, not just the connections.
+    for (const id of ['claude', 'codex', 'muse']) {
+      await expect(loader.loadAgent(id)).resolves.toMatchObject({
+        execution: { agentConnectionId: id },
+      });
+    }
   });
 
   it('never throws when the registry write fails; settles as error', async () => {

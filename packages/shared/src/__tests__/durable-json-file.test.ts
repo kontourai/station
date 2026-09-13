@@ -108,4 +108,55 @@ describe('writeJsonDurably', () => {
       writeJsonDurably('/dev/null/impossible/state.json', { a: 1 }),
     ).toThrow();
   });
+
+  // The document format is a store's on-disk contract, so the default is
+  // pinned as exact text rather than as a parsed value: every caller that
+  // passes no options must keep the bytes it had before options existed.
+  test('the default document is two-space JSON with a trailing newline', () => {
+    const path = join(root(), 'state.json');
+    writeJsonDurably(path, { a: 1, nested: { b: [true, null] } });
+    expect(readFileSync(path, 'utf8')).toBe(
+      `${JSON.stringify({ a: 1, nested: { b: [true, null] } }, null, 2)}\n`,
+    );
+  });
+
+  test('indent: null writes the compact form', () => {
+    const path = join(root(), 'state.json');
+    writeJsonDurably(
+      path,
+      { a: 1, nested: { b: [true, null] } },
+      {
+        indent: null,
+      },
+    );
+    expect(readFileSync(path, 'utf8')).toBe(
+      '{"a":1,"nested":{"b":[true,null]}}\n',
+    );
+  });
+
+  // `null` and "not supplied" are different answers, and a `?? 2` read of the
+  // option collapses them -- which is the whole defect this asserts against.
+  test('indent: null is not read as "no answer"', () => {
+    const path = join(root(), 'state.json');
+    writeJsonDurably(path, { a: 1 }, { indent: null });
+    expect(readFileSync(path, 'utf8')).not.toContain('\n  ');
+  });
+
+  test('indent: 4 writes four-space JSON', () => {
+    const path = join(root(), 'state.json');
+    writeJsonDurably(path, { a: 1 }, { indent: 4 });
+    expect(readFileSync(path, 'utf8')).toBe('{\n    "a": 1\n}\n');
+  });
+
+  test('trailingNewline: false omits the newline', () => {
+    const path = join(root(), 'state.json');
+    writeJsonDurably(path, { a: 1 }, { trailingNewline: false });
+    expect(readFileSync(path, 'utf8')).toBe('{\n  "a": 1\n}');
+  });
+
+  test('the two options compose', () => {
+    const path = join(root(), 'state.json');
+    writeJsonDurably(path, { a: 1 }, { indent: null, trailingNewline: false });
+    expect(readFileSync(path, 'utf8')).toBe('{"a":1}');
+  });
 });

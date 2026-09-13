@@ -27,6 +27,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { getPathForView } from '../app-shell/routing';
 import {
   BANNER_IDS,
@@ -74,7 +75,8 @@ type ConnectionModalMode =
   | 'list'
   | 'pair-device'
   | 'request-access'
-  | 'devices';
+  | 'devices'
+  | 'pair-host';
 
 const PAIRING_APPROVAL_BANNER_ID = 'chrome:onboarding:pairing-approval';
 /**
@@ -330,7 +332,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       setConnectionModalMode(
         detail?.mode === 'pair-device' ||
           detail?.mode === 'request-access' ||
-          detail?.mode === 'devices'
+          detail?.mode === 'devices' ||
+          detail?.mode === 'pair-host'
           ? detail.mode
           : 'list',
       );
@@ -832,6 +835,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         }}
         checkHealth={checkServerHealthDetailed}
         checkCompatibility={checkHostCompatibility}
+        pairingClientChannel={
+          profile.channel === 'dev' ? 'stable' : profile.channel
+        }
         initialPanel={connectionModalMode}
         initialPairingPayload={pairingPayload}
         pairingLinkError={pairingLinkError}
@@ -902,7 +908,7 @@ function SetupLauncher({
   onOpenHub: () => void;
   onDismiss: () => void;
 }) {
-  return (
+  const launcher = (
     <aside
       className="onboarding-setup-launcher"
       data-testid="setup-launcher"
@@ -967,4 +973,7 @@ function SetupLauncher({
       </div>
     </aside>
   );
+  return typeof document === 'undefined'
+    ? launcher
+    : createPortal(launcher, document.body);
 }
