@@ -26,6 +26,14 @@ export interface ApprovedStationConnectionTrust {
   readonly signingKey: StationConnectionSigningKey;
 }
 
+/** Device-local public trust state. Revocation retains the last generation. */
+export interface DeviceConnectionTrustRecord {
+  readonly schemaVersion: 1;
+  readonly revision: number;
+  readonly status: 'approved' | 'revoked';
+  readonly trust: ApprovedStationConnectionTrust;
+}
+
 export const STATION_CONNECTION_PROOF_AUDIENCE =
   'urn:station:connection-proof:v1';
 export const STATION_CONNECTION_PROOF_TYPE = 'station-connection-proof+jwt';

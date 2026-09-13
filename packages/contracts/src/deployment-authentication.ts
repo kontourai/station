@@ -7,6 +7,7 @@ export interface DeploymentAuthenticationConfiguration {
   /** Absolute module path selected by the operator at process startup. */
   modulePath: string;
   publicOrigin: string;
+  allowedBrowserOrigins?: readonly string[];
 }
 
 /** Session verification cannot consume or mutate the destination request body. */
@@ -92,6 +93,17 @@ export interface DeploymentAuthenticationDescriptor {
 
 export interface DeploymentAuthenticationProvider
   extends DeploymentAuthenticationDescriptor {
+  /** Private server hooks. Session ids come from a previously verified result, never caller claims. */
+  sessionReferences?: {
+    /** Must read current session/account state, including revocation, without a cookie cache. */
+    verify(
+      sessionId: string,
+      signal: AbortSignal,
+    ): Promise<DeploymentAuthenticationResult>;
+    revoke(sessionId: string, signal: AbortSignal): Promise<void>;
+    /** Provider-native login; credentials enter only the trusted Station. No cookies/tokens leave this hook. */
+    login?(request: Request): Promise<DeploymentAuthenticationResult>;
+  };
   /**
    * Read current account/session state on each new request; do not accept stale
    * revoked cookie caches. Cookie renewal belongs to refresh-session handling,
@@ -109,6 +121,8 @@ export interface DeploymentAuthenticationProvider
 export interface DeploymentAuthenticationHost {
   stationId: string;
   publicOrigin: string;
+  /** Explicit operator-approved application origins; never inferred from missing Origin. */
+  allowedBrowserOrigins?: readonly string[];
   basePath: string;
   /** The adapter's private persistent data directory within this Station home. */
   stateDirectory: string;

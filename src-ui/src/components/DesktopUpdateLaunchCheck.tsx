@@ -96,10 +96,12 @@ export function DesktopUpdateLaunchCheck() {
       priority: BANNER_PRIORITY.info,
       tone: 'info',
       ariaLive: 'polite',
-      message: `Station ${available.version} is available.`,
+      message: `Desktop app version ${available.version} is available.`,
       occurrence: available.version,
       dismissible: true,
-      actions: [{ label: 'Install and restart', onClick: install }],
+      actions: [
+        { label: 'Install desktop app update and restart', onClick: install },
+      ],
     });
     return () => {
       bannerStore.dismiss(BANNER_IDS.desktopUpdateAvailable);
