@@ -1,6 +1,7 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
+import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
 import {
   type LoadedDeploymentAuthentication,
   loadDeploymentAuthentication,
@@ -477,6 +478,9 @@ export class StationRuntime {
   private deploymentAuthentication?: LoadedDeploymentAuthentication;
   private readonly localAccountConfiguration?: LocalAccountConfiguration;
   private localAccounts?: LoadedLocalAccounts;
+  private applicationSessions?: ReturnType<
+    typeof createApplicationSessionRuntime
+  >;
   private readonly pluginInstallationHost: PluginInstallationHost;
   private configLoader: ConfigLoader;
   private appConfig!: AppConfig;
@@ -3161,6 +3165,15 @@ export class StationRuntime {
         },
       );
     }
+    if (this.deploymentAuthentication && !this.applicationSessions) {
+      this.applicationSessions = createApplicationSessionRuntime(
+        this.configLoader.getProjectHomeDir(),
+        identity.environmentId,
+        this.deploymentAuthentication,
+        (credential) =>
+          this.environmentSecurityService.identifyDevice(credential),
+      );
+    }
     const packageProjections = await this.pluginInstallationHost.reconcile();
     if (packageProjections.status === 'pending')
       this.logger.warn('Plugin catalog projection remains pending', {
@@ -3738,6 +3751,7 @@ export class StationRuntime {
       projectMembership: this.projectMembership?.service,
       deploymentAuthentication: this.deploymentAuthentication,
       localAccounts: this.localAccounts,
+      applicationSessions: this.applicationSessions,
       app,
       logger: this.logger,
       eventBus: this.eventBus,
@@ -4264,6 +4278,12 @@ export class StationRuntime {
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
+    try {
+      this.applicationSessions?.close();
+      this.applicationSessions = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
     try {
       this.projectMembership?.close();
       this.projectMembership = undefined;

@@ -1,4 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import {
+  ACCOUNT_AUTHENTICATION_FAILURE_HEADER,
+  APPLICATION_SESSION_HEADER,
+  APPLICATION_SESSION_PROOF_HEADER,
+} from '@kontourai/station-contracts/application-session';
 import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin';
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
 import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
@@ -43,6 +48,7 @@ import {
   setBudgetPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../security/runtime-request-security.js';
+import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import {
   deviceSessionAuthorizations,
@@ -202,6 +208,21 @@ export function configureRuntimeHttp({
   eventBus,
   security,
 }: RuntimeHttpContext): void {
+  app.use('*', async (c, next) => {
+    await next();
+    const authentication = security?.deploymentAuthentication;
+    const initial = authentication?.admittedPrincipalSnapshot(c.req.raw);
+    if (authentication && initial && c.res.status < 400) {
+      c.res = await guardAccountResponse(c.res, async () => {
+        const latest = await authentication.authenticate(c.req.raw);
+        if (latest.kind === 'unavailable') return 'unavailable';
+        return latest.kind === 'authenticated' &&
+          latest.principal.id === initial.id
+          ? 'current'
+          : 'invalid';
+      });
+    }
+  });
   app.onError((err, c) => {
     // Before the auth allow-list, deliberately. The allow-list matches on
     // message text (`isAuthError` substring-matches "unauthorized", "401",
@@ -442,6 +463,10 @@ function configureRuntimeSecurity(
 
     if (origin) {
       c.header('Access-Control-Allow-Origin', origin);
+      c.header(
+        'Access-Control-Expose-Headers',
+        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After`,
+      );
       c.header('Vary', 'Origin');
       c.header('Access-Control-Allow-Credentials', 'true');
     }
@@ -454,7 +479,7 @@ function configureRuntimeSecurity(
         // Last-Event-ID: set by the SDK's fetchSSE reconnect loop and consumed
         // by the orchestration resume cursor — omitting it preflight-blocks
         // every cross-origin SSE reconnect (#169).
-        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}${
+        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
           process.env.STATION_PERFORMANCE_REFERENCE === '1'
             ? `, ${INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER}`
             : ''
@@ -498,6 +523,18 @@ function configureRuntimeSecurity(
     const accountOperation =
       c.req.path === DEPLOYMENT_AUTHENTICATION_BASE_PATH ||
       c.req.path.startsWith(`${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/`);
+    if (
+      !security.deploymentAuthentication &&
+      !accountOperation &&
+      (c.req.raw.headers.has(APPLICATION_SESSION_HEADER) ||
+        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER))
+    ) {
+      c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
+      return c.json(
+        { error: { code: 'application_sessions_unsupported' } },
+        401,
+      );
+    }
     if (security.deploymentAuthentication && !accountOperation) {
       const hasAccount = security.deploymentAuthentication.hasCredential(
         c.req.raw,
@@ -517,6 +554,7 @@ function configureRuntimeSecurity(
       );
       if (account.kind === 'authenticated') limiter.clear(limiterKey);
       if (account.kind === 'invalid') {
+        c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
         return c.json(
           {
             error: {

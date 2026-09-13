@@ -215,6 +215,20 @@ export function CoreUpdateCheck({ apiBase }: { apiBase: string }) {
     restartVerification === 'verifying' && restartStateMatchesApiBase;
   const restartFailed =
     restartVerification === 'failed' && restartStateMatchesApiBase;
+  // archive#1624 fail-closed: for installKind 'unknown' the raw resolver
+  // message is a filesystem diagnostic (paths, stamp mechanics), not a user
+  // explanation. The bounded refusal renders as the explanation and the raw
+  // detail moves under a collapsed disclosure. A live check error or an
+  // in-flight update still owns the message slot — the refusal describes
+  // provenance, not transport failures.
+  const provenanceRefusal =
+    !restarting &&
+    !selfUpdating &&
+    !updateMutation.error &&
+    !checkError &&
+    status?.installKind === 'unknown' &&
+    typeof status.message === 'string' &&
+    status.message.length > 0;
   const message = selfUpdating
     ? 'Updating — Station is rebuilding from source and will restart when complete.'
     : restarting
@@ -230,9 +244,11 @@ export function CoreUpdateCheck({ apiBase }: { apiBase: string }) {
           ? (updateMutation.error as Error).message
           : checkError
             ? (checkError as Error).message
-            : status?.message
-              ? status.message
-              : null;
+            : provenanceRefusal
+              ? null
+              : status?.message
+                ? status.message
+                : null;
 
   // The apply button needs a workable apply path: git pull for a source
   // checkout, or the verified-checkout self-update for a bundle. Plain
@@ -264,7 +280,7 @@ export function CoreUpdateCheck({ apiBase }: { apiBase: string }) {
             ? status
               ? 'Re-checking…'
               : 'Checking…'
-            : 'Check for Updates'}
+            : 'Check for server updates'}
         </button>
         {canApply && (
           <button
@@ -352,6 +368,22 @@ export function CoreUpdateCheck({ apiBase }: { apiBase: string }) {
           Update available on the {status.channel ?? 'install'} channel (
           {status.currentHash} → {status.remoteHash}). Update by reinstalling
           from that channel — one-click updates are coming.
+        </div>
+      )}
+      {provenanceRefusal && status?.message && (
+        <div className="settings__update-msg settings__update-msg--warning">
+          <p>
+            <strong>Server update check unavailable</strong>
+          </p>
+          <p>
+            This server install has no usable update provenance. Station cannot
+            determine whether a server update is available. Use the installation
+            method that manages this server.
+          </p>
+          <details>
+            <summary>Technical details</summary>
+            <pre>{status.message}</pre>
+          </details>
         </div>
       )}
       {message && (

@@ -28,9 +28,12 @@ export function createDeploymentAuthenticationRoutes(
     if (!authentication)
       return c.json({ error: { code: 'authentication_not_configured' } }, 501);
     const origin = c.req.header('Origin');
-    if (origin && origin !== authentication.publicOrigin)
+    const origins = authentication.allowedBrowserOrigins ?? [
+      authentication.publicOrigin,
+    ];
+    if (origin && !origins.includes(origin))
       return c.json({ error: { code: 'origin_forbidden' } }, 403);
-    if (c.req.method === 'POST' && origin !== authentication.publicOrigin)
+    if (c.req.method === 'POST' && (!origin || !origins.includes(origin)))
       return c.json({ error: { code: 'origin_required' } }, 403);
     const peer =
       attestedProxyPeerAddress({

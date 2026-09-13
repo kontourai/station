@@ -5,9 +5,11 @@ import {
   checkForDesktopUpdate,
   type DesktopUpdateOutcome,
 } from '../../platform/native/desktopUpdate';
+import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 
 /** Explicit checks report failures; the automatic launch check stays quiet. */
 export function DesktopUpdateCheck() {
+  const { target } = usePlatformProfile();
   const owned = useRef<Extract<
     DesktopUpdateOutcome,
     { status: 'update-available' }
@@ -56,18 +58,27 @@ export function DesktopUpdateCheck() {
           void check.refetch();
         }}
       >
-        {check.isFetching ? 'Checking…' : 'Check for Desktop Updates'}
+        {check.isFetching
+          ? 'Checking for desktop app updates…'
+          : 'Check for desktop app updates'}
       </Button>
       {!check.isFetching && check.data?.status === 'update-available' && (
         <>
-          <p role="status">Station {check.data.version} is available.</p>
+          <p role="status">
+            Desktop app version {check.data.version} is available.
+          </p>
           <Button disabled={install.isPending} onClick={() => install.mutate()}>
-            {install.isPending ? 'Installing…' : 'Install and restart'}
+            {install.isPending
+              ? 'Installing desktop app update…'
+              : 'Install desktop app update and restart'}
           </Button>
         </>
       )}
       {!check.isFetching && check.data?.status === 'no-update' && (
-        <p role="status">This desktop app is up to date.</p>
+        <p role="status">
+          No desktop app update was offered by this app’s configured release
+          channel.
+        </p>
       )}
       {!check.isFetching &&
         (check.isError || check.data?.status === 'check-failed') && (
@@ -80,8 +91,8 @@ export function DesktopUpdateCheck() {
         <p role="alert">Could not install the update. Try installing again.</p>
       )}
       <span className="settings__field-hint">
-        Updates the app on this device from its signed release channel and
-        restarts it. The connected Station server is checked separately below.
+        Updates Station on this {target === 'macos' ? 'Mac' : 'device'},
+        including its built-in server, then restarts the app.
       </span>
     </div>
   );
