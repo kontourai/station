@@ -109,7 +109,19 @@ operation safely. It must exit 1, remove its own container and preserve any
 unrelated container; a nonzero exit alone does not prove successful cleanup.
 
 Each run generates two distinct endpoint certificates. Approved fingerprint
-trust is supplied independently by the fixture controller. The checks require:
+trust is supplied independently by the fixture controller.
+
+The controller also supplies a separate approved Station signing key. Before
+accepting SDP, the browser verifies a 30-second ES256 connection proof against
+its own nonce/connection ID, the admitted Station generation, both fingerprints
+and the exact offer/answer bytes. Altered proofs and successful-proof replay
+are refused. This uses maintained JOSE and browser WebCrypto. It models the
+[connection-proof contract](../design/connection-broker.md#connection-proof-contract);
+the private fixture callback is not a production account or key-enrollment API.
+The full gathered SDP is signed; extra unsigned candidate callbacks are not
+forwarded as an implicit trust extension.
+
+The checks require:
 
 - A browser DTLS connection to the approved certificate, with both sides using
   TURN and a fixture message delivered and echoed through the DataChannel.

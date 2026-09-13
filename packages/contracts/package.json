@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./connection-proof": "./src/connection-proof.ts",
     "./mobile-device": "./src/mobile-device.ts",
     ".": "./src/index.ts",
     "./acp": "./src/acp.ts",

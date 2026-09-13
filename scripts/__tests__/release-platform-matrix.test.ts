@@ -54,10 +54,17 @@ describe('cross-platform release invariant matrix', () => {
       status: 'VERIFIED',
       sha: ledger.find((entry: any) => entry.channel === 'nightly-desktop').sha,
     });
+    const nightlyWindows = projection.cells.find(
+      (cell) => cell.channel === 'nightly' && cell.platform === 'windows',
+    );
+    expect(nightlyWindows?.currentEvidence).toMatchObject({
+      status: 'NOT_VERIFIED',
+      owner: '#1045',
+    });
     // Each platform is required for its own promotion; the cohort publishes
     // per platform and discloses a partial night rather than withholding the
     // other platform (#1774).
-    for (const cell of [nightlyAndroid, nightlyDesktop]) {
+    for (const cell of [nightlyAndroid, nightlyDesktop, nightlyWindows]) {
       expect(cell).toMatchObject({
         requiredForPromotion: true,
         availabilityPolicy: expect.stringContaining(
@@ -116,11 +123,11 @@ describe('cross-platform release invariant matrix', () => {
     }).channelEvidence.find((entry) => entry.channel === 'nightly');
     // The iOS channel is automated but has no provider receipt until Apple
     // accepts the first build. Two sibling receipts alone cannot make a
-    // three-platform Nightly claim green.
+    // four-platform Nightly claim green.
     expect(converged).toMatchObject({
       status: 'NOT_VERIFIED',
       sourceSha: null,
-      configuredPlatforms: ['macos', 'android', 'ios'],
+      configuredPlatforms: ['macos', 'windows', 'android', 'ios'],
       verifiedPlatforms: ['macos', 'android'],
     });
 
@@ -157,6 +164,12 @@ describe('cross-platform release invariant matrix', () => {
     expect(
       validateReleasePlatformMatrix({ matrix: missing, root, ledger }),
     ).toContain('missing cell stable:ios');
+
+    const demoted = structuredClone(readReleasePlatformMatrix());
+    demoted.cells.nightly.windows.requiredForPromotion = false;
+    expect(
+      validateReleasePlatformMatrix({ matrix: demoted, root, ledger }),
+    ).toContain('nightly:windows.requiredForPromotion must be true');
 
     const unowned = structuredClone(readReleasePlatformMatrix());
     unowned.cells.stable.ios.buildJob = 'release.yml#missing-job';
