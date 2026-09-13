@@ -8,6 +8,7 @@ import {
   modelControlOptionsMatch,
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
+import { finalizeAssistantTurn } from './assistantTurn';
 import type { OrchestrationEvent } from './types';
 
 export function handleSessionLifecycleEvent(
@@ -132,6 +133,15 @@ export function handleSessionExitedEvent(
   event: Extract<OrchestrationEvent, { method: 'session.exited' }>,
   store: SessionActivityStore = activeChatsStore,
 ) {
+  const chat = store.getSnapshot()[event.threadId];
+  if (chat?.streamingMessage || chat?.orchestrationTurnOpen) {
+    // Engine death used to tear down the streaming shell without committing
+    // the buffered answer (replay: in-flight-content-dropped-on-session-exit).
+    finalizeAssistantTurn(event.threadId, undefined, {
+      turnId: chat.openTurnId,
+      answerEligible: false,
+    });
+  }
   store.updateChat(event.threadId, {
     status: 'idle',
     orchestrationStatus: 'exited',
@@ -140,4 +150,16 @@ export function handleSessionExitedEvent(
     activityHint: undefined,
     backgroundTasks: undefined,
   });
+}
+
+export function handleSessionStopSettledEvent(
+  event: Extract<OrchestrationEvent, { method: 'session.stop-settled' }>,
+) {
+  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  if (chat?.streamingMessage || chat?.orchestrationTurnOpen) {
+    finalizeAssistantTurn(event.threadId, undefined, {
+      turnId: event.turnId ?? chat.openTurnId,
+      answerEligible: false,
+    });
+  }
 }

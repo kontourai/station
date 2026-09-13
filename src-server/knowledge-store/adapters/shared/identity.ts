@@ -15,7 +15,7 @@ import {
 } from '../../errors.js';
 
 /** Minimum length of an id prefix eligible for prefix resolution (Addendum H.7). */
-export const MIN_ID_PREFIX = 8;
+const MIN_ID_PREFIX = 8;
 
 /** Valid slug alias shape (Addendum H.4/H.7): lowercase, dot/slash/hyphen/underscore, <=200 chars. */
 export const SLUG_PATTERN = '^[a-z0-9]([a-z0-9._/-]*[a-z0-9])?$';
@@ -102,7 +102,7 @@ export interface AliasIndex {
   by_slug: Record<string, string>;
 }
 
-export const ALIAS_INDEX_SCHEMA_VERSION = '1.0';
+const ALIAS_INDEX_SCHEMA_VERSION = '1.0';
 
 export function emptyAliasIndex(): AliasIndex {
   return { schema_version: ALIAS_INDEX_SCHEMA_VERSION, by_slug: {} };

@@ -32,7 +32,7 @@ export interface FeaturePreviewSelector {
 
 type FeaturePreviewState = Record<string, { enabled: boolean }>;
 
-export class FeaturePreviewStateUnavailableError extends GrantsStoreUnavailableError {
+class FeaturePreviewStateUnavailableError extends GrantsStoreUnavailableError {
   constructor(
     storePath: string,
     detail: string,

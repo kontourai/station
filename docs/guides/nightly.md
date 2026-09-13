@@ -1,15 +1,16 @@
 # Station Nightly
 
-Station Nightly is the main-edge dogfood channel. Its configured macOS and
-Android legs consume one SHA from the shared Nightly test gate and use separate
+Station Nightly is the main-edge dogfood channel. Its macOS, Windows, and
+Android builds consume one SHA from the shared Nightly test gate and use separate
 platform delivery authorities while sharing one channel identifier:
 
 | Platform | Artifact | Identifier | Built by | Delivered by |
 | --- | --- | --- | --- | --- |
-| macOS | notarized app, DMG, updater archive | `io.kontourai.station.nightly` | `.github/workflows/nightly.yml#nightly-desktop` | rolling GitHub prerelease and signed Tauri feed |
-| Android | signed AAB/APK | `io.kontourai.station.nightly` | `.github/workflows/nightly.yml#nightly` | Play internal testing track |
+| macOS | notarized app, DMG, updater archive | `io.kontourai.station.nightly` | `.github/workflows/nightly-native-stage.yml#stage-macos` | rolling GitHub prerelease and shared signed Tauri feed |
+| Windows | NSIS installer and Tauri updater signature | `io.kontourai.station.nightly` | `.github/workflows/nightly-native-stage.yml#stage-windows` | shared rolling GitHub prerelease and signed Tauri feed |
+| Android | signed AAB/APK | `io.kontourai.station.nightly` | `.github/workflows/nightly-native-stage.yml#stage-android` | Play internal testing track |
 
-Because the nightly uses its own identifier, both lanes install alongside a
+Because the nightly uses its own identifier, these channels install alongside a
 stable Station install (`io.kontourai.station`) and never touch it.
 
 ## Android nightly (Play internal testing)
@@ -114,6 +115,37 @@ reservation for Nightly. Stable Station continues to own its existing optional
 The nightly lane is for contributor dogfooding. It is locally signed on the Mac
 that builds it and is not a public, notarized release ring. Stable and preview
 remain the only public distribution rings.
+
+## Update checks in Settings: source check vs release check
+
+Two distinct mechanisms answer "is there an update?", and Settings keeps them
+separate:
+
+- **Desktop release check.** Tauri's configured signed update feed owns
+  desktop release availability and installation. The packaged server code
+  updates with the desktop app.
+- **Server source check** (`GET /api/system/core-update`). This reports
+  source-comparison facts for the connected server: a git checkout's
+  behind/ahead counts, or a stamped install's build hash versus its configured
+  source ref. A stamped build hash that differs from the source ref is a
+  build-stamp comparison only — it does **not** establish that an installable
+  release is available, and the UI never renders it as "update available".
+
+An established built-in (embedded sidecar) server never runs the ordinary
+source check at all; its update path is the desktop app itself, and its card
+says so.
+
+### Advanced source installer boundary
+
+The checkout-backed bundle installer survives behind the **Source installation
+details** disclosure on the server updates card, under the action
+**Rebuild and reinstall desktop app from source…**. It is a distinct advanced
+workflow, not the normal desktop update path: the source query behind it mounts
+only while the disclosure is open, it names the affected host from the
+correlated server identity, and the server-side eligibility revalidation on
+apply remains authoritative. Coordination between a simultaneous source
+rebuild and a signed-updater installation is an explicit, unsolved risk — do
+not run both against the same install.
 
 ## Install or refresh
 
@@ -220,3 +252,69 @@ future *public* nightly ring on any platform must go through the protected
 native release environment, produce immutable provenance-attested artifacts,
 use a separate updater channel, and preserve the existing stable and preview
 trust contracts.
+
+## Windows desktop and the shared update feed
+
+Windows Nightly uses Tauri's built-in NSIS installer and v2 updater artifacts.
+The same `setup.exe` serves as the initial installer and update payload; its
+`.sig` is generated and checked with the Tauri updater key. The app installs
+per user and uses the separate `io.kontourai.station.nightly` identity and
+`station-nightly.exe` process name, so NSIS does not close Stable during an update.
+Station's desktop server currently requires Node 24 on the user's PATH.
+
+`nightly-native-stage.yml` builds Windows from the same source SHA and reserved
+version as macOS and Android. `scripts/build-windows-nightly.ps1` uses
+`npm run build:desktop`, including the Windows resource staging adapter, and
+extracts the installer with 7-Zip to verify packaged build provenance.
+The pre-release desktop workflow also builds an unsigned NSIS package.
+
+For local packaging in a clean Windows worktree with Node 24 and 7-Zip:
+
+```powershell
+npm run dependencies:ci
+./scripts/build-windows-nightly.ps1 -SourceSha (git rev-parse HEAD) -BundleVersion 244399
+```
+
+That example number is a local test identity. Hosted releases consume the
+reserved `plan-cohort.outputs.bundle_version`. Generated output from a prior
+build must be retained separately before another build uses the same worktree.
+
+Windows publisher signing is optional for Nightly. It can use Tauri's `signCommand` through the protected
+`WINDOWS_SIGN_COMMAND` variable, with the signing tool and its credentials
+configured in the runner environment. This supports cloud/HSM signing such as
+Azure Artifact Signing. Existing exportable certificates can instead use
+`WINDOWS_CERTIFICATE_BASE64` and `WINDOWS_CERTIFICATE_PASSWORD`. The builder
+checks Authenticode independently of the Tauri updater signature.
+
+Updater signing uses `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PUBLIC_KEY`,
+and an optional `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. `-RequireSigning`
+requires both publisher and updater signing. Hosted Nightly always uses
+`-SignUpdater`; it additionally requires publisher signing when publisher
+credentials are configured. Without those credentials, the installer records
+`platformSigningState: NOT_SIGNED` and can publish with a verified Tauri updater
+signature. Missing or invalid updater signatures always block publication;
+configured publisher-signing failures also block instead of falling back.
+This uses our own updater keys and GitHub Releases without a paid Windows
+certificate subscription. Downloads without Authenticode can show an Unknown
+publisher or SmartScreen warning. Existing macOS signing remains required.
+
+One publisher owns `nightly-desktop/latest.json`. It waits for both desktop
+builds, verifies their updater signatures, and creates a manifest containing
+only that cohort. It uploads the five version-specific desktop downloads,
+checks their GitHub sizes and digests, and replaces `latest.json` last. It
+refuses version regression. Previous downloads are not overwritten, so an
+upload failure before the manifest write leaves the previous feed usable.
+GitHub's manifest replacement is not transactional; interrupted provider
+writes remain unresolved until readback verifies them.
+
+The final receipt records separate macOS and Windows claims for this shared
+publication. Android retains its separate provider outcome. A build or release
+receipt does not prove installation. Use
+`scripts/verify-windows-installer-upgrade.ps1` on a host without an existing
+Nightly install to compare an upgraded installation with both the packaged
+payload and a clean installation, exercise Tauri's NSIS `/UPDATE` path, and
+verify uninstall and preservation of the separate Station home. Native window
+and in-app download/relaunch checks remain separate evidence. Use `-InstallRoot`
+to select an unused installation directory independently of the proof directory.
+Deep installation paths can exceed NSIS/Windows path limits and omit runtime
+files; an inventory mismatch must not be waived simply because installation exited zero.

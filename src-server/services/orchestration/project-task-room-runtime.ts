@@ -1246,21 +1246,6 @@ export class ProjectTaskRoomRuntime {
     };
   }
 
-  async persistRecovery(input: {
-    taskId: string;
-    request: Request;
-    generation: string;
-    value: unknown;
-  }) {
-    const scope = await this.#authorizedDocument(input.taskId, input.request);
-    if (!scope) return 'unavailable' as const;
-    return this.#deps.working.recovery({
-      scope,
-      generation: input.generation,
-      value: input.value,
-    });
-  }
-
   async recovery(input: { taskId: string; request: Request }) {
     const scope = await this.#authorizedDocument(input.taskId, input.request);
     const principal = scope ? await this.#principal(input.request) : undefined;

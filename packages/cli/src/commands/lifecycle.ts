@@ -4264,13 +4264,6 @@ export function stop(opts: StopOptions = {}): void {
   stopRecord(match, true, opts.intent ?? 'operator_stop');
 }
 
-export {
-  collectDoctorReport,
-  doctor,
-  doctorJson,
-  parseTsxVersion,
-} from './lifecycle-doctor.js';
-
 export function link(): void {
   createPathLink(CWD);
 }

@@ -335,7 +335,7 @@ export function createTailscaleCli(
 }
 
 /** Bounded, non-throwing `tailscale` invocation. */
-export const defaultTailscaleCli = createTailscaleCli();
+const defaultTailscaleCli = createTailscaleCli();
 
 const resolvers = new Map<string, PublicIngressOriginResolver>();
 

@@ -5,7 +5,6 @@
 type Tool<_T = any> = any;
 
 import { type SpawnOptions, spawn } from 'node:child_process';
-import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { ToolDef, ToolMetadata } from '@kontourai/station-contracts/tool';
 import {
   type MCPConnection,
@@ -944,19 +943,6 @@ export class MCPService {
     tools.mcpServers = tools.mcpServers.filter((e) => e !== toolId);
 
     await this.configLoader.updateAgent(slug, { tools });
-  }
-
-  async updateAllowedTools(
-    slug: string,
-    allowed: string[],
-  ): Promise<AgentSpec['tools']> {
-    const agent = await this.configLoader.loadAgent(slug);
-    const tools = agent.tools || { mcpServers: [] };
-
-    tools.available = allowed;
-
-    await this.configLoader.updateAgent(slug, { tools });
-    return tools;
   }
 
   /**

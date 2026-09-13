@@ -44,7 +44,27 @@ export type HostActionId =
   /** archive#3843 — the Agents row's one fixing verb, accessibly named. */
   | 'agent-engine-setup'
   /** archive#3843 — the Developer surface's redacted log read. */
-  | 'developer-logs';
+  | 'developer-logs'
+  /**
+   * A connection whose engine needs its own login run. Distinct from
+   * `engine-missing`: that one is not installed, this one is installed and
+   * signed out, and telling a user to sign in to something that is not there
+   * is the defect this vocabulary exists to prevent.
+   */
+  | 'connection-sign-in'
+  /**
+   * A connection resolved through an ambient credential chain configured on
+   * the host's filesystem (AWS profiles, SSO caches, IMDS). There is no
+   * sign-in to perform and nothing to paste.
+   */
+  | 'connection-credentials'
+  /**
+   * A connection whose secret is pasted into Station and stored by Station.
+   * `remote-safe` because that genuinely works from anywhere -- the key box
+   * already posts to the host today -- so the affordance stays and only the
+   * machine that will hold the key is named.
+   */
+  | 'connection-api-key';
 
 interface HostActionCopyEntry {
   reach: HostActionReach;
@@ -102,6 +122,30 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     host: 'Not found on this machine.',
     paired: (hostName) =>
       `Not found on ${hostName}. Agent CLIs run on that computer, so it has to be installed there.`,
+  },
+  'connection-sign-in': {
+    // The engine's own login runs on the host and writes to the credential
+    // store there. Nothing a browser on another device can do reaches it.
+    reach: 'host-hands',
+    host: 'Sign in to finish connecting.',
+    paired: (hostName) =>
+      `Sign in on ${hostName}. The engine keeps its own credentials on that computer, so the login has to run there.`,
+  },
+  'connection-credentials': {
+    reach: 'host-hands',
+    host: 'Configure credentials to finish connecting.',
+    paired: (hostName) =>
+      `Configure credentials on ${hostName}. Station reads them from that computer's own credential chain.`,
+  },
+  'connection-api-key': {
+    reach: 'remote-safe',
+    // Empty host branch: on the host there is no second machine to name, and
+    // the key box below says everything else. The paired branch names the
+    // machine that will hold the key, because "where does this secret go" is
+    // the question a person types one into a phone with.
+    host: '',
+    paired: (hostName) =>
+      `The key is saved on ${hostName}, the computer Station runs on. It is never sent back to this device.`,
   },
   'agent-engine-setup': {
     // Setting up an engine sends you to Connections, which a paired device

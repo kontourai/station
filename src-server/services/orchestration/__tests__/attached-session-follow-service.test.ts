@@ -103,6 +103,24 @@ function event(id: string, delta = 'hello') {
   };
 }
 
+function identityRegistry(nativeIdField: string) {
+  return {
+    get: () =>
+      ({
+        nativeSessionIdentity: (cursor: unknown) => {
+          if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) {
+            return undefined;
+          }
+          const value = cursor as Record<string, unknown>;
+          const sessionId = value[nativeIdField];
+          return typeof sessionId === 'string'
+            ? { sessionId, affinity: value.sourceAffinity }
+            : undefined;
+        },
+      }) as never,
+  };
+}
+
 describe('AttachedSessionFollowService', () => {
   let dir: string;
   let store: EventStore;
@@ -204,6 +222,97 @@ describe('AttachedSessionFollowService', () => {
       source: 'claude-transcript',
       outcome: 'rejected_candidate',
     });
+  });
+
+  test.each([
+    ['null', null],
+    [
+      'extra properties',
+      { kind: 'tenant-source', ref: 'opaque', path: '/private/source' },
+    ],
+    ['empty kind', { kind: '', ref: 'opaque' }],
+    ['oversized kind', { kind: 'k'.repeat(65), ref: 'opaque' }],
+    ['control characters', { kind: 'tenant-source', ref: 'unsafe\u0000ref' }],
+    ['oversized reference', { kind: 'tenant-source', ref: 'r'.repeat(513) }],
+  ])(
+    'rejects %s source affinity before importing or attributing the candidate',
+    async (_reason, affinity) => {
+      const source: AttachedSessionSource = {
+        provider: 'claude',
+        kind: 'claude-transcript',
+        discover: vi.fn().mockResolvedValue({
+          outcome: 'ok',
+          sessions: [{ ...session, affinity }],
+        }),
+        read: vi.fn(),
+      };
+      await new AttachedSessionFollowService({
+        sources: [source],
+        eventStore: store,
+        eventBus,
+        listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+      }).pollNow();
+      expect(source.read).not.toHaveBeenCalled();
+      expect(store.readSessions()).toEqual([]);
+      expect(store.listEvents(session.threadId)).toEqual([]);
+    },
+  );
+
+  test('persists a source-owned affinity snapshot without retaining the producer object', async () => {
+    const affinity = { kind: 'tenant-source', ref: 'opaque-tenant-one' };
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        sessions: [{ ...session, affinity }],
+      }),
+      read: vi.fn().mockImplementation(async (descriptor) => {
+        expect(Object.isFrozen(descriptor)).toBe(true);
+        expect(Object.isFrozen(descriptor.affinity)).toBe(true);
+        expect(descriptor.affinity).not.toBe(affinity);
+        affinity.ref = 'mutated-after-discovery';
+        return { outcome: 'ok', events: [], cursor: 0 };
+      }),
+    };
+    await new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+    }).pollNow();
+    expect(
+      store.readSessions().find((item) => item.threadId === session.threadId)
+        ?.attachedSource,
+    ).toMatchObject({
+      affinity: { kind: 'tenant-source', ref: 'opaque-tenant-one' },
+    });
+  });
+
+  test('does not execute getters on a rejected affinity', async () => {
+    const getter = vi.fn(() => 'opaque');
+    const affinity = Object.defineProperty({ kind: 'tenant-source' }, 'ref', {
+      get: getter,
+      enumerable: true,
+    });
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        sessions: [{ ...session, affinity }],
+      }),
+      read: vi.fn(),
+    };
+    await new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+    }).pollNow();
+    expect(getter).not.toHaveBeenCalled();
+    expect(source.read).not.toHaveBeenCalled();
+    expect(store.readSessions()).toEqual([]);
   });
 
   test('resolves symlinked nested cwd to the canonical configured root and rejects stale roots', () => {
@@ -1275,7 +1384,7 @@ describe('AttachedSessionFollowService', () => {
     );
   });
 
-  test('does not preserve an old cursor when a changed source fails to read', async () => {
+  test('preserves the prior attachment when a changed source fails to read', async () => {
     const oldFixture = {
       ...session,
       provider: 'fixture-provider',
@@ -1319,10 +1428,254 @@ describe('AttachedSessionFollowService', () => {
     ).toEqual(
       expect.objectContaining({
         attachedSource: {
-          kind: 'fixture-transcript-v2',
+          kind: 'fixture-transcript-v1',
           externalSessionId: changedFixture.sessionId,
         },
-        resumeCursor: undefined,
+        resumeCursor: expect.objectContaining({
+          sourceHandle: 'fixture-handle-v1',
+          cursor: 40,
+        }),
+      }),
+    );
+  });
+
+  test('rejects a different source-home affinity under the same durable thread and handle', async () => {
+    const firstDescriptor = {
+      ...session,
+      affinity: { kind: 'claude-config-home', ref: 'a'.repeat(64) },
+    };
+    const replacementDescriptor = {
+      ...firstDescriptor,
+      affinity: { kind: 'claude-config-home', ref: 'b'.repeat(64) },
+    };
+    const firstSource: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [firstDescriptor] }),
+      read: vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        events: [event('old-home-event', 'old home')],
+        cursor: 40,
+      }),
+    };
+    const options = {
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    };
+    await new AttachedSessionFollowService({
+      ...options,
+      sources: [firstSource],
+    }).pollNow();
+
+    const replacementSource: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        sessions: [replacementDescriptor],
+      }),
+      read: vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        events: [event('new-home-prefix', 'new home')],
+        cursor: 8,
+      }),
+    };
+    await new AttachedSessionFollowService({
+      ...options,
+      sources: [replacementSource],
+    }).pollNow();
+
+    expect(replacementSource.read).not.toHaveBeenCalled();
+    expect(store.listEvents(session.threadId).map((item) => item.id)).toContain(
+      'old-home-event',
+    );
+    expect(
+      store.listEvents(session.threadId).map((item) => item.id),
+    ).not.toContain('new-home-prefix');
+    expect(
+      store.readSessions().find((item) => item.threadId === session.threadId),
+    ).toEqual(
+      expect.objectContaining({
+        attachedSource: expect.objectContaining({
+          affinity: firstDescriptor.affinity,
+        }),
+        resumeCursor: expect.objectContaining({
+          sourceHandle: session.sourceHandle,
+          cursor: 40,
+        }),
+      }),
+    );
+  });
+
+  test('rejects a live source-home affinity change without reusing the cached cursor', async () => {
+    const firstDescriptor = {
+      ...session,
+      affinity: { kind: 'claude-config-home', ref: 'd'.repeat(64) },
+    };
+    const replacementDescriptor = {
+      ...firstDescriptor,
+      affinity: { kind: 'claude-config-home', ref: 'e'.repeat(64) },
+    };
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValueOnce({ outcome: 'ok', sessions: [firstDescriptor] })
+        .mockResolvedValueOnce({
+          outcome: 'ok',
+          sessions: [replacementDescriptor],
+        }),
+      read: vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        events: [event('live-old-home')],
+        cursor: 24,
+      }),
+    };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+
+    await service.pollNow();
+    await service.pollNow();
+
+    expect(source.read).toHaveBeenCalledTimes(1);
+    expect(
+      store.readSessions().find((item) => item.threadId === session.threadId),
+    ).toEqual(
+      expect.objectContaining({
+        attachedSource: expect.objectContaining({
+          affinity: firstDescriptor.affinity,
+        }),
+        resumeCursor: expect.objectContaining({ cursor: 24 }),
+      }),
+    );
+  });
+
+  test('replays a legacy attachment from the beginning before recording source affinity', async () => {
+    const legacySource: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        events: [event('legacy-prefix')],
+        cursor: 40,
+      }),
+    };
+    const options = {
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    };
+    await new AttachedSessionFollowService({
+      ...options,
+      sources: [legacySource],
+    }).pollNow();
+
+    const descriptor = {
+      ...session,
+      affinity: { kind: 'claude-config-home', ref: 'c'.repeat(64) },
+    };
+    const affinitySource: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [descriptor] }),
+      read: vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        events: [event('legacy-prefix'), event('appended-after-upgrade')],
+        cursor: 80,
+      }),
+    };
+    await new AttachedSessionFollowService({
+      ...options,
+      sources: [affinitySource],
+    }).pollNow();
+
+    expect(affinitySource.read).toHaveBeenCalledWith(descriptor, undefined);
+    expect(store.listEvents(session.threadId).map((item) => item.id)).toEqual(
+      expect.arrayContaining(['legacy-prefix', 'appended-after-upgrade']),
+    );
+    expect(
+      store.readSessions().find((item) => item.threadId === session.threadId),
+    ).toEqual(
+      expect.objectContaining({
+        attachedSource: expect.objectContaining({
+          affinity: descriptor.affinity,
+        }),
+        resumeCursor: expect.objectContaining({ cursor: 80 }),
+      }),
+    );
+  });
+
+  test('does not record affinity when the first affinity-bound read of a legacy attachment fails', async () => {
+    const legacySource: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        events: [],
+        cursor: 40,
+      }),
+    };
+    const options = {
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    };
+    await new AttachedSessionFollowService({
+      ...options,
+      sources: [legacySource],
+    }).pollNow();
+
+    const descriptor = {
+      ...session,
+      affinity: { kind: 'claude-config-home', ref: 'f'.repeat(64) },
+    };
+    const failedSource: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [descriptor] }),
+      read: vi.fn().mockRejectedValue(new Error('read failed')),
+    };
+    await new AttachedSessionFollowService({
+      ...options,
+      sources: [failedSource],
+    }).pollNow();
+
+    expect(failedSource.read).toHaveBeenCalledWith(descriptor, undefined);
+    expect(
+      store.readSessions().find((item) => item.threadId === session.threadId),
+    ).toEqual(
+      expect.objectContaining({
+        attachedSource: {
+          kind: 'claude-transcript',
+          externalSessionId: session.sessionId,
+        },
+        resumeCursor: expect.objectContaining({ cursor: 40 }),
       }),
     );
   });
@@ -1918,6 +2271,101 @@ describe('AttachedSessionFollowService', () => {
     expect(source.read).not.toHaveBeenCalled();
   });
 
+  test('does not rediscover a source-bound provider child with an object cursor', async () => {
+    const affinity = { kind: 'claude-config-home', ref: 'a'.repeat(64) };
+    const descriptor = { ...session, affinity };
+    store.upsertSession({
+      provider: 'claude',
+      threadId: 'station-source-bound-child',
+      status: 'ready',
+      cwd: session.cwd,
+      resumeCursor: {
+        claudeSessionId: session.sessionId,
+        sourceAffinity: affinity,
+      },
+      controlMode: 'station-owned',
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [descriptor] }),
+      read: vi.fn().mockResolvedValue({ outcome: 'ok', events: [], cursor: 0 }),
+    };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      adapterRegistry: identityRegistry('claudeSessionId'),
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+
+    await service.pollNow();
+
+    expect(source.read).not.toHaveBeenCalled();
+    expect(
+      store
+        .readSessions()
+        .some((item) => item.threadId === descriptor.threadId),
+    ).toBe(false);
+  });
+
+  test('does not suppress the same native id when both cursors prove different homes', async () => {
+    const sourceAffinity = {
+      kind: 'claude-config-home',
+      ref: 'a'.repeat(64),
+    };
+    const childAffinity = {
+      kind: 'claude-config-home',
+      ref: 'b'.repeat(64),
+    };
+    const descriptor = { ...session, affinity: sourceAffinity };
+    store.upsertSession({
+      provider: 'claude',
+      threadId: 'station-other-home-child',
+      status: 'ready',
+      cwd: session.cwd,
+      resumeCursor: {
+        claudeSessionId: session.sessionId,
+        sourceAffinity: childAffinity,
+      },
+      controlMode: 'station-owned',
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [descriptor] }),
+      read: vi.fn().mockResolvedValue({ outcome: 'ok', events: [], cursor: 0 }),
+    };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      adapterRegistry: identityRegistry('claudeSessionId'),
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+
+    await service.pollNow();
+
+    expect(source.read).toHaveBeenCalledWith(descriptor, undefined);
+    expect(
+      store
+        .readSessions()
+        .some((item) => item.threadId === descriptor.threadId),
+    ).toBe(true);
+  });
+
   test('tombstones an attached alias when a Station fork wins after the follower cached it', async () => {
     const source: AttachedSessionSource = {
       provider: 'claude',
@@ -1959,6 +2407,8 @@ describe('AttachedSessionFollowService', () => {
   });
 
   test('does not rediscover a provider child retained as a rollback tombstone', async () => {
+    const affinity = { kind: 'claude-config-home', ref: 'c'.repeat(64) };
+    const descriptor = { ...session, affinity };
     const ledger = store.createAdoptionLedger();
     const reservation = ledger.reserve({
       sourceThreadId: 'external:claude:source',
@@ -1968,6 +2418,7 @@ describe('AttachedSessionFollowService', () => {
       provider: 'claude',
       sourceSessionId: 'vendor-source',
       sourceKind: 'claude-transcript',
+      sourceAffinity: affinity,
       cwd: session.cwd,
       projectRoot: join(dir, 'repository'),
       createdAt: '2026-07-22T00:00:00.000Z',
@@ -1977,7 +2428,10 @@ describe('AttachedSessionFollowService', () => {
     if (reservation.kind === 'owner') {
       reservation.adoption.recordFlowRun('cleanup-flow', false);
       reservation.adoption.markForking();
-      reservation.adoption.recordProviderCursor(session.sessionId);
+      reservation.adoption.recordProviderCursor({
+        claudeSessionId: session.sessionId,
+        sourceAffinity: affinity,
+      });
       reservation.adoption.markRollbackPending();
     }
     const source: AttachedSessionSource = {
@@ -1985,13 +2439,14 @@ describe('AttachedSessionFollowService', () => {
       kind: 'claude-transcript',
       discover: vi
         .fn()
-        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+        .mockResolvedValue({ outcome: 'ok', sessions: [descriptor] }),
       read: vi.fn().mockResolvedValue({ outcome: 'ok', events: [], cursor: 1 }),
     };
     const service = new AttachedSessionFollowService({
       sources: [source],
       eventStore: store,
       eventBus,
+      adapterRegistry: identityRegistry('claudeSessionId'),
       listProjects: () => [
         { slug: 'repository', workingDirectory: join(dir, 'repository') },
       ],

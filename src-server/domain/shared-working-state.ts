@@ -11,8 +11,8 @@ export const SHARED_WORKING_STATE_MECHANISM = {
     'A small reference implementation makes ordering and recovery executable without adopting a vendor CRDT wire format.',
 } as const;
 export const DEFAULT_RETAINED_WORKING_STATE_OPERATIONS = 256;
-export const DEFAULT_DEFERRED_WORKING_STATE_OPERATIONS = 64;
-export const DEFAULT_DEFERRED_WORKING_STATE_BYTES = 65_536;
+const DEFAULT_DEFERRED_WORKING_STATE_OPERATIONS = 64;
+const DEFAULT_DEFERRED_WORKING_STATE_BYTES = 65_536;
 
 type DocumentId = string;
 type ReplicaId = string;

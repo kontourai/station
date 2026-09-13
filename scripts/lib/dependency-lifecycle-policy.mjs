@@ -147,8 +147,28 @@ const timeout = setTimeout(() => {
       windowsHide: true,
     });
   } catch (error) {
-    const detail = String(error?.stderr ?? error?.message ?? error).trim();
-    throw new Error(`node-pty real PTY handshake failed: ${detail}`);
+    // A present-but-empty stderr (string or Buffer) is not nullish, so a `??`
+    // chain would suppress the message fallback and log only the bare prefix.
+    // Report stderr when informative, else the message, and attach the
+    // termination facts so a timeout and a native crash stay distinguishable.
+    const facts = [];
+    if (error != null && typeof error === 'object') {
+      if (error.status != null) facts.push(`status=${String(error.status)}`);
+      if (error.signal) facts.push(`signal=${String(error.signal)}`);
+      if (typeof error.killed === 'boolean')
+        facts.push(`killed=${String(error.killed)}`);
+      if (error.code != null) facts.push(`code=${String(error.code)}`);
+    }
+    const narrative =
+      String(error?.stderr ?? '').trim() ||
+      String(error?.message ?? '').trim() ||
+      (typeof error === 'string' ? error.trim() : '');
+    const detail = [narrative, facts.join(' ')]
+      .filter((part) => part)
+      .join(' ');
+    throw new Error(
+      `node-pty real PTY handshake failed: ${detail || 'no diagnostic output'}`,
+    );
   }
   assertPtyHandshakeOutcome(output);
 }

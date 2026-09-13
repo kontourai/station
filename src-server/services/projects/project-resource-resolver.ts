@@ -181,10 +181,11 @@ import {
   type CheckoutRemoteReader,
   readCheckoutRemotes,
 } from './checkout-remote-reader.js';
+import { ProjectBindingsStore } from './project-binding-store.js';
 import {
-  canonicalizeCheckoutRemotes,
-  ProjectBindingsStore,
-} from './project-binding-store.js';
+  compareProjectGitRemotes,
+  PROJECT_GIT_REMOTE_COMPARISON_UNAVAILABLE,
+} from './project-git-remote-comparison.js';
 import {
   type ProjectManifestSource,
   ProjectManifestStore,
@@ -448,18 +449,24 @@ export class ProjectResourceResolver {
       };
     }
     // Decision 6: aliases rewrite the checkout side only.
-    const checkoutRemotes = canonicalizeCheckoutRemotes(
-      remotes.remotes.map((remote) => remote.url),
-      this.bindings.hostAliases(),
-    );
     const manifestRemotes = [
       resource.canonicalRemote,
       ...(resource.aliases ?? []),
     ];
-    const intersects = checkoutRemotes.some((remote) =>
-      manifestRemotes.includes(remote),
+    const { outcome, checkoutRemotes } = compareProjectGitRemotes(
+      remotes.remotes.map((remote) => remote.url),
+      this.bindings.hostAliases(),
+      manifestRemotes,
     );
-    if (!intersects) {
+    if (outcome === 'unverifiable') {
+      return {
+        state: 'stale',
+        resourceId: resource.id,
+        unverifiedPath: absolutePath,
+        reason: PROJECT_GIT_REMOTE_COMPARISON_UNAVAILABLE,
+      };
+    }
+    if (outcome === 'different') {
       return {
         state: 'drifted',
         resourceId: resource.id,

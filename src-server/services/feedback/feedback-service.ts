@@ -7,6 +7,9 @@ import { feedbackOps } from '../../telemetry/metrics.js';
 import { createLogger } from '../../utils/logger.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import {
+  hasFeedbackAnalysis,
+  needsFeedbackAnalysis,
+  parseFeedbackSummary,
   runFullFeedbackAnalysis,
   runMiniFeedbackAnalysis,
 } from './feedback-analysis.js';
@@ -38,11 +41,23 @@ export interface FeedbackSummary {
 export interface FeedbackStore {
   ratings: MessageRating[];
   summary: FeedbackSummary | null;
+  /** Hash of the full summary prompt; absent on legacy stores. */
+  summaryBasis?: string;
 }
 
 export type AnalyzeCallback = (prompt: string) => Promise<string>;
 
+interface FeedbackDiagnostic {
+  isolated: true;
+  agentAvailable: boolean;
+  syntheticRatingCreated: boolean;
+  analysisRan: boolean;
+  guidelinesGenerated: boolean;
+  guidelinesPreview: string;
+}
+
 const ANALYSIS_INTERVAL_MS = 10 * 60 * 1000;
+const INITIAL_ANALYSIS_DELAY_MS = 5000;
 
 export class FeedbackService {
   private store: JsonFileStore<FeedbackStore>;
@@ -52,7 +67,18 @@ export class FeedbackService {
   private maxReinforce = 25;
   private maxAvoid = 25;
   private lastAnalyzedAt: number | null = null;
-  private isAnalyzing = false;
+  private nextAnalysisAt: number | null = null;
+  private analysisGeneration = 0;
+  private stopped = false;
+  private pendingAnalysis: {
+    generation: number;
+    promise: Promise<FeedbackSummary | null>;
+  } | null = null;
+  private pendingDiagnostic: {
+    generation: number;
+    promise: Promise<FeedbackDiagnostic>;
+  } | null = null;
+  private analysisTail: Promise<void> = Promise.resolve();
 
   constructor(dataDir: string) {
     this.store = new JsonFileStore<FeedbackStore>(
@@ -62,6 +88,7 @@ export class FeedbackService {
   }
 
   setAnalyzeCallback(fn: AnalyzeCallback): void {
+    if (this.analyzeFn !== fn) this.analysisGeneration += 1;
     this.analyzeFn = fn;
   }
 
@@ -99,6 +126,9 @@ export class FeedbackService {
 
     if (existing >= 0) {
       data.ratings[existing] = entry;
+      data.summary = null;
+      data.summaryBasis = undefined;
+      this.analysisGeneration += 1;
     } else {
       data.ratings.push(entry);
     }
@@ -123,6 +153,9 @@ export class FeedbackService {
         ),
     );
     if (data.ratings.length < before) {
+      data.summary = null;
+      data.summaryBasis = undefined;
+      this.analysisGeneration += 1;
       this.store.write(data);
       return true;
     }
@@ -130,11 +163,19 @@ export class FeedbackService {
   }
 
   getRatings(): MessageRating[] {
-    return this.store.read().ratings;
+    return this.store
+      .read()
+      .ratings.map((rating) =>
+        !hasFeedbackAnalysis(rating) &&
+        (rating.analysis !== undefined || rating.analyzedAt !== undefined)
+          ? { ...rating, analysis: undefined, analyzedAt: undefined }
+          : rating,
+      );
   }
 
   getSummary(): FeedbackSummary | null {
-    return this.store.read().summary;
+    const summary = this.store.read().summary;
+    return parseFeedbackSummary(summary);
   }
 
   hasAnalyzeCallback(): boolean {
@@ -142,22 +183,28 @@ export class FeedbackService {
   }
 
   setMaxBehaviors(reinforce: number, avoid: number): void {
-    this.maxReinforce = Math.max(1, Math.min(reinforce, 50));
-    this.maxAvoid = Math.max(1, Math.min(avoid, 50));
+    const nextReinforce = Number.isFinite(reinforce)
+      ? Math.max(1, Math.min(Math.floor(reinforce), 50))
+      : 25;
+    const nextAvoid = Number.isFinite(avoid)
+      ? Math.max(1, Math.min(Math.floor(avoid), 50))
+      : 25;
+    if (nextReinforce !== this.maxReinforce || nextAvoid !== this.maxAvoid)
+      this.analysisGeneration += 1;
+    this.maxReinforce = nextReinforce;
+    this.maxAvoid = nextAvoid;
   }
 
   getStatus() {
     const data = this.store.read();
     return {
       lastAnalyzedAt: this.lastAnalyzedAt,
-      nextAnalysisAt: this.lastAnalyzedAt
-        ? this.lastAnalyzedAt + ANALYSIS_INTERVAL_MS
-        : null,
-      isAnalyzing: this.isAnalyzing,
+      nextAnalysisAt: this.nextAnalysisAt,
+      isAnalyzing:
+        this.pendingAnalysis !== null || this.pendingDiagnostic !== null,
       analyzeCallbackAvailable: this.analyzeFn !== null,
       totalRatings: data.ratings.length,
-      pendingAnalysis: data.ratings.filter((rating) => !rating.analyzedAt)
-        .length,
+      pendingAnalysis: data.ratings.filter(needsFeedbackAnalysis).length,
     };
   }
 
@@ -176,7 +223,10 @@ export class FeedbackService {
     reinforce: number;
     avoid: number;
   } | null {
-    const summary = this.store.read().summary;
+    return this.formatBehaviorGuidelines(this.getSummary());
+  }
+
+  private formatBehaviorGuidelines(summary: FeedbackSummary | null) {
     if (
       !summary ||
       (summary.reinforce.length === 0 && summary.avoid.length === 0)
@@ -205,14 +255,31 @@ ${avoid || '(none identified yet)'}
   }
 
   start(): void {
-    this.initialTimer = setTimeout(() => this.runAnalysisPipeline(), 5000);
-    this.timer = setInterval(
-      () => this.runAnalysisPipeline(),
-      ANALYSIS_INTERVAL_MS,
-    );
+    if (this.initialTimer || this.timer) return;
+    this.stopped = false;
+    const startedAt = Date.now();
+    const intervalAt = startedAt + ANALYSIS_INTERVAL_MS;
+    this.nextAnalysisAt = startedAt + INITIAL_ANALYSIS_DELAY_MS;
+    const scheduledAnalysis = () => {
+      void this.runAnalysisPipeline().catch((error) =>
+        logger.debug('Failed to run scheduled feedback analysis', { error }),
+      );
+    };
+    this.initialTimer = setTimeout(() => {
+      this.initialTimer = null;
+      this.nextAnalysisAt = intervalAt;
+      scheduledAnalysis();
+    }, INITIAL_ANALYSIS_DELAY_MS);
+    this.timer = setInterval(() => {
+      this.nextAnalysisAt = Date.now() + ANALYSIS_INTERVAL_MS;
+      scheduledAnalysis();
+    }, ANALYSIS_INTERVAL_MS);
   }
 
   stop(): void {
+    this.stopped = true;
+    this.nextAnalysisAt = null;
+    this.analysisGeneration += 1;
     if (this.initialTimer) {
       clearTimeout(this.initialTimer);
       this.initialTimer = null;
@@ -224,27 +291,123 @@ ${avoid || '(none identified yet)'}
   }
 
   async runAnalysisPipeline(): Promise<FeedbackSummary | null> {
-    if (!this.analyzeFn) return null;
-    this.isAnalyzing = true;
+    if (!this.analyzeFn || this.stopped) return null;
+    const generation = this.analysisGeneration;
+    if (this.pendingAnalysis?.generation === generation)
+      return this.pendingAnalysis.promise;
+    const promise = this.queueAnalysis(() =>
+      this.executeAnalysisPipeline(generation),
+    );
+    this.pendingAnalysis = { generation, promise };
+    try {
+      return await promise;
+    } finally {
+      if (this.pendingAnalysis?.promise === promise)
+        this.pendingAnalysis = null;
+    }
+  }
+
+  private queueAnalysis<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.analysisTail.then(operation);
+    // Queue admission waits for settlement; each caller still receives its
+    // own result or rejection rather than inheriting a previous failure.
+    this.analysisTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  async diagnoseAnalysis(): Promise<FeedbackDiagnostic> {
+    const generation = this.analysisGeneration;
+    if (this.pendingDiagnostic?.generation === generation)
+      return this.pendingDiagnostic.promise;
+    const promise = this.queueAnalysis(
+      async (): Promise<FeedbackDiagnostic> => {
+        const current = () => {
+          if (this.stopped || generation !== this.analysisGeneration)
+            throw new Error('Feedback diagnostic was superseded.');
+        };
+        current();
+        const analyze = this.analyzeFn;
+        const result: FeedbackDiagnostic = {
+          isolated: true,
+          agentAvailable: analyze !== null,
+          syntheticRatingCreated: false,
+          analysisRan: false,
+          guidelinesGenerated: false,
+          guidelinesPreview: '',
+        };
+        if (!analyze) return result;
+        const sample: FeedbackStore = {
+          ratings: [
+            {
+              id: '_diagnostic:0',
+              agentSlug: '_test',
+              conversationId: '_diagnostic',
+              messageIndex: 0,
+              messagePreview:
+                'The assistant gave a clear, concise answer with examples.',
+              rating: 'thumbs_up',
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          summary: null,
+        };
+        const analyzed = await runMiniFeedbackAnalysis(analyze, sample);
+        current();
+        const update = await runFullFeedbackAnalysis({
+          analyze,
+          data: analyzed,
+          maxReinforce: this.maxReinforce,
+          maxAvoid: this.maxAvoid,
+        });
+        current();
+        const guidelines = this.formatBehaviorGuidelines(
+          update?.summary ?? null,
+        );
+        return {
+          ...result,
+          syntheticRatingCreated: true,
+          analysisRan: true,
+          guidelinesGenerated: guidelines !== null,
+          guidelinesPreview: guidelines?.text.slice(0, 300) ?? '',
+        };
+      },
+    );
+    this.pendingDiagnostic = { generation, promise };
+    try {
+      return await promise;
+    } finally {
+      if (this.pendingDiagnostic?.promise === promise)
+        this.pendingDiagnostic = null;
+    }
+  }
+
+  private async executeAnalysisPipeline(
+    generation: number,
+  ): Promise<FeedbackSummary | null> {
+    if (this.stopped || generation !== this.analysisGeneration) return null;
     try {
       feedbackOps.add(1, { operation: 'analyze' });
       const analyzeStart = Date.now();
-      await this.runMiniAnalysis();
-      await this.runFullAnalysis();
+      await this.runMiniAnalysis(generation);
+      if (generation !== this.analysisGeneration) return null;
+      await this.runFullAnalysis(generation);
+      if (generation !== this.analysisGeneration) return null;
       this.lastAnalyzedAt = Date.now();
-      const summary = this.store.read().summary;
+      const summary = this.getSummary();
       feedbackOps.add(1, {
         operation: 'analyze-complete',
         reinforceCount: String(summary?.reinforce.length || 0),
         avoidCount: String(summary?.avoid.length || 0),
         durationMs: String(Date.now() - analyzeStart),
       });
+      return summary;
     } catch (error) {
-      logger.debug('Failed to run feedback analysis pipeline', { error });
-    } finally {
-      this.isAnalyzing = false;
+      if (generation !== this.analysisGeneration) return null;
+      throw error;
     }
-    return this.store.read().summary;
   }
 
   /**
@@ -271,9 +434,10 @@ ${avoid || '(none identified yet)'}
         const source = analyzedById.get(entry.id);
         if (
           !source?.analyzedAt ||
-          entry.analyzedAt ||
+          !needsFeedbackAnalysis(entry) ||
           source.rating !== entry.rating ||
-          source.messagePreview !== entry.messagePreview
+          source.messagePreview !== entry.messagePreview ||
+          source.reason !== entry.reason
         ) {
           return entry;
         }
@@ -286,46 +450,41 @@ ${avoid || '(none identified yet)'}
     };
   }
 
-  private async runMiniAnalysis(): Promise<void> {
+  private async runMiniAnalysis(generation: number): Promise<void> {
     if (!this.analyzeFn) return;
 
     const data = this.store.read();
-    if (data.ratings.every((rating) => rating.analyzedAt)) return;
+    if (!data.ratings.some(needsFeedbackAnalysis)) return;
 
-    try {
-      const analyzed = await runMiniFeedbackAnalysis(this.analyzeFn, data);
-      // Re-read AFTER the await. No await separates this read from the write,
-      // so the fold is atomic against other in-process writers.
-      this.store.write(
-        this.foldAnalyzedRatings(analyzed.ratings, this.store.read()),
-      );
-    } catch (error) {
-      logger.debug('Failed to run mini feedback analysis', { error });
-    }
+    const analyzed = await runMiniFeedbackAnalysis(this.analyzeFn, data);
+    if (generation !== this.analysisGeneration) return;
+    // Re-read AFTER the await. No await separates this read from the write,
+    // so the fold is atomic against other in-process writers.
+    this.store.write(
+      this.foldAnalyzedRatings(analyzed.ratings, this.store.read()),
+    );
   }
 
-  private async runFullAnalysis(): Promise<void> {
+  private async runFullAnalysis(generation: number): Promise<void> {
     if (!this.analyzeFn) return;
 
     const data = this.store.read();
-    try {
-      const summary = await runFullFeedbackAnalysis({
-        analyze: this.analyzeFn,
-        data,
-        maxReinforce: this.maxReinforce,
-        maxAvoid: this.maxAvoid,
-      });
-      if (summary) {
-        // Spread the CURRENT store, not `data`: ratings submitted during the
-        // analysis above must survive the summary write (archive#2900).
-        this.store.write({ ...this.store.read(), summary });
-      }
-    } catch (error) {
-      logger.debug('Failed to run full feedback analysis', { error });
+    const update = await runFullFeedbackAnalysis({
+      analyze: this.analyzeFn,
+      data,
+      maxReinforce: this.maxReinforce,
+      maxAvoid: this.maxAvoid,
+    });
+    if (update && generation === this.analysisGeneration) {
+      // Spread the CURRENT store, not `data`: ratings submitted during the
+      // analysis above must survive the summary write (archive#2900).
+      this.store.write({ ...this.store.read(), ...update });
     }
   }
 
   clearAnalysis(): void {
+    this.analysisGeneration += 1;
+    this.lastAnalyzedAt = null;
     const data = this.store.read();
     this.store.write({
       ratings: data.ratings.map((rating) => ({
@@ -334,6 +493,7 @@ ${avoid || '(none identified yet)'}
         analyzedAt: undefined,
       })),
       summary: null,
+      summaryBasis: undefined,
     });
   }
 }

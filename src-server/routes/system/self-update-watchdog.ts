@@ -66,9 +66,9 @@ export const SELF_UPDATE_WATCHDOG_DEADLINE_MS = 90_000;
  * unbounded client timer.
  */
 export const SELF_UPDATE_WATCHDOG_LAUNCH_GRACE_MS = 5_000;
-export const SELF_UPDATE_WATCHDOG_POLL_INTERVAL_MS = 1_000;
-export const SELF_UPDATE_WATCHDOG_REQUEST_TIMEOUT_MS = 3_000;
-export const SELF_UPDATE_WATCHDOG_KILL_GRACE_MS = 5_000;
+const SELF_UPDATE_WATCHDOG_POLL_INTERVAL_MS = 1_000;
+const SELF_UPDATE_WATCHDOG_REQUEST_TIMEOUT_MS = 3_000;
+const SELF_UPDATE_WATCHDOG_KILL_GRACE_MS = 5_000;
 
 function defaultKillProcess(pid: number, signal: NodeJS.Signals): void {
   process.kill(pid, signal);

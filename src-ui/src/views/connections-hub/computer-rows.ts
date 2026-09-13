@@ -47,7 +47,7 @@ export interface ComputerRowModel {
   removableManualEntryId?: string;
 }
 
-export const SSH_ENVIRONMENT_ID_PREFIX = 'ssh-environment:';
+const SSH_ENVIRONMENT_ID_PREFIX = 'ssh-environment:';
 const PAIRED_ID_PREFIX = 'paired:';
 
 /**

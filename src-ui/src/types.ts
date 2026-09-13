@@ -341,6 +341,19 @@ export interface ChatSession {
   backgroundTasks?: ChatBackgroundTask[];
   /** Latest provider-reported usage observation for the live context meter. */
   liveUsage?: ChatLiveUsage;
+  /** Synthetic event-replay chat; absent on ordinary sessions. */
+  replay?: {
+    elapsedMs?: number;
+    connectionPhase?:
+      | 'unknown'
+      | 'receiving'
+      | 'caught-up'
+      | 'interrupted'
+      | 'closed';
+    connectionElapsedMs?: number;
+    sourceThreadId: string;
+    tapeEventCount: number;
+  };
 }
 
 export interface Tool {

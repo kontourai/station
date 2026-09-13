@@ -3133,17 +3133,8 @@ for (const retiredInlineCliDevSnippet of [
 const cliLifecycle = readRequiredSource(
   '../packages/cli/src/commands/lifecycle.ts',
 );
-for (const requiredImport of [
-  './lifecycle-doctor.js',
-  'collectDoctorReport,',
-]) {
-  if (!cliLifecycle.includes(requiredImport)) {
-    errors.push(
-      `packages/cli/src/commands/lifecycle.ts must include ${requiredImport}.`,
-    );
-  }
-}
 for (const retiredLifecycleSnippet of [
+  './lifecycle-doctor.js',
   'function execVersion(',
   'async function detectOllama(',
   'function doctorStatusSymbol(',
@@ -5032,13 +5023,6 @@ for (const retiredInlineConnectionsHubSnippet of [
 // that page into a redirect resolver nothing rendered them again. The
 // invariant that still has a subject is the "must not inline" list above —
 // ConnectionsHub may not grow its own copies back.
-
-const connectionsHubSection = readRequiredSource(
-  '../src-ui/src/views/connections-hub/ConnectionsHubSection.tsx',
-);
-if (!connectionsHubSection.includes('export function ConnectionsHubSection')) {
-  errors.push('ConnectionsHubSection.tsx must export ConnectionsHubSection.');
-}
 
 const systemStatusHook = readRequiredSource(
   '../src-ui/src/hooks/useSystemStatus.ts',

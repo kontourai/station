@@ -111,11 +111,15 @@ export function ApprovalModeChip({
   const appliedMode = isApprovalMode(lastAppliedApprovalMode)
     ? lastAppliedApprovalMode
     : undefined;
-  // The chip follows the next-turn request. lastApplied is only the
-  // pending-never detector: showing the receipt over a newer pick made the
-  // control look dead after session.configured (station#1933).
-  const displayedMode = effective.mode;
   const isOverride = effective.source === 'session override';
+  // A Station override is the next-turn request: the chip and picker follow
+  // it, because showing the receipt over a newer pick made the control look
+  // dead after session.configured (station#1933). Without an override, the
+  // adapter's durable receipt is the authority — do not invent Ask/Never;
+  // inherit the engine config (station#1950).
+  const displayedMode = isOverride
+    ? effective.mode
+    : (appliedMode ?? effective.mode);
   const isPendingApply =
     isOverride && effective.mode === 'never' && appliedMode !== 'never';
 
@@ -123,7 +127,9 @@ export function ApprovalModeChip({
   // form so it stops clipping at 390px (archive#1010).
   const selectedLabel = isPendingApply
     ? `${approvalModeLabel('never')} — full access requested for the next turn`
-    : effective.label;
+    : !isOverride && appliedMode
+      ? approvalModeLabel(appliedMode)
+      : effective.label;
   const chipText = isPendingApply
     ? `${approvalModeChipLabel('never')} · pending`
     : approvalModeChipLabel(displayedMode);

@@ -79,6 +79,7 @@ import {
 } from './execution-target.js';
 import { collectModelOptions, resolveOnRequestMode } from './model-options.js';
 import { runOperateCommand } from './operate/index.js';
+import { runProjectIdentityCommand } from './project-identity.js';
 import {
   createSessionClient,
   sendExecutionTargetChat,
@@ -256,6 +257,9 @@ const resourceSpecs: Record<string, ResourceSpec> = {
     update: (apiBase, slug, body) => updateProject(apiBase, slug, body),
     delete: (apiBase, slug) => deleteProject(apiBase, slug),
     customActions: {
+      identity: runProjectIdentityCommand,
+      'prepare-identity': runProjectIdentityCommand,
+      attach: runProjectIdentityCommand,
       layouts: async (apiBase, parsed) => {
         await runProjectLayoutCommand(apiBase, parsed);
       },

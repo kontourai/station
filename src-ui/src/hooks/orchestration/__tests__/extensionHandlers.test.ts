@@ -1,3 +1,4 @@
+import { _resetUnboundExtensionNotices } from '@shared/extension-notification-bindings';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChatsStore;
@@ -35,6 +36,7 @@ describe('handleExtensionNotificationEvent', () => {
       agentName: 'Kiro',
       title: 'Kiro Chat',
     });
+    _resetUnboundExtensionNotices();
   });
 
   afterEach(() => {
@@ -62,6 +64,70 @@ describe('handleExtensionNotificationEvent', () => {
       content: expect.stringContaining(
         '[Open authentication page](https://example.com/oauth/authorize)',
       ),
+    });
+  });
+
+  test('unbound extension notifications log once and stay out of the transcript', async () => {
+    const { log } = await import('../../../utils/logger');
+    const spy = vi.spyOn(log, 'chat').mockImplementation(() => {});
+    handleExtensionNotificationEvent({
+      eventId: 'evt-unbound',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-07-03T00:00:00.000Z',
+      method: 'extension.notification',
+      namespace: '_x.ai',
+      type: 'never/seen',
+      payload: { secret: 'do-not-log' },
+    });
+    handleExtensionNotificationEvent({
+      eventId: 'evt-unbound-2',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-07-03T00:00:01.000Z',
+      method: 'extension.notification',
+      namespace: '_x.ai',
+      type: 'never/seen',
+      payload: { secret: 'do-not-log' },
+    });
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy.mock.calls[0]?.join(' ')).not.toContain('do-not-log');
+    expect(
+      activeChatsStore.getSnapshot()[threadId].ephemeralMessages ?? [],
+    ).toEqual([]);
+    spy.mockRestore();
+  });
+
+  test('bound Grok host-chrome notifications do not create transcript rows', () => {
+    handleExtensionNotificationEvent({
+      eventId: 'evt-1',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-07-03T00:00:00.000Z',
+      method: 'extension.notification',
+      namespace: '_x.ai',
+      type: 'models/update',
+      payload: { currentModelId: 'grok-4' },
+    });
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat?.ephemeralMessages ?? []).toEqual([]);
+    expect(chat?.messages ?? []).toEqual([]);
+  });
+
+  test('_x.ai/mcp/init_progress sets a requesting activity hint', () => {
+    handleExtensionNotificationEvent({
+      eventId: 'evt-1',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-07-03T00:00:00.000Z',
+      method: 'extension.notification',
+      namespace: '_x.ai',
+      type: 'mcp/init_progress',
+      payload: { total: 3, connected: 1, sessionId: 's' },
+    });
+    expect(activeChatsStore.getSnapshot()[threadId].activityHint).toEqual({
+      kind: 'requesting',
+      detail: 'MCP 1/3',
     });
   });
 

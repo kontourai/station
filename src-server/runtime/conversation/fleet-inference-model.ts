@@ -59,7 +59,7 @@ import {
 } from '@kontourai/station-contracts/fleet-inference';
 
 /** The provider string every fleet candidate reports to the AI SDK. */
-export const FLEET_INFERENCE_PROVIDER = 'station-fleet' as const;
+const FLEET_INFERENCE_PROVIDER = 'station-fleet' as const;
 
 /**
  * Wall-clock ceiling on one peer completion from THIS side. Deliberately
@@ -68,7 +68,7 @@ export const FLEET_INFERENCE_PROVIDER = 'station-fleet' as const;
  * refusal a consumer can act on — rather than being cut off here and read as
  * a bare network failure.
  */
-export const FLEET_COMPLETION_TIMEOUT_MS =
+const FLEET_COMPLETION_TIMEOUT_MS =
   FLEET_INFERENCE_LIMITS.completionDeadlineMs + 15_000;
 
 /**
@@ -187,7 +187,7 @@ interface FleetInferenceModelOptions {
  * completion, so this throws instead — a named failure beats a plausible
  * answer built from a truncated prompt.
  */
-export function toFleetMessages(
+function toFleetMessages(
   prompt: LanguageModelV3Prompt,
 ): FleetInferenceMessage[] {
   const messages: FleetInferenceMessage[] = [];

@@ -22,6 +22,11 @@ import {
 // LRU — generous relative to realistic concurrently-relevant thread counts.
 const SESSION_OWNER_CACHE_MAX_ENTRIES = 2_048;
 
+export interface PersonalConversationAccess {
+  canRead(requesterId: string, ownerId: string): boolean;
+  ownerIds(requesterId: string): readonly string[] | undefined;
+}
+
 interface SessionAuthorizationDeps {
   // Every dep is a raw option VALUE from OrchestrationServiceOptions —
   // this cluster calls no service method at all, which is what makes the
@@ -40,6 +45,7 @@ interface SessionAuthorizationDeps {
    * alias set and not a general personal-mode fallback.
    */
   legacyPersonalOwner?: string;
+  personalConversationAccess?: PersonalConversationAccess;
   sessionOwnerCacheMaxEntries?: number;
 }
 
@@ -138,9 +144,22 @@ export class SessionAuthorization {
   /** Fixed read-owner constraints use precisely the existing legacy bridge policy. */
   transcriptOwnerConstraint(
     authority: import('@kontourai/station-contracts/tenancy').SessionReadAuthority,
-  ): { ownerUserId: string; legacyOwnerUserId?: string } {
+  ): {
+    ownerUserId: string;
+    legacyOwnerUserId?: string;
+    ownerUserIds?: readonly string[];
+  } {
     const legacy = this.deps.legacyPersonalOwner;
+    const personalOwners =
+      this.deps.requireTenantExecutionContext?.() !== true &&
+      authority.mode === 'personal' &&
+      isSessionReadAuthority(authority)
+        ? this.deps.personalConversationAccess?.ownerIds(authority.userId)
+        : undefined;
     return {
+      ...(personalOwners
+        ? { ownerUserIds: [...personalOwners, ...(legacy ? [legacy] : [])] }
+        : {}),
       ownerUserId: authority.userId,
       ...(this.deps.requireTenantExecutionContext?.() !== true &&
       isSessionReadAuthority(authority) &&
@@ -331,6 +350,18 @@ export class SessionAuthorization {
     if (ownerUserId === undefined) {
       return this.deps.ownerlessSessionAccess === 'single-user-compat';
     }
+    // A personal Station's approved devices belong to one conversation
+    // account. Device principals remain unchanged for action attribution.
+    // Hosted authority returned above and never reaches this policy.
+    if (
+      this.deps.personalConversationAccess?.canRead(
+        userId,
+        ownerUserId === this.deps.legacyPersonalOwner
+          ? LOCAL_OPERATOR_PRINCIPAL_ID
+          : ownerUserId,
+      )
+    )
+      return true;
     // The released OS alias must never pass the ordinary equality path: any
     // caller can guess a display alias. It is readable only through the
     // narrowly provenance-bound migration bridge below. All other principal
@@ -425,7 +456,15 @@ export class SessionAuthorization {
     if (ownerUserId === undefined) {
       return this.deps.ownerlessSessionAccess === 'single-user-compat';
     }
-    return userId === undefined || ownerUserId === userId;
+    return (
+      ownerUserId === userId ||
+      this.deps.personalConversationAccess?.canRead(
+        userId,
+        ownerUserId === this.deps.legacyPersonalOwner
+          ? LOCAL_OPERATOR_PRINCIPAL_ID
+          : ownerUserId,
+      ) === true
+    );
   }
 
   /**

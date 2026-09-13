@@ -32,7 +32,7 @@ function isScheduledObservation(
   return value?.starterId === STARTER_ID;
 }
 
-export async function scheduledCheckOperationId(): Promise<string> {
+async function scheduledCheckOperationId(): Promise<string> {
   if (!globalThis.crypto?.subtle)
     throw new Error('Secure Starter identity is unavailable.');
   const digest = await globalThis.crypto.subtle.digest(

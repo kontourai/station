@@ -571,7 +571,6 @@ export function selectChatBackgroundTasks(
 }
 
 // Constructed in unit tests via dynamic import; the app uses the singleton below.
-// fallow-ignore-next-line unused-export
 export class BackgroundTasksStore {
   private state: BackgroundTasksState = createEmptyBackgroundTasksState();
   private listeners = new Set<() => void>();

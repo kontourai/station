@@ -293,6 +293,8 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
 export const PRODUCT_E2E_EXECUTION_PROFILE = {
   parallelWorkers: 2,
   parallelSafetyExceptions: {
+    'tests/chat-history-reopen.spec.ts':
+      'Owns a unique temporary SQLite directory; shell requests are page-scoped fixtures and the store is closed and removed in finally.',
     'tests/sidebar-geometry.spec.ts':
       'read-only layout measurements against the isolated temp-home instance',
     'tests/mobile-dock-clearance.spec.ts':
@@ -313,12 +315,16 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
   parallelSafe: [
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
+    'tests/sidebar-file-intake.spec.ts',
     'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
+    'tests/answer-quoting.spec.ts',
     'tests/code-block-actions.spec.ts',
     'tests/model-visibility.spec.ts',
+    'tests/pull-request-review.spec.ts',
+    'tests/conversation-pull-request-links.spec.ts',
     'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
     'tests/monitoring-and-chrome.spec.ts',
@@ -330,6 +336,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/mcp-ui-layout.spec.ts',
     'tests/default-agent-workflow.spec.ts',
     'tests/mobile-chat-composer.spec.ts',
+    'tests/chat-replay.spec.ts',
+    'tests/chat-history-reopen.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
     'tests/accessibility-core.spec.ts',
     'tests/status-token-contrast.spec.ts',
@@ -551,6 +559,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/answer-quoting.spec.ts',
+    bucket: 'product',
+    surface: 'Answer quotation and source inspection',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production selection toolbar, draft store, Markdown renderer and source-inspection UI with captured authority and exact HTTP source fixtures; ordinary pointer selection and keyboard activation, no live server or shared writes.',
+    exceptions: [],
+  },
+  {
     path: 'tests/code-block-actions.spec.ts',
     bucket: 'product',
     surface: 'Long transcript code blocks',
@@ -658,6 +676,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real-browser focus semantics for dialog return focus: a collapsed surviving ancestor refuses focus and the walk falls through, an open follow-up dialog keeps focus, and a surviving trigger is restored untouched. jsdom reports a hidden .focus() as successful, so station#1206 gap 2 is only falsifiable here. station#1245 adds the real ConnectionManagerModalContent from packages/connect falling back past an inert survivor — the only place the cross-package wiring is exercised in a real bundle.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/sidebar-file-intake.spec.ts',
+    bucket: 'product',
+    surface: 'Sidebar file intake',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production sidebar rows, composer receiver and upload staging with exact HTTP fixtures. CDP supplies an external file drag from a test-owned output file; draft preservation and no-send behavior are asserted.',
     exceptions: [],
   },
   {
@@ -825,6 +853,26 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted default agent workflow lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-history-reopen.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Cold mobile hydration uses the real bounded SQLite history reader and canonical projector before paging backward within a noisy turn.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-replay.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Replay runtime, history, connection, timing, tool, error and multi-turn scenarios through the real mobile transcript, with frame-bound screenshots and loading animation evidence.',
     exceptions: [],
   },
   {
@@ -1447,6 +1495,26 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'ACP project context is primary but needs promotion review after agent ACP lane hardening.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/pull-request-review.spec.ts',
+    bucket: 'product',
+    surface: 'In-app pull request review',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production review panel, shared diff renderer, SDK and confirmation dialog; exact provider HTTP fixtures verify revision-bound writes, uncertainty and retained drafts in desktop dark and phone light presentations. No live forge or shared writes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/conversation-pull-request-links.spec.ts',
+    bucket: 'product',
+    surface: 'Conversation pull request links and dependency stacks',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production link and stack surfaces with exact current-Station HTTP fixtures; verifies same-number cross-host identity, explicit/derived/Task provenance, partial failure, unlink, provider-branch order and narrow-pane overflow. No live forge writes.',
     exceptions: [],
   },
   {

@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, type Page, type Route, test } from '@playwright/test';
 import { contrastRatio } from './helpers/color-contrast';
@@ -1558,6 +1559,38 @@ const SCREENS: Screen[] = [
     },
   },
   {
+    name: 'mobile-agent-editor-project-control',
+    title: 'Mobile — Project control above the save footer',
+    path: `/agents/${GALLERY_NOT_RUNNABLE_AGENT_SLUG}`,
+    viewport: MOBILE,
+    beforeGoto: seedNotRunnableAgentApi,
+    waitFor: '.detail-header__mobile-footer',
+    afterGoto: async (page) => {
+      try {
+        await page.mouse.move(200, 600);
+        await page.mouse.wheel(0, 350);
+        const project = page.locator('#ae-project');
+        await project.click({ trial: true });
+        await expect
+          .poll(async () => {
+            const control = await project.boundingBox();
+            const footer = await page
+              .locator('.detail-header__mobile-footer')
+              .boundingBox();
+            return (
+              !!control &&
+              !!footer &&
+              control.y >= 0 &&
+              control.y + control.height <= footer.y
+            );
+          })
+          .toBe(true);
+      } finally {
+        await cleanupNotRunnableAgentApi(page);
+      }
+    },
+  },
+  {
     name: 'mobile-settings-overview',
     title: 'Mobile — Settings overview',
     path: '/settings?view=overview',
@@ -2076,6 +2109,24 @@ const SCREENS: Screen[] = [
     } satisfies Screen;
   })(),
   {
+    name: 'overlay-new-project-layout-control',
+    title: 'Overlay — New Project scrolled to layout choices',
+    path: '/',
+    viewport: DESKTOP,
+    afterGoto: async (page) => {
+      await assertNoStrayProjectModal(page);
+      await page.locator('[data-new-project-trigger]').click();
+      await expect(newProjectOverlay(page)).toBeVisible();
+      await page.mouse.move(700, 650);
+      await page.mouse.wheel(0, 700);
+      const starter = page.getByRole('button', {
+        name: /Start without a layout/,
+      });
+      await starter.click();
+      await expect(starter).toHaveAttribute('aria-pressed', 'true');
+    },
+  },
+  {
     name: 'overlay-new-project-modal',
     title: 'Overlay — New Project modal',
     path: '/',
@@ -2109,6 +2160,9 @@ const SCREENS: Screen[] = [
             timeout: 10_000,
           });
           await expect(page.locator('.schedule__modal')).toBeVisible();
+          await expect(
+            page.getByRole('button', { name: 'Add Job', exact: true }),
+          ).toBeDisabled();
         } finally {
           await cleanup();
         }
@@ -2433,6 +2487,8 @@ interface Shot {
   file: string;
   ok: boolean;
   error?: string;
+  sha256?: string;
+  controls?: Array<{ label: string; disabled: boolean }>;
 }
 
 function escapeHtml(value: string): string {
@@ -2761,7 +2817,48 @@ test('build gallery — capture key screens', async ({ page }) => {
             });
           },
         });
-        shots.push({ screen, file, ok: true });
+        const controls = await page
+          .locator('button, [role="button"], input[type="submit"]')
+          .evaluateAll((elements) =>
+            elements
+              .filter((element) => {
+                const rect = element.getBoundingClientRect();
+                const style = getComputedStyle(element);
+                return (
+                  rect.width > 0 &&
+                  rect.height > 0 &&
+                  rect.top < innerHeight &&
+                  rect.bottom > 0 &&
+                  rect.left < innerWidth &&
+                  rect.right > 0 &&
+                  style.visibility !== 'hidden' &&
+                  style.display !== 'none'
+                );
+              })
+              .slice(0, 100)
+              .map((element) => ({
+                label: (
+                  element.getAttribute('aria-label') ||
+                  element.textContent ||
+                  element.getAttribute('value') ||
+                  ''
+                )
+                  .trim()
+                  .slice(0, 160),
+                disabled:
+                  element.matches(':disabled') ||
+                  element.getAttribute('aria-disabled') === 'true',
+              })),
+          );
+        shots.push({
+          screen,
+          file,
+          ok: true,
+          controls,
+          sha256: createHash('sha256')
+            .update(readFileSync(join(GALLERY_DIR, file)))
+            .digest('hex'),
+        });
       } catch (error) {
         // Capture whatever rendered so the broken state is still inspectable.
         try {
@@ -2804,12 +2901,16 @@ test('build gallery — capture key screens', async ({ page }) => {
           // (scripts/screenshot-diff.mjs) can never mistake a partial
           // gallery for full coverage.
           selection: requestedScreens,
-          screens: shots.map(({ file, ok, screen, error }) => ({
-            file,
-            ok,
-            name: screen.name,
-            error: error ?? null,
-          })),
+          screens: shots.map(
+            ({ file, ok, screen, error, sha256, controls }) => ({
+              file,
+              ok,
+              name: screen.name,
+              error: error ?? null,
+              sha256,
+              controls,
+            }),
+          ),
         },
         null,
         2,

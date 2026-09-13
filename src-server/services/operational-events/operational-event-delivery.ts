@@ -13,7 +13,7 @@ import {
 import { operationalEventScopeKey } from './operational-event-outbox.js';
 
 export const MAX_OPERATIONAL_EVENT_CONSUMERS = 64;
-export const MAX_OPERATIONAL_EVENT_DELIVERY_ATTEMPTS = 5;
+const MAX_OPERATIONAL_EVENT_DELIVERY_ATTEMPTS = 5;
 export const MAX_OPERATIONAL_EVENT_DEAD_LETTERS = 100;
 
 const CONSUMER_ID = /^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$/;
@@ -208,7 +208,7 @@ export interface OperationalEventDeliveryCoordinator {
 
 const activeOwners = new Set<string>();
 
-export function releaseOperationalEventDeliveryOwner(ownerId: string): void {
+function releaseOperationalEventDeliveryOwner(ownerId: string): void {
   activeOwners.delete(ownerId);
 }
 

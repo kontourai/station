@@ -14,6 +14,48 @@ const ev = (
   ({ eventId: `e${n++}`, ...base, ...e }) as unknown as CanonicalRuntimeEvent;
 
 describe('projectRuntimeEventsToMessages', () => {
+  it('restores a terminal answer from a newest-window text suffix while preserving earlier tool commentary', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'tail', prompt: 'Read it' }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'tail',
+        delta: 'I will inspect the file.',
+      }),
+      ev({
+        method: 'tool.started',
+        turnId: 'tail',
+        toolCallId: 'read',
+        toolName: 'read_file',
+        arguments: {},
+      }),
+      ev({
+        method: 'tool.completed',
+        turnId: 'tail',
+        toolCallId: 'read',
+        toolName: 'read_file',
+        output: 'File content',
+      }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'tail',
+        delta: 'complete answer.',
+      }),
+      ev({
+        method: 'turn.completed',
+        turnId: 'tail',
+        outputText: 'Here is the complete answer.',
+      }),
+    ]);
+    const text = messages
+      .at(-1)
+      ?.parts.filter((part) => part.type === 'text')
+      .map((part) => part.text);
+    expect(text).toEqual([
+      'I will inspect the file.',
+      'Here is the complete answer.',
+    ]);
+  });
   it('preserves simultaneous terminal results sharing one toolCallId by event identity', () => {
     const messages = projectRuntimeEventsToMessages([
       ev({
@@ -976,6 +1018,38 @@ describe('projectRuntimeEventsToMessages', () => {
         turnId: 'r1',
         outcome: 'completed',
       });
+    });
+
+    it('keeps a steer inside the open turn instead of closing the assistant early', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'r1', prompt: 'write the tests' }),
+        ev({ method: 'content.text-delta', itemId: 'i1', delta: 'partial ' }),
+        ev({
+          method: 'turn.started',
+          turnId: 'r1',
+          prompt: 'only the failing ones',
+          inputKind: 'steer',
+        }),
+        ev({ method: 'content.text-delta', itemId: 'i1', delta: 'answer' }),
+        ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
+      ]);
+
+      expect(messages.map((message) => message.role)).toEqual([
+        'user',
+        'user',
+        'assistant',
+      ]);
+      expect(messages[1]?.metadata).toMatchObject({
+        inputKind: 'steer',
+        turnId: 'r1',
+      });
+      expect(
+        messages[2]?.parts
+          .filter((part) => part.type === 'text')
+          .map((part) => part.text)
+          .join(''),
+      ).toBe('partial answer');
+      expect(messages[2]?.metadata?.provenance?.turnId).toBe('r1');
     });
 
     it('correlates each assistant message to its own turn across turns', () => {

@@ -5,6 +5,7 @@ import {
 } from '../../__test-utils__/logger-capture.js';
 import { AnthropicLLMProvider } from '../llm/anthropic-llm-provider.js';
 import { GoogleLLMProvider } from '../llm/google-llm-provider.js';
+import { DEFAULT_MODEL_CATALOG_MAX_ENTRIES } from '../registries/catalog-http.js';
 
 // A capture is process-wide, and every use in this file asserts BEFORE its own
 // `stop()`. Without this, one failing assertion leaks the sink — and any raised
@@ -282,6 +283,37 @@ describe('GoogleLLMProvider', () => {
       new GoogleLLMProvider({ apiKey: 'AIza-test' }).listModelCatalog(),
     ).resolves.toEqual({ source: 'live', models: [] });
   });
+
+  test.each([
+    { maxEntries: Number.NaN, pageSize: DEFAULT_MODEL_CATALOG_MAX_ENTRIES },
+    { maxEntries: 1.5, pageSize: 1 },
+  ])(
+    'normalizes Google pageSize for maxEntries=$maxEntries',
+    async ({ maxEntries, pageSize }) => {
+      const fetchMock = mockFetch(() => ({
+        ok: true,
+        json: {
+          models: [
+            {
+              name: 'models/gemini-1',
+              supportedGenerationMethods: ['generateContent'],
+            },
+          ],
+        },
+      }));
+      await expect(
+        new GoogleLLMProvider({ apiKey: 'AIza-test' }).listModels({
+          maxEntries,
+        }),
+      ).resolves.toEqual([{ id: 'gemini-1', name: 'gemini-1' }]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(
+        new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams.get(
+          'pageSize',
+        ),
+      ).toBe(String(pageSize));
+    },
+  );
 
   test('follows Google page tokens until the requested model limit', async () => {
     const fn = mockFetch((url) => {

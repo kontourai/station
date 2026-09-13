@@ -264,8 +264,17 @@ describe('verification policy gate', () => {
     );
   });
 
-  test('rejects broad static and full-Vitest creep into ci:fast', () => {
+  test('rejects removed code-health checks and broad static/full-Vitest creep into ci:fast', () => {
     expect(CI_FAST_STATIC_COMMANDS).toEqual(FAST_STATIC_COMMANDS);
+    expect(
+      verificationPolicyErrors({
+        ciFastStaticCommands: FAST_STATIC_COMMANDS.filter(
+          ([, args]) => args[0] !== 'scripts/code-health-gate.mjs',
+        ),
+      }),
+    ).toContain(
+      'ci:fast must run only its fixed bounded static invariant allowlist',
+    );
     expect(
       verificationPolicyErrors({
         ciFastStaticCommands: [

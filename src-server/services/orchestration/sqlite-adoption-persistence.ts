@@ -1,6 +1,10 @@
 import type { OrchestrationCommandReceipt } from '@kontourai/station-contracts/orchestration';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import {
+  isSessionContinuationBoundary,
+  isSessionSourceAffinity,
+} from '../../providers/sessions/session-source-affinity.js';
+import {
   AdoptionCommitFailure,
   type AdoptionLedgerCoordinator,
   type AdoptionReservation,
@@ -27,8 +31,8 @@ export function createSqliteAdoptionCoordinator({
     const result = db
       .prepare(
         `INSERT OR IGNORE INTO provider_session_adoptions
-          (source_thread_id, target_thread_id, owner_id, owner_pid, owner_token, provider, source_session_id, source_kind, cwd, project_root, status, provider_resume_cursor, provider_cleanup_complete, flow_run_id, flow_run_resumed, flow_cleanup_complete, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (source_thread_id, target_thread_id, owner_id, owner_pid, owner_token, provider, source_session_id, source_kind, source_affinity, source_boundary, cwd, project_root, status, provider_resume_cursor, provider_cleanup_complete, flow_run_id, flow_run_resumed, flow_cleanup_complete, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         reservation.sourceThreadId,
@@ -39,6 +43,12 @@ export function createSqliteAdoptionCoordinator({
         reservation.provider,
         reservation.sourceSessionId,
         reservation.sourceKind,
+        reservation.sourceAffinity
+          ? JSON.stringify(reservation.sourceAffinity)
+          : null,
+        reservation.sourceBoundary
+          ? JSON.stringify(reservation.sourceBoundary)
+          : null,
         reservation.cwd,
         reservation.projectRoot,
         reservation.status,
@@ -176,7 +186,7 @@ export function createSqliteAdoptionCoordinator({
     return db
       .prepare(
         `SELECT source_thread_id, target_thread_id, owner_id, owner_pid, owner_token, provider, source_session_id,
-                source_kind, cwd, project_root, status, provider_resume_cursor,
+                source_kind, source_affinity, source_boundary, cwd, project_root, status, provider_resume_cursor,
                 provider_cleanup_complete, flow_run_id, flow_run_resumed,
                 flow_cleanup_complete, created_at, updated_at
          FROM provider_session_adoptions
@@ -195,7 +205,7 @@ export function createSqliteAdoptionCoordinator({
     const row = db
       .prepare(
         `SELECT source_thread_id, target_thread_id, owner_id, owner_pid, owner_token, provider, source_session_id,
-                source_kind, cwd, project_root, status, provider_resume_cursor,
+                source_kind, source_affinity, source_boundary, cwd, project_root, status, provider_resume_cursor,
                 provider_cleanup_complete, flow_run_id, flow_run_resumed,
                 flow_cleanup_complete, created_at, updated_at
          FROM provider_session_adoptions
@@ -312,6 +322,17 @@ export function createSqliteAdoptionCoordinator({
 }
 
 function mapAdoptionReservationRow(row: any): AdoptionReservation {
+  const sourceAffinity =
+    row.source_affinity == null ? undefined : JSON.parse(row.source_affinity);
+  const sourceBoundary =
+    row.source_boundary == null ? undefined : JSON.parse(row.source_boundary);
+  if (sourceAffinity !== undefined && !isSessionSourceAffinity(sourceAffinity))
+    throw new Error('Stored adoption source affinity is invalid.');
+  if (
+    sourceBoundary !== undefined &&
+    (!sourceAffinity || !isSessionContinuationBoundary(sourceBoundary))
+  )
+    throw new Error('Stored adoption source boundary is invalid.');
   return {
     sourceThreadId: row.source_thread_id,
     targetThreadId: row.target_thread_id,
@@ -321,6 +342,8 @@ function mapAdoptionReservationRow(row: any): AdoptionReservation {
     provider: row.provider,
     sourceSessionId: row.source_session_id,
     sourceKind: row.source_kind,
+    ...(sourceAffinity ? { sourceAffinity } : {}),
+    ...(sourceBoundary ? { sourceBoundary } : {}),
     cwd: row.cwd,
     projectRoot: row.project_root,
     status: row.status,

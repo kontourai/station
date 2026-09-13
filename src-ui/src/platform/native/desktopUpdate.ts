@@ -34,7 +34,16 @@ export type DesktopUpdateOutcome =
       dispose: () => Promise<void>;
     }
   | { status: 'no-update' }
-  | { status: 'check-failed' };
+  | {
+      status: 'check-failed';
+      /**
+       * The caught error's own message, captured verbatim and WITHOUT
+       * classification: this module cannot tell a missing update channel from
+       * an offline host or a bad signature, so it must not label the text.
+       * Explicit checks surface it inside a technical-details disclosure.
+       */
+      detail?: string;
+    };
 
 export async function checkForDesktopUpdate(): Promise<DesktopUpdateOutcome> {
   try {
@@ -72,8 +81,12 @@ export async function checkForDesktopUpdate(): Promise<DesktopUpdateOutcome> {
   } catch (error) {
     // No updater plugin on this host (dev build, or a channel whose
     // endpoint has not shipped), or a real check failure (offline, a bad
-    // signature). Neither belongs on screen at launch.
+    // signature). Neither belongs on screen at launch. The raw message is
+    // captured unclassified for explicit checks to disclose.
     console.debug('station: desktop update check unavailable', error);
-    return { status: 'check-failed' };
+    return {
+      status: 'check-failed',
+      detail: error instanceof Error ? error.message : String(error),
+    };
   }
 }

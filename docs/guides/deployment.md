@@ -2,6 +2,11 @@
 
 ## Local Development
 
+Deployment describes how a Station instance is run and reached; it does not
+assign Project membership, room authority, or execution consent. See
+[Station topology](../design/station-topology.md) for the role/identity
+boundaries that deployments must preserve.
+
 ```bash
 ./station start                          # Auto-installs, builds, starts server + UI
 ./station start --clean --force          # Wipe and rebuild from scratch
@@ -269,6 +274,10 @@ bodies, model options, tokens, and arbitrary same-name third-party MCP
 integrations cannot provide or read that context. Direct/internal session
 starts without a validated binding fail closed in hosted mode; personal mode
 continues to use its existing shared local MCP connection.
+
+That tenant is an exact deployment/customer authority selected from the request
+host. It is not a person, organization membership, account, or capability
+grant; see [Station topology](../design/station-topology.md).
 
 Lifecycle and background provider notifications are explicitly aggregate-safe:
 they observe provider status only, cannot issue tenant-scoped Station API calls,

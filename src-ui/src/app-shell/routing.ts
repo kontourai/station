@@ -25,7 +25,7 @@ type DeveloperTabsExhaustive =
         Exclude<DeveloperTab, (typeof DEVELOPER_TABS)[number]>,
       ];
 true satisfies DeveloperTabsExhaustive;
-export function isDeveloperTab(value: string): value is DeveloperTab {
+function isDeveloperTab(value: string): value is DeveloperTab {
   return (DEVELOPER_TABS as readonly string[]).includes(value);
 }
 

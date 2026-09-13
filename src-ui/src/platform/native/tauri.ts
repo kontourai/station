@@ -364,6 +364,14 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
     }
   }
   const clientBuild = parseClientBuildProvenance(candidate.clientBuild);
+  const pairingDeepLinkScheme =
+    typeof candidate.pairingDeepLinkScheme === 'string' &&
+    candidate.pairingDeepLinkScheme.length <= 128 &&
+    /^station-(?:stable|beta|nightly|dev-[a-z0-9]+(?:-[a-z0-9]+)*)$/.test(
+      candidate.pairingDeepLinkScheme,
+    )
+      ? candidate.pairingDeepLinkScheme
+      : undefined;
   return {
     platform: candidate.platform as NativeCapabilityReport['platform'],
     channel:
@@ -378,6 +386,7 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
     devBuild: candidate.devBuild === true,
     ...(mobileDefaultEndpoint ? { mobileDefaultEndpoint } : {}),
     ...(clientBuild ? { clientBuild } : {}),
+    ...(pairingDeepLinkScheme ? { pairingDeepLinkScheme } : {}),
   };
 }
 
@@ -425,6 +434,25 @@ const BUNDLED_SERVER_OWNERSHIPS = new Set<BundledServerOwnership>([
   'service',
   'none',
 ]);
+
+/**
+ * The closed destination set the native replay may carry. It mirrors the
+ * Rust `TrayNavigationDestination` enum: any other wire value — including an
+ * arbitrary path — is refused before delivery, never turned into UI.
+ */
+const TRAY_NAVIGATION_DESTINATIONS = new Set([
+  'connections',
+  'pairedDevices',
+  'coreUpdates',
+  'desktopUpdates',
+  'serverUpdates',
+]);
+
+function isClosedTrayNavigationDestination(
+  value: unknown,
+): value is NativeTrayNavigationEvent['destination'] {
+  return typeof value === 'string' && TRAY_NAVIGATION_DESTINATIONS.has(value);
+}
 
 function isNullableInteger(value: unknown): boolean {
   return (
@@ -732,9 +760,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
           const { id, destination } = replay as Record<string, unknown>;
           if (
             !Number.isSafeInteger(id) ||
-            (destination !== 'connections' &&
-              destination !== 'pairedDevices' &&
-              destination !== 'coreUpdates')
+            !isClosedTrayNavigationDestination(destination)
           ) {
             reportReplayFailure(
               'Station refused a malformed tray navigation replay; the native lease was left for renderer recovery.',

@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import {
+  ANDROID_INSETS_EVENT,
+  readAndroidVisibleHeight,
+} from '../platform/androidSafeArea';
 
 interface MobileVisualViewportMetrics {
   height: number;
@@ -10,8 +14,15 @@ export function readMobileVisualViewport(
   target: Window = window,
 ): MobileVisualViewportMetrics {
   const viewport = target.visualViewport;
-  const height = Math.max(0, viewport?.height ?? target.innerHeight);
   const offsetTop = Math.max(0, viewport?.offsetTop ?? 0);
+  const nativeBottom = readAndroidVisibleHeight(target);
+  const height = Math.max(
+    0,
+    Math.min(
+      viewport?.height ?? target.innerHeight,
+      nativeBottom === undefined ? Infinity : nativeBottom - offsetTop,
+    ),
+  );
   return {
     height,
     offsetTop,
@@ -49,11 +60,13 @@ export function useMobileVisualViewport() {
     const source: EventTarget = viewport ?? window;
     source.addEventListener('resize', update);
     viewport?.addEventListener('scroll', update);
+    window.addEventListener(ANDROID_INSETS_EVENT, update);
     update();
     return () => {
       cancelAnimationFrame(frame);
       source.removeEventListener('resize', update);
       viewport?.removeEventListener('scroll', update);
+      window.removeEventListener(ANDROID_INSETS_EVENT, update);
     };
   }, []);
 
@@ -121,10 +134,12 @@ export function installVisualViewportInset(
   const source: EventTarget = viewport ?? target;
   source.addEventListener('resize', update);
   viewport?.addEventListener('scroll', update);
+  target.addEventListener(ANDROID_INSETS_EVENT, update);
   apply();
   return () => {
     target.cancelAnimationFrame?.(frame);
     source.removeEventListener('resize', update);
     viewport?.removeEventListener('scroll', update);
+    target.removeEventListener(ANDROID_INSETS_EVENT, update);
   };
 }

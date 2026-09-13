@@ -5,9 +5,12 @@ import {
   checkForDesktopUpdate,
   type DesktopUpdateOutcome,
 } from '../../platform/native/desktopUpdate';
+import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { TechnicalDetails } from './coreUpdatePresentation';
 
 /** Explicit checks report failures; the automatic launch check stays quiet. */
 export function DesktopUpdateCheck() {
+  const { target } = usePlatformProfile();
   const owned = useRef<Extract<
     DesktopUpdateOutcome,
     { status: 'update-available' }
@@ -56,32 +59,66 @@ export function DesktopUpdateCheck() {
           void check.refetch();
         }}
       >
-        {check.isFetching ? 'Checking…' : 'Check for Desktop Updates'}
+        {check.isFetching
+          ? 'Checking for desktop app updates…'
+          : 'Check for desktop app updates'}
       </Button>
       {!check.isFetching && check.data?.status === 'update-available' && (
         <>
-          <p role="status">Station {check.data.version} is available.</p>
+          <p role="status">
+            Desktop app version {check.data.version} is available.
+          </p>
           <Button disabled={install.isPending} onClick={() => install.mutate()}>
-            {install.isPending ? 'Installing…' : 'Install and restart'}
+            {install.isPending
+              ? 'Installing desktop app update…'
+              : 'Install desktop app update and restart'}
           </Button>
         </>
       )}
       {!check.isFetching && check.data?.status === 'no-update' && (
-        <p role="status">This desktop app is up to date.</p>
+        <p role="status">
+          No desktop app update was offered by this app’s configured release
+          channel.
+        </p>
       )}
       {!check.isFetching &&
         (check.isError || check.data?.status === 'check-failed') && (
-          <p role="alert">
-            Could not check for desktop updates. Check your connection and try
-            again. This build may not have an update channel configured.
-          </p>
+          <>
+            {/* D6: the failure is disclosed with its real diagnostic text —
+              never classified into offline/no-channel/signature by this UI,
+              which cannot know which one it was. */}
+            <p role="alert">
+              Could not check for desktop app updates. Try again or view
+              technical details.
+            </p>
+            <TechnicalDetails
+              detail={
+                check.data?.status === 'check-failed'
+                  ? (check.data.detail ?? null)
+                  : check.error instanceof Error
+                    ? check.error.message
+                    : null
+              }
+            />
+          </>
         )}
       {install.isError && (
-        <p role="alert">Could not install the update. Try installing again.</p>
+        <>
+          {/* D7: a failed install claims neither success nor restart. */}
+          <p role="alert">
+            The desktop update did not complete. View technical details before
+            retrying.
+          </p>
+          <TechnicalDetails
+            detail={
+              install.error instanceof Error ? install.error.message : null
+            }
+          />
+        </>
       )}
       <span className="settings__field-hint">
-        Updates the app on this device from its signed release channel and
-        restarts it. The connected Station server is checked separately below.
+        Updates Station on this {target === 'macos' ? 'Mac' : 'device'},
+        including its built-in server, then restarts the app.
       </span>
     </div>
   );

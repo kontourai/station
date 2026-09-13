@@ -265,6 +265,8 @@ CREATE TABLE IF NOT EXISTS provider_session_adoptions (
   provider TEXT NOT NULL,
   source_session_id TEXT NOT NULL,
   source_kind TEXT NOT NULL,
+  source_affinity TEXT,
+  source_boundary TEXT,
   cwd TEXT NOT NULL,
   project_root TEXT NOT NULL,
   status TEXT NOT NULL,
@@ -747,6 +749,13 @@ export function ensureOrchestrationAdoptionColumns(
       db.exec(
         "ALTER TABLE provider_session_adoptions ADD COLUMN owner_token TEXT NOT NULL DEFAULT 'legacy-unfenced'",
       );
+    }
+    const existing = new Set(columns.map((column) => column.name));
+    for (const name of ['source_affinity', 'source_boundary']) {
+      if (!existing.has(name))
+        db.exec(
+          `ALTER TABLE provider_session_adoptions ADD COLUMN ${name} TEXT`,
+        );
     }
     db.exec('COMMIT');
   } catch (error) {

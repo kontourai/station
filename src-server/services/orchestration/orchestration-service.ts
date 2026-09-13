@@ -104,6 +104,10 @@ import type {
 import { ProviderTurnEndedError } from '../../providers/adapter-shape.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
+import {
+  nativeSessionIdentityMatchesSource,
+  providerNativeSessionIdentity,
+} from '../../providers/provider-session-identity.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import {
   createAuthorizedTurnCorrelation,
@@ -272,7 +276,10 @@ import {
 } from './request-inspection.js';
 import { servingInstanceIdentity } from './serving-instance.js';
 import { sessionAgentStartUnavailableReason } from './session-agent-resolution.js';
-import { SessionAuthorization } from './session-authorization.js';
+import {
+  type PersonalConversationAccess,
+  SessionAuthorization,
+} from './session-authorization.js';
 import {
   createSessionCommandModule,
   type SessionCommand,
@@ -568,9 +575,14 @@ interface OrchestrationServiceOptions {
   ownerlessSessionAccess?: 'deny' | 'single-user-compat';
   /** Exact legacy OS-alias owner for the local-home principal migration only. */
   legacyPersonalOwner?: string;
+  personalConversationAccess?: PersonalConversationAccess;
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
   listProjects?: () => AttachedProjectRoot[];
+  /** Destination-local resource resolution for new starts and missing-cwd recovery. */
+  resolveProjectSessionDirectory?: (
+    slug: string,
+  ) => Promise<string | undefined>;
   /** Private exact PR point read; it never shares the public route's branch resolver. */
   nativeDeclaredPullRequestResolver?: {
     read(input: {
@@ -918,12 +930,16 @@ function isWithinDirectory(root: string, candidate: string): boolean {
  * never consulted. See `project-resource-shadow.ts` for why the migration is
  * shadowed before it is flipped.
  */
-function resolveStartSessionCwd(
+// Runtime composition resolves the current local resource before containment and
+// engine invocation. Embedded consumers without that callback retain legacy cwd
+// behavior; recovered sessions with a persisted cwd retain their original path.
+async function resolveStartSessionCwd(
   input: ProviderSessionStartInput,
   listProjects?: () => AttachedProjectRoot[],
   observeShadow?: (sample: CwdShadowSample) => void,
   admittedWorkspace?: ForegroundInvocationAdmission['provisionedWorkspace'],
-): ProviderSessionStartInput {
+  resolveProjectDirectory?: (slug: string) => Promise<string | undefined>,
+): Promise<ProviderSessionStartInput> {
   const rawProjectSlug = input.metadata?.projectSlug;
   const projectSlug =
     typeof rawProjectSlug === 'string' && rawProjectSlug
@@ -973,6 +989,10 @@ function resolveStartSessionCwd(
       provider: input.provider,
       projectCwd,
     });
+  }
+
+  if (projectSlug && resolveProjectDirectory) {
+    projectCwd = await resolveProjectDirectory(projectSlug);
   }
 
   const cwd = suppliedCwd ?? projectCwd;
@@ -1068,6 +1088,10 @@ function resolveStartSessionCwd(
 }
 
 export class OrchestrationService {
+  /** Shared receiver-local path observation used by target planning and start admission. */
+  readonly resolveProjectSessionDirectory?: (
+    slug: string,
+  ) => Promise<string | undefined>;
   readonly sessionCommands: SessionCommandModule;
   private readonly sessionCommandImplementation: SessionCommandImplementation;
   readonly sessionQueries: SessionQueryModule;
@@ -1297,6 +1321,8 @@ export class OrchestrationService {
   })();
 
   constructor(private readonly options: OrchestrationServiceOptions) {
+    this.resolveProjectSessionDirectory =
+      options.resolveProjectSessionDirectory;
     this.nativeOutputDeclarations = createNativeOutputDeclarationOperation({
       authority: this.nativeOutputGrants,
       workspaceForCall: (facts) => facts.workspaceRoot,
@@ -1312,6 +1338,7 @@ export class OrchestrationService {
     // means no later closure can capture an undefined authz seam.
     this.transcriptReadEventStore = options.eventStore;
     this.sessionAuthz = new SessionAuthorization({
+      personalConversationAccess: options.personalConversationAccess,
       ...(this.transcriptReadEventStore
         ? { eventStore: this.transcriptReadEventStore }
         : {}),
@@ -1356,6 +1383,8 @@ export class OrchestrationService {
       logger: options.logger,
     });
     this.transcriptReads = new SessionTranscriptReads({
+      transcriptOwnerConstraint: (authority) =>
+        this.sessionAuthz.transcriptOwnerConstraint(authority),
       canReadSession: (threadId, authority) =>
         this.sessionAuthz.canReadSession(threadId, authority),
       isEphemeralSession: (threadId) => this.isEphemeralSession(threadId),
@@ -3299,6 +3328,30 @@ export class OrchestrationService {
     );
   }
 
+  conversationStreamBinding(event: {
+    threadId: string;
+    method?: string;
+  }):
+    | import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding
+    | undefined {
+    if (
+      event.method !== 'session.started' &&
+      event.method !== 'session.configured'
+    )
+      return undefined;
+    const lineage = this.options.eventStore?.conversationForSession(
+      event.threadId,
+    );
+    if (!lineage) return undefined;
+    const { conversationId } = lineage;
+    const currentSessionId = this.currentConversationSessionId(conversationId);
+    if (currentSessionId !== event.threadId) return undefined;
+    return {
+      conversationId,
+      currentSessionId,
+    };
+  }
+
   async readCurrentConversationSession(
     conversationId: string,
     authority: SessionReadScope,
@@ -3667,6 +3720,7 @@ export class OrchestrationService {
     threadId: string,
     options: {
       cursor?: string;
+      direction?: 'newest';
       turnLimit: number;
       authority: SessionReadScope;
       signal?: AbortSignal;
@@ -3680,6 +3734,7 @@ export class OrchestrationService {
     conversationId: string,
     options: {
       cursor?: string;
+      direction?: 'newest';
       turnLimit: number;
       authority: SessionReadScope;
       signal?: AbortSignal;
@@ -4183,7 +4238,7 @@ export class OrchestrationService {
             reviewIsolation: _untrustedReviewIsolation,
             ...publicStartInput
           } = input as ProviderSessionStartInput;
-          let startInput = resolveStartSessionCwd(
+          let startInput = await resolveStartSessionCwd(
             normalizeOmittedModelId(
               stripReservedCapabilityMetadata(publicStartInput),
             ),
@@ -4191,6 +4246,7 @@ export class OrchestrationService {
             this.options.observeCwdShadow,
             internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
               readExecutionWorkspaceBinding(internal?.executionWorkspace),
+            this.options.resolveProjectSessionDirectory,
           );
           if (internal?.reviewIsolation) {
             startInput = {
@@ -7050,6 +7106,8 @@ export class OrchestrationService {
               input,
               this.options.listProjects,
               this.options.observeCwdShadow,
+              undefined,
+              this.options.resolveProjectSessionDirectory,
             ),
     };
   }
@@ -7312,17 +7370,31 @@ export class OrchestrationService {
     const eventStore = this.options.eventStore;
     if (!eventStore) return;
     const persisted = eventStore.readSessions();
-    const ownedCursors = new Set(
-      persisted
-        .filter((session) => session.controlMode !== 'read-only-attached')
-        .map(
-          (session) => `${session.provider}:${String(session.resumeCursor)}`,
-        ),
-    );
+    const ownedIdentities = new Map<
+      string,
+      NonNullable<ReturnType<typeof providerNativeSessionIdentity>>[]
+    >();
+    const rememberOwnedCursor = (provider: EngineId, resumeCursor: unknown) => {
+      const identity = providerNativeSessionIdentity(
+        this.options.adapterRegistry.get(provider),
+        resumeCursor,
+      );
+      if (!identity) return;
+      const key = JSON.stringify([provider, identity.sessionId]);
+      const identities = ownedIdentities.get(key) ?? [];
+      identities.push(identity);
+      ownedIdentities.set(key, identities);
+    };
+    for (const session of persisted) {
+      if (session.controlMode !== 'read-only-attached') {
+        rememberOwnedCursor(session.provider, session.resumeCursor);
+      }
+    }
     for (const reservation of this.adoptionLedger?.reservations() ?? []) {
       if (reservation.providerResumeCursor !== undefined) {
-        ownedCursors.add(
-          `${reservation.provider}:${String(reservation.providerResumeCursor)}`,
+        rememberOwnedCursor(
+          reservation.provider,
+          reservation.providerResumeCursor,
         );
       }
     }
@@ -7333,7 +7405,19 @@ export class OrchestrationService {
     );
     for (const alias of aliases.values()) {
       const externalId = alias.attachedSource?.externalSessionId;
-      if (!externalId || !ownedCursors.has(`${alias.provider}:${externalId}`)) {
+      const candidates = externalId
+        ? ownedIdentities.get(JSON.stringify([alias.provider, externalId]))
+        : undefined;
+      if (
+        !externalId ||
+        !candidates?.some((identity) =>
+          nativeSessionIdentityMatchesSource(
+            identity,
+            externalId,
+            alias.attachedSource?.affinity,
+          ),
+        )
+      ) {
         continue;
       }
       this.forgetThreadState(alias.threadId, { ownerCache: true });

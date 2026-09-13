@@ -21,7 +21,7 @@ export class DiscordGatewayConfigurationError extends Error {
   }
 }
 
-export function discordGatewayConfigurationPath(homeDir: string): string {
+function discordGatewayConfigurationPath(homeDir: string): string {
   return join(homeDir, 'security', FILE_NAME);
 }
 

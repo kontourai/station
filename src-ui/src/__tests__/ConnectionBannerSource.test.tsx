@@ -13,6 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BannerHost } from '../components/notifications/BannerHost';
 import { ConnectionBannerSource } from '../components/notifications/ConnectionBannerSource';
 import { BANNER_IDS, bannerStore } from '../contexts/banner-store';
+import {
+  getStreamConnectionState,
+  setStreamConnectionState,
+} from '../hooks/orchestration/streamConnectionState';
 import type { PlatformProfile } from '../platform/PlatformProfileContext';
 
 const connectionStatus = {
@@ -81,6 +85,7 @@ function renderChrome() {
 }
 
 beforeEach(() => {
+  setStreamConnectionState('https://station.example.test', 'unknown');
   globalThis.localStorage.clear();
   activeConnection = null;
   platformProfile = {
@@ -98,6 +103,23 @@ beforeEach(() => {
   connectionStatus.recheck.mockReset();
   removeConnection.mockReset();
   bannerStore.reset();
+});
+
+it('known credential rejection also blocks chat recovery until an authenticated delivery', () => {
+  connectionStatus.blocked = true;
+  connectionStatus.reason = 'authentication-failed';
+  renderChrome();
+  expect(getStreamConnectionState('https://station.example.test').phase).toBe(
+    'closed',
+  );
+  setStreamConnectionState('https://station.example.test', 'interrupted');
+  expect(getStreamConnectionState('https://station.example.test').phase).toBe(
+    'closed',
+  );
+  setStreamConnectionState('https://station.example.test', 'receiving');
+  expect(getStreamConnectionState('https://station.example.test').phase).toBe(
+    'receiving',
+  );
 });
 
 afterEach(() => {

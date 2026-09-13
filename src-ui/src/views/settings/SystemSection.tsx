@@ -6,7 +6,7 @@ import {
   BuildProvenance,
   InstalledAppBuildProvenance,
 } from './BuildProvenance';
-import { CoreUpdateCheck } from './CoreUpdateCheck';
+import { ConnectedServerUpdates } from './ConnectedServerUpdates';
 import { DesktopUpdateCheck } from './DesktopUpdateCheck';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
@@ -38,6 +38,19 @@ export function SystemSection({
       title="System"
       id="section-system"
     >
+      {platformProfile.isDesktop && (
+        <div
+          className="settings__field"
+          {...settingsRow('desktop-app-updates')}
+          tabIndex={-1}
+        >
+          <span className="settings__field-label">
+            {settingsRow('desktop-app-updates').title}
+          </span>
+          <DesktopUpdateCheck />
+        </div>
+      )}
+
       <div
         className="settings__field"
         {...settingsRow('core-app-updates')}
@@ -46,9 +59,7 @@ export function SystemSection({
         <span className="settings__field-label">
           {settingsRow('core-app-updates').title}
         </span>
-        {platformProfile.isDesktop && <DesktopUpdateCheck />}
-        <p className="settings__field-label">Connected Station updates</p>
-        <CoreUpdateCheck apiBase={apiBase} />
+        <ConnectedServerUpdates />
       </div>
 
       <div {...settingsRow('deployed-build')} tabIndex={-1}>

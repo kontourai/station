@@ -164,6 +164,8 @@
    place (previously respected in only 2 files). Near-instant transitions. */
 @media (prefers-reduced-motion: reduce) {
   :root {
+    /* Static loading placeholders need a visible status when motion is off. */
+    --loading-label-display: block;
     --motion-fast: 0.01ms;
     --motion-base: 0.01ms;
     --motion-slow: 0.01ms;

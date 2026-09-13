@@ -74,7 +74,7 @@ import { execGit, spawnGit } from '../../utils/git-exec.js';
  * degrades to a typed `git_timeout` record, and the thread's capture tail
  * stays healthy for the next boundary.
  */
-export const CHECKPOINT_GIT_TIMEOUT_MS = 60_000;
+const CHECKPOINT_GIT_TIMEOUT_MS = 60_000;
 
 /** Fixed committer/author identity so checkpoint commits never depend on the
  * user's git config being set (they would otherwise fail `commit-tree` in a

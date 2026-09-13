@@ -64,6 +64,115 @@ const event = (eventId: string, method: string, fields = {}) => ({
 });
 
 describe('useActiveChatTranscript', () => {
+  test('mounted replay retains settled rows without history or checkpoint requests', async () => {
+    const { registerReplayThread, unregisterReplayThread } = await import(
+      '../hooks/orchestration/replay/replay-registry'
+    );
+    const { SessionTapePlayer } = await import(
+      '../hooks/orchestration/replay/player'
+    );
+    const { tapeFromSessionEvents } = await import(
+      '../hooks/orchestration/replay/tape'
+    );
+    const replayId = registerReplayThread();
+    activeChatsStore.initChat(replayId, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Replay',
+      orchestrationSessionStarted: true,
+      replay: { sourceThreadId: 'thread-1', tapeEventCount: 2 },
+    });
+    const tape = tapeFromSessionEvents(
+      { threadId: 'thread-1', agentSlug: 'codex' },
+      [
+        event('evt1', 'turn.started', { turnId: 'turn-1', prompt: 'Hello' })
+          .event,
+        event('evt2', 'turn.completed', {
+          turnId: 'turn-1',
+          outputText: 'Recorded reply',
+        }).event,
+      ] as Parameters<typeof tapeFromSessionEvents>[1],
+    );
+    const player = new SessionTapePlayer(tape, replayId);
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const session = () =>
+      ({
+        ...baseSession,
+        ...activeChatsStore.getSnapshot()[replayId],
+        id: replayId,
+      }) as ChatSession;
+    const view = renderHook(({ chat }) => useActiveChatTranscript('', chat), {
+      initialProps: { chat: session() },
+    });
+    try {
+      act(() => {
+        player.step();
+        player.step();
+      });
+      view.rerender({ chat: session() });
+      expect(
+        view.result.current.messages.some(
+          (row) => row.content === 'Recorded reply',
+        ),
+      ).toBe(true);
+      expect(view.result.current.enabled).toBe(false);
+      expect(fetchCapability).not.toHaveBeenCalled();
+      expect(fetchConversationWindow).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+      act(() => {
+        player.back();
+      });
+      view.rerender({ chat: session() });
+      expect(
+        view.result.current.messages.some(
+          (row) => row.content === 'Recorded reply',
+        ),
+      ).toBe(false);
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(replayId);
+      unregisterReplayThread(replayId);
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('an incomplete history prefix cannot erase the completed live answer', async () => {
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 9314,
+      hasMore: true,
+      nextCursor: 'within-turn',
+      events: [
+        event('evt1', 'turn.started', {
+          turnId: 'large-turn',
+          prompt: 'Question',
+        }),
+        event('evt2', 'content.text-delta', {
+          turnId: 'large-turn',
+          itemId: 'commentary',
+          delta: 'I will investigate.',
+        }),
+      ],
+    });
+    const answer = {
+      id: 'live-final',
+      role: 'assistant' as const,
+      turnId: 'large-turn',
+      answerEligible: true,
+      content: 'The complete answer is saved.',
+      timestamp: 1786233603000,
+    };
+    const view = renderHook(() =>
+      useActiveChatTranscript('', { ...baseSession, messages: [answer] }),
+    );
+    await waitFor(() => expect(view.result.current.settled).toBe(true));
+    expect(
+      view.result.current.messages.filter((row) => row.role === 'assistant'),
+    ).toEqual([answer]);
+    view.unmount();
+  });
+
   test('switching conversations never assigns the previous reader child to the new chat', async () => {
     const parentId = 'reader-parent-tab';
     const childId = 'reader-fork-tab';
@@ -363,7 +472,7 @@ describe('useActiveChatTranscript', () => {
       2,
       'thread-1',
       'http://station.test',
-      { cursor: 'older', turnLimit: 20 },
+      { cursor: 'older', turnLimit: 20, direction: 'newest' },
       { signal: expect.any(AbortSignal) },
     );
   });

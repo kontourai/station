@@ -27,7 +27,7 @@ export interface WorkspacePaneOperationalEventSink {
   emit(event: OperationalEventEnvelope): void;
 }
 
-export const noopWorkspacePaneOperationalEventSink: WorkspacePaneOperationalEventSink =
+const noopWorkspacePaneOperationalEventSink: WorkspacePaneOperationalEventSink =
   Object.freeze({ emit: () => undefined });
 
 /** Small fixture/test sink. It is intentionally not a durable delivery mechanism. */
@@ -77,7 +77,7 @@ function safeHash(value: string): string {
   return (hash >>> 0).toString(36);
 }
 
-export function workspacePaneOperationalOccurrenceId(
+function workspacePaneOperationalOccurrenceId(
   document: WorkspacePaneHostDocumentV1,
   instance: WorkspacePaneInstance,
 ): string {
@@ -93,7 +93,7 @@ export function workspacePaneOperationalOccurrenceId(
   return `pane-${safeHash(`${identity}:${document.id}:${instance.instanceId}`)}`;
 }
 
-export function workspacePaneOperationalCapability(
+function workspacePaneOperationalCapability(
   availability: WorkspacePaneAvailability | undefined,
 ): WorkspacePaneOperationalCapability {
   if (!availability || availability.state === 'temporarily-unavailable')
@@ -106,7 +106,7 @@ export function workspacePaneOperationalCapability(
  * or descriptor string. That prevents a plugin/MCP contributor from claiming a
  * different renderer boundary in the emitted fact.
  */
-export function isWorkspacePaneOperationalEventContext(
+function isWorkspacePaneOperationalEventContext(
   context: WorkspacePaneOperationalEventContext,
 ): boolean {
   const candidate = context.selectedRenderer;

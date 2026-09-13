@@ -39,7 +39,7 @@ export function ToolCallBatchSheet<P extends ToolCallLike>({
     >
       <div className="tool-call-batch-sheet__header">
         <h3 id={titleId} className="tool-call-batch-sheet__title">
-          {group.summary}
+          {group.aggregateSummary}
         </h3>
         <ResponsiveDialogCloseButton
           onClick={onClose}

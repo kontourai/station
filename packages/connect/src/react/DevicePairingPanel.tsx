@@ -1026,6 +1026,14 @@ export function HostDevicePairingPanel({
   const [offer, setOffer] = useState<DevicePairingOffer | null>(null);
   const [qrTarget, setQrTarget] = useState<'app' | 'scanner'>('app');
   const [requests, setRequests] = useState<DevicePairingRequest[]>([]);
+  const [personBindingSelection, setPersonBindingSelection] = useState<{
+    apiBase: string;
+    requests: ReadonlySet<string>;
+  }>(() => ({ apiBase, requests: new Set() }));
+  const personBindingRequests =
+    personBindingSelection.apiBase === apiBase
+      ? personBindingSelection.requests
+      : new Set<string>();
   const [devices, setDevices] = useState<PairedDevice[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [endpoint, setEndpoint] = useState(publicEndpoint);
@@ -1111,9 +1119,28 @@ export function HostDevicePairingPanel({
         `/api/pairing/requests/${request.requestId}${
           action === 'approve' ? '/confirm' : ''
         }`,
-        { method: action === 'approve' ? 'POST' : 'DELETE' },
+        {
+          method: action === 'approve' ? 'POST' : 'DELETE',
+          ...(action === 'approve' &&
+          personBindingRequests.has(request.requestId)
+            ? {
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bindVerifiedIdentity: true }),
+              }
+            : {}),
+        },
       );
       if (!response.ok) {
+        if (
+          action === 'approve' &&
+          personBindingRequests.has(request.requestId) &&
+          response.status === 409
+        ) {
+          setError(
+            'Person binding is unavailable in this Station deployment. Ordinary device approval does not link a person.',
+          );
+          return;
+        }
         setError(
           response.status === 401
             ? "This device's access to this Station needs review. Reconnect it, then try again."
@@ -1124,12 +1151,25 @@ export function HostDevicePairingPanel({
               // remedy is a different, credentialed session, so name the one
               // that always exists on the host.
               response.status === 403 && action === 'approve'
-              ? `Approving “${request.deviceName}” needs a trusted Station session. Run this on the Station: station environment access approve ${request.requestId} --force`
+              ? `Approving “${request.deviceName}” needs a trusted Station session. Run this on the Station: station environment access approve ${request.requestId} --force${personBindingRequests.has(request.requestId) ? ' --bind-person' : ''}`
               : response.status === 404 || response.status === 410
                 ? 'That access request has already expired or been removed.'
                 : `This Station could not ${action} that access request. Try again.`,
         );
         return;
+      }
+      if (
+        action === 'approve' &&
+        personBindingRequests.has(request.requestId)
+      ) {
+        const confirmation = (await response.json()) as {
+          personBindingApproved?: boolean;
+        };
+        if (confirmation.personBindingApproved !== true) {
+          setError(
+            'Device access was approved, but this Station did not confirm person binding. Update this Station and pair the device again to link its identity.',
+          );
+        }
       }
       await refresh();
     } catch {
@@ -1321,6 +1361,37 @@ export function HostDevicePairingPanel({
               <small style={{ color: 'var(--text-secondary, #999)' }}>
                 {requestExpiryLabel(request.expiresAt, now)}
               </small>
+              {request.status === 'pending' &&
+                request.source === 'tailnet' &&
+                request.requester && (
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      minHeight: 44,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={personBindingRequests.has(request.requestId)}
+                      disabled={requestActionIds.has(request.requestId)}
+                      onChange={(event) => {
+                        const checked = event.currentTarget.checked;
+                        setPersonBindingSelection((current) => {
+                          const next = new Set(
+                            current.apiBase === apiBase ? current.requests : [],
+                          );
+                          if (checked) next.add(request.requestId);
+                          else next.delete(request.requestId);
+                          return { apiBase, requests: next };
+                        });
+                      }}
+                    />
+                    Recognize this device as {request.requester.login} at this
+                    Station (operator approval required)
+                  </label>
+                )}
               {request.status === 'pending' ? (
                 <div
                   style={{

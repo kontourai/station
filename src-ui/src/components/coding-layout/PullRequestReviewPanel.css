@@ -1,0 +1,55 @@
+@import "../editor-controls.css";
+.pull-request-review {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  min-width: 0;
+  height: 100%;
+  overflow: auto;
+}
+.pull-request-review__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pull-request-review__actions button {
+  min-height: 44px;
+}
+.pull-request-review__body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pull-request-review code {
+  overflow-wrap: anywhere;
+}
+.pull-request-review__diff {
+  height: 480px;
+  min-height: 240px;
+}
+.pull-request-review__comment {
+  display: grid;
+  gap: 8px;
+}
+.pull-request-review__comment textarea {
+  min-height: 96px;
+  width: 100%;
+}
+
+.pull-request-review__method {
+  display: grid;
+  gap: 6px;
+  align-self: flex-start;
+}
+.pull-request-review__method select {
+  min-height: 44px;
+}
+.pull-request-review__discussion {
+  padding-left: 20px;
+}
+.pull-request-review__discussion li + li {
+  margin-top: 12px;
+}
+.pull-request-review__diff {
+  flex-shrink: 0;
+}
