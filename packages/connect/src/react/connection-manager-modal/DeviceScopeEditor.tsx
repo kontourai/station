@@ -23,11 +23,14 @@ import { useState } from 'react';
  *  - The BASE level reuses the pairing-time preset vocabulary (Read-only /
  *    Delegation / Standard), because that is the choice the person already
  *    made once and understands. No new taxonomy to learn for an edit.
- *  - The two ELEVATED grants — approving pairing requests and deciding
- *    consent — are separate switches, not presets, because that is what they
- *    are in the contracts: `operator-promotion` tokens, in no preset,
- *    granted deliberately to an already-paired device. The switch plus Apply
- *    is the same two-deliberate-acts weight the revoke control carries.
+ *  - The ELEVATED grants — approving pairing requests, deciding consent, and
+ *    starting an engine sign-in — are separate switches, not presets, because
+ *    that is what they are in the contracts: `operator-promotion` tokens, in
+ *    no preset, granted deliberately to an already-paired device. The switch
+ *    plus Apply is the same two-deliberate-acts weight the revoke control
+ *    carries. Every `operator-promotion` token must appear in this list, and
+ *    a test enforces it: the list is hand-written, the contracts vocabulary
+ *    grows on its own, and the two drifted the first time it did.
  *  - Narrowing and widening use the same editor. The asymmetry lives in the
  *    copy, not in friction: widening is labelled as elevated where it is
  *    offered, rather than interrogated after being chosen.
@@ -105,6 +108,17 @@ const ELEVATED_GRANTS: ReadonlyArray<{
     token: PAIRING_SCOPE_CONSENT_DECIDE,
     label: 'Decide consent requests',
     detail: 'Can approve or deny consent requests on the consent page.',
+    elevated: true,
+  },
+  {
+    // A literal, like `inference:invoke` above. This package compiles with tsc
+    // and depends on the published contracts package, so importing a constant
+    // newer than that release would fail at load time for any consumer still
+    // resolving the older contracts.
+    token: 'engine:login' as PairingScope,
+    label: 'Start engine sign-in',
+    detail:
+      "Can start an engine's own device-code sign-in on this Station and see the code to approve. The engine keeps the resulting credential; Station never holds it.",
     elevated: true,
   },
 ];
