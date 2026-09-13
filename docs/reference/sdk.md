@@ -835,6 +835,13 @@ request scope and credential options for that particular Station. Identity reads
 use the Project family's read permission; preparation and attachment require its
 operate permission. These operations do not grant remote access or membership.
 
+`parseProjectPortableIdentity(value)` on
+`@kontourai/station-sdk/project-identity` validates imported portable snapshots
+using the same closed rules as identity response reads. The CLI's identity and
+attachment commands consume it before calling the existing `attachProject` API.
+Unknown fields and local binding data are refused; receiver authorization and
+live checkout validation remain at the receiving Station.
+
 `getProjectIdentity(apiBase, slug, options)` reads an existing portable identity
 without writing. A legacy Project with no identity returns an error until
 `prepareProjectIdentity` explicitly derives one. The local Project ID remains

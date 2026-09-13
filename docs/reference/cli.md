@@ -2757,3 +2757,28 @@ Project membership or device scope. Without it, approval remains device-only.
 The CLI requires the server's binding acknowledgment and reports older servers
 that approved access without recognizing the option. Revoke the paired device
 to revoke its binding; existing grants are not silently linked.
+
+
+### Portable Project identity and attachment
+
+Export a Project identity from one enrolled Station and attach it to an existing
+checkout on another. The CLI uses credentials already stored for each saved Station;
+attachment requires an explicit destination.
+
+```sh
+station projects prepare-identity website --station=laptop > project-identity.json
+station projects attach website-server --identity-file=project-identity.json --name=Website --station=server --target-workspace='~/src/website'
+```
+
+`prepare-identity` explicitly prepares a missing identity and prints its portable
+snapshot. Use `station projects identity website --station=laptop` for a read-only
+export of an already prepared identity. Output contains the portable identity;
+local paths, local Project IDs and access grants are not exported. Mutating
+commands disclose their selected Station on stderr so JSON stdout stays usable.
+
+`attach` creates the receiver's own local Project association while preserving
+the portable ID. The receiver validates its existing checkout. Keep the target
+path quoted so the invoking shell leaves its interpretation to that Station.
+Omit `--target-workspace` for a Project with no local checkout. An existing
+conflicting Project is refused; an exact replay can return the existing
+association. Membership and compute contributions require their separate grants.
