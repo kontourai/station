@@ -18,7 +18,7 @@
     {
       "id": "coding-starter",
       "displayName": "Coding Starter",
-      "description": "Code-focused starter layout with file browser, terminal notes, diff review, and chat handoff patterns.",
+      "description": "Two Project Workspace Panes with labelled code examples and an owner-qualified review action.",
       "version": "1.0.0",
       "source": "../coding-starter"
     },
