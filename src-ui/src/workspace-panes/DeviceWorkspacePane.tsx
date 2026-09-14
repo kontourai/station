@@ -94,13 +94,32 @@ function capturedAtLabel(capturedAt: string): string {
     : capturedAt;
 }
 
-/** Why this row cannot be captured, or null when it can. */
+/**
+ * Why this row cannot be captured, or null when it can.
+ *
+ * Addressability is checked BEFORE "not running", because the two orders give
+ * opposite advice for the one row that fails both — and that row is the only
+ * reachable divergent population there is. `LocalMobileDeviceHost` enforces
+ * the `emulator-<n>` spelling only for a BOOTED Android device, so an
+ * unbooted emulator may legitimately be listed under an AVD name; telling its
+ * reader to start it sends them to an inventory the host then refuses
+ * WHOLESALE, because that same row booted breaks its listing rule and takes
+ * every other device down with it. Probed against the host directly: an
+ * unbooted `Pixel_9_API_36` row answers `ready` and is listed; the identical
+ * row with `booted: true` answers `unavailable` / `invalid-response`.
+ *
+ * The iOS sentence has NO reachable population — the host regex-checks an iOS
+ * id unconditionally, so a simulator without a UDID never reaches an
+ * inventory at all (probed both booted and unbooted: `invalid-response`
+ * either way). It is drift insurance against a future helper, and is written
+ * here as that rather than as a live case.
+ */
 function unsupportedReason(device: MobileDeviceSummary): string | null {
-  if (!device.booted) return 'Not running — start it, then refresh.';
   if (!isCaptureableMobileDeviceTarget(device))
     return device.platform === 'android'
       ? 'Station captures an Android emulator by its emulator-<number> serial, and this device does not report one.'
       : 'Station captures an iOS simulator by its UDID, and this device does not report one.';
+  if (!device.booted) return 'Not running — start it, then refresh.';
   return null;
 }
 

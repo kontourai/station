@@ -13,17 +13,28 @@ import { vi } from 'vitest';
  * The Device pane's test harness (#1969).
  *
  * Deliberately NOT a mock of the SDK query hooks: the pane is mounted over a
- * real `QueryClient` and a stubbed `fetch`, so every fixture below has to
- * survive the SDK client's own parser — which is written against the exact
- * envelope `LocalMobileDeviceHost` emits and rejects anything else with a
- * `MobileDeviceRequestError(200)`. A fixture that drifts from the server's
- * shape therefore fails loudly here rather than being quietly believed.
+ * real `QueryClient` and a stubbed `fetch`, so every fixture below goes
+ * through the SDK client's own parser, and a fixture it refuses fails here as
+ * a `MobileDeviceRequestError(200)` rather than being quietly believed.
  *
- * The fixtures themselves are copied from what the service produces
+ * What that parser checks is exactly the ENVELOPE and each row's TYPES
+ * (`packages/sdk/src/mobile-device.ts`): `hostId === 'local'`, one of the
+ * three states, a parseable `observedAt`, at most 256 devices, a `failure`
+ * iff `unavailable`, and per row a `platform` literal plus a non-empty,
+ * control-character-free `deviceId` / `name` / `runtime` and a boolean
+ * `booted`. It does NOT look at id SPELLINGS — `summary` never applies the
+ * UDID or `emulator-<n>` rules — so a `deviceId` no real helper would emit
+ * passes it silently.
+ *
+ * Fidelity past that is this file's own job, not something a parser enforces.
+ * The fixtures are copied from what the service produces
  * (`src-server/services/mobile-device/mobile-device-host.ts`, and the rows in
  * its own test): `runtime` is the helper's `version`, `deviceId` is the
- * helper's `id`, and a booted Android device reports an `emulator-<n>`
- * serial.
+ * helper's `id`, a BOOTED Android device reports an `emulator-<n>` serial
+ * while an unbooted one may report an AVD name, and every iOS id is a UDID.
+ * A fixture that contradicts that describes an inventory the server answers
+ * `invalid-response` for, so a test built on it proves nothing about a state
+ * a reader can reach.
  */
 
 export const IOS_DEVICE_ID = '6E8C08FA-3A81-4347-90B9-AD41B7FAE876';

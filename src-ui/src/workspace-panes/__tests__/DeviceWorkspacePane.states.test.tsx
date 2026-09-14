@@ -136,21 +136,33 @@ describe('the Device pane over an inventory (#1969)', () => {
 
   /**
    * A device the host lists but this client cannot address gets a DISABLED
-   * row naming why, rather than a Capture that is guaranteed to 400. Widening
-   * the SDK's `isCaptureableMobileDeviceTarget` would make this row enabled —
-   * which is a change to that validator and its own review.
+   * row naming why, rather than a Capture that is guaranteed to 400.
+   *
+   * The fixture is the ONLY shape that reaches this branch from a real
+   * server: an UNBOOTED Android row under an AVD name. `LocalMobileDeviceHost`
+   * applies the `emulator-<n>` rule only to a booted Android device, so it
+   * lists this row (probed: `state: 'ready'` with the row present) while the
+   * same row with `booted: true` makes it refuse the whole inventory
+   * `invalid-response`. A booted AVD-name fixture would therefore be testing
+   * an envelope no writer produces.
+   *
+   * It is also why the reason must PRE-EMPT "Not running": this row is both,
+   * and "start it, then refresh" would send the reader to an inventory the
+   * host refuses wholesale. Restoring the `!device.booted` check to the front
+   * of `unsupportedReason` reds the reason assertion below.
    */
   test('a device id the client cannot address is offered disabled, with the reason', async () => {
     stubDeviceFetch({
       inventory: readyInventory([
         IOS_DEVICE,
-        { ...ANDROID_DEVICE, deviceId: 'Pixel_9_API_36' },
+        { ...ANDROID_DEVICE, deviceId: 'Pixel_9_API_36', booted: false },
       ]),
     });
     await mount();
     const row = await screen.findByRole('radio', { name: /Pixel 10 Pro XL/ });
     expect(row).toHaveProperty('disabled', true);
     expect(screen.getByText(/emulator-<number> serial/)).toBeTruthy();
+    expect(screen.queryByText(/Not running/)).toBeNull();
     expect(screen.getByRole('radio', { name: /iPhone/ })).toHaveProperty(
       'disabled',
       false,
