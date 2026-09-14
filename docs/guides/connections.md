@@ -163,6 +163,15 @@ thread looks for its transcripts under the home that was active when it last
 ran. Malformed or oversized `env` entries (more than 64 entries or a value
 over 32 KiB) are dropped silently at save time.
 
+One failure mode to expect: most proxies re-identify requests to the provider
+with their own client identity and capability flags, not your engine's. A
+proxy build that lags the provider's current client can be refused for models
+that require a newer client — with an error telling you to update your local
+engine, which is already current — or have newer request fields rejected as
+unknown. If a proxied connection fails with a client-version error, update
+the proxy first; Station cannot rewrite what the proxy sends upstream, and
+unproxied connections are unaffected.
+
 ---
 
 ## OpenAI-compatible endpoints
