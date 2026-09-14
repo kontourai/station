@@ -2039,7 +2039,14 @@ for (const requiredHelper of [
   '../bootstrap/runtime-http.js',
   './runtime-route-support.js',
   'createRuntimeSystemRouteDeps(context)',
-  'configureRuntimeSupportServices(context, flowRunService)',
+  // No closing paren: the property is that runtime-routes DELEGATES support
+  // service construction to the extracted helper, handing it the context and
+  // the flow run service -- not that the call has exactly two arguments.
+  // #2080 added a third (the gate-review reader) and this literal stopped
+  // matching, so a green tree reported "runtime-routes.ts must define or
+  // include configureRuntimeSupportServices(context, flowRunService)" for a
+  // call that was right there.
+  'configureRuntimeSupportServices(context, flowRunService',
   'createPluginRoutes(',
   'createConversationRoutes(',
 ]) {
