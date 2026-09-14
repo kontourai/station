@@ -1,4 +1,7 @@
-import { isStandingAttentionKind } from '@kontourai/station-contracts/attention';
+import {
+  isPendingAttentionItem,
+  isStandingAttentionKind,
+} from '@kontourai/station-contracts/attention';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   ApprovalAttentionItem,
@@ -75,7 +78,11 @@ export function isAcknowledgeableAttentionItem(item: AttentionItem): boolean {
  * module exists to prevent.
  */
 export function pendingAttentionItems(items: AttentionItem[]): AttentionItem[] {
-  return items.filter((item) => !item.acknowledgedAt);
+  // #2064: the predicate itself moved to the contract, where the server's
+  // `pendingCount` and the per-project counts read it too — three surfaces,
+  // one declaration, instead of three `!item.acknowledgedAt` spellings that
+  // agree today.
+  return items.filter(isPendingAttentionItem);
 }
 
 /** See `pendingAttentionItems` — the same one predicate, counted. */

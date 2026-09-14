@@ -3,7 +3,10 @@ import {
   type AttentionItem,
   type AttentionProjection,
   type DevicePairingAttentionItem,
+  type GateReviewAttentionItem,
+  isPendingAttentionItem,
   isStandingAttentionKind,
+  type ProposedChangeAttentionItem,
   type SessionFailedAttentionItem,
   type SetupIncompleteAttentionItem,
 } from '@kontourai/station-contracts/attention';
@@ -51,6 +54,7 @@ import {
   truncateRequestText as truncate,
 } from '../orchestration/request-presentation.js';
 import { DEVICE_PAIRING_NOTIFICATION_SOURCE } from '../ssh/device-pairing-notifications.js';
+import type { ProposedChangeService } from './proposed-change-service.js';
 
 const ACTIVE_NOTIFICATION_STATUSES = ['delivered', 'pending'];
 
@@ -63,6 +67,22 @@ type FlowRunBinding = {
   cwd: string;
   run: FlowRunStatus;
 } | null;
+
+/**
+ * #2064 (D4): the subset of `SurveyFlowReviewService`'s queue item this
+ * projection reads. Structural rather than an import of the service's own
+ * type so the projection depends on the SHAPE it consumes, not on Survey's
+ * review-workbench types transitively — and so a fixture cannot be a
+ * different thing that happens to typecheck.
+ */
+export interface PausedGateReviewSource {
+  readonly reviewSessionRef: string;
+  readonly projectSlug: string;
+  readonly workflowSubjectRef: string;
+  readonly sessionName: string;
+  readonly updatedAt: string;
+  readonly summary: { readonly unresolved: number };
+}
 
 /**
  * Read-only projection over the existing notification, orchestration, and
@@ -172,6 +192,32 @@ export class AttentionProjectionService {
       agentName: string;
       reason: string;
     } | null>,
+    /**
+     * #2064 (D4): pending proposed changes, read through the SAME
+     * `ProposedChangeService.list` call `/review-queue` makes — never a
+     * second store or a cached count. A decision taken on either surface
+     * (or by the CLI) stops projecting on the next read because the source
+     * is the source, not a mirror.
+     *
+     * Optional so every existing caller/test keeps compiling with
+     * proposed-change attention simply unavailable.
+     */
+    private readonly proposedChanges?: Pick<
+      ProposedChangeService,
+      'list'
+    > | null,
+    /**
+     * #2064 (D4): paused Survey/Flow gate review sessions, from the same
+     * `SurveyFlowReviewService` aggregate `/review-queue` reads. A thunk
+     * rather than the service itself because the aggregate needs the live
+     * project inventory, which the composition root owns; this projection
+     * has no project service of its own and must not grow one.
+     *
+     * Optional for the same reason as above.
+     */
+    private readonly listGateReviews?: () => Promise<
+      readonly PausedGateReviewSource[]
+    >,
   ) {}
 
   /**
@@ -297,10 +343,15 @@ export class AttentionProjectionService {
 
     const setupItems = await this.projectSetupRequirement(readAuthority);
 
+    const proposedChangeItems = this.projectProposedChanges(readAuthority);
+    const gateReviewItems = await this.projectGateReviews(readAuthority);
+
     const undecorated = [
       ...approvals,
       ...lifecycle,
       ...gateItems,
+      ...proposedChangeItems,
+      ...gateReviewItems,
       ...pairingItems,
       ...setupItems,
     ];
@@ -318,7 +369,7 @@ export class AttentionProjectionService {
     // Acked items stay IN `items` (history, never deleted) but drop out of
     // the actionable count — the whole point of archive#1914's
     // acknowledge-not-dismiss design for a kind with nothing to delete.
-    const pendingCount = items.filter((item) => !item.acknowledgedAt).length;
+    const pendingCount = items.filter(isPendingAttentionItem).length;
     attentionProjectionResults.record(items.length);
     return { items, pendingCount };
   }
@@ -660,6 +711,7 @@ export class AttentionProjectionService {
       kind === 'review_pending' && openRequest
         ? attentionRequestReference(openRequest, session.threadId)
         : undefined;
+    const projectSlug = sessionProjectSlug(session);
     return {
       id: `${kind}:${session.threadId}`,
       kind,
@@ -669,6 +721,9 @@ export class AttentionProjectionService {
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       sessionId: session.threadId,
+      // #2064 (D4): the project row's count reads this. Omitted, never
+      // guessed, for a project-less session.
+      ...(projectSlug ? { projectSlug } : {}),
       openHref: sessionOpenHref(session),
       source: { threadId: session.threadId },
       ...(kind === 'needs_input' &&
@@ -836,6 +891,97 @@ export class AttentionProjectionService {
         openHref: '/connections/models',
       },
     ];
+  }
+
+  /**
+   * #2064 (D4): every proposed change still awaiting a decision.
+   *
+   * The filter is `status: 'pending'` and nothing else — the same read
+   * `/review-queue` performs. There is no stored "needs attention" flag to
+   * consult and deliberately none introduced: the item exists exactly while
+   * the change is undecided, so approving it anywhere (this inbox, the Review
+   * page, the CLI) removes it from the very next projection, and the count
+   * that includes it moves with it.
+   *
+   * Hosted reads project nothing, the same posture device pairing and the
+   * setup requirement take. `ProposedChangeService.list` has no tenancy
+   * predicate at all, so a tenant-scoped read has no standing to see another
+   * tenant's proposed work; surfacing it here would be the first place in
+   * this projection where a hosted read saw unfiltered host data. Making
+   * proposed changes tenant-readable is its own change, with its own
+   * authorization, not a side effect of widening the inbox.
+   */
+  private projectProposedChanges(
+    authority: SessionReadAuthority,
+  ): ProposedChangeAttentionItem[] {
+    if (!this.proposedChanges) return [];
+    if (isHostedSessionReadAuthority(authority)) return [];
+    return this.proposedChanges.list({ status: ['pending'] }).map((change) => ({
+      id: `proposed-change:${change.id}`,
+      kind: 'proposed-change' as const,
+      title: change.path,
+      body: `${change.changeType} from ${change.sourceRuntime}`,
+      createdAt: change.createdAt,
+      updatedAt: change.updatedAt,
+      projectSlug: change.projectId,
+      path: change.path,
+      contentKind: change.contentKind,
+      sourceRuntime: change.sourceRuntime,
+      // Review stays routed this slice (#2064 AC3); the row's own
+      // Approve/Reject are the decision, and this link is where the diff
+      // is readable.
+      openHref: `/review-queue?change=${encodeURIComponent(change.id)}`,
+      source: { proposedChangeId: change.id, projectSlug: change.projectId },
+    }));
+  }
+
+  /**
+   * #2064 (D4): paused Survey/Flow gate review sessions with unresolved
+   * items.
+   *
+   * `summary.unresolved > 0` is the whole adjudication and it is a
+   * derivation: the store records review items and their state, never a
+   * "paused" or "needs attention" marker, so a session whose items are all
+   * resolved stops projecting because there is nothing left unresolved — not
+   * because anything cleared a flag. A session Station cannot read
+   * contributes nothing (the aggregate already degrades per project and
+   * reports its own unavailability to the Review surface); this projection
+   * does not invent an item for a project it could not read.
+   *
+   * Hosted reads project nothing, for the same reason proposed changes do
+   * not: the aggregate is built over the host's whole project inventory.
+   */
+  private async projectGateReviews(
+    authority: SessionReadAuthority,
+  ): Promise<GateReviewAttentionItem[]> {
+    if (!this.listGateReviews) return [];
+    if (isHostedSessionReadAuthority(authority)) return [];
+    let reviews: readonly PausedGateReviewSource[];
+    try {
+      reviews = await this.listGateReviews();
+    } catch {
+      // One unreadable source must not blank every other item in this read —
+      // the same isolation `readOpenRequests` applies for the same reason.
+      return [];
+    }
+    return reviews
+      .filter((review) => review.summary.unresolved > 0)
+      .map((review) => ({
+        id: `gate-review:${review.reviewSessionRef}`,
+        kind: 'gate-review' as const,
+        title: review.sessionName,
+        body: `${review.summary.unresolved} unresolved · ${review.workflowSubjectRef}`,
+        createdAt: review.updatedAt,
+        updatedAt: review.updatedAt,
+        projectSlug: review.projectSlug,
+        unresolved: review.summary.unresolved,
+        openHref: `/review-queue?review=${encodeURIComponent(review.reviewSessionRef)}`,
+        source: {
+          reviewSessionRef: review.reviewSessionRef,
+          projectSlug: review.projectSlug,
+          workflowSubjectRef: review.workflowSubjectRef,
+        },
+      }));
   }
 
   private projectDevicePairingItems(
@@ -1036,6 +1182,9 @@ function projectGateOutcome(
     createdAt: session.updatedAt,
     updatedAt: session.updatedAt,
     sessionId: session.threadId,
+    // #2064 (D4): a gate always binds inside a project workspace — the caller
+    // has already refused to project a gate item without one.
+    projectSlug,
     openHref,
     source: {
       threadId: session.threadId,
@@ -1123,6 +1272,11 @@ export function buildSessionFailedItem(
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     sessionId: session.threadId,
+    // #2064 (D4): see `projectLifecycle` — the same derivation, omitted for a
+    // project-less session rather than guessed.
+    ...(sessionProjectSlug(session)
+      ? { projectSlug: sessionProjectSlug(session) }
+      : {}),
     openHref: failedSessionOpenHref(session),
     source: { threadId: session.threadId },
     engine: session.provider,
@@ -1149,8 +1303,21 @@ function failedSessionOpenHref(session: OrchestrationSessionSummary): string {
   return activityDeepLink({ sessionId: session.threadId });
 }
 
+/**
+ * #2064 (D4): the ONE derivation of which project a session's attention item
+ * belongs to — delegation binding first, then the session's own slug, which
+ * is the precedence `sessionOpenHref` already used to decide where the item's
+ * link lands. The count and the link therefore name the same project by
+ * construction; two spellings of this precedence would eventually disagree.
+ */
+function sessionProjectSlug(
+  session: OrchestrationSessionSummary,
+): string | undefined {
+  return session.delegation?.projectSlug ?? session.projectSlug;
+}
+
 function sessionOpenHref(session: OrchestrationSessionSummary): string {
-  const projectSlug = session.delegation?.projectSlug ?? session.projectSlug;
+  const projectSlug = sessionProjectSlug(session);
   if (projectSlug) {
     // archive#1284 (AC4): `dock=open` so the deep link actually opens the
     // chat dock instead of landing on the project layout with the dock

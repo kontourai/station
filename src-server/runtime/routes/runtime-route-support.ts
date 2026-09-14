@@ -22,7 +22,10 @@ import {
   wireInternalStopRedispatchFailureNotifications,
   wireTurnCompletionNotifications,
 } from '../../services/orchestration/turn-completion-notifications.js';
-import { AttentionProjectionService } from '../../services/projects/attention-projection.js';
+import {
+  AttentionProjectionService,
+  type PausedGateReviewSource,
+} from '../../services/projects/attention-projection.js';
 import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-scheduler.js';
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
@@ -305,7 +308,17 @@ export async function readStationSetupRequirement(
 export function configureRuntimeSupportServices(
   context: ConfigureRuntimeRoutesContext,
   flowRunService: Pick<FlowRunService, 'getRunConsole'>,
-  options: { webPushEnabled?: boolean } = {},
+  options: {
+    webPushEnabled?: boolean;
+    /**
+     * #2064 (D4): paused Survey/Flow gate review sessions for the attention
+     * projection. Injected rather than constructed here because the
+     * aggregate needs the live project inventory, which the caller already
+     * holds (it builds the same `SurveyFlowReviewService` the Review page
+     * reads). Absent means gate-review attention is simply unavailable.
+     */
+    listGateReviews?: () => Promise<readonly PausedGateReviewSource[]>;
+  } = {},
 ) {
   // The hosted registry is immutable deployment configuration. Until pairing
   // records have durable tenant ownership, Web Push delivery is off by
@@ -556,6 +569,11 @@ export function configureRuntimeSupportServices(
     // reading a fact nobody projected, not a quiet Station; the two reading
     // different app configs (review H2) is that same disagreement inverted.
     memoizeStationSetupRequirement(() => readStationSetupRequirement(context)),
+    // #2064 (D4): the inbox widens to carry every item meaning "a human must
+    // decide". Both sources are the SAME ones `/review-queue` reads, so the
+    // bell's count and the Review page cannot disagree about what is pending.
+    context.proposedChangeService,
+    options.listGateReviews,
   );
   return {
     schedulerService,
