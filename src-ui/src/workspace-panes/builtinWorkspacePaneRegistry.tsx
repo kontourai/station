@@ -62,6 +62,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { Button } from '../components/Button';
 import { ChatWorkspacePane } from '../components/chat-dock/ChatDock';
@@ -106,7 +107,8 @@ import {
 } from './filePreviewPaneInstance';
 import {
   createFilePreviewPaneStatePreparation,
-  readFilePreviewPaneState,
+  filePreviewPaneStateSnapshot,
+  subscribeFilePreviewPaneState,
 } from './filePreviewPaneStateStorage';
 import type { OpenFilePreviewIntent } from './openFilePreviewIntent';
 import { ProjectTaskRoomConversation } from './ProjectTaskRoomConversation';
@@ -679,10 +681,20 @@ function WorkspaceTrustPane({ instance }: BuiltinWorkspacePaneProps) {
 
 function FilePreviewWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   const identity = useResolvedPaneIdentity(instance, false);
-  const state = readFilePreviewPaneState(
-    window.localStorage,
-    instance.stateKey,
+  const stateKey = instance.stateKey;
+  // SUBSCRIBED, not read at render time (#2085). The read was never stale —
+  // it is the re-render that was missing. `openFilePreviewInRegion` writes a
+  // newly requested line range onto a preview it already holds and then
+  // reveals it; when that pane is already the selected tab of an
+  // already-visible region the reveal produces an identical arrangement and
+  // the region model's setters bail, so nothing rendered and the new range
+  // waited for an unrelated render. The write is what notifies now, and the
+  // write-then-roll-back discipline on the opener side is unchanged.
+  const readState = useCallback(
+    () => filePreviewPaneStateSnapshot(window.localStorage, stateKey),
+    [stateKey],
   );
+  const state = useSyncExternalStore(subscribeFilePreviewPaneState, readState);
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   if (

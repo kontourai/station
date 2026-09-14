@@ -68,6 +68,7 @@ import {
   chromiumIsInstalled,
   resolveCssImports,
 } from '../../../../../tests/helpers/css-cascade-fixture';
+import { MIN_TOUCH_TARGET_PX } from '../../../../../tests/helpers/touch-target';
 import { bannerStore } from '../../../contexts/banner-store';
 import { Button } from '../../Button';
 import { PortableDraftsMenu } from '../../chat/PortableDraftsMenu';
@@ -568,8 +569,16 @@ describe.skipIf(!chromiumAvailable)(
                 hit === dismiss || (hit !== null && dismiss.contains(hit)),
             };
           });
-          expect(measured.width).toBeGreaterThanOrEqual(44);
-          expect(measured.height).toBeGreaterThanOrEqual(44);
+          // The floor, through the shared constant, NOT a bare `44`: these are
+          // raw `getBoundingClientRect` floats, and the property is "this
+          // control meets the 44px touch floor", which an exact-integer
+          // comparison does not faithfully encode under float layout. A large
+          // related-set run on a loaded host measured this very height as
+          // 43.99999237060547 — 44 minus 7.6e-6 — and red (#2086). Anything
+          // genuinely too small to touch is short by whole pixels, so the
+          // hundredth of a pixel `MIN_TOUCH_TARGET_PX` allows cannot hide one.
+          expect(measured.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+          expect(measured.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
           expect(measured.dockTop).toBeCloseTo(28, 0);
           expect(measured.send).toBe(!critical);
           expect(measured.dismiss).toBe(critical);

@@ -37,6 +37,38 @@ export type TauriShellFixture = {
 const sleep = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
+/**
+ * How long the DRIVER may spend on one injected script (#2089).
+ *
+ * WebDriver's default script timeout is 30 s, and this harness never chose one,
+ * so it had the default. The embedded macOS driver runs `execute/sync` on the
+ * WebView's main loop, which the app's own boot occupies: mounting the shell
+ * parses two ~40 KB JSON payloads and fires ~50 requests, and in a DEBUG binary
+ * on a contended host that runs past 30 s. A one-expression probe like
+ * `typeof window.__TAURI_INTERNALS__` then times out — not because the script is
+ * slow, but because it is still queued behind the app.
+ *
+ * MEASURED, not guessed: instrumenting every request showed exactly one slow
+ * call per run at 30,018 ms, answering `{"error":"script timeout"}`. That is the
+ * driver's own bound expiring, so widening any lane's `waitUntil` cannot help —
+ * the first poll's request cannot complete inside it.
+ */
+const SCRIPT_TIMEOUT_MS = 120_000;
+
+/**
+ * How long this client waits for one request, and it MUST exceed
+ * {@link SCRIPT_TIMEOUT_MS} (#2089/#2091).
+ *
+ * Both were 30_000, so a genuine script timeout was a race between the driver
+ * answering `script timeout` at ~30,018 ms and this client aborting at 30,000 —
+ * and the client won, replacing the only diagnostic that named the cause with
+ * `TimeoutError: The operation was aborted due to timeout`. That is what made
+ * this lane look like it failed at three unrelated places; all three were this.
+ * Derived from the script timeout rather than written down separately, so the
+ * ordering cannot drift.
+ */
+const REQUEST_TIMEOUT_MS = SCRIPT_TIMEOUT_MS + 30_000;
+
 async function terminate(child: ChildProcess) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   child.kill('SIGTERM');
@@ -53,6 +85,28 @@ async function terminate(child: ChildProcess) {
   }
   child.kill('SIGKILL');
   await exited;
+}
+
+/**
+ * A request the driver answered with a WebDriver error, carrying the error
+ * CODE so a caller can tell one refusal from another (#2091).
+ *
+ * `message` is byte-identical to what {@link DirectWebDriver.request} threw
+ * before this class existed, because every other caller only ever reads it:
+ * the timeout messages desktop lanes print are built from `String(error)`.
+ *
+ * Not exported. The one caller that needs to discriminate is `findElement`
+ * below, in this file.
+ */
+class WebDriverErrorResponse extends Error {
+  /** The W3C error code, e.g. `no such element`, when the payload carried one. */
+  readonly webDriverError: string | undefined;
+
+  constructor(message: string, webDriverError: string | undefined) {
+    super(message);
+    this.name = 'WebDriverErrorResponse';
+    this.webDriverError = webDriverError;
+  }
 }
 
 export class DirectWebDriver {
@@ -74,12 +128,13 @@ export class DirectWebDriver {
       headers:
         body === undefined ? undefined : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     const payload = (await response.json()) as WebDriverEnvelope<T>;
     if (!response.ok || payload.value?.error) {
-      throw new Error(
+      throw new WebDriverErrorResponse(
         `WebDriver ${method} ${path} failed: ${JSON.stringify(payload.value)}`,
+        payload.value?.error,
       );
     }
     return payload.value;
@@ -93,7 +148,11 @@ export class DirectWebDriver {
         await this.request('GET', '/status');
         const session = await this.request<SessionValue>('POST', '/session', {
           capabilities: {
-            alwaysMatch: { browserName: 'tauri' },
+            alwaysMatch: {
+              browserName: 'tauri',
+              // Chosen, not defaulted. See SCRIPT_TIMEOUT_MS.
+              timeouts: { script: SCRIPT_TIMEOUT_MS },
+            },
             firstMatch: [{}],
           },
         });
@@ -132,13 +191,32 @@ export class DirectWebDriver {
   }
 
   /**
-   * A real element reference, and a real click through the driver.
+   * A real element reference, for a real click through the driver.
    *
    * `execute()` could dispatch a synthetic click and would be shorter. It
    * would also be a different event than a user produces, which is the
    * distinction `tests/AGENTS.md` draws: a synthetic dispatch hides the
-   * behavior under test. WebDriver's own `/element/:id/click` is the closest
-   * thing this harness has to a press.
+   * behavior under test. WebDriver's own `/element/:id/click`
+   * ({@link DirectWebDriver.clickElement}) is the closest thing this harness
+   * has to a press, and it needs the reference this returns.
+   *
+   * ONLY the page genuinely not having the element answers `undefined` (#2091).
+   *
+   * This used to be a bare `catch { return undefined }`, and
+   * {@link DirectWebDriver.request} throws on transport failure, on its own
+   * request timeout, on any non-success status and on a WebDriver error
+   * payload — so all four became the same answer. Every wait in every desktop
+   * lane is keyed on this lookup, so a dead session, a hung driver or a shell
+   * that never came up surfaced as a product-shaped sentence like "the pane
+   * never appeared", and the reader went looking at the product for a fault in
+   * the harness. It could never produce a false GREEN — swallowing only ever
+   * yields a timeout — but the misdirected failure is paid for by whoever
+   * reads it next, and there are now two lanes doing the reading.
+   *
+   * `no such element` is the W3C error code for the one case that is an
+   * answer rather than a fault. Everything else propagates with its own
+   * message, which `waitUntil` then prints as `Last error:` beside the
+   * lane's own sentence.
    */
   async findElement(css: string): Promise<string | undefined> {
     try {
@@ -148,8 +226,13 @@ export class DirectWebDriver {
         { using: 'css selector', value: css },
       );
       return Object.values(value)[0];
-    } catch {
-      return undefined;
+    } catch (error) {
+      if (
+        error instanceof WebDriverErrorResponse &&
+        error.webDriverError === 'no such element'
+      )
+        return undefined;
+      throw error;
     }
   }
 

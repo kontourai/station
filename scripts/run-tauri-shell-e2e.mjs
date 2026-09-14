@@ -109,6 +109,16 @@ function main() {
     throw new Error('Could not resolve the Tauri E2E source revision.');
   // Named lanes, each a separate process so one lane's app fixture cannot
   // outlive it into the next. `--lane=<name>` runs one; the default runs all.
+  //
+  // "All" became TWO with #1969's Device lane, and they run SERIALLY, so a
+  // bare `npm run test:tauri-shell` now costs the sum of both (#2091). Each
+  // lane boots the whole shell, waits on a real WebView and tears a fixture
+  // home down, so that is minutes rather than seconds.
+  //
+  // And `run` exits the process on a non-zero lane, so the FIRST failure ends
+  // the sweep: a red `plugin-host-security` means `device-pane` did not run at
+  // all rather than passing. Use `--lane=<name>` to reach a later lane while an
+  // earlier one is red, and to iterate on one without paying for the other.
   const requested = process.argv
     .slice(2)
     .find((argument) => argument.startsWith('--lane='))

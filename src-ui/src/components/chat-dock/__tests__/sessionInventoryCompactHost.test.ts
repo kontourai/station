@@ -11,6 +11,7 @@ import {
   chromiumIsInstalled,
   resolveCssImports,
 } from '../../../../../tests/helpers/css-cascade-fixture';
+import { MIN_TOUCH_TARGET_PX } from '../../../../../tests/helpers/touch-target';
 import { resolveSessionInventoryCompactHost } from '../sessionInventoryCompactHost';
 
 const hooks = vi.hoisted(() => ({
@@ -285,9 +286,14 @@ describe.skipIf(!chromiumAvailable)(
           const full = page.getByRole('button', { name: 'Open full Basis' });
           await expectPlaywright(full).toBeVisible();
           for (const control of [close, firstHighlight, full]) {
+            // The shared floor constant, not a bare `44`: these are raw
+            // `boundingBox()` floats, and an exact-integer comparison is not a
+            // faithful encoding of "meets the 44px touch floor" under float
+            // layout — a sibling suite measured 43.99999237060547 for a
+            // control styled to exactly 44 and red on it (#2086).
             expect(
               (await control.boundingBox())?.height,
-            ).toBeGreaterThanOrEqual(44);
+            ).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
           }
 
           await page.keyboard.press('Tab');

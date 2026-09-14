@@ -21,6 +21,22 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   'src-server/routes/chat/conversations.ts :: function conversationRouteFailure :: error.message :: 1',
   'src-server/routes/knowledge/knowledge-index-routes.ts :: route POST /index/rebuild :: e.message :: 1',
   'src-server/routes/knowledge/knowledge-index-routes.ts :: route POST /migrate :: e.message :: 1',
+  // The Boards create conflict (#2061). `error` is narrowed by `instanceof
+  // PersonalLayoutConflictError`, a domain class constructed in exactly one
+  // place (`personal-layout-service.ts`'s `create`) whose whole message is the
+  // literal `A Board named '<slug>' already exists.` The slug is the caller's
+  // OWN `body.slug`, refused by `assertSafeLayoutPathSegment` earlier in this
+  // same handler unless it matches `/^[A-Za-z0-9][A-Za-z0-9._-]*$/` -- so the
+  // interpolated token carries no quotes, separators, whitespace or `..`, and
+  // nothing caught from an engine, a CLI or the filesystem reaches it. The
+  // other catch in this route answers a literal, so occurrence 1 is the only
+  // `.message` the route can reach.
+  //
+  // What would make this unsafe: constructing `PersonalLayoutConflictError`
+  // from anything other than the validated create body, moving the
+  // `assertSafeLayoutPathSegment` call out of this handler, or widening the
+  // `instanceof` narrowing to a supertype that could carry a caught message.
+  'src-server/routes/me/personal-layouts.ts :: route POST /layouts :: error.message :: 1',
   'src-server/routes/plugins/plugin-config-routes.ts :: route GET /:name/settings :: error.message :: 1',
   'src-server/routes/plugins/plugin-config-routes.ts :: route GET /:name/providers :: error.message :: 1',
   'src-server/routes/plugins/plugin-install-routes.ts :: route POST /preview :: error.message :: 1',
