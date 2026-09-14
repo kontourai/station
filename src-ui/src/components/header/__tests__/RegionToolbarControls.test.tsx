@@ -975,10 +975,16 @@ describe('RegionToolbarControls', () => {
     ]);
   });
 
-  test('Home and the catalog-only surfaces register no chord', () => {
-    // #2047: the three coding surfaces are `exposure: 'catalog'` and carry no
-    // `shortcut`; the exact set below is what keeps a chord from arriving
-    // with a registry entry unnoticed.
+  test('the shell dock surfaces are the only chord registrations', () => {
+    // #2047: this set pins the SHELL surfaces — the ones that reach a chord at
+    // all. Chords are built from `useRegionSurfaceMenu`'s `surfaceList`, which
+    // is already filtered by exposure and by dock region, so a stray
+    // `shortcut` on a catalog-only entry (the three coding surfaces) or on a
+    // main-only entry (`home`, `regions: ['main']`) can never arrive here —
+    // this assertion cannot observe one. That guarantee comes from the filter,
+    // pinned in `useRegionSurfaceMenu.placement.test.tsx`, plus the registry
+    // pin in `region-model.test.ts`, which asserts `shortcut` is undefined per
+    // catalog entry.
     render(<RegionToolbarControls />);
     expect([...harness.shortcuts.keys()].sort()).toEqual([
       'activity.toggle',

@@ -357,9 +357,18 @@ test('switching the dock’s project re-binds a mounted coding pane in place', a
  * Admission is over the dock's binding, not the surface alone: the open
  * path refuses a Terminal bound to another project (`reason: 'refused'`,
  * the region's document does not gain it), and a persisted one under the
- * same instance id is re-bound to the dock's project on restore rather
- * than rendered as the other project's. Reverting `isRegionPane`'s project
- * comparison fails the refusal assertion.
+ * same instance id renders and stores as the dock's project rather than the
+ * other project's. Reverting `isRegionPane`'s project comparison fails the
+ * refusal assertion.
+ *
+ * What produces that second observable is the host RE-DERIVING the binding
+ * on mount from its authority fingerprint, not restoration: disabling
+ * `restoreWorkspacePaneHostDocument`'s catalog substitution leaves this test
+ * green (verifier injections D2/D2b), and the strict catalog-match branch is
+ * never reached for this fixture. Restoration's substitution is a second line
+ * of defence and is pinned directly, at the contract, by
+ * `packages/contracts/src/__tests__/workspace-pane-host.test.ts`'s "a
+ * persisted instance's own project never survives a catalog match".
  */
 test('a coding pane bound to another project is refused on open and re-bound on restore', async () => {
   deviceSettingsStore.set('chatDockProjectSlug', 'alpha');
