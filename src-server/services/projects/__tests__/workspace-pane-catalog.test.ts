@@ -1152,3 +1152,180 @@ describe('a layout this project does not offer contributes no Pane (station#3778
     ).toBe(true);
   });
 });
+
+/**
+ * Per-principal plugin visibility (#2067) at the CATALOGUE, which is the
+ * instance's plugin enumeration in a second costume: a contribution carries
+ * the plugin's name, version, `plugins/<name>` source and lifecycle state.
+ */
+describe('plugin visibility projects the catalogue by absence', () => {
+  const pluginDescriptor = (pluginId: string) =>
+    parseWorkspacePaneDescriptor({
+      version: '1.0',
+      id: `${pluginId}-pane`,
+      name: 'Secret Pane',
+      rendererId: `${pluginId}.review`,
+      renderer: { kind: 'plugin-component', name: 'review' },
+      placement: { supportedRegions: ['primary'] },
+      modes: [{ id: 'default', contextRequirement: { project: true } }],
+      provenance: { origin: 'plugin', pluginId },
+      lifecycle: { stage: 'stable' },
+    })!;
+
+  const pluginContribution = (pluginId: string) => ({
+    id: `plugin:${pluginId}:pane-0123456789ab`,
+    version: '1.2.3',
+    sourceIdentity: {
+      id: pluginId,
+      kind: 'local' as const,
+      source: `plugins/${pluginId}`,
+    },
+    provenance: { origin: 'plugin' as const, pluginId },
+  });
+
+  const source = (pluginIds: string[]) =>
+    ({
+      listLayouts: () => [],
+      listPluginWorkspacePaneContributions: () =>
+        pluginIds.map((pluginId) => ({
+          id: pluginContribution(pluginId).id,
+          pluginName: pluginId,
+          enabled: true as const,
+          descriptor: pluginDescriptor(pluginId),
+          contribution: pluginContribution(pluginId),
+        })),
+      resolveForCatalog: () => {
+        throw new Error('direct Pane declarations must not resolve a Layout');
+      },
+    }) as unknown as DistributionProfileService;
+
+  test('an ungranted plugin leaves no trace anywhere in the serialized response', () => {
+    const snapshot = readCurrentWorkspacePaneCatalog(
+      source(['secret-notes', 'shared-timers']),
+      'project-a',
+      { canSeePlugin: (pluginId) => pluginId === 'shared-timers' },
+    );
+    // Asserted on the WHOLE serialized body rather than field by field: the
+    // defect this replaces was a response whose availability entry said
+    // an unavailable reason while `contributions[]` still carried the plugin's
+    // name, version, on-disk path and `lifecycle.state`. A field-by-field
+    // assertion would not have caught it, and would not catch the next field
+    // somebody adds either.
+    const body = JSON.stringify(snapshot);
+    expect(body).not.toContain('secret-notes');
+    expect(body).toContain('shared-timers');
+  });
+
+  test('the caller who can see the plugin still gets it', () => {
+    const snapshot = readCurrentWorkspacePaneCatalog(
+      source(['secret-notes']),
+      'project-a',
+      { canSeePlugin: () => true },
+    );
+    expect(JSON.stringify(snapshot)).toContain('secret-notes');
+  });
+
+  test('a composition with no caller projects nothing away', () => {
+    // The layout-only route tests and the install transaction's own catalog
+    // read are not answering a person; they must behave exactly as before.
+    const snapshot = readCurrentWorkspacePaneCatalog(
+      source(['secret-notes']),
+      'project-a',
+    );
+    expect(JSON.stringify(snapshot)).toContain('secret-notes');
+  });
+
+  test('a plugin-contributed LAYOUT is dropped by the same projection', () => {
+    const item = {
+      installationReadiness: { state: 'ready' as const },
+      source: 'plugin',
+      plugin: 'secret-notes',
+      name: 'Secret layout',
+      slug: 'secret-layout',
+      type: 'coding',
+      id: 'plugin:secret-notes:layout',
+      sourceIdentity: {
+        id: 'secret-notes',
+        kind: 'local' as const,
+        source: 'plugins/secret-notes',
+      },
+      contribution: {
+        id: 'plugin:secret-notes:layout',
+        version: '1.0.0',
+        sourceIdentity: {
+          id: 'secret-notes',
+          kind: 'local' as const,
+          source: 'plugins/secret-notes',
+        },
+        provenance: { origin: 'plugin' as const, pluginId: 'secret-notes' },
+      },
+      lifecycle: {
+        itemId: 'plugin:secret-notes:layout',
+        state: 'installed' as const,
+        source: 'secret-notes',
+      },
+      visible: true,
+      installable: false,
+      enabled: true,
+      policy: {},
+      tabCount: 1,
+    } as unknown as LayoutCatalogItem;
+    const snapshot = readCurrentWorkspacePaneCatalog(
+      {
+        listLayouts: () => [item],
+        listPluginWorkspacePaneContributions: () => [],
+        resolveForCatalog: () => {
+          throw new Error('a hidden layout must never be resolved');
+        },
+      } as unknown as DistributionProfileService,
+      'project-a',
+      { canSeePlugin: () => false },
+    );
+    // `resolveForCatalog` throwing is the proof that the refusal happens
+    // BEFORE the layout is read, not after it is assembled and filtered.
+    expect(JSON.stringify(snapshot)).not.toContain('secret-notes');
+  });
+
+  test('a portable Kit pane is not a plugin and is not hidden by a plugin grant', () => {
+    // A Kit pane carries `origin: 'plugin'` with the Kit's contribution ref,
+    // because the provenance union has no Kit origin. That ref has no
+    // `plugins/<name>` directory and never appears in `GET /api/plugins`, so
+    // an operator cannot grant it. Handing it to the projection unchanged
+    // would hide every Kit pane from every non-operator forever.
+    const kit = {
+      contributionRef: 'partner-review',
+      incarnation: 1,
+      contribution: {
+        spec: { package_ref: 'npm:@example/partner-review@2.4.0' },
+      },
+      experience: {
+        standardViews: [
+          {
+            id: 'kit-partner-review-run_summary',
+            kind: 'standard-view',
+            projection: 'run_summary',
+            schemaRef: 'https://example.test/run-summary.json',
+          },
+        ],
+      },
+    } as any;
+    const snapshot = readCurrentWorkspacePaneCatalog(
+      source([]),
+      'project-a',
+      { canSeePlugin: () => false },
+      [kit],
+    );
+    const body = JSON.stringify(snapshot);
+    expect(body).toContain('partner-review');
+    const kitAvailability = snapshot.availability.filter((entry) =>
+      entry.descriptorId.includes('partner-review'),
+    );
+    expect(kitAvailability.length).toBeGreaterThan(0);
+    for (const entry of kitAvailability) {
+      expect(entry.input.pluginVisibility).toBeUndefined();
+      expect(entry.availability.reason.code).not.toBe(
+        'pane-not-available-to-viewer',
+      );
+    }
+  });
+});

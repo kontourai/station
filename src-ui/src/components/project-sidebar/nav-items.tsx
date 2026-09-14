@@ -38,12 +38,6 @@ const DESTINATION_ICONS: Readonly<Record<DestinationIconId, ReactNode>> = {
       <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
     </>,
   ),
-  review: sidebarIcon(
-    <>
-      <path d="M9 11l3 3L22 4" />
-      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-    </>,
-  ),
   connections: sidebarIcon(
     <>
       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />

@@ -26,11 +26,11 @@ make it hard to read:
    take the same rows as Activity and the projects.
 2. **Two inboxes with disjoint data.** Notifications is driven by the
    attention projection (`src-server/services/projects/attention-projection.ts`)
-   and carries the only badge. Review (`src-ui/src/views/ReviewQueueView.tsx`)
-   aggregates four unrelated stores: pending proposed changes, unresolved diff
-   comments, paused Survey and Flow gate reviews, and independent-review
-   receipts. Neither reads the other's data, so "what needs me" has no single
-   answer and Review reads as an unexplained global page.
+   and carries the only badge. Review — the global `/review-queue` page, since
+   retired by D4 below — aggregated four unrelated stores: pending proposed
+   changes, unresolved diff comments, paused Survey and Flow gate reviews, and
+   independent-review receipts. Neither read the other's data, so "what needs
+   me" had no single answer and Review read as an unexplained global page.
 3. **No project-less view.** Every Layout has a required `projectSlug`
    (`packages/contracts/src/layout.ts`), stored under the project's directory
    (`src-server/domain/file-storage-adapter.ts`). The only project-less surface
@@ -167,10 +167,28 @@ comments resolve inside the diff.
 
 The Review page's role as the host for sibling Kontour products is preserved
 by making **Review a layout kind** backed by the Survey review workbench
-([survey-flow-review.md](survey-flow-review.md)). A project or a Board can
-place it. The global `/review-queue` destination retires once the inbox and
-the layout kind both ship; until then it remains routed and reachable from
-the palette so no decision path is orphaned.
+([survey-flow-review.md](survey-flow-review.md)). A project places it — and,
+because its configuration is empty, it also **renders without being placed**:
+nothing materializes the builtin layouts, so a project has only the layouts
+its starter applied, and every link the inbox, Starter work and the
+retired-route redirect mint into Review would otherwise 404. When the API
+answers "no layout by that slug" for `review`, `ProjectLayoutRenderer`
+resolves the builtin definition instead, and writes nothing — so the
+project's layout chips still list only what someone actually added. Scoped to
+`review` alone: `coding` and `tasks` read persisted configuration, where an
+absent record is not an empty one. Board placement is **deferred** and not implemented — the slice-7 state mapping
+recorded on [#2065](https://github.com/kontourai/station/issues/2065) scopes
+the layout kind to a project because slices 1-4 are unmerged, so there is no
+Board owner to place one, and `ReviewLayout` requires a `projectSlug` today
+with no Board-owned test behind it. The global `/review-queue` destination
+retired once the inbox and
+the layout kind both shipped (#2064, #2065): the route is gone, its
+`NavigationView` member and sidebar destination with it, and
+`src-ui/src/components/review/ReviewLayout.tsx` is the layout kind's host. A
+stored `/review-queue?project=<p>&…` link resolves into that Project's Review
+layout with its item selector intact; one that names no Project goes to
+`/notifications`, which lists the same work across Projects, rather than
+guessing a Project.
 
 ### D5. Presence is a tray, not a section
 
@@ -225,7 +243,9 @@ the existing registry seams so the panel can move one section at a time.
 5. **Project rows with layout chips**, including Chat as a chip.
 6. **Attention inbox widening.** Proposed changes and paused gates join
    Notifications; footer bell and per-project counts.
-7. **Review as a layout kind**, then retire `/review-queue`.
+7. **Review as a layout kind**, then retire `/review-queue`. *(Shipped
+   project-scoped: the layout kind and the retirement both landed; Board
+   placement is deferred with Boards themselves.)*
 8. **Presence tray.** Read-only people and workers; message action gated on
    membership admission.
 9. **Per-principal plugin visibility.** Required before a Board built from

@@ -35,6 +35,15 @@ const expectedDependencies = new Map(
     'packages/sdk/src/query-domains/projectData.ts': 'sdk-route-adapter',
     'src-server/routes/projects/coding.ts': 'privileged-route',
     'src-server/routes/projects/layout-working-directory.ts': 'persistence',
+    // #2062: the admission `POST /api/projects/:slug/layouts` applies before
+    // writing, extracted so promote (`/api/me/layouts/:slug/promote`) derives
+    // the same answer instead of carrying a second copy that drifts. The scan
+    // sees it because one of the two refusals is the Coding working-directory
+    // rule, which it enforces by calling this module's neighbour rather than
+    // by reimplementing it. `persistence`, alongside that neighbour: it
+    // decides what may be written and normalizes the record, and it grants
+    // nothing and renders nothing.
+    'src-server/routes/projects/project-layout-admission.ts': 'persistence',
     'src-server/routes/projects/projects.ts': 'project-route',
     'src-server/runtime/routes/runtime-routes.ts': 'route-registration',
     'src-server/security/pairing-route-scopes.ts': 'route-authorization',
@@ -152,7 +161,6 @@ const expectedDependencies = new Map(
     // boundary — it hands the region's project-bound instance to
     // `getBuiltinWorkspacePaneRenderer`, the registry declared below.
     'src-ui/src/workspace-panes/RegionBuiltinPane.tsx': 'private-import',
-    'src-ui/src/views/ReviewQueueView.tsx': 'navigation',
     'src-ui/src/views/TaskWorkspaceView.tsx': 'private-import',
     'src-ui/src/workspace-panes/BrowserPreviewPaneLauncher.tsx': 'presentation',
     'src-ui/src/workspace-panes/FilePreviewPane.tsx': 'privileged-renderer',

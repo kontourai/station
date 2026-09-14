@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 100,
+  "pageLocalMediaQueryCeiling": 101,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -117,6 +117,10 @@
       "count": 3,
       "reason": "The app-shell navigation rail: the mobile drawer and its backdrop, the touch-only reorder/chevron geometry that has to stay inside a 44px row, and the desktop-side hides."
     },
+    "src-ui/src/components/project-sidebar/ProjectSidebarBoards.css": {
+      "count": 1,
+      "reason": "The Boards row menu is the only rename affordance a phone has and its trigger is hover-revealed, so one coarse-pointer block makes it visible at the 44px floor \u2014 the same answer ProjectSidebar.css already gives for its reorder handle and section-remove."
+    },
     "src-ui/src/components/project-sidebar/ProjectSidebarFooter.css": {
       "count": 1,
       "reason": "The drawer's footer anchors to the device safe-area, not to the dock height \u2014 on mobile the drawer covers that dock. The same block raises the bell, the gear, the presence trigger and the presence tray's row actions (#2066) to the 44px touch floor; the tray's own stylesheet deliberately carries no at-rule so this surface keeps one."
@@ -197,7 +201,7 @@
       "count": 1,
       "reason": "The registry's two-column tab grid and single-column card grid: the SHARED desktop grid's 320px minimum is wider than a 320px viewport once the page's gutters are taken, so this page overrides the primitive's minimum rather than the primitive changing for everyone."
     },
-    "src-ui/src/views/ReviewQueueView.css": {
+    "src-ui/src/components/review/review-detail.css": {
       "count": 3,
       "reason": "Three breakpoints: the two-up diff collapses at 900px (a content width, not a device), detail padding and action stretch at mobile, run-modal fields at 640px."
     },

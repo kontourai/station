@@ -1,4 +1,5 @@
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+
 /**
  * Workspace Home role routes (archive#3122 stage 3 / archive#3677 PR 2):
  * READ, REVOKE, and the GRANT channel on the distinct-origin consent surface.
@@ -55,6 +56,7 @@ import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-
  * speed bump misreadable as a security boundary.
  */
 
+import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   createWorkspaceHomeRoleGrant,
@@ -78,6 +80,7 @@ import {
   ConsentCommitRefusedError,
   type ConsentTargetSnapshot,
 } from '../../services/consent/consent-transactions.js';
+import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import {
   DistributionProfileService,
@@ -96,6 +99,8 @@ import {
   writeWorkspaceHomeRoleGrant,
 } from '../../services/plugins/workspace-home-role-service.js';
 import { consentTransactionOps } from '../../telemetry/metrics.js';
+import { errorMessage } from '../schemas/schemas.js';
+import { workspaceHomeRoleEventFrame } from './plugin-identity-enumeration.js';
 
 const CONSENT_TARGET_KIND = 'workspace-home-role';
 
@@ -113,6 +118,19 @@ interface PluginHomeRoleRouteDeps {
   consentChannel?: ConsentChannelService;
   /** Injectable for tests; defaults to a fresh read of the installed inventory. */
   listContributions?: () => InstalledPluginWorkspacePaneContribution[];
+  /**
+   * The caller's plugin projection (#2067). The candidate list is a
+   * user-facing PICKER — a collaborator legitimately chooses a Home pane —
+   * so it is projected rather than refused: they choose from what they can
+   * see, not from the instance inventory.
+   *
+   * Absent means this composition is not serving authenticated HTTP callers
+   * and the candidate list refuses, the same fail-closed default the plugin
+   * list takes.
+   */
+  projectVisiblePlugins?: (
+    c: Context,
+  ) => (installed: readonly string[]) => readonly string[];
 }
 
 /**
@@ -195,14 +213,62 @@ export function registerPluginHomeRoleRoutes(
 
   app.get('/home-role', (c) => {
     try {
-      return c.json({
-        success: true,
-        status: deriveWorkspaceHomeRoleStatus({
-          projectHomeDir: deps.projectHomeDir,
-          pluginsDir: deps.pluginsDir,
-          listContributions,
-        }),
+      const status = deriveWorkspaceHomeRoleStatus({
+        projectHomeDir: deps.projectHomeDir,
+        pluginsDir: deps.pluginsDir,
+        listContributions,
       });
+      // #2067: projected. The status names the holder's `pluginId`, so an
+      // unprojected answer tells a collaborator one plugin's name — the
+      // enumeration this family exists to stop, one entry at a time. The
+      // route still answers (asking what holds Home is legitimate); what is
+      // withheld is a holder the caller cannot see, reported as `none`
+      // because from inside their projection no plugin holds the role. It is
+      // a projection of the same fact, not a claim that the store is empty.
+      // The holder id lives in TWO places depending on the state: `lapsed`
+      // carries a top-level `pluginId`, while `granted` returns the whole
+      // grant and the id sits at `grant.descriptor.provenance.pluginId`.
+      // Reading only the first covers the lapsed states and silently leaks
+      // the granted one — which is what the collaborator case below caught.
+      const holder =
+        status.state === 'granted'
+          ? status.grant.descriptor.provenance.pluginId
+          : (status as { pluginId?: unknown }).pluginId;
+      if (typeof holder === 'string' && holder.length > 0) {
+        // Fails CLOSED when the projection is not composed, matching the
+        // candidate list beside it and `operatorOnly`'s own rule: a
+        // composition that did not supply the resolution must refuse, not
+        // answer. Latent rather than live — production always composes it —
+        // but a sibling pair where one half defaults open is how the next
+        // composition gets it wrong.
+        let visible: boolean;
+        try {
+          const project = deps.projectVisiblePlugins?.(c);
+          if (!project) {
+            return c.json(
+              {
+                success: false,
+                error: 'Plugin visibility is unavailable',
+                code: PRINCIPAL_UNRESOLVED_CODE,
+              },
+              400,
+            );
+          }
+          visible = project([holder]).includes(holder);
+        } catch (error) {
+          if (error instanceof PrincipalUnresolvedError) {
+            return c.json(
+              { success: false, error: errorMessage(error), code: error.code },
+              400,
+            );
+          }
+          // An unreadable grant record is not evidence of a grant.
+          visible = false;
+        }
+        if (!visible)
+          return c.json({ success: true, status: { state: 'none' } });
+      }
+      return c.json({ success: true, status });
     } catch (error) {
       if (error instanceof WorkspaceHomeRoleUnavailableError) {
         return c.json(
@@ -226,9 +292,10 @@ export function registerPluginHomeRoleRoutes(
       }
       throw error;
     }
-    deps.eventBus?.emit(SERVER_EVENTS.PLUGINS_GRANTS_CHANGED, {
-      name: 'workspace-home-role',
-    });
+    deps.eventBus?.emit(
+      SERVER_EVENTS.PLUGINS_GRANTS_CHANGED,
+      workspaceHomeRoleEventFrame(),
+    );
     return c.json({ success: true });
   });
 
@@ -238,7 +305,58 @@ export function registerPluginHomeRoleRoutes(
    * listing a pane here mints nothing.
    */
   app.get('/home-role/candidates', (c) => {
-    const candidates = listContributions().flatMap((entry) => {
+    let projectVisible: (installed: readonly string[]) => readonly string[];
+    try {
+      if (!deps.projectVisiblePlugins) {
+        throw new PrincipalUnresolvedError(
+          'plugin visibility was not composed for this route',
+        );
+      }
+      projectVisible = deps.projectVisiblePlugins(c);
+    } catch (error) {
+      if (error instanceof PrincipalUnresolvedError) {
+        return c.json(
+          { success: false, error: errorMessage(error), code: error.code },
+          400,
+        );
+      }
+      throw error;
+    }
+    const all = listContributions();
+    // The projection keys on the DESCRIPTOR's plugin id, which the manifest
+    // loader forces to equal the manifest's own name
+    // (`plugin-manifest-loader.ts:396-398`) — the same string
+    // `GET /api/plugins` reports and an operator grants. `entry.pluginName` is
+    // the plugins/ directory name and is deliberately not the key here.
+    let visible: Set<string>;
+    try {
+      visible = new Set(
+        projectVisible(
+          all.flatMap((entry) =>
+            entry.descriptor.provenance.origin === 'plugin' &&
+            entry.descriptor.provenance.pluginId !== undefined
+              ? [entry.descriptor.provenance.pluginId]
+              : [],
+          ),
+        ),
+      );
+    } catch {
+      // Applying the projection can fail on an unreadable grant record. That
+      // escaped to Hono as an unhandled error; refuse instead. Withholding
+      // every candidate is the fail-closed direction and the honest one.
+      return c.json(
+        { success: false, error: 'Plugin visibility is unavailable' },
+        503,
+      );
+    }
+    const candidates = all.flatMap((entry) => {
+      if (
+        entry.descriptor.provenance.origin !== 'plugin' ||
+        entry.descriptor.provenance.pluginId === undefined ||
+        !visible.has(entry.descriptor.provenance.pluginId)
+      ) {
+        return [];
+      }
       if (!entry.enabled) return [];
       const descriptor = parseWorkspacePaneDescriptor(entry.descriptor);
       if (!descriptor || !isWorkspaceHomeRoleEligibleDescriptor(descriptor)) {
@@ -473,9 +591,10 @@ export function registerPluginHomeRoleRoutes(
           }
           throw error;
         }
-        deps.eventBus?.emit(SERVER_EVENTS.PLUGINS_GRANTS_CHANGED, {
-          name: 'workspace-home-role',
-        });
+        deps.eventBus?.emit(
+          SERVER_EVENTS.PLUGINS_GRANTS_CHANGED,
+          workspaceHomeRoleEventFrame(),
+        );
       },
     });
     if (!created.ok) {

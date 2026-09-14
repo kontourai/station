@@ -99,7 +99,12 @@ select only a validated Approval Inbox notification or independent-review
 receipt and return its exact typed reference; they never select by title.
 Launching revalidates that owner, binds the exact reference idempotently, and
 returns a server-built `/notifications?approval=...` or
-`/review-queue?receipt=...&project=...` link. Observation re-reads the owner every
+`/projects/<slug>/layouts/review?receipt=...` link — the Project's own Review
+layout, which #2065 made the home of review evidence when the global
+`/review-queue` was retired. A stored `/review-queue?receipt=...&project=...`
+link still resolves: it redirects to that same layout with the receipt
+selected, and one carrying no `project` goes to `/notifications` rather than
+guessing a Project. Observation re-reads the owner every
 time, so resolved, expired, missing, stale, unavailable, and `NOT_VERIFIED`
 states do not come from a browser checkbox or copied payload. Inspecting does
 not approve an approval, and independent-review findings remain input-only
@@ -688,6 +693,49 @@ transaction, so two concurrent updates cannot lose one another's change.
 ```http
 DELETE /api/me/layouts/:layoutSlug
 ```
+
+### Promote a Board into a project
+```http
+POST /api/me/layouts/:layoutSlug/promote
+Content-Type: application/json
+
+{ "projectSlug": "campfit" }
+```
+
+A **move**, not a copy: on success the personal record is gone and the project
+owns the Layout under the same slug, keeping the Board's `id` and `createdAt`
+verbatim. Carrying the same id IS the lineage — there is no `promotedFrom`
+field, because layout ids are a record field rather than a directory key and
+nothing else records the move.
+
+`projectSlug` is the only field the body may name; anything else is 400. A
+project that does not exist answers 404 `Project not found` — the project
+routes' own answer, given before the personal record is touched, so a promote
+that cannot land never destroys the Board. A slug the project already uses for
+a different Layout answers 409 and moves nothing.
+
+A Board the destination project would not accept is refused before anything
+moves. Promote runs the same admission `POST /api/projects/:slug/layouts`
+runs — the same function, not a second copy of its rules — so a layout naming
+an agent the project cannot reach answers 400 with that route's diagnostics,
+and a `coding` Board carrying its own `config.workingDirectory` is refused by
+name (that value is derived from the project). A promoted `coding` Board
+therefore persists no `workingDirectory` of its own.
+
+Promote grants no capability that `POST /api/projects/:slug/layouts` does not:
+it publishes through the same project transaction, and both carry the same
+`orchestration:operate` pairing scope. Read that as a statement about WHO may
+call, which is a different question from what a call may contain — the
+admission above is the second one, and the two are enforced separately.
+Station applies no per-project membership check to layout writes today
+(`docs/design/project-membership.md` specifies that contract and does not claim
+it is implemented), so promote does not claim one either.
+
+The two writes are ordered create-then-delete, which accepts a visible
+duplicate over a possible loss: if the process dies between them, the Layout is
+in the project AND still listed personally. Repeating the promote closes it —
+the second call sees the project occupant carrying this Board's own id,
+recognizes the interrupted run, and completes the delete.
 
 **Used by**: the Boards section of the left panel (#2062)
 
@@ -2372,7 +2420,16 @@ Fetches per-token pricing for a specific model from the AWS Pricing API.
 GET /plugins
 ```
 
-Returns all installed plugins with manifest info, bundle status, git metadata, and permission state.
+Returns the installed plugins **the calling principal can see**, with manifest
+info, bundle status, git metadata, and permission state.
+
+Installation is instance-wide, but the list is a per-principal projection
+(#2067): the operator receives every installed plugin, and anybody else
+receives only the ones an operator has granted them sight of. A plugin outside
+the caller's projection is ABSENT from the array — there is no `visible: false`
+flag, because a flag would be a second copy of the projection that a client
+could reassemble an inventory from. A caller this Station cannot attribute to a
+principal gets `400` with the principal-unresolved code, never a default list.
 
 **Response**:
 ```json
@@ -2438,6 +2495,154 @@ grant rebinding.
   }
 }
 ```
+
+---
+
+### Plugin Visibility Directory (operator only)
+```http
+GET /plugins/visibility
+```
+
+Every principal this instance has a record of, and the plugins each has been
+granted sight of. The directory is the trusted device registry's own list
+(`DevicePairingService.listKnownPrincipals`) plus the operator's row; a revoked
+device stays listed, carrying `revoked: true`, so its grants can still be
+removed.
+
+Authorization is the request's own resolved principal, re-checked in the
+handler: a caller who is not the instance operator gets `403`, and a caller who
+cannot be resolved at all gets `400`. The body's fields are never consulted as
+authority.
+
+The operator's row reports `plugins: []` as recorded. That is not a rendering
+gap: the operator sees every installed plugin because the projection derives
+it, so writing the installed set into the grant column would display a record
+that does not exist.
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "principals": [
+      { "id": "human:local:operator", "display": "Operator", "revoked": false, "plugins": [], "operator": true },
+      { "id": "human:device:laptop", "display": "Laptop", "revoked": false, "plugins": ["notes"], "operator": false }
+    ]
+  }
+}
+```
+
+---
+
+### Grant or Revoke Plugin Visibility (operator only)
+```http
+POST /plugins/visibility/grants
+DELETE /plugins/visibility/grants
+```
+
+Body: `{ "principalId": "human:device:laptop", "plugin": "notes" }`.
+
+`principalId` is the TARGET of the change, never the authority for it. Both
+verbs answer `403` to a non-operator caller before the body is read, and `400`
+when `principalId` or `plugin` could never name a principal or a canonical
+plugin. Grants are written through the store's serialized per-path updater, so
+two grants issued concurrently cannot lose each other.
+
+Visibility is a listing and composition projection, not execution authority.
+Hiding a plugin from a person does not revoke anything the plugin may do —
+that remains the plugin permission grant state, which every bundle delivery and
+every invocation rechecks on its own.
+
+**Response**:
+```json
+{ "success": true, "data": { "principalId": "human:device:laptop", "plugins": ["notes"] } }
+```
+
+---
+
+### Which routes return plugin identity
+
+The acceptance criterion behind #2067 is about ENUMERATION, not about one
+route: a collaborator must not be able to learn what is installed on this
+instance. `GET /plugins` was the obvious enumerator; four more were found on
+the same read tier afterwards, and five more plus the event stream after
+that. The dispositions are written down in
+`src-server/routes/plugins/plugin-identity-enumeration.ts`. Each is driven
+against its real handler — most in that file's paired test, the project and
+Home-role rows in `pane-visibility.routes.test.ts` and
+`plugin-home-role-routes.test.ts`, each citation checked to name a file that
+exists. And because a written inventory is only as good as the thing that
+checks it, `scripts/plugin-identity-enumeration-scan.mjs` fails the pre-push
+gate when a handler returns plugin identity and has neither a disposition nor
+a written exclusion. That scan states its own blind spots in its docblock;
+read them before trusting it as complete.
+
+| Route | Disposition |
+| --- | --- |
+| `GET /plugins` | projected — a plugin outside the caller's projection is absent from the array |
+| `GET /projects/:slug/panes` | projected — contributions, descriptors, instances and availability for an unseen plugin are all dropped (see "Discovery only" below) |
+| `GET /projects/layouts/available` | projected — the layout picker |
+| `GET /registry/layouts` | projected |
+| `GET /registry/layouts/installed` | projected |
+| `GET /plugins/home-role/candidates` | projected — a user-facing picker, so a collaborator chooses from what they can see |
+| `GET /plugins/home-role` | projected — a holder the caller cannot see is reported as `none` |
+| `GET /plugins/check-updates` | operator only |
+| `POST /plugins/reload` | operator only |
+| `GET /registry/plugins` | operator only |
+| `GET /registry/plugins/installed` | operator only |
+| `GET /registry/agents/installed` | operator only |
+| `GET /registry/integrations/installed` | operator only |
+
+Projected routes answer everybody and narrow the answer. Operator-only routes
+refuse a non-operator outright, because they are maintenance surfaces whose
+actions are operator actions anyway — a projected half-answer there would
+still enumerate while answering a question the caller cannot act on.
+
+**The event stream.** The six `plugins:*` channels
+(`installed`, `removed`, `updated`, `settings-changed`, `grants-changed`,
+`updates-available`) were `broadcast`, meaning `GET /events` relayed them to
+every listener unconditionally — so a collaborator holding the stream open
+watched the inventory change by name. They are `scoped` now, which in that
+relay means denied unless a named gate passes them, and the gate is the same
+projection. `plugins:updates-available` carries a list rather than one name
+and reaches the operator only, matching its route. The Home-role
+`grants-changed` frame is exempt because it names no plugin — it reports the
+one instance-level Home slot — and the exemption requires the grants-changed
+channel plus a payload marker no plugin frame sets, with the sentinel name
+reserved in BOTH manifest readers so no plugin can be installed under it.
+The two axes are independent on purpose: a plugin installed under such a name
+before the reservation existed still cannot ride the exemption, because it
+cannot produce the marker.
+
+**Discovery only, and what that leaves unmet.** A plugin outside the caller's
+projection is dropped from the Pane catalogue entirely. That is correct for
+discovery — "what could I add?" — but it means a layout that ALREADY names
+such a pane renders a blank region. #2067's second acceptance criterion
+("renders that pane as unavailable with a reason, not as an error or as
+empty") is therefore **unmet**, deliberately and disclosed rather than
+shipped inert a third time. Two implementations were tried and removed: one
+was an existence oracle (a project member can seed guessed descriptor ids);
+the other could not work, because a saved layout names a pane by `component`
+and no descriptor id is persisted for a producer to find, and the client
+catalogue builds its entries exclusively from `descriptors` so a
+descriptor-free entry would have been discarded anyway. The reason code and
+its precedence are kept as a contract for the Board slice; see
+`packages/contracts/src/workspace-pane-availability.ts` for what a real
+implementation needs.
+
+**What is not closed.** `GET /plugins/:name/bundle.js`, `bundle.css` and
+`permissions` are addressed by name and reveal no other plugin, but a 200
+against a 404 is a weak existence oracle for a caller who can already guess an
+exact plugin name. Gating asset delivery on the projection is a separate
+change with its own UI path to prove; the exclusion is recorded with that
+reasoning in the scan.
+
+A portable Kit pane is deliberately NOT subject to this projection. Its pane
+carries `origin: "plugin"` with the Kit's contribution ref, because the
+provenance union has no Kit origin to name, but that ref has no
+`plugins/<name>` directory, never appears in `GET /plugins`, and an operator
+has no way to grant it. Kit visibility belongs to the Kit lifecycle record and
+is a separate question.
 
 ---
 
@@ -2537,6 +2742,12 @@ failure, or the existing HTTP 409 for a diagnosed content-lock cycle).
 ```http
 GET /plugins/check-updates
 ```
+
+**Operator only (#2067).** This enumerates every installed plugin's name and
+version, and runs `git fetch` in each plugin directory on the way. Acting on
+the result is operator work, so a non-operator is refused with `403` rather
+than served a projected half-list — see "Which routes return plugin identity"
+below. A caller this Station cannot attribute gets `400`.
 
 Checks all installed plugins for available updates via git fetch (git-installed) or registry version comparison. Registry-installed plugins report the installed plugin name in `name`; when a registry entry id differs from the installed manifest name, callers should use the reported installed name as the route target.
 
@@ -2930,6 +3141,10 @@ GET /registry/plugins
 
 Lists plugins available in the configured registry provider.
 
+**Operator only (#2067).** Every row carries an `installed` flag, so this is
+the instance's plugin inventory restated against a catalog. Installing is
+operator work; a non-operator is refused with `403`.
+
 **Response**:
 ```json
 { "success": true, "data": [{ "id": "my-plugin", "version": "1.0.0", "description": "..." }] }
@@ -2941,6 +3156,9 @@ Lists plugins available in the configured registry provider.
 ```http
 GET /registry/plugins/installed
 ```
+
+**Operator only (#2067).** This is the instance plugin inventory with a
+registry shape around it; a non-operator is refused with `403`.
 
 **Response**:
 ```json

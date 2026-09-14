@@ -27,8 +27,12 @@ describe('settings catalog search', () => {
 
   test('every catalog title finds its own exact row', () => {
     for (const entry of SETTINGS_CATALOG) {
+      // `isOperator: true` so the enumeration covers every row; the
+      // operator-conditional filtering is asserted on its own below.
       expect(
-        matchingSettingsRows(entry.title).map(({ id }) => id),
+        matchingSettingsRows(entry.title, { isOperator: true }).map(
+          ({ id }) => id,
+        ),
         entry.id,
       ).toContain(entry.id);
     }
@@ -80,6 +84,9 @@ describe('settings catalog search', () => {
   });
 
   test('retains English title search terms when palette labels are pseudo-localized', () => {
+    // Every catalog entry is ranked below, so the projection has to offer
+    // every catalog entry: this case is about localization, not about who is
+    // calling.
     const commands = settingsPaletteCommands({
       isMobile: false,
       isDesktop: false,
@@ -108,5 +115,32 @@ describe('settings catalog search', () => {
     expect(
       commands.find((command) => command.id === 'settings:message-context'),
     ).toEqual(expect.objectContaining({ scope: 'temporary' }));
+  });
+
+  test('the Settings search hides the operator-only section from a collaborator', () => {
+    // #2067. The section renders only when the SERVER agrees the caller is
+    // the operator, so offering a jump to it otherwise sends a collaborator
+    // to an anchor that is not in the document. Absent `isOperator` reads as
+    // "not known to be" — the fail-closed direction.
+    expect(
+      matchingSettingsRows('plugin visibility').map((entry) => entry.id),
+    ).not.toContain('plugin-visibility');
+    expect(
+      matchingSettingsRows('plugin visibility', { isOperator: true }).map(
+        (entry) => entry.id,
+      ),
+    ).toContain('plugin-visibility');
+  });
+
+  test('the palette still offers it, because the palette holds no operator fact', () => {
+    // Filtering on a fact the palette cannot have removed the entry for
+    // EVERYONE including the operator — a capability removal dressed as a
+    // fix. It is offered here exactly as `answer-shares` is, which is
+    // credential-gated the same way.
+    expect(
+      settingsPaletteCommands({ isMobile: false, isDesktop: false }).map(
+        (command) => command.id,
+      ),
+    ).toContain('settings:plugin-visibility');
   });
 });

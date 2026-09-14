@@ -1,6 +1,6 @@
 import type { IndependentReviewReceipt } from '@kontourai/station-contracts/review-evidence';
 import { useEffect, useRef } from 'react';
-import '../../views/ReviewQueueView.css';
+import './review-detail.css';
 
 /**
  * #2064 (D4): one independent-review receipt, extracted verbatim from

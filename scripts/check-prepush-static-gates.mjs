@@ -67,6 +67,10 @@ export const PREPUSH_STATIC_GATES = Object.freeze([
   'random-uuid-guard',
   'dialog-surface-class-guard',
   'agent-plugin-validators-gate',
+  // #2067: fails when a handler returns plugin identity and no disposition is
+  // recorded for it. The family was found incomplete twice by review; this is
+  // what computes the promise the inventory makes.
+  'plugin-identity-enumeration-scan',
   'a11y-ratchet',
 ]);
 

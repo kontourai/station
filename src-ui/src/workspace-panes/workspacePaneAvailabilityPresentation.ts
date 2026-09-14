@@ -100,6 +100,21 @@ const REASON_LABELS: Record<WorkspacePaneAvailabilityReasonCode, string> = {
   'permission-required':
     'Grant the required permission before opening this pane.',
   'permission-unknown': 'Permission for this pane has not been confirmed.',
+  // #2067. NO PRODUCER TODAY — the server drops a hidden plugin's panes
+  // from the catalogue entirely, so nothing resolves to this code and this
+  // string is currently unreachable. It is kept because the reason code is
+  // kept: see `WorkspacePaneAvailabilityInput.pluginVisibility` for the two
+  // implementations that were removed rather than shipped inert, and for
+  // what a real one needs. Acceptance criterion 2 of #2067 is unmet.
+  //
+  // Says the pane is not available TO THIS VIEWER and stops there.
+  // It deliberately does not assert that a plugin exists, is installed, or
+  // is merely unshared: a layout can name any descriptor id, so a message
+  // that distinguished "real but hidden" from "no such pane" would be an
+  // existence oracle. An operator who wants to share something reaches
+  // Settings either way.
+  'pane-not-available-to-viewer':
+    'This pane is not available to you. An operator can share panes from Settings.',
   'health-unavailable':
     'The pane is temporarily unavailable. Try again shortly.',
   'health-unknown': 'The pane’s current health has not been confirmed.',

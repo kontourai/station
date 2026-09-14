@@ -1106,6 +1106,34 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'read-only layout catalog descriptor resolver',
   },
   {
+    // #2065: `BUILTIN_PROJECT_LAYOUTS` lives here and the catalog resolver
+    // maps it, so adding a builtin starter changes what that resolver returns
+    // without touching its own file. Adding the fourth one reddened the
+    // policy test in distribution-profile-service.test.ts, which no edge
+    // named — that path escalates the whole `ci-fast` lane
+    // (`packages/contracts/` is in ESCALATION_PATHS), so the suite WAS
+    // reachable, just not named in the receipt.
+    //
+    // SUPPLEMENTAL for exactly that reason. An ordinary edge naming `tests`
+    // sets `hasExplicitBoundary`, which suppresses the escalation — so the
+    // edge meant to widen the receipt would have replaced a whole lane with
+    // one server test and reported `escalated: false`, a complete-looking
+    // green (the trap run-changed-verification.mjs documents from #1563 and
+    // #1613). Supplemental edges are excluded from `boundaryEdges`, so the
+    // ci-fast escalation still fires AND this test is named. This file's own
+    // A/B: ordinary → {tests:[1], lanes:[], escalated:false}; supplemental →
+    // {tests:[1], lanes:['ci-fast'], escalated:true}.
+    //
+    // `related: true` would NOT have worked: it is still a boundary edge, so
+    // it sets `hasExplicitBoundary` and drops the escalation just the same.
+    pattern: 'packages/contracts/src/layout.ts',
+    supplemental: true,
+    tests: [
+      'src-server/services/plugins/__tests__/distribution-profile-service.test.ts',
+    ],
+    reason: 'builtin project layout starters the layout catalog enumerates',
+  },
+  {
     pattern: 'src-server/routes/projects/projects.ts',
     tests: [
       'src-server/routes/projects/__tests__/projects.routes.test.ts',

@@ -66,6 +66,8 @@ const {
   setLayout,
   projects,
   sessions,
+  boards,
+  boardCreateSpy,
   platformProfile,
   branding,
 } = vi.hoisted(() => ({
@@ -76,6 +78,9 @@ const {
   setLayout: vi.fn(),
   projects: [] as Array<{ id: string; slug: string; name: string }>,
   sessions: [] as Array<Record<string, unknown>>,
+  boards: [] as Array<{ slug: string; name: string }>,
+  /** Shared, so a test can observe the section acting while it renders nothing. */
+  boardCreateSpy: vi.fn(),
   platformProfile: {
     isTauri: false,
     productName: undefined as string | undefined,
@@ -173,8 +178,24 @@ vi.mock('@kontourai/station-sdk', () => ({
   // #2059: the lazy panel footer reads the attention projection for its bell
   // badge. Same hazard as the two recorded above, one hook later.
   useAttentionQuery: () => ({ data: { pendingCount: 0 } }),
+  // #2062: the Boards section reaches five personal-layout hooks. FOURTH
+  // instance of the hazard recorded three times above, and the first whose
+  // symptom was not a red test — the section is mounted through a
+  // LazyBoundary, so a missing export threw inside the lazy chunk and the
+  // boundary rendered its "Unable to load this part of Station." alert INSIDE
+  // the panel while every assertion here still passed. `rendersTheBoardsSection`
+  // below is what makes this block load-bearing rather than decorative.
+  usePersonalLayoutsQuery: () => ({ data: boards }),
+  useCreatePersonalLayoutMutation: () => ({
+    mutate: boardCreateSpy,
+    isPending: false,
+  }),
+  useUpdatePersonalLayoutMutation: () => ({ mutate: vi.fn() }),
+  useDeletePersonalLayoutMutation: () => ({ mutate: vi.fn() }),
+  usePromotePersonalLayoutMutation: () => ({ mutate: vi.fn() }),
 }));
 
+import { requestNewBoard } from '../components/project-sidebar/new-board-events';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
@@ -195,6 +216,8 @@ function resetState() {
   agents.length = 0;
   projects.length = 0;
   sessions.length = 0;
+  boards.length = 0;
+  boardCreateSpy.mockClear();
   navigate.mockClear();
   setProject.mockClear();
   setLayout.mockClear();
@@ -471,6 +494,70 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
  * The footer is lazy, so it is not in this synchronous tree; its own suite
  * (ProjectSidebarFooter.test.tsx) covers it.
  */
+/**
+ * #2062. The Boards section is mounted here through a `LazyBoundary`, which
+ * catches whatever the chunk throws and renders an alert IN PLACE of the
+ * section. That is why this file's other assertions could not see a missing
+ * `@kontourai/station-sdk` export: the panel rendered "Unable to load this
+ * part of Station." where Boards belongs and every other row was unaffected,
+ * so a broken section read as a passing suite.
+ *
+ * These two assertions are what make the module mock above load-bearing. The
+ * first fails for ANY throw inside the chunk (a hook this file forgot, a
+ * context the section reaches, an import that moved); the second proves the
+ * section actually rendered rather than merely declining to crash, which a
+ * `null`-returning section would also do.
+ */
+describe('ProjectSidebar Boards section mounts (#2062)', () => {
+  test("renders the section rather than the lazy boundary's error alert", async () => {
+    resetState();
+    boards.push({ slug: 'daily', name: 'Daily brief' });
+    renderSidebar(<ProjectSidebar />);
+
+    expect(await screen.findByText('Boards')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Daily brief' })).toBeTruthy();
+    // Named separately from the positive assertion: a future change that
+    // renders the section AND an alert somewhere else in the panel is still a
+    // broken panel, and the positive check alone would not say so.
+    expect(document.querySelector('.lazy-boundary__error')).toBeNull();
+  });
+
+  test('renders no Boards chrome — and no error alert — for a viewer with none', async () => {
+    resetState();
+    renderSidebar(<ProjectSidebar />);
+
+    // The chunk still loads; it is the SECTION that returns null. Proving the
+    // lazy work has SETTLED is the hard part of this case, because a section
+    // rendering nothing offers nothing to wait for — and an earlier revision
+    // awaited `Home`, which `ProjectSidebar` renders itself, so both negative
+    // assertions ran before the chunk had resolved or rejected and this test
+    // passed even with the module mock broken (#2062 review F3).
+    //
+    // The settle-proof is the section DOING something: answering the palette's
+    // create request, which is the affordance that exists for precisely this
+    // viewer. Only a mounted section can, so a chunk that threw cannot satisfy
+    // it.
+    // Let the dynamic import resolve and the section mount. Bounded and
+    // re-dispatching, because the listener only exists once the chunk is in
+    // the tree — and a flush count is a guess, whereas the spy is the fact.
+    // This cannot manufacture a pass: the assertion below still requires the
+    // section to have handled the request.
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await act(async () => {
+        requestNewBoard();
+      });
+      if (boardCreateSpy.mock.calls.length > 0) break;
+    }
+    expect(boardCreateSpy).toHaveBeenCalledWith({
+      slug: 'untitled-board',
+      name: 'Untitled Board',
+    });
+
+    expect(screen.queryByText('Boards')).toBeNull();
+    expect(document.querySelector('.lazy-boundary__error')).toBeNull();
+  });
+});
+
 describe('ProjectSidebar panel order (#2059)', () => {
   const panelRowLabels = () =>
     Array.from(

@@ -177,6 +177,45 @@ describe('layout working-directory derivation helpers (pure)', () => {
   });
 });
 
+/**
+ * #2062 review BLOCKING-2, found by injection rather than by reading.
+ *
+ * `POST /:slug/layouts` refuses a layout naming an agent the project cannot
+ * reach, and that refusal had NO route-level test — disabling it left every
+ * project-route suite green, and only the promote suite (which reaches the
+ * same check through the same shared `admitProjectLayoutWrite`) went red. The
+ * validator's own unit tests live in
+ * `packages/contracts/src/__tests__/project-reference-integrity.test.ts`; what
+ * was missing is proof that this ROUTE consults it and answers 400.
+ *
+ * It matters more now than before: the check is shared with promote, so an
+ * edit made for one caller lands on both.
+ */
+describe('a layout naming an unreachable agent is refused at the project route (#2062)', () => {
+  test('answers 400 with the diagnostic, and writes nothing', async () => {
+    const home = tempHome();
+    const { app, storage } = appFor(home);
+    await seedProject(storage);
+
+    const refused = await app.request('/demo/layouts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slug: 'board',
+        name: 'Board',
+        config: { availableAgents: ['ghost-agent'] },
+      }),
+    });
+
+    expect(refused.status).toBe(400);
+    const body = await json(refused);
+    expect(body.error).toBe("Layout references unknown agent 'ghost-agent'.");
+    expect(body.diagnostics?.[0]?.code).toBe('unknown_layout_agent');
+    // Refused BEFORE the write, not after it.
+    expect(storage.listLayouts('demo')).toEqual([]);
+  });
+});
+
 describe('coding layout working directory is derived, not persisted', () => {
   test('creating a coding layout persists no working directory but reports one', async () => {
     const home = tempHome();

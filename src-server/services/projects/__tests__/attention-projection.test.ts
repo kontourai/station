@@ -2949,7 +2949,7 @@ describe('AttentionProjectionService proposed changes and gate reviews', () => {
       title: 'Survey gate review',
       projectSlug: 'campfit',
       pendingDecisions: 2,
-      openHref: '/review-queue?review=review-session-1',
+      openHref: '/projects/campfit/layouts/review?review=review-session-1',
       source: {
         reviewSessionRef: 'review-session-1',
         projectSlug: 'campfit',

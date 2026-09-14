@@ -129,11 +129,6 @@ const RegistryView = lazy(() =>
     default: module.RegistryView,
   })),
 );
-const ReviewQueueView = lazy(() =>
-  import('../views/ReviewQueueView').then((module) => ({
-    default: module.ReviewQueueView,
-  })),
-);
 const ScheduleView = lazy(() =>
   import('../views/ScheduleView').then((module) => ({
     default: module.ScheduleView,
@@ -157,6 +152,14 @@ const TaskWorkspaceView = lazy(() =>
 const BoardView = lazy(() =>
   import('../views/BoardView').then((module) => ({
     default: module.BoardView,
+  })),
+);
+// #2062. Lazy for the same reason every other view here is: a Board's host
+// pulls in the layout renderer, and the panel's Boards section must not put
+// that in the entry bundle for a Station where nobody opens one.
+const PersonalBoardView = lazy(() =>
+  import('../views/PersonalBoardView').then((module) => ({
+    default: module.PersonalBoardView,
   })),
 );
 
@@ -287,9 +290,6 @@ function AppViewContentBody({
   if (currentView.type === 'registry') {
     return <RegistryView initialTab={currentView.tab} />;
   }
-  if (currentView.type === 'review-queue') {
-    return <ReviewQueueView />;
-  }
   if (currentView.type === 'plugins') {
     return <PluginManagementView onNavigate={onNavigate} />;
   }
@@ -414,6 +414,11 @@ function AppViewContentBody({
   }
   if (currentView.type === 'board') {
     return <BoardView reference={currentView.reference} />;
+  }
+  if (currentView.type === 'personal-board') {
+    // No `WorkspacePaneHostActionsFrame`: that frame is project-scoped and
+    // takes a required `projectSlug`, which a Board has none of.
+    return <PersonalBoardView boardSlug={currentView.boardSlug} />;
   }
   if (currentView.type === 'project-session-board') {
     return <ConsoleBoardView projectSlug={currentView.slug} />;

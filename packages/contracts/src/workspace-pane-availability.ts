@@ -25,7 +25,53 @@ export type WorkspacePaneAvailabilitySource =
   | 'context'
   | 'configuration'
   | 'permission'
-  | 'health';
+  | 'health'
+  /**
+   * Per-principal plugin visibility (#2067): whether this pane is available
+   * to the CALLER at all. Distinct from `permission`, which is the plugin's
+   * own declared capability grant — a plugin can hold every permission it
+   * declares and still be invisible to this person.
+   *
+   * The reason code deliberately does NOT say a plugin exists: whatever sets
+   * this must be able to answer for a pane that is hidden and for one that
+   * was never there without distinguishing them, or it is an existence
+   * oracle.
+   *
+   * ## NO PRODUCER ON THIS BRANCH — #2067 acceptance criterion 2 is UNMET
+   *
+   * `GET /api/projects/:slug/panes` drops a hidden plugin's panes entirely
+   * (discovery), so nothing reaches this branch and a layout that already
+   * names such a pane renders a BLANK REGION rather than a placeholder. The
+   * criterion — "renders that pane as unavailable with a reason, not as an
+   * error or as empty" — is not satisfied. Two implementations were tried
+   * and removed rather than shipped a third time:
+   *
+   *   1. Keep the descriptor and withhold its contribution. Removed: it was
+   *      an existence oracle. `POST /api/projects/:slug/layouts` is in the
+   *      ordinary project scope, so a member could seed guessed descriptor
+   *      ids and read back whichever existed.
+   *   2. Synthesise a descriptor-free availability entry for ids a saved
+   *      layout names. Removed for TWO independent reasons: the producer
+   *      could not work (`LayoutTab` has no `descriptorId`/`paneId` — a
+   *      saved layout names a pane by `component`, and descriptor ids are
+   *      MINTED at read time by `enumerateLayoutPanes`, so nothing persists
+   *      one to find), and the consumer would have discarded it anyway
+   *      (`resolvedWorkspacePaneCatalog.ts` builds entries exclusively from
+   *      `snapshot.descriptors`, joining availability on as a lookup).
+   *
+   * A real implementation needs all three of: a reference that actually
+   * exists in persisted data (the applied plugin LAYOUT, not a descriptor
+   * id); a host branch keyed on availability entries with no descriptor, so
+   * the renderer can show a placeholder without one; and a reason that
+   * asserts no cause, because the server cannot distinguish "hidden" from
+   * "no longer offered" — the Session Board's panes disappear the same way
+   * when a project has no Builder run — without re-arming the oracle.
+   *
+   * The precedence below is kept and tested because it took three rounds to
+   * get right and the Board slice will need it. It is a contract, not a live
+   * path; `workspace-pane-availability-resolver.test.ts` says so.
+   */
+  | 'visibility';
 
 /**
  * Stable, presentation-safe diagnostic codes. These codes intentionally do
@@ -54,6 +100,7 @@ export type WorkspacePaneAvailabilityReasonCode =
   | 'configuration-unknown'
   | 'permission-required'
   | 'permission-unknown'
+  | 'pane-not-available-to-viewer'
   | 'health-unavailable'
   | 'health-unknown';
 
@@ -137,6 +184,22 @@ export interface WorkspacePaneAvailabilityRequirements {
  * diagnostic enters the public result.
  */
 export interface WorkspacePaneAvailabilityInput {
+  /**
+   * The DERIVED answer to "may this caller see the plugin that contributes
+   * this pane" (#2067), computed server-side by
+   * `PluginVisibilityService.canSee` from the operator's grant record. It is
+   * a projection result, never a requirement a declaration asserts about
+   * itself: no manifest, no client, and no `resolveInput` adapter may set it,
+   * which is why `resolveWorkspacePaneCatalogAvailability` applies it AFTER
+   * merging every other input rather than as one more mergeable fact.
+   *
+   * `undefined` means this pane has no owning plugin — every built-in pane,
+   * and that is why absence is not read as `hidden`. The server sets one of
+   * the two values for EVERY plugin-provenance descriptor, so a plugin pane
+   * with no value is a composition that never consulted the projection, not
+   * a pane that was cleared.
+   */
+  pluginVisibility?: 'visible' | 'hidden';
   installation?: 'ready' | 'pending' | 'unavailable';
   rollout?: 'available' | 'coming-soon' | 'unknown';
   distribution?: 'enabled' | 'disabled' | 'unknown';
@@ -274,6 +337,18 @@ export function resolveWorkspacePaneAvailability(
   input: WorkspacePaneAvailabilityInput,
   contextRequirement?: WorkspacePaneContextRequirement,
 ): WorkspacePaneAvailability {
+  // First, ahead of rollout: a person who cannot see the plugin must not
+  // learn from this result whether its installation is pending, whether its
+  // distribution policy is disabled, or which capabilities it requires. Every
+  // lower branch is a fact about a plugin they have not been shown.
+  if (input.pluginVisibility === 'hidden') {
+    return result(
+      'permission-required',
+      'pane-not-available-to-viewer',
+      'visibility',
+      { type: 'learn-more', code: 'view-permission-requirements' },
+    );
+  }
   if (input.rollout === 'coming-soon') {
     return result('coming-soon', 'coming-soon', 'product-rollout', {
       type: 'learn-more',

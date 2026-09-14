@@ -1429,12 +1429,13 @@ const SCREENS: Screen[] = [
     viewport: DESKTOP,
     ...connectionsHubBadgeSettleHooks(),
   },
-  {
-    name: 'review',
-    title: 'Review',
-    path: '/review-queue',
-    viewport: DESKTOP,
-  },
+
+  // #2065 retired the `review` capture with the global `/review-queue` page it
+  // photographed. Not retargeted to `/projects/<slug>/layouts/review`: that
+  // surface is Project-scoped and reads three seeded stores (proposed changes,
+  // Flow reviews, review evidence) this spec does not stub, so pointing the
+  // same entry at it would photograph an empty state under a name that claims
+  // otherwise. A real capture is new work with its own fixtures.
   {
     name: 'sessions',
     title: 'Activity',

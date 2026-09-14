@@ -317,11 +317,13 @@ export const HEADING_SCAN_EXTENSIONS = ['.tsx'];
 /**
  * Paths that must be inside the enumerated scope. The tree-walk oracle in `assertScopeIsHonest` is
  * derived from `HEADING_SCAN_ROOTS`, so narrowing the roots would narrow the oracle with it; this
- * pinned list is the part that cannot be narrowed silently. It names the two files this signal was
- * built from — the only two that carried the defect station#2931 fixed.
+ * pinned list is the part that cannot be narrowed silently. It named the two files this signal was
+ * built from — the only two that carried the defect station#2931 fixed. `ReviewQueueView.tsx` was
+ * deleted with the global review queue (#2065), so one remains; its successor (the `review` layout
+ * kind) lives under `src-ui/src/components/`, which these roots do not scan, so it cannot be pinned
+ * here in its place.
  */
 export const HEADING_PINNED_SCOPE_INVENTORY = [
-  'src-ui/src/views/ReviewQueueView.tsx',
   'src-ui/src/views/TaskWorkspaceView.tsx',
 ];
 

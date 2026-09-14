@@ -44,6 +44,7 @@ import { Button } from './Button';
 import { Dialog } from './Dialog';
 import { requestFirstRunTour } from './first-run/first-run-store';
 import { LazyBoundary } from './LazyBoundary';
+import { requestNewBoard } from './project-sidebar/new-board-events';
 import { Empty, ErrorState, SkeletonBlock } from './state';
 import './CommandPalette.css';
 import type {
@@ -403,6 +404,20 @@ export function CommandPalette() {
     // event `FirstRunFlow` listens on, so the resume rule
     // (`resolveResumePoint`) is shared with the automatic first run rather
     // than duplicated for the manual one.
+    // #2062 review MED-6: the Boards section is hidden when the viewer has
+    // none, and the only `+` lives inside it, so without this there is no way
+    // to make the FIRST Board. This does not create one itself — it asks the
+    // panel's Boards section, which owns the personal-layouts read, the slug
+    // derivation and the rename state, to run the same create its `+` runs.
+    // See `project-sidebar/new-board-events.ts` for why that indirection is
+    // the reuse rather than a detour.
+    list.push({
+      id: 'action:new-board',
+      label: 'New Board',
+      group: 'Actions',
+      keywords: ['board', 'new', 'create', 'personal', 'layout', 'page'],
+      run: () => requestNewBoard(),
+    });
     list.push({
       id: 'action:first-run-tour',
       label: 'Take the tour',

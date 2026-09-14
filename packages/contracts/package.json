@@ -33,6 +33,7 @@
     "./stall-watchdog": "./src/stall-watchdog.ts",
     "./agent": "./src/agent.ts",
     "./agent-plugin": "./src/agent-plugin.ts",
+    "./plugin-visibility": "./src/plugin-visibility.ts",
     "./agent-identity": "./src/agent-identity.ts",
     "./agent-validation": "./src/agent-validation.ts",
     "./answer-share": "./src/answer-share.ts",

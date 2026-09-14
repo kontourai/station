@@ -14,7 +14,7 @@
  * DISTINCT devices resolving to ONE principal see one set of Boards, and that
  * nothing a request carries can change which principal that is.
  */
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { LayoutMetadata } from '@kontourai/station-contracts/layout';
@@ -27,6 +27,10 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { principalLayoutStorageKey } from '../../../domain/layout-owner-storage.js';
+import {
+  FileStorageConflictError,
+  FileStorageNotFoundError,
+} from '../../../domain/project-file-transactions.js';
 import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   PrincipalUnresolvedError,
@@ -56,6 +60,12 @@ afterEach(() => {
   }
 });
 
+/**
+ * The agents this Station knows, as `agentService.listAgents()` reports them.
+ * Shared by every app in this file so "unknown agent" means one thing here.
+ */
+const knownAgents = [{ slug: 'helper' as never, project: undefined }];
+
 function seeded() {
   const dir = mkdtempSync(join(tmpdir(), 'station-personal-layouts-route-'));
   tempDirs.push(dir);
@@ -83,8 +93,65 @@ function seeded() {
     },
     now: () => NOW,
     newId: () => `board-${++nextId}`,
+    // #2062 review BLOCKING-2: promote runs the destination project's own
+    // admission, so the harness supplies the same agent list production wires
+    // from `agentService.listAgents()`. `helper` is a real agent every project
+    // can reach; `ghost-agent` deliberately is NOT in this list, which is what
+    // makes the refusal case below a refusal rather than a typo.
+    listAgents: async () => knownAgents,
   });
   return { dir, storage, app };
+}
+
+/** A Station home with the Boards routes AND two real projects to promote into. */
+async function seededWithProjects() {
+  const context = seeded();
+  for (const [id, slug, name] of [
+    ['project-1', 'demo', 'Demo'],
+    ['project-2', 'other', 'Other'],
+  ] as const) {
+    await context.storage.createProject({
+      id,
+      slug,
+      name,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+  }
+  return context;
+}
+
+/**
+ * The #2062 cases route every read through these three helpers rather than
+ * calling `as(...)` inline, so a change to the request helper's own signature
+ * lands in three places in this file instead of a dozen. (It already has: the
+ * slice-3 fix round dropped the helper's unused `path` argument.)
+ */
+function listBoards(
+  app: ReturnType<typeof seeded>['app'],
+  device: string | undefined,
+) {
+  return app.request('/layouts', as(device));
+}
+
+function readBoard(
+  app: ReturnType<typeof seeded>['app'],
+  device: string | undefined,
+  layoutSlug: string,
+) {
+  return app.request(`/layouts/${layoutSlug}`, as(device));
+}
+
+function promote(
+  app: ReturnType<typeof seeded>['app'],
+  device: string | undefined,
+  layoutSlug: string,
+  body: Record<string, unknown>,
+) {
+  return app.request(
+    `/layouts/${layoutSlug}/promote`,
+    as(device, { method: 'POST', body: JSON.stringify(body) }),
+  );
 }
 
 /** A request as a given device; no device header means the local operator. */
@@ -137,7 +204,7 @@ describe('ownedLayoutStore', () => {
       },
     };
     expect(() => ownedLayoutStore(partial)).toThrow(
-      'missing deleteOwnedLayout, mutateOwnedLayout',
+      'missing createOwnedLayout, deleteOwnedLayout, mutateOwnedLayout, getProject',
     );
     expect(() =>
       ownedLayoutStore(new FileStorageAdapter('/tmp')),
@@ -403,6 +470,500 @@ describe('personal layout routes', () => {
   });
 });
 
+/**
+ * #2062 — promote moves a Board into a project.
+ *
+ * Every case drives `POST /api/me/layouts/:layoutSlug/promote` against the real
+ * `FileStorageAdapter`, and reads the FILESYSTEM for the move's two halves
+ * rather than trusting the response: a promote that answered 200 while leaving
+ * the personal record on disk is a copy, and the response body cannot tell the
+ * difference.
+ */
+/**
+ * #2062 review BLOCKING-2 — promote must be admitted by the DESTINATION's own
+ * rules, not merely by the storage writer's fingerprint and slug checks.
+ *
+ * Every case drives the real route against the real `FileStorageAdapter`, and
+ * asserts BOTH halves of a refusal: the answer the caller gets, and that
+ * nothing moved. A promote that refused loudly while still writing half the
+ * move would pass an assertion about the status alone.
+ */
+describe('promote is admitted by the project it publishes into (#2062)', () => {
+  test('a Board naming an agent the project cannot reach is refused, and stays put', async () => {
+    const { dir, app } = await seededWithProjects();
+    await createBoard(app, 'alice-laptop', {
+      slug: 'daily',
+      name: 'Daily',
+      config: { availableAgents: ['ghost-agent'] },
+    });
+
+    const refused = await promote(app, 'alice-laptop', 'daily', {
+      projectSlug: 'demo',
+    });
+
+    // The project route's own answer for the identical body: 400, the first
+    // diagnostic as the message, and the diagnostics alongside it.
+    expect(refused.status).toBe(400);
+    const body = await json<{
+      error: string;
+      diagnostics: Array<{ code: string; refId: string }>;
+    }>(refused);
+    expect(body.error).toBe("Layout references unknown agent 'ghost-agent'.");
+    expect(body.diagnostics[0]).toMatchObject({
+      code: 'unknown_layout_agent',
+      refId: 'ghost-agent',
+    });
+
+    // NOTHING moved. The admission runs before the create, so neither half of
+    // the move happened — this is the assertion that separates "refused" from
+    // "refused after publishing".
+    expect(existsSync(join(personalDir(dir, alice), 'daily.json'))).toBe(true);
+    expect(
+      existsSync(join(dir, 'projects', 'demo', 'layouts', 'daily.json')),
+    ).toBe(false);
+  });
+
+  test('a Board naming an agent the project CAN reach is promoted', async () => {
+    const { dir, app } = await seededWithProjects();
+    await createBoard(app, 'alice-laptop', {
+      slug: 'daily',
+      name: 'Daily',
+      config: { availableAgents: ['helper'] },
+    });
+
+    // The discriminating half: without it, a promote that refused EVERY
+    // config.availableAgents would pass the case above and this suite would
+    // be asserting that promote is broken.
+    expect(
+      (await promote(app, 'alice-laptop', 'daily', { projectSlug: 'demo' }))
+        .status,
+    ).toBe(200);
+    expect(
+      existsSync(join(dir, 'projects', 'demo', 'layouts', 'daily.json')),
+    ).toBe(true);
+  });
+
+  test('a promoted coding Board does not persist a working directory of its own', async () => {
+    const { dir, storage, app } = await seededWithProjects();
+    await createBoard(app, 'alice-laptop', {
+      slug: 'work',
+      name: 'Work',
+      type: 'coding',
+      config: { workingDirectory: '/somewhere/else' },
+    });
+
+    const refused = await promote(app, 'alice-laptop', 'work', {
+      projectSlug: 'demo',
+    });
+    // `demo` has no working directory, so the supplied one differs from the
+    // derived one and the project route's archive#1497 refusal applies here
+    // too — by name, quoting the project.
+    expect(refused.status).toBe(400);
+    expect((await json<{ error: string }>(refused)).error).toContain(
+      'config.workingDirectory is derived from its project',
+    );
+    expect(existsSync(join(personalDir(dir, alice), 'work.json'))).toBe(true);
+
+    // ...and a coding Board WITHOUT one promotes, persisting no
+    // `workingDirectory` key at all — the shape archive#1497 converges on.
+    await createBoard(app, 'alice-laptop', {
+      slug: 'clean',
+      name: 'Clean',
+      type: 'coding',
+      config: {},
+    });
+    expect(
+      (await promote(app, 'alice-laptop', 'clean', { projectSlug: 'demo' }))
+        .status,
+    ).toBe(200);
+    const persisted = storage.getLayout('demo', 'clean');
+    expect(
+      Object.hasOwn((persisted.config ?? {}) as object, 'workingDirectory'),
+    ).toBe(false);
+  });
+});
+
+/**
+ * #2062 review MED-5 — two promotes of ONE Board, racing.
+ *
+ * The create-then-delete order makes an interrupted promote to the SAME
+ * project resumable (the id lineage identifies this Board's own copy). Two
+ * promotes to DIFFERENT projects have no such resume path: both would create
+ * their own copy and only one delete would find anything, leaving the Board
+ * duplicated across two projects with nothing able to tell which was meant.
+ * `promote` therefore serializes per Board, and this is that serialization
+ * observed rather than asserted about.
+ */
+describe('two promotes of one Board cannot duplicate it (#2062)', () => {
+  test('the loser finds the Board already gone and answers as unused', async () => {
+    const { dir, app } = await seededWithProjects();
+    await createBoard(app, 'alice-laptop', { slug: 'daily', name: 'Daily' });
+
+    // Dispatched without awaiting between them, so both are in flight before
+    // either completes — the shape that produced the duplicate.
+    const [first, second] = await Promise.all([
+      promote(app, 'alice-laptop', 'daily', { projectSlug: 'demo' }),
+      promote(app, 'alice-laptop', 'daily', { projectSlug: 'other' }),
+    ]);
+
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([200, 404]);
+
+    // Exactly one project holds it, and the personal record is gone.
+    const landed = ['demo', 'other'].filter((project) =>
+      existsSync(join(dir, 'projects', project, 'layouts', 'daily.json')),
+    );
+    expect(landed).toHaveLength(1);
+    expect(existsSync(join(personalDir(dir, alice), 'daily.json'))).toBe(false);
+  });
+});
+
+/**
+ * #2062 review MED-4 — the delete leg, after the project copy is published.
+ *
+ * The personal record can be gone by the time promote deletes it (a
+ * concurrent `DELETE /api/me/layouts/:slug`). That is not a failure: the
+ * project holds the Layout and the personal scope does not, which is exactly
+ * what the move promised. Before the guard, the `FileStorageNotFoundError`
+ * reached the route's catch and became 404 `Project not found` — naming a
+ * project whose copy had just been written.
+ */
+describe('promote whose personal record vanishes mid-move (#2062)', () => {
+  test('reports the move it completed, not a missing project', async () => {
+    const board = {
+      id: 'board-1',
+      owner: { kind: 'principal' as const, principal: alice },
+      slug: 'daily',
+      type: 'custom',
+      name: 'Daily',
+      config: {},
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    const created: string[] = [];
+    // Deterministic, because the real adapter cannot be made to lose this race
+    // on demand: the delete answers "already gone" exactly as it would for a
+    // DELETE that landed between the create and the delete.
+    const app = createPersonalLayoutRoutes(
+      {
+        listOwnedLayouts: () => [],
+        getOwnedLayout: (owner, layoutSlug) => {
+          if (owner.kind === 'principal' && layoutSlug === 'daily') {
+            return board;
+          }
+          throw new FileStorageNotFoundError(
+            `Layout '${layoutSlug}' not found`,
+          );
+        },
+        createOwnedLayout: async (_owner, config) => {
+          created.push(config.slug);
+        },
+        deleteOwnedLayout: async (_owner, layoutSlug) => {
+          throw new FileStorageNotFoundError(
+            `Layout '${layoutSlug}' not found`,
+          );
+        },
+        mutateOwnedLayout: async () => {
+          throw new Error('unused');
+        },
+        getProject: () => ({
+          id: 'project-1',
+          slug: 'demo',
+          name: 'Demo',
+          createdAt: NOW,
+          updatedAt: NOW,
+        }),
+      },
+      {
+        listAgents: async () => knownAgents,
+        resolvePrincipal: () =>
+          resolvePrincipal(
+            {
+              provider: 'tailscale-serve',
+              subject: 'alice@example.test',
+              displayName: 'alice@example.test',
+            },
+            'personal',
+            undefined,
+            undefined,
+          ),
+        now: () => NOW,
+        newId: () => 'board-1',
+      },
+    );
+
+    const moved = await promote(app, 'alice-laptop', 'daily', {
+      projectSlug: 'demo',
+    });
+
+    expect(moved.status).toBe(200);
+    // The project copy WAS written — which is why "Project not found" was
+    // never a defensible answer here.
+    expect(created).toEqual(['daily']);
+  });
+
+  /**
+   * The other half of that guard, and the half a comment alone was asserting
+   * (#2062 review F5): only ABSENCE is swallowed. Widening the catch to
+   * `return;` for every error left the whole suite green, so nothing held the
+   * narrowing in place.
+   *
+   * A delete that fails for any other reason leaves the Board in BOTH places,
+   * and a caller told "moved" would have no reason to look. It must surface.
+   */
+  test('a delete that fails for any other reason is not reported as a move', async () => {
+    const board = {
+      id: 'board-1',
+      owner: { kind: 'principal' as const, principal: alice },
+      slug: 'daily',
+      type: 'custom',
+      name: 'Daily',
+      config: {},
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    const app = createPersonalLayoutRoutes(
+      {
+        listOwnedLayouts: () => [],
+        getOwnedLayout: (owner, layoutSlug) => {
+          if (owner.kind === 'principal' && layoutSlug === 'daily') {
+            return board;
+          }
+          throw new FileStorageNotFoundError(
+            `Layout '${layoutSlug}' not found`,
+          );
+        },
+        createOwnedLayout: async () => {},
+        deleteOwnedLayout: async () => {
+          // Not absence — a real storage failure, the case that leaves a
+          // duplicate behind.
+          throw new Error('EACCES: permission denied');
+        },
+        mutateOwnedLayout: async () => {
+          throw new Error('unused');
+        },
+        getProject: () => ({
+          id: 'project-1',
+          slug: 'demo',
+          name: 'Demo',
+          createdAt: NOW,
+          updatedAt: NOW,
+        }),
+      },
+      {
+        listAgents: async () => knownAgents,
+        resolvePrincipal: () =>
+          resolvePrincipal(
+            {
+              provider: 'tailscale-serve',
+              subject: 'alice@example.test',
+              displayName: 'alice@example.test',
+            },
+            'personal',
+            undefined,
+            undefined,
+          ),
+        now: () => NOW,
+        newId: () => 'board-1',
+      },
+    );
+
+    const answer = await promote(app, 'alice-laptop', 'daily', {
+      projectSlug: 'demo',
+    });
+
+    // Anything but 200. The route has no branch for this, so it reaches the
+    // unhandled-error boundary as a 500 — which is the honest answer for a
+    // move that half happened, and is emphatically not "moved".
+    expect(answer.status).not.toBe(200);
+    expect(answer.status).toBeGreaterThanOrEqual(500);
+  });
+});
+
+describe('promote a Board into a project (#2062)', () => {
+  test('the personal record is gone and the project layout carries the same id lineage', async () => {
+    const { dir, storage, app } = await seededWithProjects();
+    const created = await createBoard(app, 'alice-laptop', {
+      slug: 'daily',
+      name: 'Daily brief',
+      icon: 'star',
+      description: 'Morning',
+    });
+    expect(created.status).toBe(201);
+    const board = (
+      await json<{ data: { id: string; createdAt: string } }>(created)
+    ).data;
+
+    const promoted = await promote(app, 'alice-laptop', 'daily', {
+      projectSlug: 'demo',
+    });
+    expect(promoted.status).toBe(200);
+
+    // A MOVE: the personal record is gone, and the personal route answers for
+    // it exactly as it answers for a slug nobody ever used.
+    expect(existsSync(join(personalDir(dir, alice), 'daily.json'))).toBe(false);
+    expect((await readBoard(app, 'alice-laptop', 'daily')).status).toBe(404);
+    expect(
+      (
+        await json<{ data: LayoutMetadata[] }>(
+          await listBoards(app, 'alice-phone'),
+        )
+      ).data,
+    ).toEqual([]);
+
+    // ...and the project now owns it, under the SAME id and createdAt. The id
+    // is the whole lineage claim: nothing else records that this project
+    // Layout used to be that person's Board.
+    const stored = storage.getLayout('demo', 'daily');
+    expect(stored.id).toBe(board.id);
+    expect(stored.createdAt).toBe(board.createdAt);
+    expect(stored.name).toBe('Daily brief');
+    expect(stored.icon).toBe('star');
+    expect(stored.description).toBe('Morning');
+    // A project record persists `projectSlug` and never `owner` — the shape
+    // every pre-Boards record on disk already has.
+    expect(stored.projectSlug).toBe('demo');
+    expect(stored.owner).toBeUndefined();
+    expect(
+      JSON.parse(
+        readFileSync(
+          join(dir, 'projects', 'demo', 'layouts', 'daily.json'),
+          'utf8',
+        ),
+      ).owner,
+    ).toBeUndefined();
+    // The response body reports the record that was actually written.
+    expect(
+      (await json<{ data: Record<string, unknown> }>(promoted)).data,
+    ).toMatchObject({ id: board.id, slug: 'daily', projectSlug: 'demo' });
+  });
+
+  test('a project that does not exist answers 404 and leaves the Board where it was', async () => {
+    const { dir, app } = await seededWithProjects();
+    await createBoard(app, 'alice-laptop', { slug: 'daily', name: 'Daily' });
+
+    for (const projectSlug of ['no-such-project', '.hidden', 'a..b']) {
+      const refused = await promote(app, 'alice-laptop', 'daily', {
+        projectSlug,
+      });
+      // The project routes' own answer for a missing project
+      // (`projectMutationMessage`/`projectMutationStatus`,
+      // src-server/routes/projects/projects.ts:229-248).
+      expect(
+        [refused.status, (await json<{ error: string }>(refused)).error],
+        projectSlug,
+      ).toEqual([404, 'Project not found']);
+      // THE POINT: the destination is checked before anything is deleted, so a
+      // promote that cannot land does not destroy the record it was moving.
+      expect(existsSync(join(personalDir(dir, alice), 'daily.json'))).toBe(
+        true,
+      );
+    }
+
+    expect(
+      (
+        await json<{ data: LayoutMetadata[] }>(
+          await listBoards(app, 'alice-laptop'),
+        )
+      ).data.map((layout) => layout.slug),
+    ).toEqual(['daily']);
+  });
+
+  test("another principal's Board cannot be promoted, and answers as unused", async () => {
+    const { dir, app } = await seededWithProjects();
+    await createBoard(app, 'alice-laptop', { slug: 'daily', name: 'Daily' });
+
+    const refused = await promote(app, 'bob-laptop', 'daily', {
+      projectSlug: 'demo',
+    });
+    expect(refused.status).toBe(404);
+    expect(await refused.text()).toBe(
+      await (
+        await promote(app, 'bob-laptop', 'never-existed', {
+          projectSlug: 'demo',
+        })
+      ).text(),
+    );
+    // Alice still has hers, and nothing reached the project.
+    expect(existsSync(join(personalDir(dir, alice), 'daily.json'))).toBe(true);
+    expect(
+      existsSync(join(dir, 'projects', 'demo', 'layouts', 'daily.json')),
+    ).toBe(false);
+  });
+
+  test('a name the project already uses is a 409 that moves nothing', async () => {
+    const { dir, storage, app } = await seededWithProjects();
+    await createBoard(app, 'alice-laptop', { slug: 'daily', name: 'My Board' });
+    await storage.createLayout('demo', {
+      id: 'someone-elses-layout',
+      projectSlug: 'demo',
+      slug: 'daily',
+      type: 'custom',
+      name: 'The project already had this',
+      config: {},
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    const refused = await promote(app, 'alice-laptop', 'daily', {
+      projectSlug: 'demo',
+    });
+    expect(refused.status).toBe(409);
+    // Neither half happened: the Board is still personal and the project's
+    // existing Layout is untouched.
+    expect(existsSync(join(personalDir(dir, alice), 'daily.json'))).toBe(true);
+    expect(storage.getLayout('demo', 'daily').id).toBe('someone-elses-layout');
+  });
+
+  test('a promote interrupted after the create completes on the next call', async () => {
+    const { dir, storage, app } = await seededWithProjects();
+    const created = await createBoard(app, 'alice-laptop', {
+      slug: 'daily',
+      name: 'Daily',
+    });
+    const board = (await json<{ data: { id: string } }>(created)).data;
+
+    // The crash window this order deliberately accepts: the project copy
+    // landed, the personal delete did not. Reproduced by performing only the
+    // first half through the same storage the route uses.
+    await storage.createLayout('demo', {
+      id: board.id,
+      projectSlug: 'demo',
+      slug: 'daily',
+      type: 'custom',
+      name: 'Daily',
+      config: {},
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    expect(existsSync(join(personalDir(dir, alice), 'daily.json'))).toBe(true);
+
+    const resumed = await promote(app, 'alice-laptop', 'daily', {
+      projectSlug: 'demo',
+    });
+    expect(resumed.status).toBe(200);
+    // Resumed, not refused: the occupant carries this Board's own id, so it is
+    // the interrupted promote's own work rather than a name collision.
+    expect(existsSync(join(personalDir(dir, alice), 'daily.json'))).toBe(false);
+    expect(storage.getLayout('demo', 'daily').id).toBe(board.id);
+  });
+
+  test('a promote body may name only the destination project', async () => {
+    const { app } = await seededWithProjects();
+    await createBoard(app, 'alice-laptop', { slug: 'daily', name: 'Daily' });
+    for (const body of [
+      { projectSlug: 'demo', name: 'Renamed on the way' },
+      { projectSlug: 'demo', id: 'chosen-id' },
+      { projectSlug: 'demo', owner: { kind: 'instance' } },
+      {},
+    ]) {
+      expect((await promote(app, 'alice-laptop', 'daily', body)).status).toBe(
+        400,
+      );
+    }
+  });
+});
+
 describe('an unresolvable caller', () => {
   /**
    * Production reaches this: a paired device whose person binding conflicts
@@ -426,6 +987,9 @@ describe('an unresolvable caller', () => {
             'Device person binding conflicts with the current identity or deployment',
           );
         },
+        // Never reached — the refusal happens before any handler runs — but
+        // required, which is the point: a composition cannot forget it.
+        listAgents: async () => knownAgents,
         now: () => NOW,
         newId: () => 'board-1',
       },
@@ -446,6 +1010,15 @@ describe('an unresolvable caller', () => {
       { method: 'PUT', body: JSON.stringify({ name: 'Renamed' }) },
     ],
     ['DELETE', '/layouts/daily', { method: 'DELETE' }],
+    // #2062. Promote is the newest leaf and the only one that writes outside
+    // the caller's own records, so it is the one most worth pinning here: it
+    // must refuse an unresolvable caller BEFORE it reads a destination
+    // project, not after.
+    [
+      'POST',
+      '/layouts/daily/promote',
+      { method: 'POST', body: JSON.stringify({ projectSlug: 'demo' }) },
+    ],
   ] as const)(
     '%s %s answers the typed principal_unresolved refusal, not a 500',
     async (_method, path, init) => {
@@ -462,4 +1035,97 @@ describe('an unresolvable caller', () => {
       expect(body.error).toContain('Unable to resolve a principal');
     },
   );
+});
+
+/**
+ * #2062 — the promote conflict branch has two causes, and they are different
+ * answers.
+ *
+ * `FileStorageConflictError` covers BOTH "Layout 'x' already exists" and the
+ * CAS refusal "Project changed before the Layout could be created". The real
+ * adapter cannot be made to lose that race deterministically, so the route and
+ * the service here are real and only the STORAGE is the stub — which is the
+ * layer the race lives in.
+ */
+describe('promote and a lost CAS race (#2062)', () => {
+  function racingApp() {
+    const board = {
+      id: 'board-1',
+      owner: { kind: 'principal' as const, principal: alice },
+      slug: 'daily',
+      type: 'custom',
+      name: 'Daily',
+      config: {},
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    const deleted: string[] = [];
+    const app = createPersonalLayoutRoutes(
+      {
+        listOwnedLayouts: () => [],
+        getOwnedLayout: (owner, layoutSlug) => {
+          if (owner.kind === 'principal' && layoutSlug === 'daily') {
+            return board;
+          }
+          // The project root has no record: the create was refused by the
+          // project's own fingerprint check, not by an occupant.
+          throw new FileStorageNotFoundError(
+            `Layout '${layoutSlug}' not found`,
+          );
+        },
+        createOwnedLayout: async () => {
+          throw new FileStorageConflictError(
+            'Project changed before the Layout could be created',
+          );
+        },
+        deleteOwnedLayout: async (_owner, layoutSlug) => {
+          deleted.push(layoutSlug);
+        },
+        mutateOwnedLayout: async () => {
+          throw new Error('unused');
+        },
+        // The project EXISTS — that is the whole point of this case. The race
+        // is against a concurrent change to it, not against its absence.
+        getProject: () => ({
+          id: 'project-1',
+          slug: 'demo',
+          name: 'Demo',
+          createdAt: NOW,
+          updatedAt: NOW,
+        }),
+      },
+      {
+        listAgents: async () => knownAgents,
+        resolvePrincipal: () =>
+          resolvePrincipal(
+            {
+              provider: 'tailscale-serve',
+              subject: 'alice@example.test',
+              displayName: 'alice@example.test',
+            },
+            'personal',
+            undefined,
+            undefined,
+          ),
+        now: () => NOW,
+        newId: () => 'board-1',
+      },
+    );
+    return { app, deleted };
+  }
+
+  test('answers 409 rather than reporting the project missing, and deletes nothing', async () => {
+    const { app, deleted } = racingApp();
+
+    const raced = await promote(app, 'alice-laptop', 'daily', {
+      projectSlug: 'demo',
+    });
+
+    // 404 `Project not found` would be a lie: the project is there, the write
+    // lost a race against a concurrent change to it.
+    expect(raced.status).toBe(409);
+    // And the Board is still the caller's — a move that did not land must not
+    // have performed its second half.
+    expect(deleted).toEqual([]);
+  });
 });

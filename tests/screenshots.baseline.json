@@ -290,12 +290,6 @@
       "sha256": "de7f0e0a62409cd84f09388c2208fd5f9381a90d2d66a96679a859f6e73da8a0"
     },
     {
-      "name": "review",
-      "width": 1440,
-      "height": 900,
-      "sha256": "06209b80888fca2ac9e4cf543641a0029af0d663ecde60c598ab51a0b8f9d734"
-    },
-    {
       "name": "schedule",
       "width": 1440,
       "height": 900,

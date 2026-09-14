@@ -448,6 +448,7 @@ test('inventory projects grants from one fresh content scan and observes later r
   );
   const app = new Hono();
   registerPluginInstallRoutes(app, {
+    projectVisiblePlugins: () => (installed) => installed,
     pluginsDir: f.plugins,
     projectHomeDir: f.home,
     agentsDir: join(f.home, 'agents'),
@@ -490,6 +491,7 @@ test('inventory and Pane catalogs retain pending rows without loading them and d
   const f = await fixture();
   const app = new Hono();
   registerPluginInstallRoutes(app, {
+    projectVisiblePlugins: () => (installed) => installed,
     pluginsDir: f.plugins,
     projectHomeDir: f.home,
     agentsDir: join(f.home, 'agents'),
@@ -553,6 +555,7 @@ test('inventory does not advertise a ready bundle when journal selection becomes
   await f.ready();
   const app = new Hono();
   registerPluginInstallRoutes(app, {
+    projectVisiblePlugins: () => (installed) => installed,
     pluginsDir: f.plugins,
     projectHomeDir: f.home,
     agentsDir: join(f.home, 'agents'),

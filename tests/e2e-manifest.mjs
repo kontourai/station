@@ -375,7 +375,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/daily-driver-switching.spec.ts',
     'tests/coding-git-toolbar.spec.ts',
     'tests/diff-review-annotations.spec.ts',
-    'tests/review-queue-comments.spec.ts',
     'tests/first-run-zero-provider.spec.ts',
     'tests/knowledge-onboarding.spec.ts',
     'tests/root-route-restore.spec.ts',
@@ -1558,16 +1557,15 @@ export const e2eManifest = [
       'Diff review annotations: DiffPanel renders a parsed diff, fetches project diff-comments, and renders a seeded comment inline via the @pierre/diffs annotation slot.',
     exceptions: [],
   },
-  {
-    path: 'tests/review-queue-comments.spec.ts',
-    bucket: 'product',
-    surface: 'Review Queue',
-    tierTarget: 'full',
-    primary: true,
-    rationale:
-      'Review queue surfaces diff comments: the queue fetches the cross-project /api/diff-comments feed, lists a seeded comment, and opens its detail with a Resolve action.',
-    exceptions: [],
-  },
+  // #2065: `tests/review-queue-comments.spec.ts` was retired with the global
+  // `/review-queue` page. Not retargeted, because its subject no longer
+  // exists anywhere: D4 dropped cross-project diff-comment DISCOVERY (a
+  // comment now resolves inside the diff it annotates), and with it the
+  // comment detail, its Resolve action, and its "Open in coding" jump. The
+  // one action that survived — deleting a comment — lives on the diff pane's
+  // own Delete and is pinned by "the diff pane deletes the comment its own
+  // Delete names, in its own Project" in src-ui/src/__tests__/DiffPanel.test.tsx.
+  // Inline comment rendering keeps its own spec (diff-review-annotations).
   {
     path: 'tests/core-update.spec.ts',
     bucket: 'extended',

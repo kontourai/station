@@ -503,6 +503,7 @@ export {
   fetchOrchestrationSessionEventWindow,
   fetchOrchestrationSessions,
   fetchPeerCredentials,
+  fetchPluginVisibility,
   fetchProjectSessionBoard,
   fetchProposedChanges,
   fetchProviderCommands,
@@ -542,6 +543,7 @@ export {
   installACPConnectionRegistryEntry,
   interruptOrchestrationDelegatedTask,
   interruptOrchestrationTurn,
+  isPluginVisibilityForbidden,
   isProvablyNotSent,
   type KitExperience,
   type KitLayoutProjection,
@@ -579,6 +581,7 @@ export {
   type OrchestrationSessionDetail,
   type OrchestrationSessionSummary,
   type PeerCredentialSummary,
+  PLUGIN_VISIBILITY_QUERY_KEY,
   type PluginChangelogData,
   type PluginChangelogEntry,
   type PluginInstallConsent,
@@ -590,6 +593,7 @@ export {
   type PluginRecoveryResult,
   type PluginSettingField,
   type PluginSettingsData,
+  PluginVisibilityForbiddenError,
   type ProviderCommandDescriptor,
   type ProviderWorkItem,
   peerCredentialQueries,
@@ -898,6 +902,7 @@ export {
   usePluginsQuery,
   usePluginUpdateMutation,
   usePluginUpdatesQuery,
+  usePluginVisibilityQuery,
   usePreviewSchedule,
   useProbeSshEnvironmentMutation,
   useProjectConversationsQuery,
@@ -963,6 +968,7 @@ export {
   useSetCredentialRecoveryAutomaticPolicyMutation,
   useSetIntegrationEnabledMutation,
   useSetIntegrationRenderPermissionMutation,
+  useSetPluginVisibilityMutation,
   useShowSessionSummaryMutation,
   useSkillContentQuery,
   useSkillDetailReader,
@@ -1074,6 +1080,20 @@ export {
   useFeaturePreviewsQuery,
   useUpdateFeaturePreviewMutation,
 } from './query-domains/featurePreviews.js';
+export type {
+  PersonalLayoutCreateInput,
+  PersonalLayoutUpdateInput,
+} from './query-domains/personalLayouts.js';
+export {
+  personalLayoutKey,
+  personalLayoutsKey,
+  useCreatePersonalLayoutMutation,
+  useDeletePersonalLayoutMutation,
+  usePersonalLayoutQuery,
+  usePersonalLayoutsQuery,
+  usePromotePersonalLayoutMutation,
+  useUpdatePersonalLayoutMutation,
+} from './query-domains/personalLayouts.js';
 // developerRuntime is intentionally NOT re-exported here. Its hooks are the
 // developer surface's lazy-only data access and are published exclusively via
 // the dedicated `@kontourai/station-sdk/developer-runtime` subpath so their

@@ -136,6 +136,7 @@ with two explicit, structurally identical exceptions, both off by default and ne
 - **Tool** — one callable: a function from an integration, or a `station-control` platform function.
 - **Command** — a slash command.
 - **Plugin** — an installable platform extension (layouts, agents, integrations, providers, …).
+- **Plugin visibility** — which installed plugins one principal may see and compose a Board or a personal agent from (#2067). Installation stays instance-wide: visibility is a *projection* of that one installed set onto one person, derived from the operator's grant record plus the live inventory, never a stored `visible` label. The operator sees everything; anybody else sees only what they have been granted, and a plugin outside their projection is absent from their plugin list rather than flagged. It is a listing and composition projection only — the execution authority for a plugin remains its permission grants, which every invocation rechecks.
 
 > **MCP passthrough (exception 1):** an ACP-connected External agent's connection can
 > explicitly opt in to receiving Station's stdio MCP tool servers inside its own
@@ -236,15 +237,42 @@ retired names.
   Station instance (`LayoutOwner`; derive it with `layoutOwner`, never by
   reading `projectSlug`) — a principal-owned Layout is a **Board**
   ([design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
-  decision D1). The sidebar still navigates project-owned Layouts only; the
-  personal and instance scopes exist in the contract and in storage, and
-  nothing renders them yet. Use **Layout** for the product object and its
+  decision D1). Use **Layout** for the product object and its
   chooser, editor, sources and persistence. Do not use it for the map of
   which surface sits in which region (that is the arrangement) or for the
   split/tab tree inside a view (that is a pane host). Lowercase "layout" may
   still describe spatial arrangement in developer prose, and internal widget
   names such as `SplitPaneLayout` describe implementation, not another
   product object.
+- **Board** — a Layout owned by a principal: the viewer's own, project-less
+  page, listed in the left panel's `Boards` section between Activity and
+  Projects and rendered by the same layout renderer a project Layout is
+  (#2062; [design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
+  decision D1). A Board can be **promoted** — MOVED into a project, where it
+  becomes that project's Layout under the same id; the personal record is gone
+  afterwards, so promote is never a copy.
+
+  The word is overloaded in this codebase and the overload is deliberate to
+  name, not to resolve: the **Session Board** (`BUILTIN_SESSION_BOARD_LAYOUT`,
+  a layout `type`) and the **board face** (`NavigationView`'s `board` member at
+  `/board/task/…`, archive#4079) are unrelated objects that share the English
+  word. A Board in the D1 sense routes at `/boards/:slug` and its view type is
+  `personal-board`; prefer the qualified name in code.
+- **Personal scope** — the fourth ownership scope, keyed by principal and
+  stored server-side under the Station home (`layouts/personal/<principal-key>/`),
+  so what a person owns follows them across their devices. It is the scope
+  Boards live in, and it is neither of the two things "personal" used to mean
+  in Station: not **instance** scope (which only reads as personal on a
+  single-operator Station) and not **device** scope (the arrangement, which is
+  a property of the screen you are sitting at). Reached over HTTP at
+  `/api/me/*`, where no path segment, body field or query parameter names a
+  principal — the owner comes from the request's own authentication, which is
+  what makes one person's records unaddressable by another.
+
+  Instance-owned Layouts are a sibling scope that exists in the contract
+  (`LayoutOwner`'s `{kind:'instance'}`) and in storage (`layouts/instance/`)
+  and has no route, no client and no UI: "instance-shared Boards" are designed
+  (D1) and not shipped.
 - **Pane** — the smallest addressable UI unit; what plugins contribute
   (`WorkspacePaneDescriptor` and its instances). A pane hosts content such as
   chat, files, terminal, or a plugin contribution, and knows nothing about

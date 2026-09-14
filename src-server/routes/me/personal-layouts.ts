@@ -16,7 +16,12 @@
 import { randomUUID } from 'node:crypto';
 import type { LayoutOwner } from '@kontourai/station-contracts/layout';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import type { AgentOwnershipRef } from '@kontourai/station-contracts/project-reference-integrity';
 import { type Context, Hono } from 'hono';
+import {
+  FileStorageConflictError,
+  FileStorageNotFoundError,
+} from '../../domain/project-file-transactions.js';
 import { assertSafeLayoutPathSegment } from '../../domain/storage-adapter.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
@@ -24,6 +29,7 @@ import {
   type OwnedLayoutStore,
   PersonalLayoutConflictError,
   PersonalLayoutService,
+  ProjectLayoutRefusedError,
   personalLayoutOwner,
 } from '../../services/layouts/personal-layout-service.js';
 import {
@@ -31,6 +37,7 @@ import {
   getBody,
   param,
   personalLayoutCreateSchema,
+  personalLayoutPromoteSchema,
   personalLayoutUpdateSchema,
   validate,
 } from '../schemas/schemas.js';
@@ -62,6 +69,24 @@ export interface PersonalLayoutRouteDeps {
   /** Overridable so tests pin timestamps and ids; production takes the defaults. */
   now?: () => string;
   newId?: () => string;
+  /**
+   * The agents a promoted Board's references are checked against (#2062
+   * review BLOCKING-2).
+   *
+   * REQUIRED, like `resolvePrincipal` and for the same reason: promote
+   * publishes into a project, and the project's own create route refuses a
+   * layout naming an agent it cannot reach. A composition that forgets to
+   * supply this would promote past a check the destination applies, so the
+   * omission is a type error rather than a silent skip. Resolving to
+   * `undefined` still means "skip", matching `projects.ts`'s own
+   * `readKnownAgents()`.
+   */
+  listAgents: () => Promise<readonly AgentOwnershipRef[] | undefined>;
+  /** Resolves a coding layout's repo-scoped directory, as the project routes do. */
+  resolveWorkspacePath?: (
+    projectSlug: string,
+    resourceId: string,
+  ) => Promise<string | undefined>;
 }
 
 /**
@@ -118,6 +143,8 @@ export function createPersonalLayoutRoutes(
   const service = new PersonalLayoutService(store, {
     now: deps.now,
     newId: deps.newId ?? randomUUID,
+    listAgents: deps.listAgents,
+    resolveWorkspacePath: deps.resolveWorkspacePath,
   });
   /**
    * Resolves the caller once, ahead of the handler, and is the ONE place an
@@ -196,6 +223,90 @@ export function createPersonalLayoutRoutes(
       return updated === undefined
         ? noSuchBoard(c)
         : c.json({ success: true, data: updated });
+    }),
+  );
+
+  /**
+   * Move a Board into a project (#2062).
+   *
+   * Routed through `withOwner` like every other handler here, so an
+   * unresolvable caller gets this family's one typed refusal rather than a
+   * catch written for the DESTINATION reading it as a missing project.
+   *
+   * ## Why this is not a membership check
+   *
+   * The brief this slice was written from expected promote to reuse "the
+   * membership check the project routes use". There is none to reuse:
+   * `src-server/routes/projects/projects.ts` applies no per-project predicate
+   * to any layout handler (its `POST /:slug/layouts` validates the slug,
+   * reads `projectRevision(slug)`, and writes), the only membership
+   * middleware in `runtime-routes.ts` covers `/api/projects/:slug/access*`
+   * and merely stashes a principal, and `ProjectMembershipService` is
+   * constructed only when `projectSharingEnabled` and only knows projects
+   * that were explicitly shared — so requiring it here would make promote
+   * fail on every ordinary single-operator Station.
+   * `docs/design/project-membership.md` says so itself: "This document
+   * specifies the contract; it does not claim implemented API or membership
+   * capability."
+   *
+   * So promote does not INVENT an authorization tier the operation it
+   * performs does not have. It publishes through the project transaction
+   * (`createOwnedLayout` -> `createLayout` -> `projectRevision(slug)`), which
+   * is the same and only writer `POST /api/projects/:slug/layouts` uses, and
+   * both leaves carry the same `orchestration:operate` pairing scope — so
+   * promote hands a caller nothing it could not already do by posting the
+   * same layout to the project directly. `pairing-route-scopes.test.ts` pins
+   * that equivalence rather than this comment asserting it.
+   *
+   * What it does enforce is that the destination EXISTS, with the project
+   * routes' own answer: `projectRevision` raises `FileStorageNotFoundError`
+   * and this returns 404 `Project not found`, byte-identical to
+   * `projectMutationMessage`/`projectMutationStatus` (`projects.ts`) — and it
+   * enforces it BEFORE the personal record is deleted, so a promote into a
+   * name nobody owns cannot destroy the Board.
+   */
+  app.post(
+    '/layouts/:layoutSlug/promote',
+    validate(personalLayoutPromoteSchema),
+    withOwner(async (c, owner) => {
+      const layoutSlug = addressableSlug(c);
+      if (layoutSlug === undefined) return noSuchBoard(c);
+      const { projectSlug } = getBody(c);
+      try {
+        assertSafeLayoutPathSegment('project slug', projectSlug);
+      } catch (error) {
+        if (error instanceof InvalidPathSegmentError) {
+          return c.json({ success: false, error: 'Project not found' }, 404);
+        }
+        throw error;
+      }
+      try {
+        const promoted = await service.promote(owner, layoutSlug, projectSlug);
+        return promoted === undefined
+          ? noSuchBoard(c)
+          : c.json({ success: true, data: promoted });
+      } catch (error) {
+        // The destination's own admission refused this body. Forwarded
+        // verbatim — same status, same message, same diagnostics the project
+        // route would have answered — because it IS that route's refusal,
+        // produced by the function both call (#2062 review BLOCKING-2).
+        if (error instanceof ProjectLayoutRefusedError) {
+          return c.json(error.body, 400);
+        }
+        if (error instanceof FileStorageNotFoundError) {
+          return c.json({ success: false, error: 'Project not found' }, 404);
+        }
+        if (error instanceof FileStorageConflictError) {
+          return c.json(
+            {
+              success: false,
+              error: `Project '${projectSlug}' already has a layout named '${layoutSlug}'.`,
+            },
+            409,
+          );
+        }
+        throw error;
+      }
     }),
   );
 

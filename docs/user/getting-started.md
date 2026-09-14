@@ -176,8 +176,11 @@ After first run, Home also offers owner-backed inspection cards when Station
 can identify a real approval notification or independent-review receipt. The
 approval action opens that exact Notifications row without approving or
 denying it. The review action opens the exact Project and receipt tuple in
-Review at `/review-queue`. Another Project's receipt with the same ID is
-never substituted.
+that Project's Review layout at `/projects/<slug>/layouts/review?receipt=...`.
+Another Project's receipt with the same ID is never substituted. Older
+`/review-queue?receipt=...&project=...` links redirect there; the global
+`/review-queue` page itself was retired in favour of the per-Project layout,
+and a link that names no Project opens Notifications instead.
 
 These are one-time Starter correlations, not completion checkboxes. Response
 loss reuses a deterministic operation identity, reopening a bound card keeps

@@ -101,7 +101,7 @@ function proposedChangeItem(): ProposedChangeAttentionItem {
     path: 'src/index.ts',
     contentKind: 'code',
     sourceRuntime: 'claude',
-    openHref: '/review-queue?change=change-1',
+    openHref: '/projects/campfit/layouts/review?change=change-1',
     source: { proposedChangeId: 'change-1', projectSlug: 'campfit' },
   };
 }
@@ -116,7 +116,7 @@ function gateReviewItem(): GateReviewAttentionItem {
     updatedAt: now,
     projectSlug: 'campfit',
     pendingDecisions: 2,
-    openHref: '/review-queue?review=review-session-1',
+    openHref: '/projects/campfit/layouts/review?review=review-session-1',
     source: {
       reviewSessionRef: 'review-session-1',
       projectSlug: 'campfit',
@@ -193,7 +193,7 @@ describe('deciding review work from the attention inbox', () => {
       within(row)
         .getByRole('link', { name: 'Open review' })
         .getAttribute('href'),
-    ).toBe('/review-queue?review=review-session-1');
+    ).toBe('/projects/campfit/layouts/review?review=review-session-1');
     // The Review page makes no mutation for these sessions either; an
     // Approve-shaped button here would claim an authority this surface and
     // that one both lack.
@@ -272,6 +272,6 @@ describe('deciding review work from the attention inbox', () => {
       within(attentionRow('src/index.ts'))
         .getByRole('link', { name: 'Open in Review' })
         .getAttribute('href'),
-    ).toBe('/review-queue?change=change-1');
+    ).toBe('/projects/campfit/layouts/review?change=change-1');
   });
 });

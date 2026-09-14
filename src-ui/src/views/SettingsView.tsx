@@ -4,6 +4,7 @@ import {
   StationReadOnlyError,
   useConfigProvenanceQuery,
   useInvalidateQuery,
+  usePluginVisibilityQuery,
 } from '@kontourai/station-sdk';
 import { updateAppLogLevel } from '@kontourai/station-sdk/app-config';
 import { useMutation } from '@tanstack/react-query';
@@ -44,6 +45,7 @@ import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
 import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
+import { PluginVisibilitySection } from './settings/PluginVisibilitySection';
 import { SettingsManageSection } from './settings/SettingsManageSection';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
@@ -52,6 +54,7 @@ import {
   formatSettingsMessage,
   localizedSettingsTargetLabel,
   matchingSettingsRows,
+  OPERATOR_ONLY_SECTION_IDS,
   SETTINGS_CATALOG,
   SETTINGS_SECTIONS,
   settingsRow,
@@ -173,11 +176,26 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     </div>
   ) : null;
   const showRegion = true;
+  // #2067: the operator fact, from the query the plugin-visibility section
+  // already makes. React Query dedupes it, so this is the SAME request rather
+  // than a second one — and it is what stops the Settings search offering a
+  // collaborator a jump to a section the server will refuse to populate.
+  // `isOperator` false until the directory resolves is the fail-closed
+  // direction, and matches the section, which renders nothing until then.
+  const pluginVisibilityDirectory = usePluginVisibilityQuery();
+  const isOperator = pluginVisibilityDirectory.data !== undefined;
   const visibleSections = new Set(
     searchQuery.trim()
-      ? matchingSettingsRows(searchQuery).map((entry) => entry.section)
+      ? matchingSettingsRows(searchQuery, { isOperator }).map(
+          (entry) => entry.section,
+        )
       : activeSection === 'overview'
-        ? ALL_LEAF_SECTION_IDS
+        ? ALL_LEAF_SECTION_IDS.filter(
+            // Keyed on the CONDITIONAL, not on one section id: a second
+            // operator-conditional section would otherwise leak into the
+            // overview the day somebody adds it.
+            (section) => isOperator || !OPERATOR_ONLY_SECTION_IDS.has(section),
+          )
         : [activeSection],
   );
   const sectionVisible = (section: string) =>
@@ -672,6 +690,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               scope because the shares live on this Station and every client
               of it sees the same list. */}
           {sectionVisible('answer-shares') && <AnswerSharesSection />}
+
+          {/* #2067: per-principal plugin visibility. Station scope — the
+              grants live on this Station — and the section renders nothing
+              for a caller the route refuses as a non-operator. */}
+          {sectionVisible('plugin-visibility') && <PluginVisibilitySection />}
           {sectionVisible('host-runtime') && (
             <EnvironmentStatus apiBase={currentApiBase} />
           )}

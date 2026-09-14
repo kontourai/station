@@ -39,6 +39,27 @@ vi.mock('@kontourai/station-sdk', () => ({
   StationReadOnlyError: class extends Error {},
   useEngineConnectionsQuery: () => ({ data: [] }),
   useAnswerSharesQuery: () => ({ data: [] }),
+  // #2067: the plugin-visibility section. The ORDINARY operator case — a
+  // directory in hand with one paired person — because the state under test
+  // here is the settings catalog, and a refusal would legitimately render
+  // nothing and make the enumeration disagree for a reason unrelated to the
+  // catalog.
+  usePluginVisibilityQuery: () => ({
+    data: {
+      principals: [
+        {
+          id: 'human:device:paired',
+          display: 'Paired device',
+          revoked: false,
+          plugins: [],
+          operator: false,
+        },
+      ],
+    },
+  }),
+  usePluginsQuery: () => ({ data: [] }),
+  useSetPluginVisibilityMutation: () => ({ mutate: vi.fn(), isError: false }),
+  isPluginVisibilityForbidden: () => false,
   useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
   useConfigProvenanceQuery: () => ({ data: {} }),
   // Settings mounts `UsageTelemetryDisclosure`, and #1608 made its decision
@@ -295,20 +316,28 @@ describe('settings catalog completeness', () => {
     const { SettingsView } = await import('../views/SettingsView');
     expect(String(SettingsView)).toContain('configData');
     const rendered = await renderedCatalogIds();
-    const expected = visibleCatalogIds({ isMobile: false, isDesktop });
+    const expected = visibleCatalogIds({
+      isMobile: false,
+      isDesktop,
+      isOperator: true,
+    });
     expectExactCatalog(rendered, expected);
     // 37 at the merge base; +2 from archive#3313 (feature-previews,
     // enable-developer-tools) and +1 from the chat-dock lane's
     // sidebar-sections, +1 from station#585 smooth answer reveal, +1 from the
     // update-ownership split (desktop-app-updates). Counted from the merged
     // catalog, not added up.
-    expect(SETTINGS_CATALOG).toHaveLength(42);
+    expect(SETTINGS_CATALOG).toHaveLength(43);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
     isMobile = true;
     const rendered = await renderedCatalogIds();
-    const expected = visibleCatalogIds({ isMobile: true, isDesktop });
+    const expected = visibleCatalogIds({
+      isMobile: true,
+      isDesktop,
+      isOperator: true,
+    });
     expectExactCatalog(rendered, expected);
     expect(rendered).toContain('haptic-feedback');
   });
@@ -670,7 +699,7 @@ describe('settings catalog completeness', () => {
     const rendered = await renderedCatalogIds();
     expectExactCatalog(
       rendered,
-      visibleCatalogIds({ isMobile: false, isDesktop }),
+      visibleCatalogIds({ isMobile: false, isDesktop, isOperator: true }),
     );
     expect(window.location.search).toBe('');
   });

@@ -33,7 +33,6 @@ describe('DestinationRegistry', () => {
       'guidance',
       'connections',
       'registry',
-      'review-queue',
       'plugins',
       'schedule',
     ]);
@@ -46,7 +45,6 @@ describe('DestinationRegistry', () => {
       'guidance',
       'connections',
       'registry',
-      'review-queue',
       'plugins',
       'schedule',
       'developer',
