@@ -409,7 +409,7 @@ describe('region model', () => {
     });
   });
 
-  test('registers Chat, Activity, Agents, Home and the three coding panes with their default regions, the regions each declares and who offers them', () => {
+  test('registers Chat, Activity, Agents, Home, Device and the three coding panes with their default regions, the regions each declares and who offers them', () => {
     expect([...REGION_SURFACE_REGISTRY.values()]).toEqual([
       expect.objectContaining({
         id: 'chat',
@@ -450,6 +450,17 @@ describe('region model', () => {
         regions: ['main'],
         defaultRegion: 'main',
       }),
+      // #1969: a captured device screen. Catalog-only and dock-only like
+      // the coding panes, and `right` by default — a device screen is
+      // portrait-tall, so a side region is where its height comes from.
+      expect.objectContaining({
+        id: 'device',
+        title: 'Device',
+        icon: 'device',
+        regions: ['left', 'right', 'bottom'],
+        defaultRegion: 'right',
+        exposure: 'catalog',
+      }),
       // #2047: catalog-only, dock regions only, no chord. `exposure` is
       // asserted as the literal on each so that dropping the flag from one
       // entry — which would put a Terminal row in the Layout picker — reds
@@ -482,6 +493,7 @@ describe('region model', () => {
     for (const id of [
       'home',
       'workspace-agents',
+      'device',
       'coding:terminal',
       'coding:diff',
       'coding:file-browser',

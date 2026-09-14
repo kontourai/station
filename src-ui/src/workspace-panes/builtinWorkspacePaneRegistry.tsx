@@ -16,6 +16,7 @@ import {
   WORKSPACE_CODING_FILE_BROWSER_PANE_RENDERER_NAME,
   WORKSPACE_CODING_TERMINAL_PANE_RENDERER_NAME,
 } from '@kontourai/station-contracts/workspace-coding-panels';
+import { WORKSPACE_DEVICE_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-device-pane';
 import {
   isCanonicalWorkspacePlanPaneInstance,
   isCanonicalWorkspaceReadinessPaneInstance,
@@ -772,6 +773,29 @@ function AgentsWorkspacePaneEntry() {
   );
 }
 
+const LazyDeviceWorkspacePane = lazy(() =>
+  import('./DeviceWorkspacePane').then(({ DeviceWorkspacePane }) => ({
+    default: DeviceWorkspacePane,
+  })),
+);
+
+/**
+ * The Device pane (#1969). It takes no instance data — which device it shows
+ * is bounded pane state the renderer reads, not part of the occurrence — so
+ * there is nothing here to resolve or refuse.
+ *
+ * Lazy for the reason Home and Activity are, with one extra: the pane pulls
+ * the mobile-device SDK client and its own stylesheet, and a region holding
+ * only a Terminal must not download either to have this row in the table.
+ */
+function DeviceWorkspacePaneEntry() {
+  return (
+    <Suspense fallback={<SkeletonBlock count={3} label="Loading Device" />}>
+      <LazyDeviceWorkspacePane />
+    </Suspense>
+  );
+}
+
 const LazyHomeWorkspacePane = lazy(() =>
   import('../views/home/HomeWorkspacePane').then(({ HomeWorkspacePane }) => ({
     default: HomeWorkspacePane,
@@ -894,6 +918,7 @@ const builtinWorkspacePaneRegistry: Record<
   [WORKSPACE_HOME_PANE_RENDERER_NAME]: HomeWorkspacePaneEntry,
   [WORKSPACE_ACTIVITY_PANE_RENDERER_NAME]: ActivityWorkspacePaneEntry,
   [WORKSPACE_AGENTS_PANE_RENDERER_NAME]: AgentsWorkspacePaneEntry,
+  [WORKSPACE_DEVICE_PANE_RENDERER_NAME]: DeviceWorkspacePaneEntry,
   [WORKSPACE_SPATIAL_BOARD_PANE_RENDERER_NAME]: SpatialBoardWorkspacePaneEntry,
   [WORKSPACE_BOARD_PANE_RENDERER_NAME]: BoardWorkspacePaneEntry,
   [WORKSPACE_BASIS_PANE_RENDERER_NAME]: BasisWorkspacePaneEntry,

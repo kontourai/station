@@ -155,6 +155,15 @@ export const PauseGlyph = /* @__PURE__ */ glyph('M5.5 3.5v9m5-9v9');
 export const PeopleGlyph = /* @__PURE__ */ glyph(
   'M6 8.5a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Zm0 0c-2 0-3.5 1.2-3.5 2.8V13h7v-1.7c0-1.6-1.5-2.8-3.5-2.8Zm4.4-4.2a2.2 2.2 0 0 1 0 4.2m.6.6c1.5.4 2.5 1.4 2.5 2.7V13',
 );
+/**
+ * A handset — the Device pane's tile and registry icon (#1969). A phone
+ * outline rather than the existing `MonitorGlyph`: the pane's targets are
+ * simulators and emulators of phones, and a monitor would read as the
+ * desktop shell.
+ */
+export const PhoneGlyph = /* @__PURE__ */ glyph(
+  'M4.5 1.5h7v13h-7v-13Zm2.5 11h2',
+);
 export const PinGlyph = /* @__PURE__ */ glyph(
   'm5 2 6 6-2 1.2-.8 3.3-1.5-1.4-3.6 2.8 2.8-3.6L4.5 8.3 7.8 7.5 9 5.5 5 2Z',
 );

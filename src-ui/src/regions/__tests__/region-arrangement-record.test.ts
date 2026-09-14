@@ -634,6 +634,47 @@ describe('region arrangement record (#928 D)', () => {
     });
 
     /**
+     * #1969: the Device surface is a bare word (`device`) rather than a
+     * `coding:`-prefixed one, so it exercises the same round trip through a
+     * different id shape — and the older-registry case below needs its own
+     * filter, because `startsWith('coding:')` would never drop it.
+     */
+    test('the Device surface round-trips and an older registry reads its region as empty', () => {
+      const withDevice: RegionArrangement = {
+        ...VALID,
+        right: {
+          visible: true,
+          size: 517,
+          panes: ['activity', 'device'],
+          occupant: 'device',
+          maximized: false,
+        },
+      };
+      const record = toRegionArrangementRecord(withDevice);
+      expect(record.regions.right.occupant).toEqual({
+        kind: 'pane-host',
+        panes: [
+          { kind: 'surface', id: 'activity' },
+          { kind: 'surface', id: 'device' },
+        ],
+        selected: 'device',
+      });
+      expect(parseRegionArrangementRecord(record)).toEqual(withDevice);
+
+      const older = createSurfaceRegistry(
+        [...REGION_SURFACE_REGISTRY.values()].filter(
+          (surface) => surface.id !== 'device',
+        ),
+      );
+      expect(older.has('device')).toBe(false);
+      expect(parseRegionArrangementRecord(record, older)?.right).toMatchObject({
+        visible: true,
+        panes: ['activity'],
+        occupant: 'activity',
+      });
+    });
+
+    /**
      * The rollback story (#2047, same-device stale-tab window): a build whose
      * registry predates the coding surfaces reads the record a newer build
      * wrote. A `pane-host` keeps the panes it knows; a `surface` form naming

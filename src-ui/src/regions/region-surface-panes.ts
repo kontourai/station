@@ -74,6 +74,11 @@ import {
   WORKSPACE_CODING_TERMINAL_PANE_INSTANCE_ID,
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import {
+  isCanonicalWorkspaceDevicePaneInstance,
+  WORKSPACE_DEVICE_PANE_DESCRIPTOR,
+  WORKSPACE_DEVICE_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-device-pane';
+import {
   WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR,
   type WorkspaceFilePreviewPaneState,
 } from '@kontourai/station-contracts/workspace-file-preview';
@@ -258,6 +263,21 @@ export const REGION_SURFACE_PANES: ReadonlyMap<string, RegionSurfacePane> =
         instanceId: WORKSPACE_AGENTS_PANE_INSTANCE.instanceId,
         instance: () => WORKSPACE_AGENTS_PANE_INSTANCE,
         isCanonical: isCanonicalWorkspaceAgentsPaneInstance,
+      },
+    ],
+    [
+      'device',
+      {
+        surfaceId: 'device',
+        descriptorId: WORKSPACE_DEVICE_PANE_DESCRIPTOR.id,
+        instanceId: WORKSPACE_DEVICE_PANE_INSTANCE.instanceId,
+        // Ignores the context, like Chat and Activity and for a reason of
+        // its own: the device list is a fact about the STATION's host, not
+        // about a checkout, so a Device pane renders in a dock with no
+        // project rather than showing "choose a project" for a question no
+        // project answers.
+        instance: () => WORKSPACE_DEVICE_PANE_INSTANCE,
+        isCanonical: isCanonicalWorkspaceDevicePaneInstance,
       },
     ],
     codingPane(

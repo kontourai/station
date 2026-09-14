@@ -45,16 +45,32 @@ describe('the Device pane descriptor (#1969)', () => {
   });
 
   /**
-   * The acceptance's "do not gate viewing on a desktop capability" as an
-   * assertion: adding `requirements: { hostCapabilities: [...] }` to the
-   * descriptor — the shape Browser Preview's server declaration carries —
-   * reds this, and so does giving the default mode a context requirement.
+   * The requirement-free half of the acceptance, at the only layer that can
+   * carry it here: a `WorkspacePaneDescriptor` has NO `requirements` field
+   * at all — host capabilities live on the server's
+   * `WorkspacePaneAvailabilityInput`, which is where Browser Preview declares
+   * `local-browser-preview` and where
+   * `workspace-pane-known-declarations.test.ts` asserts Device declares
+   * nothing. What the descriptor owns is the MODE, and giving the default
+   * mode a `contextRequirement` reds this test. The exact-key assertion is
+   * what catches a later field arriving unnoticed.
    */
-  test('requires no host capability and no context', () => {
-    expect(WORKSPACE_DEVICE_PANE_DESCRIPTOR.requirements).toBeUndefined();
+  test('its one mode requires no context, and it declares no field beyond the built-in shape', () => {
     expect(WORKSPACE_DEVICE_PANE_DESCRIPTOR.modes).toEqual([{ id: 'default' }]);
     for (const mode of WORKSPACE_DEVICE_PANE_DESCRIPTOR.modes)
       expect(mode.contextRequirement).toBeUndefined();
+    expect(Object.keys(WORKSPACE_DEVICE_PANE_DESCRIPTOR).sort()).toEqual([
+      'description',
+      'id',
+      'lifecycle',
+      'modes',
+      'name',
+      'placement',
+      'provenance',
+      'renderer',
+      'rendererId',
+      'version',
+    ]);
   });
 
   /**
