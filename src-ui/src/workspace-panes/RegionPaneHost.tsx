@@ -345,7 +345,19 @@ const loadRegionPaneCatalog = () =>
  * an instruction for a state the user is not in — and the mount-time
  * reconcile would write a document derived from it. While it is true the
  * region shows the pane's loading skeleton, the "+" stays hidden (no
- * `projectSlug` yet) and nothing is written.
+ * `projectSlug` yet) and the reconcile is deferred. Narrower than "nothing
+ * is written": a region whose SELECTED pane the dock already supplies (Chat,
+ * with a Terminal behind its tab) still mounts the host on the pending-time
+ * document and the host persists that until the read settles, when the
+ * deferred reconcile restores the full pane set — a transient the strip
+ * never shows, since it reads the arrangement.
+ *
+ * `!boundProject` after settle conflates "no such project" with "the read
+ * failed" (the SDK throws for both a 404 and a network failure), so a
+ * transient failure on the bound read with a cached route project falls back
+ * to the route's project until the bound read refetches and the fingerprint
+ * re-binds. Disclosed rather than gated: the SDK does not yet distinguish a
+ * not-found error.
  *
  * The stale-binding fallback (review L1): `useDockShellChrome` clears a
  * `chatDockProjectSlug` naming a deleted project only while the shell holds

@@ -459,8 +459,11 @@ through the host's authority fingerprint (the instance's `boundContext` is
 part of it). With no active project the placed pane keeps its tab and its
 record and the region shows "Choose a project for this dock"; while that
 project read is still in flight the region shows the pane's loading skeleton
-instead, and no document is written on a pane set derived from it. The "+" is
-not offered without a project. The "+" lives in the region bar's actions
+instead, and the mount-time reconcile is deferred rather than run on a pane
+set derived from it (a region whose selected pane the dock already supplies
+still mounts its host on the pending-time document, and the deferred
+reconcile restores the full set once the read settles). The "+" is not
+offered without a project. The "+" lives in the region bar's actions
 cluster beside maximize, fine pointer only, and renders for a one-pane region;
 its catalog (`RegionPaneCatalog`, over `ProjectWorkspacePaneModal`) lists the
 panes declaring `docked` for the dock project, a `docked` pane needing a

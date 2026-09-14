@@ -454,9 +454,10 @@ describe('Workspace Pane host document', () => {
     // document off the strict path, and the surviving persisted candidate
     // must still be substituted for its catalog record. Two sites do that
     // here — `known ?? parsed` in the candidate loop and `seatOnCatalog` on
-    // the rebuilt document — so this half reds only when BOTH are reverted;
-    // reverting either alone is covered by the identity assertions above it
-    // in this file.
+    // the rebuilt document — so this half reds only when BOTH are reverted.
+    // Reverting `seatOnCatalog` alone is caught by the identity assertions
+    // above it in this file; `known ?? parsed` is redundant with it and is
+    // not independently pinned.
     const repaired = restoreWorkspacePaneHostDocument(
       {
         ...documentWith(base),
