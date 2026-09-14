@@ -13,7 +13,10 @@ import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
-import { FILE_PREVIEW_PANE_STATE_STORAGE_PREFIX } from '../../workspace-panes/filePreviewPaneStateStorage';
+import {
+  FILE_PREVIEW_PANE_STATE_STORAGE_PREFIX,
+  readFilePreviewPaneState,
+} from '../../workspace-panes/filePreviewPaneStateStorage';
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
 import { RegionModelProvider, useRegionModel } from '../RegionModelContext';
@@ -62,6 +65,13 @@ async function mount(innerWidth = 1024) {
 function current() {
   if (!model || !panes) throw new Error('probe never rendered');
   return { model, panes };
+}
+
+/** The stored state of one held preview, read the way the pane reads it. */
+function heldState(id: string) {
+  const state = readFilePreviewPaneState(localStorage, id);
+  if (!state) throw new Error(`no stored state for ${id}`);
+  return state;
 }
 
 function previewStateKeys(): string[] {
@@ -201,5 +211,61 @@ describe('opening an instance-keyed pane in a region (#2049)', () => {
     expect(outcome).toEqual({ ok: false, reason: 'region-unavailable' });
     expect(current().model.regions).toBe(before);
     expect(previewStateKeys()).toEqual([]);
+  });
+
+  /**
+   * Review M3. The dedupe matches on project and path only, so `#L400` on a
+   * file already open at `#L5` reveals that tab — and before this it revealed
+   * it still showing line 5, with nothing saying the requested line had been
+   * dropped. Removing the range write reds the second assertion; writing it
+   * unconditionally (clearing on a range-less open) reds the third; skipping
+   * the rollback reds the fourth.
+   */
+  test('revealing a held preview carries a newly requested line range, keeps one with none requested, and rolls back a refusal', async () => {
+    await mount();
+    act(() => {
+      current().panes.openFilePreview(
+        { ...PROJECT, path: 'src/app.ts', lineRange: { start: 5, end: 5 } },
+        { region: 'right' },
+      );
+    });
+    const [held] = current().model.regions.right.panes as [string];
+    expect(heldState(held).lineRange).toEqual({ start: 5, end: 5 });
+
+    let outcome: { ok: boolean } | undefined;
+    act(() => {
+      outcome = current().panes.openFilePreview({
+        ...PROJECT,
+        path: 'src/app.ts',
+        lineRange: { start: 400, end: 412 },
+      });
+    });
+    expect(outcome).toMatchObject({ ok: true, existing: true });
+    expect(current().model.regions.right.panes).toEqual([held]);
+    expect(heldState(held).lineRange).toEqual({ start: 400, end: 412 });
+    // `wrap` is the user's, not the opener's: a reveal must not reset it.
+    expect(heldState(held).wrap).toBe(true);
+
+    // An href with no line anchor names the file and says nothing about
+    // lines, so it does not mean "forget the line".
+    act(() => {
+      current().panes.openFilePreview({ ...PROJECT, path: 'src/app.ts' });
+    });
+    expect(heldState(held).lineRange).toEqual({ start: 400, end: 412 });
+
+    // A refused reveal leaves the stored range exactly as it was, the same
+    // rule the mint path's rollback follows.
+    act(() => {
+      outcome = current().panes.openFilePreview(
+        {
+          ...PROJECT,
+          path: 'src/app.ts',
+          lineRange: { start: 900, end: 901 },
+        },
+        { placement: 'split' },
+      );
+    });
+    expect(outcome).toEqual({ ok: false, reason: 'unsupported-placement' });
+    expect(heldState(held).lineRange).toEqual({ start: 400, end: 412 });
   });
 });
