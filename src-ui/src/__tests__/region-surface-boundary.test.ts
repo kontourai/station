@@ -34,7 +34,13 @@ describe('registered surface region boundary', () => {
       .map((surface) => surface.id)
       .sort();
     expect(declaringMain).toEqual(['activity', 'home']);
-    expect(declaringDock).toEqual(['activity', 'chat']);
+    expect(declaringDock).toEqual([
+      'activity',
+      'chat',
+      'coding:diff',
+      'coding:file-browser',
+      'coding:terminal',
+    ]);
     expect([...REGION_SURFACE_SHELLS.keys()].sort()).toEqual(declaringMain);
     expect([...REGION_SURFACE_PANES.keys()].sort()).toEqual(declaringDock);
     expect([...new Set([...declaringMain, ...declaringDock])].sort()).toEqual(

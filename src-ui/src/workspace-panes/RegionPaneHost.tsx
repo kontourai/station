@@ -20,6 +20,7 @@ import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { reportRegionClearance } from '../regions/region-clearance';
 import type { DockRegionId } from '../regions/region-model';
 import {
+  type RegionPaneContext,
   regionSurfaceOfPane,
   regionSurfacePane,
 } from '../regions/region-surface-panes';
@@ -71,31 +72,42 @@ export function regionPaneHostDocumentId(
 
 const REGION_PANE_HOST_SCOPE = { kind: 'ambient' } as const;
 
+/** The context of a host that has no dock project to bind (the legacy mount). */
+const PROJECTLESS_CONTEXT: RegionPaneContext = { projectId: null };
+
 /**
  * The document for a region holding `surfaceIds`, in tab order: one tab
- * group of the surfaces' canonical panes, with `selectedSurfaceId`'s pane
- * active (the first when none is named). Derived from the arrangement
- * (`RegionState.panes` and `occupant`, #2046 2a), so the arrangement is the
- * authority for what a region holds and which pane shows; the host's
- * persisted copy carries nothing this does not.
+ * group of the surfaces' canonical panes under `context`, with
+ * `selectedSurfaceId`'s pane active (the first when none is named). Derived
+ * from the arrangement (`RegionState.panes` and `occupant`, #2046 2a), so
+ * the arrangement is the authority for what a region holds and which pane
+ * shows; the host's persisted copy carries nothing this does not.
  *
- * Throws rather than returning null, the same way the descriptors themselves
- * refuse to parse: every input is a code-owned constant, so a failure here is
- * a build that shipped an invalid built-in, not a runtime condition. Returning
- * null would make the region silently absent — and an absent affordance is
- * indistinguishable from one Station never had.
+ * A surface whose pane the context cannot supply (#2047: a coding pane while
+ * the dock has no project) is left OUT of the document — its tab and its
+ * place in the record stay, the host renders a placeholder for it — and a
+ * region none of whose panes can be supplied derives no document (null).
+ * That is the one runtime condition here. A surface with no pane entry at
+ * all still throws, the same way the descriptors themselves refuse to parse:
+ * that input is a code-owned constant, so it is a build that shipped an
+ * invalid built-in, and returning null for it would make the region silently
+ * absent — an absent affordance is indistinguishable from one Station never
+ * had.
  */
 export function createRegionPaneHostDocument(
   documentId: string,
   surfaceIds: readonly string[],
   selectedSurfaceId?: string,
-): WorkspacePaneHostDocumentV1 {
-  const instances = surfaceIds.map((surfaceId) => {
+  context: RegionPaneContext = PROJECTLESS_CONTEXT,
+): WorkspacePaneHostDocumentV1 | null {
+  const instances = surfaceIds.flatMap((surfaceId) => {
     const pane = regionSurfacePane(surfaceId);
     if (!pane)
       throw new Error(`Region surface "${surfaceId}" has no built-in pane`);
-    return pane.instance;
+    const instance = pane.instance(context);
+    return instance ? [instance] : [];
   });
+  if (instances.length === 0) return null;
   const document = createWorkspacePaneHostBaselineDocument(
     documentId,
     REGION_PANE_HOST_SCOPE,
@@ -106,11 +118,12 @@ export function createRegionPaneHostDocument(
   const selected =
     selectedSurfaceId === undefined
       ? undefined
-      : regionSurfacePane(selectedSurfaceId)?.instance.instanceId;
+      : regionSurfacePane(selectedSurfaceId)?.instanceId;
   if (
     selected === undefined ||
     selected === document.activeInstanceId ||
-    document.root.type !== 'tabs'
+    document.root.type !== 'tabs' ||
+    !instances.some((instance) => instance.instanceId === selected)
   )
     return document;
   return {
@@ -169,7 +182,12 @@ export function reconcileRegionPaneHostDocument(
 
 /** The legacy Chat dock document: the model-less mount's, and adoption's source. */
 export function createAmbientChatDockPaneDocument(): WorkspacePaneHostDocumentV1 {
-  return createRegionPaneHostDocument(AMBIENT_CHAT_DOCK_DOCUMENT_ID, ['chat']);
+  const document = createRegionPaneHostDocument(AMBIENT_CHAT_DOCK_DOCUMENT_ID, [
+    'chat',
+  ]);
+  // Chat's occurrence needs no context, so this is a code-owned constant.
+  if (!document) throw new Error('Invalid built-in ambient Chat dock document');
+  return document;
 }
 
 /**
@@ -209,10 +227,10 @@ export function adoptLegacyChatDockDocument(
       ),
     );
     if (legacy === null) return false;
-    const chat = regionSurfacePane('chat');
+    const chat = regionSurfacePane('chat')?.instance(PROJECTLESS_CONTEXT);
     if (!chat) return false;
     const restored = restoreWorkspacePaneHostDocument(JSON.parse(legacy), [
-      chat.instance,
+      chat,
     ]).document;
     if (!restored || restored.id !== AMBIENT_CHAT_DOCK_DOCUMENT_ID)
       return false;
@@ -226,27 +244,47 @@ export function adoptLegacyChatDockDocument(
 
 /**
  * Admission for a persisted pane (the reload path): only the canonical pane
- * of a surface in `occupants` passes, so a region document a previous build
- * persisted with another surface's pane — or a stale one after a swap moved
- * that surface elsewhere — restores as the current occupant's baseline rather
- * than rendering a pane the region does not hold. Returns a parsed instance
- * rather than the untrusted persisted object: a cast would let an unparsed
- * candidate alias straight into the host document.
+ * of a surface in `occupants`, bound as the dock binds it, passes — so a
+ * region document a previous build persisted with another surface's pane, or
+ * a stale one after a swap moved that surface elsewhere, restores as the
+ * current occupant's baseline rather than rendering a pane the region does
+ * not hold. Returns a parsed instance rather than the untrusted persisted
+ * object: a cast would let an unparsed candidate alias straight into the
+ * host document. (A persisted coding pane bound to ANOTHER project under the
+ * dock's current one never reaches this: it shares the derived instance's id
+ * and the catalog match re-binds it to the dock's project first.)
  */
 function admitRegionPane(
   candidate: unknown,
   occupants: readonly string[],
+  context: RegionPaneContext,
 ): WorkspacePaneInstance | null {
   const instance = parseWorkspacePaneInstance(candidate);
-  return instance && isRegionPane(instance, occupants) ? instance : null;
+  return instance && isRegionPane(instance, occupants, context)
+    ? instance
+    : null;
 }
 
+/**
+ * Whether `instance` is a pane this region holds, as this dock binds it
+ * (#2047): the surface must be in `occupants` and the instance must bind the
+ * project the dock's context binds — an unbound pane (Chat, Activity) binds
+ * none on both sides; a coding pane opened for another project, or opened
+ * while the dock has no project, is refused.
+ */
 function isRegionPane(
   instance: WorkspacePaneInstance,
   occupants: readonly string[],
+  context: RegionPaneContext,
 ): boolean {
   const surfaceId = regionSurfaceOfPane(instance);
-  return surfaceId !== null && occupants.includes(surfaceId);
+  if (surfaceId === null || !occupants.includes(surfaceId)) return false;
+  const canonical = regionSurfacePane(surfaceId)?.instance(context);
+  return (
+    canonical !== undefined &&
+    canonical !== null &&
+    canonical.boundContext?.projectId === instance.boundContext?.projectId
+  );
 }
 
 export type RenderChatPane = (
@@ -346,12 +384,15 @@ export function RegionPaneHost({
       ? region.occupant
       : panes[0];
   const documentId = regionPaneHostDocumentId(regionId);
+  // Part A of #2047: the host binds no project yet; Part B resolves the
+  // dock's active project here.
+  const context = useMemo<RegionPaneContext>(() => PROJECTLESS_CONTEXT, []);
   const document = useMemo(
     () =>
       panes.length
-        ? createRegionPaneHostDocument(documentId, panes, selected)
+        ? createRegionPaneHostDocument(documentId, panes, selected, context)
         : null,
-    [documentId, panes, selected],
+    [context, documentId, panes, selected],
   );
   // Before the inner host's first read of the region key (its controller
   // hydrates in its own state initialiser), so the adopted or reconciled
@@ -371,7 +412,7 @@ export function RegionPaneHost({
     string | null
   >(null);
   const selectedInstanceId = selected
-    ? regionSurfacePane(selected)?.instance.instanceId
+    ? regionSurfacePane(selected)?.instanceId
     : undefined;
   useEffect(() => {
     if (!openAction || !selectedInstanceId || liveActiveInstanceId === null)
@@ -389,7 +430,7 @@ export function RegionPaneHost({
           ? [
               {
                 surfaceId,
-                instanceId: pane.instance.instanceId,
+                instanceId: pane.instanceId,
                 title: model?.surfaces.get(surfaceId)?.title ?? surfaceId,
               },
             ]
@@ -464,9 +505,11 @@ export function RegionPaneHost({
               // the model is not a navigation — and never reads it.
               navigationSelection={false}
               admitRestoredInstance={(candidate) =>
-                admitRegionPane(candidate, panes)
+                admitRegionPane(candidate, panes, context)
               }
-              admitOpenInstance={(instance) => isRegionPane(instance, panes)}
+              admitOpenInstance={(instance) =>
+                isRegionPane(instance, panes, context)
+              }
               onOpenActionChange={setOpenAction}
               onDocumentChange={(live) =>
                 setLiveActiveInstanceId(live.activeInstanceId)

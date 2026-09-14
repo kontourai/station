@@ -20,12 +20,25 @@ import {
   AMBIENT_CHAT_DOCK_DOCUMENT_ID,
   adoptLegacyChatDockDocument,
   createAmbientChatDockPaneDocument,
-  createRegionPaneHostDocument,
+  createRegionPaneHostDocument as deriveRegionPaneHostDocument,
   RegionPaneHost,
   reconcileRegionPaneHostDocument,
   regionPaneHostDocumentId,
 } from '../RegionPaneHost';
 import { workspacePaneHostStorageKey } from '../workspacePaneHostStorage';
+
+/**
+ * The derivation for a region whose panes need no context (Chat, Activity):
+ * never null for those, so the tests below read it as a document. The null
+ * case — a region of coding panes with no project — is asserted by name.
+ */
+function createRegionPaneHostDocument(
+  ...args: Parameters<typeof deriveRegionPaneHostDocument>
+) {
+  const document = deriveRegionPaneHostDocument(...args);
+  if (!document) throw new Error('a context-free region derives a document');
+  return document;
+}
 
 vi.mock('../../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({
@@ -210,6 +223,51 @@ test('a region host document is the region’s; the model-less mount keeps the l
   expect(() => createRegionPaneHostDocument('left', ['home'])).toThrow(
     /no built-in pane/,
   );
+});
+
+/**
+ * #2047: a coding pane is the dock's PROJECT's. With a project the derived
+ * instance binds it (and no layout); with none the pane has no instance —
+ * left out of the document beside Chat, and no document at all alone — and
+ * the selection falls back to a pane that exists. Reverting the factory to a
+ * constant (`instance: ...`) cannot typecheck; reverting `flatMap` to `map`
+ * with a null instance fails the `createWorkspacePaneHostBaselineDocument`
+ * throw assertion below as a throw where an omission is expected.
+ */
+test('a coding surface derives the dock project’s instance, and none without a project', () => {
+  const bound = createRegionPaneHostDocument(
+    'right',
+    ['chat', 'coding:terminal'],
+    'coding:terminal',
+    { projectId: 'project-uuid' },
+  );
+  expect(bound.instances.map((i) => i.descriptorId)).toEqual([
+    'pane:builtin:chat',
+    'pane:builtin:coding:terminal',
+  ]);
+  expect(bound.instances[1]?.boundContext).toEqual({
+    projectId: 'project-uuid',
+    sourceId: 'builtin:workspace-coding-terminal',
+  });
+  expect(bound.activeInstanceId).toBe('workspace-coding-terminal');
+
+  const unbound = createRegionPaneHostDocument(
+    'right',
+    ['chat', 'coding:terminal'],
+    'coding:terminal',
+    { projectId: null },
+  );
+  expect(unbound.instances.map((i) => i.descriptorId)).toEqual([
+    'pane:builtin:chat',
+  ]);
+  // The selected surface has no instance here: the document's active pane is
+  // one it holds, not a dangling id the host would fail to mount.
+  expect(unbound.activeInstanceId).toBe('workspace-chat');
+  expect(
+    deriveRegionPaneHostDocument('right', ['coding:terminal'], undefined, {
+      projectId: null,
+    }),
+  ).toBeNull();
 });
 
 /**

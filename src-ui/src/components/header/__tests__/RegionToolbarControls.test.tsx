@@ -975,7 +975,10 @@ describe('RegionToolbarControls', () => {
     ]);
   });
 
-  test('Home registers no chord', () => {
+  test('Home and the catalog-only surfaces register no chord', () => {
+    // #2047: the three coding surfaces are `exposure: 'catalog'` and carry no
+    // `shortcut`; the exact set below is what keeps a chord from arriving
+    // with a registry entry unnoticed.
     render(<RegionToolbarControls />);
     expect([...harness.shortcuts.keys()].sort()).toEqual([
       'activity.toggle',

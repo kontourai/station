@@ -262,7 +262,7 @@ describe('known Workspace Pane declarations', () => {
     );
   });
 
-  test('the only known declaration claiming docked is Chat, the one that is a registered shell surface (#928)', () => {
+  test('the known declarations claiming docked are exactly Chat and the three coding panes, the registered shell surfaces (#928, #2047)', () => {
     // `docked` means "may occupy a shell region as a registered surface".
     // The UI pins the claim over the built-in descriptor constants
     // (`src-ui/src/__tests__/docked-capability-derivation.test.ts`); this
@@ -270,11 +270,17 @@ describe('known Workspace Pane declarations', () => {
     // that scan cannot see (e.g. the flow-run-console preview). A new entry
     // here claiming `docked` must also be registered in
     // `REGION_SURFACE_REGISTRY`, or the claim is a label nothing derives.
+    // Declaration order, so a reordering here is visible too.
     const claimingDocked = KNOWN_WORKSPACE_PANE_DECLARATIONS.filter(
       ({ descriptor }) =>
         descriptor.placement.supportedRegions.includes('docked'),
     ).map(({ descriptor }) => descriptor.id);
-    expect(claimingDocked).toEqual(['pane:builtin:chat']);
+    expect(claimingDocked).toEqual([
+      'pane:builtin:chat',
+      'pane:builtin:coding:file-browser',
+      'pane:builtin:coding:diff',
+      'pane:builtin:coding:terminal',
+    ]);
     // The pin has power only if the set it filters is the real one.
     expect(KNOWN_WORKSPACE_PANE_DECLARATIONS.length).toBeGreaterThan(5);
     expect(
