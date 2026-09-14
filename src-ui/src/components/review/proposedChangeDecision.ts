@@ -27,7 +27,7 @@ export type ProposedChangeDecision = 'approve' | 'reject';
  * stay tellable apart — and stay one sentence shape, which is why the surface
  * is a parameter rather than a second literal.
  */
-export function proposedChangeDecisionReason(
+function proposedChangeDecisionReason(
   decision: ProposedChangeDecision,
   surface: string,
 ): string {
