@@ -110,6 +110,15 @@ export interface CaptureFixture {
   height?: number;
 }
 
+/**
+ * A capture answer. `capturedAt` defaults to the CLOCK, not to a written-down
+ * instant: the pane decorates a frame past a 30-second threshold and adds a
+ * date once the frame is not from the pane's own day, so any literal here is
+ * a fixture that changes meaning on a calendar date — it was "from today"
+ * when it was written and is a dated, stale frame from the next day on. A
+ * case that needs a specific age passes its own `capturedAt`; the default is
+ * a frame that has just been taken.
+ */
 export function captureBody(fixture: CaptureFixture = {}) {
   const platform = fixture.platform ?? 'ios';
   return {
@@ -121,7 +130,7 @@ export function captureBody(fixture: CaptureFixture = {}) {
         fixture.deviceId ??
         (platform === 'ios' ? IOS_DEVICE_ID : ANDROID_DEVICE_ID),
     },
-    capturedAt: fixture.capturedAt ?? '2026-09-14T10:00:05.000Z',
+    capturedAt: fixture.capturedAt ?? new Date().toISOString(),
     mimeType: 'image/png',
     width: fixture.width ?? 1179,
     height: fixture.height ?? 2556,

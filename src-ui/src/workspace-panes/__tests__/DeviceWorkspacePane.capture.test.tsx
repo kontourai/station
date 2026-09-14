@@ -79,7 +79,6 @@ describe('capturing a frame (#1969)', () => {
           width: 2556,
           height: 1179,
           captureId: 'capture-2',
-          capturedAt: '2026-09-14T10:00:09.000Z',
         }),
       ],
     });
