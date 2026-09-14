@@ -29,6 +29,12 @@ import { classifyMarkdownLink } from './markdownLinkTarget';
  * - every anchor outside a conversation (no `MarkdownLinkContext` provider),
  *   which stays exactly the anchor the markdown renderer built.
  *
+ * What it does touch even when it can do nothing with it: a repo-relative
+ * path with no dock to hold it and no layout route to send it to. That click
+ * is refused rather than followed — see the branch at the bottom of the
+ * handler for why letting a relative href resolve against Station's own
+ * origin is a loss on both hosts.
+ *
  * Keyboard activation takes the dock route, because an anchor's Enter
  * dispatches a primary unmodified click: the link is reachable and
  * activatable, and what it activates is the pane, not a webview navigation to
@@ -99,9 +105,20 @@ export function ChatMarkdownAnchor({
       link.openPathInMain?.(target.path, target.lineRange);
       return;
     }
-    if (!link.openPathInMain) return;
+    // Nowhere to put it: no dock that may hold it and no layout route. The
+    // click is refused on BOTH hosts rather than followed, because following
+    // it is not "the anchor's default behaviour" in any useful sense — a
+    // repo-relative href names a file in a checkout, and resolved against
+    // Station's own origin it is a route Station does not have. On Tauri that
+    // replaces the running application and loses every open conversation
+    // (`openExternalLink.ts`, the failure the external branch above exists to
+    // prevent); on the web it is a same-origin navigation to a Station
+    // route-miss, dropping the conversation's query pointer, recoverable only
+    // by Back. A click that does nothing is worse than a click that works and
+    // better than either of those, and it is the same on both hosts, which is
+    // one behaviour to reason about instead of two wrong ones.
     event.preventDefault();
-    link.openPathInMain(target.path, target.lineRange);
+    link.openPathInMain?.(target.path, target.lineRange);
   };
   return (
     <a {...props} href={href} onClick={handleClick}>

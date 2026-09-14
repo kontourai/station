@@ -204,6 +204,32 @@ describe('a link in a chat message (#2049)', () => {
     expect(openNativeExternalLink).not.toHaveBeenCalled();
   });
 
+  /**
+   * Review H3. The branch with nowhere to send a path — no dock that may hold
+   * it, no `openPathInMain` — used to `return` without preventing the
+   * default, so the anchor navigated. On Tauri that replaces the running
+   * application; on the web it is a same-origin route-miss that drops the
+   * conversation pointer. Dropping the `preventDefault()` reds both hosts
+   * here, and re-adding a `if (!link.openPathInMain) return;` guard above it
+   * reds them the same way.
+   */
+  test('a path with nowhere to go is refused, not followed, on either host', () => {
+    const nowhere = {
+      ...CONVERSATION,
+      dockProjectSlug: 'beta',
+      openPathInMain: null,
+    };
+    for (const host of [false, true]) {
+      tauri = host;
+      const anchor = mount('src/app.ts#L4', nowhere);
+      expect(click(anchor), `tauri=${host}`).toBe(false);
+      cleanup();
+    }
+    expect(openFilePreviewInRegion).not.toHaveBeenCalled();
+    expect(openPathInMain).not.toHaveBeenCalled();
+    expect(openNativeExternalLink).not.toHaveBeenCalled();
+  });
+
   test('with no region model a path takes the main route and a review the host', () => {
     model = null;
     tauri = true;

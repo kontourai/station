@@ -35,7 +35,9 @@ export interface MarkdownLinkContextValue {
    * The route a file preview took before #2049 and still takes wherever a
    * dock pane is not the answer: navigate `main` to the session's coding
    * layout with an open-preview intent. Null when the session has no coding
-   * layout to navigate to, which is what makes a path a plain anchor there.
+   * layout to navigate to — and a path with neither a dock pane nor this
+   * route is REFUSED rather than left to the anchor's default, on both hosts
+   * (`ChatMarkdownAnchor`, the branch at the bottom of its handler).
    */
   openPathInMain:
     | ((path: string, lineRange?: WorkspaceFilePreviewLineRange) => void)
