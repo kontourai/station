@@ -17,8 +17,16 @@
  */
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import type { LayoutOwner } from '@kontourai/station-contracts/layout';
-import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import {
+  InvalidLayoutOwnerError,
+  type LayoutConfig,
+  type LayoutOwner,
+  layoutOwner,
+} from '@kontourai/station-contracts/layout';
+import {
+  isPrincipalRef,
+  type PrincipalRef,
+} from '@kontourai/station-contracts/principal';
 import { PATH_SEGMENT_PATTERN } from '../knowledge-index/path-safety.js';
 
 /** How much of the readable prefix a principal directory name keeps. */
@@ -44,14 +52,19 @@ const PRINCIPAL_KEY_DIGEST_LENGTH = 16;
  *
  * `display` never participates: it is cosmetic and explicitly must not key a
  * store (`packages/contracts/src/principal.ts`).
+ *
+ * The principal is validated with `isPrincipalRef` before anything is derived
+ * from it: this function turns a caller-supplied value into a filesystem path
+ * and into error text, so an unvalidated one reached both (#2060 review
+ * LOW-5, where a NUL-carrying id was accepted and echoed back).
  */
 export function principalLayoutStorageKey(principal: PrincipalRef): string {
-  const id = principal.id;
-  if (typeof id !== 'string' || id.trim().length === 0) {
-    throw new TypeError(
-      'principal layout key requires a non-empty principal id',
+  if (!isPrincipalRef(principal)) {
+    throw new InvalidLayoutOwnerError(
+      'a principal owner must carry a well-formed PrincipalRef',
     );
   }
+  const id = principal.id;
   const digest = createHash('sha256')
     .update(id, 'utf8')
     .digest('hex')
@@ -62,11 +75,12 @@ export function principalLayoutStorageKey(principal: PrincipalRef): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, PRINCIPAL_KEY_LABEL_MAX)
     .replace(/-+$/g, '');
-  // An id whose characters are all replaced leaves nothing to read; the key
-  // must still start with an alphanumeric to be a safe path segment.
-  const key = label.length > 0 ? `${label}-${digest}` : `principal-${digest}`;
+  // A validated id is always `<kind>:…`, so the excerpt always begins with a
+  // letter; the pattern check is the backstop that would catch that ceasing
+  // to hold rather than an assumption stated in a comment.
+  const key = `${label}-${digest}`;
   if (!PATH_SEGMENT_PATTERN.test(key)) {
-    throw new TypeError(
+    throw new InvalidLayoutOwnerError(
       `principal layout key ${JSON.stringify(key)} is not a safe path segment`,
     );
   }
@@ -95,6 +109,34 @@ export function layoutOwnerDirectory(
     case 'instance':
       return join(projectHomeDir, 'layouts', 'instance');
   }
+}
+
+/**
+ * The exact record a project-owned Layout persists: `projectSlug`, never
+ * `owner`. A caller may legitimately hand the adapter `{kind:'project'}` —
+ * `layoutOwner` accepts it — but persisting it would change the bytes of a
+ * project record and, if `projectSlug` were omitted, write a record an older
+ * build's schema rejects, which makes that build's whole layout listing throw
+ * (#2060 review MED-3). Normalizing at the write boundary is what keeps the
+ * on-disk shape a property of the store rather than of each caller.
+ *
+ * Key order is preserved for a record that already carries the right
+ * `projectSlug`, so a re-save is byte-identical.
+ */
+export function normalizeProjectLayoutRecord(
+  record: LayoutConfig,
+  projectSlug: string,
+): LayoutConfig {
+  const owner = layoutOwner(record);
+  if (owner.kind !== 'project' || owner.projectSlug !== projectSlug) {
+    throw new InvalidLayoutOwnerError(
+      `record owned by ${describeLayoutOwner(owner)} is not a layout of project '${projectSlug}'`,
+    );
+  }
+  const { owner: _owner, ...withoutOwner } = record;
+  return withoutOwner.projectSlug === projectSlug
+    ? withoutOwner
+    : { ...withoutOwner, projectSlug };
 }
 
 /** Whether two owners name the same owner. Cosmetic `display` is ignored. */

@@ -47,7 +47,15 @@ export interface DocumentRecord {
 }
 
 export interface LayoutAgentReference {
-  projectSlug: string;
+  /**
+   * Who owns the referencing Layout. Required: the sweep covers non-project
+   * roots too (#2060), and a reference that reports only a project slug
+   * cannot name a Board at all — which is how a Board's agent reference
+   * became invisible to `deleteAgent`.
+   */
+  owner: LayoutOwner;
+  /** Present for a project-owned reference only; mirrors `owner`. */
+  projectSlug?: string;
   layoutSlug: string;
 }
 

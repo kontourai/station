@@ -29,6 +29,7 @@ import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { FileStorageAdapter } from '../file-storage-adapter.js';
 import { principalLayoutStorageKey } from '../layout-owner-storage.js';
+import { FileStorageConflictError } from '../project-file-transactions.js';
 
 const NOW = '2026-01-01T00:00:00.000Z';
 
@@ -247,6 +248,129 @@ describe('owner-scoped layout storage', () => {
     );
   });
 
+  test('a second create for the same owner and slug is refused, not absorbed', async () => {
+    // MED-1. An upsert here silently replaced the record AND its immutable
+    // id, while the project path refuses a duplicate by name. `listOwnedLayouts`
+    // proves the first record survived — a refusal that still overwrote would
+    // be indistinguishable from this assertion without it.
+    const owner = { kind: 'principal', principal: alice } as const;
+    await adapter.createOwnedLayout(owner, board());
+    await expect(
+      adapter.createOwnedLayout(owner, { ...board(), id: 'board-second' }),
+    ).rejects.toThrow(
+      "Layout 'my-board' already exists for principal 'human:oidc:alice'",
+    );
+    await expect(
+      adapter.createOwnedLayout(owner, { ...board(), id: 'board-second' }),
+    ).rejects.toThrow(FileStorageConflictError);
+    expect(adapter.getOwnedLayout(owner, 'my-board').id).toBe('board-my-board');
+    expect(adapter.listOwnedLayouts(owner)).toHaveLength(1);
+  });
+
+  test('a project record never persists owner, and always persists projectSlug', async () => {
+    // MED-3, pinned at the STORAGE layer: a caller may legitimately hand the
+    // adapter an explicit project owner (`layoutOwner` accepts it), and
+    // persisting it would change a project record's bytes — and, with
+    // `projectSlug` omitted, write a record an older build's schema rejects,
+    // which makes that build's whole layout listing throw.
+    await adapter.createLayout('acme', {
+      ...projectLayout(),
+      projectSlug: undefined,
+      owner: { kind: 'project', projectSlug: 'acme' },
+    } as LayoutConfig);
+    const persisted = JSON.parse(
+      readFileSync(
+        join(home, 'projects', 'acme', 'layouts', 'coding.json'),
+        'utf8',
+      ),
+    );
+    expect(persisted.owner).toBeUndefined();
+    expect(persisted.projectSlug).toBe('acme');
+    expect(Object.keys(persisted).sort()).toEqual([
+      'config',
+      'createdAt',
+      'id',
+      'name',
+      'projectSlug',
+      'slug',
+      'type',
+      'updatedAt',
+    ]);
+
+    // The same normalization on the update path.
+    const revision = adapter.layoutRevision('acme', 'coding');
+    await revision.replace({
+      ...revision.value,
+      name: 'Renamed',
+      owner: { kind: 'project', projectSlug: 'acme' },
+    });
+    const updated = JSON.parse(
+      readFileSync(
+        join(home, 'projects', 'acme', 'layouts', 'coding.json'),
+        'utf8',
+      ),
+    );
+    expect(updated.owner).toBeUndefined();
+    expect(updated.projectSlug).toBe('acme');
+    expect(updated.name).toBe('Renamed');
+  });
+
+  test('findLayoutsUsingAgent sees a Board referencing the agent', async () => {
+    // MED-4. `deleteAgent` refuses only when this sweep reports a dependent,
+    // so a root it cannot reach is an agent deleted out from under a Board.
+    await adapter.createLayout('acme', {
+      ...projectLayout(),
+      config: { defaultAgent: 'claude' },
+    });
+    await adapter.createOwnedLayout(
+      { kind: 'principal', principal: alice },
+      {
+        ...board(),
+        config: { tabs: [{ id: 'a', skills: [{ agent: 'claude' }] }] },
+      },
+    );
+    await adapter.createOwnedLayout(INSTANCE_LAYOUT_OWNER, {
+      ...board('shared'),
+      id: 'instance-1',
+      owner: INSTANCE_LAYOUT_OWNER,
+      config: { availableAgents: ['claude'] },
+    });
+
+    expect(adapter.findLayoutsUsingAgent('claude')).toEqual([
+      {
+        owner: { kind: 'project', projectSlug: 'acme' },
+        projectSlug: 'acme',
+        layoutSlug: 'coding',
+      },
+      { owner: INSTANCE_LAYOUT_OWNER, layoutSlug: 'shared' },
+      {
+        owner: { kind: 'principal', principal: alice },
+        layoutSlug: 'my-board',
+      },
+    ]);
+    // An agent nothing names is still reported as unreferenced, so the sweep
+    // is not simply returning every layout it can see.
+    expect(adapter.findLayoutsUsingAgent('codex')).toEqual([]);
+  });
+
+  test('an owned-layout read refuses a principal that is not well formed', async () => {
+    // LOW-5 — the principal becomes a path and error text before anything
+    // validates it, on every one of the three read/write entry points.
+    const invalid = {
+      kind: 'principal',
+      principal: { id: 'human:oidc:al\u0000ice', kind: 'human', display: 'A' },
+    } as never;
+    expect(() => adapter.listOwnedLayouts(invalid)).toThrow(
+      'well-formed PrincipalRef',
+    );
+    expect(() => adapter.getOwnedLayout(invalid, 'my-board')).toThrow(
+      'well-formed PrincipalRef',
+    );
+    await expect(
+      adapter.deleteOwnedLayout(invalid, 'my-board'),
+    ).rejects.toThrow('well-formed PrincipalRef');
+  });
+
   test('reports a missing owned layout as not found', () => {
     expect(() =>
       adapter.getOwnedLayout({ kind: 'principal', principal: alice }, 'nope'),
@@ -285,13 +409,19 @@ describe('principalLayoutStorageKey', () => {
     ).toBe(principalLayoutStorageKey(humanPrincipal('oidc', 'alice', 'A. L.')));
   });
 
-  test('an id with no readable characters still yields a safe segment', () => {
-    const key = principalLayoutStorageKey({
-      id: '...',
-      kind: 'human',
-      display: 'Odd',
-    });
-    expect(key).toMatch(/^principal-[0-9a-f]{16}$/);
+  test('refuses a principal that is not a well-formed PrincipalRef', () => {
+    // The key becomes a filesystem path AND error text, so an unvalidated
+    // value reached both — a NUL-carrying id was accepted and echoed back.
+    for (const invalid of [
+      { id: 'human:oidc:al\u0000ice', kind: 'human', display: 'Alice' },
+      { id: '...', kind: 'human', display: 'Odd' },
+      { id: 'human:oidc:alice', kind: 'human', display: '   ' },
+      { id: 'human:oidc:alice', kind: 'wizard', display: 'Alice' },
+    ] as never[]) {
+      expect(() => principalLayoutStorageKey(invalid)).toThrow(
+        'well-formed PrincipalRef',
+      );
+    }
   });
 
   test('a long subject is truncated without losing identity', () => {

@@ -15,6 +15,23 @@ import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { FileStorageAdapter } from './file-storage-adapter.js';
 import { runOrchestrationEventMigration } from './migrations/003-orchestration-events.js';
 
+/** Owner-scoped layout stores, never the pre-projects legacy format (#2060). */
+const RESERVED_LAYOUT_ROOTS = new Set(['personal', 'instance']);
+
+/**
+ * The pre-projects `layouts/<name>/layout.json` shape: a `LayoutDefinition`,
+ * which declares `tabs` at the top level and has no record identity.
+ */
+function isLegacyLayoutDefinition(value: unknown): value is LayoutDefinition {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  if (!Array.isArray(candidate.tabs)) return false;
+  if (typeof candidate.slug !== 'string' || candidate.slug.length === 0) {
+    return false;
+  }
+  return candidate.owner === undefined && candidate.projectSlug === undefined;
+}
+
 const BUILTIN_VECTOR_DB_ID = 'lancedb-builtin';
 const BUILTIN_VECTOR_DB_NAME = 'Station Built-In';
 
@@ -57,19 +74,32 @@ export async function runStartupMigrations(
   if (existsSync(layoutsDir)) {
     for (const entry of readdirSync(layoutsDir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
+      // `layouts/personal` and `layouts/instance` are the owner-scoped stores
+      // (#2060), not the pre-projects layout format this migration reads. A
+      // home with Boards and no projects is a valid CURRENT state, and
+      // sweeping those roots migrated live records into a phantom `default`
+      // project — dropping everything the legacy shape has no field for.
+      if (RESERVED_LAYOUT_ROOTS.has(entry.name)) continue;
       const layoutFile = join(layoutsDir, entry.name, 'layout.json');
       if (!existsSync(layoutFile)) continue;
+      let parsed: unknown;
       try {
-        legacyLayoutDefinitions.push(
-          JSON.parse(readFileSync(layoutFile, 'utf-8')),
-        );
+        parsed = JSON.parse(readFileSync(layoutFile, 'utf-8'));
       } catch (e) {
         console.debug(
           'Failed to parse layout file during migration:',
           layoutFile,
           e,
         );
+        continue;
       }
+      // Require the legacy shape rather than trusting the path: a
+      // `LayoutDefinition` declares `tabs`, and an owner-scoped
+      // `LayoutConfig` declares `owner`/`projectSlug` and keeps its tabs
+      // inside `config`. Migrating the latter would rewrite a record that is
+      // already in its final form.
+      if (!isLegacyLayoutDefinition(parsed)) continue;
+      legacyLayoutDefinitions.push(parsed);
     }
   }
 

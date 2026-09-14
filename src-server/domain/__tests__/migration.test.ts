@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -82,6 +83,73 @@ describe('runStartupMigrations', () => {
         join(tempDir, 'projects', 'default', 'layouts', 'coding.json'),
       ),
     ).toBe(true);
+  });
+
+  test('owner-scoped layout roots are not swept into a phantom Default project', async () => {
+    // #2060 review MED-2. A home with Boards and no projects is a valid
+    // CURRENT state, not a pre-projects home. Sweeping `layouts/instance`
+    // migrated a live record into `projects/default` and dropped everything
+    // the legacy `LayoutDefinition` shape has no field for.
+    tempDir = mkdtempSync(join(tmpdir(), 'migration-owned-layouts-'));
+    const instanceDir = join(tempDir, 'layouts', 'instance');
+    const personalDir = join(
+      tempDir,
+      'layouts',
+      'personal',
+      'human-oidc-alice-0123456789abcdef',
+    );
+    mkdirSync(instanceDir, { recursive: true });
+    mkdirSync(personalDir, { recursive: true });
+
+    // Named `layout.json` on purpose: that is the one filename the legacy
+    // sweep looks for, and a Layout whose slug is `layout` produces it.
+    const instanceRecord = {
+      id: 'instance-1',
+      owner: { kind: 'instance' },
+      slug: 'layout',
+      type: 'coding',
+      name: 'Shared',
+      config: { tabs: [{ id: 'a' }, { id: 'b' }] },
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const instancePath = join(instanceDir, 'layout.json');
+    const instanceBytes = JSON.stringify(instanceRecord);
+    writeFileSync(instancePath, instanceBytes, 'utf8');
+    const personalPath = join(personalDir, 'layout.json');
+    writeFileSync(personalPath, instanceBytes, 'utf8');
+
+    await runStartupMigrations(tempDir);
+
+    expect(existsSync(join(tempDir, 'projects'))).toBe(false);
+    expect(readFileSync(instancePath, 'utf8')).toBe(instanceBytes);
+    expect(readFileSync(personalPath, 'utf8')).toBe(instanceBytes);
+  });
+
+  test('a layout directory holding a record in its final form is left alone', async () => {
+    // The skip is keyed on the reserved root names AND on the shape, so a
+    // record that is already a `LayoutConfig` is not migrated wherever it sits.
+    tempDir = mkdtempSync(join(tmpdir(), 'migration-shape-'));
+    const dir = join(tempDir, 'layouts', 'somewhere');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'layout.json'),
+      JSON.stringify({
+        id: 'layout-1',
+        projectSlug: 'acme',
+        slug: 'coding',
+        type: 'coding',
+        name: 'Coding',
+        config: { tabs: [] },
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      }),
+      'utf8',
+    );
+
+    await runStartupMigrations(tempDir);
+
+    expect(existsSync(join(tempDir, 'projects'))).toBe(false);
   });
 
   test('a home with an existing projects dir is never mutated, regardless of layouts content', async () => {

@@ -22,6 +22,7 @@ import {
 } from '../knowledge-store/adapters/shared/observation-file.js';
 import type { KnowledgeRootObservation } from '../knowledge-store/knowledge-record-observation.js';
 import {
+  FileWriteConflictError,
   mutateJsonFile,
   readJsonFile,
   writeJsonFile,
@@ -31,6 +32,7 @@ import {
   deleteProjectScopedRecord,
   deleteStoredRecord,
   findStoredRecordAcrossProjects,
+  layoutConfigReferencesAgent,
   listSortedConversations,
   listStoredRecords,
   saveProjectScopedRecord,
@@ -48,8 +50,10 @@ import {
   describeLayoutOwner,
   isSameLayoutOwner,
   layoutOwnerDirectory,
+  normalizeProjectLayoutRecord,
 } from './layout-owner-storage.js';
 import {
+  FileStorageConflictError,
   FileStorageNotFoundError,
   type ProjectFileTransactionFaults,
   ProjectFileTransactions,
@@ -191,7 +195,10 @@ export class FileStorageAdapter implements IStorageAdapter {
             'layout identity does not match its Project revision',
           );
         }
-        await stored.createLayout(layoutSlug, parsed);
+        await stored.createLayout(
+          layoutSlug,
+          normalizeProjectLayoutRecord(parsed, slug),
+        );
       },
     });
   }
@@ -304,7 +311,7 @@ export class FileStorageAdapter implements IStorageAdapter {
         ) {
           throw new Error('layout id, owner, and slug are immutable');
         }
-        await stored.replace(parsed);
+        await stored.replace(normalizeProjectLayoutRecord(parsed, projectSlug));
       },
       remove: () => stored.remove(),
     });
@@ -410,7 +417,22 @@ export class FileStorageAdapter implements IStorageAdapter {
         `layout owned by ${describeLayoutOwner(declared)} cannot be written under ${describeLayoutOwner(owner)}`,
       );
     }
-    await writeJsonFile(this.#ownedLayoutPath(owner, parsed.slug), parsed);
+    try {
+      // `expectedFingerprint: null` is the create: it publishes only if no
+      // record is there, under the same mutation lock, so a concurrent second
+      // create loses rather than silently replacing the first (and with it the
+      // record's immutable id). The project path refuses the same way.
+      await writeJsonFile(this.#ownedLayoutPath(owner, parsed.slug), parsed, {
+        expectedFingerprint: null,
+      });
+    } catch (error) {
+      if (error instanceof FileWriteConflictError) {
+        throw new FileStorageConflictError(
+          `Layout '${parsed.slug}' already exists for ${describeLayoutOwner(owner)}`,
+        );
+      }
+      throw error;
+    }
   }
 
   async deleteOwnedLayout(
@@ -449,13 +471,68 @@ export class FileStorageAdapter implements IStorageAdapter {
   }
 
   findLayoutsUsingAgent(agentSlug: string): LayoutAgentReference[] {
-    return buildLayoutAgentReferences(
-      this.listProjects(),
-      (projectSlug) => this.listLayouts(projectSlug),
-      (projectSlug, layoutSlug) => this.getLayout(projectSlug, layoutSlug),
-      agentSlug,
-      (a, b) => a === b,
-    );
+    // Every layout root, not just `projects/` (#2060 review MED-4): a Board
+    // referencing an agent is still a reason not to delete that agent, and a
+    // sweep that cannot see one reports "no dependents" — a delete guard
+    // answering from an incomplete corpus.
+    return [
+      ...buildLayoutAgentReferences(
+        this.listProjects(),
+        (projectSlug) => this.listLayouts(projectSlug),
+        (projectSlug, layoutSlug) => this.getLayout(projectSlug, layoutSlug),
+        agentSlug,
+        (a, b) => a === b,
+      ),
+      ...this.#listNonProjectLayouts()
+        .filter((layout) =>
+          layoutConfigReferencesAgent(layout.config, agentSlug),
+        )
+        .map((layout) => ({
+          owner: layoutOwner(layout),
+          layoutSlug: layout.slug,
+        })),
+    ];
+  }
+
+  /**
+   * Every principal- and instance-owned record on disk, in a stable order.
+   * A record whose own owner does not place it in the directory it was found
+   * in is skipped rather than reported: it is not this owner's layout, and
+   * `getOwnedLayout` refuses it by name for whoever asks for it directly.
+   */
+  #listNonProjectLayouts(): LayoutConfig[] {
+    const root = join(this.projectHomeDir, 'layouts');
+    const directories = [
+      join(root, 'instance'),
+      ...readDirectoryNames(join(root, 'personal'))
+        .sort()
+        .map((key) => join(root, 'personal', key)),
+    ];
+    const layouts: LayoutConfig[] = [];
+    for (const directory of directories) {
+      for (const file of readDirectoryNames(directory).sort()) {
+        if (!file.endsWith('.json')) continue;
+        const layoutSlug = file.slice(0, -'.json'.length);
+        const raw = readJsonFile<unknown>(
+          join(directory, file),
+          MISSING_LAYOUT,
+          {
+            maxBytes: 2 * 1024 * 1024,
+            label: 'layout record',
+          },
+        );
+        if (raw === MISSING_LAYOUT) continue;
+        const parsed = parseLayoutConfig(raw);
+        const owner = layoutOwner(parsed);
+        if (parsed.slug !== layoutSlug) continue;
+        if (
+          join(layoutOwnerDirectory(this.projectHomeDir, owner)) !== directory
+        )
+          continue;
+        layouts.push(parsed);
+      }
+    }
+    return layouts;
   }
 
   private get providersPath(): string {
