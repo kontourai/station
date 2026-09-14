@@ -1,6 +1,7 @@
 import type {
   MobileDeviceCapture,
   MobileDeviceSummary,
+  MobileDeviceTarget,
 } from '@kontourai/station-contracts/mobile-device';
 import { isCaptureableMobileDeviceTarget } from '@kontourai/station-sdk/mobile-device';
 import {
@@ -125,6 +126,24 @@ function capturedAtLabel(capturedAt: string, now: number): string {
  */
 const STALE_NOTE =
   'more than 30 seconds old, so it may not be the current screen';
+
+/**
+ * The descriptive target a capture needs, and nothing else.
+ *
+ * React Query retains a mutation's variables in its cache, and the SDK's
+ * domain says what is retained: "a host id, a platform and a device id".
+ * Handing it the whole inventory row would keep `name`, `runtime` and
+ * `booted` there too — no credential, so nothing dangerous, but three fields
+ * the capture never reads and a docblock that stops being true of the value
+ * as well as of the type.
+ */
+function captureTarget(device: MobileDeviceSummary): MobileDeviceTarget {
+  return {
+    hostId: device.hostId,
+    platform: device.platform,
+    deviceId: device.deviceId,
+  };
+}
 
 /**
  * Why this row cannot be captured, or null when it can.
@@ -363,7 +382,7 @@ function DeviceWorkspacePaneSurface({
         <div className="device-pane__actions">
           <Button
             disabled={!canCapture}
-            onClick={() => selected && capture.mutate(selected)}
+            onClick={() => selected && capture.mutate(captureTarget(selected))}
             pending={capture.isPending}
             size="sm"
             variant="primary"
@@ -392,7 +411,7 @@ function DeviceWorkspacePaneSurface({
           isStale={isStale}
           now={now}
           onRefreshInventory={() => void inventory.refetch()}
-          onRetry={() => selected && capture.mutate(selected)}
+          onRetry={() => selected && capture.mutate(captureTarget(selected))}
           outcome={outcome}
           selected={selected}
           selectedReason={selectedReason}

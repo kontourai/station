@@ -71,7 +71,10 @@ export function useMobileDeviceInventoryQuery(
  * Deliberately without `evictSettledVariables` too: the variables are a
  * descriptive `MobileDeviceTarget` — a host id, a platform and a device id —
  * with no credential in them, so the zero-retention escape hatch that exists
- * for write-only secrets would buy nothing here.
+ * for write-only secrets would buy nothing here. The TYPE does not bound what
+ * is retained on its own, because a caller may hand over a structurally wider
+ * row and the cache keeps whatever it was given; the pane therefore builds
+ * the three fields explicitly rather than passing its `MobileDeviceSummary`.
  */
 export function useCaptureMobileDeviceMutation(scope: ApiRequestScope) {
   return useApiMutation<MobileDeviceCapture, MobileDeviceTarget>((target) =>

@@ -278,10 +278,6 @@ export function isCanonicalBuiltinBoardDescriptor(
 }
 
 /**
- * The Agents pane's declaration (#2050), compared field by field like every
- * other built-in.
- */
-/**
  * The Device pane's declaration (#1969), compared field by field like every
  * other built-in — a plugin cannot reach a device host by reusing the
  * renderer name.
@@ -295,6 +291,10 @@ function isCanonicalBuiltinDeviceDescriptor(
   return sameBuiltinDescriptor(descriptor, WORKSPACE_DEVICE_PANE_DESCRIPTOR);
 }
 
+/**
+ * The Agents pane's declaration (#2050), compared field by field like every
+ * other built-in.
+ */
 function isCanonicalBuiltinAgentsDescriptor(
   descriptor: WorkspacePaneDescriptor,
 ): boolean {
