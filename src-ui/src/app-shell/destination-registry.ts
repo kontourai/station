@@ -5,7 +5,6 @@ export type ManagementDestinationId =
   | 'agents'
   | 'guidance'
   | 'registry'
-  | 'review-queue'
   | 'connections'
   | 'plugins'
   | 'activity'
@@ -20,7 +19,6 @@ export type DestinationIconId =
   | 'notifications'
   | 'plugins'
   | 'registry'
-  | 'review'
   | 'schedule'
   | 'activity'
   | 'settings';
@@ -358,23 +356,6 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     palette: { order: 40 },
     managementViewTypes: ['registry'],
     view: { type: 'registry' },
-  },
-  {
-    id: 'review-queue',
-    route: '/review-queue',
-    label: () => 'Review',
-    keywords: ['review', 'queue', 'approvals', 'gates'],
-    icon: 'review',
-    management: { order: 50 },
-    // #2059: the panel row was this destination's ONLY advertised entry
-    // point — it had no palette entry. The design record (D4) says
-    // /review-queue "remains routed and reachable from the palette so no
-    // decision path is orphaned" until the inbox and the Review layout kind
-    // both ship; removing the row without this would have made that false.
-    palette: { order: 45 },
-    managementGroup: 'review-queue',
-    managementViewTypes: ['review-queue'],
-    view: { type: 'review-queue' },
   },
   {
     id: 'plugins',

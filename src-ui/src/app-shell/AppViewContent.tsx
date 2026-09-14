@@ -129,11 +129,6 @@ const RegistryView = lazy(() =>
     default: module.RegistryView,
   })),
 );
-const ReviewQueueView = lazy(() =>
-  import('../views/ReviewQueueView').then((module) => ({
-    default: module.ReviewQueueView,
-  })),
-);
 const ScheduleView = lazy(() =>
   import('../views/ScheduleView').then((module) => ({
     default: module.ScheduleView,
@@ -286,9 +281,6 @@ function AppViewContentBody({
   }
   if (currentView.type === 'registry') {
     return <RegistryView initialTab={currentView.tab} />;
-  }
-  if (currentView.type === 'review-queue') {
-    return <ReviewQueueView />;
   }
   if (currentView.type === 'plugins') {
     return <PluginManagementView onNavigate={onNavigate} />;

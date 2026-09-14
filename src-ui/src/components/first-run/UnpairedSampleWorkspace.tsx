@@ -89,7 +89,7 @@ export function UnpairedSampleWorkspace({
             >
               {
                 {
-                  'review-queue': 'Review',
+                  decisions: 'Decisions',
                   activity: 'Activity',
                   schedule: 'Schedule',
                   'command-palette': 'Find anything',
@@ -171,7 +171,7 @@ export function UnpairedSampleWorkspace({
             {surface?.eyebrow ?? 'Sample'}
           </p>
           <h2>
-            {step.anchor === 'review-queue'
+            {step.anchor === 'notifications'
               ? 'Review the draft'
               : step.anchor === 'activity'
                 ? 'Conversation details'
@@ -179,7 +179,7 @@ export function UnpairedSampleWorkspace({
                   ? 'Weekly digest'
                   : 'Find anything'}
           </h2>
-          {step.anchor === 'review-queue' && (
+          {step.anchor === 'notifications' && (
             <>
               <p>
                 The agent has prepared the digest. You decide whether it is

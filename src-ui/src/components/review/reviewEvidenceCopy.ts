@@ -1,4 +1,5 @@
 import type { ReviewEvidenceUnavailableReason } from '@kontourai/station-contracts/review-evidence';
+import type { SurveyFlowReviewUnavailableReason } from '@kontourai/station-sdk';
 
 /**
  * The operator remedy differs by reason, so the copy names it per project.
@@ -22,4 +23,20 @@ export const REVIEW_UNAVAILABLE_REASON_COPY: Record<
   'lock-unavailable': 'contended — another Station process or a long repair',
   'workspace-unreadable': 'workspace path unreadable',
   'receipts-unreadable': 'receipts unreadable',
+};
+
+/**
+ * Same rule for the Flow-review feed's own per-project unavailability
+ * (archive#3322): a new reason is a type error here until it has its own copy,
+ * rather than silently rendering under the wrong remedy. Moved here from
+ * `ReviewQueueView` (#2065) so the Review layout and the inbox's gap notice
+ * describe one root cause the same way.
+ */
+export const SURVEY_UNAVAILABLE_REASON_COPY: Record<
+  SurveyFlowReviewUnavailableReason,
+  string
+> = {
+  'workspace-unreadable': 'workspace path unreadable',
+  'sessions-unreadable': 'review sessions unreadable',
+  'projection-failed': 'review list could not be built',
 };

@@ -3,13 +3,13 @@ import {
   FullScreenError,
   FullScreenLoader,
   LayoutNavigationProvider,
-  StationHttpError,
   useProjectLayoutQuery,
   useProjectQuery,
 } from '@kontourai/station-sdk';
 import { useWorkspacePaneHostActionsQuery } from '@kontourai/station-sdk/workspace-pane';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { isLayoutRecordAbsent } from '../app-shell/layout-record-absent';
 import { ErrorState } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
 import {
@@ -51,15 +51,10 @@ export function LayoutView({
     error: layoutQueryError,
     refetch: refetchLayout,
   } = useProjectLayoutQuery(projectSlug, layoutSlug);
-  // The 404 the API actually answered. `StationHttpError.status` is the
-  // derivation; the message check is the compatibility tail for a fetcher
-  // that has not been migrated to it (it is what this view read before).
-  const layoutMissing =
-    !layoutLoading &&
-    (layoutQueryError instanceof StationHttpError
-      ? layoutQueryError.status === 404
-      : layoutQueryError instanceof Error &&
-        layoutQueryError.message.toLowerCase().includes('not found'));
+  // The 404 the API actually answered — shared with `ProjectLayoutRenderer`,
+  // which turns on the same answer to substitute an unplaced builtin layout
+  // kind (#2065). See `isLayoutRecordAbsent` for why it is one derivation.
+  const layoutMissing = isLayoutRecordAbsent(layoutQueryError, layoutLoading);
   // A layout that is gone must not stay the restore target for `/`, or the
   // next cold load routes straight back into this not-found state. Done in an
   // effect, not in render: this is a write, and the render that discovered the

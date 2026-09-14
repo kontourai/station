@@ -324,7 +324,7 @@ describe('AttentionHistoryItem — decision kinds', () => {
             path: 'src/index.ts',
             contentKind: 'code',
             sourceRuntime: 'claude',
-            openHref: '/review-queue?change=change-1',
+            openHref: '/projects/campfit/layouts/review?change=change-1',
             source: {
               proposedChangeId: 'change-1',
               projectSlug: 'campfit',
@@ -340,7 +340,7 @@ describe('AttentionHistoryItem — decision kinds', () => {
     );
 
     const link = screen.getByRole('link', { name: 'Open in Review' });
-    expect(link.getAttribute('href')).toBe('/review-queue?change=change-1');
+    expect(link.getAttribute('href')).toBe('/projects/campfit/layouts/review?change=change-1');
     expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
   });
 
@@ -356,7 +356,7 @@ describe('AttentionHistoryItem — decision kinds', () => {
             updatedAt: now,
             projectSlug: 'campfit',
             pendingDecisions: 2,
-            openHref: '/review-queue?review=review-session-1',
+            openHref: '/projects/campfit/layouts/review?review=review-session-1',
             source: {
               reviewSessionRef: 'review-session-1',
               projectSlug: 'campfit',
@@ -374,7 +374,7 @@ describe('AttentionHistoryItem — decision kinds', () => {
 
     expect(
       screen.getByRole('link', { name: 'Open review' }).getAttribute('href'),
-    ).toBe('/review-queue?review=review-session-1');
+    ).toBe('/projects/campfit/layouts/review?review=review-session-1');
     expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
   });
 });

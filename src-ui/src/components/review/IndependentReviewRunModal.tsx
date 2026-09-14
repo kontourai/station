@@ -12,7 +12,7 @@ import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../ResponsiveDialogSurface';
-import '../../views/ReviewQueueView.css';
+import './review-detail.css';
 
 /**
  * #2064 (D4): the "Run independent review" form, extracted from

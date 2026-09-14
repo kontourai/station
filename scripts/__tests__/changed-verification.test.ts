@@ -175,6 +175,31 @@ describe('changed verification selection', () => {
       escalated: true,
     });
   });
+  /**
+   * #2065. `packages/contracts/` escalates the whole `ci-fast` lane, and an
+   * ordinary edge naming `tests` sets `hasExplicitBoundary`, which SUPPRESSES
+   * that escalation — so an edge added to widen a receipt silently replaces a
+   * lane with one test and still reports `escalated: false` (the #1563/#1613
+   * trap `run-changed-verification.mjs` documents in its own words). The edge
+   * for `layout.ts` is `supplemental` for exactly that reason, and nothing
+   * else in the repo pins the difference: the manifest validator accepts both
+   * shapes, and the receipt reads complete either way.
+   *
+   * Both halves are asserted, because each fails for a different mistake:
+   * dropping `supplemental` loses the lane, and dropping the edge loses the
+   * named test.
+   */
+  test('a supplemental edge widens the layout contract receipt without narrowing it', () => {
+    const selection = selectChangedVerification([
+      'packages/contracts/src/layout.ts',
+    ]);
+    expect(selection.escalated).toBe(true);
+    expect(selection.lanes.map((lane) => lane.id)).toContain('ci-fast');
+    expect(selection.tests.map((test) => test.path)).toContain(
+      'src-server/services/plugins/__tests__/distribution-profile-service.test.ts',
+    );
+  });
+
   test.each([
     [scenarios.sourceEdges.server, 'server boundary'],
     [scenarios.sourceEdges.ui, 'UI boundary'],

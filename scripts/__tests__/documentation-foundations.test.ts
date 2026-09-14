@@ -47,7 +47,12 @@ describe('documentation foundations', () => {
     const starterRegistry = read(
       'src-server/services/starter-work/starter-registry.ts',
     );
-    const surfaces = read('src-ui/src/app-shell/destination-registry.ts');
+    // #2065 retired the global `/review-queue` destination, so the review
+    // route's source owner is no longer the destination registry: Review is a
+    // layout kind, and the href the Starter mints is derived in the contract
+    // below. Binding to the registry now would bind the guide to a file that
+    // says nothing about Review.
+    const layoutContract = read('packages/contracts/src/layout.ts');
 
     expect(channels.channels.stable).toMatchObject({
       instanceDirectory: 'stable',
@@ -83,8 +88,9 @@ describe('documentation foundations', () => {
       "id: 'run-scheduled-check'",
     ])
       expect(starterRegistry).toContain(sourceFact);
-    expect(surfaces).toContain("route: '/review-queue'");
-    expect(guide).toContain('`/review-queue`');
+    expect(layoutContract).toContain("slug: 'review'");
+    expect(layoutContract).toContain('export function projectReviewLayoutHref');
+    expect(guide).toContain('`/projects/<slug>/layouts/review?receipt=...`');
     expect(guide).toContain(
       `STATION_CHANNEL=stable "\${STATION_ROOT:-$HOME/.station}/installs/stable/current/install.sh" uninstall`,
     );

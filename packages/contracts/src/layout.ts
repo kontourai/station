@@ -251,12 +251,51 @@ export const BUILTIN_SESSION_BOARD_LAYOUT: AvailableProjectLayout =
     type: 'session-board',
   });
 
+/**
+ * Dependency-free review starter (#2065, `docs/design/shell-ownership-and-boards.md`
+ * D4). Backed by the Survey review workbench Station already composes through
+ * `SurveyFlowReviewService`, plus the project's pending proposed changes and
+ * its independent-review receipts. It is the project-scoped successor to the
+ * retired global `/review-queue` destination.
+ *
+ * Its `slug` equals its `type`, like every other starter here — the legacy
+ * `/review-queue` redirect derives `/projects/<slug>/layouts/review` from that
+ * equality, so the two must not drift apart.
+ */
+export const BUILTIN_REVIEW_LAYOUT: AvailableProjectLayout = Object.freeze({
+  source: 'builtin',
+  name: 'Review',
+  slug: 'review',
+  icon: '🔍',
+  description: 'Pending changes, paused gate reviews, and review evidence',
+  type: 'review',
+});
+
+/**
+ * The canonical deep link into a Project's Review layout (#2065). One
+ * derivation, because three producers need it — the attention projection's
+ * proposed-change and gate-review rows, starter work's independent-review
+ * inspection card, and the retired `/review-queue` redirect — and three
+ * hand-built spellings that agree today are three that can drift tomorrow.
+ *
+ * `params` carries the item selector the layout reads (`change`, `review`,
+ * or `receipt`).
+ */
+export function projectReviewLayoutHref(
+  projectSlug: string,
+  params?: Readonly<Record<string, string>>,
+): string {
+  const search = new URLSearchParams(params).toString();
+  return `/projects/${encodeURIComponent(projectSlug)}/layouts/${BUILTIN_REVIEW_LAYOUT.slug}${search ? `?${search}` : ''}`;
+}
+
 /** The server owns this list so callers never inject a starter independently. */
 export const BUILTIN_PROJECT_LAYOUTS: readonly AvailableProjectLayout[] =
   Object.freeze([
     BUILTIN_CODING_LAYOUT,
     BUILTIN_TASKS_LAYOUT,
     BUILTIN_SESSION_BOARD_LAYOUT,
+    BUILTIN_REVIEW_LAYOUT,
   ]);
 
 export interface LayoutAction {

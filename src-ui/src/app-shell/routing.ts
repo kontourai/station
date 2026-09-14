@@ -1,3 +1,4 @@
+import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 import type { DeveloperTab, NavigationView } from '../types';
@@ -39,6 +40,14 @@ const RETIRED_ACTIVITY_PATHS = new Set([
   '/sessions',
   '/sessions/',
 ]);
+
+/**
+ * The spellings that used to mount the global Review queue. Retired as a
+ * route (#2065), permanent as a URL — both spellings, like the retired
+ * Activity paths above, because an exact-lookup table 404s the copy-mangled
+ * one otherwise.
+ */
+const RETIRED_REVIEW_QUEUE_PATHS = new Set(['/review-queue', '/review-queue/']);
 
 export function getLegacyPathRedirect(path: string): string | null {
   const queryIndex = path.indexOf('?');
@@ -186,6 +195,29 @@ export function getLegacyPathRedirect(path: string): string | null {
     });
   }
 
+  // #2065: the global `/review-queue` is retired — Review is a layout kind a
+  // Project places, and a review item belongs to exactly one Project. A stored
+  // link that names its project resolves into that Project's Review layout
+  // with its item selector intact; one that cannot (the pre-#2065 inbox minted
+  // `?change=`/`?review=` with no project, and those links live in stored
+  // notification history) goes to the attention inbox, which lists the same
+  // work across Projects and can route on from there. It deliberately does not
+  // guess a Project: opening someone else's review item is worse than landing
+  // one step away from the right one.
+  if (RETIRED_REVIEW_QUEUE_PATHS.has(pathname)) {
+    const params = new URLSearchParams(search);
+    const projectSlug = params.get('project')?.trim();
+    if (!projectSlug) return '/notifications';
+    params.delete('project');
+    const selector = ['receipt', 'change', 'review'].find((key) =>
+      params.get(key)?.trim(),
+    );
+    return projectReviewLayoutHref(
+      projectSlug,
+      selector ? { [selector]: params.get(selector) as string } : undefined,
+    );
+  }
+
   const exactRedirects: Readonly<Record<string, string>> = {
     '/monitoring': '/developer/telemetry',
     '/sys/monitoring': '/developer/telemetry',
@@ -200,13 +232,14 @@ export function getLegacyPathRedirect(path: string): string | null {
     // deep links are exact-lookup-safe: `/tasks/<id>` never matches here.
     '/tasks': '/',
     '/tasks/': '/',
-    // #765 residue (D2 class): the nav item says "Review" but the canonical
-    // route is '/review-queue', so the hand-typed short spelling 404'd.
-    // Both spellings, like the retired Activity paths above. Exact-only is
-    // safe: no view
-    // ever mounts under a '/review/<id>' deep link.
-    '/review': '/review-queue',
-    '/review/': '/review-queue',
+    // #2065 retired the global Review queue: Review is a layout kind a
+    // Project places, so there is no collection view left to send these to.
+    // The attention inbox is the surface that still lists review work across
+    // Projects, so the bare spellings land there rather than 404ing. Handled
+    // here rather than in `RETIRED_REVIEW_QUEUE_PATHS` below because these two
+    // never carried an item selector.
+    '/review': '/notifications',
+    '/review/': '/notifications',
   };
   const exactRedirect = exactRedirects[pathname];
   if (exactRedirect) return preserveSearch(exactRedirect);
@@ -530,8 +563,6 @@ export function getPathForView(view: NavigationView): string | null {
       return '/plugins';
     case 'registry':
       return view.tab ? `/registry/${view.tab}` : '/registry';
-    case 'review-queue':
-      return '/review-queue';
     case 'connections':
       return '/connections';
     case 'connections-models':
@@ -619,7 +650,6 @@ export function getParentView(view: NavigationView): NavigationView | null {
     case 'connections':
     case 'guidance':
     case 'plugins':
-    case 'review-queue':
     case 'developer':
     case 'schedule':
     case 'notifications':

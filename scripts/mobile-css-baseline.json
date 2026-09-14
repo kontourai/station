@@ -197,7 +197,7 @@
       "count": 1,
       "reason": "The registry's two-column tab grid and single-column card grid: the SHARED desktop grid's 320px minimum is wider than a 320px viewport once the page's gutters are taken, so this page overrides the primitive's minimum rather than the primitive changing for everyone."
     },
-    "src-ui/src/views/ReviewQueueView.css": {
+    "src-ui/src/components/review/review-detail.css": {
       "count": 3,
       "reason": "Three breakpoints: the two-up diff collapses at 900px (a content width, not a device), detail padding and action stretch at mobile, run-modal fields at 640px."
     },

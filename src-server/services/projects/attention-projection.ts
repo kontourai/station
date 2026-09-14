@@ -13,6 +13,7 @@ import {
   type SetupIncompleteAttentionItem,
 } from '@kontourai/station-contracts/attention';
 import type { DevicePairingRequest } from '@kontourai/station-contracts/environment-security';
+import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
 import type { Notification } from '@kontourai/station-contracts/notification';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
@@ -981,10 +982,13 @@ export class AttentionProjectionService {
       path: change.path,
       contentKind: change.contentKind,
       sourceRuntime: change.sourceRuntime,
-      // Review stays routed this slice (#2064 AC3); the row's own
-      // Approve/Reject are the decision, and this link is where the diff
-      // is readable.
-      openHref: `/review-queue?change=${encodeURIComponent(change.id)}`,
+      // The row's own Approve/Reject are the decision; this link is where
+      // the diff is readable. #2065 retired the global `/review-queue`, so
+      // it points at the owning Project's Review layout — the change's own
+      // project, never a queue spanning all of them.
+      openHref: projectReviewLayoutHref(change.projectId, {
+        change: change.id,
+      }),
       source: { proposedChangeId: change.id, projectSlug: change.projectId },
     }));
   }
@@ -1041,7 +1045,9 @@ export class AttentionProjectionService {
           updatedAt: review.updatedAt,
           projectSlug: review.projectSlug,
           pendingDecisions: review.pendingDecisions,
-          openHref: `/review-queue?review=${encodeURIComponent(review.reviewSessionRef)}`,
+          openHref: projectReviewLayoutHref(review.projectSlug, {
+            review: review.reviewSessionRef,
+          }),
           source: {
             reviewSessionRef: review.reviewSessionRef,
             projectSlug: review.projectSlug,

@@ -416,10 +416,15 @@ approval or a project-less session. Per-project counts are derived from
 `pendingCount` (`attentionCountForProject`, `@kontourai/station-contracts/attention`);
 the server publishes no per-project number for a client to trust.
 
-Both kinds link into Review at the exact item — `/review-queue?change=<id>` and
-`/review-queue?review=<reviewSessionRef>`, alongside the existing
-`/review-queue?receipt=...&project=...`. A stale link shows a notice; Station
-does not open a different item in its place.
+Both kinds link into the item's own Project Review layout at the exact item —
+`/projects/<projectSlug>/layouts/review?change=<id>` and
+`?review=<reviewSessionRef>`, alongside Starter work's
+`?receipt=<receiptId>`. All three are minted by one derivation,
+`projectReviewLayoutHref` (`@kontourai/station-contracts/layout`); the Project
+is the path, so the layout is already scoped to it and the selector names only
+the item. The retired `/review-queue?…&project=<p>` spellings redirect there,
+and one naming no Project goes to `/notifications`. A stale link shows a
+notice; Station does not open a different item in its place.
 
 ## Inspect an exact attention request
 

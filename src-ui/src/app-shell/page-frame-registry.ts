@@ -85,7 +85,6 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
     width: 'full',
     body: 'fill',
   },
-  'review-queue': SPLIT_PANE,
 
   // 'Developer' is not self-referential here — the title is the active tab
   // ('Logs'/'System'/'Telemetry'/'Memory'/'Archive'), so the eyebrow is a
@@ -113,6 +112,9 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
     // below are named for exactly these two halves.
     subtitle: 'Things that need you, and what happened.',
     width: 'narrow',
+    // #2065: the first-run "Decisions are part of the record" step points
+    // here now that the global review queue is retired.
+    firstRunAnchor: 'notifications',
   },
 
   'project-session-board': { width: 'full', body: 'fill' },

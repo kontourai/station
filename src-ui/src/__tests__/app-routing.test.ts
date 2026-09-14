@@ -44,9 +44,32 @@ const LEGACY_PATH_CASES = [
   // #765 D2: bare /tasks has no collection view; tasks surface on Home.
   ['/tasks', '/'],
   ['/tasks/', '/'],
-  // #765 residue (D2 class): nav label "Review", canonical route /review-queue.
-  ['/review', '/review-queue'],
-  ['/review/', '/review-queue'],
+  // #2065: Review is a layout kind a Project places, so the bare spellings —
+  // and the retired queue's own two — land on the attention inbox, the one
+  // surface that still lists review work across Projects.
+  ['/review', '/notifications'],
+  ['/review/', '/notifications'],
+  ['/review-queue', '/notifications'],
+  ['/review-queue/', '/notifications'],
+  // A stored link that names its Project keeps its item selector and resolves
+  // into that Project's Review layout.
+  ['/review-queue?project=alpha', '/projects/alpha/layouts/review'],
+  [
+    '/review-queue?receipt=r-1&project=alpha',
+    '/projects/alpha/layouts/review?receipt=r-1',
+  ],
+  [
+    '/review-queue?change=change-1&project=alpha',
+    '/projects/alpha/layouts/review?change=change-1',
+  ],
+  [
+    '/review-queue?review=review-session-1&project=alpha',
+    '/projects/alpha/layouts/review?review=review-session-1',
+  ],
+  // No Project, no guess: the pre-#2065 inbox minted these with no project,
+  // and opening a different Project's item would be worse than landing one
+  // step away.
+  ['/review-queue?change=change-1', '/notifications'],
   ['/manage/agents', '/agents'],
   ['/manage/agents/planner', '/agents/planner'],
   ['/manage/prompts', '/guidance?tab=skills'],
@@ -86,7 +109,6 @@ const CANONICAL_VIEWS = [
   { type: 'connections-computers' },
   { type: 'plugins' },
   { type: 'registry', tab: 'plugins' },
-  { type: 'review-queue' },
   { type: 'developer', tab: 'telemetry' },
   { type: 'schedule' },
   { type: 'settings' },
@@ -248,7 +270,6 @@ describe('app-shell routing', () => {
     ['connections'],
     ['guidance'],
     ['plugins'],
-    ['review-queue'],
     ['developer'],
     ['schedule'],
     ['notifications'],

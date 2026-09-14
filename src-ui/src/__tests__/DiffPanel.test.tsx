@@ -51,6 +51,14 @@ let createCommentCalls: Array<{
   onSuccess?: () => void;
 }> = [];
 
+/**
+ * Records what `useDeleteDiffCommentMutation`'s `mutate` was called with, and
+ * which project slug the hook was constructed for — the delete endpoint is
+ * project-scoped, so a wired Delete that named the wrong project would delete
+ * nothing while looking identical here (#2065).
+ */
+let deleteCommentCalls: Array<{ projectSlug: string; id: string }> = [];
+
 vi.mock('@kontourai/station-sdk', () => ({
   useCodingDiffQuery: () => diffQueryResult,
   useDiffCommentsQuery: () => ({ data: commentsQueryData }),
@@ -69,7 +77,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     },
     isPending: false,
   }),
-  useDeleteDiffCommentMutation: () => ({ mutate: vi.fn() }),
+  useDeleteDiffCommentMutation: (projectSlug: string) => ({
+    mutate: (id: string) => deleteCommentCalls.push({ projectSlug, id }),
+    isPending: false,
+  }),
 }));
 
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -151,6 +162,7 @@ afterEach(() => {
   diffQueryResult = { data: '', isLoading: false, error: null };
   commentsQueryData = [];
   createCommentCalls = [];
+  deleteCommentCalls = [];
 });
 
 describe('DiffPanel', () => {
@@ -540,6 +552,52 @@ describe('DiffPanel inline comments after first render (station#3159)', () => {
     await waitFor(() =>
       expect(screen.getByText('Hello from refetch')).toBeTruthy(),
     );
+  });
+
+  /**
+   * #2065: deleting a diff comment was also reachable from the global review
+   * queue, which this slice retires. The diff pane's own Delete is where the
+   * action now lives, so the WIRING — not just `DiffCommentThread`'s
+   * presentational `onDelete` callback, which `DiffCommentThread.test.tsx`
+   * already covers — has to be pinned here, in the caller that owns the
+   * project-scoped mutation.
+   */
+  test('the diff pane deletes the comment its own Delete names, in its own Project', async () => {
+    diffQueryResult = { data: SAMPLE_PATCH, isLoading: false, error: null };
+    // Two comments on one line: deleting "the first one" would pass against a
+    // single-comment fixture whether or not the id is threaded through.
+    commentsQueryData = [
+      {
+        id: 'c1',
+        filePath: 'foo.ts',
+        side: 'additions',
+        lineNumber: 2,
+        body: 'First comment',
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: 'c2',
+        filePath: 'foo.ts',
+        side: 'additions',
+        lineNumber: 2,
+        body: 'Second comment',
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    render(<DiffPanel workingDir="/repo" projectSlug="proj" />);
+
+    const secondComment = await waitFor(() => {
+      const body = screen.getByText('Second comment');
+      const container = body.closest('.diff-comment');
+      if (!container) throw new Error('comment container not rendered');
+      return container as HTMLElement;
+    });
+
+    fireEvent.click(
+      within(secondComment).getByRole('button', { name: 'Delete comment' }),
+    );
+
+    expect(deleteCommentCalls).toEqual([{ projectSlug: 'proj', id: 'c2' }]);
   });
 
   test('opening the composer after initial render shows the composer form', async () => {

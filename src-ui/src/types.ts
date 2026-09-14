@@ -405,7 +405,6 @@ export type NavigationView =
   | { type: 'connections-computers' }
   | { type: 'plugins' }
   | { type: 'registry'; tab?: RegistryCatalogTab }
-  | { type: 'review-queue' }
   | { type: 'developer'; tab?: DeveloperTab }
   | { type: 'schedule' }
   | { type: 'settings' }

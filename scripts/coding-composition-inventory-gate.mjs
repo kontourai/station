@@ -152,7 +152,6 @@ const expectedDependencies = new Map(
     // boundary — it hands the region's project-bound instance to
     // `getBuiltinWorkspacePaneRenderer`, the registry declared below.
     'src-ui/src/workspace-panes/RegionBuiltinPane.tsx': 'private-import',
-    'src-ui/src/views/ReviewQueueView.tsx': 'navigation',
     'src-ui/src/views/TaskWorkspaceView.tsx': 'private-import',
     'src-ui/src/workspace-panes/BrowserPreviewPaneLauncher.tsx': 'presentation',
     'src-ui/src/workspace-panes/FilePreviewPane.tsx': 'privileged-renderer',

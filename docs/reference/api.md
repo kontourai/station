@@ -99,7 +99,12 @@ select only a validated Approval Inbox notification or independent-review
 receipt and return its exact typed reference; they never select by title.
 Launching revalidates that owner, binds the exact reference idempotently, and
 returns a server-built `/notifications?approval=...` or
-`/review-queue?receipt=...&project=...` link. Observation re-reads the owner every
+`/projects/<slug>/layouts/review?receipt=...` link — the Project's own Review
+layout, which #2065 made the home of review evidence when the global
+`/review-queue` was retired. A stored `/review-queue?receipt=...&project=...`
+link still resolves: it redirects to that same layout with the receipt
+selected, and one carrying no `project` goes to `/notifications` rather than
+guessing a Project. Observation re-reads the owner every
 time, so resolved, expired, missing, stale, unavailable, and `NOT_VERIFIED`
 states do not come from a browser checkbox or copied payload. Inspecting does
 not approve an approval, and independent-review findings remain input-only

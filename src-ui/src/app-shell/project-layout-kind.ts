@@ -20,6 +20,7 @@ export const LAYOUT_TYPE_REGISTRY_KEYS = [
   'chat',
   'tasks',
   'session-board',
+  'review',
 ] as const;
 
 type LayoutTypeRegistryKey = (typeof LAYOUT_TYPE_REGISTRY_KEYS)[number];
