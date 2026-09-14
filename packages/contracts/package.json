@@ -168,6 +168,7 @@
     "./workspace-evidence-panels": "./src/workspace-evidence-panels.ts",
     "./workspace-file-preview": "./src/workspace-file-preview.ts",
     "./workspace-agents-pane": "./src/workspace-agents-pane.ts",
+    "./workspace-device-pane": "./src/workspace-device-pane.ts",
     "./workspace-pull-request-pane": "./src/workspace-pull-request-pane.ts",
     "./workspace-isolation": "./src/workspace-isolation.ts",
     "./cloud-move": "./src/cloud-move.ts",
