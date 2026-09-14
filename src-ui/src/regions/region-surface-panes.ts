@@ -72,11 +72,21 @@ import {
  * What a dock region can bind for a pane (#2047). The active project is the
  * dock's own binding (`chatDockProjectSlug`, else the active project), and
  * the coding instances bind `sourceId` and `workspaceId = projectId` from
- * it. Nothing else: no `task` (the task-room panes are the catalog's
- * "not offered, and it says why"), no `session` (no docked pane reads one —
+ * it. Nothing else: no `task`, no `session` (no docked pane reads one —
  * declare it when one does, not before), no `run`. This one set is BOTH the
  * catalog's filter (`dockCanSupply`) and what the inventory's own pin
  * asserts of every entry, so the two cannot disagree.
+ *
+ * What a user sees of the `task` exclusion today: NOTHING (review M2). The
+ * catalog lists the panes declaring `docked` and re-resolves an available
+ * one the dock cannot supply into a disabled row with the resolver's reason
+ * (`missing-task`) — but that path needs a descriptor that declares BOTH
+ * `docked` and a Task requirement, and no shipped pane does: the task-room
+ * panes declare `primary`/`secondary`, so the catalog's `docked` filter
+ * drops them before any reason is computed. They are neither listed nor
+ * explained. The mechanism exists and is proven by a fixture descriptor
+ * (`RegionPaneCatalog.test.tsx`); the first shipped `docked` pane needing a
+ * Task is what will make it visible.
  */
 export const DOCK_HOST_SUPPLIABLE_CONTEXTS: WorkspacePaneSuppliableContexts =
   new Set(['project', 'source', 'workspace'] as const);

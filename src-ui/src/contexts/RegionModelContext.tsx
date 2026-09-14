@@ -68,8 +68,14 @@ type SurfaceIntents = Partial<Record<string, SurfaceIntentRecord>>;
  * dock region when that one is taken — `revealSurface`). `placement` is the
  * host-open vocabulary (`WorkspacePaneHostOpenPlacement`); a region holds one
  * tab group in this batch, so only `add` opens and `split` is refused rather
- * than silently added. `focusExisting` (default true) makes an open of a
- * pane already in some region a reveal of it there.
+ * than silently added. `focusExisting` (default true) reveals a pane already
+ * in some region WHERE IT IS — but it never overrides an explicit `region`:
+ * naming a different one MOVES the pane there (the reveal branch requires
+ * `region` to be absent or the region the pane is already in). So pressing a
+ * region's "+" for a singleton surface held elsewhere takes it from the
+ * other region. `focusExisting: false` changes one case only: a held pane
+ * targeting the region it is already in is re-placed rather than revealed.
+ * With no target it is the surface's own rule either way.
  */
 export interface OpenInRegionOptions {
   region?: RegionId;

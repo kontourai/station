@@ -354,6 +354,12 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
       // navigation intent above are what the reader sees, and they happen
       // whether or not the preview occurrence is admitted. Reporting a
       // refusal here needs a place in this pane's own chrome to put it.
+      // In a DOCK region (#2047) the refusal is certain, not incidental: File
+      // Preview is no region surface, so the region host's admission refuses
+      // it and there is no `setLayout` to fall back on — a file click in a
+      // docked Files pane selects the row and opens nothing until #2049
+      // gives regions instance-keyed panes. `docs/design/placement.md` says
+      // so in the #2047 paragraph.
       paneHostOpen.open(
         preview,
         createFilePreviewPaneStatePreparation(

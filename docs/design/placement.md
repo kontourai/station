@@ -442,57 +442,67 @@ The four forks of the 2a plan, as taken (each reversible on its own):
 - **D5 — `placeSurface` into an occupied dock region joins** (2a); the
   strip is what makes the joined pane visible.
 
-**Implemented by #2047 (slice 3: dock admission for the built-in panes and
-the dock catalog), 2026-09-13.** Terminal, Diff and Files are dock surfaces
+**Implemented by #2047 (slice 3: dock admission for the built-in panes and the
+dock catalog), 2026-09-13.** Terminal, Diff and Files are dock surfaces
 (`coding:terminal`, `coding:diff`, `coding:file-browser` — the
-`pane:builtin:<surface id>` rule the pins assert), catalog-only
-(`exposure: 'catalog'`: no picker row, no chord, no unplaced Show row) and
-singleton per kind, each bound to the DOCK'S ACTIVE PROJECT
-(`chatDockProjectSlug`, else the route's active project) through
-`REGION_SURFACE_PANES`' instance factory: a docked coding pane is the
-project's, not a layout's (`needsLayout` is "has a layout binding", the
-`ChatPane` rule; the working directory falls back from the layout's to the
-project's; a layout-less Files pane keeps a file click out of `setLayout`).
-A project switch re-binds a mounted pane through the host's authority
-fingerprint (the instance's `boundContext` is part of it). With no active
-project the placed pane keeps its tab and its record and the region shows
-"Choose a project for this dock"; the "+" is not offered. The "+" lives in
-the region bar's actions cluster beside maximize, fine pointer only, and
-renders for a one-pane region; its catalog (`RegionPaneCatalog`, over
-`ProjectWorkspacePaneModal`) lists the panes declaring `docked` for the dock
-project, a pane the dock cannot supply context for listed disabled with the
-resolver's reason, and its Open is `openInRegion` — never a host's own open
+`pane:builtin:<surface id>` rule the pins assert), catalog-only (`exposure:
+'catalog'`: no picker row, no chord, no unplaced Show row) and singleton per
+kind, each bound to the DOCK'S ACTIVE PROJECT (`chatDockProjectSlug`, else the
+route's active project) through `REGION_SURFACE_PANES`' instance factory: a
+docked coding pane is the project's, not a layout's (`needsLayout` is "has a
+layout binding", the `ChatPane` rule; the working directory falls back from
+the layout's to the project's; a layout-less Files pane keeps a file click out
+of `setLayout`, and a docked Files pane cannot open a preview until #2049 — a
+click selects the row only, because File Preview is no region surface and the
+region host refuses its occurrence). A project switch re-binds a mounted pane
+through the host's authority fingerprint (the instance's `boundContext` is
+part of it). With no active project the placed pane keeps its tab and its
+record and the region shows "Choose a project for this dock"; while that
+project read is still in flight the region shows the pane's loading skeleton
+instead, and no document is written on a pane set derived from it. The "+" is
+not offered without a project. The "+" lives in the region bar's actions
+cluster beside maximize, fine pointer only, and renders for a one-pane region;
+its catalog (`RegionPaneCatalog`, over `ProjectWorkspacePaneModal`) lists the
+panes declaring `docked` for the dock project, a `docked` pane needing a
+context the dock cannot supply listed disabled with the resolver's reason
+(`missing-task`) — a mechanism no shipped pane reaches today: the task-room
+panes declare `primary`/`secondary`, not `docked`, so the catalog's filter
+drops them and they are neither listed nor explained; a fixture descriptor is
+its only exerciser — and its Open is `openInRegion` — never a host's own open
 action, which would refuse a pane the region does not yet hold. Browser
-Preview and File Preview are deliberately NOT `docked` yet: they have no
-blank canonical instance (a URL, a file path), so a catalog could list but
-never open them; #2049's `openInRegion` over instance-keyed panes is their
-reader, and their docblocks say so.
+Preview and File Preview are deliberately NOT `docked` yet: they have no blank
+canonical instance (a URL, a file path), so a catalog could list but never
+open them; #2049's `openInRegion` over instance-keyed panes is their reader,
+and their docblocks say so.
 
 **Implemented by #2048 (slice 4: `openInRegion`), 2026-09-13.** One intent
 opens a pane instance in a dock region: `useOpenInRegion` (a sibling of
-`useShowSurface`) folds the instance to its surface through the inventory
-and hands it to the provider's `openSurfaceInRegion(surfaceId, { region?,
+`useShowSurface`) folds the instance to its surface through the inventory and
+hands it to the provider's `openSurfaceInRegion(surfaceId, { region?,
 placement?, focusExisting? })`, which resolves the target (explicit, else the
 surface's own rule: its region if held, else its default region or the first
 free dock region), reveals it and places or selects through the model.
-`showSurface` is reimplemented over it. An instance already open somewhere
-is revealed there (`focusExisting`, default on) rather than opened twice; a
-refusal — `no-surface`, `unsupported-placement` (`split`: a region holds one
-tab group), `region-unavailable` (a side region on a bottom-only device),
-`refused` (an undeclared region) — is a typed outcome that writes nothing
-and navigates nowhere; no open pushes history or a `?pane=`. The
-instance-keyed half lives outside the provider on purpose: the pane
-contracts are not in the entry chunk, and importing them there measured
-+1,820 B gzip against the ceiling's headroom.
+`showSurface` is reimplemented over it. An instance already open somewhere is
+revealed where it is (`focusExisting`, default on) rather than opened twice —
+unless a DIFFERENT region is named, which moves it there: the default reveals,
+it does not override an explicit target; a refusal — `no-surface`,
+`unsupported-placement` (`split`: a region holds one tab group),
+`region-unavailable` (a side region on a bottom-only device), `refused` (an
+undeclared region) — is a typed outcome that writes nothing and navigates
+nowhere; no open pushes history or a `?pane=`. The instance-keyed half lives
+outside the provider on purpose: the pane contracts are not in the entry
+chunk, and importing them there measured +1,820 B gzip against the ceiling's
+headroom.
 
 **Still direction.** Instance-keyed panes in `RegionState.panes` (a second
 terminal, a preview of one file, the pull-request pane), which is what
-`openInRegion` over Browser Preview and File Preview needs (#2049); the
-Device pane (#1969) rides the #2047 path as its own change (descriptor with
-`docked`, registry entry with `exposure: 'catalog'`, inventory entry,
-renderer, the four lockstep pins). Nothing in `region-model.ts` precludes
-either; the record's unknown-`kind`-reads-empty rule keeps the instance
-variant additive.
+`openInRegion` over Browser Preview and File Preview needs (#2049) and what a
+docked Files pane needs before a file click can open a preview — until then
+such a click selects the row only; the Device pane (#1969) rides the #2047
+path as its own change (descriptor with `docked`, registry entry with
+`exposure: 'catalog'`, inventory entry, renderer, the four lockstep pins).
+Nothing in `region-model.ts` precludes either; the record's
+unknown-`kind`-reads-empty rule keeps the instance variant additive.
 
 ## Failure shapes this design is meant to prevent
 

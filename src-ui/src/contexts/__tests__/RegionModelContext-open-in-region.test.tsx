@@ -216,6 +216,43 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
     expect(current().model.regions.bottom.panes).toEqual(['chat', 'activity']);
   });
 
+  /**
+   * The default does NOT keep a held pane where it is when a different
+   * region is named (review L2): the reveal branch requires the target to be
+   * absent or the region the pane already occupies, so an explicit target
+   * moves it — which is what a region's "+" does to a singleton held
+   * elsewhere. Reverting that (letting `focusExisting` reveal whatever the
+   * target) fails the `existing: false`, the `right.panes` emptying and the
+   * bottom pane-set assertions here, while the reveal test above keeps
+   * passing.
+   */
+  test('the default focusExisting moves a held pane when a different region is named', async () => {
+    await mount();
+    act(() =>
+      current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, { region: 'right' }),
+    );
+    expect(current().model.regions.right.panes).toEqual(['activity']);
+
+    let outcome: unknown;
+    act(() => {
+      outcome = current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, {
+        region: 'bottom',
+      });
+    });
+    expect(outcome).toEqual({
+      ok: true,
+      region: 'bottom',
+      surfaceId: 'activity',
+      existing: false,
+    });
+    expect(current().model.regions.right.panes).toEqual([]);
+    expect(current().model.regions.bottom).toMatchObject({
+      panes: ['chat', 'activity'],
+      occupant: 'activity',
+      visible: true,
+    });
+  });
+
   test('focusExisting: false with another region moves the pane there', async () => {
     await mount();
     act(() =>

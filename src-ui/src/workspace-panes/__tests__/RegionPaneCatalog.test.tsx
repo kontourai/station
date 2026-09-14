@@ -8,7 +8,10 @@
  * through the model's placement — never a host's open action.
  */
 
-import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
+import {
+  createWorkspaceChatPaneInstance,
+  WORKSPACE_CHAT_PANE_DESCRIPTOR,
+} from '@kontourai/station-contracts/workspace-chat-pane';
 import {
   createWorkspaceCodingTerminalPaneInstance,
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
@@ -96,7 +99,12 @@ if (!TASK_NOTES_DESCRIPTOR) throw new Error('fixture must parse');
 
 const terminal = createWorkspaceCodingTerminalPaneInstance('alpha-id');
 const plan = createWorkspacePlanPaneInstance('alpha-id');
-if (!terminal || !plan) throw new Error('fixtures must parse');
+// The shape the SERVER issues for Chat in a project's catalog: its
+// declaration's `createInstance(projectId)` is `createWorkspaceChatPaneInstance`
+// with the project's id, so the occurrence is project-bound (the projectless
+// one is the shell's own, not the catalog's). Both fold to `chat`.
+const chat = createWorkspaceChatPaneInstance('alpha-id');
+if (!terminal || !plan || !chat) throw new Error('fixtures must parse');
 
 const ENTRIES: ResolvedWorkspacePaneCatalogEntry[] = [
   {
@@ -106,15 +114,8 @@ const ENTRIES: ResolvedWorkspacePaneCatalogEntry[] = [
     clientRendererPresence: 'present',
   },
   {
-    // The server issues Chat's projectless occurrence; the catalog carries it.
     descriptor: WORKSPACE_CHAT_PANE_DESCRIPTOR,
-    instance: {
-      version: '1.0',
-      descriptorId: WORKSPACE_CHAT_PANE_DESCRIPTOR.id,
-      instanceId: 'workspace-chat',
-      stateKey: 'workspace-chat',
-      boundContext: { sourceId: 'builtin:workspace-chat' },
-    } as ResolvedWorkspacePaneCatalogEntry['instance'],
+    instance: chat,
     availability: AVAILABLE,
     clientRendererPresence: 'present',
   },

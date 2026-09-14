@@ -12,6 +12,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { DockShell } from '../components/chat-dock/DockShell';
@@ -336,20 +337,51 @@ const loadRegionPaneCatalog = () =>
  * itself — the coding instances bind its id, the catalog queries by its
  * slug — so an unknown or deleted slug is no project rather than a dangling
  * id. Both null when the dock has none.
+ *
+ * `pending` is the project read in flight, which is NOT "no project" (review
+ * M3): the read is a per-slug fetch with nothing seeding it from the projects
+ * list, so on a cold load with a bound project every docked coding pane would
+ * otherwise render the "pick one from Chat's project switcher" instruction —
+ * an instruction for a state the user is not in — and the mount-time
+ * reconcile would write a document derived from it. While it is true the
+ * region shows the pane's loading skeleton, the "+" stays hidden (no
+ * `projectSlug` yet) and nothing is written.
+ *
+ * The stale-binding fallback (review L1): `useDockShellChrome` clears a
+ * `chatDockProjectSlug` naming a deleted project only while the shell holds
+ * Chat, so with Chat in no region a deleted binding would otherwise leave
+ * every docked coding pane on the placeholder forever while the route has a
+ * project. Once the bound read has SETTLED with no record, the route's
+ * active project is read instead. Only then: while the bound read is in
+ * flight there is no evidence the binding is stale. The second
+ * `useProject` is the same query key `useActiveProject` already reads (and
+ * is disabled on the empty slug), so the fallback costs no extra fetch.
  */
 function useDockProject(): {
   projectId: string | null;
   projectSlug: string | null;
+  pending: boolean;
 } {
   const { chatDockProjectSlug } = useDeviceSettings();
   const { projectSlug: activeProjectSlug } = useActiveProject();
-  const slug = chatDockProjectSlug ?? activeProjectSlug ?? '';
-  const { project } = useProject(slug);
+  const boundSlug = chatDockProjectSlug ?? activeProjectSlug ?? '';
+  const { project: boundProject, isLoading: boundPending } =
+    useProject(boundSlug);
+  const staleBinding =
+    !boundPending &&
+    !boundProject &&
+    activeProjectSlug !== null &&
+    activeProjectSlug !== boundSlug;
+  const { project: fallbackProject, isLoading: fallbackPending } = useProject(
+    staleBinding ? activeProjectSlug : '',
+  );
+  const project = boundProject ?? (staleBinding ? fallbackProject : undefined);
+  const pending = boundPending || (staleBinding && fallbackPending);
   const id = project?.id ?? null;
   const resolvedSlug = project?.slug ?? null;
   return useMemo(
-    () => ({ projectId: id, projectSlug: resolvedSlug }),
-    [id, resolvedSlug],
+    () => ({ projectId: id, projectSlug: resolvedSlug, pending }),
+    [id, pending, resolvedSlug],
   );
 }
 
@@ -463,7 +495,7 @@ export function RegionPaneHost({
   // coding pane through the same restore path a pane-set change takes —
   // the instance ids do not change, so `reconcileRegionPaneHostDocument`
   // (ids only) is not what carries it.
-  const { projectId, projectSlug } = useDockProject();
+  const { projectId, projectSlug, pending: projectPending } = useDockProject();
   const context = useMemo<RegionPaneContext>(
     () => ({ projectId }),
     [projectId],
@@ -488,12 +520,28 @@ export function RegionPaneHost({
   // region becomes occupied, adoption only acts on a region key that is
   // absent, and a pane set that changes while mounted reaches the host
   // through the fingerprint path instead.
-  useState(() => {
-    if (!regionId || !document) return;
+  // During render, not in an effect: the inner host's controller hydrates in
+  // its own state initialiser, so a write after this render would be too
+  // late. A ref rather than a `useState` initialiser because the run is
+  // deferred while the project read is in flight AND that read is what is
+  // holding a pane out of the document (review M3): writing the pane set
+  // derived then would drop a persisted pane on a premise the query has not
+  // established. A document holding every pane the region does cannot change
+  // when the project resolves, so Chat's own regions — adoption included —
+  // reconcile on their first render as before. Either way it runs once.
+  const reconciled = useRef(false);
+  const documentHoldsEveryPane = document?.instances.length === panes.length;
+  if (
+    !reconciled.current &&
+    (!projectPending || documentHoldsEveryPane) &&
+    regionId &&
+    document
+  ) {
+    reconciled.current = true;
     if (panes.includes('chat'))
       adoptLegacyChatDockDocument(window.localStorage, regionId);
     reconcileRegionPaneHostDocument(window.localStorage, document);
-  });
+  }
   const [openAction, setOpenAction] =
     useState<WorkspacePaneHostOpenAction | null>(null);
   const [liveActiveInstanceId, setLiveActiveInstanceId] = useState<
@@ -646,6 +694,13 @@ export function RegionPaneHost({
                 }
               }}
             />
+          ) : projectPending ? (
+            // The dock's project read is in flight: the pane is neither
+            // rendered nor refused yet, so the region waits rather than
+            // telling the user to pick a project (review M3).
+            <div className="dock-slot__body">
+              <SkeletonBlock count={3} label="Loading pane" />
+            </div>
           ) : selected !== undefined ? (
             <RegionPaneNeedsProject
               title={model?.surfaces.get(selected)?.title ?? selected}

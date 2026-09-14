@@ -64,16 +64,23 @@ const PROJECTS: Record<string, { id: string; slug: string; name: string }> = {
   alpha: { id: 'alpha-id', slug: 'alpha', name: 'Alpha' },
   beta: { id: 'beta-id', slug: 'beta', name: 'Beta' },
 };
+/**
+ * The project read's own lifecycle. `useProject` is a per-slug fetch
+ * (`enabled: !!slug`), so a cold load answers PENDING before it answers "no
+ * such project" — the state review M3 is about. `pending` here is that
+ * in-flight answer for every non-empty slug.
+ */
+const projectRead = vi.hoisted(() => ({ pending: false }));
 vi.mock('../../contexts/ProjectsContext', () => ({
   useProjects: () => ({
     projects: Object.values(PROJECTS),
     isLoading: false,
     isConfirmedLoaded: true,
   }),
-  useProject: (slug: string) => ({
-    project: PROJECTS[slug],
-    isLoading: false,
-  }),
+  useProject: (slug: string) =>
+    projectRead.pending && slug !== ''
+      ? { project: undefined, isLoading: true }
+      : { project: PROJECTS[slug], isLoading: false },
 }));
 /**
  * The registry's one seam. The stub renders the instance it was handed, so
@@ -146,6 +153,7 @@ function currentModel(): ReturnType<typeof useRegionModel> {
 
 beforeEach(() => {
   model = null;
+  projectRead.pending = false;
   openProbe.action = null;
   Object.defineProperty(globalThis.navigator, 'locks', {
     configurable: true,
@@ -465,6 +473,183 @@ test('without a project a placed coding pane keeps its tab and shows the placeho
         boundContext: { projectId: 'alpha-id' },
       },
     ]),
+  );
+});
+
+/**
+ * Review M3: the project read in flight is not "no project". While it is
+ * pending the region waits — the pane's loading skeleton, no instruction to
+ * pick a project the user has already picked, no "+" — and nothing is
+ * written to the region's document from a pane set the query has not
+ * settled. Once the read settles the reconcile still runs: the stored
+ * document gains Chat beside the Terminal.
+ *
+ * What each revert fails, measured: reverting the skeleton branch fails the
+ * placeholder-absent assertion; reverting the deferral (running the
+ * reconcile whatever `pending`) fails the FINAL stored-document assertion,
+ * because the run is once per mount and the pending render spends it — the
+ * settled pane set is then never written. It does NOT fail the raw-bytes
+ * assertion below, which held under that injection: restoring the seeded
+ * document against the pending-time instances drops the Terminal it does
+ * not know, so the ids matched and the reconcile returned early. That
+ * assertion is the direct "nothing was written while the query was in
+ * flight" claim; it is not what discriminates the deferral.
+ */
+test('while the dock’s project read is in flight the region waits and writes nothing', async () => {
+  projectRead.pending = true;
+  deviceSettingsStore.set('chatDockProjectSlug', 'alpha');
+  // The stored arrangement a returning user has: Chat and a Terminal at the
+  // bottom, the Terminal selected — the region set the host derives its
+  // document from before the project read answers.
+  deviceSettingsStore.set('regionArrangement', {
+    version: 1,
+    regions: {
+      main: {
+        visible: true,
+        size: 0,
+        occupant: { kind: 'surface', id: 'home' },
+      },
+      left: { visible: false, size: 400, occupant: null },
+      right: { visible: false, size: 400, occupant: null },
+      bottom: {
+        visible: true,
+        size: 320,
+        occupant: {
+          kind: 'pane-host',
+          panes: [
+            { kind: 'surface', id: 'chat' },
+            { kind: 'surface', id: 'coding:terminal' },
+          ],
+          selected: 'coding:terminal',
+        },
+      },
+    },
+  });
+  const terminal = createWorkspaceCodingTerminalPaneInstance('alpha-id');
+  if (!terminal) throw new Error('fixture must parse');
+  const persisted = JSON.stringify({
+    version: '1.1',
+    id: 'bottom',
+    scope: { kind: 'ambient' },
+    instances: [terminal],
+    activeInstanceId: 'workspace-coding-terminal',
+    root: {
+      type: 'tabs',
+      id: 'root',
+      instanceIds: ['workspace-coding-terminal'],
+      selectedInstanceId: 'workspace-coding-terminal',
+    },
+  });
+  window.localStorage.setItem(BOTTOM_KEY, persisted);
+
+  renderShells();
+  await waitFor(() => expect(model).not.toBeNull());
+  await waitFor(() =>
+    expect(currentModel().regions.bottom.panes).toEqual([
+      'chat',
+      'coding:terminal',
+    ]),
+  );
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+  await waitFor(() =>
+    expect(
+      document.querySelector('.chat-dock[data-region="bottom"]'),
+    ).not.toBeNull(),
+  );
+
+  expect(screen.queryByText('Choose a project for this dock')).toBeNull();
+  expect(screen.queryByTestId('coding-pane')).toBeNull();
+  expect(
+    within(shell('bottom')).getByRole('status', { name: 'Loading pane' }),
+  ).toBeTruthy();
+  expect(screen.queryByLabelText(/^Add pane to /)).toBeNull();
+  expect(window.localStorage.getItem(BOTTOM_KEY)).toBe(persisted);
+
+  // The read settles. A region write is the re-render a resolving query
+  // would otherwise cause; the settled answer is the mock's.
+  projectRead.pending = false;
+  act(() => currentModel().setRegion('bottom', { size: 321 }));
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+
+  const pane = await screen.findByTestId('coding-pane');
+  expect(pane.dataset.project).toBe('alpha-id');
+  await waitFor(() =>
+    expect(storedDocument(BOTTOM_KEY)?.instances).toMatchObject([
+      { descriptorId: 'pane:builtin:chat' },
+      {
+        descriptorId: 'pane:builtin:coding:terminal',
+        boundContext: { projectId: 'alpha-id' },
+      },
+    ]),
+  );
+});
+
+/**
+ * Review L1: `useDockShellChrome` clears a `chatDockProjectSlug` naming a
+ * deleted project only while the shell HOLDS CHAT, so the region set here is
+ * the one that strands it — a Terminal on the right, Chat in no region —
+ * and every docked coding pane would show "pick one from Chat's project
+ * switcher", a switcher that is not on screen, while the route has a
+ * project. The settled no-record read falls back to the route's project.
+ * Reverting the fallback (the bound slug alone) fails at the `coding-pane`
+ * find, with the placeholder in its place; putting Chat back in a region
+ * would make the test pass either way, because the chrome's own cleanup
+ * clears the binding.
+ */
+test('a dock binding naming a project that no longer exists falls back to the route’s project', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'deleted-project');
+  deviceSettingsStore.set('regionArrangement', {
+    version: 1,
+    regions: {
+      main: {
+        visible: true,
+        size: 0,
+        occupant: { kind: 'surface', id: 'home' },
+      },
+      left: { visible: false, size: 400, occupant: null },
+      right: {
+        visible: true,
+        size: 400,
+        occupant: { kind: 'surface', id: 'coding:terminal' },
+      },
+      bottom: { visible: false, size: 320, occupant: null },
+    },
+  });
+  // No `dock=open`: that param seeds Chat into the bottom region, and a
+  // shell holding Chat is exactly the case whose own cleanup clears the
+  // stale binding before the host ever reads it.
+  window.history.replaceState({}, '', '/projects/alpha');
+  navigationStore.navigate('/projects/alpha', {
+    dock: null,
+    maximize: null,
+    dockSlotPlacement: null,
+  });
+  renderShells();
+  await waitFor(() => expect(model).not.toBeNull());
+  await waitFor(() =>
+    expect(currentModel().regions.right.panes).toEqual(['coding:terminal']),
+  );
+  expect(currentModel().regions.bottom.panes).toEqual([]);
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+
+  // Re-queried each poll: the region's shell is remounted as the arrangement
+  // settles, which detaches an element captured before it.
+  await waitFor(() =>
+    expect(
+      within(shell('right')).getByTestId('coding-pane').dataset.project,
+    ).toBe('alpha-id'),
+  );
+  expect(screen.queryByText('Choose a project for this dock')).toBeNull();
+  // The binding itself is untouched: the fallback is a read, not a write
+  // (clearing it is `useDockShellChrome`'s, and only with Chat on screen).
+  expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe(
+    'deleted-project',
   );
 });
 
