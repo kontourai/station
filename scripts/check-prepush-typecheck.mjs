@@ -44,7 +44,7 @@ const BASE_REF = process.env.STATION_BASE_REF ?? 'origin/main';
  * false` and every project's `include` lists only these four extensions, so a
  * `.mjs` or `.js` edit cannot produce a type error — deliberately not listed.
  */
-export const TYPECHECK_INPUT_EXTENSIONS = Object.freeze([
+const TYPECHECK_INPUT_EXTENSIONS = Object.freeze([
   '.ts',
   '.tsx',
   '.mts',
@@ -56,7 +56,7 @@ export const TYPECHECK_INPUT_EXTENSIONS = Object.freeze([
  * projects resolve without touching a single source file, and `package.json`
  * is where every `typecheck:*` script is defined.
  */
-export const TYPECHECK_INPUT_FILES = Object.freeze([
+const TYPECHECK_INPUT_FILES = Object.freeze([
   'package.json',
   'package-lock.json',
   'pnpm-lock.yaml',
