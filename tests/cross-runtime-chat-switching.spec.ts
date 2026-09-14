@@ -1627,10 +1627,21 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     // instead of landing behind the dock.
     await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);
 
-    const openChatsSummary = page.getByRole('button', {
-      name: /\d+ open chats?/,
-    });
-    const sessionsBeforeSwitch = await openChatsSummary.textContent();
+    // #2059 retired the sidebar footer's "N open chats" summary button (it
+    // restated the panel's own Open chats section from a second read of the
+    // same store). What that assertion PROVED — a Switch preserves the open
+    // conversation inventory, where an Open navigates away from it — is
+    // asserted here against the surviving surface, and against the identities
+    // rather than a count: a switch that swapped one open chat for another
+    // would have held the count constant.
+    const openChatRows = page.locator('#sidebar-open-chats .sidebar-chat-drop');
+    await expect(openChatRows.first()).toBeVisible();
+    const readOpenChats = () =>
+      openChatRows.evaluateAll((rows) =>
+        rows.map((row) => row.getAttribute('aria-label')),
+      );
+    const sessionsBeforeSwitch = await readOpenChats();
+    expect(sessionsBeforeSwitch.length).toBeGreaterThan(0);
     const activeChatBeforeSwitch = new URL(page.url()).searchParams.get('chat');
     expect(activeChatBeforeSwitch).toBeTruthy();
     await badge.click();
@@ -1640,7 +1651,7 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       .click();
     await expect(badge).toContainText('Beta Project');
     await expect(page.locator('.new-chat-modal')).toHaveCount(0);
-    await expect(openChatsSummary).toHaveText(sessionsBeforeSwitch ?? '');
+    await expect.poll(readOpenChats).toEqual(sessionsBeforeSwitch);
     expect(new URL(page.url()).searchParams.get('chat')).toBe(
       activeChatBeforeSwitch,
     );

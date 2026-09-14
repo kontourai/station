@@ -868,16 +868,26 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     // station#settings-revamp slice 5: the dead `/providers` alias is
     // removed — use the canonical connections/models deep link instead.
+    //
+    // #2059: Connections left the panel for Settings' Manage group, so the
+    // panel no longer highlights it — the panel lists places, and the row
+    // that used to wear `sidebar__nav-btn--active` here is gone. What this
+    // still proves is the round trip: the canonical deep link resolves, and
+    // the advertised control reaches the same route from a cold start.
     await page.goto('/connections/providers');
+    await expect(page).toHaveURL(/\/connections\/models/);
     await expect(
-      page.getByRole('button', { name: 'Customize' }),
-    ).toHaveAttribute('aria-expanded', 'true');
-    await expect(
-      page.getByRole('button', { name: 'Connections', exact: true }),
-    ).toHaveClass(/sidebar__nav-btn--active/);
+      page
+        .getByRole('navigation', { name: 'Primary navigation' })
+        .getByRole('button', { name: 'Connections', exact: true }),
+    ).toHaveCount(0);
     await page.goto('/');
-    await page.getByRole('button', { name: 'Customize' }).click();
     await page
+      .getByRole('navigation', { name: 'Primary navigation' })
+      .getByRole('button', { name: 'Settings', exact: true })
+      .click();
+    await page
+      .getByRole('region', { name: 'Manage' })
       .getByRole('button', { name: 'Connections', exact: true })
       .click();
     await expect(page).toHaveURL(/\/connections$/);
@@ -1299,7 +1309,13 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await expect(modelButton).toBeFocused();
     });
 
-    test('groups mobile customization and system navigation without Advanced overflow', async ({
+    // #2059 (design record D3): the mobile drawer lists PLACES, and the
+    // configuration destinations it used to group under `Customize`/`System`
+    // are behind the footer's gear. This is the same accessibility contract as
+    // before — every advertised navigation control a thumb must hit clears the
+    // 44px floor, and nothing overflows the viewport horizontally — re-aimed
+    // at the surfaces that carry it now rather than deleted with the groups.
+    test('lists places in the mobile drawer and reaches configuration through a touch-safe footer', async ({
       page,
     }) => {
       await mockTaskFirstHome(page);
@@ -1312,13 +1328,8 @@ test.describe('Task-first Home (#332, mocked)', () => {
         navigation.getByRole('button', { name: 'Advanced' }),
       ).toHaveCount(0);
 
-      // RT-13 (`app-shell/destination-registry.ts`): Agents, Connections and
-      // Activity are a flat, always-visible band now, not members of a
-      // disclosure group — the loop below used to prove "Agents" visible for a
-      // reason it no longer holds. (origin/main renamed the retired
-      // "Playbooks & skills" label to Guidance in this same loop; Guidance is
-      // asserted in the Customize loop further down, where it belongs.)
-      for (const label of ['Agents', 'Connections', 'Activity']) {
+      // The panel's rows: Home and Activity, both at the touch floor.
+      for (const label of ['Home', 'Activity']) {
         const item = navigation.getByRole('button', { name: label });
         await expect(item).toBeVisible();
         expect((await item.boundingBox())!.height).toBeGreaterThanOrEqual(
@@ -1326,44 +1337,52 @@ test.describe('Task-first Home (#332, mocked)', () => {
         );
       }
 
-      // SHELL-15 (`components/project-sidebar/ProjectSidebarNav.tsx:40-50`):
-      // both groups start EXPANDED and their open state is the user's own, so
-      // clicking a group toggle now COLLAPSES it — they are no longer
-      // route-driven, mutually exclusive accordions.
-      const customize = navigation.getByRole('button', { name: 'Customize' });
-      const system = navigation.getByRole('button', { name: 'System' });
-      await expect(customize).toHaveAttribute('aria-expanded', 'true');
-      await expect(system).toHaveAttribute('aria-expanded', 'true');
+      // Neither group header survives, and neither do the rows they held.
+      for (const gone of [
+        'Customize',
+        'System',
+        'Agents',
+        'Connections',
+        'Guidance',
+        'Registry',
+        'Plugins',
+        'Schedule',
+        'Developer',
+      ]) {
+        await expect(
+          navigation.getByRole('button', { name: gone, exact: true }),
+        ).toHaveCount(0);
+      }
 
-      // "Playbooks & skills" is retired to a search keyword; the surface is
-      // Guidance (`destination-registry.ts` `customize(20)`).
-      for (const label of ['Guidance', 'Registry', 'Settings']) {
-        const item = navigation.getByRole('button', { name: label });
-        await expect(item).toBeVisible();
-        expect((await item.boundingBox())!.height).toBeGreaterThanOrEqual(
+      // The footer's two navigation controls are the drawer's only remaining
+      // destination affordances, so they carry the floor the rows used to.
+      for (const label of ['Notifications', 'Settings']) {
+        const control = navigation.getByRole('button', { name: label });
+        await expect(control).toBeVisible();
+        const box = (await control.boundingBox())!;
+        expect(box.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+        expect(box.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+      }
+
+      // The gear is the route to everything that left the panel, and each
+      // entry it lands on is itself thumb-sized.
+      await navigation.getByRole('button', { name: 'Settings' }).click();
+      await expect(page).toHaveURL(/\/settings/);
+      const manage = page.getByRole('region', { name: 'Manage' });
+      await expect(manage).toBeVisible({ timeout: 10_000 });
+      for (const label of ['Agents', 'Connections', 'Guidance', 'Registry']) {
+        const entry = manage.getByRole('button', { name: label, exact: true });
+        await expect(entry).toBeVisible();
+        expect((await entry.boundingBox())!.height).toBeGreaterThanOrEqual(
           MIN_TOUCH_TARGET_PX,
         );
       }
-
-      // Independent, not exclusive: collapsing one hides only its own items and
-      // leaves the other group and the primary band alone.
-      await customize.click();
-      await expect(customize).toHaveAttribute('aria-expanded', 'false');
+      // archive#3313 (Settings IA, option A): Developer is settings-gated and
+      // hidden until enabled on this device — the gate followed the entry.
       await expect(
-        navigation.getByRole('button', { name: 'Guidance' }),
-      ).toBeHidden();
-      await expect(system).toHaveAttribute('aria-expanded', 'true');
-      await expect(
-        navigation.getByRole('button', { name: 'Agents' }),
-      ).toBeVisible();
-      // archive#3313 (Settings IA, option A): Settings holds the System slot;
-      // Developer is settings-gated and hidden until enabled on this device.
-      await expect(
-        navigation.getByRole('button', { name: 'Settings' }),
-      ).toBeVisible();
-      await expect(
-        navigation.getByRole('button', { name: 'Developer' }),
+        manage.getByRole('button', { name: 'Developer', exact: true }),
       ).toHaveCount(0);
+
       expect(
         await page.evaluate(() =>
           Math.max(

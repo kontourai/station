@@ -26,15 +26,11 @@
   font-size: 15px;
 }
 
-.sidebar__footer-version {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .sidebar__footer-palette {
+  /* The footer has no text member to grow now that the build identity moved
+     out (#2059 product decision), so the chip carries the gap that pushes the
+     bell and the gear to the trailing edge. */
+  margin-left: auto;
   flex-shrink: 0;
   border: 1px solid transparent;
   border-radius: 3px;
@@ -106,7 +102,6 @@
 }
 
 .sidebar--collapsed .sidebar__footer-presence,
-.sidebar--collapsed .sidebar__footer-version,
 .sidebar--collapsed .sidebar__footer-palette {
   display: none;
 }

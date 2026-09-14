@@ -71,9 +71,12 @@ describe('ProjectSidebarFooter', () => {
   // #2059 (design record D3): "Footer: presence, the attention bell, and the
   // gear." The bell and the gear are the panel's only entry points to
   // Notifications and Settings now that neither has a row.
-  test('carries the presence placeholder, the bell and the gear', () => {
-    renderFooter();
-    expect(screen.getByRole('img', { name: 'People here' })).toBeTruthy();
+  test('carries the presence placeholder, the palette chord, the bell and the gear', () => {
+    const { container } = renderFooter();
+    expect(container.querySelector('.sidebar__footer-presence')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Command palette' }),
+    ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Notifications' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
   });
@@ -82,18 +85,36 @@ describe('ProjectSidebarFooter', () => {
   // read, so the placeholder must not report a count, a name or an online
   // mark — a footer that claims someone is here is worse than one that says
   // nothing. It is inert: not a button, not focusable, no handler.
-  test('the presence placeholder claims nothing about who is here', () => {
-    renderFooter();
-    const presence = screen.getByRole('img', { name: 'People here' });
-    expect(presence.tagName).toBe('SPAN');
-    expect(presence.textContent).toBe('');
-    expect(presence.getAttribute('tabindex')).toBeNull();
-    expect(presence.getAttribute('title')).toBe(
-      'People here — presence is not reported yet',
+  //
+  // The name is the case the first cut got wrong. `role="img"` with
+  // `aria-label="People here"` reads as a presence claim to a screen reader,
+  // and an aria-label OVERRIDES the `title` that was meant to qualify it — so
+  // the qualifier reached sighted users only. Nothing in this footer may
+  // expose a name about presence until presence exists.
+  test('the presence placeholder claims nothing about who is here, in any channel', () => {
+    const { container } = renderFooter();
+    const presence = container.querySelector<HTMLElement>(
+      '.sidebar__footer-presence',
     );
-    expect(
-      screen.queryAllByRole('button').map((button) => button.textContent),
-    ).not.toContain('People here');
+    expect(presence).toBeTruthy();
+    expect(presence!.tagName).toBe('SPAN');
+    expect(presence!.textContent).toBe('');
+    expect(presence!.getAttribute('tabindex')).toBeNull();
+    // Hidden from the accessibility tree, so it has no name to get wrong.
+    expect(presence!.getAttribute('aria-hidden')).toBe('true');
+    expect(presence!.getAttribute('role')).toBeNull();
+    expect(presence!.getAttribute('aria-label')).toBeNull();
+    expect(presence!.getAttribute('title')).toBeNull();
+    // And nothing else in the footer says it either: no element, of any role,
+    // carries an accessible name about people or presence.
+    for (const named of Array.from(
+      container.querySelectorAll<HTMLElement>('[aria-label], [title]'),
+    )) {
+      const name = `${named.getAttribute('aria-label') ?? ''} ${
+        named.getAttribute('title') ?? ''
+      }`;
+      expect(name).not.toMatch(/people|presence|here|online/i);
+    }
   });
 
   test('the bell navigates to the notifications route', () => {
@@ -179,13 +200,16 @@ describe('ProjectSidebarFooter', () => {
     ).toHaveLength(0);
   });
 
-  test('renders the build identity with full detail in the tooltip', () => {
-    renderFooter();
-    const version = screen.getByTestId('sidebar-build-version');
-    // Under vitest there is no vite `define`, so build-info falls back.
-    expect(version.textContent).toBe('v0.0.0 · dev');
-    expect(version.getAttribute('title')).toContain('Station v0.0.0');
-    expect(version.getAttribute('title')).toContain('commit dev');
+  // #2059 product decision: the build identity left the footer. It is not
+  // panel chrome — `ReportProblemDialog` stamps `buildLabel` into every
+  // report, which is where the number is actually needed. The old
+  // "renders the build identity with full detail in the tooltip" test went
+  // with the element it described; what replaces it is the assertion that the
+  // rail no longer carries a version at all.
+  test('carries no build identity', () => {
+    const { container } = renderFooter();
+    expect(screen.queryByTestId('sidebar-build-version')).toBeNull();
+    expect(container.textContent).not.toMatch(/v\d+\.\d+\.\d+/);
   });
 
   test('the palette chip shows the chord the registry reports (#1649)', () => {

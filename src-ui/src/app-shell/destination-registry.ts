@@ -177,6 +177,17 @@ export function createDestinationRegistry(
           `Destination ${definition.id} is both a panel place and a managed setting`,
         );
       }
+      // `hiddenFromNav` and `management` compose to nothing: `getManagement`
+      // filters the hidden ones out, so the pair declares a Manage entry and
+      // then silently withholds it. A destination that should not be
+      // advertised simply carries no `management` slot; one that should is
+      // refused here rather than disappearing from the group nobody is
+      // watching.
+      if (definition.hiddenFromNav) {
+        throw new Error(
+          `Destination ${definition.id} cannot be hidden from nav and a managed setting`,
+        );
+      }
       if (managementSlots.has(definition.management.order)) {
         throw new Error(
           `Duplicate management destination order: ${definition.management.order}`,

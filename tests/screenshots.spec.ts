@@ -225,12 +225,6 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  * test, so re-capturing the identical build never perturbs the gallery
  * pixel-for-pixel (archive#4464):
  *
- *  - `.sidebar__footer-version` (ProjectSidebarStatus.tsx, via
- *    `buildLabel` in src-ui/src/build-info.ts): the `v<version> ·
- *    <commit>` build stamp rendered in the persistent project sidebar on
- *    every route. Comparing it pixel-for-pixel would invalidate a
- *    committed baseline on every version/commit bump even when nothing
- *    about the screen itself changed.
  *  - `.time-filter-wrapper` (MonitoringTimeControls.tsx, Developer →
  *    Telemetry): the whole relative/absolute time-window control —
  *    `.time-range-sublabel` alone (the absolute "Aug 26, 11:30 PM -> now"
@@ -264,9 +258,13 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  * CSS-hidden (not Playwright's screenshot `mask` option), so the gallery
  * itself stays clean for a human/design reviewer instead of getting an
  * opaque box stamped over it that a reviewer has to mentally discount on
- * every tile. The build-stamp label's text is fixed per build (no live state
- * to vary its width), so `visibility: hidden` preserves the sidebar footer's
- * row height exactly as authored.
+ * every tile. Each label's text is fixed for the shot (no live state to vary
+ * its width), so `visibility: hidden` preserves the row height exactly as
+ * authored.
+ *
+ * #2059 removed the `.sidebar__footer-version` build stamp from the sidebar
+ * footer, and its rule with it: the volatile text is no longer on screen, so
+ * hiding it is not a thing this helper has to do.
  *
  * Must be called AFTER `page.goto` (a fresh navigation drops any
  * previously injected style tag) and as close to the shot as practical.
@@ -274,7 +272,6 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
 async function hideVolatileChrome(page: Page) {
   await page.addStyleTag({
     content: `
-      .sidebar__footer-version { visibility: hidden !important; }
       .time-filter-wrapper { visibility: hidden !important; }
       .monitoring-summary { visibility: hidden !important; }
       .status-badge { visibility: hidden !important; }

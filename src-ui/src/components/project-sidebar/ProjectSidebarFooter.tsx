@@ -4,7 +4,6 @@ import {
   type DestinationDefinition,
 } from '../../app-shell/destination-registry';
 import { resolveViewFromPath } from '../../app-shell/routing';
-import { buildLabel, buildTitle } from '../../build-info';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import {
   formatShortcutChord,
@@ -33,15 +32,16 @@ interface ProjectSidebarFooterProps {
 
 /**
  * The panel footer (#2059, design record D3): presence, the attention bell,
- * and the gear. It replaces the status line's role as the bottom of the
- * panel, and keeps the two things that line carried which nothing else says —
- * the build identity and the command palette's chord. The chord earns its
- * place here more than it did before: the palette is now one of the two ways
- * to reach everything this slice moved out of the panel.
+ * the gear, and the command palette's chord. The chord is the one thing kept
+ * from the status line this replaced, and it earns its place: the palette is
+ * one of the two ways to reach everything this slice moved out of the panel.
  *
- * It retired the open-chat count that used to sit here. That count and its
+ * Two things the status line carried are gone. The open-chat count and its
  * popover restated the panel's own "Open chats" section (and, on the
  * collapsed rail, its dedicated button) from a second copy of the same store.
+ * The build identity is not panel chrome — it is what you quote when
+ * reporting a problem, and `ReportProblemDialog` stamps `buildLabel` into
+ * every report without anyone having to read it off a rail.
  *
  * Lazy, so its stylesheet and the attention query stay out of the entry chunk
  * the sidebar itself belongs to.
@@ -81,23 +81,15 @@ export function ProjectSidebarFooter({
         {/*
           #2066 owns presence. Until it ships there is no presence authority
           to read, so this placeholder reports NOTHING about who is here — no
-          count, no avatars, no dot. It holds the footer's left slot and names
-          itself, and that is all it claims.
+          count, no avatars, no dot, AND NO ACCESSIBLE NAME. A `role="img"`
+          with an aria-label announced "People here" to a screen reader, which
+          is a presence claim in the one channel where the qualifying tooltip
+          never arrives: an aria-label overrides `title`. A placeholder holding
+          a slot needs no name, so it is hidden from the accessibility tree
+          entirely until there is something true to say.
         */}
-        <span
-          className="sidebar__footer-presence"
-          role="img"
-          aria-label="People here"
-          title="People here — presence is not reported yet"
-        >
+        <span aria-hidden="true" className="sidebar__footer-presence">
           <PeopleGlyph />
-        </span>
-        <span
-          className="sidebar__footer-version"
-          title={buildTitle}
-          data-testid="sidebar-build-version"
-        >
-          {buildLabel}
         </span>
         <button
           type="button"

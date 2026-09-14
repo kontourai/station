@@ -142,6 +142,24 @@ describe('DestinationRegistry', () => {
     ).toThrow(/both a panel place and a managed setting/);
   });
 
+  // `hiddenFromNav` filters `getManagement`, so the pair would declare a
+  // Manage entry and then withhold it — the destination would be gone from
+  // the panel AND from the group that is supposed to hold what left it, with
+  // no error anywhere.
+  test('refuses a managed setting that is also hidden from nav', () => {
+    expect(() =>
+      createDestinationRegistry([
+        {
+          id: 'hidden-manage',
+          route: '/hidden-manage',
+          label: () => 'Hidden',
+          hiddenFromNav: true,
+          management: { order: 1 },
+        },
+      ]),
+    ).toThrow(/cannot be hidden from nav and a managed setting/);
+  });
+
   test('refuses two managed settings in the same slot', () => {
     expect(() =>
       createDestinationRegistry([
