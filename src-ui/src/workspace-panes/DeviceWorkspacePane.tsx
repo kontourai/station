@@ -203,19 +203,43 @@ function DeviceWorkspacePaneSurface({
     );
   }
 
+  /*
+    A partial discovery is a fact about the READ, not about the list's
+    length: `LocalMobileDeviceHost` answers `partial` whenever the helper
+    reported any source error, and it can do that with an empty `devices`
+    (probed directly with `{simulators:[],emulators:[],errors:[{…}]}`). So
+    the note belongs to a list of zero exactly as much as to a list of one,
+    and both states render this same element.
+  */
+  const incompleteNote =
+    state === 'partial' ? (
+      <p className="device-pane__note">
+        Some device sources did not answer, so this list may be incomplete.
+      </p>
+    ) : null;
+
   if (devices.length === 0)
     return (
       <div className="device-pane">
         <Empty
           variant="compact"
           label="Nothing here yet"
-          description="This Station's device helper reported nothing running. Start a simulator or emulator, then refresh."
+          description={
+            // "reported nothing running" is a claim about a discovery that
+            // FINISHED. Under `partial` it did not, so the sentence says only
+            // what the sources that answered reported, and the note below
+            // carries the rest.
+            state === 'partial'
+              ? 'The device sources that did answer listed nothing running.'
+              : "This Station's device helper reported nothing running. Start a simulator or emulator, then refresh."
+          }
           action={
             <Button size="sm" onClick={() => void inventory.refetch()}>
               Refresh
             </Button>
           }
         />
+        {incompleteNote}
       </div>
     );
 
@@ -282,11 +306,7 @@ function DeviceWorkspacePaneSurface({
         <p className="device-pane__view-only">
           View only — taps and typing are not sent to this device.
         </p>
-        {state === 'partial' ? (
-          <p className="device-pane__note">
-            Some device sources did not answer, so this list may be incomplete.
-          </p>
-        ) : null}
+        {incompleteNote}
       </div>
       <div className="device-pane__stage">
         <DeviceStage

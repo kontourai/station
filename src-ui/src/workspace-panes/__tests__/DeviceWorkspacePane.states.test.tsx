@@ -94,6 +94,28 @@ describe('the Device pane over an inventory (#1969)', () => {
     expect(screen.queryByText(/No devices/)).toBeNull();
   });
 
+  /**
+   * A partial discovery with NOTHING in it is still a partial discovery. The
+   * service emits this envelope: `parseDevices` sets `partial` from the
+   * helper's `errors` array alone, so `{simulators:[],emulators:[],errors:[…]}`
+   * becomes `{state:'partial', devices:[]}` (probed directly against
+   * `LocalMobileDeviceHost`). Falling through to the ready-empty's
+   * description tells the reader the helper "reported nothing running" — a
+   * claim about a discovery that finished, which this one did not — and
+   * loses the incomplete note with it. Reverting the description to the
+   * unconditional sentence reds two of the three assertions below.
+   */
+  test('a partial inventory with no devices says the discovery was incomplete, not that nothing is running', async () => {
+    stubDeviceFetch({ inventory: partialInventory([]) });
+    await mount();
+    await screen.findByText('Nothing here yet');
+    expect(screen.getByText(/may be incomplete/)).toBeTruthy();
+    expect(
+      screen.getByText(/sources that did answer listed nothing running/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/helper reported nothing running/)).toBeNull();
+  });
+
   /** A partial discovery is a NOTE on a real list, not an error. */
   test('a partial inventory renders the list and says discovery was incomplete', async () => {
     stubDeviceFetch({ inventory: partialInventory([IOS_DEVICE]) });
