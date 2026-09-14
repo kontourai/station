@@ -144,6 +144,11 @@ vi.mock('../platform/PlatformProfileContext', () => ({
 }));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
+  // #2059: the page's Manage group navigates to other DESTINATIONS (Agents,
+  // Connections, …) rather than to a `?view=` section of this page, so it
+  // reads the navigation actions directly. Its own behaviour is covered by
+  // SettingsManageSection.test.tsx; here it only has to mount.
+  useNavigationActions: () => ({ navigate: vi.fn() }),
 }));
 vi.mock('../contexts/KeyboardShortcutsContext', () => {
   const store = {

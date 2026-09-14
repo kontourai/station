@@ -1,8 +1,5 @@
 import type { ReactNode } from 'react';
-import type {
-  DestinationIconId,
-  DestinationSection,
-} from '../../app-shell/destination-registry';
+import type { DestinationIconId } from '../../app-shell/destination-registry';
 
 function sidebarIcon(children: ReactNode): ReactNode {
   return (
@@ -89,30 +86,3 @@ const DESTINATION_ICONS: Readonly<Record<DestinationIconId, ReactNode>> = {
 export function destinationIcon(icon: DestinationIconId): ReactNode {
   return DESTINATION_ICONS[icon];
 }
-
-export const PROJECT_SIDEBAR_NAV_GROUPS: ReadonlyArray<{
-  id: DestinationSection;
-  label: string;
-  icon: ReactNode;
-}> = [
-  {
-    id: 'customize',
-    label: 'Customize',
-    icon: sidebarIcon(
-      <>
-        <path d="M12 20h9" />
-        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
-      </>,
-    ),
-  },
-  {
-    id: 'system',
-    label: 'System',
-    icon: sidebarIcon(
-      <>
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l-2.8 2.8a1.7 1.7 0 0 0-1.9-.3A1.7 1.7 0 0 0 14 21h-4a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-2.8-2.8a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14v-4a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l2.8-2.8A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3h4a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l2.8 2.8a1.7 1.7 0 0 0-.3 1.9A1.7 1.7 0 0 0 21 10v4a1.7 1.7 0 0 0-1.6 1Z" />
-      </>,
-    ),
-  },
-];

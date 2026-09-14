@@ -631,17 +631,14 @@
   background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
 }
 
-/* Global nav */
+/* Panel destination rows. #2059 (D3): these sit INSIDE the scrolling body,
+   directly under Home, rather than forming a bordered band pinned below the
+   projects — the band existed to hold eleven configuration destinations that
+   now live behind the gear. `.sidebar__nav-btn` shares
+   `.sidebar__project-btn`'s box metrics, so no padding of its own is what
+   keeps Activity aligned with Home. */
 .sidebar__nav {
-  border-top: 1px solid var(--border-primary);
-  padding: 8px 4px;
-  flex-shrink: 0;
-  max-height: 55%;
-  overflow-y: auto;
-}
-
-.sidebar--collapsed .sidebar__nav {
-  padding: 8px 2px;
+  display: contents;
 }
 
 .sidebar__nav-btn {
@@ -736,26 +733,11 @@
   white-space: nowrap;
 }
 
-.sidebar__nav-group-toggle {
-  min-height: 44px;
-}
 .sidebar__nav-chevron {
   margin-left: auto;
 }
 .sidebar--collapsed .sidebar__nav-chevron {
   display: none;
-}
-
-.sidebar__nav-group-items {
-  margin: 2px 0 6px 13px;
-  padding-left: 5px;
-  border-left: 1px solid var(--border-primary);
-}
-
-.sidebar--collapsed .sidebar__nav-group-items {
-  margin-left: 0;
-  padding-left: 0;
-  border-left: 0;
 }
 
 .sidebar__recent-task {
@@ -853,10 +835,6 @@
     inset: 0;
     background: rgba(0, 0, 0, 0.4);
     z-index: calc(var(--layer-navigation) - 1);
-  }
-
-  .sidebar__nav {
-    padding-bottom: 8px;
   }
 
   /* Touch targets: the drawer's nav rows and project/layout rows are shared

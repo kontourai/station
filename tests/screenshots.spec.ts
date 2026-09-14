@@ -225,7 +225,7 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  * test, so re-capturing the identical build never perturbs the gallery
  * pixel-for-pixel (archive#4464):
  *
- *  - `.sidebar__status-version` (ProjectSidebarStatus.tsx, via
+ *  - `.sidebar__footer-version` (ProjectSidebarStatus.tsx, via
  *    `buildLabel` in src-ui/src/build-info.ts): the `v<version> ·
  *    <commit>` build stamp rendered in the persistent project sidebar on
  *    every route. Comparing it pixel-for-pixel would invalidate a
@@ -274,7 +274,7 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
 async function hideVolatileChrome(page: Page) {
   await page.addStyleTag({
     content: `
-      .sidebar__status-version { visibility: hidden !important; }
+      .sidebar__footer-version { visibility: hidden !important; }
       .time-filter-wrapper { visibility: hidden !important; }
       .monitoring-summary { visibility: hidden !important; }
       .status-badge { visibility: hidden !important; }
