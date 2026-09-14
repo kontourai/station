@@ -148,12 +148,20 @@ describe('a refused capture (#1969)', () => {
    * still labelled with its own capture time, so nothing claims it is
    * current.
    *
-   * Dropping the retained frame reds the second image assertion. Retaining it
-   * WITHOUT keying it to the selection reds the third, where the same
-   * retained frame would otherwise be captioned with a different device's
-   * name. Keying it but never CLEARING it reds the fourth: keying only
-   * withholds the frame while another device is selected, so coming back
-   * re-presents it.
+   * Dropping the retained frame reds the second image assertion. Removing
+   * `retained.current = null` from `selectDevice` reds the third and the
+   * fourth: without it the frame is merely withheld while another device is
+   * selected, so coming back re-presents it.
+   *
+   * What NOTHING here reds is the `id` key on the retained copy. Once
+   * `selectDevice` clears the ref before any render, the key is unreachable
+   * in every sequence a user can drive, so removing it leaves this file
+   * green. It is kept deliberately, as the guard for the one ordering the
+   * clear cannot cover: a passive effect committed before the clear could
+   * in principle write a frame back afterwards, and the key is what refuses
+   * to caption device A's frame with device B's name if it ever did. A
+   * second line of defence with no test is the honest description; a test
+   * for it would have to fake a commit order React does not produce here.
    */
   test('a refused re-capture keeps the frame that already arrived, and neither carries it to another device nor brings it back', async () => {
     stubDeviceFetch({
@@ -175,7 +183,7 @@ describe('a refused capture (#1969)', () => {
     );
 
     await click(screen.getByRole('radio', { name: /Pixel/ }));
-    await waitFor(() => expect(screen.queryByRole('img')).toBeNull());
+    expect(screen.queryByRole('img')).toBeNull();
 
     // And back. `click` has already awaited the re-render, so this is a plain
     // assertion rather than a `waitFor`: a retained frame that survives the
@@ -193,9 +201,16 @@ describe('a refused capture (#1969)', () => {
    * `capture.reset()` clears the refusal on the way out, so a frame that
    * survived the round trip would return alone: the capture the reader left
    * behind, re-presented in the ordinary success position, with the failure
-   * that produced it gone. Removing `retained.current = null` from
-   * `selectDevice` reds the image assertion; keeping the refusal across the
-   * switch reds the other.
+   * that produced it gone. That recombination is what this case exists to
+   * refuse, and removing `retained.current = null` from `selectDevice` reds
+   * its image assertion.
+   *
+   * The refusal assertion beside it is a consequence, not an independent
+   * pin: the refusal is already gone by the time the reader returns, cleared
+   * on the way OUT by the switch that the sibling case below asserts
+   * directly. It is kept here because "neither half comes back" is the
+   * property a reader of this test wants stated whole, but a mutation that
+   * only broke the refusal clearing would red that sibling, not this line.
    */
   test('after a refusal, leaving the device and returning brings back neither the frame nor the refusal', async () => {
     stubDeviceFetch({

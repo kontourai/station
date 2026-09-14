@@ -149,9 +149,11 @@ describe('the Device pane over an inventory (#1969)', () => {
    * starting a real device emits — whether `expo-device-hub` then reports an
    * `emulator-<n>` serial in place of the AVD name is unsettleable from this
    * repository — which is why the row states both facts instead of choosing
-   * which one to keep. Dropping either sentence from `unsupportedReason`
-   * reds one of the first two assertions, and returning early on the
-   * addressability check reds the "Not running" one specifically.
+   * which one to keep. The three assertions below are, in order: the row is
+   * disabled, it carries the serial sentence, it carries the not-running
+   * sentence. Dropping the serial sentence from `unsupportedReason` reds the
+   * second; dropping the not-running sentence, or returning early on the
+   * addressability check, reds the third.
    */
   test('a row that is both stopped and unaddressable is offered disabled with both reasons', async () => {
     stubDeviceFetch({
@@ -177,6 +179,16 @@ describe('the Device pane over an inventory (#1969)', () => {
    * symmetry half: a stopped iOS simulator and a stopped Android emulator
    * that reports a serial get the same sentence, because being stopped is
    * the same fact on both.
+   *
+   * The Android arm holds a stopped row that DOES report an `emulator-<n>`
+   * serial. Whether a real helper ever emits that pair is the same question
+   * the both-reasons case above declines to settle: if the identifier only
+   * becomes a serial on boot, this shape does not occur in the field. It is
+   * asserted anyway because the pane must not invent a second reason for a
+   * row that gives it no cause to, and because the iOS arm — whose ids are
+   * checked the same way whether or not the device is running — is
+   * unambiguous. Read this arm as pinning the pane's rule, not the helper's
+   * output.
    */
   test.each([
     ['ios', IOS_DEVICE, /iPhone/],
