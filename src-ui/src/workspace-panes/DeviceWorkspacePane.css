@@ -38,7 +38,7 @@
 
 .device-pane__choice {
   align-items: center;
-  border: 1px solid var(--border, rgb(0 0 0 / 15%));
+  border: 1px solid var(--border-primary);
   border-radius: var(--radius-2, 8px);
   display: flex;
   flex-wrap: wrap;
@@ -109,8 +109,16 @@
      square rather than a phone ratio: an invented portrait shape would be a
      claim about a device nobody measured. */
   aspect-ratio: var(--device-frame-ratio, 1 / 1);
-  background: var(--surface-2, rgb(0 0 0 / 5%));
-  border: 1px solid var(--border, rgb(0 0 0 / 15%));
+  /* A defined token with no literal fallback, here and on the border above
+     and on the picker rows. The names this file first reached for are
+     defined in no theme root, so their colour fallbacks were what would
+     always paint: a fixed 5% black behind the letterbox bars
+     `object-fit: contain` leaves, and a fixed 15% black hairline, both of
+     which disappear on a dark theme. (The scanner behind
+     undefined-css-custom-properties.test.ts reads comments too, so this one
+     names no var expression.) */
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
   border-radius: var(--radius-2, 8px);
   margin: auto;
   max-height: 100%;
