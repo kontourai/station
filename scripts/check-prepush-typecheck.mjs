@@ -10,9 +10,12 @@
  * describes for formatting, and the same one #3033, #3208 and #3629 closed for
  * the bundle ceiling, the UI-contract ratchets and the SDK barrel.
  *
- * Unlike those three, this one is NOT seconds-scale: the aggregate is ~82s for
- * all thirteen lanes, an order of magnitude above everything else in the hook,
- * and its two preconditions add ~9s. So it runs only when the push changes
+ * Unlike those three, this one is NOT seconds-scale. Measured end to end on
+ * this host, preconditions included: 51s wall for all thirteen lanes, which
+ * the aggregate runs with bounded concurrency (447% CPU) rather than in
+ * sequence; station#4273 recorded 82s for the aggregate alone on a quieter
+ * host. Either figure is an order of magnitude above everything else in the
+ * hook, so it runs only when the push changes
  * something a `tsc` project reads. A docs-only, workflow-only or `.mjs`-only
  * push pays none of it, which is why this is a scope guard and not a line in
  * the hook: adding it unconditionally would break the hook's own stated
