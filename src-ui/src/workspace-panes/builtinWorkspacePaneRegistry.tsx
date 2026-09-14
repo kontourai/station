@@ -2,6 +2,7 @@ import { WORKSPACE_BASIS_PANE_RENDERER_NAME } from '@kontourai/station-basis-pan
 import { WORKSPACE_BOARD_PANE_RENDERER_NAME } from '@kontourai/station-board-pane/workspace-board-pane';
 import type { ConversationPullRequestLinkObservation } from '@kontourai/station-contracts/conversation-pull-request-links';
 import { WORKSPACE_ACTIVITY_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_AGENTS_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
   isCanonicalWorkspaceChatPaneInstance,
@@ -739,6 +740,25 @@ function PullRequestWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   );
 }
 
+const LazyAgentsWorkspacePane = lazy(() =>
+  import('./AgentsWorkspacePane').then(({ AgentsWorkspacePane }) => ({
+    default: AgentsWorkspacePane,
+  })),
+);
+
+/**
+ * The Agents pane (#2050). It takes no instance data — the conversation it
+ * lists is navigation state, not pane identity — so unlike every pane above
+ * it there is nothing here to resolve or refuse.
+ */
+function AgentsWorkspacePaneEntry() {
+  return (
+    <Suspense fallback={<SkeletonBlock count={3} label="Loading Agents" />}>
+      <LazyAgentsWorkspacePane />
+    </Suspense>
+  );
+}
+
 const LazyHomeWorkspacePane = lazy(() =>
   import('../views/home/HomeWorkspacePane').then(({ HomeWorkspacePane }) => ({
     default: HomeWorkspacePane,
@@ -860,6 +880,7 @@ const builtinWorkspacePaneRegistry: Record<
   [WORKSPACE_PULL_REQUEST_PANE_RENDERER_NAME]: PullRequestWorkspacePane,
   [WORKSPACE_HOME_PANE_RENDERER_NAME]: HomeWorkspacePaneEntry,
   [WORKSPACE_ACTIVITY_PANE_RENDERER_NAME]: ActivityWorkspacePaneEntry,
+  [WORKSPACE_AGENTS_PANE_RENDERER_NAME]: AgentsWorkspacePaneEntry,
   [WORKSPACE_SPATIAL_BOARD_PANE_RENDERER_NAME]: SpatialBoardWorkspacePaneEntry,
   [WORKSPACE_BOARD_PANE_RENDERER_NAME]: BoardWorkspacePaneEntry,
   [WORKSPACE_BASIS_PANE_RENDERER_NAME]: BasisWorkspacePaneEntry,

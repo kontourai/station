@@ -4,6 +4,7 @@ import * as basisPane from '@kontourai/station-basis-pane';
 import * as boardPane from '@kontourai/station-board-pane/workspace-board-pane';
 import * as contracts from '@kontourai/station-contracts';
 import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_AGENTS_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
 import {
   WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
@@ -65,6 +66,7 @@ const EXPECTED_BUILTIN_DESCRIPTOR_EXPORTS = [
   '@kontourai/station-contracts:WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR',
+  '@kontourai/station-contracts:WORKSPACE_AGENTS_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_HOME_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_PLAN_PANE_DESCRIPTOR',
@@ -86,6 +88,9 @@ const SURFACE_DESCRIPTORS: Record<string, WorkspacePaneDescriptor> = {
   chat: WORKSPACE_CHAT_PANE_DESCRIPTOR,
   activity: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
   home: WORKSPACE_HOME_PANE_DESCRIPTOR,
+  // #2050: a dock-only pane like Activity, and like Activity it binds
+  // nothing — the conversation it lists is navigation.
+  'workspace-agents': WORKSPACE_AGENTS_PANE_DESCRIPTOR,
   // #2047: the three coding panes. Browser Preview is deliberately absent
   // (no blank canonical instance and, unlike File Preview, no reader), so its
   // descriptor must NOT claim `docked` — the both-directions pin below holds

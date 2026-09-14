@@ -50,6 +50,11 @@ import {
   WORKSPACE_ACTIVITY_PANE_INSTANCE,
 } from '@kontourai/station-contracts/workspace-activity-pane';
 import {
+  isCanonicalWorkspaceAgentsPaneInstance,
+  WORKSPACE_AGENTS_PANE_DESCRIPTOR,
+  WORKSPACE_AGENTS_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-agents-pane';
+import {
   createWorkspaceChatPaneInstance,
   isCanonicalWorkspaceChatPaneInstance,
   WORKSPACE_CHAT_PANE_DESCRIPTOR,
@@ -243,6 +248,16 @@ export const REGION_SURFACE_PANES: ReadonlyMap<string, RegionSurfacePane> =
         instanceId: WORKSPACE_ACTIVITY_PANE_INSTANCE.instanceId,
         instance: () => WORKSPACE_ACTIVITY_PANE_INSTANCE,
         isCanonical: isCanonicalWorkspaceActivityPaneInstance,
+      },
+    ],
+    [
+      'workspace-agents',
+      {
+        surfaceId: 'workspace-agents',
+        descriptorId: WORKSPACE_AGENTS_PANE_DESCRIPTOR.id,
+        instanceId: WORKSPACE_AGENTS_PANE_INSTANCE.instanceId,
+        instance: () => WORKSPACE_AGENTS_PANE_INSTANCE,
+        isCanonical: isCanonicalWorkspaceAgentsPaneInstance,
       },
     ],
     codingPane(

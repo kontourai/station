@@ -154,6 +154,31 @@ describe('header background tasks button (from #1064 AC3)', () => {
     expect(controls.onToggleBackgroundTasks).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * #2050: where a side dock region exists the row places the Agents PANE,
+   * so the dialog semantics must go with the sheet. A row announcing
+   * `haspopup="dialog"` and an expanded state while it opens a tab would
+   * describe an interaction that does not happen — and `aria-expanded`
+   * would then be a state nothing ever changes. Reverting the conditional
+   * spread in `ChatDockHeader` reds both assertions.
+   */
+  test('drops the dialog semantics when the row opens the Agents pane', async () => {
+    const controls = workspaceControls({
+      isBackgroundTasksOpen: true,
+      backgroundTasksOpensPane: true,
+    });
+    renderHeader({ workspaceControls: controls });
+    openMoreMenu();
+
+    const row = await screen.findByRole('menuitem', {
+      name: 'Background tasks',
+    });
+    expect(row.getAttribute('aria-haspopup')).toBeNull();
+    expect(row.getAttribute('aria-expanded')).toBeNull();
+    fireEvent.click(row);
+    expect(controls.onToggleBackgroundTasks).toHaveBeenCalledTimes(1);
+  });
+
   test('shows the running-count variant label when tasks are running', async () => {
     renderHeader({
       workspaceControls: workspaceControls({

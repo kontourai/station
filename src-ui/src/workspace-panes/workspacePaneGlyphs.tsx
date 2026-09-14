@@ -1,6 +1,7 @@
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import type { ComponentType } from 'react';
 import {
+  AgentGlyph,
   BoardGlyph,
   BranchGlyph,
   ChartGlyph,
@@ -60,6 +61,7 @@ const BUILTIN_PANE_GLYPHS = {
   'workspace-pull-request': BranchGlyph,
   'workspace-home': HomeGlyph,
   'workspace-activity': ChartGlyph,
+  'workspace-agents': AgentGlyph,
   'workspace-spatial-board': PinGlyph,
   'workspace-board': BoardGlyph,
   'workspace-basis': DatabaseGlyph,

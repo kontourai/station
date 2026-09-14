@@ -1846,6 +1846,34 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // reading of the viewport: a device the model will refuse a side region on
   // must not be offered one here.
   const dockBottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
+  /**
+   * #2050: where the "Background tasks — N running" affordance goes. With a
+   * side dock region on this device it places the Agents PANE, so the list
+   * sits beside the conversation and stays there; on a bottom-only device,
+   * where a side region is not available, it opens the sheet it always did.
+   * `useShowSurface` rather than the region model, because Chat is a pane
+   * renderer and pane renderers do not read region state.
+   */
+  const backgroundTasksOpensPane = !dockBottomOnly;
+  // Two callers with two meanings, kept apart: the More-menu row TOGGLES the
+  // sheet it announces as a dialog, while a switcher row that is dismissing
+  // itself OPENS it. Folding them into one toggle would let a second entry
+  // point close a sheet it never opened. The pane branch is the same either
+  // way — revealing a tab that is already there is a reveal.
+  const showBackgroundTasks = useCallback(() => {
+    if (backgroundTasksOpensPane) {
+      showSurface('workspace-agents');
+      return;
+    }
+    setIsBackgroundTasksOpen(true);
+  }, [backgroundTasksOpensPane, setIsBackgroundTasksOpen, showSurface]);
+  const toggleBackgroundTasks = useCallback(() => {
+    if (backgroundTasksOpensPane) {
+      showSurface('workspace-agents');
+      return;
+    }
+    setIsBackgroundTasksOpen((open) => !open);
+  }, [backgroundTasksOpensPane, setIsBackgroundTasksOpen, showSurface]);
   const codingLayoutSlug = sessionCodingLayout?.slug ?? null;
   const markdownLinkContext = useMemo(
     () => ({
@@ -2218,8 +2246,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         ? 0
                         : backgroundTasksRunningCount,
                       isBackgroundTasksOpen,
-                      onToggleBackgroundTasks: () =>
-                        setIsBackgroundTasksOpen((open) => !open),
+                      backgroundTasksOpensPane,
+                      onToggleBackgroundTasks: toggleBackgroundTasks,
                       sessionInventory:
                         !importedSessionId &&
                         !conversationOpenRecovery &&
@@ -2487,9 +2515,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           },
                         );
                       }}
-                      onOpenBackgroundTasks={() =>
-                        setIsBackgroundTasksOpen(true)
-                      }
+                      onOpenBackgroundTasks={showBackgroundTasks}
                     />
                   ) : null}
                 </div>
@@ -2553,7 +2579,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               backgroundTaskCount: backgroundTasksRunningCount,
               onOpenBackgroundTasks: () => {
                 setIsTaskSwitcherOpen(false);
-                setIsBackgroundTasksOpen(true);
+                showBackgroundTasks();
               },
               onOpenSession: (threadId) => {
                 setIsTaskSwitcherOpen(false);

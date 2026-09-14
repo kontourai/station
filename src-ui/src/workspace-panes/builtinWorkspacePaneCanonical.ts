@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import { WORKSPACE_BOARD_PANE_DESCRIPTOR } from '@kontourai/station-board-pane/workspace-board-pane';
 import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_AGENTS_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-agents-pane';
 import {
   WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR,
   WORKSPACE_BROWSER_PREVIEW_PANE_RENDERER_NAME,
@@ -280,6 +281,16 @@ export function isCanonicalBuiltinBoardDescriptor(
  * every other built-in — a plugin cannot reach the built-in review surface by
  * reusing its renderer name.
  */
+/**
+ * The Agents pane's declaration (#2050), compared field by field like every
+ * other built-in.
+ */
+export function isCanonicalBuiltinAgentsDescriptor(
+  descriptor: WorkspacePaneDescriptor,
+): boolean {
+  return sameBuiltinDescriptor(descriptor, WORKSPACE_AGENTS_PANE_DESCRIPTOR);
+}
+
 export function isCanonicalBuiltinPullRequestDescriptor(
   descriptor: WorkspacePaneDescriptor,
 ): boolean {
@@ -446,6 +457,11 @@ export function isCanonicalBuiltinWorkspacePaneDescriptor(
   )
     return false;
   if (
+    name === 'workspace-agents' &&
+    !isCanonicalBuiltinAgentsDescriptor(descriptor)
+  )
+    return false;
+  if (
     name === 'workspace-pull-request' &&
     !isCanonicalBuiltinPullRequestDescriptor(descriptor)
   )
@@ -533,6 +549,7 @@ const BUILTIN_WORKSPACE_PANE_DESCRIPTORS: readonly WorkspacePaneDescriptor[] = [
   WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR,
   WORKSPACE_HOME_PANE_DESCRIPTOR,
   WORKSPACE_PLAN_PANE_DESCRIPTOR,
+  WORKSPACE_AGENTS_PANE_DESCRIPTOR,
   WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR,
   WORKSPACE_READINESS_PANE_DESCRIPTOR,
   WORKSPACE_SPATIAL_BOARD_PANE_DESCRIPTOR,

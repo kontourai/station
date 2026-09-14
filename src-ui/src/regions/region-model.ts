@@ -710,6 +710,18 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     sourceFile: 'src-ui/src/views/activity/ActivityWorkspacePane.tsx',
   },
   {
+    // #2050: the work this conversation set running. Dock regions only, and
+    // catalog-only exposure with no chord — it belongs beside a chat, and the
+    // toolbar's picker is for surfaces that stand on their own.
+    id: 'workspace-agents',
+    title: 'Agents',
+    icon: 'agent',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'right',
+    exposure: 'catalog',
+    sourceFile: 'src-ui/src/workspace-panes/AgentsWorkspacePane.tsx',
+  },
+  {
     // Home is a surface whose only placement is the primary area: its default
     // region is `main` and it declares no other, so no dock control ever
     // offers it and a dock swap can never carry it out of `main` (#928 C2a).

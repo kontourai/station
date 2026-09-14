@@ -1,3 +1,4 @@
+import { WORKSPACE_AGENTS_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-agents-pane';
 import {
   WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
@@ -14,9 +15,8 @@ import { getBuiltinWorkspacePaneRenderer } from './builtinWorkspacePaneRegistry'
 /**
  * The descriptors a region host renders through the built-in registry
  * (#2047): the coding panes, and since #2049 the two instance-keyed panes a
- * chat link opens — one pull request, one file preview — by descriptor id.
- * Chat and Activity are not
- * here — their renderers are handed to `RegionPaneHost` by its caller so the
+ * chat link opens — one pull request, one file preview — by descriptor id,
+ * and since #2050 the Agents pane. Chat and Activity are not here — their renderers are handed to `RegionPaneHost` by its caller so the
  * host chunk imports neither render graph — and neither is anything the
  * pane inventory does not name (`REGION_SURFACE_PANES`; an instance reaches
  * this component only after that inventory admitted it).
@@ -29,6 +29,7 @@ const REGION_BUILTIN_DESCRIPTORS: ReadonlyMap<string, WorkspacePaneDescriptor> =
       WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
       WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR,
       WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR,
+      WORKSPACE_AGENTS_PANE_DESCRIPTOR,
     ].map((descriptor) => [descriptor.id, descriptor]),
   );
 
