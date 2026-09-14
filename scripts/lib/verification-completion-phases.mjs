@@ -7,7 +7,10 @@ import {
   runWithinDeadline,
 } from './verification-execution-lifecycle.mjs';
 import { isLaneHostPressureGated } from './verification-host-pressure.mjs';
-import { createVerificationRequest } from './verification-receipt.mjs';
+import {
+  createVerificationRequest,
+  receiptErrorText,
+} from './verification-receipt.mjs';
 
 function phaseRecordRelativePath(request, phase) {
   return `.kontourai/verification-phase-records/${request.key}/${phase.id}.json`;
@@ -402,7 +405,12 @@ export function createCompletionPhaseRunner(input) {
         error,
         output: {
           stdout: { text: '' },
-          stderr: { text: error?.stack ?? String(error) },
+          // NOT `error.stack`: a vitest test/hook timeout carries its
+          // duration only in `.message` and a donor `STACK_TRACE_ERROR`
+          // headline in `.stack`, so preferring the stack recorded an
+          // unreadable placeholder for the one failure this receipt most
+          // needs to name. See `receiptErrorText`.
+          stderr: { text: receiptErrorText(error) },
         },
       };
     }
