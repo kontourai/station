@@ -463,11 +463,21 @@ describe('current Workspace Pane catalog adapter', () => {
         }),
       ]),
     );
+    // #1969: every issued occurrence binds this Project EXCEPT Device's,
+    // which binds nothing — the device list belongs to the Station's host
+    // rather than to a checkout. Asserted as an exact split rather than by
+    // relaxing the rule, so a second projectless pane arriving unnoticed
+    // still reds this.
     expect(
-      snapshot.instances.every(
-        (entry) => entry.boundContext?.projectId === 'project-a',
-      ),
+      snapshot.instances
+        .filter((entry) => entry.descriptorId !== 'pane:builtin:device')
+        .every((entry) => entry.boundContext?.projectId === 'project-a'),
     ).toBe(true);
+    expect(
+      snapshot.instances.find(
+        (entry) => entry.descriptorId === 'pane:builtin:device',
+      )?.boundContext?.projectId,
+    ).toBeUndefined();
     const layoutDerivedInstances = snapshot.instances.filter((entry) =>
       entry.descriptorId.includes('fixture'),
     );
