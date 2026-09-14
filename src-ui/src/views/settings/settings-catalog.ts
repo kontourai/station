@@ -9,6 +9,7 @@ export type SettingsSectionId =
   | 'system'
   | 'feature-previews'
   | 'answer-shares'
+  | 'plugin-visibility'
   | 'host-runtime'
   | 'diagnostics'
   | 'agent-defaults'
@@ -36,8 +37,17 @@ export interface SettingsCatalogEntry {
     | 'mixed'
     | 'temporary'
     | 'informational';
-  /** The target exists only for the named runtime condition. */
-  conditional?: 'mobile' | 'desktop';
+  /**
+   * The target exists only for the named runtime condition.
+   *
+   * `operator` (#2067) is not a device fact like the other two: the section
+   * renders only when the SERVER agrees the caller is the instance operator,
+   * which this module cannot know. It is therefore treated as false unless a
+   * caller positively supplies `isOperator`, so a collaborator's settings
+   * search cannot offer a jump to a section that will not be there. A caller
+   * that does know may pass it and get the entry back.
+   */
+  conditional?: 'mobile' | 'desktop' | 'operator';
 }
 
 export const SETTINGS_SECTIONS = [
@@ -47,6 +57,10 @@ export const SETTINGS_SECTIONS = [
   // as a Station-scope section (previews persist on the Station).
   { id: 'feature-previews', title: 'Feature previews', group: 'Station' },
   { id: 'answer-shares', title: 'Shared answers', group: 'Station' },
+  // #2067: which installed plugins each paired person can see. Station scope
+  // because the grants live on this Station; operator-only, gated by the
+  // route, the same way 'answer-shares' is gated by its own scope tier.
+  { id: 'plugin-visibility', title: 'Plugin visibility', group: 'Station' },
   { id: 'host-runtime', title: 'Station host', group: 'Station' },
   { id: 'diagnostics', title: 'Diagnostics', group: 'Station' },
   { id: 'agent-defaults', title: 'Defaults', group: 'Defaults' },
@@ -195,6 +209,13 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Shared answers',
     section: 'answer-shares',
     keywords: ['permalink revoke expire'],
+  },
+  {
+    id: 'plugin-visibility',
+    title: 'Plugin visibility',
+    section: 'plugin-visibility',
+    keywords: ['plugins share grant collaborator board panes'],
+    conditional: 'operator',
   },
   {
     id: 'host-runtime',
@@ -448,12 +469,33 @@ export function settingsCatalogEntryForConfigKey(key: string) {
   return SETTINGS_CATALOG.find((entry) => entry.configKeys?.includes(key));
 }
 
+/**
+ * Sections gated on the caller being the instance operator (#2067), derived
+ * from the catalog rather than listed by hand so a second one is covered the
+ * day it is added.
+ */
+export const OPERATOR_ONLY_SECTION_IDS: ReadonlySet<string> = new Set(
+  SETTINGS_CATALOG.filter((entry) => entry.conditional === 'operator').map(
+    (entry) => entry.section,
+  ),
+);
+
 export function matchingSettingsRows(
   query: string,
+  /**
+   * Whether this caller is known to be the instance operator (#2067).
+   * Absent reads as "not known to be" — the fail-closed direction — so a
+   * collaborator's Settings search cannot offer a jump to a section the
+   * server will refuse to populate.
+   */
+  options: { isOperator?: boolean } = {},
 ): readonly SettingsCatalogEntry[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return [];
   return SETTINGS_CATALOG.filter((entry) => {
+    if (entry.conditional === 'operator' && options.isOperator !== true) {
+      return false;
+    }
     const registryText = (entry.configKeys ?? []).flatMap((key) => {
       const definition = REGISTRY_BY_KEY.get(key);
       return definition
@@ -475,10 +517,13 @@ export function matchingSettingsRows(
 export function visibleCatalogIds(options: {
   isMobile: boolean;
   isDesktop: boolean;
+  /** Absent reads as "not the operator" — the fail-closed direction (#2067). */
+  isOperator?: boolean;
 }) {
   return SETTINGS_CATALOG.filter((entry) => {
     if (entry.conditional === 'mobile') return options.isMobile;
     if (entry.conditional === 'desktop') return options.isDesktop;
+    if (entry.conditional === 'operator') return options.isOperator === true;
     return true;
   }).map((entry) => entry.id);
 }
@@ -492,6 +537,18 @@ export function settingsPaletteCommands(options: {
   isMobile: boolean;
   isDesktop: boolean;
 }): readonly SettingsPaletteCommand[] {
+  // #2067: deliberately NOT filtered by `conditional: 'operator'` here.
+  //
+  // The palette holds no operator fact — it lazily imports this module when
+  // somebody types — and acquiring one would fire a server request per
+  // search. Filtering on an absent fact removed the entry for EVERYONE
+  // including the operator, which is a capability removal dressed as a fix.
+  //
+  // So the palette offers it, exactly as it offers `answer-shares`, which is
+  // credential-gated in the same way. DISCLOSED RESIDUAL: a collaborator who
+  // reaches it through the PALETTE (not the Settings search, which IS
+  // filtered — `matchingSettingsRows`) lands on Settings with a highlight
+  // that finds nothing. A cosmetic no-op carrying no plugin data.
   return SETTINGS_CATALOG.map((entry) => {
     const unavailable =
       entry.conditional === 'mobile' && !options.isMobile

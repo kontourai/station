@@ -35,7 +35,7 @@ import {
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID,
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID,
 } from '@kontourai/station-contracts/workspace-coding-panels';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import {
   FileStorageAlreadyExistsError,
   FileStorageConflictError,
@@ -79,6 +79,7 @@ import {
 import { createLogger } from '../../utils/logger.js';
 import { pathAccessFailure } from '../../utils/path-access-failure.js';
 import { expandTilde } from '../../utils/paths.js';
+import { projectLayoutCatalogItems } from '../plugins/plugin-identity-enumeration.js';
 import {
   errorMessage,
   getBody,
@@ -206,6 +207,24 @@ interface ProjectRouteDeps {
    * honest 501 rather than answering from a store nobody chose.
    */
   resolution?: ProjectResolutionRouteDeps;
+  /**
+   * Whether the request's own caller may see a named plugin (#2067) — the
+   * projection `PluginVisibilityService` derives, bound per request.
+   *
+   * The catalogue IS an enumeration boundary — it carries every plugin's
+   * name, version, `plugins/<name>` source and lifecycle state — so a plugin
+   * outside the projection is ABSENT from `contributions`, `descriptors`,
+   * `instances` and `availability` alike. That is the discovery half.
+   *
+   * There is NO reference half here. A layout that already names a pane the
+   * viewer cannot see currently renders a blank region rather than a
+   * placeholder — #2067's second acceptance criterion, unmet and disclosed;
+   * see `WorkspacePaneAvailabilityInput.pluginVisibility` for why.
+   *
+   * Absent (the layout-only route tests), no visibility fact is produced and
+   * availability resolves exactly as before.
+   */
+  canSeePlugin?: (c: Context, pluginId: string) => boolean;
 }
 
 /**
@@ -983,6 +1002,13 @@ export function createProjectRoutes(
                     1,
                     workspacePaneAvailabilityMetricAttributes(event),
                   ),
+                ...(deps.canSeePlugin
+                  ? {
+                      canSeePlugin: (pluginId: string) =>
+                        // Non-null is sound: guarded by the spread above.
+                        deps.canSeePlugin!(c, pluginId),
+                    }
+                  : {}),
               },
               deps.kitObservabilityRegistry?.list(),
               {
@@ -1303,9 +1329,21 @@ export function createProjectRoutes(
 
   // ── Available layout sources (plugins + built-in types) ──
 
+  // #2067: projected. This returned `listLayouts()` raw with no principal
+  // resolved at all — the picker a project applies a layout from, carrying
+  // every plugin's name and `plugins/<name>` source. Narrowed rather than
+  // refused: choosing a layout is a composition act, not maintenance.
   app.get('/layouts/available', (c) => {
     try {
-      return c.json({ success: true, data: layoutCatalog.listLayouts() });
+      return c.json({
+        success: true,
+        data: projectLayoutCatalogItems(
+          layoutCatalog.listLayouts(),
+          deps.canSeePlugin
+            ? (pluginId: string) => deps.canSeePlugin!(c, pluginId)
+            : undefined,
+        ),
+      });
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 500);
     }

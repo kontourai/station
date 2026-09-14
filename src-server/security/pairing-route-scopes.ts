@@ -2832,8 +2832,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // status poll live under `/api/plugins/home-role/requests` and carry the
     // explicit `access:manage` override above — creating a request returns
     // the transaction-bound decision cookie, so it is authority-bearing.
-    // Candidates is a read-only eligibility listing (no authority minted,
-    // reveals no more than the plugin list) on the family GET tier.
+    // Candidates is a read-only eligibility listing (no authority minted) on
+    // the family GET tier.
+    //
+    // #2067 CORRECTION: "reveals no more than the plugin list" used to be the
+    // whole justification, and it was true while the plugin list was an
+    // unprojected instance inventory. It is now false as a justification and
+    // true as a requirement: the plugin list is a per-principal projection,
+    // so parity with it means this route must be projected too, which it now
+    // is (`plugin-home-role-routes.ts` filters candidates through
+    // `projectVisiblePlugins`). A wire scope is not what keeps this honest —
+    // the projection in the handler is. See `PLUGIN_IDENTITY_ROUTES` for the
+    // whole family and its dispositions.
     { method: 'GET', path: '/api/plugins/home-role' },
     { method: 'DELETE', path: '/api/plugins/home-role' },
     { method: 'GET', path: '/api/plugins/home-role/candidates' },
@@ -2891,6 +2901,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // fetch — a subset of `update`'s mutation surface, so the family's
     // ordinary mutate tier is the consistent call. None returns another
     // environment's or another Station's data.
+    // #2067: per-principal plugin visibility. The scope tier is the family
+    // default DELIBERATELY, because a wire scope is not what authorizes
+    // these: every handler re-resolves the request's own principal and
+    // refuses a non-operator in-handler
+    // (`routes/plugins/plugin-visibility-routes.ts`), the same shape as the
+    // locality-gated consent leaves above. `GET /visibility` discloses which
+    // principals this instance has a pairing record of and which plugins
+    // each has been granted — operator-only for that reason, never inherited
+    // from a read tier alone.
+    { method: 'GET', path: '/api/plugins/visibility' },
+    { method: 'POST', path: '/api/plugins/visibility/grants' },
+    { method: 'DELETE', path: '/api/plugins/visibility/grants' },
     { method: 'GET', path: '/api/plugins/:name/retained-generations' },
     { method: 'GET', path: '/api/plugins/:name/recovery-preview' },
     { method: 'POST', path: '/api/plugins/:name/recover' },

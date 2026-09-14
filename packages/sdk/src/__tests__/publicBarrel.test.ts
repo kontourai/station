@@ -40,6 +40,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'flowRuns',
   'peerCredentials',
   'personalLayouts',
+  'pluginVisibility',
   'knowledgeStores',
   'knownEnvironments',
   'notifications',

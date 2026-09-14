@@ -136,6 +136,7 @@ with two explicit, structurally identical exceptions, both off by default and ne
 - **Tool** — one callable: a function from an integration, or a `station-control` platform function.
 - **Command** — a slash command.
 - **Plugin** — an installable platform extension (layouts, agents, integrations, providers, …).
+- **Plugin visibility** — which installed plugins one principal may see and compose a Board or a personal agent from (#2067). Installation stays instance-wide: visibility is a *projection* of that one installed set onto one person, derived from the operator's grant record plus the live inventory, never a stored `visible` label. The operator sees everything; anybody else sees only what they have been granted, and a plugin outside their projection is absent from their plugin list rather than flagged. It is a listing and composition projection only — the execution authority for a plugin remains its permission grants, which every invocation rechecks.
 
 > **MCP passthrough (exception 1):** an ACP-connected External agent's connection can
 > explicitly opt in to receiving Station's stdio MCP tool servers inside its own

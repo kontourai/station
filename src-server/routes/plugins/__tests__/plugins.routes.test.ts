@@ -415,6 +415,9 @@ vi.mock('../../../domain/config-loader.js', () => ({
 }));
 
 const { createPluginRoutes } = await import('../plugins.js');
+const { operatorPluginVisibility } = await import(
+  './plugin-visibility-test-support.js'
+);
 
 const logger = { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() };
 const eventBus = { emit: vi.fn() };
@@ -427,7 +430,10 @@ function setup(runtime?: {
     '/tmp/project',
     logger as any,
     eventBus as any,
-    runtime,
+    {
+      ...runtime,
+      visibility: operatorPluginVisibility('/tmp/project'),
+    } as any,
   );
 }
 
