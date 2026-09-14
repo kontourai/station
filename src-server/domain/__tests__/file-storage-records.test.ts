@@ -91,7 +91,13 @@ describe('file-storage-records', () => {
           () => ({ config }),
           agentSlug,
         ),
-      ).toEqual([{ projectSlug: 'project-a', layoutSlug: 'layout-1' }]);
+      ).toEqual([
+        {
+          owner: { kind: 'project', projectSlug: 'project-a' },
+          projectSlug: 'project-a',
+          layoutSlug: 'layout-1',
+        },
+      ]);
     },
   );
 
