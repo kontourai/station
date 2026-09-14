@@ -135,23 +135,25 @@ describe('the Device pane over an inventory (#1969)', () => {
   });
 
   /**
-   * A device the host lists but this client cannot address gets a DISABLED
-   * row naming why, rather than a Capture that is guaranteed to 400.
+   * A row that fails BOTH checks says both, and is offered disabled.
    *
-   * The fixture is the ONLY shape that reaches this branch from a real
-   * server: an UNBOOTED Android row under an AVD name. `LocalMobileDeviceHost`
-   * applies the `emulator-<n>` rule only to a booted Android device, so it
-   * lists this row (probed: `state: 'ready'` with the row present) while the
-   * same row with `booted: true` makes it refuse the whole inventory
-   * `invalid-response`. A booted AVD-name fixture would therefore be testing
-   * an envelope no writer produces.
+   * The fixture is the only shape that reaches the addressability branch from
+   * a real server: an UNBOOTED Android row under an AVD name.
+   * `LocalMobileDeviceHost` applies the `emulator-<n>` rule only to a booted
+   * Android device, so it lists this row (probed: `state: 'ready'` with the
+   * row present) while the SAME id with `booted: true` makes it refuse the
+   * whole inventory `invalid-response`. A booted AVD-name fixture would
+   * therefore be testing an envelope no writer produces.
    *
-   * It is also why the reason must PRE-EMPT "Not running": this row is both,
-   * and "start it, then refresh" would send the reader to an inventory the
-   * host refuses wholesale. Restoring the `!device.booted` check to the front
-   * of `unsupportedReason` reds the reason assertion below.
+   * That probe flips a field on a fixed fixture. It does not establish what
+   * starting a real device emits — whether `expo-device-hub` then reports an
+   * `emulator-<n>` serial in place of the AVD name is unsettleable from this
+   * repository — which is why the row states both facts instead of choosing
+   * which one to keep. Dropping either sentence from `unsupportedReason`
+   * reds one of the first two assertions, and returning early on the
+   * addressability check reds the "Not running" one specifically.
    */
-  test('a device id the client cannot address is offered disabled, with the reason', async () => {
+  test('a row that is both stopped and unaddressable is offered disabled with both reasons', async () => {
     stubDeviceFetch({
       inventory: readyInventory([
         IOS_DEVICE,
@@ -162,25 +164,38 @@ describe('the Device pane over an inventory (#1969)', () => {
     const row = await screen.findByRole('radio', { name: /Pixel 10 Pro XL/ });
     expect(row).toHaveProperty('disabled', true);
     expect(screen.getByText(/emulator-<number> serial/)).toBeTruthy();
-    expect(screen.queryByText(/Not running/)).toBeNull();
+    expect(screen.getByText(/Not running/)).toBeTruthy();
     expect(screen.getByRole('radio', { name: /iPhone/ })).toHaveProperty(
       'disabled',
       false,
     );
   });
 
-  /** A stopped device would 409 on capture; it is offered disabled instead. */
-  test('a device that is not running is offered disabled', async () => {
-    stubDeviceFetch({
-      inventory: readyInventory([{ ...IOS_DEVICE, booted: false }]),
-    });
-    await mount();
-    expect(await screen.findByRole('radio', { name: /iPhone/ })).toHaveProperty(
-      'disabled',
-      true,
-    );
-    expect(screen.getByText(/Not running/)).toBeTruthy();
-  });
+  /**
+   * A stopped device would 409 on capture; it is offered disabled instead —
+   * and an addressable one says only that, on either platform. This is the
+   * symmetry half: a stopped iOS simulator and a stopped Android emulator
+   * that reports a serial get the same sentence, because being stopped is
+   * the same fact on both.
+   */
+  test.each([
+    ['ios', IOS_DEVICE, /iPhone/],
+    ['android', ANDROID_DEVICE, /Pixel/],
+  ] as const)(
+    'a %s device that is not running is offered disabled, and says only that',
+    async (_platform, device, name) => {
+      stubDeviceFetch({
+        inventory: readyInventory([{ ...device, booted: false }]),
+      });
+      await mount();
+      expect(await screen.findByRole('radio', { name })).toHaveProperty(
+        'disabled',
+        true,
+      );
+      expect(screen.getByText(/Not running/)).toBeTruthy();
+      expect(screen.queryByText(/does not report one/)).toBeNull();
+    },
+  );
 
   /**
    * A failed READ gets an error before any empty. Reordering the branches so

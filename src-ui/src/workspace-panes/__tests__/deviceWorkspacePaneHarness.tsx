@@ -27,14 +27,21 @@ import { vi } from 'vitest';
  * passes it silently.
  *
  * Fidelity past that is this file's own job, not something a parser enforces.
- * The fixtures are copied from what the service produces
+ * The fixtures are copied from what the service ACCEPTS
  * (`src-server/services/mobile-device/mobile-device-host.ts`, and the rows in
  * its own test): `runtime` is the helper's `version`, `deviceId` is the
- * helper's `id`, a BOOTED Android device reports an `emulator-<n>` serial
- * while an unbooted one may report an AVD name, and every iOS id is a UDID.
- * A fixture that contradicts that describes an inventory the server answers
- * `invalid-response` for, so a test built on it proves nothing about a state
- * a reader can reach.
+ * helper's `id`, every iOS id is a UDID, and an Android id must be an
+ * `emulator-<n>` serial when the row is `booted` — the host applies that rule
+ * only to a booted row, so an unbooted Android row under an AVD name is a
+ * shape it lists. A fixture that contradicts those rules describes an
+ * inventory the server answers `invalid-response` for, so a test built on it
+ * proves nothing about a state a reader can reach.
+ *
+ * That is a statement about which ENVELOPES the server admits, which is all
+ * that was probed here (flipping `booted` on a fixed id). It is not a claim
+ * about what a real helper emits when a device starts: whether
+ * `expo-device-hub` reports a different id once an emulator is booted is not
+ * recorded anywhere in this repository and cannot be settled from it.
  */
 
 export const IOS_DEVICE_ID = '6E8C08FA-3A81-4347-90B9-AD41B7FAE876';

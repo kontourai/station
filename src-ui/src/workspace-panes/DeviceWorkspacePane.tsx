@@ -148,30 +148,41 @@ function captureTarget(device: MobileDeviceSummary): MobileDeviceTarget {
 /**
  * Why this row cannot be captured, or null when it can.
  *
- * Addressability is checked BEFORE "not running", because the two orders give
- * opposite advice for the one row that fails both — and that row is the only
- * reachable divergent population there is. `LocalMobileDeviceHost` enforces
- * the `emulator-<n>` spelling only for a BOOTED Android device, so an
- * unbooted emulator may legitimately be listed under an AVD name; telling its
- * reader to start it sends them to an inventory the host then refuses
- * WHOLESALE, because that same row booted breaks its listing rule and takes
- * every other device down with it. Probed against the host directly: an
- * unbooted `Pixel_9_API_36` row answers `ready` and is listed; the identical
- * row with `booted: true` answers `unavailable` / `invalid-response`.
+ * A row can fail BOTH checks, and when it does it says both. Reporting only
+ * one of them means betting on something this repository cannot settle.
+ * `LocalMobileDeviceHost` enforces the `emulator-<n>` spelling only for a
+ * BOOTED Android device (`mobile-device-host.ts`), so an unbooted emulator
+ * may legitimately be listed under an id this client cannot address. Whether
+ * STARTING that device then makes the helper report a different id is a
+ * property of `expo-device-hub`, not of anything here: no fixture, test or
+ * document in this repository records it, and nothing offline can establish
+ * it. What was actually probed is narrower than either reading — flipping
+ * `booted` to true on a FIXED id makes the host refuse the whole inventory
+ * `invalid-response`. That is a fact about that envelope, not about a boot.
  *
- * The iOS sentence has NO reachable population — the host regex-checks an iOS
- * id unconditionally, so a simulator without a UDID never reaches an
- * inventory at all (probed both booted and unbooted: `invalid-response`
- * either way). It is drift insurance against a future helper, and is written
- * here as that rather than as a live case.
+ * So the row carries both sentences and is right under either answer. If the
+ * id changes on boot, "start it, then refresh" is the action and the second
+ * sentence explains the greyed row in the meantime. If it does not, the
+ * second sentence is the operative one and the first costs a refresh.
+ *
+ * Both platforms answer "not running" for an unbooted row, for the same
+ * reason and in the same words. The iOS addressability sentence has no
+ * reachable population — the host regex-checks an iOS id unconditionally, so
+ * a simulator without a UDID never reaches an inventory at all (probed both
+ * booted and unbooted: `invalid-response` either way) — and is written here
+ * as drift insurance against a future helper rather than as a live case.
  */
 function unsupportedReason(device: MobileDeviceSummary): string | null {
-  if (!isCaptureableMobileDeviceTarget(device))
-    return device.platform === 'android'
+  const notRunning = device.booted
+    ? null
+    : 'Not running — start it, then refresh.';
+  const unaddressable = isCaptureableMobileDeviceTarget(device)
+    ? null
+    : device.platform === 'android'
       ? 'Station captures an Android emulator by its emulator-<number> serial, and this device does not report one.'
       : 'Station captures an iOS simulator by its UDID, and this device does not report one.';
-  if (!device.booted) return 'Not running — start it, then refresh.';
-  return null;
+  if (notRunning && unaddressable) return `${notRunning} ${unaddressable}`;
+  return notRunning ?? unaddressable;
 }
 
 function DeviceWorkspacePaneSurface({
