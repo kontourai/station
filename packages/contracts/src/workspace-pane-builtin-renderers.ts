@@ -47,6 +47,9 @@ export const BUILTIN_WORKSPACE_PANE_RENDERER_NAMES = [
   // subagents as a dock tab (#2050). Its descriptor lives in
   // `workspace-agents-pane.ts`.
   'workspace-agents',
+  // One captured frame of a simulator or emulator, as a dock tab (#1969).
+  // Its descriptor lives in `workspace-device-pane.ts`.
+  'workspace-device',
   'workspace-spatial-board',
   // The Console Board (epic station#4142 M4a). Its descriptor lives in
   // `@kontourai/station-board-pane`, not here — the name alone joins this

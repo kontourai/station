@@ -1,0 +1,614 @@
+import type {
+  MobileDeviceCapture,
+  MobileDeviceSummary,
+  MobileDeviceTarget,
+} from '@kontourai/station-contracts/mobile-device';
+import { isCaptureableMobileDeviceTarget } from '@kontourai/station-sdk/mobile-device';
+import {
+  useCaptureMobileDeviceMutation,
+  useMobileDeviceInventoryQuery,
+} from '@kontourai/station-sdk/mobile-devices-query';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Button } from '../components/Button';
+import {
+  describeReadFailure,
+  Empty,
+  ErrorState,
+  SkeletonBlock,
+} from '../components/state';
+import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import {
+  DEVICE_HOST_FAILURE_COPY,
+  type DeviceCaptureOutcome,
+  describeCaptureFailure,
+} from './deviceCaptureOutcome';
+import {
+  clearDevicePaneState,
+  devicePaneStorage,
+  readDevicePaneState,
+  writeDevicePaneState,
+} from './devicePaneStateStorage';
+import './DeviceWorkspacePane.css';
+
+/**
+ * A captured simulator or emulator screen, as a dock pane (#1969).
+ *
+ * This is a SNAPSHOT surface and says so everywhere a frame appears: the
+ * caption, the image's own alt text and a persistent view-only line all name
+ * what the reader is looking at. There is no stream, and there is no input —
+ * the frame carries no click or key handler at all, so there is nothing to
+ * re-enable by accident, and the line states that as a property of this build
+ * rather than as a condition that might lift on its own.
+ *
+ * Nothing here claims a device is live. An inventory row and a decoded PNG
+ * establish "this device existed a moment ago" and "this is what its screen
+ * looked like at this time", and those are the only two claims made.
+ */
+export function DeviceWorkspacePane() {
+  const requestScope = useHostRequestAuthorityScope();
+  const previousAuthority = useRef(requestScope);
+
+  // The authority discipline `ConnectedSessionInventory` established and the
+  // mobile-device guide requires: when the selected Station or its authority
+  // changes, the previous one's remembered selection goes with it.
+  useEffect(() => {
+    const previous = previousAuthority.current;
+    if (
+      previous &&
+      (!requestScope ||
+        previous.apiBase !== requestScope.apiBase ||
+        previous.authorityKey !== requestScope.authorityKey)
+    )
+      clearDevicePaneState(devicePaneStorage(), previous);
+    previousAuthority.current = requestScope;
+  }, [requestScope]);
+
+  if (!requestScope)
+    return (
+      <section className="device-pane" role="alert">
+        Device inspection is unavailable until this Station is authorized.
+      </section>
+    );
+  // Keyed on the authority so React UNMOUNTS the surface when it changes,
+  // which is what drops the decoded frame from memory — stronger than
+  // clearing a state variable and remembering to keep doing so.
+  return (
+    <DeviceWorkspacePaneSurface
+      // `JSON.stringify` of the pair rather than a NUL-joined template:
+      // biome rewrites a unicode escape to the raw control byte, which is
+      // invisible in a diff. This is unambiguous and plain ASCII.
+      key={JSON.stringify([requestScope.apiBase, requestScope.authorityKey])}
+      requestScope={requestScope}
+    />
+  );
+}
+
+/** How long a frame stays presented as current before it is called old. */
+export const DEVICE_SNAPSHOT_STALE_AFTER_MS = 30_000;
+
+const PLATFORM_LABEL = { ios: 'iOS', android: 'Android' } as const;
+
+/**
+ * When a frame was taken: a time, plus a DATE once it is not from the same
+ * day as `now`.
+ *
+ * `toLocaleTimeString()` alone produces the same string for a frame taken a
+ * minute ago and one taken at the same hour yesterday, which is exactly the
+ * reading the staleness decoration has to fight. The date is the part that
+ * distinguishes them, so it is shown when it differs and omitted when it
+ * would be noise.
+ */
+function capturedAtLabel(capturedAt: string, now: number): string {
+  const parsed = new Date(capturedAt);
+  if (!Number.isFinite(parsed.getTime())) return capturedAt;
+  return parsed.toDateString() === new Date(now).toDateString()
+    ? parsed.toLocaleTimeString()
+    : parsed.toLocaleString();
+}
+
+/**
+ * What the pane says about a frame past the threshold, in ONE place: the
+ * caption reads it and so does the image's `alt`, so a screen-reader user and
+ * a sighted one are told the same thing. Before this, staleness lived only in
+ * the caption and the `alt` carried a bare time, so a frame hours old was
+ * announced as "captured 5:25:59 AM" and nothing else.
+ *
+ * It states a LOWER BOUND and then the consequence, rather than an age.
+ * "More than 30 seconds old" is true of a frame thirty-one seconds old and of
+ * one six hours old, and on its own the first reading is the one it invites;
+ * the clause after it is what a reader acts on either way. A real age would
+ * have to be re-derived forever to stay true, and the timestamp beside it —
+ * dated once it is not from today — already carries that answer.
+ *
+ * The `30` is written out rather than derived from
+ * `DEVICE_SNAPSHOT_STALE_AFTER_MS`: deriving it would put the two in lockstep
+ * by construction and make the test that checks they agree unable to fail.
+ */
+const STALE_NOTE =
+  'more than 30 seconds old, so it may not be the current screen';
+
+/**
+ * The descriptive target a capture needs, and nothing else.
+ *
+ * React Query retains a mutation's variables in its cache, and the SDK's
+ * domain says what is retained: "a host id, a platform and a device id".
+ * Handing it the whole inventory row would keep `name`, `runtime` and
+ * `booted` there too — no credential, so nothing dangerous, but three fields
+ * the capture never reads and a docblock that stops being true of the value
+ * as well as of the type.
+ */
+function captureTarget(device: MobileDeviceSummary): MobileDeviceTarget {
+  return {
+    hostId: device.hostId,
+    platform: device.platform,
+    deviceId: device.deviceId,
+  };
+}
+
+/**
+ * Why this row cannot be captured, or null when it can.
+ *
+ * A row can fail BOTH checks, and when it does it says both. Reporting only
+ * one of them means betting on something this repository cannot settle.
+ * `LocalMobileDeviceHost` enforces the `emulator-<n>` spelling only for a
+ * BOOTED Android device (`mobile-device-host.ts`), so an unbooted emulator
+ * may legitimately be listed under an id this client cannot address. Whether
+ * STARTING that device then makes the helper report a different id is a
+ * property of `expo-device-hub`, not of anything here: no fixture, test or
+ * document in this repository records it, and nothing offline can establish
+ * it. What was actually probed is narrower than either reading — flipping
+ * `booted` to true on a FIXED id makes the host refuse the whole inventory
+ * `invalid-response`. That is a fact about that envelope, not about a boot.
+ *
+ * So the row carries both sentences and is right under either answer. If the
+ * id changes on boot, "start it, then refresh" is the action and the second
+ * sentence explains the greyed row in the meantime. If it does not, the
+ * second sentence is the operative one and the first costs a refresh.
+ *
+ * Both platforms answer "not running" for an unbooted row, for the same
+ * reason and in the same words. The iOS addressability sentence has no
+ * reachable population — the host regex-checks an iOS id unconditionally, so
+ * a simulator without a UDID never reaches an inventory at all (probed both
+ * booted and unbooted: `invalid-response` either way) — and is written here
+ * as drift insurance against a future helper rather than as a live case.
+ */
+function unsupportedReason(device: MobileDeviceSummary): string | null {
+  const notRunning = device.booted
+    ? null
+    : 'Not running — start it, then refresh.';
+  const unaddressable = isCaptureableMobileDeviceTarget(device)
+    ? null
+    : device.platform === 'android'
+      ? 'Station captures an Android emulator by its emulator-<number> serial, and this device does not report one.'
+      : 'Station captures an iOS simulator by its UDID, and this device does not report one.';
+  if (notRunning && unaddressable) return `${notRunning} ${unaddressable}`;
+  return notRunning ?? unaddressable;
+}
+
+function DeviceWorkspacePaneSurface({
+  requestScope,
+}: {
+  requestScope: { apiBase: string; authorityKey: string };
+}) {
+  const inventory = useMobileDeviceInventoryQuery(requestScope);
+  const capture = useCaptureMobileDeviceMutation(requestScope);
+  const groupId = useId();
+
+  const devices = useMemo(
+    () => inventory.data?.devices ?? [],
+    [inventory.data],
+  );
+
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const stored = readDevicePaneState(devicePaneStorage(), requestScope);
+    return stored ? `${stored.platform}:${stored.deviceId}` : null;
+  });
+  const selected =
+    devices.find(
+      (device) => `${device.platform}:${device.deviceId}` === selectedId,
+    ) ?? null;
+
+  /*
+    The last good frame, held across a REFUSED re-capture.
+
+    `useMutation` clears its own `data` on every `mutate`, so without this a
+    503 or a 403 on a second press replaced a frame the reader already had
+    with an error card — discarding information to report a failure. That is
+    the opposite of the principle the stale decoration is built on: an old
+    frame is more informative than nothing, provided it says it is old, and
+    this one says so by the same mechanism.
+
+    DROPPED when the selection changes, in `selectDevice`, rather than merely
+    withheld. Keying it to the selected row is not enough on its own: a frame
+    only hidden while another device is chosen comes BACK on switching back,
+    re-presenting a capture the reader left behind — and, after a refusal,
+    re-presenting it in the ordinary success position with the refusal that
+    produced it already cleared by the same switch. The id key stays as the
+    second line, so a frame that somehow outlived its clearing still could
+    not be captioned with another device's name.
+  */
+  const retained = useRef<{ id: string; frame: MobileDeviceCapture } | null>(
+    null,
+  );
+  // Written after the commit, not during the render that produced it: a ref
+  // must not be mutated while rendering, and a render React discards would
+  // still have written this one. Reading it a render behind the write costs
+  // nothing — while `capture.data` is present it is what renders, and the
+  // retained copy is only ever read once `mutate` has cleared `data`, which
+  // is at least one commit later.
+  useEffect(() => {
+    if (capture.data && selectedId)
+      retained.current = { id: selectedId, frame: capture.data };
+  }, [capture.data, selectedId]);
+  const frame: MobileDeviceCapture | undefined =
+    capture.data ??
+    (retained.current?.id === selectedId ? retained.current.frame : undefined);
+  const [now, setNow] = useState(() => Date.now());
+  const capturedAt = frame ? Date.parse(frame.capturedAt) : Number.NaN;
+  const isStale =
+    Number.isFinite(capturedAt) &&
+    now - capturedAt >= DEVICE_SNAPSHOT_STALE_AFTER_MS;
+
+  // One ticker, only while there is a frame. Every second while the frame is
+  // still current, so it goes stale where it sits; once stale, every minute,
+  // which is what keeps `now` honest for the date the caption has to show
+  // when a frame survives past midnight — without a per-second wake for a
+  // decoration that no longer changes.
+  useEffect(() => {
+    if (!frame) return;
+    const id = setInterval(() => setNow(Date.now()), isStale ? 60_000 : 1000);
+    return () => clearInterval(id);
+  }, [frame, isStale]);
+
+  function selectDevice(device: MobileDeviceSummary) {
+    setSelectedId(`${device.platform}:${device.deviceId}`);
+    writeDevicePaneState(devicePaneStorage(), requestScope, device);
+    capture.reset();
+    retained.current = null;
+  }
+
+  if (inventory.isLoading)
+    return (
+      <div className="device-pane">
+        <SkeletonBlock count={3} label="Reading the device list" />
+      </div>
+    );
+
+  if (inventory.isError)
+    return (
+      <div className="device-pane">
+        <ErrorState
+          variant="compact"
+          title="The device list could not be read"
+          description={describeReadFailure(inventory.error)}
+          action={
+            <Button size="sm" onClick={() => void inventory.refetch()}>
+              Try again
+            </Button>
+          }
+        />
+      </div>
+    );
+
+  const state = inventory.data?.state;
+  const failure = inventory.data?.failure;
+
+  if (state === 'unavailable' && failure) {
+    const copy = DEVICE_HOST_FAILURE_COPY[failure];
+    // `not-configured` is a SETUP state, not a failure: nothing broke, the
+    // helper was never pointed at. It gets the prominent first-run card and
+    // no retry, because retrying an absent configuration answers the same
+    // thing every time.
+    return (
+      <div className="device-pane">
+        {failure === 'not-configured' ? (
+          <Empty
+            variant="prominent"
+            label={copy.title}
+            description={copy.description}
+          />
+        ) : (
+          <ErrorState
+            variant="compact"
+            title={copy.title}
+            description={copy.description}
+            action={
+              <Button size="sm" onClick={() => void inventory.refetch()}>
+                Refresh
+              </Button>
+            }
+          />
+        )}
+      </div>
+    );
+  }
+
+  /*
+    A partial discovery is a fact about the READ, not about the list's
+    length: `LocalMobileDeviceHost` answers `partial` whenever the helper
+    reported any source error, and it can do that with an empty `devices`
+    (probed directly with `{simulators:[],emulators:[],errors:[{…}]}`). So
+    the note belongs to a list of zero exactly as much as to a list of one,
+    and both states render this same element.
+  */
+  const incompleteNote =
+    state === 'partial' ? (
+      <p className="device-pane__note">
+        Some device sources did not answer, so this list may be incomplete.
+      </p>
+    ) : null;
+
+  if (devices.length === 0)
+    return (
+      <div className="device-pane">
+        <Empty
+          variant="compact"
+          label="Nothing here yet"
+          description={
+            // "reported nothing running" is a claim about a discovery that
+            // FINISHED. Under `partial` it did not, so the sentence says only
+            // what the sources that answered reported, and the note below
+            // carries the rest.
+            state === 'partial'
+              ? 'The device sources that did answer listed nothing running.'
+              : "This Station's device helper reported nothing running. Start a simulator or emulator, then refresh."
+          }
+          action={
+            <Button size="sm" onClick={() => void inventory.refetch()}>
+              Refresh
+            </Button>
+          }
+        />
+        {incompleteNote}
+      </div>
+    );
+
+  const outcome: DeviceCaptureOutcome | null = capture.isError
+    ? describeCaptureFailure(capture.error)
+    : null;
+  const selectedReason = selected ? unsupportedReason(selected) : null;
+  const canCapture = Boolean(selected) && selectedReason === null;
+
+  return (
+    <div className="device-pane">
+      <div className="device-pane__toolbar">
+        <fieldset className="device-pane__picker">
+          <legend className="device-pane__picker-legend">Device</legend>
+          {devices.map((device) => {
+            const id = `${device.platform}:${device.deviceId}`;
+            const reason = unsupportedReason(device);
+            return (
+              <label
+                className="device-pane__choice"
+                key={id}
+                htmlFor={`${groupId}-${id}`}
+              >
+                <input
+                  checked={selectedId === id}
+                  disabled={reason !== null}
+                  id={`${groupId}-${id}`}
+                  name={groupId}
+                  onChange={() => selectDevice(device)}
+                  type="radio"
+                  value={id}
+                />
+                <span className="device-pane__choice-name">{device.name}</span>
+                <span className="device-pane__choice-meta">
+                  {PLATFORM_LABEL[device.platform]} · {device.runtime}
+                </span>
+                {reason ? (
+                  <span className="device-pane__choice-reason">{reason}</span>
+                ) : null}
+              </label>
+            );
+          })}
+        </fieldset>
+        <div className="device-pane__actions">
+          <Button
+            disabled={!canCapture}
+            onClick={() => selected && capture.mutate(captureTarget(selected))}
+            pending={capture.isPending}
+            size="sm"
+            variant="primary"
+          >
+            Capture
+          </Button>
+          <Button size="sm" onClick={() => void inventory.refetch()}>
+            Refresh
+          </Button>
+        </div>
+        {/*
+          Present in every state that shows the frame area, including a stale
+          one. It is a property of this build, not a condition: saying
+          "control is unavailable" would name a transient state that does not
+          exist here.
+        */}
+        <p className="device-pane__view-only">
+          View only — taps and typing are not sent to this device.
+        </p>
+        {incompleteNote}
+      </div>
+      <div className="device-pane__stage">
+        <DeviceStage
+          capture={frame}
+          isCapturing={capture.isPending}
+          isStale={isStale}
+          now={now}
+          onRefreshInventory={() => void inventory.refetch()}
+          onRetry={() => selected && capture.mutate(captureTarget(selected))}
+          outcome={outcome}
+          selected={selected}
+          selectedReason={selectedReason}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DeviceStage({
+  capture,
+  isCapturing,
+  isStale,
+  now,
+  onRefreshInventory,
+  onRetry,
+  outcome,
+  selected,
+  selectedReason,
+}: {
+  capture: MobileDeviceCapture | undefined;
+  isCapturing: boolean;
+  isStale: boolean;
+  now: number;
+  onRefreshInventory: () => void;
+  onRetry: () => void;
+  outcome: DeviceCaptureOutcome | null;
+  selected: MobileDeviceSummary | null;
+  selectedReason: string | null;
+}) {
+  if (isCapturing) return <SkeletonBlock count={2} label="Taking a snapshot" />;
+
+  const figure =
+    capture && selected ? (
+      <DeviceFrame
+        capture={capture}
+        isStale={isStale}
+        now={now}
+        selected={selected}
+      />
+    ) : null;
+
+  if (outcome)
+    return (
+      <>
+        <ErrorState
+          variant="compact"
+          title={outcome.title}
+          description={outcome.description}
+          action={
+            outcome.action === 'retry' ? (
+              <Button size="sm" onClick={onRetry}>
+                Try again
+              </Button>
+            ) : outcome.action === 'refresh' ? (
+              <Button size="sm" onClick={onRefreshInventory}>
+                Refresh devices
+              </Button>
+            ) : undefined
+          }
+        />
+        {/*
+          The refusal goes BESIDE the frame, not over it. A reader who had a
+          frame and asked for a newer one keeps the one they had, with its own
+          capture time and — past the threshold — its own "old" label, so
+          nothing here claims it is current.
+        */}
+        {figure}
+      </>
+    );
+
+  if (!selected)
+    return (
+      <Empty
+        variant="compact"
+        label="Nothing here yet"
+        description="Choose a device above, then take a snapshot of its screen."
+      />
+    );
+
+  if (selectedReason)
+    return (
+      <Empty
+        variant="compact"
+        label="Nothing here yet"
+        description={selectedReason}
+      />
+    );
+
+  if (!figure)
+    return (
+      <Empty
+        variant="compact"
+        label="Nothing here yet"
+        description={`Take a snapshot to see ${selected.name}'s screen. It shows the device screen, not which build is running on it.`}
+      />
+    );
+
+  return figure;
+}
+
+function DeviceFrame({
+  capture,
+  isStale,
+  now,
+  selected,
+}: {
+  capture: MobileDeviceCapture;
+  isStale: boolean;
+  now: number;
+  selected: MobileDeviceSummary;
+}) {
+  // The caption names the SELECTED row rather than `capture.target`, which
+  // the SDK has already validated equal to the requested target. The obvious
+  // mislabel window — switch device without awaiting the reset — does not
+  // exist: `capture.reset()` lands in the same synchronous commit as the new
+  // `selectedId`, and the retained frame is keyed to that id, so the figure
+  // is gone before any render can pair one device's frame with another's
+  // name. Recording the dead end so nobody re-probes it. What remains is
+  // narrower and not about this pane's timing: an inventory refresh that
+  // RENAMES a device relabels a frame already on screen, because `name` is
+  // read live and `capture.target` carries only ids.
+  const time = capturedAtLabel(capture.capturedAt, now);
+  const caption = `Snapshot of ${selected.name} · ${PLATFORM_LABEL[selected.platform]} · captured ${time}`;
+  return (
+    <figure className="device-pane__figure">
+      {/*
+        The ratio comes from the CAPTURE's own width and height, so a device
+        held in landscape simply reports the other way round and the frame
+        relayouts — there is no orientation field to trust and none is
+        invented. `object-fit: contain` inside it means the bitmap is never
+        cropped even if the two ever disagree, because cropping a device
+        screen silently hides the thing this pane exists to show.
+        Keyed by capture id so a new frame never inherits the last one's box.
+      */}
+      <div
+        className="device-pane__frame"
+        key={capture.captureId}
+        style={
+          {
+            '--device-frame-ratio': `${capture.width} / ${capture.height}`,
+          } as React.CSSProperties
+        }
+      >
+        {/*
+          The `alt` carries the staleness too, not just the caption: a reader
+          who reaches the image is told the same thing a reader who reaches
+          the caption is, rather than a bare time that reads as recent.
+        */}
+        <img
+          alt={`Snapshot of ${selected.name}, captured ${time}${isStale ? ` — ${STALE_NOTE}` : ''}`}
+          className="device-pane__image"
+          src={`data:${capture.mimeType};base64,${capture.pngBase64}`}
+        />
+      </div>
+      {/*
+        No `role="status"` here. It used to carry one, and it never announced:
+        the region is inserted into the document together with its text, which
+        is the case assistive technology does not read out, so the one moment
+        it existed for — a frame arriving — was the one moment it could not
+        cover. A live region that does not announce is a claim nothing
+        computes; the honest carrier is the image's own `alt` above, which a
+        reader reaches by reading the figure.
+      */}
+      <figcaption className="device-pane__caption">
+        {caption}
+        {isStale ? (
+          <span className="device-pane__stale">
+            {' '}
+            — {STALE_NOTE}; capture again.
+          </span>
+        ) : null}
+      </figcaption>
+    </figure>
+  );
+}

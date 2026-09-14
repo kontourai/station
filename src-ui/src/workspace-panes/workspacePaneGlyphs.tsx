@@ -15,6 +15,7 @@ import {
   GlobeGlyph,
   HomeGlyph,
   MessageGlyph,
+  PhoneGlyph,
   PinGlyph,
   PlayGlyph,
   ShieldGlyph,
@@ -62,6 +63,9 @@ const BUILTIN_PANE_GLYPHS = {
   'workspace-home': HomeGlyph,
   'workspace-activity': ChartGlyph,
   'workspace-agents': AgentGlyph,
+  // A handset, not the Browser Preview globe: the tile names a simulator
+  // or emulator screen, not a page (#1969).
+  'workspace-device': PhoneGlyph,
   'workspace-spatial-board': PinGlyph,
   'workspace-board': BoardGlyph,
   'workspace-basis': DatabaseGlyph,

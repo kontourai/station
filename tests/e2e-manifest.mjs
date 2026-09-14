@@ -381,6 +381,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/root-route-restore.spec.ts',
     'tests/task-first-home.spec.ts',
     'tests/activity-pane.spec.ts',
+    'tests/device-pane.spec.ts',
     'tests/connections-sections.spec.ts',
     'tests/connections-computers-ssh.spec.ts',
   ],
@@ -774,6 +775,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       "#928: /?surface=activity is the canonical DEEP LINK to the Activity surface, and #928 changed what it means — the link is a REVEAL and the region model decides where the revealed surface lands, so there is no /activity route and no surface-owned 'Dock this pane' any more (the redirect that keeps stored links working stays unit-covered; this journey drives the destination). Desktop: the link reveals Activity in its declared defaultRegion 'right' with its own region chrome (Resize Activity, Hide Activity), leaving Chat's region and the Home primary area untouched. Activity is the only registered surface that declares every region, so this is also the only browser journey that crosses the dock/primary-area boundary: placed in 'main' through the header's Layout picker it is rendered by the route outlet through a PageFrame (an h1 only a main occupant produces) with no DockShell at all and no dock panel spawned for what it displaced, the placement survives a reload through the regionArrangement device setting, and returning it to 'right' hands the primary area back to Home. 390x844 isMobile variant: the coarse fold gives the phone one dock slot, so the reveal shows Activity ALONE in it — asserted inside the viewport with no horizontal document scroll, its own 44px Hide control giving the slot back to Chat. Every assertion names an affordance that must exist, so the deep link silently ceasing to produce the surface fails by name. The dock's slot-return journeys live in project-architecture.spec.ts.",
+    exceptions: [],
+  },
+  {
+    path: 'tests/device-pane.spec.ts',
+    bucket: 'product',
+    surface: 'Device',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "#1969: the Device pane had five jsdom suites and no browser journey, so its aspect-ratio assertions read a CSS custom property off an inline style and NOTHING had observed the pane lay out — which is why docs/ui/responsive-action-surfaces.txt listed it as an exception. This is the render. The setup state is un-intercepted: the suite instance runs with STATION_MOBILE_DEVICE_HUB_URL unset, so the real LocalMobileDeviceHost answers not-configured through the real route and the pane's first-run card is the pane's own reading of it — asserted to offer no retry and to render no device list, so an unconfigured Station can never read as 'no devices'. The populated states need a booted simulator and a booted emulator no runner has, so they are supplied through page.route in the exact envelope mobile-device-host.ts emits (a UDID iOS row and an emulator-<n> Android row, the only spellings that host admits for booted devices) with REAL PNGs built in the spec — valid signature/IHDR/IEND, so the SDK client's base64 check and the host's own reader both accept them. Desktop: both native app targets selectable and captured in turn; the frame's ratio read from getBoundingClientRect rather than getComputedStyle, because the computed property is the declaration echoed back and only the laid out box can fail; a second iOS capture with swapped dimensions relayouts the frame from taller-than-wide to wider-than-tall; caption and image alt both carry 'Snapshot' and the browser's rendering of the capture's own capturedAt, stamped ten seconds in the past so a time taken from Date.now() would differ; switching devices drops the frame rather than hiding it. A 403 on capture renders the access-denied copy and leaves Capture ENABLED — the amended decision on the issue, because a changed sign-in is repairable in place and Capture is the retry — while adding no second button. 390x844 isMobile variant measures the picker rows and Capture against the 44px floor from their laid out boxes, with one hundredth of a pixel of slack because a composited min-height:44px row reports 43.99999237060547 (#2086) and an exact integer comparison would encode the compositor's rounding rather than the CSS. It reaches no device helper and proves nothing about expo-device-hub or the capture route's own authorization; tests/tauri-shell/device-pane.e2e.ts is the lane that drives the real service against a real hub.",
     exceptions: [],
   },
   {

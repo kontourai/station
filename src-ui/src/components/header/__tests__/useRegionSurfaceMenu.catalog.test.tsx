@@ -90,7 +90,12 @@ describe('the folded Regions menu and catalog-only surfaces (#2047)', () => {
    * in favour of `surfaceList` loses the placed Terminal's row.
    */
   test('a placed catalog-only pane has its Show row; unplaced ones have none', () => {
-    for (const id of ['coding:terminal', 'coding:diff', 'coding:file-browser'])
+    for (const id of [
+      'coding:terminal',
+      'coding:diff',
+      'coding:file-browser',
+      'device',
+    ])
       expect(REGION_SURFACE_REGISTRY.get(id)?.exposure, id).toBe('catalog');
 
     const { result } = renderHook(() => useRegionSurfaceMenu());

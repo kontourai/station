@@ -94,6 +94,7 @@ export * from './workspace-coding-evidence-composition.js';
 export * from './workspace-coding-file-composition.js';
 export * from './workspace-coding-panels.js';
 export * from './workspace-composition.js';
+export * from './workspace-device-pane.js';
 export * from './workspace-evidence-panels.js';
 export * from './workspace-file-preview.js';
 export * from './workspace-home-pane.js';

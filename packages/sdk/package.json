@@ -10,6 +10,7 @@
   ],
   "exports": {
     "./mobile-device": "./src/mobile-device.ts",
+    "./mobile-devices-query": "./src/query-domains/mobileDevices.ts",
     ".": "./src/index.ts",
     "./core-update-restart-status": "./src/core-update-restart-status.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",

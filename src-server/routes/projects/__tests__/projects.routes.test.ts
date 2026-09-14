@@ -10,6 +10,7 @@ import {
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID,
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID,
 } from '@kontourai/station-contracts/workspace-coding-panels';
+import { WORKSPACE_DEVICE_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-device-pane';
 import {
   WORKSPACE_PLAN_PANE_DESCRIPTOR,
   WORKSPACE_PLAN_PANE_INSTANCE_ID,
@@ -38,6 +39,11 @@ const routesLogger = { error: vi.fn() };
 const FIXED_PROJECT_PANE_DESCRIPTOR_IDS = [
   WORKSPACE_CHAT_PANE_DESCRIPTOR_ID,
   WORKSPACE_SPATIAL_BOARD_PANE_DESCRIPTOR_ID,
+  // #1969: Device is a fixed pane the route both declares and issues an
+  // occurrence for, so it belongs in both populations — but its occurrence
+  // binds NO project (see the projectless assertion below), which is why it
+  // is named here rather than folded into a count.
+  WORKSPACE_DEVICE_PANE_DESCRIPTOR_ID,
 ];
 
 /**
@@ -942,11 +948,25 @@ describe('Project Routes', () => {
         }),
       ]),
     );
+    // #1969: every issued occurrence binds this Project EXCEPT Device's,
+    // which binds nothing at all — a device list is a fact about the
+    // Station's host, not about a checkout, so an occurrence claiming a
+    // Project would be a binding nothing reads. Asserted as an exact split
+    // rather than by relaxing the rule, so a SECOND projectless pane
+    // arriving unnoticed still reds this.
     expect(
-      body.data.instances.every(
-        (pane: any) => pane.boundContext.projectId === 'test',
-      ),
+      body.data.instances
+        .filter(
+          (pane: any) =>
+            pane.descriptorId !== WORKSPACE_DEVICE_PANE_DESCRIPTOR_ID,
+        )
+        .every((pane: any) => pane.boundContext.projectId === 'test'),
     ).toBe(true);
+    const devicePane = body.data.instances.find(
+      (pane: any) => pane.descriptorId === WORKSPACE_DEVICE_PANE_DESCRIPTOR_ID,
+    );
+    expect(devicePane).toBeDefined();
+    expect(devicePane.boundContext.projectId).toBeUndefined();
     const descriptor = body.data.descriptors.find(
       (pane: any) => pane.provenance.origin === 'builtin',
     );

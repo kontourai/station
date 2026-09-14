@@ -116,12 +116,27 @@ describe('the Layout picker offers every region the model declares', () => {
    * precondition, which points at the registry rather than the hook.
    */
   test('a catalog-only surface gets no placement row and is not in the shell’s surface list', () => {
-    const terminal = REGION_SURFACE_REGISTRY.get('coding:terminal');
+    // Parameterised over EVERY catalog-only entry rather than naming one:
+    // a new catalog surface (#1969's Device) is covered the day it lands,
+    // and the precondition still fails loudly if the flag disappears.
+    const catalogOnly = [...REGION_SURFACE_REGISTRY.values()].filter(
+      (surface) => surface.exposure === 'catalog',
+    );
     expect(
-      terminal?.exposure,
+      catalogOnly.map((surface) => surface.id),
       'no registered surface is catalog-only, so this file proves nothing',
-    ).toBe('catalog');
-    expect(terminal?.regions.some((id) => id !== 'main')).toBe(true);
+    ).toEqual([
+      'workspace-agents',
+      'device',
+      'coding:terminal',
+      'coding:diff',
+      'coding:file-browser',
+    ]);
+    for (const surface of catalogOnly)
+      expect(
+        surface.regions.some((id) => id !== 'main'),
+        surface.id,
+      ).toBe(true);
 
     const { result } = renderHook(() => useRegionSurfaceMenu());
     expect(result.current.placementRows.map((row) => row.surfaceId)).toEqual([

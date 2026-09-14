@@ -11,6 +11,7 @@ import {
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-coding-panels';
+import { WORKSPACE_DEVICE_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-device-pane';
 import { WORKSPACE_HOME_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-home-pane';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
@@ -67,6 +68,7 @@ const EXPECTED_BUILTIN_DESCRIPTOR_EXPORTS = [
   '@kontourai/station-contracts:WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_AGENTS_PANE_DESCRIPTOR',
+  '@kontourai/station-contracts:WORKSPACE_DEVICE_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_HOME_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_PLAN_PANE_DESCRIPTOR',
@@ -91,6 +93,9 @@ const SURFACE_DESCRIPTORS: Record<string, WorkspacePaneDescriptor> = {
   // #2050: a dock-only pane like Activity, and like Activity it binds
   // nothing — the conversation it lists is navigation.
   'workspace-agents': WORKSPACE_AGENTS_PANE_DESCRIPTOR,
+  // #1969: a captured device screen. Dock-only, and requirement-free for
+  // Activity's reason — device inventory belongs to the Station's host.
+  device: WORKSPACE_DEVICE_PANE_DESCRIPTOR,
   // #2047: the three coding panes. Browser Preview is deliberately absent
   // (no blank canonical instance and, unlike File Preview, no reader), so its
   // descriptor must NOT claim `docked` — the both-directions pin below holds

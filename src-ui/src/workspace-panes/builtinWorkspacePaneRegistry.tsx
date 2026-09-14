@@ -17,6 +17,10 @@ import {
   WORKSPACE_CODING_TERMINAL_PANE_RENDERER_NAME,
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import {
+  isCanonicalWorkspaceDevicePaneInstance,
+  WORKSPACE_DEVICE_PANE_RENDERER_NAME,
+} from '@kontourai/station-contracts/workspace-device-pane';
+import {
   isCanonicalWorkspacePlanPaneInstance,
   isCanonicalWorkspaceReadinessPaneInstance,
   isCanonicalWorkspaceTrustPaneInstance,
@@ -772,6 +776,39 @@ function AgentsWorkspacePaneEntry() {
   );
 }
 
+const LazyDeviceWorkspacePane = lazy(() =>
+  import('./DeviceWorkspacePane').then(({ DeviceWorkspacePane }) => ({
+    default: DeviceWorkspacePane,
+  })),
+);
+
+/**
+ * The Device pane (#1969). It takes no instance ARGUMENTS — which device it
+ * shows is bounded pane state the renderer reads, not part of the occurrence
+ * — but it still refuses a non-canonical occurrence, the way the Work Board's
+ * entry does: an occurrence carrying a Project is not this pane, and
+ * rendering it as though it were would place a Station-wide device list under
+ * a tab that claims to be a Project's.
+ *
+ * Lazy for the reason Home and Activity are, with one extra: the pane pulls
+ * the mobile-device SDK client and its own stylesheet, and a region holding
+ * only a Terminal must not download either to have this row in the table.
+ */
+function DeviceWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
+  if (!isCanonicalWorkspaceDevicePaneInstance(props.instance))
+    return (
+      <ErrorState
+        title="Device is unavailable"
+        description="This pane isn’t set up as the Device snapshot view."
+      />
+    );
+  return (
+    <Suspense fallback={<SkeletonBlock count={3} label="Loading Device" />}>
+      <LazyDeviceWorkspacePane />
+    </Suspense>
+  );
+}
+
 const LazyHomeWorkspacePane = lazy(() =>
   import('../views/home/HomeWorkspacePane').then(({ HomeWorkspacePane }) => ({
     default: HomeWorkspacePane,
@@ -894,6 +931,7 @@ const builtinWorkspacePaneRegistry: Record<
   [WORKSPACE_HOME_PANE_RENDERER_NAME]: HomeWorkspacePaneEntry,
   [WORKSPACE_ACTIVITY_PANE_RENDERER_NAME]: ActivityWorkspacePaneEntry,
   [WORKSPACE_AGENTS_PANE_RENDERER_NAME]: AgentsWorkspacePaneEntry,
+  [WORKSPACE_DEVICE_PANE_RENDERER_NAME]: DeviceWorkspacePaneEntry,
   [WORKSPACE_SPATIAL_BOARD_PANE_RENDERER_NAME]: SpatialBoardWorkspacePaneEntry,
   [WORKSPACE_BOARD_PANE_RENDERER_NAME]: BoardWorkspacePaneEntry,
   [WORKSPACE_BASIS_PANE_RENDERER_NAME]: BasisWorkspacePaneEntry,
