@@ -12,5 +12,11 @@
  * One hundredth of a pixel of tolerance keeps the assertion honest — anything
  * genuinely undersized is smaller by whole pixels, not by 6e-5 — while removing
  * the rounding artifact.
+ *
+ * Second observed instance (#2086): `BannerHost.dialog-stacking` compared a raw
+ * `getBoundingClientRect().height` against a bare `44` and red with
+ * `43.99999237060547` during a large related-set run on a loaded host. Use this
+ * constant for any assertion against a browser-MEASURED rectangle; a bare `44`
+ * is only safe where the measurement has already been rounded to an integer.
  */
 export const MIN_TOUCH_TARGET_PX = 43.99;
