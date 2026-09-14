@@ -141,6 +141,11 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   project: null,
   task: null,
   layout: null,
+  // #2062: a Board renders through the SAME layout renderer as a project
+  // Layout, so it takes the same answer for the same reason — the renderer is
+  // handed the whole area. A different answer here would mean the identical
+  // record is framed or unframed depending on who owns it.
+  'personal-board': null,
   'workspace-pane': null,
 
   // Not a page: a route-level overlay that renders its own dialog chrome.

@@ -299,6 +299,16 @@ export const personalLayoutUpdateSchema = personalLayoutCreateSchema
   .partial()
   .strict();
 
+/**
+ * `POST /api/me/layouts/:layoutSlug/promote` (#2062). The destination project
+ * is the ONLY thing a promote decides; everything else about the record moves
+ * verbatim, so `.strict()` keeps a caller from smuggling a rename, a new id,
+ * or an owner into the one request that changes which scope a Layout lives in.
+ */
+export const personalLayoutPromoteSchema = z
+  .object({ projectSlug: z.string().min(1) })
+  .strict();
+
 export const projectLayoutFromPluginSchema = z.object({
   plugin: z.string().min(1),
 });

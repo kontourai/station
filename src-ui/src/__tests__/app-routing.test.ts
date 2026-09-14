@@ -133,6 +133,10 @@ const CANONICAL_VIEWS = [
   { type: 'project-new' },
   { type: 'project-edit', slug: 'project' },
   { type: 'layout', projectSlug: 'project', layoutSlug: 'coding' },
+  // #2062. The slug carries a character `encodeURIComponent` escapes, so the
+  // round-trip below proves the builder and the matcher agree on ENCODING and
+  // not merely on the two literal segments.
+  { type: 'personal-board', boardSlug: 'daily brief' },
 ] as const satisfies readonly NavigationView[];
 type EnumeratedViewType =
   | (typeof CANONICAL_VIEWS)[number]['type']
@@ -362,6 +366,49 @@ describe('app-shell routing', () => {
     expect(resolveViewFromPath('/projects/demo/session-board')).toEqual({
       type: 'project-session-board',
       slug: 'demo',
+    });
+    // #2062 review LOW-9 — `parseBoardPath`'s two documented refusals, neither
+    // of which had ever executed. Both answer `not-found` rather than throwing
+    // or matching a truncated slug.
+    expect(resolveViewFromPath('/boards/daily')).toEqual({
+      type: 'personal-board',
+      boardSlug: 'daily',
+    });
+    // Trailing slash is the SAME Board — the matcher's one tolerated variant.
+    expect(resolveViewFromPath('/boards/daily/')).toEqual({
+      type: 'personal-board',
+      boardSlug: 'daily',
+    });
+    // EXACT: a deeper path must not resolve to `daily` with the rest
+    // discarded, which is the failure mode the project matcher was fixed for.
+    expect(resolveViewFromPath('/boards/daily/extra')).toEqual({
+      type: 'not-found',
+      path: '/boards/daily/extra',
+    });
+    expect(resolveViewFromPath('/boards')).toEqual({
+      type: 'not-found',
+      path: '/boards',
+    });
+    expect(resolveViewFromPath('/boards/')).toEqual({
+      type: 'not-found',
+      path: '/boards/',
+    });
+    // A malformed escape: `decodeURIComponent` throws on this, and the catch
+    // is what keeps the throw out of a route parse. Without it this call
+    // raises `URIError` instead of returning a view.
+    expect(resolveViewFromPath('/boards/%E0%A4%A')).toEqual({
+      type: 'not-found',
+      path: '/boards/%E0%A4%A',
+    });
+    // `%20` decodes to a SPACE, not to nothing — an earlier comment here said
+    // "decodes to the empty string", which this assertion plainly contradicts
+    // (review F4). A decode cannot produce an empty string for a segment the
+    // regex matched, so there is no such case to cover; what this pins is that
+    // an escaped character round-trips into the slug rather than being
+    // truncated or rejected.
+    expect(resolveViewFromPath('/boards/%20')).toEqual({
+      type: 'personal-board',
+      boardSlug: ' ',
     });
     expect(resolveViewFromPath('/tasks/task%2Falpha')).toEqual({
       type: 'task',

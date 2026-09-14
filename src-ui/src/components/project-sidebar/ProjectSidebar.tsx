@@ -50,6 +50,18 @@ const loadProjectSidebarFooter = () =>
 
 /** archive#3314: shared-inbox-row list, lazy so the row module (and its stylesheet)
  *  stays out of the entry chunk this sidebar belongs to. */
+/**
+ * #2062. Lazy for the reason the entry-bundle ceiling exists: the Boards
+ * section costs ~1.2 kB gzip of entry JS, and it renders NOTHING for a viewer
+ * with no Boards — which is every viewer until they make one. Behind a
+ * boundary it loads with the panel, off the critical path, and the ceiling
+ * stays where the last lane left it.
+ */
+const loadProjectSidebarBoards = () =>
+  import('./ProjectSidebarBoards').then((module) => ({
+    default: module.ProjectSidebarBoards,
+  }));
+
 const loadSidebarOpenChats = () =>
   import('./SidebarOpenChats').then((module) => ({
     default: module.SidebarOpenChats,
@@ -355,6 +367,22 @@ function ProjectSidebarImpl() {
             navigate={navigate}
             activePath={pathname}
             onAfterNavigate={() => setMobileOpen(false)}
+          />
+          {/* #2062 (D3): Boards sit between Activity and Projects — the
+              project-less places, above the projects they are a peer scope
+              of. The section renders itself away when the viewer has none,
+              so a Station where nobody has made a Board looks exactly as it
+              did before this shipped. */}
+          <LazyBoundary
+            load={loadProjectSidebarBoards}
+            pending={null}
+            componentProps={{
+              collapsed: effectiveCollapsed,
+              isMobile,
+              navigate,
+              activePath: pathname,
+              onAfterNavigate: () => setMobileOpen(false),
+            }}
           />
           {/* archive#3314: Open chats is a mini-inbox — shared inbox rows (compact
               variant), collapsible with the nav groups' disclosure anatomy

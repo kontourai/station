@@ -99,6 +99,7 @@ import {
   withoutPersistedWorkingDirectory,
 } from './layout-working-directory.js';
 import { createProjectIdentityRoutes } from './project-identity-routes.js';
+import { admitProjectLayoutWrite } from './project-layout-admission.js';
 import { createWorkspacePanePreviewRoutes } from './workspace-pane-previews.js';
 
 /** Read a plugin's layout.json to create a layout reference */
@@ -1036,28 +1037,25 @@ export function createProjectRoutes(
       assertSafeLayoutPathSegment('layout slug', body.slug);
       const projectRevision = storageAdapter.projectRevision(slug);
       const project = projectRevision.value;
-      const knownAgents = await readKnownAgents();
-      if (knownAgents) {
-        const diagnostics = validateLayoutAgentReferences(project, body, {
-          knownAgents,
-        });
-        if (diagnostics.length > 0) {
-          return c.json(integrityError(diagnostics), 400);
-        }
-      }
 
       // archive#1497 — a coding layout's working directory is derived from its
       // owning project, so it is never persisted into the layout's own config.
       // Read the project BEFORE any write, so a request that names a different
       // directory is refused without having already created the layout.
       const derived = await derivedLayoutWorkingDirectory(slug, body, project);
-      const conflict = conflictingWorkingDirectory(
-        slug,
-        body.type,
-        body,
-        derived,
-      );
-      if (conflict) return c.json({ success: false, error: conflict }, 400);
+      // #2062 BLOCKING-2 — the two refusals below used to be written out here,
+      // and promote published a project Layout past both of them. They now
+      // come from `admitProjectLayoutWrite`, which promote also calls, so the
+      // equality is derived rather than asserted. Refusal shapes are unchanged:
+      // the module reproduces `integrityError`'s body and the working-directory
+      // message verbatim.
+      const admission = admitProjectLayoutWrite({
+        project,
+        layout: body,
+        knownAgents: await readKnownAgents(),
+        derivedWorkingDirectory: derived,
+      });
+      if (!admission.ok) return c.json(admission.body, 400);
 
       // `LayoutConfig.config` is required by the contract, and `listLayouts`
       // dereferences it. Before this change the coding path happened to

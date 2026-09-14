@@ -356,6 +356,7 @@ import { ProjectBindingsStore } from '../../services/projects/project-binding-st
 import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
+import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
@@ -3048,10 +3049,30 @@ export function configureRuntimeRoutes(
   // above and `docs/design/principals.md`. Unifying those facts into one
   // stable per-person identity is the open design question recorded there,
   // not something this scope resolves.
+  // Built once at wiring time, not per request: `buildProjectResolutionRouteDeps`
+  // constructs a manifest store, a bindings store and a resolver, and the
+  // projects routes below take theirs the same way.
+  const personalLayoutResolver =
+    buildProjectResolutionRouteDeps(context).resolver;
   context.app.route(
     '/api/me',
     createPersonalLayoutRoutes(ownedLayoutStore(context.storageAdapter), {
       resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      // #2062 review BLOCKING-2 — promote publishes into a project, so it must
+      // pass the admission that project's own create route applies. Both are
+      // wired from the SAME two expressions, a few lines apart, so the agent
+      // list and the workspace resolver cannot diverge between the two doors
+      // into one store.
+      listAgents: async () =>
+        (await context.agentService.listAgents()).map(({ slug, project }) => ({
+          slug: agentId(slug),
+          project,
+        })),
+      resolveWorkspacePath: async (projectSlug, resourceId) =>
+        await resolveProjectWorkspacePath(projectSlug, {
+          resolver: personalLayoutResolver,
+          resourceId,
+        }),
     }),
   );
   context.app.route(

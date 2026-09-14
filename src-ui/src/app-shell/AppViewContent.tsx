@@ -154,6 +154,14 @@ const BoardView = lazy(() =>
     default: module.BoardView,
   })),
 );
+// #2062. Lazy for the same reason every other view here is: a Board's host
+// pulls in the layout renderer, and the panel's Boards section must not put
+// that in the entry bundle for a Station where nobody opens one.
+const PersonalBoardView = lazy(() =>
+  import('../views/PersonalBoardView').then((module) => ({
+    default: module.PersonalBoardView,
+  })),
+);
 
 interface AppViewContentProps {
   currentView: NavigationView;
@@ -406,6 +414,11 @@ function AppViewContentBody({
   }
   if (currentView.type === 'board') {
     return <BoardView reference={currentView.reference} />;
+  }
+  if (currentView.type === 'personal-board') {
+    // No `WorkspacePaneHostActionsFrame`: that frame is project-scoped and
+    // takes a required `projectSlug`, which a Board has none of.
+    return <PersonalBoardView boardSlug={currentView.boardSlug} />;
   }
   if (currentView.type === 'project-session-board') {
     return <ConsoleBoardView projectSlug={currentView.slug} />;

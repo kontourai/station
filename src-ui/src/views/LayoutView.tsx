@@ -27,6 +27,7 @@ import { useSlashCommandHandler } from '../hooks/useSlashCommandHandler';
 import { LayoutRenderer } from '../layouts';
 import { focusWorkspacePaneHostAction } from '../workspace-panes/workspacePaneHostActionFocus';
 import './LayoutView.css';
+import { layoutWorkspaceShape } from './layout-workspace-shape';
 import {
   annotateUnavailableAgentLabel,
   type ProjectAgentFilterState,
@@ -145,40 +146,13 @@ export function LayoutView({
         }
       : item;
 
-  // Map LayoutConfig → workspace shape
-  const layout = layoutData
-    ? {
-        slug: layoutData.slug,
-        name: layoutData.name,
-        icon: layoutData.icon,
-        description: layoutData.description,
-        tabs: (layoutData.config?.tabs ?? []).map((t: any) => ({
-          id: t.id,
-          label: t.label,
-          component: t.component,
-          icon: t.icon,
-          description: t.description,
-          actions: (t.actions ?? [])
-            .map(annotateAgentRef)
-            .map(reviewPluginAction),
-          skills: (t.skills ?? [])
-            .map(annotateAgentRef)
-            .map(reviewPluginAction),
-        })),
-        globalSkills: (hostOwnsGlobalActions
-          ? []
-          : (layoutData.config?.globalSkills ?? [])
-        ).map(annotateAgentRef),
-        actions: hostOwnsGlobalActions
-          ? []
-          : layoutData.config?.actions?.map(annotateAgentRef),
-        defaultAgent: layoutData.config?.defaultAgent,
-        availableAgents: layoutData.config?.availableAgents,
-        // Host-owned, read-only metadata used by the builtin standard-view
-        // fallback. It never authorizes a Kit action or interprets Kit code.
-        kit: layoutData.config?.kit,
-      }
-    : null;
+  // Map LayoutConfig → workspace shape. Shared with the Board host (#2062),
+  // which renders the same records through the same `LayoutRenderer`.
+  const layout = layoutWorkspaceShape(layoutData, {
+    annotateAgentRef,
+    reviewPluginAction,
+    hostOwnsGlobalActions,
+  });
 
   const createChatSession = useCreateChatSession();
   const slashCommandHandler = useSlashCommandHandler();

@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 100,
+  "pageLocalMediaQueryCeiling": 101,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -116,6 +116,10 @@
     "src-ui/src/components/project-sidebar/ProjectSidebar.css": {
       "count": 3,
       "reason": "The app-shell navigation rail: the mobile drawer and its backdrop, the touch-only reorder/chevron geometry that has to stay inside a 44px row, and the desktop-side hides."
+    },
+    "src-ui/src/components/project-sidebar/ProjectSidebarBoards.css": {
+      "count": 1,
+      "reason": "The Boards row menu is the only rename affordance a phone has and its trigger is hover-revealed, so one coarse-pointer block makes it visible at the 44px floor \u2014 the same answer ProjectSidebar.css already gives for its reorder handle and section-remove."
     },
     "src-ui/src/components/project-sidebar/ProjectSidebarFooter.css": {
       "count": 1,

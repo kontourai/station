@@ -39,6 +39,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'featurePreviews',
   'flowRuns',
   'peerCredentials',
+  'personalLayouts',
   'knowledgeStores',
   'knownEnvironments',
   'notifications',

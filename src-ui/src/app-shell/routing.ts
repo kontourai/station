@@ -6,6 +6,7 @@ import {
   CONNECTION_SECTIONS,
   canonicalConnectionPath,
 } from '../views/connections-hub/connection-sections';
+import { boardPath, parseBoardPath } from './board-route';
 import {
   APP_DESTINATION_REGISTRY,
   type ManagementDestinationId,
@@ -530,6 +531,19 @@ export function resolveViewFromPath(
       ...(tab ? { tab } : {}),
     };
   }
+
+  // #2062: a Board is addressed by slug alone — it has no project segment,
+  // which is the whole point of the personal scope. The matcher is exact for
+  // the same reason the project matcher is.
+  //
+  // Placed AFTER the layout-tab match rather than before it: the long comment
+  // above belongs to that regex, and inserting this between the two made the
+  // rationale read as documentation for the Board matcher (#2062 review
+  // LOW-11). The two patterns are disjoint — `/boards/...` can never match a
+  // `/projects/...` path — so the order is a readability choice, not a
+  // precedence one.
+  const boardSlug = parseBoardPath(path);
+  if (boardSlug) return { type: 'personal-board', boardSlug };
   // 4-HOME-012: EXACT, so `/projects/<slug>/<anything-else>` falls through to
   // the not-found below instead of silently rendering the project dashboard.
   // The old `startsWith('/projects/')` catch-all took the second segment and
@@ -619,6 +633,8 @@ export function getPathForView(view: NavigationView): string | null {
       return view.layoutSlug
         ? `/projects/${encodeURIComponent(view.projectSlug)}/layouts/${encodeURIComponent(view.layoutSlug)}/panes/${encodeURIComponent(view.descriptorId)}/${encodeURIComponent(view.instanceId)}`
         : `/projects/${encodeURIComponent(view.projectSlug)}/panes/${encodeURIComponent(view.descriptorId)}/${encodeURIComponent(view.instanceId)}`;
+    case 'personal-board':
+      return boardPath(view.boardSlug);
     case 'layout':
       return `/projects/${view.projectSlug}/layouts/${view.layoutSlug}${
         view.tab ? `/${view.tab}` : ''
@@ -686,6 +702,11 @@ export function getParentView(view: NavigationView): NavigationView | null {
         : { type: 'project', slug: view.projectSlug };
     case 'layout':
       return { type: 'project', slug: view.projectSlug };
+    // #2062: a Board is a top-level place of its own — the panel lists it
+    // beside Activity, not under anything — so there is no level up. Declared
+    // rather than left to the `default`, which is what this switch's own
+    // docblock asks for.
+    case 'personal-board':
     case 'task':
     // Settings behaves as a full-page overlay of Home rather than a sibling
     // destination, and its Escape has always closed back to Home.

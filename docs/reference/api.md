@@ -694,6 +694,49 @@ transaction, so two concurrent updates cannot lose one another's change.
 DELETE /api/me/layouts/:layoutSlug
 ```
 
+### Promote a Board into a project
+```http
+POST /api/me/layouts/:layoutSlug/promote
+Content-Type: application/json
+
+{ "projectSlug": "campfit" }
+```
+
+A **move**, not a copy: on success the personal record is gone and the project
+owns the Layout under the same slug, keeping the Board's `id` and `createdAt`
+verbatim. Carrying the same id IS the lineage — there is no `promotedFrom`
+field, because layout ids are a record field rather than a directory key and
+nothing else records the move.
+
+`projectSlug` is the only field the body may name; anything else is 400. A
+project that does not exist answers 404 `Project not found` — the project
+routes' own answer, given before the personal record is touched, so a promote
+that cannot land never destroys the Board. A slug the project already uses for
+a different Layout answers 409 and moves nothing.
+
+A Board the destination project would not accept is refused before anything
+moves. Promote runs the same admission `POST /api/projects/:slug/layouts`
+runs — the same function, not a second copy of its rules — so a layout naming
+an agent the project cannot reach answers 400 with that route's diagnostics,
+and a `coding` Board carrying its own `config.workingDirectory` is refused by
+name (that value is derived from the project). A promoted `coding` Board
+therefore persists no `workingDirectory` of its own.
+
+Promote grants no capability that `POST /api/projects/:slug/layouts` does not:
+it publishes through the same project transaction, and both carry the same
+`orchestration:operate` pairing scope. Read that as a statement about WHO may
+call, which is a different question from what a call may contain — the
+admission above is the second one, and the two are enforced separately.
+Station applies no per-project membership check to layout writes today
+(`docs/design/project-membership.md` specifies that contract and does not claim
+it is implemented), so promote does not claim one either.
+
+The two writes are ordered create-then-delete, which accepts a visible
+duplicate over a possible loss: if the process dies between them, the Layout is
+in the project AND still listed personally. Repeating the promote closes it —
+the second call sees the project occupant carrying this Board's own id,
+recognizes the interrupted run, and completes the delete.
+
 **Used by**: the Boards section of the left panel (#2062)
 
 ---

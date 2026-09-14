@@ -1849,6 +1849,25 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/me/layouts/:layoutSlug' },
     { method: 'PUT', path: '/api/me/layouts/:layoutSlug' },
     { method: 'DELETE', path: '/api/me/layouts/:layoutSlug' },
+    // #2062 promote is the one leaf in this family that writes OUTSIDE the
+    // caller's own records — it publishes the Board as a project's Layout.
+    // It takes the family default anyway, and deliberately: it writes through
+    // the same project transaction `POST /api/projects/:slug/layouts` uses,
+    // and that leaf resolves to the same `orchestration:operate` tier, so a
+    // raised tier here would refuse a caller who can already perform the
+    // identical write by addressing the project directly. The scope equality
+    // is asserted in `pairing-route-scopes.test.ts`, not just stated here.
+    //
+    // SHARPENED (#2062 review BLOCKING-2): "the identical write" is a claim
+    // about ADMISSION, and it was false when this comment was written —
+    // promote skipped the agent-reference and working-directory refusals the
+    // project route applies, so it accepted bodies that route rejected. Both
+    // now derive their answer from `admitProjectLayoutWrite`. Two distinctions
+    // worth keeping straight, because conflating them is what produced the
+    // false claim: equal SCOPE is about who may call, equal ADMISSION is about
+    // what a call may contain, and neither implies the other. This entry
+    // records the first; `project-layout-admission.ts` owns the second.
+    { method: 'POST', path: '/api/me/layouts/:layoutSlug/promote' },
     // Personal task-room reads disclose only the already-paired operator's
     // own task projection. Mutations are closed room commands and inherit
     // orchestration:operate from /api/tasks.

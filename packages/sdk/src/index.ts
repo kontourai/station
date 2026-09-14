@@ -1074,6 +1074,20 @@ export {
   useFeaturePreviewsQuery,
   useUpdateFeaturePreviewMutation,
 } from './query-domains/featurePreviews.js';
+export type {
+  PersonalLayoutCreateInput,
+  PersonalLayoutUpdateInput,
+} from './query-domains/personalLayouts.js';
+export {
+  personalLayoutKey,
+  personalLayoutsKey,
+  useCreatePersonalLayoutMutation,
+  useDeletePersonalLayoutMutation,
+  usePersonalLayoutQuery,
+  usePersonalLayoutsQuery,
+  usePromotePersonalLayoutMutation,
+  useUpdatePersonalLayoutMutation,
+} from './query-domains/personalLayouts.js';
 // developerRuntime is intentionally NOT re-exported here. Its hooks are the
 // developer surface's lazy-only data access and are published exclusively via
 // the dedicated `@kontourai/station-sdk/developer-runtime` subpath so their
