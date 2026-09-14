@@ -84,19 +84,49 @@ export interface WorkspacePullRequestPaneKey {
  * `canServeHost` rules in one place a client may read
  * (`GitLabPullRequestProvider.canServeHost` claims `gitlab.com` only;
  * `GitHubPullRequestProvider.canServeHost` claims everything else). Both
- * canonicalize the host the same way first — lowercase, no port, no trailing
+ * decide through their own `canonicalHost` — lowercase, no port, no trailing
  * dot — so this does too.
+ *
+ * This is the ONLY rule `canServeHost` describes. The host the route then
+ * compares for equality comes from `getHost`, a different and stricter
+ * reading — see `pullRequestPaneIdHost`.
  */
 export function pullRequestProviderForHost(host: string): 'github' | 'gitlab' {
   return canonicalPullRequestHost(host) === 'gitlab.com' ? 'gitlab' : 'github';
 }
 
-/** Lowercase, port-stripped, trailing-dot-stripped — the providers' rule. */
+/**
+ * Lowercase, port-stripped, trailing-dot-stripped — `canServeHost`'s rule,
+ * and ONLY that rule. It decides which provider claims a host; it must not
+ * decide what a pane id carries (`pullRequestPaneIdHost` does).
+ */
 export function canonicalPullRequestHost(host: string): string {
   return host.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
 }
 
-const HOST = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/;
+/**
+ * The host a pane id carries, mirroring the server's `getHost` — which
+ * lowercases the remote's host and KEEPS the port
+ * (`github-pull-request-provider.ts` `getHost`,
+ * `gitlab-pull-request-provider.ts` `getHost`). The route resolves a request
+ * by `provider.getHost(context) === <host path param>`
+ * (`pull-request-routes.ts`), string equality, so an id that dropped the port
+ * would name an endpoint the server can never match: a self-hosted forge on
+ * `:8443` would open a tab that always reports unavailable, and its two
+ * endpoints (`:8443` and the bare host) would fold into one tab.
+ *
+ * A trailing dot IS dropped: a remote is written without one, so folding
+ * `github.com.` to `github.com` makes the equality more likely to hold, where
+ * dropping a port makes it impossible.
+ */
+export function pullRequestPaneIdHost(host: string): string {
+  const lower = host.toLowerCase();
+  const port = /:\d+$/.exec(lower)?.[0] ?? '';
+  const name = port ? lower.slice(0, -port.length) : lower;
+  return `${name.replace(/\.$/, '')}${port}`;
+}
+
+const HOST = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?$/;
 const PATH_SEGMENT = /^[a-zA-Z0-9._-]+$/;
 const REF = /^[0-9]{1,12}$/;
 
@@ -109,11 +139,14 @@ const REF = /^[0-9]{1,12}$/;
  * `Owner/repo#1` are one pull request — and the id is the pane's IDENTITY
  * (`openSurfaceInRegion` focuses an already-held pane by string equality),
  * so two spellings of one pull request must not mint two tabs.
+ *
+ * The host keeps its port: it is the string the server's route matches for
+ * equality, not the one `canServeHost` canonicalizes.
  */
 export function workspacePullRequestPaneId(
   key: WorkspacePullRequestPaneKey,
 ): string | null {
-  const host = canonicalPullRequestHost(key.host);
+  const host = pullRequestPaneIdHost(key.host);
   const owner = key.owner.toLowerCase();
   const repository = key.repository.toLowerCase();
   if (
