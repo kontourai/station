@@ -146,7 +146,29 @@ function DeviceWorkspacePaneSurface({
       (device) => `${device.platform}:${device.deviceId}` === selectedId,
     ) ?? null;
 
-  const frame: MobileDeviceCapture | undefined = capture.data;
+  /*
+    The last good frame, held across a REFUSED re-capture.
+
+    `useMutation` clears its own `data` on every `mutate`, so without this a
+    503 or a 403 on a second press replaced a frame the reader already had
+    with an error card — discarding information to report a failure. That is
+    the opposite of the principle the stale decoration is built on: an old
+    frame is more informative than nothing, provided it says it is old, and
+    this one says so by the same mechanism.
+
+    Keyed by the selected row so it can never outlive its subject. Switching
+    devices changes `selectedId` in the same commit that calls
+    `capture.reset()`, so the retained frame stops matching and disappears
+    with it — which is what keeps the caption's device name honest.
+  */
+  const retained = useRef<{ id: string; frame: MobileDeviceCapture } | null>(
+    null,
+  );
+  if (capture.data && selectedId)
+    retained.current = { id: selectedId, frame: capture.data };
+  const frame: MobileDeviceCapture | undefined =
+    capture.data ??
+    (retained.current?.id === selectedId ? retained.current.frame : undefined);
   const [now, setNow] = useState(() => Date.now());
   const capturedAt = frame ? Date.parse(frame.capturedAt) : Number.NaN;
   const isStale =
@@ -364,24 +386,38 @@ function DeviceStage({
 }) {
   if (isCapturing) return <SkeletonBlock count={2} label="Taking a snapshot" />;
 
+  const figure =
+    capture && selected ? (
+      <DeviceFrame capture={capture} isStale={isStale} selected={selected} />
+    ) : null;
+
   if (outcome)
     return (
-      <ErrorState
-        variant="compact"
-        title={outcome.title}
-        description={outcome.description}
-        action={
-          outcome.action === 'retry' ? (
-            <Button size="sm" onClick={onRetry}>
-              Try again
-            </Button>
-          ) : outcome.action === 'refresh' ? (
-            <Button size="sm" onClick={onRefreshInventory}>
-              Refresh devices
-            </Button>
-          ) : undefined
-        }
-      />
+      <>
+        <ErrorState
+          variant="compact"
+          title={outcome.title}
+          description={outcome.description}
+          action={
+            outcome.action === 'retry' ? (
+              <Button size="sm" onClick={onRetry}>
+                Try again
+              </Button>
+            ) : outcome.action === 'refresh' ? (
+              <Button size="sm" onClick={onRefreshInventory}>
+                Refresh devices
+              </Button>
+            ) : undefined
+          }
+        />
+        {/*
+          The refusal goes BESIDE the frame, not over it. A reader who had a
+          frame and asked for a newer one keeps the one they had, with its own
+          capture time and — past the threshold — its own "old" label, so
+          nothing here claims it is current.
+        */}
+        {figure}
+      </>
     );
 
   if (!selected)
@@ -402,7 +438,7 @@ function DeviceStage({
       />
     );
 
-  if (!capture)
+  if (!figure)
     return (
       <Empty
         variant="compact"
@@ -411,6 +447,18 @@ function DeviceStage({
       />
     );
 
+  return figure;
+}
+
+function DeviceFrame({
+  capture,
+  isStale,
+  selected,
+}: {
+  capture: MobileDeviceCapture;
+  isStale: boolean;
+  selected: MobileDeviceSummary;
+}) {
   const time = capturedAtLabel(capture.capturedAt);
   const caption = `Snapshot of ${selected.name} · ${PLATFORM_LABEL[selected.platform]} · captured ${time}`;
   return (

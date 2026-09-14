@@ -138,6 +138,44 @@ describe('a refused capture (#1969)', () => {
     expect(describeCaptureRefusal(503).action).toBe('retry');
   });
 
+  /**
+   * A refused RE-capture keeps the frame that already arrived.
+   *
+   * React Query's mutation clears its own `data` the moment `mutate` is
+   * called, so unless the surface holds the last good frame the error card
+   * replaces it — discarding information in order to report a failure, which
+   * is the opposite of what the stale decoration exists to say. The frame is
+   * still labelled with its own capture time, so nothing claims it is
+   * current.
+   *
+   * Dropping the retained frame reds the second image assertion. Retaining it
+   * WITHOUT keying it to the selection reds the last one, where the same
+   * retained frame would otherwise be captioned with a different device's
+   * name.
+   */
+  test('a refused re-capture keeps the frame that already arrived, and does not carry it to another device', async () => {
+    stubDeviceFetch({
+      inventory: readyInventory(),
+      captures: [captureBody(), { status: 503 }],
+    });
+    authorizeScope();
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await click(await screen.findByRole('radio', { name: /iPhone/ }));
+    await click(screen.getByRole('button', { name: 'Capture' }));
+    expect((await screen.findByRole('img')).getAttribute('alt')).toMatch(
+      /^Snapshot of iPhone 17 Pro/,
+    );
+
+    await click(screen.getByRole('button', { name: 'Capture' }));
+    await screen.findByText(/capture did not complete/);
+    expect(screen.getByRole('img').getAttribute('alt')).toMatch(
+      /^Snapshot of iPhone 17 Pro/,
+    );
+
+    await click(screen.getByRole('radio', { name: /Pixel/ }));
+    await waitFor(() => expect(screen.queryByRole('img')).toBeNull());
+  });
+
   /** Picking another device clears the previous refusal rather than keeping it. */
   test('choosing another device clears the refusal', async () => {
     stubDeviceFetch({
