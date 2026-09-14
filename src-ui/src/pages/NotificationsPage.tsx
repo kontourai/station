@@ -244,9 +244,17 @@ export function NotificationsPage() {
         <RecentAppMessages />
         {inbox.pendingCount === 0 &&
         inbox.notifications.length === 0 &&
+        inbox.unavailableSources.length === 0 &&
         !approvalTarget ? (
           /* when BOTH regions are empty they collapse into one PROMINENT
-             empty, not a paragraph floating at the top of an empty page. */
+             empty, not a paragraph floating at the top of an empty page.
+             #2064 review (c): NOT when a source could not be read. This
+             branch does not mount AttentionSection at all, so a partial read
+             skipped the gap notice entirely and answered with the most
+             confident sentence on the page — "Nothing needs your attention
+             right now" on evidence that does not support it. An unreadable
+             source keeps the sectioned layout, which says what it could not
+             read. */
           <Empty
             variant="prominent"
             label="All caught up"
@@ -260,6 +268,7 @@ export function NotificationsPage() {
               pendingVisible={countPendingAttention(attentionItems)}
               filtered={filtersActive}
               focusedApprovalId={approvalTarget || undefined}
+              unavailableSources={inbox.unavailableSources}
             />
             {approvalTarget && !exactApproval && !exactApprovalNotification && (
               <p role="status">
