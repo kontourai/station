@@ -197,7 +197,10 @@ function makeReceipt(
         reviewerId: 'sol-1',
         executorAgentSlug: 'reviewer-agent',
         actor: { actorId: 'agent:sol' },
-        lens: { id: 'failure-totality', instructions: 'Review exact outcomes.' },
+        lens: {
+          id: 'failure-totality',
+          instructions: 'Review exact outcomes.',
+        },
         status: 'completed',
         startedAt: '2026-01-01T00:00:00.000Z',
         completedAt: '2026-01-01T00:01:00.000Z',
@@ -274,9 +277,7 @@ describe('the review layout kind', () => {
     expect(screen.getByText('src/index.ts')).toBeTruthy();
     expect(screen.getByText('Gate review for run-1')).toBeTruthy();
     expect(screen.queryByText('other/file.ts')).toBeNull();
-    expect(
-      screen.queryByText('Gate review for another project'),
-    ).toBeNull();
+    expect(screen.queryByText('Gate review for another project')).toBeNull();
     // One receipt row, not two: both receipts render the same headline, so a
     // name assertion could not tell one Project's from the other's.
     expect(screen.getAllByText('1 independent finding')).toHaveLength(1);
@@ -301,9 +302,7 @@ describe('the review layout kind', () => {
     expect(within(detail).getByText('run-1#gate-review')).toBeTruthy();
     expect(within(detail).getByText('2 awaiting a decision')).toBeTruthy();
     expect(within(detail).getByText('Claim 1')).toBeTruthy();
-    expect(
-      within(detail).getByText('Proposed: two · extraction'),
-    ).toBeTruthy();
+    expect(within(detail).getByText('Proposed: two · extraction')).toBeTruthy();
   });
 
   /** The before/after snapshots, and the two single-change decision controls. */

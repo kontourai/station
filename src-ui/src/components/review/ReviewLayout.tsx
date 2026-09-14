@@ -343,7 +343,9 @@ export function ReviewLayout({
           <ProposedChangeDetail
             change={selectedChange}
             pending={changeDecision.pending}
-            onApprove={() => changeDecision.decide(selectedChange.id, 'approve')}
+            onApprove={() =>
+              changeDecision.decide(selectedChange.id, 'approve')
+            }
             onReject={() => changeDecision.decide(selectedChange.id, 'reject')}
           />
         )}
@@ -353,7 +355,9 @@ export function ReviewLayout({
         {selectedReceipt && (
           <IndependentReviewReceiptDetail
             receipt={selectedReceipt}
-            focused={reviewEvidenceItemId(selectedReceipt.receiptId) === deepLink}
+            focused={
+              reviewEvidenceItemId(selectedReceipt.receiptId) === deepLink
+            }
           />
         )}
       </SplitPaneLayout>
