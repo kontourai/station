@@ -24,7 +24,9 @@ import {
   DOCK_REGION_IDS,
   type DockRegionId,
   dockMirrorDiff,
+  isDockRegion,
   moveRegionPanes as moveRegionPanesInArrangement,
+  occupiedRegion,
   placeSurface as placeSurfaceInArrangement,
   REGION_SURFACE_REGISTRY,
   type RegionArrangement,
@@ -60,6 +62,47 @@ export interface SurfaceIntentRecord extends SurfaceIntent {
 
 type SurfaceIntents = Partial<Record<string, SurfaceIntentRecord>>;
 
+/**
+ * What a caller may ask of `openInRegion` (#2048). `region` names a target;
+ * absent, the surface's own rule applies (its default region, the first free
+ * dock region when that one is taken — `revealSurface`). `placement` is the
+ * host-open vocabulary (`WorkspacePaneHostOpenPlacement`); a region holds one
+ * tab group in this batch, so only `add` opens and `split` is refused rather
+ * than silently added. `focusExisting` (default true) makes an open of a
+ * pane already in some region a reveal of it there.
+ */
+export interface OpenInRegionOptions {
+  region?: RegionId;
+  placement?: 'add' | 'split';
+  focusExisting?: boolean;
+}
+
+/**
+ * Why `openInRegion` did not place (#2048), each derived from the branch that
+ * produced it: `no-surface` — the instance is no region surface's canonical
+ * pane (instance-keyed panes are batch B's), or the id is no registered
+ * surface; `unsupported-placement` —
+ * `split` asked of a tab-group region; `region-unavailable` — a dock region
+ * this device's fold does not offer (a side region on a bottom-only device);
+ * `refused` — the surface does not declare the region (`surfaceMayOccupy`).
+ * A refusal changes no state and navigates nowhere.
+ */
+export type OpenInRegionRefusal =
+  | 'no-surface'
+  | 'unsupported-placement'
+  | 'region-unavailable'
+  | 'refused';
+
+export type OpenInRegionOutcome =
+  | {
+      readonly ok: true;
+      readonly region: RegionId;
+      readonly surfaceId: string;
+      /** The pane was already in `region` and was revealed there. */
+      readonly existing: boolean;
+    }
+  | { readonly ok: false; readonly reason: OpenInRegionRefusal };
+
 function withoutSurfaceIntent(
   current: SurfaceIntents,
   surfaceId: string,
@@ -83,9 +126,33 @@ interface RegionModelValue {
   placeSurface(surfaceId: string, regionId: RegionId): void;
   /**
    * Reveal a surface where it is — its region shown and its tab selected —
-   * or place it where it belongs (`revealSurface`/`showSurfaceAlone`).
+   * or place it where it belongs (`revealSurface`/`showSurfaceAlone`): the
+   * surface-keyed form of `openInRegion` with no options, plus the intent
+   * outbox. Since #2048 it is `openSurfaceInRegion` underneath.
    */
   showSurface(surfaceId: string, intent?: SurfaceIntent): void;
+  /**
+   * Open a surface in a dock region (#2048): the model half of
+   * `openInRegion` (`useOpenInRegion.ts`), which is the one producer callers
+   * use for a cross-region open so that no caller reaches a region host's
+   * own open action and reproduces the model's placement rules. Resolves the
+   * target region (explicit, else the surface's rule), reveals it and places
+   * or selects through the model — the host derives its document from the
+   * arrangement, so a placement IS the open. Never a history entry: a dock
+   * region's selection is the record's, and `main` is reached by the same
+   * outlet navigation `placeSurface` makes. Returns a typed outcome; a
+   * refusal leaves the arrangement as it was.
+   *
+   * Surface-keyed here, instance-keyed in `useOpenInRegion`: the instance →
+   * surface fold (`regionSurfaceOfPane`) needs the pane contracts, which are
+   * not in this provider's entry chunk — importing them here measured
+   * +1,820 B gzip against a 527 B headroom — and `showSurface` needs the
+   * surface form anyway (a projectless coding surface has no instance).
+   */
+  openSurfaceInRegion(
+    surfaceId: string,
+    options?: OpenInRegionOptions,
+  ): OpenInRegionOutcome;
   /**
    * Select a pane the region holds (#2046 2a): it becomes the region's
    * `occupant`, the pane `RegionPaneHost` shows. Places nothing and changes
@@ -282,7 +349,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     setDockState,
     updateParams,
   } = useNavigation();
-  const bottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
+  const available = availablePlacements(useDockSlotDevice());
+  const bottomOnly = available.length === 1;
   const { setDeviceSetting } = useDeviceSettingsActions();
   const [regions, setRegions] = useState<RegionArrangement>(() =>
     initialRegionArrangement(settings, dockMode, isDockOpen, isDockMaximized),
@@ -330,6 +398,17 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     setRegions(next);
   }, []);
 
+  /**
+   * Apply an arrangement a reveal or open produced: the fold's last shown
+   * region follows it, and a landing in `main` navigates to the outlet.
+   */
+  const commit = useCallback((next: RegionArrangement, region: RegionId) => {
+    regionsRef.current = next;
+    setLastShownRegion(region);
+    setRegions(next);
+    if (region === 'main') navigateToMainOutlet();
+  }, []);
+
   const placeSurface = useCallback((surfaceId: string, regionId: RegionId) => {
     // A refused placement (the surface does not declare this region) must not
     // navigate either: nothing was placed, so there is nothing to go and see.
@@ -372,17 +451,70 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const openSurfaceInRegion = useCallback(
+    (
+      surfaceId: string,
+      options: OpenInRegionOptions = {},
+    ): OpenInRegionOutcome => {
+      const surface = REGION_SURFACE_REGISTRY.get(surfaceId);
+      if (!surface) return { ok: false, reason: 'no-surface' };
+      if (options.placement === 'split')
+        return { ok: false, reason: 'unsupported-placement' };
+      const current = regionsRef.current;
+      const held = occupiedRegion(current, surfaceId);
+      const target = options.region;
+      // Already open somewhere, and not asked to go elsewhere: reveal it
+      // there (region shown, tab selected) rather than opening a second time.
+      if (
+        held !== undefined &&
+        options.focusExisting !== false &&
+        (target === undefined || target === held)
+      ) {
+        const shown = bottomOnly
+          ? showSurfaceAlone(current, surfaceId, held)
+          : revealSurface(current, surfaceId, held);
+        commit(shown.arrangement, shown.region);
+        return { ok: true, region: shown.region, surfaceId, existing: true };
+      }
+      if (target !== undefined) {
+        if (!surfaceMayOccupy(surfaceId, target))
+          return { ok: false, reason: 'refused' };
+        if (
+          isDockRegion(target) &&
+          !(available as readonly RegionId[]).includes(target)
+        )
+          return { ok: false, reason: 'region-unavailable' };
+        let next = placeSurfaceInArrangement(current, surfaceId, target);
+        if (bottomOnly && isDockRegion(target))
+          for (const id of DOCK_REGION_IDS)
+            if (id !== target)
+              next = updateRegion(next, id, { visible: false });
+        commit(next, target);
+        return { ok: true, region: target, surfaceId, existing: false };
+      }
+      // No target: the surface's own rule — its region if it has one, else
+      // its default (the first free dock region when that is taken); on a
+      // bottom-only device the revealed region becomes the only visible one.
+      const shown = bottomOnly
+        ? showSurfaceAlone(current, surfaceId, surface.defaultRegion)
+        : revealSurface(current, surfaceId, surface.defaultRegion);
+      commit(shown.arrangement, shown.region);
+      return {
+        ok: true,
+        region: shown.region,
+        surfaceId,
+        existing: held !== undefined,
+      };
+    },
+    [available, bottomOnly, commit],
+  );
+
   const showSurface = useCallback(
     (surfaceId: string, intent?: SurfaceIntent) => {
-      const surface = REGION_SURFACE_REGISTRY.get(surfaceId);
-      if (!surface) return;
-      const shown = bottomOnly
-        ? showSurfaceAlone(regionsRef.current, surfaceId, surface.defaultRegion)
-        : revealSurface(regionsRef.current, surfaceId, surface.defaultRegion);
-      regionsRef.current = shown.arrangement;
-      setLastShownRegion(shown.region);
-      setRegions(shown.arrangement);
-      if (shown.region === 'main') navigateToMainOutlet();
+      const opened = openSurfaceInRegion(surfaceId);
+      // An unregistered id was never a reveal; the intent outbox is left
+      // alone for it, as before #2048.
+      if (!opened.ok) return;
       if (intent) {
         const token = ++surfaceIntentTokenRef.current;
         // The record is exactly what this caller asked for. It used to
@@ -404,7 +536,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       // dropping it cannot undo a delivery already made (#928).
       setSurfaceIntents((current) => withoutSurfaceIntent(current, surfaceId));
     },
-    [bottomOnly],
+    [openSurfaceInRegion],
   );
 
   const toggleSurface = useCallback(
@@ -682,6 +814,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       setRegion,
       placeSurface,
       showSurface,
+      openSurfaceInRegion,
       selectPane,
       removePane,
       moveRegionPanes,
@@ -697,6 +830,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       setRegion,
       placeSurface,
       showSurface,
+      openSurfaceInRegion,
       selectPane,
       removePane,
       moveRegionPanes,
