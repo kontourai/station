@@ -127,15 +127,21 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   // broke, the direct gate above reports it in seconds under its own name
   // rather than half a minute later inside a readiness report.
   //
-  // `--working-tree` scopes the file-MATCHED rules to the uncommitted diff,
-  // which on a CI checkout is empty ("0 files changed -> no matched nodes"),
-  // so what runs here is the repo-state rules and the evidence-checks — the
-  // population that catches the class above — and not the diff-scoped ones.
-  // Verified both ways: an uncommitted forbidden shared-root import reds it,
-  // the same import committed does not. Closing that half needs a base ref
-  // this lane would have to thread through (it has STATION_CI_FAST_BASE) plus
-  // a decision about which rules should evaluate a merge candidate's whole
-  // diff; that is a separate change, not a gap this one absorbs silently.
+  // Not redundant with the proof above, measured rather than assumed:
+  // `proof:repo-governance` evaluates three of the nine repo-standards rules
+  // (REPO_GOVERNANCE_RULE_IDS in scripts/proof-family-lane.mjs), readiness
+  // evaluates all nine plus the protected-standards attestation. Deleting
+  // docs/strategy/multi-agent-delivery-protocol.md leaves the proof, the
+  // policy gate and lint green and reds readiness alone, on
+  // `verification-conduct-sentinels-and-fault-injection`.
+  //
+  // `--working-tree` does NOT narrow this to the diff, which matters because
+  // a CI checkout has no diff. Measured both ways: a forbidden shared-root
+  // import reds the run whether it is uncommitted or committed with a clean
+  // tree, so the file-matched rules evaluate the repository's files here
+  // exactly as they do locally. The "0 files changed -> no matched nodes"
+  // line printed on a clean tree reports changed-node routing, not these
+  // rules — reading it as "nothing was checked" is the trap.
   Object.freeze(['npm', Object.freeze(['run', 'veritas:readiness'])]),
   // PRECONDITION for the aggregate below, not a build step for its own sake
   // (station#4273). `typecheck:ui` resolves `@kontourai/station-connect`
