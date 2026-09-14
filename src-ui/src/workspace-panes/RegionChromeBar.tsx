@@ -10,6 +10,7 @@ import { CloseGlyph } from '../components/icons/Glyph';
 import { withShortcutHint } from '../contexts/KeyboardShortcutsContext';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { useShortcutDisplay } from '../hooks/useKeyboardShortcut';
+import { regionLabel } from '../regions/region-model';
 import { nextTabIndex } from '../utils/tab-navigation';
 import {
   workspacePaneHostPanelIdentity,
@@ -32,6 +33,20 @@ export interface RegionChromeTab {
  */
 const TOGGLE_EXEMPT =
   'a, button, [role="button"], [role="link"], [role="tab"], input, select, textarea, [data-dock-toggle-shield]';
+
+function RegionAddGlyph() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="chat-dock__extent-svg"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
 
 function RegionExtentGlyph({ expanded }: { expanded: boolean }) {
   return (
@@ -69,8 +84,9 @@ function RegionExtentGlyph({ expanded }: { expanded: boolean }) {
  *
  * Close renders only with two or more tabs: the last pane of a region is the
  * region, and the region has its own visibility control beside this strip.
- * No "+" here: which panes a region can add is the dock catalog (slice 3),
- * and an inert button for it would be a control that does nothing.
+ * No "+" here: the region's "+" (#2047) sits in the bar's actions cluster,
+ * beside maximize, because a ONE-pane region — which renders no strip —
+ * must be able to add a pane too.
  */
 function RegionTabStrip({
   groupId,
@@ -222,6 +238,13 @@ function RegionTabStrip({
  * rows of the toolbar's `⋯` menu and of Chat's own overflow sheet — and,
  * while the selected pane is Chat, no bar at all: `ChatDockMobileHeader` is
  * Chat's bar there, with the drag surface and the dock toggle of its own.
+ *
+ * The "+" (#2047 D4): `onAddPane` opens the region's catalog. Fine pointer
+ * only (D2: the app gains no dock control on phones), and absent when the
+ * host has nothing to add with (no region model, no active project — D6:
+ * a catalog whose every Open would land a pane that cannot render is not
+ * offered). It renders for a one-pane region too, the case the acceptance
+ * starts from.
  */
 export function RegionChromeBar({
   chrome,
@@ -231,6 +254,7 @@ export function RegionChromeBar({
   onSelectTab,
   onCloseTab,
   onReorderTab,
+  onAddPane,
   leadingSlotRef,
   trailingSlotRef,
 }: {
@@ -242,6 +266,8 @@ export function RegionChromeBar({
   /** Absent when a tab cannot be closed (one pane; no region model). */
   onCloseTab: ((surfaceId: string) => void) | undefined;
   onReorderTab: (surfaceId: string, toIndex: number) => void;
+  /** Opens the region's catalog; absent when there is nothing to add with. */
+  onAddPane?: () => void;
   leadingSlotRef: (element: HTMLElement | null) => void;
   trailingSlotRef: (element: HTMLElement | null) => void;
 }) {
@@ -260,6 +286,7 @@ export function RegionChromeBar({
       : chrome.effectiveDockSlotPlacement;
   const applyDockSnap = chrome.applyDockSnap;
   const mobileChat = chrome.isMobile && selectedSurfaceId === 'chat';
+  const addLabel = `Add pane to ${regionLabel(chrome.effectiveDockSlotPlacement)}`;
 
   // A NATIVE listener rather than `onClick`: the pane toolbar is portalled
   // into this bar, and a React handler on the bar never sees a click that
@@ -315,6 +342,17 @@ export function RegionChromeBar({
       </div>
       <div className="chat-dock__header-actions" data-dock-toggle-shield="">
         <span className="chat-dock__pane-toolbar" ref={trailingSlotRef} />
+        {onAddPane && !chrome.isMobile ? (
+          <button
+            type="button"
+            className="chat-dock__icon-btn"
+            onClick={onAddPane}
+            title={addLabel}
+            aria-label={addLabel}
+          >
+            <RegionAddGlyph />
+          </button>
+        ) : null}
         {chrome.canMaximize ? (
           <button
             type="button"

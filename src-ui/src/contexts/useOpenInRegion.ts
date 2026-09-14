@@ -4,8 +4,29 @@ import { regionSurfaceOfPane } from '../regions/region-surface-panes';
 import {
   type OpenInRegionOptions,
   type OpenInRegionOutcome,
+  type OpenInRegionRefusal,
   useRegionModel,
 } from './RegionModelContext';
+
+/**
+ * One sentence per refusal, as a total record: a new reason is a type error
+ * here, so a refusal can never reach a user as copy that happens to be wrong
+ * (the shape `describeWorkspacePaneOpenRefusal` set).
+ */
+const REFUSAL_SENTENCES: Record<OpenInRegionRefusal, string> = {
+  'no-surface': 'A dock region cannot hold that pane.',
+  'unsupported-placement':
+    'A dock region holds its panes as tabs, so it cannot be split.',
+  'region-unavailable': 'That region is not available on this device.',
+  refused: 'That pane cannot be placed in that region.',
+};
+
+/** The sentence a surface shows for a refusal it just received. */
+export function describeOpenInRegionRefusal(
+  reason: OpenInRegionRefusal,
+): string {
+  return REFUSAL_SENTENCES[reason];
+}
 
 /** The model half `openInRegion` composes: `RegionModelContext.openSurfaceInRegion`. */
 export interface OpenSurfaceInRegionModel {

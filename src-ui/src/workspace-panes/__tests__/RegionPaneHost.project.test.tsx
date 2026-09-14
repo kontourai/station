@@ -80,6 +80,35 @@ vi.mock('../../contexts/ProjectsContext', () => ({
  * every assertion about "which project the pane is bound to" reads the
  * host's real derivation, not the stub's.
  */
+/**
+ * The dock catalog's data seam: the server's resolved catalog for the dock
+ * project, holding the Terminal occurrence the server issues for it.
+ */
+vi.mock('../resolvedWorkspacePaneCatalog', async () => {
+  const { WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR } = await import(
+    '@kontourai/station-contracts/workspace-coding-panels'
+  );
+  return {
+    useResolvedWorkspacePaneCatalog: (projectSlug: string) => ({
+      entries: [
+        {
+          descriptor: WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
+          instance: createWorkspaceCodingTerminalPaneInstance(
+            PROJECTS[projectSlug]?.id ?? '',
+          ),
+          availability: {
+            state: 'available',
+            reason: { code: 'ready', source: 'resolver' },
+          },
+          clientRendererPresence: 'present',
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    }),
+  };
+});
 vi.mock('../builtinWorkspacePaneRegistry', () => ({
   getBuiltinWorkspacePaneRenderer: () =>
     function CodingStub({ instance }: { instance: WorkspacePaneInstance }) {
@@ -416,9 +445,11 @@ test('without a project a placed coding pane keeps its tab and shows the placeho
     visible: true,
   });
   // The region's bar names the pane it holds; nothing was written for a
-  // document the region could not derive.
+  // document the region could not derive; and no "+" is offered — every
+  // Open would land a pane that cannot render (D6).
   expect(within(shell('right')).getByLabelText('Hide Terminal')).toBeTruthy();
   expect(window.localStorage.getItem(RIGHT_KEY)).toBeNull();
+  expect(screen.queryByLabelText(/^Add pane to /)).toBeNull();
 
   act(() => deviceSettingsStore.set('chatDockProjectSlug', 'alpha'));
   await act(async () => {
@@ -435,4 +466,55 @@ test('without a project a placed coding pane keeps its tab and shows the placeho
       },
     ]),
   );
+});
+
+/**
+ * The acceptance, end to end (#2047 D4): from Chat alone at the bottom, the
+ * region's "+" opens the dock catalog, Open Terminal lands Terminal as the
+ * selected tab beside Chat and the catalog closes. Reverting the catalog's
+ * Open to the host's own open action fails the tab assertion (the host
+ * refuses a pane the region does not hold); dropping the "+" from the
+ * one-pane bar fails at the first click.
+ */
+test('the "+" opens the dock catalog and Open Terminal lands it as the selected tab beside Chat', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'alpha');
+  renderShells();
+  await waitFor(() => expect(model).not.toBeNull());
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+  expect(within(shell('bottom')).queryByRole('tablist')).toBeNull();
+
+  fireEvent.click(within(shell('bottom')).getByLabelText('Add pane to Bottom'));
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Add pane to Bottom',
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Open Terminal' }),
+  );
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('dialog', { name: 'Add pane to Bottom' }),
+    ).toBeNull(),
+  );
+  const pane = await screen.findByTestId('coding-pane');
+  expect(pane.dataset.project).toBe('alpha-id');
+  expect(tabs('bottom')).toEqual([
+    ['Chat', 'false'],
+    ['Terminal', 'true'],
+  ]);
+  expect(currentModel().regions.bottom).toMatchObject({
+    panes: ['chat', 'coding:terminal'],
+    occupant: 'coding:terminal',
+    visible: true,
+  });
+  // Nothing about the open was a navigation.
+  expect(new URLSearchParams(window.location.search).get('pane')).toBeNull();
 });

@@ -24,7 +24,7 @@ import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { useActiveProject } from '../hooks/useActiveProject';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { reportRegionClearance } from '../regions/region-clearance';
-import type { DockRegionId } from '../regions/region-model';
+import { type DockRegionId, isDockRegion } from '../regions/region-model';
 import {
   type RegionPaneContext,
   regionSurfaceOfPane,
@@ -318,20 +318,39 @@ const loadRegionBuiltinPane = () =>
   }));
 
 /**
+ * The region's "+" catalog (#2047 D4), behind its own boundary: the catalog
+ * modal, the availability list and the resolved-catalog query join the host
+ * chunk only when a "+" is pressed.
+ */
+const loadRegionPaneCatalog = () =>
+  import('./RegionPaneCatalog').then((module) => ({
+    default: module.RegionPaneCatalog,
+  }));
+
+/**
  * The project a dock region binds its panes to (#2047 D3/D5): the dock's own
  * remembered binding (`chatDockProjectSlug`, the setting `useDockShellChrome`
  * exposes as `activeProjectSlug` and Chat's project switcher writes), else
  * the route's active project, the same fallback `ChatDock` takes for a user
- * who has never bound one. Resolved to the project's id — what the coding
- * instances bind — through the project read, so an unknown or deleted slug
- * is no project rather than a dangling id.
+ * who has never bound one. Resolved through the project read to the record
+ * itself — the coding instances bind its id, the catalog queries by its
+ * slug — so an unknown or deleted slug is no project rather than a dangling
+ * id. Both null when the dock has none.
  */
-function useDockProjectId(): string | null {
+function useDockProject(): {
+  projectId: string | null;
+  projectSlug: string | null;
+} {
   const { chatDockProjectSlug } = useDeviceSettings();
   const { projectSlug: activeProjectSlug } = useActiveProject();
   const slug = chatDockProjectSlug ?? activeProjectSlug ?? '';
   const { project } = useProject(slug);
-  return project?.id ?? null;
+  const id = project?.id ?? null;
+  const resolvedSlug = project?.slug ?? null;
+  return useMemo(
+    () => ({ projectId: id, projectSlug: resolvedSlug }),
+    [id, resolvedSlug],
+  );
 }
 
 /**
@@ -444,7 +463,7 @@ export function RegionPaneHost({
   // coding pane through the same restore path a pane-set change takes —
   // the instance ids do not change, so `reconcileRegionPaneHostDocument`
   // (ids only) is not what carries it.
-  const projectId = useDockProjectId();
+  const { projectId, projectSlug } = useDockProject();
   const context = useMemo<RegionPaneContext>(
     () => ({ projectId }),
     [projectId],
@@ -544,6 +563,15 @@ export function RegionPaneHost({
     () => ({ leading: leadingSlot, trailing: trailingSlot }),
     [leadingSlot, trailingSlot],
   );
+  // The "+" catalog (#2047 D4): offered only where an Open could land a
+  // pane that renders — a region under the model, with a project (D6).
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const openCatalog = useCallback(() => setCatalogOpen(true), []);
+  const closeCatalog = useCallback(() => setCatalogOpen(false), []);
+  const catalogRegion =
+    regionId && model && isDockRegion(regionId) && projectSlug !== null
+      ? regionId
+      : undefined;
   return (
     <DockShell
       regionId={regionId}
@@ -561,9 +589,21 @@ export function RegionPaneHost({
               regionId && model && tabs.length > 1 ? closeTab : undefined
             }
             onReorderTab={reorderTab}
+            onAddPane={catalogRegion ? openCatalog : undefined}
             leadingSlotRef={setLeadingSlot}
             trailingSlotRef={setTrailingSlot}
           />
+          {catalogOpen && catalogRegion && projectSlug !== null ? (
+            <LazyBoundary
+              load={loadRegionPaneCatalog}
+              componentProps={{
+                regionId: catalogRegion,
+                projectSlug,
+                onClose: closeCatalog,
+              }}
+              pending={null}
+            />
+          ) : null}
           {document && selectedSupplied ? (
             <WorkspacePaneHost
               document={document}
