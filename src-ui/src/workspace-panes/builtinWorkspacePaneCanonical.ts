@@ -277,11 +277,6 @@ export function isCanonicalBuiltinBoardDescriptor(
 }
 
 /**
- * The Pull request pane's declaration (#2049), compared field by field like
- * every other built-in — a plugin cannot reach the built-in review surface by
- * reusing its renderer name.
- */
-/**
  * The Agents pane's declaration (#2050), compared field by field like every
  * other built-in.
  */
@@ -291,6 +286,11 @@ export function isCanonicalBuiltinAgentsDescriptor(
   return sameBuiltinDescriptor(descriptor, WORKSPACE_AGENTS_PANE_DESCRIPTOR);
 }
 
+/**
+ * The Pull request pane's declaration (#2049), compared field by field like
+ * every other built-in — a plugin cannot reach the built-in review surface by
+ * reusing its renderer name.
+ */
 export function isCanonicalBuiltinPullRequestDescriptor(
   descriptor: WorkspacePaneDescriptor,
 ): boolean {

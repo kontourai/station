@@ -191,7 +191,7 @@ map; anything not listed is a label.
 | declaration | vocabulary | readers |
 |---|---|---|
 | `REGION_SURFACE_REGISTRY` | surface ids | `RegionModelContext` (direct), `ActivityRegionShell` (direct, for `main`'s frame title), `RegionShells` via `regionModel.surfaces` (a dock region mounts a host only for a registered occupant), the region toolbar and `useRegionSurfaceMenu` via `regionModel.surfaces`, `CommandPalette` via the destination registry's `regionSurface` field |
-| `REGION_SURFACE_PANES` (#2045; #2047) | surface id → the canonical `WorkspacePaneInstance` under the dock's context (`instance({ projectId })` — a coding pane is the dock project's and has no instance without one; Chat and Activity ignore the context), plus `descriptorId` and the entry's constant `instanceId` | `RegionPaneHost`: the region's document is its panes' entries in tab order under the dock's project (an unsuppliable pane keeps its tab and renders "Choose a project for this dock"), and a persisted or opened pane is admitted only when `regionSurfaceOfPane` names a surface in the region's `panes` AND it binds the dock's project (an opened pane bound to another project is refused; a persisted one is re-bound by the catalog match); `RegionPaneCatalog` maps a catalog descriptor back to its surface (`regionSurfaceOfDescriptor`) and offers only what `dockCanSupply` admits; `useOpenInRegion` folds an instance to its surface; `region-surface-panes.test.ts` pins the keys to the registry's dock-capable surfaces both ways (which is what lets `RegionShells` decide "mount a host" from the registry alone) and every entry's descriptor to `dockCanSupply` |
+| `REGION_SURFACE_PANES` (#2045; #2047) | surface id → the canonical `WorkspacePaneInstance` under the dock's context (`instance({ projectId })` — a coding pane is the dock project's and has no instance without one; Chat and Activity ignore the context), plus `descriptorId` and the entry's constant `instanceId` | `RegionPaneHost`: the region's document is its panes' entries in tab order under the dock's project (an unsuppliable pane keeps its tab and renders "Choose a project for this dock"), and a persisted or opened pane is admitted only when `regionSurfaceOfPane` names a surface in the region's `panes` AND it binds the dock's project (an opened pane bound to another project is refused; a persisted one is re-bound by the catalog match); `RegionPaneCatalog` maps a catalog descriptor back to its surface (`regionSurfaceOfDescriptor`) and offers only what `dockCanSupply` admits; `useOpenInRegion` folds an instance to its surface; `region-surface-panes.test.ts` pins the keys to the registry's dock-capable surfaces both ways and every entry's descriptor to `dockCanSupply`. Since #2049 `RegionShells` decides "mount a host" from `resolveRegionSurface`, not from the registry alone — so what makes that sufficient is this pin PLUS `region-instance-panes.test.ts`, which pins the id-keyed resolver and this module's occurrence minter to admit exactly the same instance ids |
 | `DOCK_HOST_SUPPLIABLE_CONTEXTS` (#2047) | `{ project, source, workspace }` — what a dock region can bind for a pane | `dockCanSupply` (`workspacePaneModesSatisfiableBy` over it): the catalog's filter for "listed disabled with the reason" and the inventory pin's admission check, one set so the two cannot disagree; `RegionPaneCatalog` derives the resolver's context presence (`task: 'missing'`) from it for the reason it shows |
 | `RegisteredSurface.exposure` (#2047) | absent (`shell`) or `catalog` | `useRegionSurfaceMenu` (`surfaceList`: a catalog-only surface has no Layout-picker row, no chord and no unplaced Show row; a placed one keeps its folded Show/Hide row, which reads `region.panes`) — the region's "+" is a catalog-only surface's only offer; `?surface=<id>` is a command and reveals either kind |
 | `INSTANCE_SURFACE_PREFIXES` / `resolveRegionSurface` (#2049) | an id PREFIX (`pr:`, `file-preview:`) → a `RegisteredSurface`-shaped description: title, icon, the dock regions it may take, `exposure: 'catalog'`, and the `pane:builtin:…` descriptor id its occurrences carry (named as a STRING — this table is in the entry chunk and may import no pane contract) | THE id-keyed lookup: `surfaceMayOccupy`, the record parser's `parseSurfaceEntry`, the provider's `openSurfaceInRegion` and `toggleSurface`, `RegionShells`' mount rule, `RegionPaneHost`'s tab titles and placeholder titles, `useDockShellChrome` (`surfaceTitle`, `surfaceShortcutId`, the landmark), `useRegionSurfaceMenu`'s folded rows, `DockShell`'s landmark, and `RegionPaneCatalog` (which FILTERS their descriptors out of the "+"). `region-instance-panes.test.ts` pins each prefix to the minting half in `region-surface-panes.ts`; `docked-capability-derivation.test.ts` pins each `descriptorId` to a built-in descriptor that exists and declares `docked`. These surfaces are never registry keys — there is no blank occurrence to register — so `model.surfaces` (the SHELL's inventory: what the toolbar may offer, what a chord toggles) holds none of them |
@@ -533,9 +533,23 @@ and every anchor outside a conversation. The CONVERSATION's project resolves
 a path, not the dock's binding; where they differ the link keeps the
 `setLayout` route it had, because a dock pane binds the DOCK's project and
 rebinding would name a file in a checkout the conversation never mentioned.
-Bottom-only devices keep that route too. External links now open in the
-host's browser — on Tauri a plain anchor navigated the webview away from the
-running application, so that is a fix, not a preservation.
+Bottom-only devices keep that route too. A path with NEITHER a dock pane nor
+that route is refused rather than followed, on both hosts: a repo-relative
+href resolved against Station's own origin is a route Station does not have,
+which on Tauri replaces the running application and on the web is a
+same-origin route-miss that drops the conversation pointer.
+
+External links open in the host's browser ON TAURI, where a plain anchor
+navigated the webview away from the running application — that is the fix
+this carries. **On the web they keep the anchor's default and replace the
+Station tab.** #2049's plan asked for a new tab there; this does not do it,
+and the deviation is deliberate rather than overlooked: the extracted helper
+is the NATIVE half only (`openNativeExternalLink`, `null` = "no native
+host"), so the MCP frame keeps its own `location.assign` byte for byte and
+the chat anchor keeps the web default. Giving chat anchors
+`target="_blank" rel="noopener noreferrer"` is a separate change with its
+own question (whether a model's link should be able to open a tab at all)
+and is not made here.
 
 **Implemented by #2050 (slice 6: the Agents pane), 2026-09-14.** The
 background work of the conversation on screen — tool calls, delegated

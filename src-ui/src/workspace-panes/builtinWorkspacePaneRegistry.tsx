@@ -473,7 +473,13 @@ function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
   const projectId = identity.state === 'resolved' ? identity.project.id : '';
   const openLinkedAsPane =
     !layoutSlug && openPullRequest
-      ? (link: ConversationPullRequestLinkObservation) => {
+      ? (link: ConversationPullRequestLinkObservation) =>
+          // The outcome is the answer to "did a tab open?", and the panel
+          // falls back to its own inline review when it did not — notably
+          // when `projectId` is still the `''` sentinel above, which the
+          // opener refuses as `unsupplied`. Discarding it would make a
+          // refusal a click that does nothing, where before #2049 the row
+          // always opened the review.
           openPullRequest(
             {
               host: link.host,
@@ -482,8 +488,7 @@ function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
               ref: link.ref,
             },
             projectId,
-          );
-        }
+          ).ok
       : undefined;
   const workingDir = codingWorkingDirectory(
     layout,

@@ -229,10 +229,6 @@ test('lists the panes declaring docked, with a task-bound one disabled and the r
 });
 
 /**
- * Reverting Open to a host open action (`openAction.open`) fails the first
- * assertion: nothing reaches the model's `openSurfaceInRegion`.
- */
-/**
  * #2049: an INSTANCE-KEYED pane declares `docked` and is genuinely a dock
  * pane, but has no blank canonical occurrence: a File Preview is keyed by a
  * file path, a Pull request by a repository and a number. The server DOES
@@ -269,6 +265,10 @@ test('an instance-keyed pane is not offered by the "+", even declaring docked', 
   ]);
 });
 
+/**
+ * Reverting Open to a host open action (`openAction.open`) fails the first
+ * assertion: nothing reaches the model's `openSurfaceInRegion`.
+ */
 test('Open places the surface through the model in this region and closes; a refusal stays open with its sentence', () => {
   const { dialog, onClose } = renderCatalog();
   fireEvent.click(

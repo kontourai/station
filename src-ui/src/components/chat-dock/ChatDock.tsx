@@ -62,10 +62,7 @@ import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
-import {
-  availablePlacements,
-  useDockSlotDevice,
-} from '../../hooks/useIsMobile';
+import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
   OPEN_PROJECT_CHATS_EVENT,
@@ -1842,10 +1839,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     ? (projects.find((project) => project.slug === conversationProjectSlug)
         ?.id ?? null)
     : null;
-  // The provider's own fold predicate (`RegionModelProvider`), not a second
-  // reading of the viewport: a device the model will refuse a side region on
-  // must not be offered one here.
-  const dockBottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
+  // The provider's own fold predicate, CONSUMED rather than copied
+  // (`useDockFoldsToOneRegion`, which `RegionModelProvider` derives its
+  // `bottomOnly` from): a device the model will refuse a side region on must
+  // not be offered one here, and two spellings of that rule could drift.
+  const dockBottomOnly = useDockFoldsToOneRegion();
   /**
    * #2050: where the "Background tasks — N running" affordance goes. With a
    * side dock region on this device it places the Agents PANE, so the list

@@ -48,8 +48,16 @@ export function PullRequestsPanel({
    * a review that has a "Back to pull requests" button. Absent in a layout,
    * where the list IS the place to go back to — which is why the caller
    * decides and this panel does not read its own placement.
+   *
+   * Returns whether the pane actually opened. A region may refuse (the pane's
+   * Project is not resolved, a device fold leaves no region for it), and a
+   * refusal must not be a click that does nothing where the pre-#2049
+   * behaviour always opened the inline review — so a `false` falls back to
+   * that review, the same shape `ChatMarkdownAnchor` uses for its own refusal.
    */
-  onOpenLinkedAsPane?: (link: ConversationPullRequestLinkObservation) => void;
+  onOpenLinkedAsPane?: (
+    link: ConversationPullRequestLinkObservation,
+  ) => boolean;
 }) {
   const activeChat = useNavigation((state) => state.activeChat);
   const [selected, setSelected] = useState<PullRequestLinkIdentity | null>(
@@ -193,7 +201,10 @@ export function PullRequestsPanel({
                 ...(pullRequest.headSha ? { head: pullRequest.headSha } : {}),
               },
             }))}
-          onOpen={onOpenLinkedAsPane ?? ((link) => setSelected(link))}
+          onOpen={(link) => {
+            if (onOpenLinkedAsPane?.(link) === true) return;
+            setSelected(link);
+          }}
         />
       )}
       <PullRequestDependencyStacks

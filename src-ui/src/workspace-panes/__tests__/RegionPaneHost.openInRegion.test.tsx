@@ -289,7 +289,10 @@ test('a malformed instance id mounts no shell, while the well-formed id it imita
   }
 
   act(() =>
-    current().model.placeSurface('pr:github.com/kontourai/station#2049', 'right'),
+    current().model.placeSurface(
+      'pr:github.com/kontourai/station#2049',
+      'right',
+    ),
   );
   await act(async () => {
     await vi.dynamicImportSettled();

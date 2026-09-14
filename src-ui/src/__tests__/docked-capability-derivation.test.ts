@@ -204,9 +204,24 @@ describe('docked is a derived capability, pinned to the shell surface registry',
         prefix.descriptorId,
       ).toContain('docked');
       // A prefix surface is never a registry key: there is no blank
-      // occurrence to register, and `SURFACE_DESCRIPTORS` above is pinned to
-      // the registry's exact key set.
-      expect(REGION_SURFACE_REGISTRY.has(prefix.prefix)).toBe(false);
+      // occurrence to register. Asserting `has(prefix.prefix)` would check
+      // that the literal `'pr:'` is not a key, which nothing could make true.
+      // What CAN go wrong is a registered surface being minted into this
+      // family's id space, or this family's descriptor also being a
+      // registered surface's — either would make one pane two kinds of thing,
+      // and the catalog filter (which drops every prefix `descriptorId`)
+      // would then drop a registered surface's card from the "+".
+      for (const key of REGION_SURFACE_REGISTRY.keys())
+        expect(
+          key.startsWith(prefix.prefix),
+          `${key} vs ${prefix.prefix}`,
+        ).toBe(false);
+      expect(
+        Object.values(SURFACE_DESCRIPTORS).map((descriptor) =>
+          String(descriptor.id),
+        ),
+        prefix.descriptorId,
+      ).not.toContain(prefix.descriptorId);
     }
   });
 

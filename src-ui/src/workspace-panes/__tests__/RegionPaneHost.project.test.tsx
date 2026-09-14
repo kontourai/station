@@ -831,9 +831,7 @@ test('a file preview from another project keeps its tab and says it is unavailab
   // the reader to close the tab. The remedy it names is the one that exists
   // in this exact state.
   expect(within(shell('right')).queryByRole('tablist')).toBeNull();
-  expect(
-    within(shell('right')).queryByText(/close the tab/i),
-  ).toBeNull();
+  expect(within(shell('right')).queryByText(/close the tab/i)).toBeNull();
   expect(
     within(shell('right')).getByText(
       /Open it again from the chat that linked it\./,

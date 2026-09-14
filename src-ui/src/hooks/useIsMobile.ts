@@ -53,6 +53,24 @@ export function availablePlacements({
   return coarsePointer || viewportWidth <= 768 ? BOTTOM_ONLY : EVERY_EDGE;
 }
 
+/**
+ * Whether this device's fold offers ONE dock region only — a phone, or any
+ * coarse-pointer or narrow viewport. The single derivation behind every
+ * "there is no side region here" decision: the region provider's own
+ * `bottomOnly`, and the readers outside it (Chat's link context, the
+ * background-tasks affordance) that must not offer what the model will
+ * refuse. DEVICE state, not region state, which is what makes it readable
+ * from a pane renderer.
+ */
+export function dockFoldsToOneRegion(available: readonly DockMode[]): boolean {
+  return available.length === 1;
+}
+
+/** `dockFoldsToOneRegion` for a caller that needs no other placement fact. */
+export function useDockFoldsToOneRegion(): boolean {
+  return dockFoldsToOneRegion(availablePlacements(useDockSlotDevice()));
+}
+
 export function effectivePlacement(
   preference: DockMode,
   available: readonly DockMode[],

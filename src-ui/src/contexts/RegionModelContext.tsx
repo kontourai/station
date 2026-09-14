@@ -12,7 +12,11 @@ import {
   useRef,
   useState,
 } from 'react';
-import { availablePlacements, useDockSlotDevice } from '../hooks/useIsMobile';
+import {
+  availablePlacements,
+  dockFoldsToOneRegion,
+  useDockSlotDevice,
+} from '../hooks/useIsMobile';
 import {
   isDefaultRegionArrangementRecord,
   parseRegionArrangementRecord,
@@ -357,7 +361,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     updateParams,
   } = useNavigation();
   const available = availablePlacements(useDockSlotDevice());
-  const bottomOnly = available.length === 1;
+  const bottomOnly = dockFoldsToOneRegion(available);
   const { setDeviceSetting } = useDeviceSettingsActions();
   const [regions, setRegions] = useState<RegionArrangement>(() =>
     initialRegionArrangement(settings, dockMode, isDockOpen, isDockMaximized),

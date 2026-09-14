@@ -110,9 +110,9 @@ afterEach(() => {
  */
 test('the pane lists the work the badge counts, for a conversation whose store key is not its durable id', () => {
   expect(activeChatsStore.getSnapshot()[CONVERSATION_ID]).toBeUndefined();
-  expect(
-    activeChatsStore.getChatKeyForExecutionSession(CONVERSATION_ID),
-  ).toBe(SESSION_KEY);
+  expect(activeChatsStore.getChatKeyForExecutionSession(CONVERSATION_ID)).toBe(
+    SESSION_KEY,
+  );
 
   render(
     <>

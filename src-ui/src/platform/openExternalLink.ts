@@ -24,6 +24,14 @@ export function hostOwnsExternalLinks(): boolean {
  * application with the linked page and losing every open conversation. That
  * is what this exists to prevent (#2049); the MCP frame already routed around
  * it, and this is that route, shared.
+ *
+ * DEVIATION, stated plainly: #2049's plan said external links open "in a new
+ * tab on web". They do not. A chat anchor's web branch is the anchor's own
+ * default, which REPLACES the Station tab — the behaviour before #2049. Only
+ * the native half was extracted, so the MCP frame keeps its `location.assign`
+ * byte for byte and no caller silently changed. Opening a new tab is a
+ * separate change with its own question (whether a model-written link should
+ * be able to open one), and `docs/design/placement.md` records it as open.
  */
 export async function openNativeExternalLink(
   url: string,
