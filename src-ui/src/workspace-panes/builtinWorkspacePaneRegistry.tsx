@@ -475,11 +475,19 @@ function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
     !layoutSlug && openPullRequest
       ? (link: ConversationPullRequestLinkObservation) =>
           // The outcome is the answer to "did a tab open?", and the panel
-          // falls back to its own inline review when it did not — notably
-          // when `projectId` is still the `''` sentinel above, which the
-          // opener refuses as `unsupplied`. Discarding it would make a
-          // refusal a click that does nothing, where before #2049 the row
-          // always opened the review.
+          // falls back to its own inline review when it did not. Discarding
+          // it would make a refusal a click that does nothing, where before
+          // #2049 the row always opened the review.
+          //
+          // The reachable refusals here are the model's own — no dock region
+          // free, a side region on a bottom-only device, an undeclared
+          // region. NOT the `''` projectId sentinel above: this callback is
+          // only ever invoked from JSX rendered past the
+          // `identity.state !== 'resolved'` early return, so `projectId` is
+          // a real id by the time anyone can click. (Were it reachable the
+          // opener would answer `no-surface`, not `unsupplied` — that name
+          // is reserved for a `null` project, and `''` falls through to the
+          // instance factory's own guard.)
           openPullRequest(
             {
               host: link.host,

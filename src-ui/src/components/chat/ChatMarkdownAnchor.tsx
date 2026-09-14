@@ -105,9 +105,13 @@ export function ChatMarkdownAnchor({
       link.openPathInMain?.(target.path, target.lineRange);
       return;
     }
-    // Nowhere to put it: no dock that may hold it and no layout route. The
-    // click is refused on BOTH hosts rather than followed, because following
-    // it is not "the anchor's default behaviour" in any useful sense — a
+    // No dock that may hold it: a bottom-only fold, or a dock bound to a
+    // different project than the conversation. The layout route below is
+    // still taken when this session has one — that is the pre-#2049
+    // behaviour, preserved. What changes is the case where it does not:
+    // the click is now refused on BOTH hosts rather than followed, because
+    // following it is not "the anchor's default behaviour" in any useful
+    // sense — a
     // repo-relative href names a file in a checkout, and resolved against
     // Station's own origin it is a route Station does not have. On Tauri that
     // replaces the running application and loses every open conversation
