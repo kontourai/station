@@ -18,7 +18,7 @@ import {
  * pane also clears the previous authority's entry when the authority changes
  * (`DeviceWorkspacePane`).
  */
-export const DEVICE_PANE_STATE_STORAGE_PREFIX = 'station:device-pane-state:v1';
+const DEVICE_PANE_STATE_STORAGE_PREFIX = 'station:device-pane-state:v1';
 
 /** A target is four short fields; anything larger is not one of ours. */
 const MAX_DEVICE_PANE_STATE_BYTES = 512;

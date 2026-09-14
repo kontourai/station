@@ -69,7 +69,7 @@ export const ANDROID_DEVICE: MobileDeviceSummary = {
   booted: true,
 };
 
-export const OBSERVED_AT = '2026-09-14T10:00:00.000Z';
+const OBSERVED_AT = '2026-09-14T10:00:00.000Z';
 
 export function readyInventory(
   devices: MobileDeviceSummary[] = [IOS_DEVICE, ANDROID_DEVICE],
@@ -138,7 +138,8 @@ export function captureBody(fixture: CaptureFixture = {}) {
   };
 }
 
-export const SCOPE = {
+/** `authorizeScope`'s default argument, a few dozen lines below. */
+const SCOPE = {
   apiBase: 'http://station.test',
   authorityKey: 'authority-1',
 };
