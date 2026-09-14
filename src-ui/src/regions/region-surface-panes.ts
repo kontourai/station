@@ -271,8 +271,8 @@ export const REGION_SURFACE_PANES: ReadonlyMap<string, RegionSurfacePane> =
         surfaceId: 'device',
         descriptorId: WORKSPACE_DEVICE_PANE_DESCRIPTOR.id,
         instanceId: WORKSPACE_DEVICE_PANE_INSTANCE.instanceId,
-        // Ignores the context, like Chat and Activity and for a reason of
-        // its own: the device list is a fact about the STATION's host, not
+        // Ignores the context, like Chat, Activity and Agents, and for a
+        // reason of its own: the device list is a fact about the STATION's host, not
         // about a checkout, so a Device pane renders in a dock with no
         // project rather than showing "choose a project" for a question no
         // project answers.
