@@ -42,6 +42,12 @@ describe('checkForDesktopUpdate', () => {
 
   it('reports no update when the plugin resolves null', async () => {
     check.mockResolvedValue(null);
+    // `toEqual` against the whole literal is deliberate HERE and is not the
+    // hazard the case below describes: `{ status: 'no-update' }` is the entire
+    // declared variant, with no optional members, so this freezes a shape the
+    // type already closes rather than asserting the absence of a documented
+    // field. If that variant ever grows one, a failure here is the right
+    // prompt to decide whether "no update" may carry anything at all.
     await expect(checkForDesktopUpdate()).resolves.toEqual({
       status: 'no-update',
     });
@@ -52,9 +58,29 @@ describe('checkForDesktopUpdate', () => {
     // a channel whose endpoint has not shipped) and a real network/signature
     // failure — indistinguishable from here, and both must land here.
     check.mockRejectedValue(new Error('no such plugin'));
-    await expect(checkForDesktopUpdate()).resolves.toEqual({
-      status: 'check-failed',
-    });
+    // Not `toEqual` against a whole object literal. The outcome type declares
+    // an OPTIONAL `detail`, so a literal that omits it asserts that field's
+    // ABSENCE — which is not what this case is about, and is why #2032 adding
+    // the field (deliberately, documented) reddened a test that had no
+    // interest in it and held Nightly red from 2026-09-12.
+    //
+    // What this case IS about: a rejected plugin call becomes a quiet
+    // non-throwing outcome rather than an exception or an update prompt. The
+    // `await` below is the "does not throw" half — a rejection fails the test
+    // here rather than being caught.
+    const outcome = await checkForDesktopUpdate();
+    if (outcome.status !== 'check-failed')
+      throw new Error(`expected check-failed, got ${outcome.status}`);
+    // Quiet means nothing to act on: no version to offer, no install to press.
+    expect(outcome).not.toHaveProperty('version');
+    expect(outcome).not.toHaveProperty('install');
+    // `detail` IS pinned, and verbatim: `DesktopUpdateCheck.tsx` renders it
+    // straight into the technical-details disclosure, and the module's own
+    // docblock promises the caught message UNCLASSIFIED because it cannot tell
+    // a missing update channel from an offline host or a bad signature.
+    // Replacing it with a sentence of this module's own would break that
+    // promise silently, so the assertion is the thrown message exactly.
+    expect(outcome.detail).toBe('no such plugin');
   });
 
   it('installs by calling downloadAndInstall then relaunch, in order', async () => {
