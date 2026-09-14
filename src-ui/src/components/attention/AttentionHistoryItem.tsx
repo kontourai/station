@@ -215,6 +215,13 @@ function openLinkLabel(kind: AttentionItem['kind']): string {
     // #1536 D8: the requirement's route out, not a session.
     case 'setup-incomplete':
       return 'Open model connections';
+    // #2064 review LOW-5: neither kind has a session behind it — the change
+    // and the review session both open in Review, which is where the link
+    // goes. Same labels the live cards use.
+    case 'proposed-change':
+      return 'Open in Review';
+    case 'gate-review':
+      return 'Open review';
     default:
       return 'Open session';
   }

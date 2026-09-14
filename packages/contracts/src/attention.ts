@@ -363,6 +363,9 @@ export interface ProposedChangeAttentionItem extends AttentionItemBase {
  * (`POST /api/projects/:slug/flow/runs/:runId/reviews/continue`) is driven
  * from the review workbench, not from an inbox row. The item's action is to
  * open the exact review.
+ *
+ * It is projected when `pendingDecisions > 0` — see that field for why the
+ * obvious-looking `summary.unresolved` is the wrong number.
  */
 export interface GateReviewAttentionItem extends AttentionItemBase {
   kind: 'gate-review';
@@ -372,8 +375,19 @@ export interface GateReviewAttentionItem extends AttentionItemBase {
     projectSlug: string;
     workflowSubjectRef: string;
   };
-  /** Unresolved item count, read off the session's own summary. */
-  unresolved: number;
+  /**
+   * Review items with no recorded decision — the number keeping
+   * `continuePausedGate` from running, derived by the continuation's own
+   * `deriveServerReviewSessionApplyResult` (see
+   * `SurveyFlowReviewQueueItem.pendingDecisions`).
+   *
+   * Deliberately not named or sourced from Survey's `summary.unresolved`
+   * (#2064 review MED-2): that field buckets an undecided `escalated` item
+   * under `escalated`, so a gate whose remaining items were all escalated
+   * blocked its run while reporting `unresolved: 0` and projecting no item at
+   * all.
+   */
+  pendingDecisions: number;
   openHref: string;
 }
 
@@ -416,9 +430,71 @@ export function isStandingAttentionKind(kind: AttentionItem['kind']): boolean {
   return STANDING_ATTENTION_KINDS.has(kind);
 }
 
+/**
+ * Kinds whose RESOLUTION IS THE DECISION (#2064 product decision (a)), so
+ * acknowledgement would be a lie rather than a dismissal.
+ *
+ * A standing notice (above) cannot be acknowledged because it stays true. These
+ * are the opposite case and reach the same refusal from the other side: a
+ * pending proposed change and a paused gate review each have exactly one way to
+ * stop being true — someone decides. Acking one would drop a live, blocking ask
+ * out of the bell and out of its project's count while the change stayed
+ * undecided and the run stayed paused, and nothing would ever bring it back,
+ * because the item is re-derived with the same `updatedAt` on every read.
+ *
+ * It is a DERIVATION of the kind, not a stored flag: the server's refusal, the
+ * per-row dismiss affordance and "Dismiss all" all read this one declaration,
+ * exactly as they read `STANDING_ATTENTION_KINDS`.
+ *
+ * Kinds NOT listed stay acknowledgeable as before — `needs_input`,
+ * `review_pending`, `gate-exception` and `device-pairing` are asks a user can
+ * legitimately set aside, and `session-failed` is the kind acknowledgement was
+ * built for.
+ */
+export const DECISION_RESOLVED_ATTENTION_KINDS: ReadonlySet<
+  AttentionItem['kind']
+> = new Set<AttentionItem['kind']>(['proposed-change', 'gate-review']);
+
+/**
+ * Whether this item can be acknowledged away — the ONE predicate the server's
+ * refusal and both client dismiss affordances read. Two disjoint reasons an
+ * item cannot be: it is still true afterwards ({@link STANDING_ATTENTION_KINDS}),
+ * or a decision is the only thing that resolves it
+ * ({@link DECISION_RESOLVED_ATTENTION_KINDS}).
+ */
+export function isAcknowledgeableAttentionKind(
+  kind: AttentionItem['kind'],
+): boolean {
+  return (
+    !isStandingAttentionKind(kind) &&
+    !DECISION_RESOLVED_ATTENTION_KINDS.has(kind)
+  );
+}
+
+/**
+ * A source this read could not fully cover (#2064 review (c)).
+ *
+ * The gate-review aggregate degrades per project: a workspace Station cannot
+ * read contributes zero items. Without this, that project's paused reviews
+ * read as "nothing needs you" — absence-as-success on the one surface whose
+ * job is saying what needs you. `projectSlug` is absent when the whole
+ * aggregate failed and no project can be named.
+ */
+export interface AttentionSourceUnavailable {
+  source: 'gate-reviews';
+  projectSlug?: string;
+  /** The source's own reported reason, never a rewording of it. */
+  reason: string;
+}
+
 export interface AttentionProjection {
   items: AttentionItem[];
   pendingCount: number;
+  /**
+   * Absent when the read covered every source, so a consumer cannot read an
+   * empty array as "nothing was reported". See {@link AttentionSourceUnavailable}.
+   */
+  unavailableSources?: AttentionSourceUnavailable[];
 }
 
 /**

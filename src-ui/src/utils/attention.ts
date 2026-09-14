@@ -1,6 +1,6 @@
 import {
+  isAcknowledgeableAttentionKind,
   isPendingAttentionItem,
-  isStandingAttentionKind,
 } from '@kontourai/station-contracts/attention';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
@@ -54,7 +54,12 @@ export function isApprovalLivePending(item: ApprovalAttentionItem): boolean {
  * the row's timestamp.
  */
 export function isAcknowledgeableAttentionItem(item: AttentionItem): boolean {
-  return !isStandingAttentionKind(item.kind);
+  // #2064 (a) added a SECOND refusal beside the standing-notice one — a
+  // proposed change and a paused gate review resolve by being decided, not by
+  // being dismissed. Both memberships live in the contract and are joined
+  // there, so this predicate, the server's refusal and "Dismiss all" remain
+  // three readings of one declaration rather than three lists.
+  return isAcknowledgeableAttentionKind(item.kind);
 }
 
 /**

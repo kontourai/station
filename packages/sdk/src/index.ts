@@ -63,6 +63,7 @@ export type {
   ApprovalAttentionItem,
   AttentionItem,
   AttentionProjection,
+  AttentionSourceUnavailable,
   DevicePairingAttentionItem,
   GateAttentionSource,
   GateBlockedAttentionItem,

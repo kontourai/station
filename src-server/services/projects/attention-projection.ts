@@ -2,8 +2,10 @@ import type { FlowConsoleGateProjection } from '@kontourai/flow';
 import {
   type AttentionItem,
   type AttentionProjection,
+  type AttentionSourceUnavailable,
   type DevicePairingAttentionItem,
   type GateReviewAttentionItem,
+  isAcknowledgeableAttentionKind,
   isPendingAttentionItem,
   isStandingAttentionKind,
   type ProposedChangeAttentionItem,
@@ -61,6 +63,9 @@ const ACTIVE_NOTIFICATION_STATUSES = ['delivered', 'pending'];
 /** Bound the cost of readSessionFlowRun (it replays session events) across reads. */
 const FLOW_RUN_CACHE_TTL_MS = 5_000;
 
+/** See `AttentionProjectionService.gateReviewCache` (#2064 review LOW-4). */
+const GATE_REVIEW_CACHE_TTL_MS = 5_000;
+
 type FlowRunBinding = {
   runId: string;
   definitionId: string;
@@ -81,7 +86,32 @@ export interface PausedGateReviewSource {
   readonly workflowSubjectRef: string;
   readonly sessionName: string;
   readonly updatedAt: string;
-  readonly summary: { readonly unresolved: number };
+  /**
+   * #2064 review MED-2: items with no recorded decision — the continuation
+   * precondition itself, counted at the source by
+   * `SurveyFlowReviewService`'s `pendingDecisionCount`. Deliberately NOT
+   * `summary.unresolved`, which buckets an undecided `escalated` item under
+   * `escalated` and an undecided `resolved` item under `accepted`; a gate
+   * whose remaining items are all escalated blocked the run while reporting
+   * `unresolved: 0`, and projected nothing.
+   */
+  readonly pendingDecisions: number;
+}
+
+/**
+ * #2064 review (c): a project whose review sessions could not be read
+ * contributes no gate items, and "no gate items" must never be silently
+ * "could not read" — the same partial-source honesty the Review page already
+ * renders. Carried on the projection so the inbox says so from the SAME read
+ * its counts came from, rather than a second fetch that could disagree about
+ * which projects were covered.
+ */
+export interface PausedGateReviewAggregate {
+  readonly items: readonly PausedGateReviewSource[];
+  readonly unavailableProjects: readonly {
+    readonly projectSlug: string;
+    readonly reason: string;
+  }[];
 }
 
 /**
@@ -110,6 +140,22 @@ export class AttentionProjectionService {
     string,
     { requests: Map<string, RequestOpenedEvent>; expiresAt: number }
   >();
+
+  /**
+   * #2064 review LOW-4: bound the cost of the Survey aggregate across reads.
+   *
+   * `/api/attention` polls every 10s per connected client, and the aggregate
+   * walks every project's workspace and replays every review session — plus
+   * it warns once per unreadable project, so a single broken workspace
+   * produced a log line every 10s per client forever. Same mechanism and the
+   * same 5s TTL as `flowRunCache` above, and the same accepted cost: a
+   * decision recorded in the workbench can take up to one TTL to leave the
+   * inbox.
+   */
+  private gateReviewCache?: {
+    aggregate: PausedGateReviewAggregate;
+    expiresAt: number;
+  };
 
   /**
    * When the CURRENT setup requirement was first observed (#1536 review M2).
@@ -215,9 +261,7 @@ export class AttentionProjectionService {
      *
      * Optional for the same reason as above.
      */
-    private readonly listGateReviews?: () => Promise<
-      readonly PausedGateReviewSource[]
-    >,
+    private readonly listGateReviews?: () => Promise<PausedGateReviewAggregate>,
   ) {}
 
   /**
@@ -344,14 +388,14 @@ export class AttentionProjectionService {
     const setupItems = await this.projectSetupRequirement(readAuthority);
 
     const proposedChangeItems = this.projectProposedChanges(readAuthority);
-    const gateReviewItems = await this.projectGateReviews(readAuthority);
+    const gateReviews = await this.projectGateReviews(readAuthority);
 
     const undecorated = [
       ...approvals,
       ...lifecycle,
       ...gateItems,
       ...proposedChangeItems,
-      ...gateReviewItems,
+      ...gateReviews.items,
       ...pairingItems,
       ...setupItems,
     ];
@@ -371,7 +415,15 @@ export class AttentionProjectionService {
     // acknowledge-not-dismiss design for a kind with nothing to delete.
     const pendingCount = items.filter(isPendingAttentionItem).length;
     attentionProjectionResults.record(items.length);
-    return { items, pendingCount };
+    return {
+      items,
+      pendingCount,
+      // #2064 review (c): absent when the read covered everything, so a
+      // consumer cannot mistake an empty array for "not reported".
+      ...(gateReviews.unavailable.length > 0
+        ? { unavailableSources: gateReviews.unavailable }
+        : {}),
+    };
   }
 
   /**
@@ -392,9 +444,11 @@ export class AttentionProjectionService {
     const { items } = await this.list(readAuthority);
     const item = items.find((candidate) => candidate.id === itemId);
     if (!item) return false;
-    // A standing notice is still true after the dismissal, so there is nothing
-    // an acknowledgement could honestly record — see `isStandingAttentionKind`.
-    if (isStandingAttentionKind(item.kind)) return false;
+    // Two disjoint refusals, one declaration each, both in the contract: a
+    // standing notice is still true after the dismissal, and a
+    // decision-resolved item (#2064 (a)) has exactly one way to stop being
+    // true — someone decides it. See `isAcknowledgeableAttentionKind`.
+    if (!isAcknowledgeableAttentionKind(item.kind)) return false;
     this.acknowledgementStore.acknowledge({
       userId: readAuthority.userId,
       conversationId: item.id,
@@ -951,37 +1005,70 @@ export class AttentionProjectionService {
    * Hosted reads project nothing, for the same reason proposed changes do
    * not: the aggregate is built over the host's whole project inventory.
    */
-  private async projectGateReviews(
-    authority: SessionReadAuthority,
-  ): Promise<GateReviewAttentionItem[]> {
-    if (!this.listGateReviews) return [];
-    if (isHostedSessionReadAuthority(authority)) return [];
-    let reviews: readonly PausedGateReviewSource[];
+  private async projectGateReviews(authority: SessionReadAuthority): Promise<{
+    items: GateReviewAttentionItem[];
+    unavailable: AttentionSourceUnavailable[];
+  }> {
+    const empty = { items: [], unavailable: [] };
+    if (!this.listGateReviews) return empty;
+    if (isHostedSessionReadAuthority(authority)) return empty;
+    let aggregate: PausedGateReviewAggregate;
     try {
-      reviews = await this.listGateReviews();
+      aggregate = await this.readGateReviews();
     } catch {
       // One unreadable source must not blank every other item in this read —
       // the same isolation `readOpenRequests` applies for the same reason.
-      return [];
+      // It is reported rather than swallowed: the aggregate failing WHOLE is
+      // not "no gate reviews".
+      return {
+        items: [],
+        unavailable: [
+          { source: 'gate-reviews', reason: 'review sessions unreadable' },
+        ],
+      };
     }
-    return reviews
-      .filter((review) => review.summary.unresolved > 0)
-      .map((review) => ({
-        id: `gate-review:${review.reviewSessionRef}`,
-        kind: 'gate-review' as const,
-        title: review.sessionName,
-        body: `${review.summary.unresolved} unresolved · ${review.workflowSubjectRef}`,
-        createdAt: review.updatedAt,
-        updatedAt: review.updatedAt,
-        projectSlug: review.projectSlug,
-        unresolved: review.summary.unresolved,
-        openHref: `/review-queue?review=${encodeURIComponent(review.reviewSessionRef)}`,
-        source: {
-          reviewSessionRef: review.reviewSessionRef,
+    return {
+      items: aggregate.items
+        // MED-2: items still awaiting a decision, which is what keeps the run
+        // paused — see `PausedGateReviewSource.pendingDecisions`.
+        .filter((review) => review.pendingDecisions > 0)
+        .map((review) => ({
+          id: `gate-review:${review.reviewSessionRef}`,
+          kind: 'gate-review' as const,
+          title: review.sessionName,
+          body: `${review.pendingDecisions} awaiting a decision · ${review.workflowSubjectRef}`,
+          createdAt: review.updatedAt,
+          updatedAt: review.updatedAt,
           projectSlug: review.projectSlug,
-          workflowSubjectRef: review.workflowSubjectRef,
-        },
-      }));
+          pendingDecisions: review.pendingDecisions,
+          openHref: `/review-queue?review=${encodeURIComponent(review.reviewSessionRef)}`,
+          source: {
+            reviewSessionRef: review.reviewSessionRef,
+            projectSlug: review.projectSlug,
+            workflowSubjectRef: review.workflowSubjectRef,
+          },
+        })),
+      unavailable: aggregate.unavailableProjects.map((project) => ({
+        source: 'gate-reviews' as const,
+        projectSlug: project.projectSlug,
+        reason: project.reason,
+      })),
+    };
+  }
+
+  /** See `gateReviewCache`. */
+  private async readGateReviews(): Promise<PausedGateReviewAggregate> {
+    const now = Date.now();
+    if (this.gateReviewCache && this.gateReviewCache.expiresAt > now) {
+      return this.gateReviewCache.aggregate;
+    }
+    // biome-ignore lint/style/noNonNullAssertion: guarded by the caller.
+    const aggregate = await this.listGateReviews!();
+    this.gateReviewCache = {
+      aggregate,
+      expiresAt: now + GATE_REVIEW_CACHE_TTL_MS,
+    };
+    return aggregate;
   }
 
   private projectDevicePairingItems(

@@ -84,6 +84,7 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
 }));
 
+import { ACKNOWLEDGE_ATTENTION_ACTION } from '../components/attention/notificationRowActions';
 import { NotificationsPage } from '../pages/NotificationsPage';
 
 const now = '2026-09-13T12:00:00.000Z';
@@ -110,11 +111,11 @@ function gateReviewItem(): GateReviewAttentionItem {
     id: 'gate-review:review-session-1',
     kind: 'gate-review',
     title: 'Survey gate review',
-    body: '2 unresolved · flow:build#7',
+    body: '2 awaiting a decision · flow:build#7',
     createdAt: now,
     updatedAt: now,
     projectSlug: 'campfit',
-    unresolved: 2,
+    pendingDecisions: 2,
     openHref: '/review-queue?review=review-session-1',
     source: {
       reviewSessionRef: 'review-session-1',
@@ -197,6 +198,70 @@ describe('deciding review work from the attention inbox', () => {
     // Approve-shaped button here would claim an authority this surface and
     // that one both lack.
     expect(within(row).queryByRole('button', { name: 'Approve' })).toBeNull();
+  });
+
+  /**
+   * #2064 product decision (a): the decision IS the resolution, so there is no
+   * honest acknowledgement to offer. Without the refusal a user could dismiss
+   * a live, blocking ask out of the bell and out of its project's count while
+   * the change stayed undecided — and it would never come back, because the
+   * item re-derives with the same `updatedAt` on every read.
+   */
+  test('neither decidable kind offers to be dismissed', () => {
+    attention = {
+      items: [proposedChangeItem(), gateReviewItem()],
+      pendingCount: 2,
+    };
+    renderPage();
+
+    for (const title of ['src/index.ts', 'Survey gate review']) {
+      expect(
+        within(attentionRow(title)).queryByRole('button', {
+          name: ACKNOWLEDGE_ATTENTION_ACTION.label,
+        }),
+      ).toBeNull();
+    }
+    // The page-level "Dismiss all" reads the same predicate, so with only
+    // decidable items on screen it has nothing to act on and is disabled —
+    // asserted rather than assumed, because a dismiss-all running over these
+    // two rows is exactly what the per-row refusal above exists to prevent.
+    expect(
+      screen.getByRole('button', { name: /Dismiss/i }).hasAttribute('disabled'),
+    ).toBe(true);
+  });
+
+  /**
+   * #2064 review (c): a project whose review sessions Station could not read
+   * contributes zero gate items, and zero items must never render as "nothing
+   * needs you" on the one surface whose job is saying what needs you.
+   */
+  test('a source the read could not cover is stated, not silently absent', () => {
+    attention = {
+      items: [],
+      pendingCount: 0,
+      unavailableSources: [
+        {
+          source: 'gate-reviews',
+          projectSlug: 'campfit',
+          reason: 'workspace-unreadable',
+        },
+      ],
+    };
+    renderPage();
+
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain('campfit (workspace-unreadable)');
+    expect(alert.textContent).toContain('may be incomplete');
+    // The page's all-empty branch does not mount AttentionSection at all, so
+    // the notice was previously unreachable in the one state that needs it
+    // most: nothing on screen, and the reason nothing is on screen unstated.
+    expect(screen.queryByText('All caught up')).toBeNull();
+  });
+
+  test('a fully-covered read renders no gap notice at all', () => {
+    attention = { items: [proposedChangeItem()], pendingCount: 1 };
+    renderPage();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   test('the change row links into Review at the exact change, never the bare list', () => {

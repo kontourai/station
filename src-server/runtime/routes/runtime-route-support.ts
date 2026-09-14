@@ -24,7 +24,7 @@ import {
 } from '../../services/orchestration/turn-completion-notifications.js';
 import {
   AttentionProjectionService,
-  type PausedGateReviewSource,
+  type PausedGateReviewAggregate,
 } from '../../services/projects/attention-projection.js';
 import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-scheduler.js';
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
@@ -317,7 +317,7 @@ export function configureRuntimeSupportServices(
      * holds (it builds the same `SurveyFlowReviewService` the Review page
      * reads). Absent means gate-review attention is simply unavailable.
      */
-    listGateReviews?: () => Promise<readonly PausedGateReviewSource[]>;
+    listGateReviews?: () => Promise<PausedGateReviewAggregate>;
   } = {},
 ) {
   // The hosted registry is immutable deployment configuration. Until pairing

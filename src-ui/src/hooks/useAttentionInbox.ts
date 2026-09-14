@@ -47,6 +47,14 @@ export function useAttentionInbox() {
      * `!acknowledgedAt` filter happens to agree with the server's.
      */
     pendingCount: attentionQuery.data?.pendingCount ?? 0,
+    /**
+     * #2064 review (c): sources this attention read could not fully cover.
+     * Rendered as a notice beside the list, because a project whose review
+     * sessions Station could not read contributes zero items and would
+     * otherwise be indistinguishable from a project with nothing pending.
+     * Read off the SAME response the items and the count came from.
+     */
+    unavailableSources: attentionQuery.data?.unavailableSources ?? [],
     notifications,
     notificationsQuery,
     retry: () =>

@@ -85,12 +85,33 @@ describe('per-project attention counts', () => {
     ).toBe(1);
   });
 
+  /**
+   * An acknowledged item leaves the per-project count for the same reason it
+   * leaves the bell — one predicate, read in both places.
+   *
+   * Driven with `session-failed`, the kind acknowledgement exists for, and
+   * deliberately NOT with a proposed change: #2064 (a) refuses that ack
+   * outright (a pending decision resolves by being decided), and the refusal
+   * has its own test in `attention-projection.test.ts`. Asserting this
+   * property through a kind the server now refuses would have tested the
+   * refusal twice and this property not at all.
+   */
   test('an acknowledged item leaves the project count, exactly as it leaves the bell', async () => {
     const acknowledged = new Map<string, string>();
+    const failedSession = {
+      threadId: 'thread-failed',
+      createdAt: '2026-09-13T12:00:00.000Z',
+      updatedAt: '2026-09-13T12:00:00.000Z',
+      provider: 'test',
+      status: 'idle',
+      lifecycleState: 'failed',
+      projectSlug: 'campfit',
+      answerability: { answerable: false },
+    };
     const acknowledging = new AttentionProjectionService(
       { list: () => [] } as never,
       {
-        listSessionReadModel: async () => [],
+        listSessionReadModel: async () => [failedSession],
         readSessionFlowRun: async () => null,
         readSession: async () => ({ session: {} as never, events: [] }),
       } as never,
@@ -106,22 +127,23 @@ describe('per-project attention counts', () => {
       undefined,
       changes,
     );
-    const change = await proposeChange('campfit', 'src/index.ts');
+    // The failed session and one pending change, both in campfit.
+    await proposeChange('campfit', 'src/index.ts');
     expect(
       attentionCountForProject((await acknowledging.list()).items, 'campfit'),
-    ).toBe(1);
+    ).toBe(2);
 
     expect(
-      await acknowledging.acknowledge(`proposed-change:${change.id}`),
+      await acknowledging.acknowledge('session-failed:thread-failed'),
     ).toBe(true);
     const { items, pendingCount } = await acknowledging.list();
     // Still projected — acknowledgement is history, not deletion — and out of
     // BOTH counts, because they read one predicate.
     expect(
-      items.some((item) => item.id === `proposed-change:${change.id}`),
+      items.some((item) => item.id === 'session-failed:thread-failed'),
     ).toBe(true);
-    expect(attentionCountForProject(items, 'campfit')).toBe(0);
-    expect(pendingCount).toBe(0);
+    expect(attentionCountForProject(items, 'campfit')).toBe(1);
+    expect(pendingCount).toBe(1);
   });
 
   test("one project's items never count toward another's, and the bell counts both", async () => {

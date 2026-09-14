@@ -15,6 +15,7 @@ import { projectRequestAnswerability } from '../../orchestration/open-requests.j
 import {
   AttentionProjectionService,
   buildSessionFailedItem,
+  type PausedGateReviewAggregate,
   type PausedGateReviewSource,
 } from '../attention-projection.js';
 
@@ -112,7 +113,9 @@ function makeService(opts: {
    * rather than stamped.
    */
   proposedChanges?: unknown[];
-  gateReviews?: (() => Promise<readonly PausedGateReviewSource[]>) | unknown[];
+  gateReviews?:
+    | (() => Promise<PausedGateReviewAggregate>)
+    | readonly PausedGateReviewSource[];
 }) {
   const {
     notifications = [],
@@ -184,7 +187,7 @@ function makeService(opts: {
       ? undefined
       : typeof gateReviews === 'function'
         ? gateReviews
-        : async () => gateReviews as readonly PausedGateReviewSource[],
+        : async () => ({ items: gateReviews, unavailableProjects: [] }),
   );
 }
 
@@ -2903,7 +2906,7 @@ describe('AttentionProjectionService proposed changes and gate reviews', () => {
       workflowSubjectRef: 'flow:build#7',
       sessionName: 'Survey gate review',
       updatedAt: now,
-      summary: { unresolved: 2 },
+      pendingDecisions: 2,
       ...overrides,
     };
   }
@@ -2945,7 +2948,7 @@ describe('AttentionProjectionService proposed changes and gate reviews', () => {
       kind: 'gate-review',
       title: 'Survey gate review',
       projectSlug: 'campfit',
-      unresolved: 2,
+      pendingDecisions: 2,
       openHref: '/review-queue?review=review-session-1',
       source: {
         reviewSessionRef: 'review-session-1',
@@ -2955,9 +2958,9 @@ describe('AttentionProjectionService proposed changes and gate reviews', () => {
     });
   });
 
-  test('a review session with nothing unresolved is finished work, not an ask', async () => {
+  test('a review session with every item decided is finished work, not an ask', async () => {
     const projection = makeService({
-      gateReviews: [pausedReview({ summary: { unresolved: 0 } })],
+      gateReviews: [pausedReview({ pendingDecisions: 0 })],
     });
     expect(
       (await projection.list()).items.filter(
@@ -2978,6 +2981,121 @@ describe('AttentionProjectionService proposed changes and gate reviews', () => {
     expect(
       items.filter((item) => item.kind === 'proposed-change'),
     ).toHaveLength(1);
+  });
+
+  /**
+   * #2064 review MED-2 — the reviewer's executed case. Survey's
+   * `reviewSessionSummary` files an UNDECIDED item whose `candidateSetStatus`
+   * is `escalated` under `escalated`, not `unresolved`, while continuation
+   * still needs a recorded result for it. Reading `summary.unresolved` made
+   * the inbox silent for exactly the sessions most stuck.
+   */
+  test('a gate whose remaining items are all escalated still needs a person', async () => {
+    const projection = makeService({
+      // The shape the reviewer reproduced: nothing in `unresolved`, two items
+      // with no decision recorded, run still paused.
+      gateReviews: [pausedReview({ pendingDecisions: 2 })],
+    });
+    const item = (await projection.list()).items.find(
+      (candidate) => candidate.kind === 'gate-review',
+    );
+    expect(item).toMatchObject({ kind: 'gate-review', pendingDecisions: 2 });
+    expect(item?.body).toBe('2 awaiting a decision · flow:build#7');
+  });
+
+  /**
+   * #2064 review LOW-4. `/api/attention` polls every 10s per client and the
+   * aggregate walks every workspace and replays every review session, warning
+   * once per unreadable project as it goes.
+   */
+  test('repeated reads inside the cache window hit the review aggregate once', async () => {
+    let calls = 0;
+    const projection = makeService({
+      gateReviews: async () => {
+        calls += 1;
+        return { items: [pausedReview()], unavailableProjects: [] };
+      },
+    });
+    await projection.list();
+    await projection.list();
+    await projection.list();
+    expect(calls).toBe(1);
+    // Still projecting from the cached read, not silently emptied by it.
+    expect(
+      (await projection.list()).items.filter(
+        (item) => item.kind === 'gate-review',
+      ),
+    ).toHaveLength(1);
+  });
+
+  /**
+   * #2064 review (c): a project Station could not read contributes zero gate
+   * items, and zero items must never be reported as "nothing needs you".
+   */
+  test('a project the review aggregate could not read is reported, not silently empty', async () => {
+    const projection = makeService({
+      gateReviews: async () => ({
+        items: [],
+        unavailableProjects: [
+          { projectSlug: 'campfit', reason: 'workspace-unreadable' },
+        ],
+      }),
+    });
+    const { items, unavailableSources } = await projection.list();
+    expect(items.filter((item) => item.kind === 'gate-review')).toEqual([]);
+    expect(unavailableSources).toEqual([
+      {
+        source: 'gate-reviews',
+        projectSlug: 'campfit',
+        reason: 'workspace-unreadable',
+      },
+    ]);
+  });
+
+  test('a fully-covered read reports no gap at all, rather than an empty one', async () => {
+    const projection = makeService({ gateReviews: [pausedReview()] });
+    expect(await projection.list()).not.toHaveProperty('unavailableSources');
+  });
+
+  test('an aggregate that fails whole is reported as unreadable, not as no reviews', async () => {
+    const projection = makeService({
+      gateReviews: async () => {
+        throw new Error('workspace unreadable');
+      },
+    });
+    const { unavailableSources } = await projection.list();
+    expect(unavailableSources).toEqual([
+      { source: 'gate-reviews', reason: 'review sessions unreadable' },
+    ]);
+  });
+
+  /**
+   * #2064 product decision (a): these two kinds resolve by BEING DECIDED.
+   * Acking one would drop a live, blocking ask out of the bell and out of its
+   * project's count while the change stayed undecided, and nothing would bring
+   * it back — the item re-derives with the same `updatedAt` every read.
+   */
+  test('a pending decision cannot be acknowledged away', async () => {
+    const acknowledged = new Map<string, string>();
+    const projection = makeService({
+      proposedChanges: [pendingChange()],
+      gateReviews: [pausedReview()],
+      acknowledgementStore: {
+        getMany: () => acknowledged,
+        acknowledge: ({ conversationId, updatedAt }) =>
+          void acknowledged.set(conversationId, updatedAt),
+      },
+    });
+    expect(await projection.acknowledge('proposed-change:change-1')).toBe(
+      false,
+    );
+    expect(await projection.acknowledge('gate-review:review-session-1')).toBe(
+      false,
+    );
+    // Refused, not silently recorded: nothing reached the store, so the two
+    // items are still counted.
+    expect(acknowledged.size).toBe(0);
+    expect((await projection.list()).pendingCount).toBe(2);
   });
 
   test('hosted reads project neither: the host stores carry no tenancy predicate', async () => {

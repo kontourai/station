@@ -166,7 +166,7 @@ export function ReviewQueueView() {
   const changeDecision = useProposedChangeDecision(REVIEW_QUEUE_SURFACE);
   const bulkApproveMutation = useBulkApproveProposedChangesMutation();
   const bulkRejectMutation = useBulkRejectProposedChangesMutation();
-  const resolveMutation = useResolveDiffCommentMutation();
+  const deleteCommentMutation = useResolveDiffCommentMutation();
 
   const filteredChanges = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -214,7 +214,7 @@ export function ReviewQueueView() {
       ...surveyReviews.map((review) => ({
         id: `${SURVEY_PREFIX}${review.reviewSessionRef}`,
         name: review.sessionName,
-        subtitle: `${review.summary.unresolved} unresolved · ${review.workflowSubjectRef}`,
+        subtitle: `${review.pendingDecisions} awaiting a decision · ${review.workflowSubjectRef}`,
         section: `Flow reviews · ${review.projectSlug}`,
       })),
       ...reviewReceipts
@@ -294,8 +294,18 @@ export function ReviewQueueView() {
   const bulkPending =
     bulkApproveMutation.isPending || bulkRejectMutation.isPending;
 
-  function resolveComment(comment: DiffComment) {
-    resolveMutation.mutate(
+  /**
+   * #2064 product decision (b): this DELETES the comment.
+   * `useResolveDiffCommentMutation` calls
+   * `DELETE /api/projects/:slug/diff-comments/:id`, and
+   * `DiffCommentService.delete` removes the record — `DiffComment` has no
+   * resolved state to move it into. The button said "Resolve", which is a
+   * label nothing derives; the diff pane's own control for the same call has
+   * always said "Delete". The copy here now matches the call rather than a
+   * state the data does not have.
+   */
+  function deleteComment(comment: DiffComment) {
+    deleteCommentMutation.mutate(
       { projectSlug: comment.projectId, id: comment.id },
       { onSuccess: () => setSelectedId(null) },
     );
@@ -318,12 +328,21 @@ export function ReviewQueueView() {
 
   return (
     <div className="pane-host" data-first-run-anchor="review-queue">
-      {inboxTarget && !isLoading && !surveyLoading && !inboxTargetExists && (
-        <p role="status">
-          That review item is no longer pending, and Station won’t open a
-          different one in its place.
-        </p>
-      )}
+      {/* #2064 review LOW-3: a FAILED fetch defaults `changes`/`surveyReviews`
+          to [], so without the error gate this announced "no longer pending"
+          for an item that is pending and simply could not be read — the
+          sourceNotices alert beside it is what that state really means. */}
+      {inboxTarget &&
+        !isLoading &&
+        !surveyLoading &&
+        !changesError &&
+        !surveyError &&
+        !inboxTargetExists && (
+          <p role="status">
+            That review item is no longer pending, and Station won’t open a
+            different one in its place.
+          </p>
+        )}
       {receiptTarget && !reviewEvidenceLoading && !selectedReviewReceipt && (
         <p role="status">
           That review receipt isn’t available for {receiptTarget.projectSlug},
@@ -372,7 +391,7 @@ export function ReviewQueueView() {
         // echoes the sidebar's Review icon, like the sibling views' glyphs.
         emptyIcon={<CheckGlyph />}
         emptyTitle="Select an item"
-        emptyDescription="Review a proposed change, or read and resolve a diff comment."
+        emptyDescription="Review a proposed change, or read and delete a diff comment."
         headerActions={
           <Button
             size="sm"
@@ -428,8 +447,8 @@ export function ReviewQueueView() {
         {selectedComment && (
           <ReviewCommentDetail
             comment={selectedComment}
-            pending={resolveMutation.isPending}
-            onResolve={() => resolveComment(selectedComment)}
+            pending={deleteCommentMutation.isPending}
+            onDelete={() => deleteComment(selectedComment)}
           />
         )}
         {selectedSurveyReview && (
@@ -491,7 +510,9 @@ function SurveyFlowReviewDetail({
       </header>
       <div className="review-queue-detail__meta">
         <span>Project {review.projectSlug}</span>
-        <span>{review.summary.unresolved} unresolved</span>
+        {/* #2064 review MED-2: what the run is waiting for. `summary.unresolved`
+            reads 0 for a session whose remaining items are all escalated. */}
+        <span>{review.pendingDecisions} awaiting a decision</span>
         <span>Source {review.projectionSource}</span>
       </div>
       {review.items.map((item) => (
@@ -571,11 +592,12 @@ function ReviewQueueDetail({
 function ReviewCommentDetail({
   comment,
   pending,
-  onResolve,
+  onDelete,
 }: {
   comment: DiffComment;
   pending: boolean;
-  onResolve: () => void;
+  /** See `deleteComment` — the call removes the record; the label says so. */
+  onDelete: () => void;
 }) {
   const { setLayout } = useNavigation();
   // Resolve the comment's project coding layout so the reviewer can jump from
@@ -623,8 +645,8 @@ function ReviewCommentDetail({
               Open in coding
             </Button>
           )}
-          <Button variant="secondary" disabled={pending} onClick={onResolve}>
-            Resolve
+          <Button variant="secondary" disabled={pending} onClick={onDelete}>
+            Delete
           </Button>
         </div>
       </header>

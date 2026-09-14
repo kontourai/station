@@ -405,7 +405,9 @@ describe('ReviewQueueView', () => {
     const detail = screen.getByTestId('review-comment-detail');
     expect(within(detail).getByText('Needs a null guard here')).toBeTruthy();
 
-    fireEvent.click(within(detail).getByRole('button', { name: 'Resolve' }));
+    // #2064 (b): the call is `DELETE /api/projects/:slug/diff-comments/:id`
+    // and the service removes the record — the control says what it does.
+    fireEvent.click(within(detail).getByRole('button', { name: 'Delete' }));
     expect(resolve).toHaveBeenCalledWith(
       { projectSlug: 'project-b', id: 'c-1' },
       expect.anything(),
@@ -487,6 +489,47 @@ describe('ReviewQueueView', () => {
     ).toBeNull();
   });
 
+  /**
+   * #2064 review LOW-3. `useProposedChangesQuery` defaults `data` to `[]`, so
+   * a FAILED fetch is indistinguishable from an empty queue at the deep-link
+   * check — and the notice then told the reader that a change which is very
+   * much still pending had been decided. The alert beside it is what that
+   * state really means.
+   */
+  test('a failed fetch does not claim the deep-linked change is no longer pending', () => {
+    proposedChangesErrored = true;
+    changes = [];
+    window.history.replaceState({}, '', '/review-queue?change=change-1');
+
+    render(
+      <NavigationProvider>
+        <ReviewQueueView />
+      </NavigationProvider>,
+    );
+
+    expect(screen.queryByText(/no longer pending/i)).toBeNull();
+    // The honest report for this state is still made.
+    expect(
+      screen
+        .getAllByRole('alert')
+        .some((alert) => alert.textContent?.includes('proposed changes')),
+    ).toBe(true);
+  });
+
+  test('a readable source that no longer holds the deep-linked change does say so', () => {
+    proposedChangesErrored = false;
+    changes = [];
+    window.history.replaceState({}, '', '/review-queue?change=change-1');
+
+    render(
+      <NavigationProvider>
+        <ReviewQueueView />
+      </NavigationProvider>,
+    );
+
+    expect(screen.getByText(/no longer pending/i)).toBeTruthy();
+  });
+
   test('presents canonical Survey review work with its Flow subject binding', () => {
     changes = [];
     surveyReviews = [
@@ -504,6 +547,7 @@ describe('ReviewQueueView', () => {
           escalated: 0,
           unresolved: 1,
         },
+        pendingDecisions: 1,
         items: [
           {
             target: 'availabilityStatus',
