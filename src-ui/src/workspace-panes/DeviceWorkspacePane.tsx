@@ -524,6 +524,16 @@ function DeviceFrame({
   now: number;
   selected: MobileDeviceSummary;
 }) {
+  // The caption names the SELECTED row rather than `capture.target`, which
+  // the SDK has already validated equal to the requested target. The obvious
+  // mislabel window — switch device without awaiting the reset — does not
+  // exist: `capture.reset()` lands in the same synchronous commit as the new
+  // `selectedId`, and the retained frame is keyed to that id, so the figure
+  // is gone before any render can pair one device's frame with another's
+  // name. Recording the dead end so nobody re-probes it. What remains is
+  // narrower and not about this pane's timing: an inventory refresh that
+  // RENAMES a device relabels a frame already on screen, because `name` is
+  // read live and `capture.target` carries only ids.
   const time = capturedAtLabel(capture.capturedAt, now);
   const caption = `Snapshot of ${selected.name} · ${PLATFORM_LABEL[selected.platform]} · captured ${time}`;
   return (
