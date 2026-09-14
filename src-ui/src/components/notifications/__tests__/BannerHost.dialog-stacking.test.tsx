@@ -494,6 +494,65 @@ interface Measured {
   }[];
 }
 
+type FixturePage = Awaited<
+  ReturnType<Awaited<ReturnType<typeof chromium.launch>>['newPage']>
+>;
+
+/**
+ * Wait for every in-flight entry animation to finish before anything in this
+ * file measures a rectangle or computes a hit test.
+ *
+ * WHY THIS FILE CANNOT MEASURE WITHOUT IT. `.banner-host__item` runs
+ * `banner-host-enter` (`translateY(-8px)` to `translateY(0)`, `BannerHost.css`),
+ * and every control this file measures — the dismiss button, the cap, the
+ * banner controls the overlap and popover shapes enumerate — is a DESCENDANT of
+ * that animating box. While the animation is in flight, a descendant's
+ * `getBoundingClientRect()` is transform-MAPPED rather than laid out: Chromium
+ * maps the corners and takes their bounding box.
+ *
+ * Two consequences, and the second is the one that matters. The small one is
+ * that `height` becomes `float32(bottom) - float32(top)`, so a control styled to
+ * exactly 44px reads 43.99999237060547 — one float32 ULP at magnitude 88, its
+ * own `top` — which is the #2086 red, and which `MIN_TOUCH_TARGET_PX` absorbs.
+ * The large one is that the banner is displaced by up to a full EIGHT pixels
+ * during the same window, and `hitFor` and the overlap loop below compute
+ * `document.elementFromPoint` from exactly these rectangles. A hit test taken
+ * mid-animation can resolve to a DIFFERENT element than the settled layout
+ * gives, which is a wrong verdict in either direction — a false green as
+ * readily as a false red — rather than a rounding artifact. No tolerance can
+ * reach that; settling removes both at once.
+ *
+ * Awaits the real `Animation.finished` promises rather than sleeping, the same
+ * way `tests/banner-stack-bound.spec.ts` settles this very animation and
+ * `tests/helpers/accessibility.ts` settles before sampling paint, so it holds
+ * whatever `--motion-base` is (including reduced motion's near-zero value) and
+ * never trips the E2E audit's fixed-sleep pattern.
+ *
+ * The filter is load-bearing, not caution. This fixture composes the whole of
+ * `index.css`, which declares several `infinite` animations (spinners, pulses);
+ * their `finished` promise never resolves, so an unfiltered `Promise.all` would
+ * hang until Playwright's own timeout and report nothing. A `paused` animation
+ * is excluded for the same reason. `playState` is deliberately NOT narrowed to
+ * `running`: a CSS animation is `pending` until its first frame, and a pending
+ * one is precisely the one still to displace the box.
+ */
+async function settleEntryAnimations(page: FixturePage): Promise<void> {
+  await page.evaluate(async () => {
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter(
+          (animation) =>
+            animation.playState !== 'paused' &&
+            animation.effect?.getTiming().iterations !== Number.POSITIVE_INFINITY,
+        )
+        // A cancelled animation (an element removed mid-flight) rejects; that
+        // is settled for this purpose, so it must not fail the measurement.
+        .map((animation) => animation.finished.catch(() => undefined)),
+    );
+  });
+}
+
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 
 describe.skipIf(!chromiumAvailable)(
@@ -533,13 +592,22 @@ describe.skipIf(!chromiumAvailable)(
               renderChrome: false,
             }),
           );
-          const measured = await page.evaluate(() => {
+          // The fixture's geometry inputs go in BEFORE the settle, not after.
+          // `.banner-host__item` transitions `transform` and `height` as well
+          // as running the entry animation, so these writes can start a
+          // transition of their own; settling first would settle the entrance
+          // and then measure through whatever these kicked off.
+          await page.evaluate(() => {
             const root = document.documentElement;
             root.style.setProperty('--safe-top', '28px');
             root.style.setProperty('--app-toolbar-total-height', '84px');
             const dock = document.querySelector<HTMLElement>('.chat-dock')!;
             dock.style.setProperty('--chat-visual-viewport-height', '150px');
             dock.style.setProperty('--chat-visual-viewport-bottom', '262px');
+          });
+          await settleEntryAnimations(page);
+          const measured = await page.evaluate(() => {
+            const dock = document.querySelector<HTMLElement>('.chat-dock')!;
             const dismiss = document.querySelector<HTMLButtonElement>(
               '.banner-host__dismiss',
             )!;
@@ -572,11 +640,17 @@ describe.skipIf(!chromiumAvailable)(
           // The floor, through the shared constant, NOT a bare `44`: these are
           // raw `getBoundingClientRect` floats, and the property is "this
           // control meets the 44px touch floor", which an exact-integer
-          // comparison does not faithfully encode under float layout. A large
-          // related-set run on a loaded host measured this very height as
-          // 43.99999237060547 — 44 minus 7.6e-6 — and red (#2086). Anything
-          // genuinely too small to touch is short by whole pixels, so the
-          // hundredth of a pixel `MIN_TOUCH_TARGET_PX` allows cannot hide one.
+          // comparison does not faithfully encode under float layout.
+          //
+          // THE CONSTANT IS DEFENCE IN DEPTH HERE, NOT THE FIX for #2086. What
+          // made this read 43.99999237060547 on a loaded host was the ancestor
+          // `banner-host-enter` transform still in flight, and the settle above
+          // is what removes it: throttled to 50x this measured 44 exactly,
+          // where unsettled it drifted by one float32 ULP in both directions.
+          // The tolerance stays because it costs nothing and covers a future
+          // caller who measures without settling; it is not what makes this
+          // assertion sound. Anything genuinely too small to touch is short by
+          // whole pixels, so the hundredth of a pixel it allows cannot hide one.
           expect(measured.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
           expect(measured.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
           expect(measured.dockTop).toBeCloseTo(28, 0);
@@ -592,6 +666,10 @@ describe.skipIf(!chromiumAvailable)(
       const page = await browser.newPage({ viewport: shape.viewport });
       try {
         await page.setContent(buildFixtureHtml(shape));
+        // Every rectangle and every `elementFromPoint` below is read from a
+        // descendant of the animating `.banner-host__item`. See
+        // `settleEntryAnimations`.
+        await settleEntryAnimations(page);
         return await page.evaluate(() => {
           const describe_ = (element: Element | null) =>
             element
