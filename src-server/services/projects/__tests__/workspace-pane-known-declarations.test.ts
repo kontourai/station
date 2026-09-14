@@ -262,21 +262,30 @@ describe('known Workspace Pane declarations', () => {
     );
   });
 
-  test('the known declarations claiming docked are exactly Chat and the three coding panes, the registered shell surfaces (#928, #2047)', () => {
-    // `docked` means "may occupy a shell region as a registered surface".
-    // The UI pins the claim over the built-in descriptor constants
-    // (`src-ui/src/__tests__/docked-capability-derivation.test.ts`); this
-    // pins the same claim over the server's own inline declarations, which
-    // that scan cannot see (e.g. the flow-run-console preview). A new entry
-    // here claiming `docked` must also be registered in
-    // `REGION_SURFACE_REGISTRY`, or the claim is a label nothing derives.
-    // Declaration order, so a reordering here is visible too.
+  test('the known declarations claiming docked are exactly Chat, the three coding panes and File Preview (#928, #2047, #2049)', () => {
+    // `docked` means "may occupy a shell region". Since #2049 a descriptor
+    // may earn that two ways, and both have a reader:
+    //
+    // - as a REGISTERED SURFACE — Chat and the three coding panes, in
+    //   `REGION_SURFACE_REGISTRY`;
+    // - as an INSTANCE-KEYED family — File Preview, which has no blank
+    //   canonical occurrence and so is no registry key at all; it reaches a
+    //   region through `INSTANCE_SURFACE_PREFIXES` (`file-preview:<nonce>`),
+    //   and `docked-capability-derivation.test.ts` pins each prefix's
+    //   descriptor id to a descriptor that exists and declares `docked`.
+    //
+    // A new entry here claiming `docked` must have one of those two readers,
+    // or the claim is a label nothing derives. Note File Preview IS declared
+    // to this catalog, so the region's "+" would list a card that can never
+    // open — `dockCatalogEntries` filters instance-keyed descriptors out for
+    // exactly that reason. Declaration order, so a reordering is visible too.
     const claimingDocked = KNOWN_WORKSPACE_PANE_DECLARATIONS.filter(
       ({ descriptor }) =>
         descriptor.placement.supportedRegions.includes('docked'),
     ).map(({ descriptor }) => descriptor.id);
     expect(claimingDocked).toEqual([
       'pane:builtin:chat',
+      'pane:builtin:workspace-preview:file-preview',
       'pane:builtin:coding:file-browser',
       'pane:builtin:coding:diff',
       'pane:builtin:coding:terminal',
