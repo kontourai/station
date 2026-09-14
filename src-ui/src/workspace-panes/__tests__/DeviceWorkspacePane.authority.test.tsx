@@ -97,14 +97,20 @@ describe('the Device pane under a changing authority (#1969)', () => {
     scope = SECOND;
     rerenderWrapped(<DeviceWorkspacePane />);
 
-    await waitFor(() => expect(screen.queryByRole('img')).toBeNull());
+    // Wait for the NEW authority's inventory to settle before judging the
+    // frame: the key change puts the query back in flight, and an absent
+    // image during that moment is the skeleton, not proof that anything was
+    // dropped. (Asserting it any earlier was a green that the `key` removal
+    // did not red — the loading branch satisfied it either way.)
+    await waitFor(() =>
+      expect(screen.queryByRole('radio', { name: /Pixel/ })).not.toBeNull(),
+    );
+    expect(screen.queryByRole('img')).toBeNull();
     expect(localStorage.getItem(devicePaneStateStorageKey(FIRST))).toBeNull();
     // And the new authority starts with nothing selected.
-    await waitFor(() =>
-      expect(screen.getByRole('radio', { name: /Pixel/ })).toHaveProperty(
-        'checked',
-        false,
-      ),
+    expect(screen.getByRole('radio', { name: /Pixel/ })).toHaveProperty(
+      'checked',
+      false,
     );
   });
 
