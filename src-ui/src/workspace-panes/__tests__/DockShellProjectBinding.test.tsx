@@ -60,6 +60,9 @@ vi.mock('../../contexts/ProjectsContext', () => ({
     projects: projectsForBinding,
     isConfirmedLoaded: projectsConfirmedLoadedForBinding,
   }),
+  // #2047: the region host resolves the dock's project through this read;
+  // no project here, so the panes that need one derive none.
+  useProject: () => ({ project: undefined, isLoading: false }),
 }));
 
 const DEVICE_SETTINGS_KEY = 'station-device-settings-v1';

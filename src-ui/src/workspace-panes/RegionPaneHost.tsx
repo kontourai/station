@@ -15,7 +15,13 @@ import {
   useState,
 } from 'react';
 import { DockShell } from '../components/chat-dock/DockShell';
+import { LazyBoundary } from '../components/LazyBoundary';
+import { SkeletonBlock } from '../components/Skeleton';
+import { Empty } from '../components/state';
+import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
+import { useProject } from '../contexts/ProjectsContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
+import { useActiveProject } from '../hooks/useActiveProject';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { reportRegionClearance } from '../regions/region-clearance';
 import type { DockRegionId } from '../regions/region-model';
@@ -299,6 +305,54 @@ export type RenderActivityPane = (
 ) => ReactNode;
 
 /**
+ * A docked built-in pane other than Chat's and Activity's (#2047: the
+ * coding panes) renders through the built-in registry, behind its own lazy
+ * boundary so the coding render graph (`CodingTerminalPane`, `FileTreePanel`,
+ * the diff stack) stays out of this pre-warmed chunk. A new promise per
+ * call, like `RegionShells`' loaders: React's `lazy` livelocks on a memoized
+ * settled promise (kontourai/station#1301).
+ */
+const loadRegionBuiltinPane = () =>
+  import('./RegionBuiltinPane').then((module) => ({
+    default: module.RegionBuiltinPane,
+  }));
+
+/**
+ * The project a dock region binds its panes to (#2047 D3/D5): the dock's own
+ * remembered binding (`chatDockProjectSlug`, the setting `useDockShellChrome`
+ * exposes as `activeProjectSlug` and Chat's project switcher writes), else
+ * the route's active project, the same fallback `ChatDock` takes for a user
+ * who has never bound one. Resolved to the project's id — what the coding
+ * instances bind — through the project read, so an unknown or deleted slug
+ * is no project rather than a dangling id.
+ */
+function useDockProjectId(): string | null {
+  const { chatDockProjectSlug } = useDeviceSettings();
+  const { projectSlug: activeProjectSlug } = useActiveProject();
+  const slug = chatDockProjectSlug ?? activeProjectSlug ?? '';
+  const { project } = useProject(slug);
+  return project?.id ?? null;
+}
+
+/**
+ * What a region shows for a selected pane its dock cannot supply (#2047 D6:
+ * a coding pane while the dock has no project). The tab and the record keep
+ * the surface; only the rendering waits. Same scroll container as every
+ * non-Chat dock pane (`ActivityDockPane`).
+ */
+function RegionPaneNeedsProject({ title }: { title: string }) {
+  return (
+    <div className="dock-slot__body">
+      <Empty
+        variant="compact"
+        label="Choose a project for this dock"
+        description={`${title} shows the dock’s active project. Pick one from Chat’s project switcher and it will render here.`}
+      />
+    </div>
+  );
+}
+
+/**
  * One dock region's pane host (#2045): `DockShell` (the one dock chrome shell
  * — root box, resize handle, geometry/snap/drag state,
  * `dock.toggle`/`dock.maximize`) around the region's chrome bar
@@ -384,9 +438,17 @@ export function RegionPaneHost({
       ? region.occupant
       : panes[0];
   const documentId = regionPaneHostDocumentId(regionId);
-  // Part A of #2047: the host binds no project yet; Part B resolves the
-  // dock's active project here.
-  const context = useMemo<RegionPaneContext>(() => PROJECTLESS_CONTEXT, []);
+  // The dock's project, for the panes that bind one (#2047). A change here
+  // is a new authority fingerprint for the inner host (the instances'
+  // `boundContext` is part of it), so a project switch re-binds a mounted
+  // coding pane through the same restore path a pane-set change takes —
+  // the instance ids do not change, so `reconcileRegionPaneHostDocument`
+  // (ids only) is not what carries it.
+  const projectId = useDockProjectId();
+  const context = useMemo<RegionPaneContext>(
+    () => ({ projectId }),
+    [projectId],
+  );
   const document = useMemo(
     () =>
       panes.length
@@ -394,6 +456,13 @@ export function RegionPaneHost({
         : null,
     [context, documentId, panes, selected],
   );
+  // Whether the SELECTED pane has an instance under this context. A pane the
+  // dock cannot supply keeps its tab and renders the placeholder in place of
+  // the host: mounting the host with another pane active would show a pane
+  // the strip does not say is selected.
+  const selectedSupplied =
+    selected !== undefined &&
+    regionSurfacePane(selected)?.instance(context) != null;
   // Before the inner host's first read of the region key (its controller
   // hydrates in its own state initialiser), so the adopted or reconciled
   // document is what it finds. Once per mount: a region host mounts when its
@@ -495,7 +564,7 @@ export function RegionPaneHost({
             leadingSlotRef={setLeadingSlot}
             trailingSlotRef={setTrailingSlot}
           />
-          {document ? (
+          {document && selectedSupplied ? (
             <WorkspacePaneHost
               document={document}
               presentation="dock"
@@ -525,9 +594,21 @@ export function RegionPaneHost({
                       );
                     return renderActivityPane(instance, shellChrome);
                   default:
-                    return null;
+                    return (
+                      <LazyBoundary
+                        load={loadRegionBuiltinPane}
+                        componentProps={{ instance }}
+                        pending={
+                          <SkeletonBlock count={3} label="Loading pane" />
+                        }
+                      />
+                    );
                 }
               }}
+            />
+          ) : selected !== undefined ? (
+            <RegionPaneNeedsProject
+              title={model?.surfaces.get(selected)?.title ?? selected}
             />
           ) : null}
         </RegionChromeSlotsContext.Provider>

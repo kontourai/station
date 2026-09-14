@@ -61,6 +61,9 @@ vi.mock('../../contexts/ProjectsContext', () => ({
     isLoading: false,
     isConfirmedLoaded: true,
   }),
+  // #2047: the region host resolves the dock's project through this read;
+  // no project here, so the panes that need one derive none.
+  useProject: () => ({ project: undefined, isLoading: false }),
 }));
 vi.mock('../../contexts/ConfigContext', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../contexts/ConfigContext')>()),
