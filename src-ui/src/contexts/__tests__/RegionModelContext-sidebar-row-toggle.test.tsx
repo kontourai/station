@@ -98,6 +98,7 @@ describe('the Activity row against the real region model', () => {
       expect(activityRow().getAttribute('aria-pressed')).toBe('true'),
     );
     expect(model?.regions.right).toMatchObject({
+      panes: ['activity'],
       occupant: 'activity',
       visible: true,
     });
@@ -120,6 +121,7 @@ describe('the Activity row against the real region model', () => {
     fireEvent.click(activityRow());
     await waitFor(() =>
       expect(model?.regions.right).toMatchObject({
+        panes: ['activity'],
         occupant: 'activity',
         visible: true,
       }),

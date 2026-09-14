@@ -17,10 +17,34 @@ import {
 } from '../region-model';
 
 const VALID: RegionArrangement = {
-  main: { visible: true, size: 0, occupant: 'home', maximized: false },
-  left: { visible: false, size: 400, occupant: null, maximized: false },
-  right: { visible: true, size: 517, occupant: 'activity', maximized: false },
-  bottom: { visible: false, size: 320, occupant: 'chat', maximized: false },
+  main: {
+    visible: true,
+    size: 0,
+    panes: ['home'],
+    occupant: 'home',
+    maximized: false,
+  },
+  left: {
+    visible: false,
+    size: 400,
+    panes: [],
+    occupant: null,
+    maximized: false,
+  },
+  right: {
+    visible: true,
+    size: 517,
+    panes: ['activity'],
+    occupant: 'activity',
+    maximized: false,
+  },
+  bottom: {
+    visible: false,
+    size: 320,
+    panes: ['chat'],
+    occupant: 'chat',
+    maximized: false,
+  },
 };
 
 /** A record with one region's stored fields replaced. */
@@ -186,10 +210,10 @@ describe('region arrangement record (#928 D)', () => {
       expect(
         parseRegionArrangementRecord(
           recordWith('right', {
-            occupant: { kind: 'pane-host', documentId: 'doc-1' },
+            occupant: { kind: 'split-host', documentId: 'doc-1' },
           }),
-        )!.right.occupant,
-      ).toBeNull();
+        )!.right,
+      ).toMatchObject({ panes: [], occupant: null });
       expect(
         parseRegionArrangementRecord(
           recordWith('right', { occupant: 'activity' }),
@@ -262,12 +286,14 @@ describe('region arrangement record (#928 D)', () => {
       expect(parsed!.left).toEqual({
         visible: false,
         size: 400,
+        panes: [],
         occupant: null,
         maximized: false,
       });
       expect(parsed!.right).toEqual({
         visible: false,
         size: 400,
+        panes: [],
         occupant: null,
         maximized: false,
       });
@@ -387,8 +413,20 @@ describe('region arrangement record (#928 D)', () => {
     test('more than one maximized region keeps the first in REGION_IDS order', () => {
       const record = toRegionArrangementRecord({
         ...VALID,
-        left: { visible: true, size: 400, occupant: 'chat', maximized: true },
-        bottom: { visible: false, size: 320, occupant: null, maximized: false },
+        left: {
+          visible: true,
+          size: 400,
+          panes: ['chat'],
+          occupant: 'chat',
+          maximized: true,
+        },
+        bottom: {
+          visible: false,
+          size: 320,
+          panes: [],
+          occupant: null,
+          maximized: false,
+        },
         right: { ...VALID.right, maximized: true },
       });
       const parsed = parseRegionArrangementRecord(record);
@@ -437,6 +475,253 @@ describe('region arrangement record (#928 D)', () => {
         },
       } as unknown as Parameters<typeof isDefaultRegionArrangementRecord>[0];
       expect(isDefaultRegionArrangementRecord(preFieldDefault)).toBe(true);
+    });
+  });
+
+  // #2046 2a: a region holding two or more panes writes `pane-host`.
+  describe('pane-host (#2046 2a, decisions 1 and 2)', () => {
+    const TWO_PANES: RegionArrangement = {
+      ...VALID,
+      right: {
+        visible: true,
+        size: 517,
+        panes: ['activity', 'chat'],
+        occupant: 'chat',
+        maximized: false,
+      },
+      bottom: {
+        visible: false,
+        size: 320,
+        panes: [],
+        occupant: null,
+        maximized: false,
+      },
+    };
+
+    /**
+     * Reverting the writer to `{ kind: 'surface', id: occupant }` fails the
+     * first assertion (kind `surface`) and, downstream, the round trip: the
+     * parser would read `right` as Chat alone and `panes` would be
+     * `['chat']`.
+     */
+    test('a two-pane region round-trips as pane-host with its panes in tab order and its selected pane', () => {
+      const record = toRegionArrangementRecord(TWO_PANES);
+      expect(record.regions.right.occupant).toEqual({
+        kind: 'pane-host',
+        // No document id (2b): the host derives the region's document from
+        // the region, so the record names none.
+        panes: [
+          { kind: 'surface', id: 'activity' },
+          { kind: 'surface', id: 'chat' },
+        ],
+        selected: 'chat',
+      });
+      expect(parseRegionArrangementRecord(record)).toEqual(TWO_PANES);
+    });
+
+    test('a single-pane region still writes { kind: "surface" } (an older build in the stale-tab window reads it)', () => {
+      const record = toRegionArrangementRecord(TWO_PANES);
+      expect(record.regions.main.occupant).toEqual({
+        kind: 'surface',
+        id: 'home',
+      });
+      expect(record.regions.bottom.occupant).toBeNull();
+      // The default arrangement, every region one pane or none, is unchanged
+      // byte for byte — the contracts pin above depends on it.
+      expect(
+        Object.values(
+          toRegionArrangementRecord(DEFAULT_DEVICE_REGION_ARRANGEMENT).regions,
+        ).map((region) => region.occupant?.kind ?? null),
+      ).toEqual(['surface', null, null, 'surface']);
+    });
+
+    test('an invalid or absent selected falls back to the first pane', () => {
+      const record = toRegionArrangementRecord(TWO_PANES);
+      const withSelected = (selected: unknown) =>
+        parseRegionArrangementRecord({
+          ...record,
+          regions: {
+            ...record.regions,
+            right: {
+              ...record.regions.right,
+              occupant: {
+                ...(record.regions.right.occupant as object),
+                selected,
+              },
+            },
+          },
+        })!.right;
+      expect(withSelected('home')).toMatchObject({
+        panes: ['activity', 'chat'],
+        occupant: 'activity',
+      });
+      expect(withSelected(7)).toMatchObject({ occupant: 'activity' });
+      expect(withSelected(undefined)).toMatchObject({ occupant: 'activity' });
+      expect(withSelected('chat')).toMatchObject({ occupant: 'chat' });
+    });
+
+    test('panes the registry lacks, or that do not declare the region, are dropped; nothing left reads as empty', () => {
+      const parsed = parseRegionArrangementRecord(
+        recordWith('right', {
+          occupant: {
+            kind: 'pane-host',
+            panes: [
+              { kind: 'surface', id: 'retired-surface' },
+              { kind: 'surface', id: 'home' }, // declares only `main`
+              { kind: 'surface', id: 'chat' },
+              'activity', // not an entry shape
+              { kind: 'surface', id: 'chat' }, // a duplicate within the set
+            ],
+            selected: 'retired-surface',
+          },
+        }),
+      )!.right;
+      expect(parsed).toMatchObject({ panes: ['chat'], occupant: 'chat' });
+
+      const nothingLeft = parseRegionArrangementRecord(
+        recordWith('right', {
+          visible: true,
+          occupant: {
+            kind: 'pane-host',
+            panes: [{ kind: 'surface', id: 'home' }],
+          },
+        }),
+      )!.right;
+      expect(nothingLeft).toMatchObject({ panes: [], occupant: null });
+    });
+
+    test('a pane-host without an array of panes reads as empty; a documentId a 2a build wrote is ignored', () => {
+      for (const occupant of [
+        { kind: 'pane-host', panes: 'chat' },
+        { kind: 'pane-host' },
+        { kind: 'pane-host', documentId: 'right' },
+      ]) {
+        expect(
+          parseRegionArrangementRecord(recordWith('right', { occupant }))!
+            .right,
+          JSON.stringify(occupant),
+        ).toMatchObject({ panes: [], occupant: null });
+      }
+      // The 2a record carried `documentId`; the field is neither required
+      // nor read now, so a record from that build still resolves its panes.
+      expect(
+        parseRegionArrangementRecord(
+          recordWith('right', {
+            occupant: {
+              kind: 'pane-host',
+              documentId: 7,
+              panes: [
+                { kind: 'surface', id: 'chat' },
+                { kind: 'surface', id: 'activity' },
+              ],
+              selected: 'activity',
+            },
+          }),
+        )!.right,
+      ).toMatchObject({ panes: ['chat', 'activity'], occupant: 'activity' });
+    });
+
+    test('a surface in two regions is dropped from the later region’s panes, keeping the rest', () => {
+      const parsed = parseRegionArrangementRecord({
+        version: 1,
+        regions: {
+          main: {
+            visible: true,
+            size: 0,
+            occupant: { kind: 'surface', id: 'home' },
+          },
+          left: {
+            visible: true,
+            size: 400,
+            occupant: { kind: 'surface', id: 'activity' },
+          },
+          right: {
+            visible: true,
+            size: 400,
+            occupant: {
+              kind: 'pane-host',
+              panes: [
+                { kind: 'surface', id: 'activity' },
+                { kind: 'surface', id: 'chat' },
+              ],
+              selected: 'activity',
+            },
+          },
+          bottom: {
+            visible: true,
+            size: 320,
+            occupant: { kind: 'surface', id: 'chat' },
+          },
+        },
+      })!;
+      expect(parsed.left).toMatchObject({
+        panes: ['activity'],
+        occupant: 'activity',
+      });
+      // Activity was `left`'s first; `right` keeps Chat and, its selected
+      // pane gone, selects what remains.
+      expect(parsed.right).toMatchObject({
+        panes: ['chat'],
+        occupant: 'chat',
+        visible: true,
+      });
+      // Chat was `right`'s first; `bottom` has nothing left: empty and hidden.
+      expect(parsed.bottom).toMatchObject({
+        panes: [],
+        occupant: null,
+        visible: false,
+      });
+    });
+
+    test('main reads at most one pane, its selected one', () => {
+      expect(
+        parseRegionArrangementRecord(
+          recordWith('main', {
+            occupant: {
+              kind: 'pane-host',
+              panes: [
+                { kind: 'surface', id: 'home' },
+                { kind: 'surface', id: 'activity' },
+              ],
+              selected: 'activity',
+            },
+          }),
+        )!.main,
+      ).toMatchObject({ panes: ['activity'], occupant: 'activity' });
+    });
+
+    test('records differing only in pane order or selection are not equal', () => {
+      const record = toRegionArrangementRecord(TWO_PANES);
+      const occupant = record.regions.right.occupant;
+      if (occupant?.kind !== 'pane-host') throw new Error('unreachable');
+      expect(
+        regionArrangementRecordsEqual(
+          record,
+          toRegionArrangementRecord(TWO_PANES),
+        ),
+      ).toBe(true);
+      expect(
+        regionArrangementRecordsEqual(
+          record,
+          recordWith('right', {
+            occupant: { ...occupant, panes: [...occupant.panes].reverse() },
+          }),
+        ),
+      ).toBe(false);
+      expect(
+        regionArrangementRecordsEqual(
+          record,
+          recordWith('right', {
+            occupant: { ...occupant, selected: 'activity' },
+          }),
+        ),
+      ).toBe(false);
+      expect(
+        regionArrangementRecordsEqual(
+          record,
+          recordWith('right', { occupant: { kind: 'surface', id: 'chat' } }),
+        ),
+      ).toBe(false);
     });
   });
 

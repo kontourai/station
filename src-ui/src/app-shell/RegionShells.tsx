@@ -113,18 +113,19 @@ const loadActivityDockPane = () =>
   }));
 
 /**
- * Activity as a region pane: the host hands down the region's chrome, and
- * the pane (header, body, sessions surface) stays behind its own lazy
- * boundary so the sessions import graph is not in the host's chunk.
+ * Activity as a region pane: the pane (body, sessions surface) stays behind
+ * its own lazy boundary so the sessions import graph is not in the host's
+ * chunk. The region's chrome is the host's bar (#2046 2b), so the pane takes
+ * none of it.
  */
 function renderActivityDockPane(
   _instance: WorkspacePaneInstance,
-  chrome: DockShellChrome,
+  _chrome: DockShellChrome,
 ) {
   return (
     <LazyBoundary
       load={loadActivityDockPane}
-      componentProps={{ chrome }}
+      componentProps={{}}
       pending={<SkeletonBlock count={3} label="Loading Activity" />}
     />
   );

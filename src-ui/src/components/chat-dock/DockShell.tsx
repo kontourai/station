@@ -5,6 +5,7 @@ import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
+import { regionHoldsChat } from '../../regions/region-model';
 import type { DockMode } from '../../types';
 import { ChatDockResizeHandle } from './ChatDockResizeHandle';
 
@@ -24,12 +25,11 @@ import { ChatDockResizeHandle } from './ChatDockResizeHandle';
  *   the occupant) is what stays mounted across a switch;
  * - `dock.maximize` (region visibility lives in the app toolbar).
  *
- * What it does NOT own: the header's occupant-specific content (identity,
- * project context, session controls) and the body. Those are composed by
- * whichever occupant is docked, using the SAME `ChatDockHeader` component and
- * the `DockShellChrome` this passes down through `children` — hoisted, not
- * duplicated: one header implementation, called once per occupant with
- * different content, not copy-pasted per occupant.
+ * What it does NOT own: the region bar (placement grab, tab strip, maximize,
+ * visibility — `RegionChromeBar`, rendered by `RegionPaneHost` from the
+ * `DockShellChrome` this passes down through `children`, #2046 2b), a pane's
+ * own toolbar content (Chat's identity, project context and More menu, which
+ * `ChatDockHeader` renders into the bar's slots) and the body.
  */
 export function DockShell({
   onRenderedRegionGeometryChange,
@@ -44,20 +44,30 @@ export function DockShell({
   children: (chrome: DockShellChrome) => ReactNode;
 }) {
   const regionModel = useRegionModelOptional();
-  const occupant =
-    regionId && regionModel ? regionModel.regions[regionId].occupant : 'chat';
-  const landmarkLabel =
-    occupant === 'chat'
-      ? 'Dock'
-      : (regionModel?.surfaces.get(occupant ?? '')?.title ?? 'Dock');
-  const resizeLabel =
-    occupant === 'chat' ? 'Resize chat dock' : `Resize ${landmarkLabel}`;
+  const region = regionId && regionModel ? regionModel.regions[regionId] : null;
+  const occupant = region ? region.occupant : 'chat';
+  // Chat's shell is the shell whose region HOLDS Chat, selected or behind
+  // another pane's tab (#2046 2b, ownership decision D3): `#chat-dock`, the
+  // parity-pinned "Dock" landmark and the `dock.maximize` registration all
+  // follow the pane set, not the pane the region shows. A region that holds
+  // Chat and Activity is one shell, and it is Chat's shell whichever tab is
+  // selected — so ⌘M keeps working while Chat is behind Activity's tab.
+  const holdsChat =
+    regionId && regionModel
+      ? regionHoldsChat(regionModel.regions, regionId)
+      : true;
+  const landmarkLabel = holdsChat
+    ? 'Dock'
+    : (regionModel?.surfaces.get(occupant ?? '')?.title ?? 'Dock');
+  const resizeLabel = holdsChat
+    ? 'Resize chat dock'
+    : `Resize ${landmarkLabel}`;
   const chrome = useDockShellChrome({
     publishesDockSlotClearance: true,
-    // `DockShell` owns the region maximize command, and only the shell
-    // holding chat registers it: the registry is last-register-wins, so a
-    // second shell's retraction would leave ⌘M dead (#1202's shape).
-    registersDockShortcuts: occupant === 'chat',
+    // `DockShell` owns the region maximize command, and only the shell whose
+    // region holds chat registers it: the registry is last-register-wins, so
+    // a second shell's retraction would leave ⌘M dead (#1202's shape).
+    registersDockShortcuts: holdsChat,
     regionId,
     onRenderedRegionGeometryChange,
   });
@@ -74,7 +84,7 @@ export function DockShell({
 
   return (
     <section
-      id={occupant === 'chat' ? 'chat-dock' : undefined}
+      id={holdsChat ? 'chat-dock' : undefined}
       data-region={renderedRegion}
       // Chat keeps the parity-pinned "Dock" landmark. A second shell needs a
       // distinct accessible name, so a non-Chat region uses its registered

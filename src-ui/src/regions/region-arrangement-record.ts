@@ -4,10 +4,16 @@
  *
  * Pure. Two directions:
  *
- * - `toRegionArrangementRecord` serializes live state. An occupant is written
- *   as `{ kind: 'surface', id }` so the pane-host direction
- *   (docs/design/placement.md) can add `{ kind: 'pane-host', documentId }`
- *   beside it without a migration.
+ * - `toRegionArrangementRecord` serializes live state. A region holding one
+ *   surface is written as `{ kind: 'surface', id }`; one holding two or more
+ *   as `{ kind: 'pane-host', panes, selected }` (#2046 2a, decisions 1 and
+ *   2): the surfaces inline in tab order, so the arrangement never depends
+ *   on the region's localStorage pane-host document to be readable, and the
+ *   single-pane form unchanged, so a build that predates `pane-host` still
+ *   reads every single-pane region in the same-device stale-tab window. The
+ *   variant names no document: `RegionPaneHost` derives the region's
+ *   document id from the region (`ambient:<region>`), so a `documentId`
+ *   field carried nothing the region id does not and was dropped (2b).
  * - `parseRegionArrangementRecord` is the ONLY validation the record gets:
  *   the device-settings store checks a composite for "is a plain object" and
  *   nothing more, so every reader runs this. It never throws and fails closed
@@ -25,6 +31,7 @@ import {
 } from '@kontourai/station-contracts/device-settings';
 import {
   DEFAULT_DEVICE_REGION_ARRANGEMENT,
+  normalizeRegionPanes,
   REGION_IDS,
   REGION_SURFACE_REGISTRY,
   type RegionArrangement,
@@ -66,10 +73,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   );
 }
 
-function toOccupantRecord(
-  occupant: string | null,
-): RegionOccupantRecord | null {
-  return occupant === null ? null : { kind: 'surface', id: occupant };
+function toOccupantRecord(state: RegionState): RegionOccupantRecord | null {
+  const [first] = state.panes;
+  if (first === undefined) return null;
+  if (state.panes.length === 1) return { kind: 'surface', id: first };
+  return {
+    kind: 'pane-host',
+    panes: state.panes.map((pane) => ({ kind: 'surface', id: pane })),
+    ...(state.occupant === null ? {} : { selected: state.occupant }),
+  };
 }
 
 export function toRegionArrangementRecord(
@@ -81,7 +93,7 @@ export function toRegionArrangementRecord(
     regions[id] = {
       visible: state.visible,
       size: state.size,
-      occupant: toOccupantRecord(state.occupant),
+      occupant: toOccupantRecord(state),
       maximized: state.maximized,
     };
   }
@@ -117,13 +129,11 @@ function parseSize(value: unknown, id: RegionId, fallback: number): number {
 }
 
 /**
- * The surface id a stored occupant names, or null when the region reads as
- * empty: no occupant, an occupant of a `kind` this reader does not know (the
- * additive extension point — a newer writer's variant is empty here, not a
- * failure), a surface the registry no longer has (retired since it was
- * written), or a surface that does not declare this region.
+ * One stored `{ kind: 'surface', id }` entry as a surface id this region may
+ * hold, or null: not that shape, a surface the registry no longer has
+ * (retired since it was written), or one that does not declare this region.
  */
-function parseOccupant(
+function parseSurfaceEntry(
   value: unknown,
   id: RegionId,
   registry: ReadonlyMap<string, RegisteredSurface>,
@@ -135,11 +145,45 @@ function parseOccupant(
 }
 
 /**
+ * The panes a stored occupant names, in tab order, and the selected one; an
+ * empty set when the region reads as empty: no occupant, an occupant of a
+ * `kind` this reader does not know (the additive extension point — a newer
+ * writer's variant is empty here, not a failure), or nothing usable inside
+ * it. Per entry the rules of `parseSurfaceEntry` apply, so a `pane-host`
+ * region keeps the panes it can and drops the rest; a `selected` that is not
+ * one of the kept panes falls back to the first (`normalizeRegionPanes`,
+ * which also gives a `surface` occupant its one pane as the selection). A
+ * `documentId` an earlier 2a build wrote is ignored.
+ */
+function parseOccupant(
+  value: unknown,
+  id: RegionId,
+  registry: ReadonlyMap<string, RegisteredSurface>,
+): Pick<RegionState, 'panes' | 'occupant'> {
+  const entries: unknown[] = !isPlainObject(value)
+    ? []
+    : value.kind === 'surface'
+      ? [value]
+      : value.kind === 'pane-host' && Array.isArray(value.panes)
+        ? value.panes
+        : [];
+  const selected = isPlainObject(value) ? value.selected : undefined;
+  return normalizeRegionPanes(
+    id,
+    entries.flatMap((entry) => {
+      const surface = parseSurfaceEntry(entry, id, registry);
+      return surface === null ? [] : [surface];
+    }),
+    typeof selected === 'string' ? selected : null,
+  );
+}
+
+/**
  * Reads a stored record back into live state, or returns null for a record
  * the caller should treat as absent. See the module comment for the
  * per-field fail-closed rules; in addition, a surface named by two regions
- * keeps the first in `REGION_IDS` order and the later regions read as empty
- * and hidden.
+ * keeps the first in `REGION_IDS` order and is dropped from the later
+ * regions' panes — a region left with nothing reads as empty and hidden.
  */
 export function parseRegionArrangementRecord(
   value: unknown,
@@ -161,18 +205,25 @@ export function parseRegionArrangementRecord(
       ? {
           visible: parseVisible(stored.visible, id, fallback.visible),
           size: parseSize(stored.size, id, fallback.size),
-          occupant: parseOccupant(stored.occupant, id, registry),
+          ...parseOccupant(stored.occupant, id, registry),
           maximized: parseMaximized(stored.maximized),
         }
       : { ...fallback };
-    if (state.occupant !== null) {
-      if (seen.has(state.occupant)) {
-        // A duplicate's later region is emptied AND hidden: an empty dock
-        // region is never shown (`placeSurface` hides a vacated one).
-        state.occupant = null;
-        state.visible = false;
-      } else seen.add(state.occupant);
+    if (state.panes.some((pane) => seen.has(pane))) {
+      // A duplicate is dropped from the later region; a region left with
+      // nothing is emptied AND hidden: an empty dock region is never shown
+      // (`placeSurface` hides a vacated one).
+      Object.assign(
+        state,
+        normalizeRegionPanes(
+          id,
+          state.panes.filter((pane) => !seen.has(pane)),
+          state.occupant,
+        ),
+      );
+      if (state.panes.length === 0) state.visible = id === 'main';
     }
+    for (const pane of state.panes) seen.add(pane);
     // The same invariants `updateRegion` holds for live state: `main` is
     // never maximized, nor is a hidden or empty region. Stored bytes can say
     // anything; the shell must never mount a blank full-height panel from
@@ -196,12 +247,18 @@ export function parseRegionArrangementRecord(
   return arrangement;
 }
 
+/**
+ * Both sides are canonical records — `toRegionArrangementRecord`'s output,
+ * or a stored value re-serialised through it (`recordOf`) — so the writer's
+ * key order holds on both and a serialised comparison is a field-by-field
+ * one: kind and id for a surface; panes in order and the selection for a
+ * pane host.
+ */
 function occupantsEqual(
   a: RegionOccupantRecord | null,
   b: RegionOccupantRecord | null,
 ): boolean {
-  if (a === null || b === null) return a === b;
-  return a.kind === b.kind && a.id === b.id;
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 /** Field-by-field equality of two records — the byte-identical skip the provider uses to tell its own write coming back from another tab's. */

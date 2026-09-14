@@ -10,6 +10,21 @@ export const DOCK_REGION_IDS = [
 export interface RegionState {
   visible: boolean;
   size: number;
+  /**
+   * The surfaces placed in this region, in tab order (#2046 2a). A dock
+   * region may hold several; `main` holds at most one (it keeps
+   * displacement, #928 C2a). No surface is in two regions' `panes` at once
+   * (`placeSurface` removes it from the region it leaves) and no id repeats
+   * within one. `updateRegion` and the record parser hold these.
+   */
+  panes: readonly string[];
+  /**
+   * The SELECTED pane — the one the region's host shows — derived from
+   * `panes`: always a member of it, or null when the region is empty. Every
+   * pre-#2046 reader of "the region's occupant" reads this and keeps its
+   * meaning for a one-pane region; `occupiedRegion` and its siblings read
+   * `panes`, so a surface behind another's tab is still "in" its region.
+   */
   occupant: string | null;
   /**
    * Whether this region is expanded over the workspace (#928 slice iii,
@@ -26,10 +41,34 @@ export type RegionArrangement = Record<RegionId, RegionState>;
 
 export const DEFAULT_DEVICE_REGION_ARRANGEMENT: RegionArrangement = {
   // `main` is always visible and Home is its default occupant (#928 C2a).
-  main: { visible: true, size: 0, occupant: 'home', maximized: false },
-  left: { visible: false, size: 400, occupant: null, maximized: false },
-  right: { visible: false, size: 400, occupant: null, maximized: false },
-  bottom: { visible: false, size: 320, occupant: 'chat', maximized: false },
+  main: {
+    visible: true,
+    size: 0,
+    panes: ['home'],
+    occupant: 'home',
+    maximized: false,
+  },
+  left: {
+    visible: false,
+    size: 400,
+    panes: [],
+    occupant: null,
+    maximized: false,
+  },
+  right: {
+    visible: false,
+    size: 400,
+    panes: [],
+    occupant: null,
+    maximized: false,
+  },
+  bottom: {
+    visible: false,
+    size: 320,
+    panes: ['chat'],
+    occupant: 'chat',
+    maximized: false,
+  },
 };
 
 type DockSeedSettings = Pick<
@@ -43,15 +82,25 @@ export function occupiedDockRegion(
   arrangement: RegionArrangement,
   surfaceId: string,
 ): DockRegionId | undefined {
-  return DOCK_REGION_IDS.find((id) => arrangement[id].occupant === surfaceId);
+  return DOCK_REGION_IDS.find((id) =>
+    arrangement[id].panes.includes(surfaceId),
+  );
 }
 
-/** The region (dock or `main`) holding a surface, if any. */
+/**
+ * The region (dock or `main`) holding a surface, if any — holding, not
+ * showing: a surface behind another pane's tab is still placed there.
+ */
 export function occupiedRegion(
   arrangement: RegionArrangement,
   surfaceId: string,
 ): RegionId | undefined {
-  return REGION_IDS.find((id) => arrangement[id].occupant === surfaceId);
+  return REGION_IDS.find((id) => arrangement[id].panes.includes(surfaceId));
+}
+
+/** Whether a region holds no pane. */
+function regionIsEmpty(state: RegionState): boolean {
+  return state.panes.length === 0;
 }
 
 export function isDockRegion(id: RegionId): id is DockRegionId {
@@ -77,9 +126,9 @@ export function firstFreeDockRegion(
   arrangement: RegionArrangement,
   preferred: DockRegionId,
 ): DockRegionId | undefined {
-  if (arrangement[preferred].occupant === null) return preferred;
-  return (['bottom', 'right', 'left'] as const).find(
-    (id) => arrangement[id].occupant === null,
+  if (regionIsEmpty(arrangement[preferred])) return preferred;
+  return (['bottom', 'right', 'left'] as const).find((id) =>
+    regionIsEmpty(arrangement[id]),
   );
 }
 
@@ -90,12 +139,27 @@ export function chatRegion(
   return occupiedDockRegion(arrangement, 'chat');
 }
 
+/**
+ * Whether `regionId` HOLDS Chat — selected or behind another pane's tab
+ * (#2046 2b, ownership decision D3). The one derivation behind everything
+ * that is Chat's rather than the selected pane's: `#chat-dock`, the "Dock"
+ * landmark, the `dock.maximize` registration (`DockShell`), the persisted
+ * snap key, the project binding's cleanup and the collapse-on-navigate
+ * mirror (`useDockShellChrome`). Two readers of one rule, not two rules.
+ */
+export function regionHoldsChat(
+  arrangement: RegionArrangement,
+  regionId: RegionId,
+): boolean {
+  return arrangement[regionId].panes.includes('chat');
+}
+
 export function foldedDockRegion(
   arrangement: RegionArrangement,
   lastShownRegion: RegionId | null,
 ): DockRegionId | undefined {
   const visibleOccupied = DOCK_REGION_IDS.filter(
-    (id) => arrangement[id].occupant !== null && arrangement[id].visible,
+    (id) => !regionIsEmpty(arrangement[id]) && arrangement[id].visible,
   );
   if (
     lastShownRegion &&
@@ -107,7 +171,7 @@ export function foldedDockRegion(
   return (
     visibleOccupied[0] ??
     chatRegion(arrangement) ??
-    DOCK_REGION_IDS.find((id) => arrangement[id].occupant !== null)
+    DOCK_REGION_IDS.find((id) => !regionIsEmpty(arrangement[id]))
   );
 }
 
@@ -132,7 +196,7 @@ export function syncRegionArrangementFromDock(
 ): RegionArrangement {
   let next = arrangement;
   for (const id of DOCK_REGION_IDS) {
-    if (next[id].occupant === null || next[id].occupant === 'chat') {
+    if (regionIsEmpty(next[id]) || next[id].panes.includes('chat')) {
       next = updateRegion(next, id, {
         size:
           id === 'bottom' ? settings.chatDockHeight : settings.chatDockWidth,
@@ -141,47 +205,68 @@ export function syncRegionArrangementFromDock(
   }
 
   const currentChatRegion = chatRegion(next);
-  if (next[placement].occupant === null) {
+  if (regionIsEmpty(next[placement])) {
     return placeSurface(next, 'chat', placement, isDockOpen);
   }
-  if (next[placement].occupant === 'chat') {
-    return updateRegion(next, placement, { visible: isDockOpen });
-  }
-  if (currentChatRegion) {
-    return updateRegion(next, currentChatRegion, { visible: isDockOpen });
-  }
+  // `dock=open` is Chat's mirror: an open shows CHAT, so its tab is selected
+  // in the region it opens (2a review, MEDIUM — a region showing Activity's
+  // tab used to open without Chat coming to the front). A close leaves the
+  // selection where it was.
+  const openChat = (region: DockRegionId) =>
+    updateRegion(
+      next,
+      region,
+      isDockOpen ? { visible: true, occupant: 'chat' } : { visible: false },
+    );
+  if (next[placement].panes.includes('chat')) return openChat(placement);
+  if (currentChatRegion) return openChat(currentChatRegion);
 
-  const freeRegion = (['bottom', 'left', 'right'] as const).find(
-    (id) => next[id].occupant === null,
+  // Chat is in no region (#2046 2b: its tab was closed, which unplaces it).
+  // Navigation saying the dock is CLOSED asks for nothing — an unplaced Chat
+  // is not shown — so the arrangement stands; re-placing it hidden here would
+  // undo the close on the next navigation change. `dock=open` (a
+  // `focusSession` reveal, a deep link) places it the way `revealSurface`
+  // would: into the first free dock region, else joining the requested one.
+  if (!isDockOpen) return next;
+  return placeSurface(
+    next,
+    'chat',
+    firstFreeDockRegion(next, placement) ?? placement,
+    true,
   );
-  return freeRegion
-    ? updateRegion(next, freeRegion, {
-        visible: isDockOpen,
-        occupant: 'chat',
-      })
-    : next;
 }
 
 /**
  * Place `surfaceId` in `regionId`, honouring the surface's declared regions
  * (`surfaceMayOccupy`; an ineligible placement returns the arrangement
- * unchanged — the toolbar never offers one, this is the backstop) and vacating
- * whichever region the surface came from.
+ * unchanged — the toolbar never offers one, this is the backstop) and
+ * removing it from whichever region it came from.
  *
- * What happens to the region's previous occupant depends on the target:
+ * What happens to the region's current panes depends on the target (#2046
+ * 2a, decision 3):
  *
- * - into a dock region, the displaced surface relocates — back into the
- *   region the incoming surface vacated when it may occupy it (a swap), else
- *   into its own registered `defaultRegion` when that is free, else into the
- *   first free region it declares, the opposite side first when a side is
- *   what it is leaving (see the ordered candidate list below), else it is
- *   unplaced;
- * - into `main`, the displaced surface is UNPLACED, never relocated. `main`
- *   is the primary area: replacing what it shows must not spawn a dock panel
- *   the user did not ask for (#928 C2a, owner decision).
+ * - into a dock region, the surface is ADDED as a pane — the last in tab
+ *   order — and selected; the panes already there stay, behind it. Nothing is
+ *   displaced any more: the pre-#2046 relocation of a displaced surface (the
+ *   swap back into the vacated region, the `defaultRegion` and opposite-side
+ *   search of #1386) is gone with the single-occupant region it served;
+ * - into `main`, the surface REPLACES what `main` shows and the previous
+ *   pane is UNPLACED, never relocated. `main` is the primary area: replacing
+ *   what it shows must not spawn a dock panel the user did not ask for (#928
+ *   C2a, owner decision), and it holds one pane.
+ *
+ * A surface already in the target region is SELECTED there (its tab shows)
+ * and the region made visible; its panes do not change.
+ *
+ * The region a surface leaves keeps its other panes, selecting the
+ * neighbour of the one that left when that was the selected pane; a region
+ * left empty hides (a dock region) or stays visible showing Home (`main`).
  *
  * `main` is always visible; the `visible` argument only applies to a dock
- * region.
+ * region, and only to what the placement itself shows: a placement asked
+ * not to show (`visible: false` — a `?dockSlotPlacement=` link without
+ * `dock=open`) into a region that is showing ANOTHER pane neither hides
+ * that region nor takes its tab; the surface joins behind it.
  */
 export function placeSurface(
   arrangement: RegionArrangement,
@@ -190,86 +275,162 @@ export function placeSurface(
   visible = true,
 ): RegionArrangement {
   if (!surfaceMayOccupy(surfaceId, regionId)) return arrangement;
-  const previousRegion = REGION_IDS.find(
-    (id) => id !== regionId && arrangement[id].occupant === surfaceId,
-  );
-  const displacedSurface = arrangement[regionId].occupant;
+  const target = arrangement[regionId];
   // A relocation never carries a maximize (#1385): the region a surface
   // enters and the region it leaves both come out restored, whatever either
   // was before. The one #1385 saw — Chat maximized in `bottom`, Activity
   // swapped in, Chat's shell re-propped to `right` still full-width over the
   // Activity shell the user had just asked for — is a maximize that was the
   // occupant's flag surviving a move; as the region's attribute it is written
-  // out here.
-  let next = updateRegion(arrangement, regionId, {
-    occupant: surfaceId,
-    visible: regionId === 'main' || visible,
+  // out here. Kept for a pane joining an occupied region too, so the rule
+  // stays "a placement restores the region it enters".
+  // Whether the reader is looking at another pane of this region right now.
+  const showingAnother =
+    target.visible && target.occupant !== null && target.occupant !== surfaceId;
+  // The region the surface leaves, if any (it is in at most one). Undefined
+  // when the surface is already in the target, which is then a select.
+  const previousRegion = REGION_IDS.find(
+    (id) => id !== regionId && arrangement[id].panes.includes(surfaceId),
+  );
+  const next = updateRegion(arrangement, regionId, {
+    panes: target.panes.includes(surfaceId)
+      ? target.panes
+      : regionId === 'main'
+        ? [surfaceId]
+        : [...target.panes, surfaceId],
+    occupant: visible || !showingAnother ? surfaceId : target.occupant,
+    visible: regionId === 'main' || visible || showingAnother,
     maximized: false,
   });
-  if (previousRegion) {
-    // An emptied dock region hides; an emptied `main` stays visible (the
-    // outlet treats a null occupant as Home).
-    next = updateRegion(next, previousRegion, {
-      occupant: null,
-      visible: previousRegion === 'main',
-      maximized: false,
-    });
-  }
-  if (displacedSurface === null || displacedSurface === surfaceId) return next;
-  if (regionId === 'main') return next;
-  const displacedVisible = arrangement[regionId].visible;
-  if (
-    previousRegion &&
-    previousRegion !== 'main' &&
-    surfaceMayOccupy(displacedSurface, previousRegion)
-  ) {
-    return updateRegion(next, previousRegion, {
-      occupant: displacedSurface,
-      visible: displacedVisible,
-      maximized: false,
-    });
-  }
-  // Where the displaced surface goes, in order: its own registered
-  // `defaultRegion` — the region it would have been revealed into had nothing
-  // placed it — then, when a SIDE is what it is leaving, the OTHER side, since
-  // a surface pushed out of `left` landing in `bottom` reshapes the whole
-  // workspace to move something sideways; then the historical order. The
-  // region the displaced surface just lost is not a candidate: the placer
-  // holds it now. (The region the PLACER vacated is a candidate — that is the
-  // swap above.)
-  //
-  // Every candidate must be a free dock region the surface DECLARES, so a
-  // relocation can never put one somewhere it does not declare and `main` is
-  // never a destination — the primary area is only ever handed to a surface
-  // placed there deliberately, even when its `defaultRegion` IS `main`.
-  //
-  // #1386: this was `firstFreeDockRegion(next, regionId)`, whose `preferred`
-  // argument was the region the PLACER had just taken. That region is occupied
-  // by definition here, so the preference could never fire and the fallback
-  // order decided every relocation.
-  const freeRegion = (
-    [
-      REGION_SURFACE_REGISTRY.get(displacedSurface)?.defaultRegion,
-      regionId === 'left' ? 'right' : regionId === 'right' ? 'left' : undefined,
-      'bottom',
-      'right',
-      'left',
-    ] as const
-  ).find(
-    (id): id is DockRegionId =>
-      id !== undefined &&
-      isDockRegion(id) &&
-      next[id].occupant === null &&
-      surfaceMayOccupy(displacedSurface, id),
+  if (!previousRegion) return next;
+  return withoutRegionPane(next, previousRegion, surfaceId);
+}
+
+/**
+ * Take `surfaceId` out of `regionId`'s panes. A region left with other panes
+ * keeps them and its visibility; when the pane leaving was the selected one,
+ * the pane at its position (or the last) is selected, the way closing a tab
+ * selects its neighbour. Either way the region comes out RESTORED: a pane
+ * leaving is a relocation, and every relocation restores (#1385) — a region
+ * left maximized after Chat's close would hide the region the next Chat
+ * reveal places into (index.css hides every non-maximized dock shell under
+ * a maximized one), with ⌘M no longer registered to undo it. An emptied dock
+ * region hides; an emptied `main` stays visible — the outlet treats a null
+ * occupant as Home. Shared by `placeSurface` (the region a surface leaves)
+ * and `removeRegionPane` (a closed tab), so the two cannot select different
+ * neighbours.
+ */
+function withoutRegionPane(
+  arrangement: RegionArrangement,
+  regionId: RegionId,
+  surfaceId: string,
+): RegionArrangement {
+  const previous = arrangement[regionId];
+  const index = previous.panes.indexOf(surfaceId);
+  if (index === -1) return arrangement;
+  const panes = previous.panes.filter((pane) => pane !== surfaceId);
+  return updateRegion(
+    arrangement,
+    regionId,
+    panes.length
+      ? {
+          panes,
+          occupant:
+            previous.occupant === surfaceId
+              ? panes[Math.min(index, panes.length - 1)]
+              : previous.occupant,
+          maximized: false,
+        }
+      : {
+          panes,
+          occupant: null,
+          visible: regionId === 'main',
+          maximized: false,
+        },
   );
-  if (freeRegion) {
-    return updateRegion(next, freeRegion, {
-      occupant: displacedSurface,
-      visible: displacedVisible,
-      maximized: false,
-    });
-  }
+}
+
+/**
+ * Close a pane's tab (#2046 2b): `surfaceId` leaves `regionId` and becomes
+ * the occupant of NO region — unplaced, the state `main`'s displacement
+ * already produces (#928 C2a) — rather than hidden in place. Hiding is what
+ * the region's visibility toggle does and it hides every pane of the region;
+ * a closed tab is one pane leaving while the others stay on screen. An
+ * unplaced surface reads as "show" to its chord, its toolbar row and
+ * `showSurface`, each of which places it afresh (`revealSurface`: its
+ * previous region when free, else its default), so a closed Chat comes back
+ * with ⌘D. The region keeps its other panes and selects the closed pane's
+ * neighbour (`withoutRegionPane`); a surface the region does not hold is
+ * ignored and the arrangement returned unchanged.
+ */
+export function removeRegionPane(
+  arrangement: RegionArrangement,
+  regionId: RegionId,
+  surfaceId: string,
+): RegionArrangement {
+  return withoutRegionPane(arrangement, regionId, surfaceId);
+}
+
+/**
+ * Move every pane of dock region `from` into dock region `to` (#2046 2b: the
+ * region bar's placement control moves the REGION — its tab order and its
+ * selection go with it — where the pre-2b header moved the one surface it
+ * belonged to). The panes join `to` after any it already holds, in `from`'s
+ * order, and `from`'s selected pane is selected there; `to` is shown, and
+ * both ends come out restored, the same rule `placeSurface` applies to a
+ * relocation (#1385). A pane that does not declare `to` (`surfaceMayOccupy`)
+ * stays behind, so `from` is emptied — and hides — only when everything
+ * moved. The same region, or an empty `from`, is returned unchanged.
+ */
+export function moveRegionPanes(
+  arrangement: RegionArrangement,
+  from: DockRegionId,
+  to: DockRegionId,
+): RegionArrangement {
+  if (from === to) return arrangement;
+  const source = arrangement[from];
+  if (regionIsEmpty(source)) return arrangement;
+  const target = arrangement[to];
+  const moving = source.panes.filter(
+    (pane) => !target.panes.includes(pane) && surfaceMayOccupy(pane, to),
+  );
+  const staying = source.panes.filter((pane) => !moving.includes(pane));
+  if (moving.length === 0) return arrangement;
+  const movedSelected =
+    source.occupant !== null && moving.includes(source.occupant);
+  let next = updateRegion(arrangement, to, {
+    panes: [...target.panes, ...moving],
+    occupant: movedSelected ? source.occupant : target.occupant,
+    visible: true,
+    maximized: false,
+  });
+  next = updateRegion(
+    next,
+    from,
+    staying.length
+      ? {
+          panes: staying,
+          occupant: movedSelected ? staying[0] : source.occupant,
+          maximized: false,
+        }
+      : { panes: [], occupant: null, visible: false, maximized: false },
+  );
   return next;
+}
+
+/**
+ * Select a pane the region holds: it becomes the region's `occupant`, the
+ * one its host shows (#2046 2a). A surface the region does not hold is not
+ * selected — nothing is placed by a select — and the arrangement is returned
+ * unchanged. Visibility and maximize are untouched.
+ */
+export function selectRegionPane(
+  arrangement: RegionArrangement,
+  regionId: RegionId,
+  surfaceId: string,
+): RegionArrangement {
+  if (!arrangement[regionId].panes.includes(surfaceId)) return arrangement;
+  return updateRegion(arrangement, regionId, { occupant: surfaceId });
 }
 
 /**
@@ -285,8 +446,13 @@ export function revealSurface(
 ): { arrangement: RegionArrangement; region: RegionId } {
   const occupied = occupiedRegion(arrangement, surfaceId);
   if (occupied) {
+    // Revealed AND selected: a surface behind another pane's tab is not on
+    // screen until its tab is (#2046 2a).
     return {
-      arrangement: updateRegion(arrangement, occupied, { visible: true }),
+      arrangement: updateRegion(arrangement, occupied, {
+        visible: true,
+        occupant: surfaceId,
+      }),
       region: occupied,
     };
   }
@@ -364,11 +530,14 @@ export type SurfaceToggle =
  * visibility, with the coarse rule kept from the folded menu: on a
  * bottom-only device the surface is HIDDEN only when it is the folded region
  * (the one visible dock such a device has); any other placed-but-not-showing
- * surface is shown alone instead. Occupying `main` moves the surface to its
- * `defaultRegion` when that is a dock region — visible, and folded alone on a
- * coarse device — so a chord that "hides" a `main` occupant leaves Home
- * behind (an emptied `main` reads as Home) rather than doing nothing.
- * Unplaced means show.
+ * surface is shown alone instead. A surface the region holds behind another
+ * pane's tab is not showing, so its toggle SELECTS it (#2046 2a) — on a fine
+ * pointer in place, on a coarse device through the show path — and only the
+ * selected pane's toggle hides its region. Occupying `main` moves the
+ * surface to its `defaultRegion` when that is a dock region — visible, and
+ * folded alone on a coarse device — so a chord that "hides" a `main`
+ * occupant leaves Home behind (an emptied `main` reads as Home) rather than
+ * doing nothing. Unplaced means show.
  */
 export function toggleSurface(
   arrangement: RegionArrangement,
@@ -393,9 +562,11 @@ export function toggleSurface(
       shownRegion: defaultRegion,
     };
   }
+  const region = arrangement[occupied];
+  const showing = region.visible && region.occupant === surfaceId;
   if (options.bottomOnly) {
     const folded = foldedDockRegion(arrangement, options.lastShownRegion);
-    if (occupied === folded && arrangement[occupied].visible) {
+    if (occupied === folded && showing) {
       return {
         kind: 'arrangement',
         arrangement: updateRegion(arrangement, occupied, { visible: false }),
@@ -404,11 +575,14 @@ export function toggleSurface(
     }
     return { kind: 'show' };
   }
-  const visible = !arrangement[occupied].visible;
   return {
     kind: 'arrangement',
-    arrangement: updateRegion(arrangement, occupied, { visible }),
-    shownRegion: visible ? occupied : null,
+    arrangement: updateRegion(
+      arrangement,
+      occupied,
+      showing ? { visible: false } : { visible: true, occupant: surfaceId },
+    ),
+    shownRegion: showing ? null : occupied,
   };
 }
 
@@ -434,6 +608,12 @@ export function dockMirrorDiff(
     : false;
   if (placement && next[placement].visible !== previousVisible)
     result.visible = next[placement].visible;
+  // Chat in no region (#2046 2b: its tab closed) is Chat not showing, and
+  // navigation must say so — `focusSession`'s `setDockState(true, …)` is a
+  // CHANGE only against a closed mirror, and that change is what re-places
+  // Chat (`syncRegionArrangementFromDock`). Emitted once, on the leave.
+  if (!placement && previousPlacement && previousVisible)
+    result.visible = false;
   if (
     placement &&
     next[placement].visible &&
@@ -442,7 +622,7 @@ export function dockMirrorDiff(
     result.maximized = next[placement].maximized;
   const sizes: Partial<Record<RegionId, number>> = {};
   for (const id of DOCK_REGION_IDS)
-    if (next[id].occupant === 'chat' && next[id].size !== previous[id].size)
+    if (next[id].panes.includes('chat') && next[id].size !== previous[id].size)
       sizes[id] = next[id].size;
   if (Object.keys(sizes).length) result.size = { ...result.size, ...sizes };
   return result;
@@ -536,9 +716,31 @@ function regionStatesEqual(a: RegionState, b: RegionState): boolean {
   return (
     a.visible === b.visible &&
     a.size === b.size &&
+    // Surface ids carry no comma (`createSurfaceRegistry` ids are words),
+    // so the joined form compares the lists element by element, in order.
+    String(a.panes) === String(b.panes) &&
     a.occupant === b.occupant &&
     a.maximized === b.maximized
   );
+}
+
+/**
+ * The pane invariants of one region (#2046 2a): no id repeats in `panes`,
+ * `main` holds at most one pane (the selected one), and `occupant` is a
+ * member of `panes` — the requested one when it is, else the first — or null
+ * when the region is empty. Returns `panes` by reference when it already
+ * satisfies them, so an unchanged set keeps its identity.
+ */
+export function normalizeRegionPanes(
+  id: RegionId,
+  panes: readonly string[],
+  occupant: string | null,
+): Pick<RegionState, 'panes' | 'occupant'> {
+  let set = new Set(panes).size === panes.length ? panes : [...new Set(panes)];
+  const selected =
+    occupant !== null && set.includes(occupant) ? occupant : (set[0] ?? null);
+  if (id === 'main' && set.length > 1) set = selected ? [selected] : [];
+  return { panes: set, occupant: selected };
 }
 
 /**
@@ -547,15 +749,31 @@ function regionStatesEqual(a: RegionState, b: RegionState): boolean {
  * region is never maximized (the region-level form of "a closed dock is never
  * maximized", archive#795 — `is-collapsed` and `is-maximized` together render
  * a blank full-height shell), and at most one region is maximized at a time,
- * so maximizing one restores every other. Returns the same reference when
- * nothing changes.
+ * so maximizing one restores every other — and the pane invariants
+ * (`normalizeRegionPanes`). Returns the same reference when nothing changes.
+ *
+ * A patch naming `occupant` without `panes` is the single-occupant write
+ * (every pre-#2046 caller, the legacy dock seed): `null` empties the region,
+ * an id the region holds selects it, and an id it does not hold REPLACES its
+ * panes. A patch naming `panes` sets the tab order outright, with `occupant`
+ * (when given and a member) the selected one.
  */
 export function updateRegion(
   arrangement: RegionArrangement,
   id: RegionId,
   patch: Partial<RegionState>,
 ): RegionArrangement {
-  const merged: RegionState = { ...arrangement[id], ...patch };
+  const previous = arrangement[id];
+  const merged: RegionState = { ...previous, ...patch };
+  if (patch.occupant !== undefined && patch.panes === undefined) {
+    if (patch.occupant === null) merged.panes = [];
+    else if (!previous.panes.includes(patch.occupant))
+      merged.panes = [patch.occupant];
+  }
+  Object.assign(
+    merged,
+    normalizeRegionPanes(id, merged.panes, merged.occupant),
+  );
   if (
     merged.maximized &&
     (id === 'main' || !merged.visible || merged.occupant === null)

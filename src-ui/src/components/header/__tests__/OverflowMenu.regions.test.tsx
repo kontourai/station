@@ -14,10 +14,15 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const harness = vi.hoisted(() => ({
   regions: {
-    main: { visible: true, size: 0, occupant: null as string | null },
-    left: { visible: false, size: 400, occupant: null },
-    right: { visible: false, size: 400, occupant: null },
-    bottom: { visible: true, size: 320, occupant: 'chat' },
+    main: {
+      visible: true,
+      size: 0,
+      panes: [],
+      occupant: null as string | null,
+    },
+    left: { visible: false, size: 400, panes: [], occupant: null },
+    right: { visible: false, size: 400, panes: [], occupant: null },
+    bottom: { visible: true, size: 320, panes: ['chat'], occupant: 'chat' },
   },
   setRegion: vi.fn(),
   placeSurface: vi.fn(),
@@ -94,21 +99,25 @@ describe('OverflowMenu region section (#917)', () => {
     Object.assign(harness.regions.main, {
       visible: true,
       size: 0,
+      panes: [],
       occupant: null,
     });
     Object.assign(harness.regions.left, {
       visible: false,
       size: 400,
+      panes: [],
       occupant: null,
     });
     Object.assign(harness.regions.right, {
       visible: false,
       size: 400,
+      panes: [],
       occupant: null,
     });
     Object.assign(harness.regions.bottom, {
       visible: true,
       size: 320,
+      panes: ['chat'],
       occupant: 'chat',
     });
     harness.setRegion.mockReset();
@@ -254,7 +263,10 @@ describe('OverflowMenu region section (#917)', () => {
    * already is, and the tap would read as nothing happening.
    */
   test('a surface occupying main gets a Move row, not a Show toggle', () => {
-    harness.regions.main.occupant = 'activity';
+    Object.assign(harness.regions.main, {
+      panes: ['activity'],
+      occupant: 'activity',
+    });
     renderMenu();
 
     expect(

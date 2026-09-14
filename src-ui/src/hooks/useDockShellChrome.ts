@@ -24,7 +24,7 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { useProjects } from '../contexts/ProjectsContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { readToolbarHeight } from '../lib/toolbarGeometry';
-import { chatRegion } from '../regions/region-model';
+import { chatRegion, regionHoldsChat } from '../regions/region-model';
 import type { DockMode } from '../types';
 import {
   type DockSlotGeometry,
@@ -54,6 +54,15 @@ function clampDockWidth(value: number): number {
     MIN_DOCK_WIDTH,
     Math.min(value, window.innerWidth * MAX_DOCK_WIDTH_PERCENT),
   );
+}
+
+/** One pane of the shell's region, as the chrome reports it to a renderer. */
+export interface DockShellRegionPane {
+  id: string;
+  /** The surface's registered title. */
+  title: string;
+  /** Whether this is the pane the region shows. */
+  selected: boolean;
 }
 
 export interface DockShellChrome {
@@ -102,10 +111,21 @@ export interface DockShellChrome {
   /** Any dock occupant may maximize its region (#928 slice iii). */
   canMaximize: boolean;
   /**
+   * The panes of the shell's region, in tab order, with the selected one
+   * marked (#2046 2b). Derived from `RegionState.panes` and `occupant` so a
+   * renderer that may not read the region model (Chat's mobile overflow
+   * sheet lists the region's other panes; `region-surface-boundary.test.ts`)
+   * still knows what shares its region. Empty without a region model.
+   */
+  regionPanes: readonly DockShellRegionPane[];
+  /** Select one of `regionPanes` — the model's `selectPane` for this region. */
+  selectRegionPane: (surfaceId: string) => void;
+  /**
    * Whether this instance registers `dock.maximize`. The chord acts on the
    * registering shell's region only (the registry is last-register-wins and
-   * `DockShell` registers from the shell holding Chat), so a shell that does
-   * not own it must not advertise ⌘M beside its maximize control.
+   * `DockShell` registers from the shell whose region HOLDS Chat, selected or
+   * not — #2046 2b, D3), so a shell that does not own it must not advertise
+   * ⌘M beside its maximize control.
    */
   ownsMaximizeShortcut: boolean;
   applyDockSnap: (next: DockSnap) => void;
@@ -254,6 +274,18 @@ export function useDockShellChrome({
       : isDockOpen;
   const shellOccupant =
     regionId && regionModel ? regionModel.regions[regionId].occupant : 'chat';
+  // Whether the shell's region HOLDS Chat — selected or behind another
+  // pane's tab (#2046 2b, ownership decision D3). Everything that is Chat's
+  // rather than the selected pane's keys on this: `#chat-dock`, the
+  // `dock.maximize` registration, the persisted snap key, the project
+  // binding's cleanup, the collapse-on-navigate mirror. The model-less mount
+  // and the fullscreen pane's local instance are Chat's by construction.
+  const shellHoldsChat =
+    regionId && regionModel
+      ? regionHoldsChat(regionModel.regions, regionId)
+      : true;
+  const shellPanes =
+    regionId && regionModel ? regionModel.regions[regionId].panes : undefined;
   // Maximize is the REGION's attribute (#928 slice iii, #1385): every shell
   // reads its own region, whatever it holds. Navigation's `isDockMaximized`
   // is Chat's mirror of it (the provider writes it from Chat's region), read
@@ -300,14 +332,14 @@ export function useDockShellChrome({
     isConfirmedLoaded: projectsConfirmedLoaded,
   } = useProjects();
   useEffect(() => {
-    if (!publishesDockSlotClearance || shellOccupant !== 'chat') return;
+    if (!publishesDockSlotClearance || !shellHoldsChat) return;
     if (!activeProjectSlug || !projectsConfirmedLoaded) return;
     const boundProjectStillExists = projectsForBindingCleanup.some(
       (project) => project.slug === activeProjectSlug,
     );
     if (!boundProjectStillExists) setActiveProjectSlug(null);
   }, [
-    shellOccupant,
+    shellHoldsChat,
     publishesDockSlotClearance,
     activeProjectSlug,
     projectsConfirmedLoaded,
@@ -377,8 +409,17 @@ export function useDockShellChrome({
   // `station.chatDock.snap` is Chat's key; other shells start from the default
   // and keep their snap in memory (see `applyDockSnap`).
   const [dockSnap, setDockSnap] = useState<DockSnap>(() =>
-    shellOccupant === 'chat' ? readDockSnap() : DEFAULT_DOCK_SNAP,
+    shellHoldsChat ? readDockSnap() : DEFAULT_DOCK_SNAP,
   );
+  // A shell that BECOMES Chat's — Chat joins a region that was Activity's
+  // alone (#2046 2a joins rather than displaces) — adopts Chat's persisted
+  // snap the way a mount holding Chat does, so its next `applyDockSnap`
+  // does not overwrite the key with the default it started from.
+  const [seededForChat, setSeededForChat] = useState(shellHoldsChat);
+  if (shellHoldsChat !== seededForChat) {
+    setSeededForChat(shellHoldsChat);
+    if (shellHoldsChat) setDockSnap(readDockSnap());
+  }
   const [liveDragHeight, setLiveDragHeight] = useState<number | null>(null);
   const isCollapsedDragPreview = !readerIsDockOpen && liveDragHeight !== null;
 
@@ -409,7 +450,7 @@ export function useDockShellChrome({
   const applyDockSnap = useCallback(
     (next: DockSnap) => {
       setDockSnap(next);
-      if (shellOccupant === 'chat') writeDockSnap(next);
+      if (shellHoldsChat) writeDockSnap(next);
       const px = dockSnapPixels(next, {
         viewportHeight: visualViewport.height,
         toolbarHeight,
@@ -432,7 +473,7 @@ export function useDockShellChrome({
       dockHeight,
       setDockHeight,
       setShellDockState,
-      shellOccupant,
+      shellHoldsChat,
       visualViewport.height,
     ],
   );
@@ -446,11 +487,33 @@ export function useDockShellChrome({
     [setDockHeight, setShellDockState],
   );
 
+  // The region bar's placement control moves the REGION (#2046 2b): every
+  // pane the shell's region holds, in order, with its selection — not the
+  // one pane it happens to show. The model-less mount has no region to move.
   const commitDockPlacement = useCallback(
     (mode: DockMode) => {
-      if (shellOccupant) regionModel?.placeSurface(shellOccupant, mode);
+      if (regionModel && readerRegion)
+        regionModel.moveRegionPanes(readerRegion, mode);
     },
-    [regionModel, shellOccupant],
+    [readerRegion, regionModel],
+  );
+
+  const regionPanes = useMemo<readonly DockShellRegionPane[]>(
+    () =>
+      regionModel && shellPanes
+        ? shellPanes.map((id) => ({
+            id,
+            title: regionModel.surfaces.get(id)?.title ?? id,
+            selected: id === shellOccupant,
+          }))
+        : [],
+    [regionModel, shellOccupant, shellPanes],
+  );
+  const selectRegionPane = useCallback(
+    (surfaceId: string) => {
+      if (regionModel && regionId) regionModel.selectPane(regionId, surfaceId);
+    },
+    [regionId, regionModel],
   );
 
   // archive#869 / archive#1298: a maximized dock is opaque and full-height, so navigating
@@ -489,10 +552,10 @@ export function useDockShellChrome({
     const reconciled = snapAfterNavigationRestore(dockSnap);
     if (reconciled) {
       setDockSnap(reconciled);
-      if (shellOccupant === 'chat') writeDockSnap(reconciled);
+      if (shellHoldsChat) writeDockSnap(reconciled);
     }
     setDockHeight(previousDockHeight);
-    if (shellOccupant === 'chat') collapseMaximizedDock();
+    if (shellHoldsChat) collapseMaximizedDock();
     if (regionModel && readerRegion)
       regionModel.setRegion(readerRegion, { maximized: false });
   }, [
@@ -502,7 +565,7 @@ export function useDockShellChrome({
     collapseMaximizedDock,
     readerRegion,
     regionModel,
-    shellOccupant,
+    shellHoldsChat,
   ]);
 
   const previousPathnameRef = useRef(pathname);
@@ -707,6 +770,8 @@ export function useDockShellChrome({
         ? (regionModel.surfaces.get(shellOccupant)?.title ?? shellOccupant)
         : 'Chat',
     canMaximize: shellOccupant !== null,
+    regionPanes,
+    selectRegionPane,
     ownsMaximizeShortcut: registersDockShortcuts,
     applyDockSnap,
     commitDesktopBottomHeight,

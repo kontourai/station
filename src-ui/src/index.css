@@ -1588,6 +1588,105 @@ button:hover {
   color: var(--text-primary);
 }
 
+/* #2046 2b: the region's tab strip, inside the region bar between the
+   placement grab and the selected pane's own toolbar. One tab per pane the
+   region holds; the pressed tab is the pane on screen. Sized to the bar's
+   row, not to a row of its own — the bar is the dock's one chrome bar
+   (#1064, #3309), and the strip shares it. */
+.region-tabs {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: stretch;
+  align-self: stretch;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.region-tabs__item {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.region-tabs__tab {
+  padding: 0 var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.region-tabs__tab:hover {
+  color: var(--text-primary);
+}
+
+.region-tabs__tab[aria-selected="true"] {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.region-tabs__tab:focus-visible,
+.region-tabs__close:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+/* The close, revealed the way the placement grab is (#1552 D3): on an
+   engaged bar, or always where nothing can hover. */
+.region-tabs__close {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chat-dock__header:hover .region-tabs__close,
+.chat-dock__header:focus-within .region-tabs__close {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.region-tabs__close:hover,
+.region-tabs__close:focus-visible {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* The slots a pane's own toolbar renders into (`RegionChromeSlots`): no box
+   of their own, so the pane's identity, meter and context are flex items of
+   the bar's clusters exactly as they were when the pane rendered the bar. */
+.chat-dock__pane-toolbar {
+  display: contents;
+}
+
+/* The `dock` host's active panel: the one element between the shell and the
+   pane, carrying the strip's `tabpanel` role. It fills the shell below the
+   bar the way the pane did as a direct child, and clips like it. */
+.workspace-pane-host__panel--dock {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* ─────────────────────────── ONE MENU PRIMITIVE ───────────────────────────
  *
  * #1552 D4. This shell had five independent menu vocabularies across six

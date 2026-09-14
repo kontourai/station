@@ -173,13 +173,25 @@ export type RegionArrangementRecordRegionId =
   | 'bottom';
 
 /**
- * What a region holds. `kind` is the extension point: a region occupied by
- * a surface today is `{ kind: 'surface', id }`; the pane-host direction
- * (docs/design/placement.md) adds `{ kind: 'pane-host', documentId }` as a
- * second variant with no migration, because a reader that meets an unknown
- * `kind` treats the region as empty rather than failing the record.
+ * What a region holds. `kind` is the extension point: a region holding one
+ * surface is `{ kind: 'surface', id }`; a region holding two or more is
+ * `pane-host` (#2046 2a), carrying its surfaces inline in tab order plus the
+ * selected one, so the arrangement is readable without the region's
+ * localStorage pane-host document. It names no document: the host derives
+ * the region's document id from the region, so a field naming it carried no
+ * fact the region id does not (2a review; the field was dropped in 2b).
+ * A single-pane region keeps writing `surface`, so a build that predates
+ * `pane-host` (the same-device stale-tab window) still reads every
+ * single-pane region; a reader that meets an unknown `kind` treats the
+ * region as empty rather than failing the record.
  */
-export type RegionOccupantRecord = { kind: 'surface'; id: string };
+export type RegionOccupantRecord =
+  | { kind: 'surface'; id: string }
+  | {
+      kind: 'pane-host';
+      panes: { kind: 'surface'; id: string }[];
+      selected?: string;
+    };
 
 export interface RegionArrangementRecordRegion {
   visible: boolean;

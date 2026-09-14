@@ -24,13 +24,16 @@ import {
   DOCK_REGION_IDS,
   type DockRegionId,
   dockMirrorDiff,
+  moveRegionPanes as moveRegionPanesInArrangement,
   placeSurface as placeSurfaceInArrangement,
   REGION_SURFACE_REGISTRY,
   type RegionArrangement,
   type RegionId,
   type RegionState,
+  removeRegionPane,
   revealSurface,
   seedRegionArrangementFromDock,
+  selectRegionPane,
   showSurfaceAlone,
   surfaceMayOccupy,
   syncRegionArrangementFromDock,
@@ -72,8 +75,36 @@ interface RegionModelValue {
   lastShownRegion: RegionId | null;
   surfaces: typeof REGION_SURFACE_REGISTRY;
   setRegion(id: RegionId, patch: Partial<RegionState>): void;
+  /**
+   * Place a surface (`placeSurface` in region-model.ts, #2046 2a): into a
+   * dock region it joins the panes there, selected; into `main` it replaces;
+   * into a region already holding it, it is selected and the region shown.
+   */
   placeSurface(surfaceId: string, regionId: RegionId): void;
+  /**
+   * Reveal a surface where it is — its region shown and its tab selected —
+   * or place it where it belongs (`revealSurface`/`showSurfaceAlone`).
+   */
   showSurface(surfaceId: string, intent?: SurfaceIntent): void;
+  /**
+   * Select a pane the region holds (#2046 2a): it becomes the region's
+   * `occupant`, the pane `RegionPaneHost` shows. Places nothing and changes
+   * no visibility; a surface the region does not hold is ignored.
+   */
+  selectPane(regionId: RegionId, surfaceId: string): void;
+  /**
+   * Close a pane's tab (#2046 2b, `removeRegionPane`): the surface leaves the
+   * region and is placed nowhere; the region keeps its other panes. A
+   * surface the region does not hold is ignored.
+   */
+  removePane(regionId: RegionId, surfaceId: string): void;
+  /**
+   * Move a dock region's whole pane set — tab order and selection — into
+   * another dock region (#2046 2b, `moveRegionPanes`): the region bar's
+   * placement control. The destination is shown and becomes the last shown
+   * region.
+   */
+  moveRegionPanes(from: DockRegionId, to: DockRegionId): void;
   /**
    * The surface's toggle — its chord, its row in the folded Regions menu, its
    * dock control's show/hide half. Decided once here, by the pure
@@ -140,11 +171,14 @@ const REGION_ARRANGEMENT_PERSIST_DELAY_MS = 150;
  * Where the arrangement starts (#928 D). Precedence, highest first:
  *
  * 1. A URL deep link, for Chat only: `dockSlotPlacement` PLACES Chat there
- *    (`placeSurface`, relocating whatever held the region by the model's own
- *    rule — the previous Chat region when it may, else the displaced
- *    surface's own default region, else the model's search order), and
- *    `dock=open` shows it. Read from the URL itself, not from
- *    navigation's blended `dockMode`, which falls back to the device setting.
+ *    (`placeSurface`: joining the panes the region holds, selected, since
+ *    #2046 2a — nothing is displaced from a dock region any more), and
+ *    `dock=open` shows it. Both are Chat's links, so when either CHANGES
+ *    the record — places or shows Chat — Chat's tab is selected in the
+ *    region it acts on (2a review); a param that merely remembers what the
+ *    record holds, the reload case, leaves the record's selection alone.
+ *    Read from the URL itself, not from navigation's blended `dockMode`,
+ *    which falls back to the device setting.
  * 2. The `regionArrangement` record: every surface's placement, every size,
  *    every visibility — Chat's included when the URL says nothing. A record
  *    equal to the registry default is one this device has never written and
@@ -157,8 +191,10 @@ const REGION_ARRANGEMENT_PERSIST_DELAY_MS = 150;
  *
  * Maximize follows the same order (#928 slice iii): the URL's `maximize=true`
  * is a Chat deep-link fact and maximizes Chat's region whichever path placed
- * it; otherwise the record's own `maximized` stands; the legacy seed carries
- * none of its own (navigation's flag IS the URL param).
+ * it — with Chat's tab selected there when the maximize is the URL's doing,
+ * since a maximized region showing another pane is not what the link named;
+ * otherwise the record's own `maximized` (and selection) stands; the legacy
+ * seed carries none of its own (navigation's flag IS the URL param).
  *
  * A mount is not a write: nothing here reaches navigation or device settings.
  * A record and legacy keys that disagree are reconciled by the mirror on the
@@ -173,11 +209,16 @@ function initialRegionArrangement(
   const arrangement = initialRegionPlacement(settings, dockMode, isDockOpen);
   if (!isDockMaximized) return arrangement;
   const chatAt = chatRegion(arrangement);
+  if (!chatAt) return arrangement;
   // `updateRegion` holds the invariants: a hidden Chat stays restored even
-  // if a hand-typed URL says `maximize=true` without `dock=open`.
-  return chatAt
-    ? updateRegion(arrangement, chatAt, { maximized: true })
-    : arrangement;
+  // if a hand-typed URL says `maximize=true` without `dock=open`. A
+  // maximize the record already holds is the URL remembering, and the
+  // record's selection stands; one the URL adds is Chat's link, and Chat's
+  // tab is what it maximizes (see `initialRegionPlacement`).
+  const maximized = updateRegion(arrangement, chatAt, { maximized: true });
+  return maximized === arrangement
+    ? arrangement
+    : selectRegionPane(maximized, chatAt, 'chat');
 }
 
 function initialRegionPlacement(
@@ -199,20 +240,30 @@ function initialRegionPlacement(
   // `isDockOpen` is a URL fact (`dock=open`; navigation-store.ts), so an
   // absent param defers to the record's own visibility for Chat.
   const chatVisible = isDockOpen || (chatAt ? stored[chatAt].visible : false);
-  if (linkedPlacement) {
-    return placeSurfaceInArrangement(
+  // The URL's Chat params persist across reloads (`setDockMode` and
+  // `setDockState` write them), so at load they are usually the URL
+  // REMEMBERING what the record already holds. Only a param that changes
+  // Chat's placement or visibility is acting as a link — and a link names
+  // Chat, so Chat's tab is what it shows (#2046 2b, 2a review); a param that
+  // changes nothing leaves the record's selection, which is the user's last
+  // tab choice, alone. A placement naming the region Chat is already in is
+  // therefore not re-placed (`placeSurface` would select it), only shown.
+  let next = stored;
+  if (linkedPlacement && chatAt !== linkedPlacement) {
+    next = placeSurfaceInArrangement(
       stored,
       'chat',
       linkedPlacement,
       chatVisible,
     );
-  }
-  if (isDockOpen) {
-    return chatAt
+  } else if (isDockOpen) {
+    next = chatAt
       ? updateRegion(stored, chatAt, { visible: true })
       : placeSurfaceInArrangement(stored, 'chat', dockMode, true);
   }
-  return stored;
+  if (next === stored) return stored;
+  const placed = chatRegion(next);
+  return placed ? selectRegionPane(next, placed, 'chat') : next;
 }
 
 function recordOf(value: unknown): RegionArrangementRecord | null {
@@ -295,6 +346,31 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     }
     if (regionId === 'main') navigateToMainOutlet();
   }, []);
+
+  const selectPane = useCallback((regionId: RegionId, surfaceId: string) => {
+    const next = selectRegionPane(regionsRef.current, regionId, surfaceId);
+    if (next === regionsRef.current) return;
+    regionsRef.current = next;
+    setRegions(next);
+  }, []);
+
+  const removePane = useCallback((regionId: RegionId, surfaceId: string) => {
+    const next = removeRegionPane(regionsRef.current, regionId, surfaceId);
+    if (next === regionsRef.current) return;
+    regionsRef.current = next;
+    setRegions(next);
+  }, []);
+
+  const moveRegionPanes = useCallback(
+    (from: DockRegionId, to: DockRegionId) => {
+      const next = moveRegionPanesInArrangement(regionsRef.current, from, to);
+      if (next === regionsRef.current) return;
+      regionsRef.current = next;
+      setLastShownRegion(to);
+      setRegions(next);
+    },
+    [],
+  );
 
   const showSurface = useCallback(
     (surfaceId: string, intent?: SurfaceIntent) => {
@@ -545,7 +621,15 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     // it, and Chat's region is what the shell renders.
     const chatAfterSync = chatRegion(next);
     if (chatAfterSync && next[chatAfterSync].maximized !== isDockMaximized) {
-      next = updateRegion(next, chatAfterSync, { maximized: isDockMaximized });
+      // A maximize is Chat's: its tab comes to the front of the region it
+      // maximizes. A restore leaves the selection alone.
+      next = updateRegion(
+        next,
+        chatAfterSync,
+        isDockMaximized
+          ? { maximized: true, occupant: 'chat' }
+          : { maximized: false },
+      );
     }
     if (next === current) return;
     regionsRef.current = next;
@@ -598,6 +682,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       setRegion,
       placeSurface,
       showSurface,
+      selectPane,
+      removePane,
+      moveRegionPanes,
       toggleSurface,
       surfaceIntents,
       consumeSurfaceIntent,
@@ -610,6 +697,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       setRegion,
       placeSurface,
       showSurface,
+      selectPane,
+      removePane,
+      moveRegionPanes,
       toggleSurface,
       surfaceIntents,
       consumeSurfaceIntent,

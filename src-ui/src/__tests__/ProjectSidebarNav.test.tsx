@@ -23,14 +23,20 @@ vi.mock('../contexts/RegionModelContext', () => ({
   useRegionModelOptional: () => ({
     toggleSurface: regionState.toggleSurface,
     regions: {
-      main: { visible: true, size: 0, occupant: regionState.mainOccupant },
-      left: { visible: false, size: 400, occupant: null },
+      main: {
+        visible: true,
+        size: 0,
+        panes: regionState.mainOccupant ? [regionState.mainOccupant] : [],
+        occupant: regionState.mainOccupant,
+      },
+      left: { visible: false, size: 400, panes: [], occupant: null },
       right: {
         visible: regionState.activityVisible,
         size: 400,
+        panes: ['activity'],
         occupant: 'activity',
       },
-      bottom: { visible: true, size: 320, occupant: 'chat' },
+      bottom: { visible: true, size: 320, panes: ['chat'], occupant: 'chat' },
     },
   }),
 }));
