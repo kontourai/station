@@ -21,7 +21,14 @@ const useStopProviderTaskMutation = vi.fn();
 const showSurface = vi.fn();
 let activeChat: string | null = 'chat-1';
 
-vi.mock('../../hooks/useBackgroundTasks', () => ({
+// `useChatStoreKey` stays REAL: it is the durable-id → store-key resolution
+// the pane's list depends on, and stubbing it here would hide the same seam
+// this file's `useChatBackgroundTasks` stub already hides. With no chat in
+// the store it returns its argument unchanged, so these cases still assert
+// the id the pane forwards. The divergent case lives in
+// `AgentsWorkspacePane.activeChat.test.tsx`, over the real store.
+vi.mock('../../hooks/useBackgroundTasks', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../hooks/useBackgroundTasks')>()),
   useChatBackgroundTasks: (...args: unknown[]) =>
     useChatBackgroundTasks(...args),
 }));

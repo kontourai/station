@@ -3,7 +3,10 @@ import { TaskRow } from '../components/chat-dock/backgroundTaskRows';
 import { Empty } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useShowSurface } from '../contexts/useShowSurface';
-import { useChatBackgroundTasks } from '../hooks/useBackgroundTasks';
+import {
+  useChatBackgroundTasks,
+  useChatStoreKey,
+} from '../hooks/useBackgroundTasks';
 
 /**
  * The work the conversation on screen set running, as a dock tab (#2050).
@@ -12,7 +15,9 @@ import { useChatBackgroundTasks } from '../hooks/useBackgroundTasks';
  * the same `TaskRow` — a placement of that list, not a second one. What it
  * shows is keyed by the ACTIVE CHAT rather than by anything the instance
  * carries, which is why the occurrence binds nothing: the pane is one pane,
- * and the conversation is navigation.
+ * and the conversation is navigation. Navigation's id is the DURABLE one, so
+ * it is resolved to the store's key before the lookup — see `useChatStoreKey`
+ * for why those are not the same string.
  *
  * Nothing is invented for a field the store does not carry. Elapsed time is
  * computed from `startedAt`/`endedAt`; tokens appear only where the provider
@@ -26,7 +31,14 @@ import { useChatBackgroundTasks } from '../hooks/useBackgroundTasks';
  */
 export function AgentsWorkspacePane() {
   const activeChat = useNavigation((state) => state.activeChat);
-  const { running, finished } = useChatBackgroundTasks(activeChat ?? null);
+  // Navigation carries the chat's DURABLE id; the background-tasks store is
+  // keyed by the session key, and the two diverge on every conversation
+  // reopened without a provider execution. `useChatStoreKey` is the store's
+  // own resolution — the same one the dock's badge effectively reads by
+  // passing `activeSessionId` — so the row's count and this list are the
+  // same list.
+  const chatKey = useChatStoreKey(activeChat ?? null);
+  const { running, finished } = useChatBackgroundTasks(chatKey);
   const showSurface = useShowSurface();
   const [now, setNow] = useState(() => Date.now());
 
