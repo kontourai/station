@@ -3,11 +3,11 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { BOOT_INTERNAL_SECRET_ENV_KEYS } from '../../../utils/child-process-environment.js';
 import {
+  appHomeActive,
   CONNECTION_CONFIG_HOME_ENV_KEYS,
   connectionSpawnEnv,
   sanitizeConnectionConfigHome,
   sanitizeConnectionEnvMap,
-  appHomeActive,
 } from '../connection-env.js';
 
 describe('sanitizeConnectionEnvMap (station#2072)', () => {

@@ -156,6 +156,13 @@ For Codex, prefer `configHome` pointing at a dedicated home whose
 `config.toml` sets `model_provider` to the proxy's provider entry, so model
 discovery lists what the proxy serves.
 
+Two boundaries to know: credential login/enrolment children do not receive
+`env` (they always run against the engine's normal config root), and changing
+`configHome` after sessions exist does not migrate their history — a resumed
+thread looks for its transcripts under the home that was active when it last
+ran. Malformed or oversized `env` entries (more than 64 entries or a value
+over 32 KiB) are dropped silently at save time.
+
 ---
 
 ## OpenAI-compatible endpoints

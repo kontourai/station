@@ -22,7 +22,10 @@ const CONNECTION_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
  * child must use the reaped engine-spawn directory). A configured TMPDIR
  * would be inert at both spawn seams regardless — the claude SDK env and
  * the codex `spawnCodexProcess` env both merge it last — so it is refused
- * up front rather than silently ignored.
+ * up front rather than silently ignored. POSIX scoping: this invariant is
+ * carried by `TMPDIR`; on Windows the spawn envs read `TEMP`/`TMP` via
+ * `os.tmpdir()`, which stay ambient (never Station-owned) with or without
+ * this refusal.
  */
 const CONNECTION_ENV_REFUSED_KEYS = new Set<string>([
   ...BOOT_INTERNAL_SECRET_ENV_KEYS,

@@ -3740,6 +3740,80 @@ describe('ClaudeAdapter', () => {
       await iterator.next();
       await iterator.next();
     });
+
+    test('a source-affinity cold resume keeps the connection routing keys and drops the config-home key', async () => {
+      const home = mkdtempSync(join(tmpdir(), 'station-claude-conn-env-src-'));
+      vi.stubEnv('CLAUDE_CONFIG_DIR', home);
+      try {
+        const identity = deriveConfigHomeAffinity('claude-config-home', home)!;
+        const options = {
+          resolveSourceHome: (affinity: typeof identity.affinity) =>
+            resolveConfigHomeAffinity('claude-config-home', home, affinity),
+          getConnectionEnv: async () => ({
+            ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+            CLAUDE_CONFIG_DIR: '/user/chosen/home',
+          }),
+        };
+        mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter(options);
+        const child = await adapter.adoptSession(
+          {
+            provider: 'claude',
+            threadId: 'station-child-conn-env',
+            sourceSessionId: 'vendor-source',
+            sourceKind: 'claude-transcript',
+            sourceAffinity: identity.affinity,
+            cwd: '/workspace/project',
+          },
+          {
+            onProviderChildCreationStarted: () => {},
+            onProviderChildCreated: () => {},
+          },
+        );
+        await adapter.stopSession('station-child-conn-env');
+        const adoptCall = mockQuery.mock.calls.at(-1)?.[0];
+        expect(adoptCall.options.env.ANTHROPIC_BASE_URL).toBe(
+          'http://127.0.0.1:8318',
+        );
+        // The connection's home key is dropped, but the spawn still runs
+        // under the SOURCE home — that is the whole point of adoption
+        // (the child must fork where its rollout lives).
+        expect(adoptCall.options.env.CLAUDE_CONFIG_DIR).toBe(home);
+
+        mockQuery.mockReturnValue(
+          createMockQuery([
+            {
+              type: 'system',
+              subtype: 'init',
+              session_id: 'vendor-child',
+              cwd: '/workspace/project',
+              model: 'claude-sonnet-4-6',
+              tools: [],
+              mcp_servers: [],
+            },
+          ]),
+        );
+        const restarted = new ClaudeAdapter(options);
+        const resumed = await restarted.startSession({
+          provider: 'claude',
+          threadId: 'station-child-conn-env',
+          resumeCursor: child.resumeCursor,
+          cwd: '/workspace/project',
+          persistSession: true,
+        });
+        await vi.waitFor(() => expect(resumed.status).toBe('ready'));
+        const resumeCall = mockQuery.mock.calls.at(-1)?.[0];
+        expect(resumeCall.options.env.ANTHROPIC_BASE_URL).toBe(
+          'http://127.0.0.1:8318',
+        );
+        expect(resumeCall.options.env.CLAUDE_CONFIG_DIR).toBe(home);
+        await restarted.stopSession('station-child-conn-env');
+      } finally {
+        vi.unstubAllEnvs();
+        rmSync(home, { recursive: true, force: true });
+      }
+    });
   });
 
   describe('#1156: Claude Agent SDK subprocess PATH augmentation', () => {

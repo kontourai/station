@@ -4175,6 +4175,40 @@ describe('CodexAdapter', () => {
       );
       await adapter.stopAll();
     });
+
+    test('station#2072: the quota probe child carries the connection env under the profile home', async () => {
+      processHandle = new FakeCodexProcess();
+      const processFactory = vi.fn(() => processHandle!);
+      const adapter = new CodexAdapter({
+        processFactory,
+        getAppHomeEnv: async () => ({ CODEX_HOME: '/profiles/a' }),
+        getConnectionEnv: async () => ({
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          CODEX_HOME: '/Users/brian/.codex_vibe',
+        }),
+      } as any);
+
+      const read = adapter.readQuotaSnapshot({
+        connectionId: 'codex',
+        credentialProfileRef: 'a',
+      });
+      await flushIo();
+      processHandle!.stdout.write(
+        `${JSON.stringify({ id: '1', result: {} })}\n`,
+      );
+      await flushIo();
+      processHandle!.stdout.write(
+        `${JSON.stringify({
+          id: '2',
+          result: { rateLimits: { primary: { usedPercent: 42 } } },
+        })}\n`,
+      );
+      await expect(read).resolves.toMatchObject({ kind: 'snapshot' });
+      expect(processFactory).toHaveBeenCalledWith({
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+        CODEX_HOME: '/profiles/a',
+      });
+    });
   });
 
   describe('station#1182: runtime-reported model', () => {
