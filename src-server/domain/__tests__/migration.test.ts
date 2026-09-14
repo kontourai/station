@@ -126,6 +126,31 @@ describe('runStartupMigrations', () => {
     expect(readFileSync(personalPath, 'utf8')).toBe(instanceBytes);
   });
 
+  test('a reserved root is skipped even when it holds a legacy-shaped file', async () => {
+    // The shape requirement alone cannot prove the reserved-root skip: every
+    // record a reserved root legitimately holds is already a `LayoutConfig`,
+    // so the shape check rejects it first and the skip never decides
+    // anything. This is the case that discriminates — a hand-placed or
+    // half-written legacy-shaped `layout.json` under `layouts/instance`,
+    // which the shape check would happily migrate.
+    tempDir = mkdtempSync(join(tmpdir(), 'migration-reserved-root-'));
+    const instanceDir = join(tempDir, 'layouts', 'instance');
+    mkdirSync(instanceDir, { recursive: true });
+    writeFileSync(
+      join(instanceDir, 'layout.json'),
+      JSON.stringify({
+        name: 'Shared',
+        slug: 'shared',
+        tabs: [{ id: 'workspace' }],
+      }),
+      'utf8',
+    );
+
+    await runStartupMigrations(tempDir);
+
+    expect(existsSync(join(tempDir, 'projects'))).toBe(false);
+  });
+
   test('a layout directory holding a record in its final form is left alone', async () => {
     // The skip is keyed on the reserved root names AND on the shape, so a
     // record that is already a `LayoutConfig` is not migrated wherever it sits.
