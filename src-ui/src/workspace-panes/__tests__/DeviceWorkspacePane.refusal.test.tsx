@@ -149,11 +149,13 @@ describe('a refused capture (#1969)', () => {
    * current.
    *
    * Dropping the retained frame reds the second image assertion. Retaining it
-   * WITHOUT keying it to the selection reds the last one, where the same
+   * WITHOUT keying it to the selection reds the third, where the same
    * retained frame would otherwise be captioned with a different device's
-   * name.
+   * name. Keying it but never CLEARING it reds the fourth: keying only
+   * withholds the frame while another device is selected, so coming back
+   * re-presents it.
    */
-  test('a refused re-capture keeps the frame that already arrived, and does not carry it to another device', async () => {
+  test('a refused re-capture keeps the frame that already arrived, and neither carries it to another device nor brings it back', async () => {
     stubDeviceFetch({
       inventory: readyInventory(),
       captures: [captureBody(), { status: 503 }],
@@ -174,6 +176,46 @@ describe('a refused capture (#1969)', () => {
 
     await click(screen.getByRole('radio', { name: /Pixel/ }));
     await waitFor(() => expect(screen.queryByRole('img')).toBeNull());
+
+    // And back. `click` has already awaited the re-render, so this is a plain
+    // assertion rather than a `waitFor`: a retained frame that survives the
+    // round trip is on screen in that same render, and a `waitFor` whose
+    // callback is satisfied on its first synchronous call would not be
+    // waiting for anything anyway.
+    await click(screen.getByRole('radio', { name: /iPhone/ }));
+    expect(screen.queryByRole('img')).toBeNull();
+  });
+
+  /**
+   * After a refusal, leaving the device and coming back brings back NEITHER
+   * half of what was on screen.
+   *
+   * `capture.reset()` clears the refusal on the way out, so a frame that
+   * survived the round trip would return alone: the capture the reader left
+   * behind, re-presented in the ordinary success position, with the failure
+   * that produced it gone. Removing `retained.current = null` from
+   * `selectDevice` reds the image assertion; keeping the refusal across the
+   * switch reds the other.
+   */
+  test('after a refusal, leaving the device and returning brings back neither the frame nor the refusal', async () => {
+    stubDeviceFetch({
+      inventory: readyInventory(),
+      captures: [captureBody(), { status: 503 }],
+    });
+    authorizeScope();
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await click(await screen.findByRole('radio', { name: /iPhone/ }));
+    await click(screen.getByRole('button', { name: 'Capture' }));
+    await screen.findByRole('img');
+
+    await click(screen.getByRole('button', { name: 'Capture' }));
+    await screen.findByText(/capture did not complete/);
+    expect(screen.getByRole('img')).toBeTruthy();
+
+    await click(screen.getByRole('radio', { name: /Pixel/ }));
+    await click(screen.getByRole('radio', { name: /iPhone/ }));
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(screen.queryByText(/capture did not complete/)).toBeNull();
   });
 
   /** Picking another device clears the previous refusal rather than keeping it. */

@@ -207,16 +207,28 @@ function DeviceWorkspacePaneSurface({
     frame is more informative than nothing, provided it says it is old, and
     this one says so by the same mechanism.
 
-    Keyed by the selected row so it can never outlive its subject. Switching
-    devices changes `selectedId` in the same commit that calls
-    `capture.reset()`, so the retained frame stops matching and disappears
-    with it — which is what keeps the caption's device name honest.
+    DROPPED when the selection changes, in `selectDevice`, rather than merely
+    withheld. Keying it to the selected row is not enough on its own: a frame
+    only hidden while another device is chosen comes BACK on switching back,
+    re-presenting a capture the reader left behind — and, after a refusal,
+    re-presenting it in the ordinary success position with the refusal that
+    produced it already cleared by the same switch. The id key stays as the
+    second line, so a frame that somehow outlived its clearing still could
+    not be captioned with another device's name.
   */
   const retained = useRef<{ id: string; frame: MobileDeviceCapture } | null>(
     null,
   );
-  if (capture.data && selectedId)
-    retained.current = { id: selectedId, frame: capture.data };
+  // Written after the commit, not during the render that produced it: a ref
+  // must not be mutated while rendering, and a render React discards would
+  // still have written this one. Reading it a render behind the write costs
+  // nothing — while `capture.data` is present it is what renders, and the
+  // retained copy is only ever read once `mutate` has cleared `data`, which
+  // is at least one commit later.
+  useEffect(() => {
+    if (capture.data && selectedId)
+      retained.current = { id: selectedId, frame: capture.data };
+  }, [capture.data, selectedId]);
   const frame: MobileDeviceCapture | undefined =
     capture.data ??
     (retained.current?.id === selectedId ? retained.current.frame : undefined);
@@ -241,6 +253,7 @@ function DeviceWorkspacePaneSurface({
     setSelectedId(`${device.platform}:${device.deviceId}`);
     writeDevicePaneState(devicePaneStorage(), requestScope, device);
     capture.reset();
+    retained.current = null;
   }
 
   if (inventory.isLoading)
