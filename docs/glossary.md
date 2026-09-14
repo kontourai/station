@@ -220,12 +220,16 @@ retired names.
   (`REGION_IDS`). The shell owns regions; nothing placed in one reads which
   region it is in.
 - **Surface** — a thing registered to occupy a region, with an id, title,
-  icon, keyboard chord and default region (`REGION_SURFACE_REGISTRY`). Chat
-  and Activity are surfaces. "Surface" means this in the region model and its
-  chrome; older prose still uses the lowercase word for any page or area, and
-  the Kontour product Surface is always written with its product name. The
-  twenty navigable places the palette and sidebar send you to are
-  **destinations** (`APP_DESTINATION_REGISTRY`).
+  icon, optional keyboard chord, default region and who offers it
+  (`REGION_SURFACE_REGISTRY`; `exposure`). Chat, Activity and, since #2047,
+  the docked Terminal, Diff and Files are surfaces; the last three are
+  **catalog-only** — offered by a dock region's "+" (the **dock catalog**)
+  rather than the toolbar, and bound to the dock's active project. "Surface"
+  means this in the region model and its chrome; older prose still uses the
+  lowercase word for any page or area, and the Kontour product Surface is
+  always written with its product name. The twenty navigable places the
+  palette and sidebar send you to are **destinations**
+  (`APP_DESTINATION_REGISTRY`).
 - **Layout** — a project's named view the sidebar navigates between: Coding,
   Tasks, Session board, or a plugin's (`LayoutConfig`, a server record whose
   `type` selects the renderer). Use **Layout** for the product object and its
