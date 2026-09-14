@@ -4,12 +4,38 @@ import { _getApiBase } from '../api';
 import { fetchLiveActivity } from '../client/live-activity';
 import { liveActivityQueries } from '../queryFactories';
 
-/** Mirrors the Project/Task room heartbeat cadence, without inventing liveness. */
+/**
+ * How often the projection is re-read, and half of the delay a UI must own up
+ * to: a participant leaves the server's projection when its heartbeat lease
+ * expires (`ttlMs: 30_000`), and a client cannot notice sooner than its next
+ * poll. Exported so a surface describing that bound to a user derives the
+ * number instead of quoting one — `packages/sdk/src/__tests__/live-activity.
+ * test.ts` pins it against the copy it bounds.
+ */
+export const LIVE_ACTIVITY_POLL_INTERVAL_MS = 10_000;
+
+/**
+ * Mirrors the Project/Task room heartbeat cadence, without inventing liveness.
+ *
+ * ABSENCE IS A VALUE, NOT AN ERROR. `fetchLiveActivity` answers `undefined`
+ * for a 404, which the route returns in three cases that are all "this Station
+ * does not publish live work" and none of which is a failure: a hosted
+ * Station, a Station with no room runtime, and a runtime whose activity is not
+ * available (`src-server/routes/orchestration/live-activity.ts`). That is a
+ * capability signal the transport is careful to preserve.
+ *
+ * A query, however, cannot HOLD `undefined`: query-core rejects a queryFn that
+ * resolves it, so the query lands in `status: 'error'` and every consumer sees
+ * a failing Station. Mapping to `null` here is what keeps the distinction
+ * alive across the seam — `data === null` means the Station answered and does
+ * not publish live work, `isError` means it did not answer — instead of
+ * destroying it one layer above the transport that took care to make it.
+ */
 export function useLiveActivityQuery() {
-  return useQuery<LiveActivityProjection | undefined>({
+  return useQuery<LiveActivityProjection | null>({
     queryKey: liveActivityQueries.current().queryKey,
-    queryFn: async () => fetchLiveActivity(await _getApiBase()),
-    staleTime: 10_000,
-    refetchInterval: 10_000,
+    queryFn: async () => (await fetchLiveActivity(await _getApiBase())) ?? null,
+    staleTime: LIVE_ACTIVITY_POLL_INTERVAL_MS,
+    refetchInterval: LIVE_ACTIVITY_POLL_INTERVAL_MS,
   });
 }

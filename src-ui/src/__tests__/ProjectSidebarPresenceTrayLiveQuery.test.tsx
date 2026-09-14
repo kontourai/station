@@ -6,11 +6,13 @@
  * contract parser, with only the network stubbed.
  *
  * This file exists because the tray's sibling suite mocks the hook, and a
- * mocked hook cannot reproduce the defect these tests pin: TanStack RETAINS
- * the last successful `data` when a later fetch rejects. Reading `data` alone
- * therefore keeps a roster on screen under copy asserting it is live — the
- * list of who WAS here, labelled as who IS here. Nothing short of a real cache
- * proves the tray refuses that.
+ * mocked hook cannot reproduce the defects these tests pin. TanStack RETAINS
+ * the last successful `data` when a later fetch rejects, so reading `data`
+ * alone keeps a roster on screen under copy asserting it is live — the list of
+ * who WAS here, labelled as who IS here. And query-core REFUSES a `undefined`
+ * result, which is how a 404 meaning "this Station does not publish live work"
+ * used to arrive dressed as a failing Station. Both are properties of the real
+ * cache; a mock can only assert what someone already believed.
  *
  * `retry: false` is the only production option overridden, and it is a test
  * harness choice, not the behaviour under test: it removes TanStack's default
@@ -154,33 +156,74 @@ test('a 503 on the first read says Station is not answering, not unavailable', a
   expect(container.querySelector('.sidebar__presence-count')).toBeNull();
 });
 
-// The disclosed gap, pinned so it stays visible. `fetchLiveActivity` maps a
-// 404 — the hosted deployment that serves no projection at all — to
-// `undefined`, and `useQuery` CANNOT carry an undefined value: it resolves to
-// `status: 'error'` with TanStack's own `["live-activity"] data is undefined`.
-// So the capability gap and the failing server are one state here, the tray
-// claims neither, and a branch that once claimed to tell them apart was
-// unreachable for every input. This test is what would go red if the fetcher
-// were ever changed to return a value for "no projection on this host" —
-// which is the fix, and belongs in the SDK.
-test('a 404 and a 503 are the same state here, and it claims neither cause', async () => {
+// A 404 is an ANSWER. The route returns it for a hosted Station, for a Station
+// with no room runtime, and for a runtime whose activity is not available —
+// three ways of saying "this Station does not publish live work", none of them
+// a failure. It used to reach the tray as an error, because `fetchLiveActivity`
+// maps 404 to `undefined` and query-core throws on a queryFn that resolves
+// `undefined`; the whole of that path is real here, with only the network
+// stubbed, so this test is the proof the fix holds end to end rather than a
+// statement about the mapping in isolation.
+test('a 404 says this Station does not publish live work, not that it is failing', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => jsonResponse({ error: 'unavailable' }, 404)),
   );
-  renderTray();
+  const { client, container } = renderTray();
   await waitFor(() =>
     expect(
       screen.getByRole('button', {
-        name: 'Who is here: Station is not answering',
+        name: 'Who is here: not published by this Station',
       }),
     ).toBeTruthy(),
   );
+  // No count, and no claim about people either way.
+  expect(container.querySelector('.sidebar__presence-count')).toBeNull();
   fireEvent.click(trigger());
   const tray = screen.getByRole('dialog', { name: 'Who is here' });
-  // It names both possibilities rather than picking one it cannot know.
-  expect(tray.textContent).toMatch(
-    /failing and one that does not offer presence/,
+  expect(tray.textContent).toMatch(/does not publish live work/);
+  expect(tray.textContent).not.toMatch(/did not answer/);
+  // The seam itself: absence survived as a VALUE the query can hold. If this
+  // is `undefined` again the query is in error and the copy above is a lie
+  // about a Station that answered.
+  expect(client.getQueryData(['live-activity'])).toBeNull();
+});
+
+// The anti-conflation test. These two are the states this component has most
+// reason to confuse — neither produces a roster, and for a while both arrived
+// as `status: 'error'` — so they are driven through the same real cache in one
+// test and required to DIFFER. A future change that collapses them fails here
+// whichever direction it collapses in.
+test('a 404 and a 503 are different states, and neither is described as the other', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => jsonResponse({ error: 'unavailable' }, 404)),
   );
-  expect(tray.textContent).not.toMatch(/unavailable on this Station/);
+  const absent = renderTray();
+  await waitFor(() =>
+    expect(trigger().getAttribute('aria-label')).toBeTruthy(),
+  );
+  await waitFor(() =>
+    expect(trigger().getAttribute('aria-label')).not.toBe(
+      'Who is here: not read yet',
+    ),
+  );
+  const absentName = trigger().getAttribute('aria-label');
+  absent.unmount();
+
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => jsonResponse({ error: 'down' }, 503)),
+  );
+  renderTray();
+  await waitFor(() =>
+    expect(trigger().getAttribute('aria-label')).not.toBe(
+      'Who is here: not read yet',
+    ),
+  );
+  const failingName = trigger().getAttribute('aria-label');
+
+  expect(absentName).toBe('Who is here: not published by this Station');
+  expect(failingName).toBe('Who is here: Station is not answering');
+  expect(absentName).not.toBe(failingName);
 });

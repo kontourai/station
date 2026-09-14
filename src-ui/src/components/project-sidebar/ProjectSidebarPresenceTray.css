@@ -165,7 +165,11 @@
    the child that keeps the trigger from rendering as an empty box here, and
    the component renders it unconditionally so that is true for every roster,
    not only an empty one. `src-ui/src/__tests__/ProjectSidebarFooter.test.tsx`
-   reads this file back and pins the glyph's absence from the hide list. */
+   applies this stylesheet under a real `.sidebar--collapsed` ancestor and pins
+   the COMPUTED display of all three children. It used to pin the weaker
+   property of the glyph class being absent from this rule's selector list,
+   which a reviewer defeated in one line by routing the same `display: none`
+   through `.sidebar__footer-presence` instead. */
 .sidebar--collapsed .sidebar__presence-count,
 .sidebar--collapsed .sidebar__presence-stack {
   display: none;

@@ -1,6 +1,7 @@
 import { ACTIVITY_SURFACE_ID } from '@kontourai/station-contracts/surface-deep-link';
 import {
   type LiveActivityParticipant,
+  type LiveActivityProjection,
   useLiveActivityQuery,
 } from '@kontourai/station-sdk/live-activity';
 import { type KeyboardEvent, useRef, useState } from 'react';
@@ -126,71 +127,86 @@ export function presenceSummary(participants: number, workers: number): string {
 }
 
 /**
- * THREE states, and only one of them is about people.
+ * What the query is telling us, as ONE value with four cases, so nothing
+ * downstream has to re-derive it from two booleans and a possibly-stale
+ * object. Only `roster` is a statement about people.
+ */
+type PresenceRead = 'roster' | 'unpublished' | 'pending' | 'unanswered';
+
+/**
+ * FOUR states, and the two that are not about people are not the same state.
  *
- * The one this shipped without, and the reason availability is gated on
- * `isError` rather than on `data` alone: TanStack keeps the last successful
- * `data` across a FAILING refetch. `fetchLiveActivity` throws on 5xx and on a
- * network failure (`packages/sdk/src/client/live-activity.ts`), so a Station
- * that goes away leaves the last good roster in the cache — and a tray reading
- * only `data` would keep that roster on screen under copy asserting it is
- * live. That is the stalest possible claim: a list of who WAS here, labelled
- * as who IS here. `roster` holds no memory of its own, but the cache it reads
- * does, so the refusal has to be enforced — in the caller's `available`, which
- * this function is handed rather than recomputing.
+ * `unanswered` is the one this shipped without, and the reason a roster is
+ * gated on `isError` rather than on `data` alone: TanStack keeps the last
+ * successful `data` across a FAILING refetch. `fetchLiveActivity` throws on
+ * 5xx and on a network failure (`packages/sdk/src/client/live-activity.ts`),
+ * so a Station that goes away leaves the last good roster in the cache — and a
+ * tray reading only `data` would keep that roster on screen under copy
+ * asserting it is live: a list of who WAS here, labelled as who IS here.
+ * `roster` holds no memory of its own, but the cache it reads does.
  *
- * WHAT THIS DELIBERATELY NO LONGER CLAIMS. An earlier cut had a fourth state,
- * "unavailable on this Station", for `data === undefined` with no error — the
- * hosted deployment that serves no projection at all
- * (`src-server/routes/orchestration/live-activity.ts` refuses when `hosted()`
- * holds, and `fetchLiveActivity` maps its 404 to `undefined`). That branch was
- * UNREACHABLE for every input, which the review's transient-503 finding led to
- * and a probe confirmed: `useQuery` cannot carry an `undefined` value, so a
- * 404 resolves to `status: 'error'` with TanStack's own
- * `["live-activity"] data is undefined`. Success therefore always has data,
- * and a branch conditioned on its absence could only ever be decoration.
- *
- * DISCLOSED GAP, not a solved problem: because both arrive as errors, a
- * Station that is failing and a Station that does not offer presence at all
- * are currently indistinguishable here, so the copy claims neither. Telling
- * them apart needs the fetcher to return a VALUE for "this host has no
- * projection" rather than `undefined` — an SDK change with other consumers
- * (`LiveCollaboratorsSection` renders null on the same input), which is why it
- * is not made here. `ProjectSidebarPresenceTrayLiveQuery.test.tsx` pins both
- * status codes landing in this one state so the conflation stays visible.
+ * `unpublished` is a real answer, not a failure, and getting it back took a
+ * fix one layer up. The route 404s in three cases — a hosted Station, no room
+ * runtime, and a runtime whose activity is not available
+ * (`src-server/routes/orchestration/live-activity.ts`) — all of which mean
+ * "this Station does not publish live work", and the transport preserves that
+ * as `undefined` on purpose. A query cannot HOLD `undefined` (query-core
+ * throws), so for a while every hosted Station reached this component as
+ * `status: 'error'` and the footer permanently told the user a correctly
+ * answering Station was failing. An earlier cut of this file carried a state
+ * for it and deleted it as unreachable; unreachable was true, and the right
+ * conclusion was that the distinction was being destroyed at the seam, not
+ * that it was fictional. `useLiveActivityQuery` now maps absence to `null`
+ * (`packages/sdk/src/query-domains/liveActivity.ts`), so `data === null` is
+ * the capability answer and `isError` still means "did not answer".
+ * `ProjectSidebarPresenceTrayLiveQuery.test.tsx` drives a 404 and a 503
+ * through the real cache and asserts they land in DIFFERENT states.
+ */
+function presenceRead(query: {
+  readonly data: LiveActivityProjection | null | undefined;
+  readonly isError: boolean;
+  readonly isPending: boolean;
+}): PresenceRead {
+  // Error first: under an error `data` is the last good answer, not the
+  // current one, so it outranks anything the cache is still holding.
+  if (query.isError) return 'unanswered';
+  if (query.data === null) return 'unpublished';
+  if (query.data !== undefined) return 'roster';
+  // No answer yet. `isPending` is exactly this case for this query, and is
+  // read rather than assumed so the state stays the library's, not ours.
+  return query.isPending ? 'pending' : 'unanswered';
+}
+
+/**
+ * The copy for each, derived from the single `read` rather than from a
+ * caller-side boolean whose meaning a second caller could get wrong: every
+ * case this function answers is named in its own parameter.
  */
 function presenceState(
-  /**
-   * The SAME boolean the caller gates its roster, its stack and its count on,
-   * passed in rather than re-derived from `pending`/`error` here. Two
-   * derivations of one decision cannot disagree today — `available` already
-   * carries the error-outranks-data precedence, since an errored query's
-   * `data` is the last good answer — but nothing bound them, and the state
-   * this function must never reach is exactly "the copy says who is here
-   * while the caller has decided it does not know".
-   */
-  available: boolean,
-  pending: boolean,
+  read: PresenceRead,
   participants: number,
   workers: number,
 ): { readonly name: string; readonly reads: string } {
-  if (available)
+  if (read === 'roster')
     return {
       name: presenceSummary(participants, workers),
       reads: `Publishing live work on the projects you share: ${presenceSummary(participants, workers)}. Read from each task room's live session, which a participant holds by heartbeat: one that stops is dropped when its lease expires, and this panel can take another poll to notice — up to about forty seconds, not the instant its tab closes. One participant per paired device, so one person on two devices counts twice.`,
     };
-  if (pending)
+  if (read === 'unpublished')
+    return {
+      name: 'not published by this Station',
+      reads:
+        'This Station answered, and it does not publish live work: hosted Stations and Stations without task-room orchestration have nobody to report. That is an answer about the Station, not about who is here, and not a failure to reach it.',
+    };
+  if (read === 'pending')
     return {
       name: 'not read yet',
       reads: 'Station has not finished reading who is here.',
     };
-  // Not available and not pending. The only way to get here is an error:
-  // success cannot carry `undefined` data (see above), so there is no fourth
-  // case hiding in this branch.
   return {
     name: 'Station is not answering',
     reads:
-      'Station did not answer, so this cannot say who is here. The last answer is not repeated, because it may no longer be true. A Station that is failing and one that does not offer presence at all both arrive here.',
+      'Station did not answer, so this cannot say who is here. The last answer is not repeated, because it may no longer be true.',
   };
 }
 
@@ -216,11 +232,12 @@ export function ProjectSidebarPresenceTray() {
   const trayRef = useMenuFocus<HTMLDivElement>(open, close);
 
   const { participants, workers } = roster(data?.participants);
-  // An errored query's `data` is the LAST GOOD answer, not the current one.
-  const available = data !== undefined && !isError;
+  const read = presenceRead({ data, isError, isPending });
+  // The one gate for the stack, the count and the rows: only a `roster` read
+  // is a statement about who is here.
+  const available = read === 'roster';
   const { name, reads } = presenceState(
-    available,
-    isPending,
+    read,
     participants.length,
     workers.length,
   );

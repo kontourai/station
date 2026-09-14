@@ -8,4 +8,7 @@ export {
   fetchLiveActivity,
   LiveActivityProtocolError,
 } from './client/live-activity.js';
-export { useLiveActivityQuery } from './query-domains/liveActivity.js';
+export {
+  LIVE_ACTIVITY_POLL_INTERVAL_MS,
+  useLiveActivityQuery,
+} from './query-domains/liveActivity.js';

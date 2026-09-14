@@ -478,20 +478,45 @@ describe('ProjectSidebarFooter', () => {
     ).toBeNull();
   });
 
-  // `undefined` data before the first read is not "nobody is here": that would
-  // be a claim about people made from the absence of an answer. The ERROR
-  // states (a failing server, and a host that serves no projection) need a
-  // real cache to reproduce and live in
+  // Three non-roster reads, each a different thing to say. `undefined` before
+  // the first answer is not "nobody is here" — that would be a claim about
+  // people made from the absence of an answer. `null` is the Station answering
+  // that it does not publish live work at all, which is not a failure. An
+  // error is the Station not answering. What these pin is the COPY for each;
+  // that the query really produces all three, and that the last two do not
+  // collapse into one, needs a real cache and lives in
   // `ProjectSidebarPresenceTrayLiveQuery.test.tsx`.
-  test('says it has not read yet rather than claiming nobody is here', () => {
-    liveActivity.data = undefined;
-    liveActivity.isPending = true;
-    const { container } = renderFooter();
-    expect(
-      screen.getByRole('button', { name: 'Who is here: not read yet' }),
-    ).toBeTruthy();
-    expect(container.querySelector('.sidebar__presence-count')).toBeNull();
-  });
+  test.each([
+    ['no answer yet', undefined, true, false, 'Who is here: not read yet'],
+    [
+      'a Station that does not publish live work',
+      null,
+      false,
+      false,
+      'Who is here: not published by this Station',
+    ],
+    [
+      'a Station that did not answer',
+      undefined,
+      false,
+      true,
+      'Who is here: Station is not answering',
+    ],
+  ])(
+    'says what it read rather than claiming nobody is here (%s)',
+    (_case, data, isPending, isError, name) => {
+      liveActivity.data = data;
+      liveActivity.isPending = isPending;
+      liveActivity.isError = isError;
+      const { container } = renderFooter();
+      expect(screen.getByRole('button', { name })).toBeTruthy();
+      expect(container.querySelector('.sidebar__presence-count')).toBeNull();
+      // No roster rows either: none of these three knows who is here.
+      expect(
+        screen.queryByRole('list', { name: 'Participants here' }),
+      ).toBeNull();
+    },
+  );
 
   // MED-3. The collapsed rail hides the stack and the count in CSS, so when
   // the glyph was the ELSE-branch of "is anyone here", a populated roster left
