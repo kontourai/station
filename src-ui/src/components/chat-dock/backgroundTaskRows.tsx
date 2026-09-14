@@ -22,7 +22,7 @@ import { AgentGlyph, TerminalGlyph } from '../icons/Glyph';
 import './BackgroundTasksSheet.css';
 
 /** `m:ss`, or `h:mm:ss` once an entry has run past an hour. */
-export function formatElapsed(ms: number): string {
+function formatElapsed(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -33,12 +33,12 @@ export function formatElapsed(ms: number): string {
     : `${minutes}:${pad(seconds)}`;
 }
 
-export const KIND_LABEL: Record<BackgroundTaskEntry['kind'], string> = {
+const KIND_LABEL: Record<BackgroundTaskEntry['kind'], string> = {
   tool: 'Tool',
   agent: 'Agent',
 };
 
-export const OUTCOME_LABEL: Partial<Record<BackgroundTaskState, string>> = {
+const OUTCOME_LABEL: Partial<Record<BackgroundTaskState, string>> = {
   completed: 'Completed',
   stopped: 'Stopped',
   // station#1558: not "Stopped" and not "Failed" — the session ended before
@@ -47,7 +47,7 @@ export const OUTCOME_LABEL: Partial<Record<BackgroundTaskState, string>> = {
   failed: 'Failed',
 };
 
-export function TaskGlyph({ kind }: { kind: BackgroundTaskEntry['kind'] }) {
+function TaskGlyph({ kind }: { kind: BackgroundTaskEntry['kind'] }) {
   return kind === 'tool' ? <TerminalGlyph /> : <AgentGlyph />;
 }
 

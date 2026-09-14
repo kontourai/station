@@ -280,7 +280,7 @@ export function isCanonicalBuiltinBoardDescriptor(
  * The Agents pane's declaration (#2050), compared field by field like every
  * other built-in.
  */
-export function isCanonicalBuiltinAgentsDescriptor(
+function isCanonicalBuiltinAgentsDescriptor(
   descriptor: WorkspacePaneDescriptor,
 ): boolean {
   return sameBuiltinDescriptor(descriptor, WORKSPACE_AGENTS_PANE_DESCRIPTOR);
@@ -291,7 +291,7 @@ export function isCanonicalBuiltinAgentsDescriptor(
  * every other built-in — a plugin cannot reach the built-in review surface by
  * reusing its renderer name.
  */
-export function isCanonicalBuiltinPullRequestDescriptor(
+function isCanonicalBuiltinPullRequestDescriptor(
   descriptor: WorkspacePaneDescriptor,
 ): boolean {
   return sameBuiltinDescriptor(
