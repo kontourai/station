@@ -85,8 +85,8 @@ export function IndependentReviewInspectorContent({
       ) : receipts.length === 0 && !unavailable && !isError ? (
         <Empty
           variant="compact"
-          label="No independent reviews yet"
-          description="Findings recorded here are evidence input for verification. They do not approve, reject, or satisfy a gate."
+          label="Nothing here yet"
+          description="No independent review has been recorded for this project. Findings recorded here are evidence input for verification; they do not approve, reject, or satisfy a gate."
         />
       ) : (
         <ul className="coding-inspector__reviews-list">
