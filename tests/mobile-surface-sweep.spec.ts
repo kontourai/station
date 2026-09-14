@@ -53,6 +53,27 @@ const SPLIT_PANE_ROUTES: ReadonlyArray<{ path: string; item: string }> = [
 const SWEEP_AGENT_SLUG = 'e2e-sweep-agent';
 const SWEEP_SKILL = 'e2e-sweep-skill';
 
+/**
+ * #2063: the panel is chrome on every route above, and its project rows now
+ * carry a wrapping row of layout chips. A wrapping band of touch-floor
+ * controls is exactly the shape that widens a drawer, so it is swept here
+ * with the rest of the phone's floors rather than asserted only in jsdom,
+ * which computes no layout and so cannot see a wrap or a 44px box at all.
+ *
+ * Real project, real layouts: the chips are what the server returns, and
+ * enough of them, with real-length names, that a ~250px drawer column cannot
+ * hold them on one line.
+ */
+const SWEEP_PROJECT_SLUG = 'e2e-sweep-chips';
+const SWEEP_PROJECT_NAME = 'E2E Sweep Chips';
+const SWEEP_LAYOUTS = [
+  { slug: 'coding', name: 'Coding', type: 'custom' },
+  { slug: 'tasks', name: 'Tasks', type: 'custom' },
+  { slug: 'chat', name: 'Chat', type: 'chat' },
+  { slug: 'knowledge', name: 'Knowledge', type: 'custom' },
+  { slug: 'release-review', name: 'Release review', type: 'custom' },
+];
+
 async function seedSweepItems(request: AuthenticatedE2ERequest): Promise<void> {
   await deleteAgent(request, SWEEP_AGENT_SLUG);
   await seedAgent(request, {
@@ -69,6 +90,19 @@ async function seedSweepItems(request: AuthenticatedE2ERequest): Promise<void> {
     },
   });
   expect(skill.ok()).toBe(true);
+
+  await request.delete(`/api/projects/${SWEEP_PROJECT_SLUG}`);
+  const project = await request.post('/api/projects', {
+    data: { name: SWEEP_PROJECT_NAME, slug: SWEEP_PROJECT_SLUG },
+  });
+  expect(project.status(), 'seeding the chip-row project').toBe(201);
+  for (const layout of SWEEP_LAYOUTS) {
+    const created = await request.post(
+      `/api/projects/${SWEEP_PROJECT_SLUG}/layouts`,
+      { data: layout },
+    );
+    expect(created.status(), `seeding layout ${layout.slug}`).toBe(201);
+  }
 }
 
 async function tearDownSweepItems(
@@ -76,6 +110,7 @@ async function tearDownSweepItems(
 ): Promise<void> {
   await deleteAgent(request, SWEEP_AGENT_SLUG);
   await request.delete(`/api/skills/${SWEEP_SKILL}`);
+  await request.delete(`/api/projects/${SWEEP_PROJECT_SLUG}`);
 }
 
 async function assertNoHorizontalScroll(
@@ -137,6 +172,42 @@ test.describe('Mobile surface sweep at 390x844', () => {
       });
       await assertNoHorizontalScroll(page, route);
     }
+  });
+
+  test('the project layout chips wrap inside the drawer and keep the 44px floor', async ({
+    page,
+  }) => {
+    await page.goto(`/projects/${SWEEP_PROJECT_SLUG}`);
+    await page.getByRole('button', { name: 'Toggle menu' }).click();
+
+    const chips = page.locator('.sidebar__layout-chips .sidebar__layout-chip');
+    await expect(chips.first()).toBeVisible({ timeout: 30_000 });
+    const boxes = await chips.evaluateAll((elements) =>
+      elements.map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          top: Math.round(rect.top),
+          right: rect.right,
+          width: rect.width,
+          height: rect.height,
+          text: element.textContent ?? '',
+        };
+      }),
+    );
+    expect(boxes.length).toBe(SWEEP_LAYOUTS.length);
+
+    // Wrapped, not overflowed: more than one row of chips, and none reaching
+    // past the viewport's right edge.
+    expect(new Set(boxes.map((box) => box.top)).size).toBeGreaterThan(1);
+    const undersized = boxes
+      .filter((box) => box.width < 44 || box.height < 44)
+      .map(
+        (box) => `${box.text} ${box.width.toFixed(0)}x${box.height.toFixed(0)}`,
+      );
+    expect(undersized, 'layout chips below the 44px touch floor').toEqual([]);
+    for (const box of boxes) expect(box.right).toBeLessThanOrEqual(390);
+
+    await assertNoHorizontalScroll(page, `/projects/${SWEEP_PROJECT_SLUG}`);
   });
 
   test('split-pane surfaces open the shared detail sheet and come back', async ({

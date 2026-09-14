@@ -100,6 +100,17 @@ export interface IStorageAdapter {
   getOwnedLayout?(owner: LayoutOwner, layoutSlug: string): LayoutConfig;
   createOwnedLayout?(owner: LayoutOwner, config: LayoutConfig): Promise<void>;
   deleteOwnedLayout?(owner: LayoutOwner, layoutSlug: string): Promise<void>;
+  /**
+   * Serialized read-modify-write for one non-project Layout (#2061). The
+   * updater sees `undefined` when no record exists, so create and update are
+   * the same transaction and neither needs an existence probe outside the
+   * lock.
+   */
+  mutateOwnedLayout?(
+    owner: LayoutOwner,
+    layoutSlug: string,
+    update: (current: LayoutConfig | undefined) => LayoutConfig,
+  ): Promise<LayoutConfig>;
 
   // Provider connections
   listProviderConnections(): ProviderConnectionConfig[];

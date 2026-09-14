@@ -623,6 +623,76 @@ Use the project-scoped layout endpoints under `/api/projects/:slug/layouts` inst
 
 ---
 
+## Personal Boards
+
+A **Board** is a Layout owned by a principal rather than a project
+(`docs/design/shell-ownership-and-boards.md`, decision D1). Boards are stored
+under the Station home keyed by principal, so the same Boards are served to
+every device that resolves to the same principal — a device identified by
+Tailscale WhoIs, or a paired device bound to a person. A bare paired device
+with no person binding resolves to a per-device principal instead and sees
+its own Boards; see `docs/design/principals.md` for how a request is placed.
+
+A caller the resolver cannot place at all is refused with `400` and
+`code: "principal_unresolved"` — a deterministic authorization failure, not a
+transient one, so retrying the same request with the same credential fails
+the same way.
+
+The owning principal is resolved from the request's own authentication. No
+path segment, body field, or query parameter names it, and a body that carries
+an `owner` is refused with 400 rather than accepted and stripped. A slug
+another principal owns answers exactly like a slug nobody owns — the same 404
+status and the same body — so the response cannot be used to discover whether
+someone else has a Board by that name.
+
+### List My Boards
+```http
+GET /api/me/layouts
+```
+
+### Create a Board
+```http
+POST /api/me/layouts
+Content-Type: application/json
+
+{
+  "slug": "daily-brief",
+  "name": "Daily brief",
+  "type": "custom",
+  "icon": "star",
+  "description": "Morning view",
+  "config": {}
+}
+```
+
+`slug` must be unique among the caller's own Boards; a repeat answers 409.
+
+### Get a Board
+```http
+GET /api/me/layouts/:layoutSlug
+```
+
+### Update a Board
+```http
+PUT /api/me/layouts/:layoutSlug
+Content-Type: application/json
+
+{ "name": "Renamed" }
+```
+
+Fields the body omits are left as stored. `id`, `slug`, `createdAt`, and the
+owner are immutable. The read and the write happen inside one per-record
+transaction, so two concurrent updates cannot lose one another's change.
+
+### Delete a Board
+```http
+DELETE /api/me/layouts/:layoutSlug
+```
+
+**Used by**: the Boards section of the left panel (#2062)
+
+---
+
 ## Workflow Management
 
 ### List Agent Workflows

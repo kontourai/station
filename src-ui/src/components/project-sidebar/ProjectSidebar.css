@@ -420,37 +420,8 @@
   line-height: 1rem;
 }
 
-.sidebar--collapsed .sidebar__project-name,
-.sidebar--collapsed .sidebar__chevron {
+.sidebar--collapsed .sidebar__project-name {
   display: none;
-}
-
-.sidebar__chevron {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  transition: transform var(--motion-fast);
-  padding: 4px;
-  cursor: pointer;
-  border-radius: 3px;
-  width: 20px;
-  height: 20px;
-  border: 0;
-  background: transparent;
-}
-
-.sidebar__chevron:hover {
-  background: var(--bg-hover);
-}
-
-.sidebar__chevron--open {
-  transform: translateY(-50%) rotate(90deg);
 }
 
 /* archive#3315: drag/keyboard reorder handle. Hidden until the row is hovered
@@ -459,7 +430,7 @@
 .sidebar__reorder-handle {
   position: absolute;
   top: 50%;
-  right: 30px;
+  right: 8px;
   transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
@@ -499,7 +470,7 @@
     opacity: 1;
     width: 28px;
     height: 44px;
-    right: 34px;
+    right: 4px;
   }
 
   /* The handle's 44px target must not exceed the row that contains it. The
@@ -518,27 +489,18 @@
      rail and scrolling anywhere else is unaffected.
 
      Collapsed rows render no handle and centre their icon, so they keep the
-     symmetric padding above. */
+     symmetric padding above.
+
+     #2063 retired the expand/collapse chevron with the nested layout tree, so
+     the handle is the row's only overlaid control and takes the column the
+     chevron used to hold: 4-32px from the right edge instead of 34-62px. The
+     text reservation follows it down — 36px clears the 32px the handle
+     occupies by 4px, exactly the clearance the 66px reservation gave when the
+     handle sat outboard of the chevron. archive#3346's rule for the chevron's
+     own 44px target went with the control it sized. */
   .sidebar:not(.sidebar--collapsed) .sidebar__project-btn {
     min-height: 44px;
-    padding-right: 66px;
-  }
-
-  /* archive#3346: the row's OTHER control. #3331 raised the handle beside it to
-     the 44px floor and left this one at 20x20, so a row had one control at the
-     floor and one under half of it. The hit area grows; the glyph does not —
-     the 12px `<svg>` stays centred and the box keeps its centre exactly where
-     the 20px one was (`right: 8px` + 20px wide and `right: 4px` + 28px wide
-     both centre at 18px from the row's right edge), so nothing moves visually.
-     28px is the widest this can be without reaching the handle: the handle
-     occupies 34-62px from that edge, the chevron now occupies 4-32px, leaving
-     2px between them, and the row's 66px text reservation still clears the
-     handle by 4px. The row is already `min-height: 44px` here, so the 44px
-     target does not overhang it. */
-  .sidebar:not(.sidebar--collapsed) .sidebar__chevron {
-    width: 28px;
-    height: 44px;
-    right: 4px;
+    padding-right: 36px;
   }
 }
 
@@ -592,43 +554,54 @@
   background: var(--bg-hover);
 }
 
-/* Layout rows */
-.sidebar__layouts {
-  padding-left: 12px;
-}
+/* Layout chips (#2063, design record D3). A wrapping row, not a list: the
+   chips are the project's children and read as one band under its name. They
+   wrap rather than scroll or truncate, because the tree they replace showed
+   every layout and a hidden chip is a layout a reader cannot reach from the
+   panel at all.
 
-.sidebar--collapsed .sidebar__layouts {
-  display: none;
-}
-
-.sidebar__layout-btn {
+   No `.sidebar--collapsed` rule: the row's own gate already covers it. The
+   class and the row's `collapsed` prop are the same value
+   (`effectiveCollapsed`, which is `!mobileOpen` on a phone), so a collapsed
+   rail and a closed drawer both render no chip row to hide. */
+.sidebar__layout-chips {
   display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 12px 4px 30px;
+}
+
+.sidebar__layout-chip {
+  /* Flex, not the default inline box, so the phone-drawer floor below can
+     grow the chip to 44px without the label drifting off its centre. */
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 5px 12px;
-  background: transparent;
-  border: none;
+  justify-content: center;
+  padding: 3px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: var(--text-md);
-  text-align: left;
-  border-radius: 4px;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  border-radius: 999px;
+  white-space: nowrap;
 }
 
-.sidebar__layout-btn:hover {
+.sidebar__layout-chip:hover {
   background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
-.sidebar__layout-btn--active {
-  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+.sidebar__layout-chip--current {
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent-primary) 40%, transparent);
   color: var(--accent-primary);
-  border-left: 2px solid var(--accent-primary);
   font-weight: 500;
 }
 
-.sidebar__layout-btn--active:hover {
-  background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
+.sidebar__layout-chip--current:hover {
+  background: color-mix(in srgb, var(--accent-primary) 20%, transparent);
 }
 
 /* Panel destination rows. #2059 (D3): these sit INSIDE the scrolling body,
@@ -837,13 +810,23 @@
     z-index: calc(var(--layer-navigation) - 1);
   }
 
-  /* Touch targets: the drawer's nav rows and project/layout rows are shared
+  /* Touch targets: the drawer's nav rows and project rows are shared
      navigation chrome — raise to a 44px target. Labels are already visible in
      the expanded drawer (it is not the icon-only --collapsed rail). */
   .sidebar__nav-btn,
-  .sidebar__project-btn,
-  .sidebar__layout-btn {
+  .sidebar__project-btn {
     min-height: 44px;
+  }
+
+  /* #2063: a layout chip is the same navigation chrome, and the floor applies
+     to it too. It is sized rather than merely floored — a chip is content-
+     width, so `min-height` alone would leave a 44px-tall pill with a tap
+     target narrower than a fingertip on a short name. The row keeps wrapping,
+     so a project with many layouts grows the band instead of overflowing it. */
+  .sidebar__layout-chip {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 3px 12px;
   }
 }
 

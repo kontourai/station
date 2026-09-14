@@ -119,7 +119,7 @@
     },
     "src-ui/src/components/project-sidebar/ProjectSidebarFooter.css": {
       "count": 1,
-      "reason": "The drawer's footer anchors to the device safe-area, not to the dock height \u2014 on mobile the drawer covers that dock. The same block raises the bell and the gear to the 44px touch floor."
+      "reason": "The drawer's footer anchors to the device safe-area, not to the dock height \u2014 on mobile the drawer covers that dock. The same block raises the bell, the gear, the presence trigger and the presence tray's row actions (#2066) to the 44px touch floor; the tray's own stylesheet deliberately carries no at-rule so this surface keeps one."
     },
     "src-ui/src/components/registry/ProjectLayoutCatalog.css": {
       "count": 1,

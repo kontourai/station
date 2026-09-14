@@ -95,6 +95,17 @@ export function compareProjectListOrder(
  */
 const MISSING_LAYOUT: unique symbol = Symbol('missing layout record');
 
+/** The read bound `getOwnedLayout` already applies, shared with the updater. */
+const OWNED_LAYOUT_MAX_BYTES = 2 * 1024 * 1024;
+
+/**
+ * What an update may not change on an existing owned Layout. `slug` and
+ * `owner` are absent on purpose: both are checked against the caller's own
+ * path scope in `#ownedLayoutWithMatchingIdentity`, which is stricter than a
+ * comparison against the previous record.
+ */
+const OWNED_LAYOUT_IMMUTABLE_FIELDS = ['id', 'createdAt'] as const;
+
 export class FileStorageAdapter implements IStorageAdapter {
   readonly #transactions: ProjectFileTransactions;
 
@@ -381,7 +392,7 @@ export class FileStorageAdapter implements IStorageAdapter {
     assertSafeLayoutPathSegment('layout slug', layoutSlug);
     const path = this.#ownedLayoutPath(owner, layoutSlug);
     const raw = readJsonFile<unknown>(path, MISSING_LAYOUT, {
-      maxBytes: 2 * 1024 * 1024,
+      maxBytes: OWNED_LAYOUT_MAX_BYTES,
       label: 'layout record',
     });
     if (raw === MISSING_LAYOUT) {
@@ -455,6 +466,105 @@ export class FileStorageAdapter implements IStorageAdapter {
       }
       throw error;
     }
+  }
+
+  /**
+   * Read-modify-write one non-project Layout inside a capability that spans
+   * the read AND the publish (#2061).
+   *
+   * `mutateJsonFile` holds the per-path `${path}.mutation` lock across
+   * read/derive/publish, so two concurrent writes to the same Board serialize
+   * instead of both reading the same base and the later one erasing the
+   * earlier. That is the CAS-less read-modify-write class this repo has hit
+   * repeatedly (archive#1588/#1600/#1606) and the reason `BoardStore` reaches
+   * for the same primitive rather than a bare read-then-`writeJsonFile`.
+   *
+   * `update` is handed `undefined` when no record exists, so create and update
+   * are ONE serialized transaction: a create that refuses an occupied slug and
+   * an update that refuses a missing one both decide inside the lock. There is
+   * no separate existence probe for a concurrent writer to slip through.
+   *
+   * The stored record reaches `update` as a DEFENSIVE COPY, and the pristine
+   * value stays here to check the fields an update may not change. Without the
+   * copy, an updater that mutates its argument in place and returns it would
+   * be compared against ITSELF — `next.id !== current.id` is false once the
+   * same object carries the new value — so an id or createdAt change would be
+   * published unchallenged, and every reference to that Board would break.
+   * (`owner` and `slug` are checked against the CALLER'S owner and slug rather
+   * than against `current`, so those two are not exposed to that hazard; the
+   * copy is what closes it for the rest.)
+   */
+  async mutateOwnedLayout(
+    owner: LayoutOwner,
+    layoutSlug: string,
+    update: (current: LayoutConfig | undefined) => LayoutConfig,
+  ): Promise<LayoutConfig> {
+    if (owner.kind === 'project') {
+      // A project layout is written through the project transaction (project
+      // lock, project fingerprint, agent-reference integrity). Routing one
+      // here would make this a second, weaker writer of the same records.
+      throw new Error(
+        'mutateOwnedLayout does not write project-owned layouts; use projectRevision().createLayout',
+      );
+    }
+    assertSafeLayoutPathSegment('layout slug', layoutSlug);
+    const published = await mutateJsonFile<unknown>(
+      this.#ownedLayoutPath(owner, layoutSlug),
+      MISSING_LAYOUT,
+      (raw) => {
+        const current =
+          raw === MISSING_LAYOUT
+            ? undefined
+            : this.#ownedLayoutWithMatchingIdentity(
+                parseLayoutConfig(raw),
+                owner,
+                layoutSlug,
+              );
+        const next = this.#ownedLayoutWithMatchingIdentity(
+          parseLayoutConfig(
+            update(
+              current === undefined ? undefined : structuredClone(current),
+            ),
+          ),
+          owner,
+          layoutSlug,
+        );
+        if (current !== undefined) {
+          for (const field of OWNED_LAYOUT_IMMUTABLE_FIELDS) {
+            if (next[field] !== current[field]) {
+              throw new Error(
+                `layout '${layoutSlug}' ${field} is immutable for ${describeLayoutOwner(owner)}`,
+              );
+            }
+          }
+        }
+        return next;
+      },
+      { maxBytes: OWNED_LAYOUT_MAX_BYTES, label: 'layout record' },
+    );
+    return parseLayoutConfig(published);
+  }
+
+  /**
+   * A stored or proposed record must name the owner and slug it is filed
+   * under. The path already scopes reads and writes to one owner's directory;
+   * this refuses a record whose CONTENT disagrees with that path rather than
+   * letting the two readings diverge.
+   */
+  #ownedLayoutWithMatchingIdentity(
+    config: LayoutConfig,
+    owner: LayoutOwner,
+    layoutSlug: string,
+  ): LayoutConfig {
+    if (
+      config.slug !== layoutSlug ||
+      !isSameLayoutOwner(layoutOwner(config), owner)
+    ) {
+      throw new Error(
+        `layout record identity does not match '${layoutSlug}' for ${describeLayoutOwner(owner)}`,
+      );
+    }
+    return config;
   }
 
   #ownedLayoutPath(owner: LayoutOwner, layoutSlug: string): string {

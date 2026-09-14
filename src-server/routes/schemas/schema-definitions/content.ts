@@ -274,6 +274,31 @@ export const projectLayoutUpdateSchema = projectLayoutCreateSchema
   .partial()
   .passthrough();
 
+/**
+ * `POST /api/me/layouts` (#2061). Strict where the project-layout schemas are
+ * `.passthrough()`: a Board's owner is not a field a request may name at all,
+ * so an `owner`/`principal`/`projectSlug` key is REFUSED rather than accepted
+ * and then quietly dropped. The project routes strip instead because their
+ * bodies carry pane/catalog keys those handlers still forward; this family has
+ * no such caller and can afford the louder answer.
+ */
+export const personalLayoutCreateSchema = z
+  .object({
+    slug: z.string().min(1),
+    name: z.string().min(1),
+    type: z.string().optional(),
+    icon: z.string().optional(),
+    description: z.string().optional(),
+    config: layoutConfigSchema.optional(),
+  })
+  .strict();
+
+/** `PUT /api/me/layouts/:layoutSlug` — the slug is the address, not a field. */
+export const personalLayoutUpdateSchema = personalLayoutCreateSchema
+  .omit({ slug: true })
+  .partial()
+  .strict();
+
 export const projectLayoutFromPluginSchema = z.object({
   plugin: z.string().min(1),
 });
