@@ -55,6 +55,28 @@ async function terminate(child: ChildProcess) {
   await exited;
 }
 
+/**
+ * A request the driver answered with a WebDriver error, carrying the error
+ * CODE so a caller can tell one refusal from another (#2091).
+ *
+ * `message` is byte-identical to what {@link DirectWebDriver.request} threw
+ * before this class existed, because every other caller only ever reads it:
+ * the timeout messages desktop lanes print are built from `String(error)`.
+ *
+ * Not exported. The one caller that needs to discriminate is `findElement`
+ * below, in this file.
+ */
+class WebDriverErrorResponse extends Error {
+  /** The W3C error code, e.g. `no such element`, when the payload carried one. */
+  readonly webDriverError: string | undefined;
+
+  constructor(message: string, webDriverError: string | undefined) {
+    super(message);
+    this.name = 'WebDriverErrorResponse';
+    this.webDriverError = webDriverError;
+  }
+}
+
 export class DirectWebDriver {
   readonly origin: string;
   sessionId: string | undefined;
@@ -78,8 +100,9 @@ export class DirectWebDriver {
     });
     const payload = (await response.json()) as WebDriverEnvelope<T>;
     if (!response.ok || payload.value?.error) {
-      throw new Error(
+      throw new WebDriverErrorResponse(
         `WebDriver ${method} ${path} failed: ${JSON.stringify(payload.value)}`,
+        payload.value?.error,
       );
     }
     return payload.value;
@@ -140,6 +163,25 @@ export class DirectWebDriver {
    * behavior under test. WebDriver's own `/element/:id/click` is the closest
    * thing this harness has to a press.
    */
+  /**
+   * ONLY the page genuinely not having the element answers `undefined` (#2091).
+   *
+   * This used to be a bare `catch { return undefined }`, and
+   * {@link DirectWebDriver.request} throws on transport failure, on its own
+   * thirty-second timeout, on any non-success status and on a WebDriver error
+   * payload — so all four became the same answer. Every wait in every desktop
+   * lane is keyed on this lookup, so a dead session, a hung driver or a shell
+   * that never came up surfaced as a product-shaped sentence like "the pane
+   * never appeared", and the reader went looking at the product for a fault in
+   * the harness. It could never produce a false GREEN — swallowing only ever
+   * yields a timeout — but the misdirected failure is paid for by whoever
+   * reads it next, and there are now two lanes doing the reading.
+   *
+   * `no such element` is the W3C error code for the one case that is an
+   * answer rather than a fault. Everything else propagates with its own
+   * message, which `waitUntil` then prints as `Last error:` beside the
+   * lane's own sentence.
+   */
   async findElement(css: string): Promise<string | undefined> {
     try {
       const value = await this.request<Record<string, string>>(
@@ -148,8 +190,13 @@ export class DirectWebDriver {
         { using: 'css selector', value: css },
       );
       return Object.values(value)[0];
-    } catch {
-      return undefined;
+    } catch (error) {
+      if (
+        error instanceof WebDriverErrorResponse &&
+        error.webDriverError === 'no such element'
+      )
+        return undefined;
+      throw error;
     }
   }
 
