@@ -70,7 +70,7 @@ describe('independent reviews in the Coding layout', () => {
     expect(
       screen.getByRole('button', { name: 'Run independent review' }),
     ).toBeTruthy();
-    expect(screen.getByText('No independent reviews yet')).toBeTruthy();
+    expect(screen.getByText('Nothing here yet')).toBeTruthy();
   });
 
   test("lists only this project's receipts, never the aggregate's", () => {
@@ -108,7 +108,7 @@ describe('independent reviews in the Coding layout', () => {
     expect(screen.getByRole('alert').textContent).toContain(
       'contended — another Station process or a long repair',
     );
-    expect(screen.queryByText('No independent reviews yet')).toBeNull();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
   });
 
   test("another project's unavailability is not reported here", () => {
@@ -124,6 +124,6 @@ describe('independent reviews in the Coding layout', () => {
     };
     render(<IndependentReviewInspectorContent projectSlug="campfit" />);
     expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.getByText('No independent reviews yet')).toBeTruthy();
+    expect(screen.getByText('Nothing here yet')).toBeTruthy();
   });
 });

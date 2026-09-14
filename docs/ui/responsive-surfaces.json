@@ -161,6 +161,12 @@
       "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
     },
     {
+      "path": "src-ui/src/components/review/IndependentReviewRunModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/ReviewQueueView.test.tsx drives the dialog end to end (Project, Implementing Agent, Reviewer Agent slugs, Run review) and asserts the POST shape; src-ui/src/__tests__/responsive-dialog-contract.test.ts holds the shared surface contract"
+    },
+    {
       "path": "src-ui/src/components/scheduler/JobFormModal.tsx",
       "strategy": "covered",
       "evidence": "tests/schedule-runs.spec.ts"
