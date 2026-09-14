@@ -544,7 +544,8 @@ async function settleEntryAnimations(page: FixturePage): Promise<void> {
         .filter(
           (animation) =>
             animation.playState !== 'paused' &&
-            animation.effect?.getTiming().iterations !== Number.POSITIVE_INFINITY,
+            animation.effect?.getTiming().iterations !==
+              Number.POSITIVE_INFINITY,
         )
         // A cancelled animation (an element removed mid-flight) rejects; that
         // is settled for this purpose, so it must not fail the measurement.

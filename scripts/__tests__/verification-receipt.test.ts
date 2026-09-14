@@ -18,7 +18,6 @@ import {
   PRODUCT_LAW_OBSERVATION_TIMEOUT_ENV,
   PRODUCT_LAW_OBSERVATION_TIMEOUT_MS,
 } from '../lib/product-laws.mjs';
-import { receiptErrorText } from '../lib/verification-receipt.mjs';
 import {
   assertVerificationToolchain,
   collectRepositoryIdentity,
@@ -35,6 +34,7 @@ import {
   classifyTerminal,
   createVerificationReceipt,
   createVerificationRequest,
+  receiptErrorText,
   VERIFICATION_RECEIPT_SCHEMA_VERSION,
   verificationRequestKey,
 } from '../lib/verification-receipt.mjs';
@@ -1881,7 +1881,8 @@ describe('receiptErrorText', () => {
       'value as the last argument or configure it globally with ' +
       `"${isHook ? 'hookTimeout' : 'testTimeout'}".`;
     const error = new Error(message);
-    if (donor.stack) error.stack = donor.stack.replace(error.message, donor.message);
+    if (donor.stack)
+      error.stack = donor.stack.replace(error.message, donor.message);
     return error;
   }
 
