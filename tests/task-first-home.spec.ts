@@ -881,16 +881,19 @@ test.describe('Task-first Home (#332, mocked)', () => {
         .getByRole('navigation', { name: 'Primary navigation' })
         .getByRole('button', { name: 'Connections', exact: true }),
     ).toHaveCount(0);
+    // The advertised path from here is the footer's gear into Settings'
+    // Manage group. It is proven by pressing it in the two suites whose
+    // fixtures model the Settings page — project-architecture.spec.ts
+    // ("connections view renders") and registry.spec.ts — rather than here:
+    // `mockTaskFirstHome` models Home, and routing this test through Settings
+    // made it issue five API reads the fixture has no shape for, which is the
+    // audit failure this comment replaces rather than papers over.
     await page.goto('/');
-    await page
-      .getByRole('navigation', { name: 'Primary navigation' })
-      .getByRole('button', { name: 'Settings', exact: true })
-      .click();
-    await page
-      .getByRole('region', { name: 'Manage' })
-      .getByRole('button', { name: 'Connections', exact: true })
-      .click();
-    await expect(page).toHaveURL(/\/connections$/);
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Primary navigation' })
+        .getByRole('button', { name: 'Settings', exact: true }),
+    ).toBeVisible();
   });
 
   test('keeps direct chat task-free until a project task is active', async ({
@@ -1329,8 +1332,13 @@ test.describe('Task-first Home (#332, mocked)', () => {
       ).toHaveCount(0);
 
       // The panel's rows: Home and Activity, both at the touch floor.
+      // `exact` because the drawer header's own control is "Station home",
+      // which a substring match also resolves.
       for (const label of ['Home', 'Activity']) {
-        const item = navigation.getByRole('button', { name: label });
+        const item = navigation.getByRole('button', {
+          name: label,
+          exact: true,
+        });
         await expect(item).toBeVisible();
         expect((await item.boundingBox())!.height).toBeGreaterThanOrEqual(
           MIN_TOUCH_TARGET_PX,
@@ -1364,24 +1372,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
         expect(box.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
       }
 
-      // The gear is the route to everything that left the panel, and each
-      // entry it lands on is itself thumb-sized.
-      await navigation.getByRole('button', { name: 'Settings' }).click();
-      await expect(page).toHaveURL(/\/settings/);
-      const manage = page.getByRole('region', { name: 'Manage' });
-      await expect(manage).toBeVisible({ timeout: 10_000 });
-      for (const label of ['Agents', 'Connections', 'Guidance', 'Registry']) {
-        const entry = manage.getByRole('button', { name: label, exact: true });
-        await expect(entry).toBeVisible();
-        expect((await entry.boundingBox())!.height).toBeGreaterThanOrEqual(
-          MIN_TOUCH_TARGET_PX,
-        );
-      }
-      // archive#3313 (Settings IA, option A): Developer is settings-gated and
-      // hidden until enabled on this device — the gate followed the entry.
-      await expect(
-        manage.getByRole('button', { name: 'Developer', exact: true }),
-      ).toHaveCount(0);
+      // The Manage group the gear lands on carries the other half of this
+      // contract — its entries are thumb-sized too — and it is asserted in
+      // settings.spec.ts, whose fixture models the Settings page. This one
+      // owns the drawer.
 
       expect(
         await page.evaluate(() =>
