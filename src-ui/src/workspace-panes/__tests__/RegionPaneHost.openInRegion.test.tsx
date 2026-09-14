@@ -236,3 +236,66 @@ test('an open from main lands as the selected tab on the right, a second open fo
   expect(new URLSearchParams(window.location.search).get('pane')).toBeNull();
   expect(screen.getByTestId('main-outlet')).toBeTruthy();
 });
+
+/**
+ * #2049 review H1: a pane id is DATA now — it is read back from a stored
+ * arrangement record — so the id-keyed resolver the shell mounts from and the
+ * occurrence minter the host renders from must admit the same ids. While
+ * `resolveRegionSurface` admitted by prefix presence alone, a malformed
+ * same-prefix id mounted a shell whose entire content was the resize handle:
+ * no pane, no tab strip, and therefore no close control.
+ *
+ * `placeSurface` is deliberately NOT what refuses it: `surfaceMayOccupy` lets
+ * a surface it cannot resolve take a dock region (a fixture, a pane a later
+ * slice registers at runtime), so the model may hold such an id — it just
+ * renders nothing anywhere, exactly as any other unresolvable id does, and
+ * `parseRegionArrangementRecord` drops it on the way back in
+ * (`region-arrangement-record.test.ts`). The shell is where the user-visible
+ * difference lives, so the shell is what this asserts.
+ *
+ * Reverting `InstanceSurfacePrefix.matches` to `startsWith(prefix)` fails at
+ * the first `queryShell('right')` — the shell mounts. Refusing the WELL-FORMED
+ * id (a shape rule too strict for what the minter mints) fails at the second.
+ */
+test('a malformed instance id mounts no shell, while the well-formed id it imitates does', async () => {
+  render(
+    <KeyboardShortcutsProvider>
+      <NavigationProvider>
+        <RegionModelProvider>
+          <MainCaller />
+          <RegionShells />
+        </RegionModelProvider>
+      </NavigationProvider>
+    </KeyboardShortcutsProvider>,
+  );
+  await waitFor(() => expect(model).not.toBeNull());
+  const queryShell = (region: string) =>
+    document.querySelector<HTMLElement>(`.chat-dock[data-region="${region}"]`);
+  const mountedRegions = () =>
+    Array.from(document.querySelectorAll<HTMLElement>('.chat-dock')).map(
+      (shell) => shell.dataset.region,
+    );
+  // Chat's own shell mounts asynchronously; capture the baseline once it has.
+  await waitFor(() => expect(mountedRegions()).toEqual(['bottom']));
+  const before = mountedRegions();
+
+  for (const malformed of ['pr:not-a-real-id', 'file-preview:zzz']) {
+    act(() => current().model.placeSurface(malformed, 'right'));
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
+    expect(queryShell('right'), malformed).toBeNull();
+    expect(mountedRegions(), malformed).toEqual(before);
+  }
+
+  act(() =>
+    current().model.placeSurface('pr:github.com/kontourai/station#2049', 'right'),
+  );
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+  expect(current().model.regions.right.occupant).toBe(
+    'pr:github.com/kontourai/station#2049',
+  );
+  await waitFor(() => expect(queryShell('right')).not.toBeNull());
+});

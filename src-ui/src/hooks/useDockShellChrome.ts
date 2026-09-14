@@ -761,14 +761,18 @@ export function useDockShellChrome({
     // "Hide Chat" would be #1386's defect relocated. That third case is
     // unreachable today — `RegionShells` mounts a host only for an occupant
     // `resolveRegionSurface` answers for (the registry, or an instance
-    // prefix since #2049), and a resolved occupant always has a title. That a registered dock occupant also has
-    // a pane rests on two guards upstream of the shell — the record parser
-    // empties a region whose stored surface does not declare it
-    // (`region-arrangement-record.ts`, `parseOccupant`) and `placeSurface`
-    // refuses an undeclared region (`surfaceMayOccupy`), so `home` never
-    // reaches a dock region — plus `region-surface-panes.test.ts`, which
-    // pins every dock-declaring surface to an entry in
-    // `REGION_SURFACE_PANES`.
+    // family since #2049), and a resolved occupant always has a title. That a
+    // registered dock occupant also has a pane rests on two guards upstream of
+    // the shell — the record parser empties a region whose stored surface does
+    // not declare it (`region-arrangement-record.ts`, `parseOccupant`) and
+    // `placeSurface` refuses an undeclared region (`surfaceMayOccupy`), so
+    // `home` never reaches a dock region — plus `region-surface-panes.test.ts`,
+    // which pins every dock-declaring surface to an entry in
+    // `REGION_SURFACE_PANES`. An INSTANCE-keyed occupant is an id read back
+    // from storage, so those two guards say nothing about it; what holds there
+    // is that `resolveRegionSurface` admits only the full shape its family
+    // mints (`InstanceSurfacePrefix.matches`), which is the same shape
+    // `regionSurfacePane` mints an occurrence from.
     surfaceTitle:
       regionModel && shellOccupant
         ? (resolveRegionSurface(shellOccupant)?.title ?? shellOccupant)

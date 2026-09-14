@@ -721,15 +721,28 @@ describe('region arrangement record (#928 D)', () => {
           }),
         )!.main,
       ).toMatchObject({ panes: [], occupant: null });
-      // An id no prefix describes is still unknown: the `pr:` rule admits a
-      // pull request, not everything that starts with two letters.
-      expect(
-        parseRegionArrangementRecord(
-          recordWith('right', {
-            occupant: { kind: 'surface', id: 'browser-preview:1' },
-          }),
-        )!.right,
-      ).toMatchObject({ panes: [], occupant: null });
+      // An id no family describes is still unknown — and "describes" is the
+      // full shape the family MINTS, not its prefix. A stored id that only
+      // starts the same way is refused here, which is what keeps the parser's
+      // answer equal to the host chunk's: an id this admitted and
+      // `regionSurfacePane` refused would mount a region with no pane in it.
+      for (const id of [
+        'browser-preview:1',
+        'pr:not-a-real-id',
+        'pr:github.com/kontourai/station#',
+        'pr:github.com/kontourai/station/extra#1',
+        'pr:GitHub.com/kontourai/station#1',
+        'pr:',
+        'file-preview:zzz',
+        `file-preview:${'a'.repeat(31)}`,
+        `file-preview:${'a'.repeat(32)}X`,
+      ])
+        expect(
+          parseRegionArrangementRecord(
+            recordWith('right', { occupant: { kind: 'surface', id } }),
+          )!.right,
+          id,
+        ).toMatchObject({ panes: [], occupant: null });
     });
 
     test('a pane-host without an array of panes reads as empty; a documentId a 2a build wrote is ignored', () => {

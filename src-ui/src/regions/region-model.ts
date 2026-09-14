@@ -796,6 +796,24 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
 export interface InstanceSurfacePrefix {
   /** The prefix every id of this family starts with. */
   prefix: string;
+  /**
+   * Whether an id is one this family can actually MINT — the full shape, not
+   * the prefix. `resolveRegionSurface` admits through this rather than through
+   * `startsWith`, because a pane id is data now: it is read back from a stored
+   * arrangement record, and a build that mints a different shape (a provider
+   * segment, a version) then rolled back leaves ids in that record which the
+   * host chunk's `regionSurfacePane` refuses. Admitting one here and refusing
+   * it there mounts a region host with no pane in it: chrome, no tab strip,
+   * and therefore no close control.
+   *
+   * The shape is spelled as a regular expression rather than by calling the
+   * contract's own parser because this module is entry-chunk resident and the
+   * pane contracts are not (see the table's note above). The duplication is
+   * held to the minters by `region-instance-panes.test.ts`, which runs a table
+   * of ids through `matches` and through `regionSurfacePane` and requires the
+   * same answer.
+   */
+  matches: (id: string) => boolean;
   /** The built-in descriptor its occurrences carry (`pane:builtin:…`). */
   descriptorId: string;
   /**
@@ -812,9 +830,24 @@ export interface InstanceSurfacePrefix {
   sourceFile: string;
 }
 
+/**
+ * `pr:<host>/<owner>/<repository>#<ref>`, the exact shape
+ * `workspacePullRequestPaneId` mints: a lowercase host with an optional port,
+ * two lowercase path segments, and up to twelve digits.
+ */
+const PULL_REQUEST_SURFACE_ID =
+  /^pr:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?\/[a-z0-9._-]+\/[a-z0-9._-]+#[0-9]{1,12}$/;
+
+/**
+ * `file-preview:<nonce>`, the 32 hex digits `createFilePreviewPaneInstance`
+ * mints (`filePreviewPaneInstance.ts`, `FILE_PREVIEW_NONCE_PATTERN`).
+ */
+const FILE_PREVIEW_SURFACE_ID = /^file-preview:[0-9a-f]{32}$/;
+
 export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
   {
     prefix: 'pr:',
+    matches: (id) => PULL_REQUEST_SURFACE_ID.test(id),
     descriptorId: 'pane:builtin:workspace-pull-request',
     title: 'Pull request',
     icon: 'diff',
@@ -825,6 +858,7 @@ export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
   },
   {
     prefix: 'file-preview:',
+    matches: (id) => FILE_PREVIEW_SURFACE_ID.test(id),
     descriptorId: 'pane:builtin:workspace-preview:file-preview',
     title: 'File preview',
     icon: 'files',
@@ -848,8 +882,16 @@ const INSTANCE_SURFACE_CACHE = new Map<string, RegisteredSurface>();
  * `registry` is a parameter for the record parser's older-registry tests,
  * which read a stored record against a registry a past build had.
  *
+ * An instance-keyed id is admitted by its family's full shape
+ * (`InstanceSurfacePrefix.matches`), never by the prefix alone: the host
+ * chunk's `regionSurfacePane` mints an occurrence by the same shape, and an id
+ * only one of the two admits is a region host with no pane in it.
+ *
  * Resolved surfaces are cached by id so repeated reads return one frozen
- * object; the set is bounded by the panes a user has actually opened.
+ * object. The set is bounded by the ids ever resolved, which includes a
+ * refused open (`openSurfaceInRegion` resolves before it decides) and an id
+ * since dropped from the record — a superset of the panes now open, still one
+ * small frozen object per well-shaped id a user's clicks produced.
  */
 export function resolveRegionSurface(
   surfaceId: string,
@@ -859,10 +901,8 @@ export function resolveRegionSurface(
   if (registered) return registered;
   const cached = INSTANCE_SURFACE_CACHE.get(surfaceId);
   if (cached) return cached;
-  const prefix = INSTANCE_SURFACE_PREFIXES.find(
-    (entry) =>
-      surfaceId.startsWith(entry.prefix) &&
-      surfaceId.length > entry.prefix.length,
+  const prefix = INSTANCE_SURFACE_PREFIXES.find((entry) =>
+    entry.matches(surfaceId),
   );
   if (!prefix) return undefined;
   const surface: RegisteredSurface = Object.freeze({

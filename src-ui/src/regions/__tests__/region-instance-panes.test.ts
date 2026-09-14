@@ -83,15 +83,46 @@ describe('instance-keyed dock panes (#2049)', () => {
     }
   });
 
-  test('a bare prefix, an unknown prefix and a malformed id resolve to nothing', () => {
-    // `pr:` and `file-preview:` alone name no pull request and no preview;
-    // resolving them would put an unrenderable tab in a region.
-    expect(resolveRegionSurface('pr:')).toBeUndefined();
-    expect(resolveRegionSurface('file-preview:')).toBeUndefined();
-    expect(resolveRegionSurface('browser-preview:abc')).toBeUndefined();
-    expect(regionSurfacePane('pr:github.com/owner#12')).toBeUndefined();
-    expect(regionSurfacePane('pr:github.com/o/r#nan')).toBeUndefined();
-    expect(regionSurfacePane(`file-preview:${'z'.repeat(32)}`)).toBeUndefined();
+  /**
+   * The pin `RegionShells`' mount rule names: it mounts a host for an
+   * occupant `resolveRegionSurface` answers for, and `RegionPaneHost` renders
+   * a pane for one `regionSurfacePane` mints. An id only the first admits is a
+   * dock region with chrome, no pane, no tab strip — and so no close control.
+   *
+   * Both halves must be exercised, because both are ways to be wrong:
+   * resolving what cannot be minted is the empty region, and minting what
+   * cannot be resolved is a pane no region will ever mount.
+   */
+  test('the id-keyed resolver and the occurrence minter admit exactly the same ids', () => {
+    writePreview('src/app.ts');
+    const admitted = [PR_ID, `${PR_ID.slice(0, -4)}1`, PREVIEW_ID];
+    const refused = [
+      // Bare prefixes name no pull request and no preview.
+      'pr:',
+      'file-preview:',
+      // A prefix no family declares.
+      'browser-preview:abc',
+      // Same prefix, shape the minter could never produce.
+      'pr:not-a-real-id',
+      'pr:github.com/owner#12',
+      'pr:github.com/o/r#nan',
+      'pr:github.com/o/r#',
+      'pr:github.com/o/r/extra#1',
+      'pr:GitHub.com/o/r#1',
+      'pr:/o/r#1',
+      'file-preview:zzz',
+      `file-preview:${'z'.repeat(32)}`,
+      `file-preview:${'a'.repeat(31)}`,
+      `file-preview:${'a'.repeat(33)}`,
+    ];
+    for (const id of admitted) {
+      expect(resolveRegionSurface(id), id).toBeDefined();
+      expect(regionSurfacePane(id), id).toBeDefined();
+    }
+    for (const id of refused) {
+      expect(resolveRegionSurface(id), id).toBeUndefined();
+      expect(regionSurfacePane(id), id).toBeUndefined();
+    }
   });
 
   test('no id an opener can mint carries a comma', () => {
@@ -138,6 +169,49 @@ describe('instance-keyed dock panes (#2049)', () => {
     expect(pullRequestProviderForHost('gitlab.com:443')).toBe('gitlab');
     expect(pullRequestProviderForHost('github.com')).toBe('github');
     expect(pullRequestProviderForHost('git.example.org')).toBe('github');
+  });
+
+  /**
+   * The server resolves a review by `provider.getHost(context) === <host>`
+   * (`pull-request-routes.ts`), and `getHost` lowercases the remote's host and
+   * KEEPS its port. An id that dropped the port would name an endpoint no
+   * route can match, and would fold a forge's two endpoints into one tab.
+   * `canServeHost` — which is port-blind — decides only which PROVIDER claims
+   * a host, and `pullRequestProviderForHost` above still mirrors that.
+   */
+  test('a self-hosted forge on a port keeps it in the id, and is a different pane from the bare host', () => {
+    const ported = workspacePullRequestPaneId({
+      host: 'GHE.corp.example:8443',
+      owner: 'o',
+      repository: 'r',
+      ref: '7',
+    });
+    expect(ported).toBe('pr:ghe.corp.example:8443/o/r#7');
+    expect(parseWorkspacePullRequestPaneId(ported as string)?.host).toBe(
+      'ghe.corp.example:8443',
+    );
+    expect(
+      workspacePullRequestPaneId({
+        host: 'ghe.corp.example',
+        owner: 'o',
+        repository: 'r',
+        ref: '7',
+      }),
+    ).not.toBe(ported);
+    // A trailing dot still folds — a remote is written without one, so
+    // dropping it makes the server's equality MORE likely to hold.
+    expect(
+      workspacePullRequestPaneId({
+        host: 'github.com.',
+        owner: 'o',
+        repository: 'r',
+        ref: '7',
+      }),
+    ).toBe('pr:github.com/o/r#7');
+    // And the entry chunk's shape rule admits the ported id too, or the pane
+    // would resolve in one half of the split and not the other.
+    expect(resolveRegionSurface(ported as string)?.id).toBe(ported);
+    expect(regionSurfacePane(ported as string)?.title).toBe('#7');
   });
 
   test("a pull-request pane binds the dock's project and folds back to its own id", () => {

@@ -185,14 +185,16 @@ export function RegionShells() {
       }).map((id) => {
         const occupant = model.regions[id].occupant;
         // A resolvable occupant gets a host; an id neither the registry nor
-        // an instance prefix knows (a fixture, a surface a later slice places
-        // at runtime) mounts nothing — the rule the per-occupant shell table
-        // applied before #2045. Decided from `resolveRegionSurface` rather
-        // than the pane inventory, so the pane contracts stay in the host's
-        // chunk; `region-surface-panes.test.ts` pins that every registered
-        // surface declaring a dock region HAS a pane, and
-        // `region-instance-panes.test.ts` pins the same for each prefix,
-        // which is what makes "resolvable" sufficient here.
+        // an instance FAMILY'S SHAPE knows (a fixture, a surface a later
+        // slice places at runtime, an id a rolled-back build minted) mounts
+        // nothing — the rule the per-occupant shell table applied before
+        // #2045. Decided from `resolveRegionSurface` rather than the pane
+        // inventory, so the pane contracts stay in the host's chunk;
+        // `region-surface-panes.test.ts` pins that every registered surface
+        // declaring a dock region HAS a pane, and
+        // `region-instance-panes.test.ts` pins that the resolver and the
+        // occurrence minter admit exactly the same instance ids, which is
+        // what makes "resolvable" sufficient here.
         return occupant && resolveRegionSurface(occupant) ? (
           <DockRegionHost key={id} regionId={id} />
         ) : null;
