@@ -1,0 +1,129 @@
+/* Non-critical footer styles ship with the lazy footer component instead of
+   inflating Station's initial shell bundle. */
+.sidebar__footer {
+  border-top: 1px solid var(--border-primary);
+  padding: 4px;
+  flex-shrink: 0;
+}
+
+.sidebar__footer-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 12px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.sidebar__footer-presence {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  /* Muted against the footer's own muted text: the placeholder must not read
+     as a live indicator (#2066 brings the real presence tray). */
+  opacity: 0.55;
+  font-size: 15px;
+}
+
+.sidebar__footer-palette {
+  /* The footer has no text member to grow now that the build identity moved
+     out (#2059 product decision), so the chip carries the gap that pushes the
+     bell and the gear to the trailing edge. */
+  margin-left: auto;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 0 4px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.sidebar__footer-palette:hover {
+  opacity: 1;
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.sidebar__footer-action {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 4px;
+  padding: 0;
+  background: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.sidebar__footer-action:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar__footer-action--active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.sidebar__footer-badge {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+  font-size: var(--text-xs);
+  line-height: 14px;
+  text-align: center;
+}
+
+/* The collapsed rail is icon-only, and the bell and the gear are the only way
+   into Notifications and Settings from the panel now (#2059) — hiding the
+   whole footer, as the status line did, would strand both. The two icon
+   controls stack; the text members have nowhere to go at 48px. */
+.sidebar--collapsed .sidebar__footer-meta {
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.sidebar--collapsed .sidebar__footer-presence,
+.sidebar--collapsed .sidebar__footer-palette {
+  display: none;
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  /* The mobile sidebar renders as a full-viewport overlay drawer
+     (position: fixed; top: 0; bottom: 0; z-index: 500) that sits above the
+     chat dock, so the footer must anchor to the device's safe-area
+     bottom inset — not to --dock-slot-size, which is the height of a dock
+     the drawer already covers. */
+  .sidebar__footer {
+    padding-bottom: calc(4px + var(--safe-bottom, 0px));
+  }
+
+  .sidebar__footer-palette {
+    display: none;
+  }
+
+  /* Touch targets: the footer's two navigation controls are shared navigation
+     chrome, at the same 44px floor as the drawer's rows. */
+  .sidebar__footer-action {
+    width: 44px;
+    height: 44px;
+  }
+}

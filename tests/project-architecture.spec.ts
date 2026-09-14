@@ -257,19 +257,24 @@ function alphaProjectButton(page: Page) {
   return page.getByRole('button', { name: '🚀 Alpha', exact: true });
 }
 
-async function openCustomizationNavigation(page: Page) {
+/**
+ * #2059: configuration destinations left the panel. The `Customize` group
+ * this helper used to open no longer exists — its members are reached through
+ * the footer's gear, which lands on Settings' Manage group. The helper keeps
+ * its role (put the caller in front of Agents/Connections) and changes only
+ * where that is.
+ */
+async function openManageNavigation(page: Page) {
   const navigation = page.getByRole('navigation', {
     name: 'Primary navigation',
   });
-  const customize = navigation.getByRole('button', {
-    name: 'Customize',
-    exact: true,
-  });
-  if ((await customize.getAttribute('aria-expanded')) !== 'true') {
-    await customize.click();
-  }
-  await expect(customize).toHaveAttribute('aria-expanded', 'true');
-  return navigation;
+  await navigation
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/settings/);
+  const manage = page.getByRole('region', { name: 'Manage' });
+  await expect(manage).toBeVisible({ timeout: 10_000 });
+  return manage;
 }
 
 test.describe('Project Sidebar', () => {
@@ -289,12 +294,25 @@ test.describe('Project Sidebar', () => {
     await expect(
       page.getByRole('button', { name: /New Project/ }),
     ).toBeVisible();
-    const navigation = await openCustomizationNavigation(page);
+    // The panel's own rows are places only now: Home and Activity.
+    const navigation = page.getByRole('navigation', {
+      name: 'Primary navigation',
+    });
     await expect(
-      navigation.getByRole('button', { name: 'Agents', exact: true }),
+      navigation.getByRole('button', { name: 'Activity', exact: true }),
+    ).toBeVisible();
+    for (const gone of ['Agents', 'Connections', 'Customize', 'System']) {
+      await expect(
+        navigation.getByRole('button', { name: gone, exact: true }),
+      ).toHaveCount(0);
+    }
+    // …and the configuration destinations are behind the gear.
+    const manage = await openManageNavigation(page);
+    await expect(
+      manage.getByRole('button', { name: 'Agents', exact: true }),
     ).toBeVisible();
     await expect(
-      navigation.getByRole('button', {
+      manage.getByRole('button', {
         name: 'Connections',
         exact: true,
       }),
@@ -873,8 +891,8 @@ test.describe('Provider Settings', () => {
   });
 
   test('connections view renders', async ({ page }) => {
-    const navigation = await openCustomizationNavigation(page);
-    await navigation
+    const manage = await openManageNavigation(page);
+    await manage
       .getByRole('button', { name: 'Connections', exact: true })
       .click();
     await expect(page).toHaveURL(/\/connections/);
