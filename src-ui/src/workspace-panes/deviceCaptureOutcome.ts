@@ -71,10 +71,19 @@ export type DeviceCaptureRefusalKind =
 export interface DeviceCaptureOutcome extends DeviceOutcomeCopy {
   kind: DeviceCaptureRefusalKind | 'transport';
   /**
-   * Which control this outcome hands the reader. `refresh` re-reads the
-   * inventory (the device may be gone); `retry` re-captures; `none` means
-   * there is nothing this reader can press — a credential is not something a
-   * button fixes.
+   * Which control this OUTCOME contributes, over and above the pane's
+   * standing ones. `refresh` re-reads the inventory (the device may be gone);
+   * `retry` re-captures; `none` means this outcome offers no control of its
+   * own.
+   *
+   * `none` does NOT mean there is nothing to press. The toolbar's Capture
+   * stays rendered and enabled under an access-denied refusal, and it IS the
+   * retry: of the two causes that copy names, a sign-in that changed since
+   * the pane opened is repairable in place — sign in again and the very next
+   * Capture succeeds. Only a read-only credential is beyond what this reader
+   * can do here, and withdrawing the control for that cause would strand the
+   * other at a dead end. What `none` withholds is a SECOND button that would
+   * duplicate Capture and imply the refusal had its own remedy.
    */
   action: 'retry' | 'refresh' | 'none';
 }

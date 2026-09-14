@@ -53,15 +53,23 @@ async function captureWith(status: number) {
 
 describe('a refused capture (#1969)', () => {
   /**
-   * The access-denied branch, and the one that hides its control: a button
-   * cannot repair a credential, so offering Try again would be an action that
-   * cannot work. Leaving Capture rendered under a 403 reds the last
-   * assertion.
+   * The access-denied branch names BOTH causes and adds no control of its
+   * own — Try again and Refresh devices belong to the `retry` and `refresh`
+   * arms — while the toolbar's Capture STAYS live, because one of the two
+   * causes is repairable in place: sign in again and the very next Capture
+   * succeeds. Withdrawing the control would serve the read-only credential
+   * and strand the changed sign-in at a dead end.
+   *
+   * Each half has its own assertion, and the two point opposite ways:
+   * rendering a Try again or a Refresh devices here reds the first pair;
+   * withdrawing Capture reds `getByRole`, disabling it reds `disabled`, and
+   * making the press a no-op reds the request count. The count is asserted
+   * before AND after so a Capture that fires on render could not supply it.
    */
   test.each([403, 401])(
-    '%i names the read-only credential and the changed sign-in, and withdraws Capture',
+    '%i names the read-only credential and the changed sign-in, and keeps Capture live',
     async (status) => {
-      await captureWith(status);
+      const { log } = await captureWith(status);
       await screen.findByText(/refused the screen capture/);
       expect(screen.getByText(/read-only credential/)).toBeTruthy();
       expect(screen.getByText(/sign-in that changed/)).toBeTruthy();
@@ -69,6 +77,15 @@ describe('a refused capture (#1969)', () => {
       expect(
         screen.queryByRole('button', { name: 'Refresh devices' }),
       ).toBeNull();
+
+      // The standing control is the retry for the repairable cause.
+      expect(screen.getByRole('button', { name: 'Capture' })).toHaveProperty(
+        'disabled',
+        false,
+      );
+      expect(log.captureRequests).toHaveLength(1);
+      await click(screen.getByRole('button', { name: 'Capture' }));
+      await waitFor(() => expect(log.captureRequests).toHaveLength(2));
     },
   );
 
