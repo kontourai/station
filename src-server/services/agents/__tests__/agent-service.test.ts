@@ -676,7 +676,11 @@ describe('AgentService', () => {
     const loader = createMockConfigLoader();
     const storageAdapter = createMockStorageAdapter();
     storageAdapter.findLayoutsUsingAgent.mockReturnValue([
-      { projectSlug: 'default', layoutSlug: 'dashboard' },
+      {
+        owner: { kind: 'project', projectSlug: 'default' },
+        projectSlug: 'default',
+        layoutSlug: 'dashboard',
+      },
     ]);
     const svc = new AgentService(
       loader as any,
@@ -724,7 +728,11 @@ describe('AgentService', () => {
     const loader = createMockConfigLoader();
     const storageAdapter = createMockStorageAdapter();
     storageAdapter.findLayoutsUsingAgent.mockReturnValue([
-      { projectSlug: 'default', layoutSlug: 'dashboard' },
+      {
+        owner: { kind: 'project', projectSlug: 'default' },
+        projectSlug: 'default',
+        layoutSlug: 'dashboard',
+      },
     ]);
     const beginMutation = vi.fn();
     const svc = new AgentService(

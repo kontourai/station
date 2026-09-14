@@ -1,4 +1,5 @@
 import type { AgentId } from './agent-identity.js';
+import { isPrincipalRef, type PrincipalRef } from './principal.js';
 
 /**
  * Stable, data-only identity of the source that supplied a catalog
@@ -30,9 +31,150 @@ export interface LayoutCatalogContribution {
   provenance: LayoutContributionProvenance;
 }
 
+/**
+ * Who a Layout belongs to (design: docs/design/shell-ownership-and-boards.md,
+ * decision D1). Station stored Layouts under exactly one scope — a Project —
+ * until Boards; a Board is a Layout whose owner is a principal rather than a
+ * project, and an instance-owned Layout is the operator's "everyone on this
+ * Station sees this" page.
+ *
+ * Shaped after {@link KnowledgeRootScope} (`knowledge-store.ts`), which is the
+ * repo's existing answer to the same question for a different record, so the
+ * two scope vocabularies read alike rather than diverging.
+ */
+export type LayoutOwner =
+  | { kind: 'project'; projectSlug: string }
+  | { kind: 'principal'; principal: PrincipalRef }
+  | { kind: 'instance' };
+
+/** The single instance owner value; there is exactly one Station instance. */
+export const INSTANCE_LAYOUT_OWNER: LayoutOwner = Object.freeze({
+  kind: 'instance',
+});
+
+/**
+ * A stored Layout whose ownership fields contradict each other, or name no
+ * owner at all. Its own type so a storage parser reports the author/record
+ * fault it is rather than laundering it into a generic "storage is
+ * unavailable" (the same reason {@link RetiredLayoutKeyError} exists).
+ */
+export class InvalidLayoutOwnerError extends TypeError {
+  readonly code = 'INVALID_LAYOUT_OWNER';
+
+  constructor(reason: string) {
+    super(`Layout owner is invalid: ${reason}`);
+    this.name = 'InvalidLayoutOwnerError';
+  }
+}
+
+/** The ownership fields of a Layout record — the input `layoutOwner` reads. */
+export interface LayoutOwnership {
+  readonly projectSlug?: string;
+  readonly owner?: LayoutOwner;
+}
+
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+/**
+ * Derive a Layout's owner — the ONE place the ownership question is answered.
+ *
+ * Project-owned records carry `projectSlug` and no `owner`, exactly as every
+ * record written before Boards existed, so nothing on disk changed and a
+ * legacy record is project-owned by derivation rather than by a migration
+ * that stamped a label on it. Principal- and instance-owned records carry
+ * `owner` and no `projectSlug`.
+ *
+ * Throws {@link InvalidLayoutOwnerError} rather than preferring one field,
+ * because a record naming two owners has no correct reading: picking either
+ * one silently relocates somebody's Layout.
+ */
+export function layoutOwner(record: LayoutOwnership): LayoutOwner {
+  const { owner, projectSlug } = record;
+
+  if (owner === undefined) {
+    if (!isNonBlankString(projectSlug)) {
+      throw new InvalidLayoutOwnerError(
+        'a record with no `owner` must carry a non-empty `projectSlug`',
+      );
+    }
+    return { kind: 'project', projectSlug };
+  }
+
+  if (owner === null || typeof owner !== 'object' || Array.isArray(owner)) {
+    throw new InvalidLayoutOwnerError('`owner` must be an owner object');
+  }
+
+  switch (owner.kind) {
+    case 'project': {
+      if (!isNonBlankString(owner.projectSlug)) {
+        throw new InvalidLayoutOwnerError(
+          'a project owner must name a non-empty `projectSlug`',
+        );
+      }
+      if (projectSlug !== undefined && projectSlug !== owner.projectSlug) {
+        throw new InvalidLayoutOwnerError(
+          `\`projectSlug\` ${JSON.stringify(projectSlug)} contradicts owner.projectSlug ${JSON.stringify(owner.projectSlug)}`,
+        );
+      }
+      return { kind: 'project', projectSlug: owner.projectSlug };
+    }
+    case 'principal': {
+      if (projectSlug !== undefined) {
+        throw new InvalidLayoutOwnerError(
+          'a principal-owned layout cannot also carry `projectSlug` — it is owned by one or the other, never both',
+        );
+      }
+      if (!isPrincipalRef(owner.principal)) {
+        throw new InvalidLayoutOwnerError(
+          'a principal owner must carry a well-formed PrincipalRef',
+        );
+      }
+      return { kind: 'principal', principal: owner.principal };
+    }
+    case 'instance': {
+      if (projectSlug !== undefined) {
+        throw new InvalidLayoutOwnerError(
+          'an instance-owned layout cannot also carry `projectSlug` — it is owned by one or the other, never both',
+        );
+      }
+      return INSTANCE_LAYOUT_OWNER;
+    }
+    default:
+      throw new InvalidLayoutOwnerError(
+        `unknown owner kind ${JSON.stringify((owner as { kind?: unknown }).kind)}`,
+      );
+  }
+}
+
+/**
+ * The owning project's slug, or `undefined` for a Layout no project owns.
+ * Callers that route by project (every project layout route today) use this
+ * rather than reading `projectSlug` directly, so a Board never falls through
+ * a `=== undefined` branch that was written when every Layout had one.
+ */
+export function layoutOwnerProjectSlug(
+  record: LayoutOwnership,
+): string | undefined {
+  const owner = layoutOwner(record);
+  return owner.kind === 'project' ? owner.projectSlug : undefined;
+}
+
 export interface LayoutConfig {
   id: string;
-  projectSlug: string;
+  /**
+   * Present on a project-owned Layout only, and still the ONLY ownership
+   * field such a record persists — a pre-Boards record is byte-identical
+   * under this contract. Read ownership through {@link layoutOwner}, never
+   * this field directly.
+   */
+  projectSlug?: string;
+  /**
+   * Written only for a Layout no project owns. Absent means project-owned,
+   * derived from `projectSlug` by {@link layoutOwner}.
+   */
+  owner?: LayoutOwner;
   type: string;
   name: string;
   slug: string;
@@ -48,7 +190,10 @@ export interface LayoutConfig {
 export interface LayoutMetadata {
   id: string;
   slug: string;
-  projectSlug: string;
+  /** Project-owned listings only; see {@link LayoutConfig.projectSlug}. */
+  projectSlug?: string;
+  /** Non-project listings only; see {@link LayoutConfig.owner}. */
+  owner?: LayoutOwner;
   type: string;
   name: string;
   icon?: string;

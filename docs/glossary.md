@@ -230,9 +230,15 @@ retired names.
   always written with its product name. The twenty navigable places the
   palette and sidebar send you to are **destinations**
   (`APP_DESTINATION_REGISTRY`).
-- **Layout** — a project's named view the sidebar navigates between: Coding,
-  Tasks, Session board, or a plugin's (`LayoutConfig`, a server record whose
-  `type` selects the renderer). Use **Layout** for the product object and its
+- **Layout** — a named view the sidebar navigates between: Coding, Tasks,
+  Session board, or a plugin's (`LayoutConfig`, a server record whose `type`
+  selects the renderer). A Layout is owned by a project, a principal, or the
+  Station instance (`LayoutOwner`; derive it with `layoutOwner`, never by
+  reading `projectSlug`) — a principal-owned Layout is a **Board**
+  ([design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
+  decision D1). The sidebar still navigates project-owned Layouts only; the
+  personal and instance scopes exist in the contract and in storage, and
+  nothing renders them yet. Use **Layout** for the product object and its
   chooser, editor, sources and persistence. Do not use it for the map of
   which surface sits in which region (that is the arrangement) or for the
   split/tab tree inside a view (that is a pane host). Lowercase "layout" may
@@ -279,6 +285,7 @@ retired names.
 | A thing that can occupy a region (Chat, Activity) | **Surface** |
 | The smallest addressable unit of workspace UI | **Pane** (developer contract: **Workspace Pane**) |
 | Visual grouping inside a page or pane | **Panel** |
+| The one place listing what needs a person's decision (tool approvals, device pairing, proposed changes, paused gate reviews) | **Notifications** (the **attention inbox**; the footer bell counts its pending items) |
 | Durable work identity | **Task** |
 | Execution episode | **Session** |
 | `missing_prerequisites` | name what's missing (e.g. "AWS credentials required") |

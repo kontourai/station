@@ -1,10 +1,13 @@
 # Shell ownership scopes and Boards
 
-Status: **accepted direction, not yet implemented** (owner decisions
+Status: **accepted direction, shipping in slices** (owner decisions
 2026-09-13, recorded from a design session). This record owns the reasoning
 for the next shape of the left panel and for the ownership model that makes
-project-less, user-owned views possible. It does not change shipped behavior.
-The sequence of slices is tracked on epic #2058.
+project-less, user-owned views possible. As of the first batch (slices 1, 2
+and 6 of epic #2058) the places-only panel with its footer, the polymorphic
+layout owner, and the widened attention inbox are shipped; the remaining
+slices are tracked on the epic, and this record describes the target shape,
+not necessarily what a given commit renders.
 
 Vocabulary follows [the glossary](../glossary.md). Where this record
 introduces a term (**Board**, **personal scope**, **attention inbox**) it
@@ -127,13 +130,28 @@ PROJECTS                                            +
   `src-ui/src/workspace-panes/ChatWorkspaceLayout.tsx`,
   `src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx`). No conversation
   list appears in the panel. The chat dock (⌘D) is unchanged.
-- **Footer**: presence, the attention bell, and the gear. Nothing else.
+- **Footer**: presence, the attention bell, the gear, and the command
+  palette's chord. Nothing else. (Amended during slice 1 (#2059): the chord
+  was the one member of the retired status line worth keeping, because the
+  palette is one of the two ways to reach everything that leaves the panel —
+  advertising the move while deleting its advertisement would be
+  self-defeating. The status line's build stamp and open-chat count did not
+  survive: the stamp belongs to a problem report, not to navigation chrome,
+  and the count restated the panel's own Open chats section.)
 
 Everything below is removed from the panel and reached through the gear and
 the command palette: Agents, Connections, Guidance, Registry, Plugins,
 Schedule, Developer. The `Customize` and `System` group headers go with them.
-The destination registry's `sidebar.section` values are the seam; the
-routes, pages, and palette entries do not change.
+
+The destination registry is the seam. With both disclosure groups gone there
+are no sections left to order, so `sidebar.section` is retired: a panel row is
+`sidebar: { order }` and a configuration destination is
+`management: { order }`, read by a new `getManagement` projection that
+Settings' Manage group renders. A destination may be one or the other and the
+composer refuses a definition claiming both. Routes and pages do not change.
+One palette entry is ADDED rather than moved: Review's panel row was its only
+advertised entry point, and D4 below requires it stay palette-reachable until
+`/review-queue` retires.
 
 ### D4. One attention inbox
 

@@ -43,9 +43,9 @@ import { useProjectSidebarState } from './useProjectSidebarState';
 import { buildSidebarClassName } from './utils';
 import './ProjectSidebar.css';
 
-const loadProjectSidebarStatus = () =>
-  import('./ProjectSidebarStatus').then((module) => ({
-    default: module.ProjectSidebarStatus,
+const loadProjectSidebarFooter = () =>
+  import('./ProjectSidebarFooter').then((module) => ({
+    default: module.ProjectSidebarFooter,
   }));
 
 /** archive#3314: shared-inbox-row list, lazy so the row module (and its stylesheet)
@@ -344,6 +344,18 @@ function ProjectSidebarImpl() {
             <span aria-hidden="true">⌂</span>
             <span className="sidebar__project-name">Home</span>
           </button>
+          {/* #2059 (D3): Activity sits directly under Home as the panel's
+              other place. The destination rows used to be a band at the
+              BOTTOM of the panel, below the projects, because that band was
+              mostly configuration; with the configuration gone the one row
+              left belongs beside the place it is a peer of. */}
+          <ProjectSidebarNav
+            collapsed={effectiveCollapsed}
+            isMobile={isMobile}
+            navigate={navigate}
+            activePath={pathname}
+            onAfterNavigate={() => setMobileOpen(false)}
+          />
           {/* archive#3314: Open chats is a mini-inbox — shared inbox rows (compact
               variant), collapsible with the nav groups' disclosure anatomy
               (aria-expanded + aria-controls + hidden), and removable
@@ -545,16 +557,14 @@ function ProjectSidebarImpl() {
           </span>
         </div>
 
-        <ProjectSidebarNav
-          collapsed={effectiveCollapsed}
-          isMobile={isMobile}
-          navigate={navigate}
-          activePath={pathname}
-          onAfterNavigate={() => setMobileOpen(false)}
-        />
         <LazyBoundary
-          load={loadProjectSidebarStatus}
-          componentProps={{}}
+          load={loadProjectSidebarFooter}
+          componentProps={{
+            activePath: pathname,
+            navigate,
+            isMobile,
+            onAfterNavigate: () => setMobileOpen(false),
+          }}
           pending={null}
         />
       </nav>

@@ -1067,7 +1067,7 @@ export function createProjectRoutes(
       // the list read.
       const now = new Date().toISOString();
       const persisted = withoutPersistedWorkingDirectory({
-        ...withoutClientCatalogContribution(body),
+        ...withoutClientLayoutOwner(withoutClientCatalogContribution(body)),
         id: randomUUID(),
         projectSlug: slug,
         slug: body.slug,
@@ -1216,7 +1216,7 @@ export function createProjectRoutes(
         // values, so a partial rename cannot erase the saved LayoutDefinition.
         const layout = {
           ...existing,
-          ...withoutClientCatalogContribution(body),
+          ...withoutClientLayoutOwner(withoutClientCatalogContribution(body)),
           id: existing.id,
           projectSlug: slug,
           slug: layoutSlug,
@@ -1442,6 +1442,19 @@ export function createProjectRoutes(
   return app;
 }
 
+/**
+ * A Layout reached through `/:slug/layouts` is owned by that route's project,
+ * always. Ownership is issued by the route, never accepted from the body —
+ * the same rule catalog attribution follows below, and the reason a request
+ * cannot relocate somebody's Layout under a principal by naming one (#2060).
+ */
+function withoutClientLayoutOwner<T extends Record<string, unknown>>(
+  value: T,
+): Omit<T, 'owner'> {
+  const { owner: _owner, ...withoutOwner } = value;
+  return withoutOwner;
+}
+
 /** Catalog attribution is issued only by the catalog-apply path. */
 function withoutClientCatalogContribution<T extends Record<string, unknown>>(
   value: T,
@@ -1452,10 +1465,11 @@ function withoutClientCatalogContribution<T extends Record<string, unknown>>(
 }
 
 function layoutImmutableMismatch(
+  // Narrowed to exactly the two fields this reads: the route supplies the
+  // project and layout slugs it compares against, so widening the parameter
+  // to the whole record only invites a second reader of ownership.
   existing: {
     id: string;
-    projectSlug: string;
-    slug: string;
     createdAt: string;
   },
   projectSlug: string,

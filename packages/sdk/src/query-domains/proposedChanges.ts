@@ -89,33 +89,56 @@ export function useProposedChangesQuery(
   );
 }
 
+/**
+ * station#2064 review MED-1: a DECISION changes the attention projection too.
+ *
+ * A pending proposed change is an attention item
+ * (`ProposedChangeAttentionItem`), so approving one must refresh `['attention']`
+ * as well as `['proposed-changes']`. Without it the inbox row kept offering
+ * Approve/Reject until the 10s poll came round, and a second click answered a
+ * change that was already decided — the store refuses the transition, so the
+ * user's honest second attempt read as an error.
+ *
+ * The bulk pair carries it for the same reason and is easy to forget precisely
+ * because the Review page is where bulk lives: the bell it moves is on another
+ * surface. `useCreateProposedChangeMutation` carries it too — a newly proposed
+ * change ADDS an inbox row.
+ *
+ * Prefix keys, so every `proposedChangesQueryKey(filters)` variant and every
+ * `['attention', apiBase]` entry match.
+ */
+const PROPOSED_CHANGE_INVALIDATE_KEYS: (string | number)[][] = [
+  ['proposed-changes'],
+  ['attention'],
+];
+
 export function useCreateProposedChangeMutation() {
   return useApiMutation(createProposedChange, {
-    invalidateKeys: [['proposed-changes']],
+    invalidateKeys: PROPOSED_CHANGE_INVALIDATE_KEYS,
   });
 }
 
 export function useApproveProposedChangeMutation() {
   return useApiMutation(approveProposedChange, {
-    invalidateKeys: [['proposed-changes']],
+    invalidateKeys: PROPOSED_CHANGE_INVALIDATE_KEYS,
   });
 }
 
 export function useRejectProposedChangeMutation() {
   return useApiMutation(rejectProposedChange, {
-    invalidateKeys: [['proposed-changes']],
+    invalidateKeys: PROPOSED_CHANGE_INVALIDATE_KEYS,
   });
 }
 
 export function useBulkApproveProposedChangesMutation() {
   return useApiMutation(bulkApproveProposedChanges, {
-    invalidateKeys: [['proposed-changes']],
+    invalidateKeys: PROPOSED_CHANGE_INVALIDATE_KEYS,
   });
 }
 
 export function useBulkRejectProposedChangesMutation() {
   return useApiMutation(bulkRejectProposedChanges, {
-    invalidateKeys: [['proposed-changes']],
+    invalidateKeys: PROPOSED_CHANGE_INVALIDATE_KEYS,
   });
 }
 

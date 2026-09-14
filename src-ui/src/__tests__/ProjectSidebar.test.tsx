@@ -170,6 +170,9 @@ vi.mock('@kontourai/station-sdk', () => ({
   // expanded: the row's read is gated `enabled: expanded && !collapsed`, so
   // the server is never asked, and nothing here asserts a Board entry.
   useBoardAvailabilityQuery: () => ({ data: undefined }),
+  // #2059: the lazy panel footer reads the attention projection for its bell
+  // badge. Same hazard as the two recorded above, one hook later.
+  useAttentionQuery: () => ({ data: { pendingCount: 0 } }),
 }));
 
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
@@ -457,13 +460,71 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
   });
 });
 
-describe('ProjectSidebar management navigation', () => {
-  test('renders the Customize disclosure independently of deferred sidebar status', () => {
+/**
+ * #2059 (design record D3), the acceptance this slice is measured by: "Panel
+ * order: header, Home, Activity, Projects, footer. No other destination rows."
+ *
+ * Asserted against the real `ProjectSidebar` composition in DOM order, not
+ * against `ProjectSidebarNav` alone: Home is the sidebar's own row and
+ * Activity is the nav's, so only the composition can say that the one follows
+ * the other — and only an ORDERED inventory notices a row nobody meant to add.
+ * The footer is lazy, so it is not in this synchronous tree; its own suite
+ * (ProjectSidebarFooter.test.tsx) covers it.
+ */
+describe('ProjectSidebar panel order (#2059)', () => {
+  const panelRowLabels = () =>
+    Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '.sidebar__project-btn, .sidebar__nav-btn',
+      ),
+      // The label element, not the whole button: the Home row leads with an
+      // aria-hidden `⌂` and the nav rows with an aria-hidden icon.
+    ).map((button) =>
+      (
+        button.querySelector('.sidebar__project-name, .sidebar__nav-label') ??
+        button
+      ).textContent?.trim(),
+    );
+
+  test('lists header, Home, Activity, then the projects — and no other destination rows', () => {
+    resetState();
+    projects.push(
+      { id: 'p1', slug: 'station', name: 'Station' },
+      { id: 'p2', slug: 'ferry', name: 'Ferry' },
+    );
+    renderSidebar(<ProjectSidebar />);
+
+    // The header is above the body and is its own control, so it anchors the
+    // order rather than joining the row list.
+    expect(screen.getByRole('button', { name: 'Station home' })).toBeTruthy();
+    expect(panelRowLabels()).toEqual(['Home', 'Activity', 'Station', 'Ferry']);
+  });
+
+  test('removes every configuration destination and both group headers from the panel', () => {
     resetState();
     renderSidebar(<ProjectSidebar />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
-    expect(screen.getByRole('button', { name: 'Agents' })).toBeTruthy();
+    // Named one by one so a failure says WHICH one came back. The ordered
+    // inventory above is what catches an unnamed addition.
+    for (const label of [
+      'Agents',
+      'Connections',
+      'Guidance',
+      'Registry',
+      'Review',
+      'Plugins',
+      'Schedule',
+      'Developer',
+      'Notifications',
+      'Settings',
+      'Customize',
+      'System',
+    ]) {
+      expect(
+        screen.queryByRole('button', { name: label }),
+        `${label} is still a panel row`,
+      ).toBeNull();
+    }
   });
 });
 
