@@ -650,7 +650,7 @@ describe('the double-empty rule (station#4463 slice 2)', () => {
     expect(screen.queryByText('Select an item')).toBeNull();
     expect(
       screen.queryByText(
-        'Review a proposed change, or read and resolve a diff comment.',
+        'Review a proposed change, or read and delete a diff comment.',
       ),
     ).toBeNull();
   });
@@ -665,6 +665,11 @@ describe('the double-empty rule (station#4463 slice 2)', () => {
 
     expect(screen.queryByText('Nothing to review')).toBeNull();
     expect(screen.getByText('Select an item')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Review a proposed change, or read and delete a diff comment.',
+      ),
+    ).toBeTruthy();
   });
 });
 
