@@ -34,10 +34,12 @@ export const SELECTOR_DEFERRED_MESSAGE =
 //
 // Raised 150s -> 220s on 2026-09-14 when `proof:repo-governance` (4s),
 // `lint:check` (7s) and `veritas:readiness` (15s idle, 35s typical, 75s on
-// this host at load 48) joined the list, taking the whole static set from
-// ~100s measured to ~150s. The multiple is deliberately the one #4273 chose,
-// ~1.45x the measurement, because these are a loaded dev host's numbers and
-// not a hosted runner's.
+// this host at load 48) joined the list. The whole list was then timed end
+// to end on this branch, every command real and green: 114s wall at load
+// ~25. 220s is ~1.9x that, which is deliberately more headroom than the
+// ~1.5x #4273 left, because a hosted runner has two cores and this host's
+// concurrency is doing some of the work (the typecheck aggregate alone runs
+// at 447% CPU here).
 //
 // What that spends: 720s - 220s = 500s (8.3min) is left for affected-test
 // selection, down from 570s (9.5min). The selection budget observed to be too
