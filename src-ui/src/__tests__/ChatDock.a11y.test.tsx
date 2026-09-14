@@ -18,6 +18,9 @@ vi.mock('../contexts/ProjectsContext', () => ({
     isLoading: false,
     isConfirmedLoaded: true,
   }),
+  // #2047: the region host resolves the dock's project through this read;
+  // no project here, so the panes that need one derive none.
+  useProject: () => ({ project: undefined, isLoading: false }),
 }));
 
 const source = readFileSync(
