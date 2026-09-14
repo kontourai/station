@@ -1,5 +1,6 @@
 import { WORKSPACE_BASIS_PANE_RENDERER_NAME } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import { WORKSPACE_BOARD_PANE_RENDERER_NAME } from '@kontourai/station-board-pane/workspace-board-pane';
+import type { ConversationPullRequestLinkObservation } from '@kontourai/station-contracts/conversation-pull-request-links';
 import { WORKSPACE_ACTIVITY_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-activity-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
@@ -82,6 +83,10 @@ import {
   SkeletonBlock,
 } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
+import {
+  useOpenFilePreviewInRegion,
+  useOpenPullRequestInRegion,
+} from '../contexts/useOpenInRegion';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
 import { BrowserPreviewWorkspacePane } from './BrowserPreviewWorkspacePane';
 import {
@@ -319,6 +324,13 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
     enabled: identity.state === 'resolved',
   });
   const paneHostOpen = useWorkspacePaneHostOpenAction();
+  // #2049 (batch-A review M1): in a dock region this pane has no layout to
+  // navigate to, and the host's own open refuses a preview the region does
+  // not already hold — so before #2049 a file click in a docked Files pane
+  // selected the row and opened nothing. The region opener places the
+  // preview as a sibling tab instead. Null in a layout mount, where the
+  // host route below is still the one that works.
+  const openPreviewInRegion = useOpenFilePreviewInRegion();
   const { openFilePreviewIntent, setLayout } = useNavigation();
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const workingDir = codingWorkingDirectory(
@@ -341,6 +353,15 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
       // its own state only.
       if (layoutSlug)
         setLayout(projectSlug, layoutSlug, { openFilePreviewIntent: intent });
+      if (!layoutSlug && openPreviewInRegion) {
+        openPreviewInRegion({
+          projectId,
+          projectSlug: intent.projectSlug,
+          path: intent.path,
+          ...(intent.lineRange ? { lineRange: intent.lineRange } : {}),
+        });
+        return;
+      }
       if (!paneHostOpen) {
         return;
       }
@@ -381,7 +402,14 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
         ),
       );
     },
-    [layoutSlug, paneHostOpen, projectId, projectSlug, setLayout],
+    [
+      layoutSlug,
+      openPreviewInRegion,
+      paneHostOpen,
+      projectId,
+      projectSlug,
+      setLayout,
+    ],
   );
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
@@ -435,6 +463,27 @@ function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
     enabled: identity.state === 'resolved',
   });
   const [activeRepoRoot, setActiveRepoRoot] = useState<string | null>(null);
+  // #2049: a layout-less Diff pane is a dock region's, where a linked pull
+  // request has somewhere better to go than this panel's own inner view —
+  // its own tab, beside the conversation that linked it. In a coding layout
+  // `layoutSlug` is set and this stays undefined, so the list keeps the
+  // back-and-forth it was built for.
+  const openPullRequest = useOpenPullRequestInRegion();
+  const projectId = identity.state === 'resolved' ? identity.project.id : '';
+  const openLinkedAsPane =
+    !layoutSlug && openPullRequest
+      ? (link: ConversationPullRequestLinkObservation) => {
+          openPullRequest(
+            {
+              host: link.host,
+              owner: link.repository.owner,
+              repository: link.repository.name,
+              ref: link.ref,
+            },
+            projectId,
+          );
+        }
+      : undefined;
   const workingDir = codingWorkingDirectory(
     layout,
     identity.state === 'resolved' ? identity.project : undefined,
@@ -474,6 +523,7 @@ function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
         <PullRequestsPanel
           projectSlug={projectSlug}
           activeRepoRoot={activeRepoRoot ?? workingDir}
+          onOpenLinkedAsPane={openLinkedAsPane}
         />
         <DiffPanel
           workingDir={activeRepoRoot ?? workingDir}

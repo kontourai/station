@@ -1,4 +1,7 @@
-import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
+import type {
+  ConversationPullRequestLinkObservation,
+  PullRequestLinkIdentity,
+} from '@kontourai/station-contracts/conversation-pull-request-links';
 import type {
   PullRequest,
   PullRequestMergeMethod,
@@ -34,9 +37,19 @@ function normalizedState(state: string) {
 export function PullRequestsPanel({
   projectSlug,
   activeRepoRoot,
+  onOpenLinkedAsPane,
 }: {
   projectSlug: string;
   activeRepoRoot?: string | null;
+  /**
+   * Where a LINKED pull request opens when this panel is a dock pane's rather
+   * than a coding layout's (#2049): as its own dock tab, beside the
+   * conversation that linked it, instead of replacing this panel's list with
+   * a review that has a "Back to pull requests" button. Absent in a layout,
+   * where the list IS the place to go back to — which is why the caller
+   * decides and this panel does not read its own placement.
+   */
+  onOpenLinkedAsPane?: (link: ConversationPullRequestLinkObservation) => void;
 }) {
   const activeChat = useNavigation((state) => state.activeChat);
   const [selected, setSelected] = useState<PullRequestLinkIdentity | null>(
@@ -180,7 +193,7 @@ export function PullRequestsPanel({
                 ...(pullRequest.headSha ? { head: pullRequest.headSha } : {}),
               },
             }))}
-          onOpen={(link) => setSelected(link)}
+          onOpen={onOpenLinkedAsPane ?? ((link) => setSelected(link))}
         />
       )}
       <PullRequestDependencyStacks

@@ -20,6 +20,7 @@ import {
   type OpenInRegionOutcome,
   type OpenInRegionRefusal,
   useRegionModel,
+  useRegionModelOptional,
 } from './RegionModelContext';
 
 /**
@@ -194,6 +195,69 @@ export function useOpenInRegion(): (
       openInRegion(model, instance, options),
     [model],
   );
+}
+
+/**
+ * `openFilePreviewInRegion` bound to the mounted region model, or null where
+ * there is none (#2049). The optional form exists for a pane that may be
+ * mounted either inside a region or inside a layout: a docked Files pane
+ * opens a preview as a sibling tab, the same pane in a coding layout keeps
+ * the layout's own host route, and neither needs to ask which it is.
+ *
+ * No `region` is passed: the preview takes the file-preview surface's own
+ * placement rule (its default dock region, or the first free one), the same
+ * rule a chat link's preview takes. A pane does not choose a region.
+ */
+export function useOpenFilePreviewInRegion():
+  | ((
+      request: OpenFilePreviewRequest,
+      options?: OpenInRegionOptions,
+    ) => OpenInRegionOutcome | { ok: false; reason: OpenPaneRefusal })
+  | null {
+  const model = useRegionModelOptional();
+  const open = useCallback(
+    (request: OpenFilePreviewRequest, options?: OpenInRegionOptions) =>
+      // Non-null by the guard below: the callback is created unconditionally
+      // because a hook must be, and handed out only when there is a model.
+      openFilePreviewInRegion(
+        model as NonNullable<typeof model>,
+        request,
+        options,
+      ),
+    [model],
+  );
+  return model ? open : null;
+}
+
+/**
+ * `openPullRequestInRegion` bound to the mounted region model, or null where
+ * there is none (#2049). The optional form, for the same reason the preview's
+ * is: the Diff pane renders in a coding layout and in a dock region, and only
+ * the second one has a sibling tab to put a review in.
+ */
+export function useOpenPullRequestInRegion():
+  | ((
+      key: WorkspacePullRequestPaneKey,
+      projectId: string | null,
+      options?: OpenInRegionOptions,
+    ) => OpenInRegionOutcome | { ok: false; reason: OpenPaneRefusal })
+  | null {
+  const model = useRegionModelOptional();
+  const open = useCallback(
+    (
+      key: WorkspacePullRequestPaneKey,
+      projectId: string | null,
+      options?: OpenInRegionOptions,
+    ) =>
+      openPullRequestInRegion(
+        model as NonNullable<typeof model>,
+        key,
+        projectId,
+        options,
+      ),
+    [model],
+  );
+  return model ? open : null;
 }
 
 /** The two instance-keyed openers, bound to the mounted region model (#2049). */

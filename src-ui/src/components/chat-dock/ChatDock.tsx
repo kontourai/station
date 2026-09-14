@@ -62,6 +62,10 @@ import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
+import {
+  availablePlacements,
+  useDockSlotDevice,
+} from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
   OPEN_PROJECT_CHATS_EVENT,
@@ -82,6 +86,7 @@ import {
   selectChatReadyAgents,
   selectDirectNewChatAgent,
 } from '../agent-selection-policy';
+import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { ContextPercentage } from '../conversation-stats/ConversationStats';
 import { LazyBoundary } from '../LazyBoundary';
@@ -1825,8 +1830,53 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       isDockOwnedViewType(resolveViewFromPath(pathname).type),
   });
 
+  // #2049: what a link in this conversation's rendered markdown may open.
+  // The CONVERSATION's project, not the dock's binding — a model's
+  // repo-relative path names a file in the checkout it was running in — and
+  // the dock's alongside it, because a dock pane binds the dock's project and
+  // the two differing is what makes the pane route wrong rather than merely
+  // unavailable. `openPathInMain` is the route a preview took before #2049
+  // and still takes on a bottom-only device or a mismatched binding.
+  const conversationProjectSlug = activeSession?.projectSlug ?? null;
+  const conversationProjectId = conversationProjectSlug
+    ? (projects.find((project) => project.slug === conversationProjectSlug)
+        ?.id ?? null)
+    : null;
+  // The provider's own fold predicate (`RegionModelProvider`), not a second
+  // reading of the viewport: a device the model will refuse a side region on
+  // must not be offered one here.
+  const dockBottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
+  const codingLayoutSlug = sessionCodingLayout?.slug ?? null;
+  const markdownLinkContext = useMemo(
+    () => ({
+      projectSlug: conversationProjectSlug,
+      projectId: conversationProjectId,
+      dockProjectSlug,
+      bottomOnly: dockBottomOnly,
+      openPathInMain:
+        conversationProjectSlug && codingLayoutSlug
+          ? (path: string, lineRange?: { start: number; end: number }) =>
+              setLayout(conversationProjectSlug, codingLayoutSlug, {
+                openFilePreviewIntent: {
+                  projectSlug: conversationProjectSlug,
+                  path,
+                  ...(lineRange ? { lineRange } : {}),
+                },
+              })
+          : null,
+    }),
+    [
+      codingLayoutSlug,
+      conversationProjectId,
+      conversationProjectSlug,
+      dockBottomOnly,
+      dockProjectSlug,
+      setLayout,
+    ],
+  );
+
   return (
-    <>
+    <MarkdownLinkContext.Provider value={markdownLinkContext}>
       <SkillShortcutRegistrar
         hasContext={Boolean(
           !importedSessionId && activeSessionId && activeSessionForHook,
@@ -2893,7 +2943,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ) : null}
 
       <ShareIntakeController />
-    </>
+    </MarkdownLinkContext.Provider>
   );
 }
 

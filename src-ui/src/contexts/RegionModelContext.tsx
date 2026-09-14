@@ -87,8 +87,8 @@ export interface OpenInRegionOptions {
 /**
  * Why `openInRegion` did not place (#2048), each derived from the branch that
  * produced it: `no-surface` — the instance is no region surface's canonical
- * pane (instance-keyed panes are batch B's), or the id is no registered
- * surface; `unsupported-placement` —
+ * pane, or the id is neither a registered surface nor one an instance prefix
+ * describes (#2049); `unsupported-placement` —
  * `split` asked of a tab-group region; `region-unavailable` — a dock region
  * this device's fold does not offer (a side region on a bottom-only device);
  * `refused` — the surface does not declare the region (`surfaceMayOccupy`).
