@@ -8,9 +8,11 @@ import { liveActivityQueries } from '../queryFactories';
  * How often the projection is re-read, and half of the delay a UI must own up
  * to: a participant leaves the server's projection when its heartbeat lease
  * expires (`ttlMs: 30_000`), and a client cannot notice sooner than its next
- * poll. Exported so a surface describing that bound to a user derives the
- * number instead of quoting one — `packages/sdk/src/__tests__/live-activity.
- * test.ts` pins it against the copy it bounds.
+ * poll. Exported to give the interval one source of truth and a tripwire, not
+ * because anything derives the sentence from it: the tray quotes "about forty
+ * seconds" in prose. `packages/sdk/src/__tests__/live-activity.test.ts` pins
+ * this number and `ProjectSidebarFooter.test.tsx` pins that copy, so moving
+ * the poll reds a test rather than silently making the copy optimistic.
  */
 export const LIVE_ACTIVITY_POLL_INTERVAL_MS = 10_000;
 

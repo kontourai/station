@@ -118,7 +118,7 @@ function plural(count: number, one: string, many: string): string {
  * that the control is broken — the control stays visible and says what it
  * read.
  */
-export function presenceSummary(participants: number, workers: number): string {
+function presenceSummary(participants: number, workers: number): string {
   if (participants === 0 && workers === 0)
     return 'nobody is publishing live work';
   const parts = [plural(participants, 'participant', 'participants')];
@@ -172,9 +172,12 @@ function presenceRead(query: {
   if (query.isError) return 'unanswered';
   if (query.data === null) return 'unpublished';
   if (query.data !== undefined) return 'roster';
-  // No answer yet. `isPending` is exactly this case for this query, and is
-  // read rather than assumed so the state stays the library's, not ours.
-  return query.isPending ? 'pending' : 'unanswered';
+  // No answer yet. Every other case is taken above: status is pending, error
+  // or success, and success always carries a projection or `null`, so this is
+  // the pending one. It is stated rather than branched on `isPending` because
+  // the branch's other arm was unreachable and claimed the Station had failed
+  // — the same unearned claim the rest of this function exists to avoid.
+  return 'pending';
 }
 
 /**
@@ -196,7 +199,7 @@ function presenceState(
     return {
       name: 'not published by this Station',
       reads:
-        'This Station answered, and it does not publish live work: hosted Stations and Stations without task-room orchestration have nobody to report. That is an answer about the Station, not about who is here, and not a failure to reach it.',
+        'This Station answered, and it does not publish live work. That is an answer about the Station, not about who is here, and not a failure to reach it.',
     };
   if (read === 'pending')
     return {

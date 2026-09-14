@@ -49,9 +49,9 @@ test('parses the Activity projection and treats personal-mode unavailability as 
  * sum nothing asserts.
  */
 test('the poll interval the presence copy is bounded by', () => {
+  // 30_000 (the server lease, pinned in the runtime suite) plus this poll is
+  // the "about forty seconds" the tray states and ProjectSidebarFooter.test.tsx
+  // asserts. Only this term is pinned here; asserting the sum as well would
+  // restate this line's arithmetic and could not fail on its own.
   expect(LIVE_ACTIVITY_POLL_INTERVAL_MS).toBe(10_000);
-  // 30_000 (server lease) + 10_000 (this poll) is the "about forty seconds"
-  // `ProjectSidebarPresenceTray` states and `ProjectSidebarFooter.test.tsx`
-  // asserts. Change either term and the copy must move with it.
-  expect(30_000 + LIVE_ACTIVITY_POLL_INTERVAL_MS).toBe(40_000);
 });
