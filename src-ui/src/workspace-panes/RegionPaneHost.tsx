@@ -25,7 +25,11 @@ import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { useActiveProject } from '../hooks/useActiveProject';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { reportRegionClearance } from '../regions/region-clearance';
-import { type DockRegionId, isDockRegion } from '../regions/region-model';
+import {
+  type DockRegionId,
+  isDockRegion,
+  resolveRegionSurface,
+} from '../regions/region-model';
 import {
   type RegionPaneContext,
   regionSurfaceOfPane,
@@ -80,7 +84,10 @@ export function regionPaneHostDocumentId(
 const REGION_PANE_HOST_SCOPE = { kind: 'ambient' } as const;
 
 /** The context of a host that has no dock project to bind (the legacy mount). */
-const PROJECTLESS_CONTEXT: RegionPaneContext = { projectId: null };
+const PROJECTLESS_CONTEXT: RegionPaneContext = {
+  projectId: null,
+  projectSlug: null,
+};
 
 /**
  * The document for a region holding `surfaceIds`, in tab order: one tab
@@ -290,7 +297,15 @@ function isRegionPane(
   return (
     canonical !== undefined &&
     canonical !== null &&
-    canonical.boundContext?.projectId === instance.boundContext?.projectId
+    canonical.boundContext?.projectId === instance.boundContext?.projectId &&
+    // Identity as well as binding, for the instance-keyed panes (#2049):
+    // their ids are data, so "the pane this region derives for that surface"
+    // is not implied by the descriptor the way a singleton's is. Redundant
+    // for Chat, Activity and the coding panes, whose ids are constants their
+    // own `isCanonical` already pinned.
+    String(canonical.instanceId) === String(instance.instanceId) &&
+    String(canonical.stateKey) === String(instance.stateKey) &&
+    canonical.descriptorId === instance.descriptorId
   );
 }
 
@@ -416,6 +431,27 @@ function RegionPaneNeedsProject({ title }: { title: string }) {
 }
 
 /**
+ * What a region shows for a selected pane its dock HAS a project for and
+ * still cannot supply (#2049). Only an instance-keyed pane reaches this: a
+ * file preview whose persisted state names another project or is no longer
+ * stored. The tab and the record keep it, because the user put it there and
+ * closing a tab is the user's act — but the placeholder must not repeat the
+ * "choose a project" instruction, which for this case would name a remedy
+ * that does nothing.
+ */
+function RegionPaneUnavailable({ title }: { title: string }) {
+  return (
+    <div className="dock-slot__body">
+      <Empty
+        variant="compact"
+        label={`${title} is not available in this dock`}
+        description="Its saved state names a different project, or is no longer stored. Close the tab and open it again from the chat."
+      />
+    </div>
+  );
+}
+
+/**
  * One dock region's pane host (#2045): `DockShell` (the one dock chrome shell
  * — root box, resize handle, geometry/snap/drag state,
  * `dock.toggle`/`dock.maximize`) around the region's chrome bar
@@ -496,6 +532,19 @@ export function RegionPaneHost({
         : ['chat'],
     [regionPanes],
   );
+  // The inventory entry per pane, resolved once per pane set. An
+  // instance-keyed entry is minted per call and a file preview's is derived
+  // from persisted state (#2049), so resolving it inside the render's three
+  // readers — document, strip, selection — would read storage three times a
+  // render for the same answer.
+  const paneEntries = useMemo(
+    () =>
+      panes.flatMap((surfaceId) => {
+        const pane = regionSurfacePane(surfaceId);
+        return pane ? [[surfaceId, pane] as const] : [];
+      }),
+    [panes],
+  );
   const selected =
     region && region.occupant && panes.includes(region.occupant)
       ? region.occupant
@@ -509,8 +558,8 @@ export function RegionPaneHost({
   // (ids only) is not what carries it.
   const { projectId, projectSlug, pending: projectPending } = useDockProject();
   const context = useMemo<RegionPaneContext>(
-    () => ({ projectId }),
-    [projectId],
+    () => ({ projectId, projectSlug }),
+    [projectId, projectSlug],
   );
   const document = useMemo(
     () =>
@@ -523,9 +572,11 @@ export function RegionPaneHost({
   // dock cannot supply keeps its tab and renders the placeholder in place of
   // the host: mounting the host with another pane active would show a pane
   // the strip does not say is selected.
+  const selectedEntry = selected
+    ? paneEntries.find(([surfaceId]) => surfaceId === selected)?.[1]
+    : undefined;
   const selectedSupplied =
-    selected !== undefined &&
-    regionSurfacePane(selected)?.instance(context) != null;
+    selectedEntry !== undefined && selectedEntry.instance(context) != null;
   // Before the inner host's first read of the region key (its controller
   // hydrates in its own state initialiser), so the adopted or reconciled
   // document is what it finds. Once per mount: a region host mounts when its
@@ -559,9 +610,7 @@ export function RegionPaneHost({
   const [liveActiveInstanceId, setLiveActiveInstanceId] = useState<
     string | null
   >(null);
-  const selectedInstanceId = selected
-    ? regionSurfacePane(selected)?.instanceId
-    : undefined;
+  const selectedInstanceId = selectedEntry?.instanceId;
   useEffect(() => {
     if (!openAction || !selectedInstanceId || liveActiveInstanceId === null)
       return;
@@ -572,24 +621,29 @@ export function RegionPaneHost({
   // The region bar's tabs, from the same `panes` the document derives from.
   const tabs = useMemo<RegionChromeTab[]>(
     () =>
-      panes.flatMap((surfaceId) => {
-        const pane = regionSurfacePane(surfaceId);
-        return pane
-          ? [
-              {
-                surfaceId,
-                instanceId: pane.instanceId,
-                title: model?.surfaces.get(surfaceId)?.title ?? surfaceId,
-              },
-            ]
-          : [];
-      }),
-    [model, panes],
+      paneEntries.map(([surfaceId, pane]) => ({
+        surfaceId,
+        instanceId: pane.instanceId,
+        // The pane's own name where it derives one from its identity (a
+        // pull request's number, a file's name, #2049), else the surface's
+        // registered or prefix-described title.
+        title:
+          pane.title ?? resolveRegionSurface(surfaceId)?.title ?? surfaceId,
+      })),
+    [paneEntries],
   );
   // The id the strip's tabs and the host's panel share: the REGION's, so the
   // pair is stable whatever tab-group id a persisted (adopted) document
   // carries.
   const groupId = `region:${documentId}`;
+  // What the placeholders call the selected pane: the same title its tab
+  // carries, so a reader is never told about a pane under a second name.
+  const selectedTitle =
+    selected === undefined
+      ? ''
+      : (selectedEntry?.title ??
+        resolveRegionSurface(selected)?.title ??
+        selected);
   const selectTab = useCallback(
     (surfaceId: string) => {
       if (regionId && model) model.selectPane(regionId, surfaceId);
@@ -714,9 +768,11 @@ export function RegionPaneHost({
               <SkeletonBlock count={3} label="Loading pane" />
             </div>
           ) : selected !== undefined ? (
-            <RegionPaneNeedsProject
-              title={model?.surfaces.get(selected)?.title ?? selected}
-            />
+            projectId === null ? (
+              <RegionPaneNeedsProject title={selectedTitle} />
+            ) : (
+              <RegionPaneUnavailable title={selectedTitle} />
+            )
           ) : null}
         </RegionChromeSlotsContext.Provider>
       )}

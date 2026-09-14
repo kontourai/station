@@ -14,7 +14,10 @@ import { WORKSPACE_HOME_PANE_DESCRIPTOR } from '@kontourai/station-contracts/wor
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { describe, expect, test } from 'vitest';
-import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
+import {
+  INSTANCE_SURFACE_PREFIXES,
+  REGION_SURFACE_REGISTRY,
+} from '../regions/region-model';
 
 /**
  * station#928: `docked` in `WORKSPACE_PANE_REGIONS` is a capability claim —
@@ -65,6 +68,7 @@ const EXPECTED_BUILTIN_DESCRIPTOR_EXPORTS = [
   '@kontourai/station-contracts:WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_HOME_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_PLAN_PANE_DESCRIPTOR',
+  '@kontourai/station-contracts:WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_READINESS_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_SPATIAL_BOARD_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR',
@@ -82,10 +86,12 @@ const SURFACE_DESCRIPTORS: Record<string, WorkspacePaneDescriptor> = {
   chat: WORKSPACE_CHAT_PANE_DESCRIPTOR,
   activity: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
   home: WORKSPACE_HOME_PANE_DESCRIPTOR,
-  // #2047: the three coding panes. Browser Preview and File Preview are
-  // deliberately absent (no blank canonical instance; #2049's `openInRegion`
-  // is their reader), so their descriptors must NOT claim `docked` yet — the
-  // both-directions pin below holds that too.
+  // #2047: the three coding panes. Browser Preview is deliberately absent
+  // (no blank canonical instance and, unlike File Preview, no reader), so its
+  // descriptor must NOT claim `docked` — the both-directions pin below holds
+  // that. File Preview and Pull request DO claim it since #2049, and are
+  // placeable as INSTANCE-keyed panes rather than registry surfaces; the
+  // prefix pin below is how they enter the placeable set.
   'coding:terminal': WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
   'coding:diff': WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
   'coding:file-browser': WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
@@ -165,10 +171,46 @@ describe('docked is a derived capability, pinned to the shell surface registry',
     }
   });
 
-  test('the built-ins declaring docked are exactly the built-ins the shell can place', () => {
-    const placeable = new Set<string>(
-      Object.values(SURFACE_DESCRIPTORS).map((descriptor) => descriptor.id),
+  /**
+   * #2049: an instance-keyed pane is placeable without being a registry key —
+   * `INSTANCE_SURFACE_PREFIXES` describes it by prefix instead. That table
+   * names its descriptor by ID (it is in the entry chunk and may import no
+   * pane contract), so this is where the id is checked against a descriptor
+   * that exists and declares `docked`. Without it the string could name
+   * nothing at all and every id-keyed reader would silently answer
+   * `undefined`.
+   */
+  test('every instance-surface prefix names a built-in descriptor that declares docked', () => {
+    const byId = new Map<string, WorkspacePaneDescriptor>(
+      exportedBuiltinDescriptors().map(({ descriptor }) => [
+        String(descriptor.id),
+        descriptor,
+      ]),
     );
+    expect(INSTANCE_SURFACE_PREFIXES.map((prefix) => prefix.prefix)).toEqual([
+      'pr:',
+      'file-preview:',
+    ]);
+    for (const prefix of INSTANCE_SURFACE_PREFIXES) {
+      const descriptor = byId.get(prefix.descriptorId);
+      expect(descriptor, prefix.prefix).toBeDefined();
+      expect(
+        descriptor?.placement.supportedRegions,
+        prefix.descriptorId,
+      ).toContain('docked');
+      // A prefix surface is never a registry key: there is no blank
+      // occurrence to register, and `SURFACE_DESCRIPTORS` above is pinned to
+      // the registry's exact key set.
+      expect(REGION_SURFACE_REGISTRY.has(prefix.prefix)).toBe(false);
+    }
+  });
+
+  test('the built-ins declaring docked are exactly the built-ins the shell can place', () => {
+    const placeable = new Set<string>([
+      ...Object.values(SURFACE_DESCRIPTORS).map((descriptor) => descriptor.id),
+      // Placeable by instance rather than by registry entry (#2049).
+      ...INSTANCE_SURFACE_PREFIXES.map((prefix) => prefix.descriptorId),
+    ]);
     const declared = new Set<string>(
       exportedBuiltinDescriptors()
         .filter(({ descriptor }) =>

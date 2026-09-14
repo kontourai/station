@@ -33,6 +33,7 @@ import {
   type RegionId,
   type RegionState,
   removeRegionPane,
+  resolveRegionSurface,
   revealSurface,
   seedRegionArrangementFromDock,
   selectRegionPane,
@@ -462,7 +463,10 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       surfaceId: string,
       options: OpenInRegionOptions = {},
     ): OpenInRegionOutcome => {
-      const surface = REGION_SURFACE_REGISTRY.get(surfaceId);
+      // The id-keyed resolution, not the shell registry: an instance-keyed
+      // pane (#2049) is a surface its prefix describes, and this is the one
+      // gate a link click passes through.
+      const surface = resolveRegionSurface(surfaceId);
       if (!surface) return { ok: false, reason: 'no-surface' };
       if (options.placement === 'split')
         return { ok: false, reason: 'unsupported-placement' };
@@ -547,7 +551,11 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
 
   const toggleSurface = useCallback(
     (surfaceId: string) => {
-      const surface = REGION_SURFACE_REGISTRY.get(surfaceId);
+      // Resolved, not registry-read: the folded Regions menu renders a
+      // Hide/Show row for every pane a region HOLDS, instance-keyed ones
+      // included, and a row whose toggle is a no-op would be a control that
+      // says it does something it does not.
+      const surface = resolveRegionSurface(surfaceId);
       if (!surface) return;
       const toggled = toggleSurfaceInArrangement(
         regionsRef.current,

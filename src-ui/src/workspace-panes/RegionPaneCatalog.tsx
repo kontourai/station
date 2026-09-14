@@ -8,7 +8,11 @@ import {
   describeOpenInRegionRefusal,
   useOpenInRegion,
 } from '../contexts/useOpenInRegion';
-import { type DockRegionId, regionLabel } from '../regions/region-model';
+import {
+  type DockRegionId,
+  INSTANCE_SURFACE_PREFIXES,
+  regionLabel,
+} from '../regions/region-model';
 import {
   DOCK_HOST_SUPPLIABLE_CONTEXTS,
   dockCanSupply,
@@ -38,6 +42,11 @@ const DOCK_CONTEXT_PRESENCE: NonNullable<
     : 'missing',
 };
 
+/** The descriptors whose panes exist only per instance (#2049). */
+const INSTANCE_KEYED_DESCRIPTOR_IDS = new Set(
+  INSTANCE_SURFACE_PREFIXES.map((prefix) => prefix.descriptorId),
+);
+
 /**
  * What a dock region's catalog lists (#2047): every known pane declaring
  * `docked` — the capability's first placement reader that decides FIT, not
@@ -50,13 +59,23 @@ const DOCK_CONTEXT_PRESENCE: NonNullable<
  * resolver's reason — `missing-task`, "Choose a Task before opening this
  * pane." — rather than being silently absent. A pane that declares no
  * `docked` is not a dock pane and is not listed.
+ *
+ * The INSTANCE-KEYED panes are the one exclusion (#2049). A pull request and
+ * a file preview declare `docked` and are genuinely dock panes, but they have
+ * no blank canonical occurrence: an occurrence is keyed by a repository and a
+ * number, or by a file path. A card for one could be listed and could never
+ * be opened, so they are dropped by the same table that describes them
+ * (`INSTANCE_SURFACE_PREFIXES`, whose `descriptorId` each names) rather than
+ * by a literal list here. Their opener is the chat link handler.
  */
 export function dockCatalogEntries(
   entries: readonly ResolvedWorkspacePaneCatalogEntry[],
 ): ResolvedWorkspacePaneCatalogEntry[] {
   return entries
-    .filter((entry) =>
-      entry.descriptor.placement.supportedRegions.includes('docked'),
+    .filter(
+      (entry) =>
+        entry.descriptor.placement.supportedRegions.includes('docked') &&
+        !INSTANCE_KEYED_DESCRIPTOR_IDS.has(entry.descriptor.id),
     )
     .map((entry) =>
       entry.availability.state === 'available' &&

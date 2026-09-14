@@ -30,6 +30,12 @@ import type {
 } from '@kontourai/station-contracts/workspace-pane';
 import type { WorkspacePaneAvailability } from '@kontourai/station-contracts/workspace-pane-availability';
 import {
+  isCanonicalWorkspacePullRequestPaneInstance,
+  parseWorkspacePullRequestPaneId,
+  pullRequestProviderForHost,
+  WORKSPACE_PULL_REQUEST_PANE_RENDERER_NAME,
+} from '@kontourai/station-contracts/workspace-pull-request-pane';
+import {
   isCanonicalWorkspaceSpatialBoardPaneInstance,
   WORKSPACE_SPATIAL_BOARD_PANE_RENDERER_NAME,
 } from '@kontourai/station-contracts/workspace-spatial-board';
@@ -636,6 +642,53 @@ function FilePreviewWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   );
 }
 
+const LazyPullRequestReviewPanel = lazy(() =>
+  import('../components/coding-layout/PullRequestReviewPanel').then(
+    ({ PullRequestReviewPanel }) => ({ default: PullRequestReviewPanel }),
+  ),
+);
+
+/**
+ * One pull request as its own pane (#2049): the SAME review surface the Diff
+ * pane's list opens, given a target rebuilt from the pane's identity rather
+ * than from a selected row. Everything in that target comes from the instance
+ * — host, owner, repository and number from its id, the Project from its
+ * binding, the provider from the host by Station's own two rules
+ * (`pullRequestProviderForHost`) — so the pane is a function of what the
+ * region holds and nothing on screen.
+ *
+ * No `onBack`: there is no list behind a tab. No `repositoryRootHint`
+ * either — that hint is the Diff pane's observed repository root, and a link
+ * click has no such observation to offer; inventing the Project's own root
+ * would be a claim about where the repository is that nothing here made.
+ */
+function PullRequestWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
+  const identity = useResolvedPaneIdentity(instance, false);
+  const key = parseWorkspacePullRequestPaneId(String(instance.instanceId));
+  if (identity.state !== 'resolved')
+    return <WorkspacePaneBindingUnavailable identity={identity} />;
+  if (!key || !isCanonicalWorkspacePullRequestPaneInstance(instance))
+    return (
+      <WorkspacePaneBindingUnavailable
+        identity={{ state: 'pane-instance-invalid' }}
+      />
+    );
+  return (
+    <Suspense fallback={<SkeletonBlock label="Opening pull request review" />}>
+      <LazyPullRequestReviewPanel
+        target={{
+          provider: pullRequestProviderForHost(key.host),
+          host: key.host,
+          owner: key.owner,
+          repository: key.repository,
+          ref: key.ref,
+          project: identity.project.slug,
+        }}
+      />
+    </Suspense>
+  );
+}
+
 const LazyHomeWorkspacePane = lazy(() =>
   import('../views/home/HomeWorkspacePane').then(({ HomeWorkspacePane }) => ({
     default: HomeWorkspacePane,
@@ -754,6 +807,7 @@ const builtinWorkspacePaneRegistry: Record<
   [WORKSPACE_TRUST_PANE_RENDERER_NAME]: WorkspaceTrustPane,
   [WORKSPACE_BROWSER_PREVIEW_PANE_RENDERER_NAME]: BrowserPreviewWorkspacePane,
   [WORKSPACE_FILE_PREVIEW_PANE_RENDERER_NAME]: FilePreviewWorkspacePane,
+  [WORKSPACE_PULL_REQUEST_PANE_RENDERER_NAME]: PullRequestWorkspacePane,
   [WORKSPACE_HOME_PANE_RENDERER_NAME]: HomeWorkspacePaneEntry,
   [WORKSPACE_ACTIVITY_PANE_RENDERER_NAME]: ActivityWorkspacePaneEntry,
   [WORKSPACE_SPATIAL_BOARD_PANE_RENDERER_NAME]: SpatialBoardWorkspacePaneEntry,

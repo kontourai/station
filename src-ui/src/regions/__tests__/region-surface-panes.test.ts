@@ -27,8 +27,8 @@ import {
   regionSurfacePane,
 } from '../region-surface-panes';
 
-const PROJECT = { projectId: 'project-uuid' };
-const NO_PROJECT = { projectId: null };
+const PROJECT = { projectId: 'project-uuid', projectSlug: 'alpha' };
+const NO_PROJECT = { projectId: null, projectSlug: null };
 
 /** The descriptor each entry is an occurrence of, by surface id. */
 const ENTRY_DESCRIPTORS: Record<string, WorkspacePaneDescriptor> = {
@@ -105,7 +105,10 @@ describe('region surface panes (#2045, #2047)', () => {
       expect(bound?.boundContext?.projectId, surfaceId).toBe('project-uuid');
       expect(bound?.boundContext?.layoutId, surfaceId).toBeUndefined();
       // A different project is a different occurrence under the same ids.
-      const other = pane?.instance({ projectId: 'other-project' });
+      const other = pane?.instance({
+        projectId: 'other-project',
+        projectSlug: 'beta',
+      });
       expect(other?.instanceId).toBe(bound?.instanceId);
       expect(other?.boundContext?.projectId).toBe('other-project');
     }

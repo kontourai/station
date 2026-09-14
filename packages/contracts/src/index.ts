@@ -106,6 +106,7 @@ export * from './workspace-pane-host-contribution.js';
 export * from './workspace-pane-layout-adapter.js';
 export * from './workspace-pane-operational-event.js';
 export * from './workspace-pane-renderer-selection.js';
+export * from './workspace-pull-request-pane.js';
 export * from './workspace-spatial-board.js';
 export * from './workspace-task-room.js';
 export * from './workspace-task-room-composition.js';

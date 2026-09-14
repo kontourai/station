@@ -15,6 +15,7 @@ import {
   type RegionId,
   type RegisteredSurface,
   regionLabel,
+  resolveRegionSurface,
 } from '../../regions/region-model';
 import type { DockMode } from '../../types';
 
@@ -303,7 +304,11 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
     for (const regionId of DOCK_REGION_IDS) {
       const region = regions[regionId];
       for (const paneId of region.panes) {
-        const surface = surfaces.get(paneId);
+        // Resolved rather than registry-read, so a placed instance-keyed
+        // pane (#2049) gets its Hide/Show row here too; its title is the
+        // prefix's generic one ("Pull request", "File"), since the folded
+        // menu has no instance in hand.
+        const surface = resolveRegionSurface(paneId);
         if (!surface) continue;
         placed.add(paneId);
         // Shown only when this IS the folded region's selected pane — the

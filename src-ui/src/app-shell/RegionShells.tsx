@@ -19,6 +19,7 @@ import {
   DOCK_REGION_IDS,
   type DockRegionId,
   foldedDockRegion,
+  resolveRegionSurface,
 } from '../regions/region-model';
 
 const loadActivityRegionShell = () =>
@@ -183,15 +184,16 @@ export function RegionShells() {
         return id === foldedDockRegion(model.regions, model.lastShownRegion);
       }).map((id) => {
         const occupant = model.regions[id].occupant;
-        // A registered occupant gets a host; an unregistered id (a fixture,
-        // a surface a later slice places at runtime) mounts nothing — the
-        // rule the per-occupant shell table applied before #2045. Decided
-        // from the registry the shell already holds rather than the pane
-        // inventory, so the pane contracts stay in the host's chunk;
-        // `region-surface-panes.test.ts` pins that every registered surface
-        // declaring a dock region HAS a pane, which is what makes "registered"
-        // sufficient here.
-        return occupant && model.surfaces.has(occupant) ? (
+        // A resolvable occupant gets a host; an id neither the registry nor
+        // an instance prefix knows (a fixture, a surface a later slice places
+        // at runtime) mounts nothing — the rule the per-occupant shell table
+        // applied before #2045. Decided from `resolveRegionSurface` rather
+        // than the pane inventory, so the pane contracts stay in the host's
+        // chunk; `region-surface-panes.test.ts` pins that every registered
+        // surface declaring a dock region HAS a pane, and
+        // `region-instance-panes.test.ts` pins the same for each prefix,
+        // which is what makes "resolvable" sufficient here.
+        return occupant && resolveRegionSurface(occupant) ? (
           <DockRegionHost key={id} regionId={id} />
         ) : null;
       })}

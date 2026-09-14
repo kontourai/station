@@ -680,6 +680,58 @@ describe('region arrangement record (#928 D)', () => {
       expect(parsed?.main.occupant).toBe('home');
     });
 
+    /**
+     * #2049: an instance-keyed pane is a plain `{ kind: 'surface', id }`
+     * entry whose id is data. It round-trips because `parseSurfaceEntry`
+     * resolves through `resolveRegionSurface`, which knows the prefix — and
+     * it is still checked against the REGION the pane declares, so `main`
+     * refuses it exactly as it refuses any dock surface. Reverting the parser
+     * to a bare registry lookup drops both ids and reds the first two
+     * assertions.
+     */
+    test('a pull-request and a file-preview pane round-trip, and main refuses them', () => {
+      const previewId = `file-preview:${'b'.repeat(32)}`;
+      const withInstances: RegionArrangement = {
+        ...VALID,
+        right: {
+          visible: true,
+          size: 517,
+          panes: ['chat', 'pr:github.com/kontourai/station#2049'],
+          occupant: 'pr:github.com/kontourai/station#2049',
+          maximized: false,
+        },
+        bottom: {
+          visible: true,
+          size: 320,
+          panes: [previewId],
+          occupant: previewId,
+          maximized: false,
+        },
+      };
+      expect(
+        parseRegionArrangementRecord(toRegionArrangementRecord(withInstances)),
+      ).toEqual(withInstances);
+      expect(
+        parseRegionArrangementRecord(
+          recordWith('main', {
+            occupant: {
+              kind: 'surface',
+              id: 'pr:github.com/kontourai/station#2049',
+            },
+          }),
+        )!.main,
+      ).toMatchObject({ panes: [], occupant: null });
+      // An id no prefix describes is still unknown: the `pr:` rule admits a
+      // pull request, not everything that starts with two letters.
+      expect(
+        parseRegionArrangementRecord(
+          recordWith('right', {
+            occupant: { kind: 'surface', id: 'browser-preview:1' },
+          }),
+        )!.right,
+      ).toMatchObject({ panes: [], occupant: null });
+    });
+
     test('a pane-host without an array of panes reads as empty; a documentId a 2a build wrote is ignored', () => {
       for (const occupant of [
         { kind: 'pane-host', panes: 'chat' },

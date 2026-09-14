@@ -24,7 +24,11 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { useProjects } from '../contexts/ProjectsContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { readToolbarHeight } from '../lib/toolbarGeometry';
-import { chatRegion, regionHoldsChat } from '../regions/region-model';
+import {
+  chatRegion,
+  regionHoldsChat,
+  resolveRegionSurface,
+} from '../regions/region-model';
 import type { DockMode } from '../types';
 import {
   type DockSlotGeometry,
@@ -503,7 +507,7 @@ export function useDockShellChrome({
       regionModel && shellPanes
         ? shellPanes.map((id) => ({
             id,
-            title: regionModel.surfaces.get(id)?.title ?? id,
+            title: resolveRegionSurface(id)?.title ?? id,
             selected: id === shellOccupant,
           }))
         : [],
@@ -746,18 +750,18 @@ export function useDockShellChrome({
     effectiveDockSlotPlacement,
     surfaceShortcutId:
       (shellOccupant
-        ? regionModel?.surfaces.get(shellOccupant)?.shortcut?.id
+        ? resolveRegionSurface(shellOccupant)?.shortcut?.id
         : undefined) ?? 'dock.toggle',
     // Three cases reach a fallback, and TWO of them are Chat's, because
     // neither has an occupant to name: the model-less ambient dock (Chat's
     // and nothing else's, the same mount `dock.toggle` above falls back for
     // — `shellOccupant` is the literal `'chat'` there, NOT null, so the model
     // is what this branches on) and an empty region. The third, an occupant
-    // the registry does not hold, takes the occupant's own id: a non-Chat
-    // shell reading "Hide Chat" would be #1386's defect relocated. That third
-    // case is unreachable today — `RegionShells` mounts a host only for an
-    // occupant the REGISTRY holds (`model.surfaces.has`), and a registered
-    // occupant always has a title. That a registered dock occupant also has
+    // nothing resolves, takes the occupant's own id: a non-Chat shell reading
+    // "Hide Chat" would be #1386's defect relocated. That third case is
+    // unreachable today — `RegionShells` mounts a host only for an occupant
+    // `resolveRegionSurface` answers for (the registry, or an instance
+    // prefix since #2049), and a resolved occupant always has a title. That a registered dock occupant also has
     // a pane rests on two guards upstream of the shell — the record parser
     // empties a region whose stored surface does not declare it
     // (`region-arrangement-record.ts`, `parseOccupant`) and `placeSurface`
@@ -767,7 +771,7 @@ export function useDockShellChrome({
     // `REGION_SURFACE_PANES`.
     surfaceTitle:
       regionModel && shellOccupant
-        ? (regionModel.surfaces.get(shellOccupant)?.title ?? shellOccupant)
+        ? (resolveRegionSurface(shellOccupant)?.title ?? shellOccupant)
         : 'Chat',
     canMaximize: shellOccupant !== null,
     regionPanes,

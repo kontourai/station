@@ -33,6 +33,7 @@ import {
   useRegionModel,
 } from '../../contexts/RegionModelContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
+import { writeFilePreviewPaneState } from '../filePreviewPaneStateStorage';
 
 vi.mock('../../views/SessionsView', () => ({
   SessionsView: () => <div data-testid="sessions-view" />,
@@ -135,6 +136,8 @@ const STORAGE_PREFIX = 'station:workspace-pane-host:v2:ambient:';
 const BOTTOM_KEY = `${STORAGE_PREFIX}bottom`;
 const RIGHT_KEY = `${STORAGE_PREFIX}right`;
 const DEVICE_SETTINGS_KEY = 'station-device-settings-v1';
+const PR_PANE_ID = 'pr:github.com/kontourai/station#2049';
+const PREVIEW_ID = `file-preview:${'c'.repeat(32)}`;
 
 let model: ReturnType<typeof useRegionModel> | null = null;
 
@@ -238,12 +241,24 @@ function tabs(region: string): [string, string | null][] {
     .map((tab) => [tab.textContent ?? '', tab.getAttribute('aria-selected')]);
 }
 
+/**
+ * The region host, its chrome bar and its built-in pane all arrive through
+ * dynamic imports, and the FIRST mount in a file pays their transform cost in
+ * this runner — measurably more than the 1s `waitFor` default once #2049 put
+ * the file-preview state modules on that chain. Waiting longer here is a
+ * runner fact, not a product one: every later assertion is immediate.
+ */
+async function awaitChatPane() {
+  await waitFor(() => expect(model).not.toBeNull());
+  await waitFor(
+    () => expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+    { timeout: 5_000 },
+  );
+}
+
 async function renderWithChatAndTerminal() {
   const rendered = renderShells();
-  await waitFor(() => expect(model).not.toBeNull());
-  await waitFor(() =>
-    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
-  );
+  await awaitChatPane();
   act(() => currentModel().placeSurface('coding:terminal', 'bottom'));
   await act(async () => {
     await vi.dynamicImportSettled();
@@ -711,4 +726,104 @@ test('the "+" opens the dock catalog and Open Terminal lands it as the selected 
   });
   // Nothing about the open was a navigation.
   expect(new URLSearchParams(window.location.search).get('pane')).toBeNull();
+});
+
+/**
+ * #2049: an instance-keyed pane through the same shipped path. The tab's
+ * title is the PANE's, not the surface registry's — a pull request is
+ * `#2049` and a preview is its file's name — and the occurrence the host
+ * derives is the one the id names, bound to the dock's project.
+ *
+ * Reverting `RegionPaneHost`'s `pane.title ?? …` fallback to the registry
+ * title reds the tab-name assertions with "Pull request" and "File".
+ * Reverting the prefix branch in `regionSurfacePane` drops both tabs, so the
+ * strip reads `['Chat', 'true']` alone.
+ */
+test('a pull request and a file preview render as their own dock tabs, named by the pane', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'alpha');
+  writeFilePreviewPaneState(window.localStorage, PREVIEW_ID, {
+    version: '1.0',
+    projectSlug: 'alpha',
+    path: 'src/components/Header.tsx',
+    wrap: true,
+  });
+  renderShells();
+  await awaitChatPane();
+  act(() => currentModel().placeSurface(PR_PANE_ID, 'right'));
+  act(() => currentModel().placeSurface(PREVIEW_ID, 'right'));
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+
+  expect(tabs('right')).toEqual([
+    ['#2049', 'false'],
+    ['Header.tsx', 'true'],
+  ]);
+  const pane = await screen.findByTestId('coding-pane');
+  expect(pane.closest('.chat-dock')).toBe(shell('right'));
+  expect(pane.dataset.descriptor).toBe(
+    'pane:builtin:workspace-preview:file-preview',
+  );
+  expect(pane.dataset.project).toBe('alpha-id');
+
+  act(() => currentModel().selectPane('right', PR_PANE_ID));
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+  expect((await screen.findByTestId('coding-pane')).dataset.descriptor).toBe(
+    'pane:builtin:workspace-pull-request',
+  );
+
+  await waitFor(() =>
+    expect(storedDocument(RIGHT_KEY)?.instances).toMatchObject([
+      {
+        descriptorId: 'pane:builtin:workspace-pull-request',
+        instanceId: PR_PANE_ID,
+        boundContext: { projectId: 'alpha-id' },
+      },
+      {
+        descriptorId: 'pane:builtin:workspace-preview:file-preview',
+        instanceId: PREVIEW_ID,
+        boundContext: { projectId: 'alpha-id' },
+      },
+    ]),
+  );
+});
+
+/**
+ * The dock binds another project than the one the preview's state names, so
+ * there is no occurrence to derive. The tab stays — the user opened it and
+ * closing it is the user's act — and the placeholder says what is actually
+ * wrong rather than repeating "choose a project", which is a remedy that
+ * would do nothing here (the dock HAS one).
+ */
+test('a file preview from another project keeps its tab and says it is unavailable', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'beta');
+  writeFilePreviewPaneState(window.localStorage, PREVIEW_ID, {
+    version: '1.0',
+    projectSlug: 'alpha',
+    path: 'src/components/Header.tsx',
+    wrap: true,
+  });
+  renderShells();
+  await awaitChatPane();
+  act(() => currentModel().placeSurface(PREVIEW_ID, 'right'));
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+
+  // One pane, so the strip renders no tab list; the shell's own Hide control
+  // carries the region's name instead — the prefix's generic "File preview",
+  // since nothing in the entry chunk resolves an occurrence to read a file
+  // name from.
+  expect(within(shell('right')).getByTitle('Hide File preview')).toBeTruthy();
+  expect(screen.queryByTestId('coding-pane')).toBeNull();
+  expect(
+    within(shell('right')).getByText(
+      'Header.tsx is not available in this dock',
+    ),
+  ).toBeTruthy();
+  expect(
+    within(shell('right')).queryByText('Choose a project for this dock'),
+  ).toBeNull();
 });
