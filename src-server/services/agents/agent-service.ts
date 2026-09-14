@@ -667,7 +667,7 @@ export class AgentService {
         success: false,
         error: `Cannot delete agent '${slug}' - it is referenced by layouts: ${dependentLayouts
           .map((reference) =>
-            reference.owner?.kind === 'project'
+            reference.owner.kind === 'project'
               ? `${reference.owner.projectSlug}/${reference.layoutSlug}`
               : `${describeLayoutOwner(reference.owner)}: ${reference.layoutSlug}`,
           )
