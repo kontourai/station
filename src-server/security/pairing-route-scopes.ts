@@ -144,6 +144,11 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // Personal spatial-board reads need read; every revisioned mutation needs
   // operate. Hosted execution does not mount this family.
   '/api/spatial-board',
+  // #2061: the caller's OWN personal-scope records (Boards). Every path under
+  // it is scoped to the resolved request principal, so the read tier discloses
+  // only what that credential's own person stored and the mutate tier changes
+  // only their own records — no leaf here reaches another principal.
+  '/api/me',
   '/api/mobile-devices',
   '/api/orchestration',
   // archive#3677 PR 3: the native consent broker. The FAMILY sits on the
@@ -1836,6 +1841,14 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // connected is a strict subset of what that same credential already
     // reads, so this takes the family default rather than a raised tier.
     { method: 'GET', path: '/api/orchestration/presence/summary' },
+    // #2061 Boards: the family read/mutate split is exactly right here —
+    // every leaf resolves its owner from the request principal and can reach
+    // no other principal's records, so none is more sensitive than the family.
+    { method: 'GET', path: '/api/me/layouts' },
+    { method: 'POST', path: '/api/me/layouts' },
+    { method: 'GET', path: '/api/me/layouts/:layoutSlug' },
+    { method: 'PUT', path: '/api/me/layouts/:layoutSlug' },
+    { method: 'DELETE', path: '/api/me/layouts/:layoutSlug' },
     // Personal task-room reads disclose only the already-paired operator's
     // own task projection. Mutations are closed room commands and inherit
     // orchestration:operate from /api/tasks.

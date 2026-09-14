@@ -149,6 +149,7 @@ import {
   createStationControlMcpRoutes,
   STATION_CONTROL_MCP_PATH,
 } from '../../routes/mcp/station-control-mcp-route.js';
+import { createPersonalLayoutRoutes } from '../../routes/me/personal-layouts.js';
 import { createActionOperationRoutes } from '../../routes/operations/action-operations.js';
 import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
@@ -318,6 +319,7 @@ import { createServerLogReader } from '../../services/infra/server-log-reader.js
 import { StationKitObservabilityHost } from '../../services/kits/kit-observability-host.js';
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
+import { ownedLayoutStore } from '../../services/layouts/personal-layout-service.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
@@ -3033,6 +3035,24 @@ export function configureRuntimeRoutes(
       projectMembershipAuthority,
       context.deploymentAuthentication?.publicOrigin,
     ),
+  );
+  // #2061: the personal scope. Ownership comes from
+  // `resolveOrchestrationRequestPrincipal` — the SAME memoized, fail-closed
+  // resolver every other identity-bearing route in this file reads — so no
+  // path or body ever names a principal. Two devices see ONE set of Boards
+  // exactly when they resolve to one principal: a WhoIs identity, or a person
+  // binding on the pairing (`principalBinding` above). A bare paired device
+  // with no person binding and no Serve identity in front of it resolves to
+  // the coarser per-device fact instead, and its Boards are that device's —
+  // see the precedence comment on `resolveOrchestrationRequestPrincipal`
+  // above and `docs/design/principals.md`. Unifying those facts into one
+  // stable per-person identity is the open design question recorded there,
+  // not something this scope resolves.
+  context.app.route(
+    '/api/me',
+    createPersonalLayoutRoutes(ownedLayoutStore(context.storageAdapter), {
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+    }),
   );
   context.app.route(
     '/api/projects',
