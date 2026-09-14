@@ -242,7 +242,7 @@ test('a coding surface derives the dock project’s instance, and none without a
     'right',
     ['chat', 'coding:terminal'],
     'coding:terminal',
-    { projectId: 'project-uuid' },
+    { projectId: 'project-uuid', projectSlug: 'alpha' },
   );
   expect(bound.instances.map((i) => i.descriptorId)).toEqual([
     'pane:builtin:chat',
@@ -258,7 +258,7 @@ test('a coding surface derives the dock project’s instance, and none without a
     'right',
     ['chat', 'coding:terminal'],
     'coding:terminal',
-    { projectId: null },
+    { projectId: null, projectSlug: null },
   );
   expect(unbound.instances.map((i) => i.descriptorId)).toEqual([
     'pane:builtin:chat',
@@ -269,6 +269,7 @@ test('a coding surface derives the dock project’s instance, and none without a
   expect(
     deriveRegionPaneHostDocument('right', ['coding:terminal'], undefined, {
       projectId: null,
+      projectSlug: null,
     }),
   ).toBeNull();
 });

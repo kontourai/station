@@ -118,7 +118,7 @@ export function surfaceMayOccupy(
   surfaceId: string,
   regionId: RegionId,
 ): boolean {
-  const surface = REGION_SURFACE_REGISTRY.get(surfaceId);
+  const surface = resolveRegionSurface(surfaceId);
   return surface ? surface.regions.includes(regionId) : isDockRegion(regionId);
 }
 
@@ -710,6 +710,18 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     sourceFile: 'src-ui/src/views/activity/ActivityWorkspacePane.tsx',
   },
   {
+    // #2050: the work this conversation set running. Dock regions only, and
+    // catalog-only exposure with no chord — it belongs beside a chat, and the
+    // toolbar's picker is for surfaces that stand on their own.
+    id: 'workspace-agents',
+    title: 'Agents',
+    icon: 'agent',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'right',
+    exposure: 'catalog',
+    sourceFile: 'src-ui/src/workspace-panes/AgentsWorkspacePane.tsx',
+  },
+  {
     // Home is a surface whose only placement is the primary area: its default
     // region is `main` and it declares no other, so no dock control ever
     // offers it and a dock swap can never carry it out of `main` (#928 C2a).
@@ -757,12 +769,167 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
   },
 ]);
 
+/**
+ * A family of INSTANCE-KEYED dock panes, resolved by the prefix its ids carry
+ * (#2049). A pull-request pane and a file preview are one-per-thing, not
+ * one-per-Station: their identity is the pull request or the previewed file,
+ * so `RegionState.panes` holds the instance id itself
+ * (`pr:<host>/<owner>/<repo>#<n>`, `file-preview:<nonce>`) and this table is
+ * how every id-keyed reader resolves it — `resolveRegionSurface` below, which
+ * the record parser, the model's placement rule, the provider's open, the
+ * shell's mount rule and the title readers all go through.
+ *
+ * Plain data, and DELIBERATELY no pane contract import: this module is in the
+ * entry chunk and the pane contracts are not, so naming a descriptor here by
+ * its id string rather than by its constant is what keeps the two apart (a
+ * cross-chunk cycle fails the build; #2048 measured +1,820 B for the
+ * alternative). `region-surface-panes.ts` — the host's chunk — is where the
+ * same prefixes mint the actual `WorkspacePaneInstance`, and
+ * `docked-capability-derivation.test.ts` pins each `descriptorId` here to a
+ * built-in descriptor that declares `docked`.
+ *
+ * These surfaces are never registry keys: there is no blank occurrence to
+ * register, `REGION_SURFACE_PANES` holds none of them, and a region's "+"
+ * cannot offer them (`dockCatalogEntries` filters their descriptors out).
+ * They reach a region only through `openInRegion` from a link click.
+ */
+export interface InstanceSurfacePrefix {
+  /** The prefix every id of this family starts with. */
+  prefix: string;
+  /**
+   * Whether an id is one this family can actually MINT — the full shape, not
+   * the prefix. `resolveRegionSurface` admits through this rather than through
+   * `startsWith`, because a pane id is data now: it is read back from a stored
+   * arrangement record, and a build that mints a different shape (a provider
+   * segment, a version) then rolled back leaves ids in that record which the
+   * host chunk's `regionSurfacePane` refuses. Admitting one here and refusing
+   * it there mounts a region host with no pane in it: chrome, no tab strip,
+   * and therefore no close control.
+   *
+   * The shape is spelled as a regular expression rather than by calling the
+   * contract's own parser because this module is entry-chunk resident and the
+   * pane contracts are not (see the table's note above). The duplication is
+   * held to the minters by `region-instance-panes.test.ts`, which runs a table
+   * of ids through `matches` and through `regionSurfacePane` and requires the
+   * same answer.
+   */
+  matches: (id: string) => boolean;
+  /** The built-in descriptor its occurrences carry (`pane:builtin:…`). */
+  descriptorId: string;
+  /**
+   * The title an id alone can carry — a tab whose instance has not been
+   * resolved (the folded Regions menu, the shell landmark) shows this.
+   * `RegionPaneHost` prefers the pane's own title where its inventory entry
+   * derives one (`#123`, a file's name).
+   */
+  title: string;
+  icon: string;
+  regions: readonly RegionId[];
+  defaultRegion: RegionId;
+  /** Repository-relative renderer source, used by the architecture ratchet. */
+  sourceFile: string;
+}
+
+/**
+ * `pr:<host>/<owner>/<repository>#<ref>`, the exact shape
+ * `workspacePullRequestPaneId` mints: a lowercase host with an optional port,
+ * two lowercase path segments, and up to twelve digits.
+ */
+const PULL_REQUEST_SURFACE_ID =
+  /^pr:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?\/[a-z0-9._-]+\/[a-z0-9._-]+#[0-9]{1,12}$/;
+
+/**
+ * `file-preview:<nonce>`, the 32 hex digits `createFilePreviewPaneInstance`
+ * mints (`filePreviewPaneInstance.ts`, `FILE_PREVIEW_NONCE_PATTERN`).
+ */
+const FILE_PREVIEW_SURFACE_ID = /^file-preview:[0-9a-f]{32}$/;
+
+export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
+  {
+    prefix: 'pr:',
+    matches: (id) => PULL_REQUEST_SURFACE_ID.test(id),
+    descriptorId: 'pane:builtin:workspace-pull-request',
+    title: 'Pull request',
+    icon: 'diff',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'right',
+    sourceFile:
+      'src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx',
+  },
+  {
+    prefix: 'file-preview:',
+    matches: (id) => FILE_PREVIEW_SURFACE_ID.test(id),
+    descriptorId: 'pane:builtin:workspace-preview:file-preview',
+    title: 'File preview',
+    icon: 'files',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'right',
+    sourceFile: 'src-ui/src/workspace-panes/FilePreviewPane.tsx',
+  },
+];
+
+const INSTANCE_SURFACE_CACHE = new Map<string, RegisteredSurface>();
+
+/**
+ * The surface an id names: a registered one, else an instance-keyed one its
+ * prefix describes (#2049). THE id-keyed lookup — every reader that used to
+ * call `REGION_SURFACE_REGISTRY.get(id)` for a placement decision or a title
+ * calls this instead, so an instance-keyed pane is a pane everywhere or
+ * nowhere. `model.surfaces` stays the registry Map: it is the SHELL's
+ * inventory (what the toolbar may offer, what a chord toggles), and an
+ * instance pane is in neither.
+ *
+ * `registry` is a parameter for the record parser's older-registry tests,
+ * which read a stored record against a registry a past build had.
+ *
+ * An instance-keyed id is admitted by its family's full shape
+ * (`InstanceSurfacePrefix.matches`), never by the prefix alone: the host
+ * chunk's `regionSurfacePane` mints an occurrence by the same shape, and an id
+ * only one of the two admits is a region host with no pane in it.
+ *
+ * Resolved surfaces are cached by id so repeated reads return one frozen
+ * object. The set is bounded by the ids ever resolved, which includes a
+ * refused open (`openSurfaceInRegion` resolves before it decides) and an id
+ * since dropped from the record — a superset of the panes now open, still one
+ * small frozen object per well-shaped id a user's clicks produced.
+ */
+export function resolveRegionSurface(
+  surfaceId: string,
+  registry: ReadonlyMap<string, RegisteredSurface> = REGION_SURFACE_REGISTRY,
+): RegisteredSurface | undefined {
+  const registered = registry.get(surfaceId);
+  if (registered) return registered;
+  const cached = INSTANCE_SURFACE_CACHE.get(surfaceId);
+  if (cached) return cached;
+  const prefix = INSTANCE_SURFACE_PREFIXES.find((entry) =>
+    entry.matches(surfaceId),
+  );
+  if (!prefix) return undefined;
+  const surface: RegisteredSurface = Object.freeze({
+    id: surfaceId,
+    title: prefix.title,
+    icon: prefix.icon,
+    regions: prefix.regions,
+    defaultRegion: prefix.defaultRegion,
+    // Catalog exposure, for the same reason the coding panes have it: the
+    // toolbar's Layout picker, the chords and the unplaced Show rows must
+    // not offer a pane that exists only because a link was clicked.
+    exposure: 'catalog',
+    sourceFile: prefix.sourceFile,
+  });
+  INSTANCE_SURFACE_CACHE.set(surfaceId, surface);
+  return surface;
+}
+
 function regionStatesEqual(a: RegionState, b: RegionState): boolean {
   return (
     a.visible === b.visible &&
     a.size === b.size &&
-    // Surface ids carry no comma (`createSurfaceRegistry` ids are words),
-    // so the joined form compares the lists element by element, in order.
+    // Surface ids carry no comma — registered ids are words, and an
+    // instance-keyed id is built from a validated host/owner/repository and
+    // a number or a hex nonce (`workspacePullRequestPaneId`,
+    // `file-preview:<nonce>`), none of which admit one — so the joined form
+    // compares the lists element by element, in order.
     String(a.panes) === String(b.panes) &&
     a.occupant === b.occupant &&
     a.maximized === b.maximized

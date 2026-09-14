@@ -63,6 +63,13 @@ export interface ChatDockWorkspaceControls {
   backgroundTasksTriggerRef: React.RefObject<HTMLButtonElement | null>;
   backgroundTasksRunningCount: number;
   isBackgroundTasksOpen: boolean;
+  /**
+   * Whether the row opens the Agents PANE rather than the sheet (#2050).
+   * The dialog semantics belong to the sheet alone: a row announcing
+   * `haspopup="dialog"` and an expanded state while it places a dock tab
+   * would describe an interaction that does not happen.
+   */
+  backgroundTasksOpensPane?: boolean;
   onToggleBackgroundTasks: () => void;
   sessionInventory?: {
     /**
@@ -194,8 +201,12 @@ export function ChatDockHeader({
               workspaceControls.backgroundTasksRunningCount > 0
                 ? `Background tasks — ${workspaceControls.backgroundTasksRunningCount} running`
                 : 'Background tasks',
-            haspopup: 'dialog' as const,
-            expanded: workspaceControls.isBackgroundTasksOpen,
+            ...(workspaceControls.backgroundTasksOpensPane
+              ? {}
+              : {
+                  haspopup: 'dialog' as const,
+                  expanded: workspaceControls.isBackgroundTasksOpen,
+                }),
             onSelect: () => workspaceControls.onToggleBackgroundTasks(),
           },
         ]

@@ -38,7 +38,7 @@ const parsedWorkspaceFilePreviewPaneDescriptor = parseWorkspacePaneDescriptor({
     name: WORKSPACE_FILE_PREVIEW_PANE_RENDERER_NAME,
   },
   placement: {
-    supportedRegions: ['primary', 'secondary', 'standalone'],
+    supportedRegions: ['primary', 'secondary', 'standalone', 'docked'],
     preferredRegion: 'secondary',
   },
   modes: [
@@ -54,11 +54,15 @@ if (!parsedWorkspaceFilePreviewPaneDescriptor)
 /**
  * One code-owned descriptor shared by server catalog and UI registry.
  *
- * Deliberately NOT `docked` (#2047): a File Preview has no blank canonical
- * instance — it is keyed by a file path and opened by intent (a Files-pane
- * click) — so a dock catalog could list it but never open it. Its dock reader
- * is #2049's `openInRegion` over instance-keyed panes; declare `docked` there,
- * with that reader.
+ * `docked` since #2049, when the reader #2047 was waiting for arrived: a
+ * chat's repo-relative link and a docked Files pane's file click both open a
+ * preview as a dock tab through `openInRegion`, keyed by the instance's
+ * `file-preview:<nonce>` id.
+ *
+ * It is still not offered by a region's "+": it has no blank canonical
+ * instance — an occurrence is keyed by a file path — so a card could be
+ * listed but never opened. `RegionPaneCatalog` filters it out and names the
+ * link handler as its opener.
  */
 export const WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR =
   parsedWorkspaceFilePreviewPaneDescriptor;

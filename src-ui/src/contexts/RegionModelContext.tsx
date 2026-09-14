@@ -12,7 +12,11 @@ import {
   useRef,
   useState,
 } from 'react';
-import { availablePlacements, useDockSlotDevice } from '../hooks/useIsMobile';
+import {
+  availablePlacements,
+  dockFoldsToOneRegion,
+  useDockSlotDevice,
+} from '../hooks/useIsMobile';
 import {
   isDefaultRegionArrangementRecord,
   parseRegionArrangementRecord,
@@ -33,6 +37,7 @@ import {
   type RegionId,
   type RegionState,
   removeRegionPane,
+  resolveRegionSurface,
   revealSurface,
   seedRegionArrangementFromDock,
   selectRegionPane,
@@ -86,8 +91,8 @@ export interface OpenInRegionOptions {
 /**
  * Why `openInRegion` did not place (#2048), each derived from the branch that
  * produced it: `no-surface` — the instance is no region surface's canonical
- * pane (instance-keyed panes are batch B's), or the id is no registered
- * surface; `unsupported-placement` —
+ * pane, or the id is neither a registered surface nor one an instance prefix
+ * describes (#2049); `unsupported-placement` —
  * `split` asked of a tab-group region; `region-unavailable` — a dock region
  * this device's fold does not offer (a side region on a bottom-only device);
  * `refused` — the surface does not declare the region (`surfaceMayOccupy`).
@@ -356,7 +361,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     updateParams,
   } = useNavigation();
   const available = availablePlacements(useDockSlotDevice());
-  const bottomOnly = available.length === 1;
+  const bottomOnly = dockFoldsToOneRegion(available);
   const { setDeviceSetting } = useDeviceSettingsActions();
   const [regions, setRegions] = useState<RegionArrangement>(() =>
     initialRegionArrangement(settings, dockMode, isDockOpen, isDockMaximized),
@@ -462,7 +467,10 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       surfaceId: string,
       options: OpenInRegionOptions = {},
     ): OpenInRegionOutcome => {
-      const surface = REGION_SURFACE_REGISTRY.get(surfaceId);
+      // The id-keyed resolution, not the shell registry: an instance-keyed
+      // pane (#2049) is a surface its prefix describes, and this is the one
+      // gate a link click passes through.
+      const surface = resolveRegionSurface(surfaceId);
       if (!surface) return { ok: false, reason: 'no-surface' };
       if (options.placement === 'split')
         return { ok: false, reason: 'unsupported-placement' };
@@ -547,7 +555,11 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
 
   const toggleSurface = useCallback(
     (surfaceId: string) => {
-      const surface = REGION_SURFACE_REGISTRY.get(surfaceId);
+      // Resolved, not registry-read: the folded Regions menu renders a
+      // Hide/Show row for every pane a region HOLDS, instance-keyed ones
+      // included, and a row whose toggle is a no-op would be a control that
+      // says it does something it does not.
+      const surface = resolveRegionSurface(surfaceId);
       if (!surface) return;
       const toggled = toggleSurfaceInArrangement(
         regionsRef.current,

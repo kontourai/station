@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_AGENTS_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
 import {
   WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
@@ -27,13 +28,15 @@ import {
   regionSurfacePane,
 } from '../region-surface-panes';
 
-const PROJECT = { projectId: 'project-uuid' };
-const NO_PROJECT = { projectId: null };
+const PROJECT = { projectId: 'project-uuid', projectSlug: 'alpha' };
+const NO_PROJECT = { projectId: null, projectSlug: null };
 
 /** The descriptor each entry is an occurrence of, by surface id. */
 const ENTRY_DESCRIPTORS: Record<string, WorkspacePaneDescriptor> = {
   chat: WORKSPACE_CHAT_PANE_DESCRIPTOR,
   activity: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+  // #2050: this conversation's background work, beside the conversation.
+  'workspace-agents': WORKSPACE_AGENTS_PANE_DESCRIPTOR,
   'coding:terminal': WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
   'coding:diff': WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
   'coding:file-browser': WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
@@ -64,6 +67,7 @@ describe('region surface panes (#2045, #2047)', () => {
       'coding:diff',
       'coding:file-browser',
       'coding:terminal',
+      'workspace-agents',
     ]);
     expect([...REGION_SURFACE_PANES.keys()].sort()).toEqual(dockCapable);
   });
@@ -105,11 +109,14 @@ describe('region surface panes (#2045, #2047)', () => {
       expect(bound?.boundContext?.projectId, surfaceId).toBe('project-uuid');
       expect(bound?.boundContext?.layoutId, surfaceId).toBeUndefined();
       // A different project is a different occurrence under the same ids.
-      const other = pane?.instance({ projectId: 'other-project' });
+      const other = pane?.instance({
+        projectId: 'other-project',
+        projectSlug: 'beta',
+      });
       expect(other?.instanceId).toBe(bound?.instanceId);
       expect(other?.boundContext?.projectId).toBe('other-project');
     }
-    for (const surfaceId of ['chat', 'activity']) {
+    for (const surfaceId of ['chat', 'activity', 'workspace-agents']) {
       const pane = regionSurfacePane(surfaceId);
       expect(pane?.instance(NO_PROJECT), surfaceId).toBe(
         pane?.instance(PROJECT),

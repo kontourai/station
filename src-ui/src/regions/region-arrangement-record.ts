@@ -38,6 +38,7 @@ import {
   type RegionId,
   type RegionState,
   type RegisteredSurface,
+  resolveRegionSurface,
 } from './region-model';
 
 export type {
@@ -130,8 +131,11 @@ function parseSize(value: unknown, id: RegionId, fallback: number): number {
 
 /**
  * One stored `{ kind: 'surface', id }` entry as a surface id this region may
- * hold, or null: not that shape, a surface the registry no longer has
- * (retired since it was written), or one that does not declare this region.
+ * hold, or null: not that shape, a surface this build no longer has (retired
+ * since it was written), or one that does not declare this region. Resolved
+ * through `resolveRegionSurface`, so a stored instance-keyed pane (#2049: a
+ * pull request, a file preview) reads back as the pane it names rather than
+ * as an unknown id — and is dropped by the same region rule as any other.
  */
 function parseSurfaceEntry(
   value: unknown,
@@ -140,7 +144,8 @@ function parseSurfaceEntry(
 ): string | null {
   if (!isPlainObject(value)) return null;
   if (value.kind !== 'surface' || typeof value.id !== 'string') return null;
-  if (!registry.get(value.id)?.regions.includes(id)) return null;
+  if (!resolveRegionSurface(value.id, registry)?.regions.includes(id))
+    return null;
   return value.id;
 }
 

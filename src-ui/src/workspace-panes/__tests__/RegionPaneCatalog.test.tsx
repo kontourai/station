@@ -20,10 +20,12 @@ import {
   createWorkspacePlanPaneInstance,
   WORKSPACE_PLAN_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-evidence-panels';
+import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-file-preview';
 import {
   parseWorkspacePaneDescriptor,
   WORKSPACE_PANE_CONTRACT_VERSION,
 } from '@kontourai/station-contracts/workspace-pane';
+import { WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-pull-request-pane';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { OpenInRegionOutcome } from '../../contexts/RegionModelContext';
@@ -224,6 +226,43 @@ test('lists the panes declaring docked, with a task-bound one disabled and the r
   expect(
     within(list).queryByRole('button', { name: 'Select Task' }),
   ).toBeNull();
+});
+
+/**
+ * #2049: an INSTANCE-KEYED pane declares `docked` and is genuinely a dock
+ * pane, but has no blank canonical occurrence: a File Preview is keyed by a
+ * file path, a Pull request by a repository and a number. The server DOES
+ * declare File Preview to this catalog (`workspace-pane-known-declarations`),
+ * so without the filter the "+" would list a card with no Open on it, or an
+ * Open that could never mint an instance. Its opener is the chat link
+ * handler.
+ *
+ * This is the filter's rejection path, which nothing else executes. Reverting
+ * `dockCatalogEntries` to the bare `supportedRegions.includes('docked')` test
+ * reds both assertions.
+ */
+test('an instance-keyed pane is not offered by the "+", even declaring docked', () => {
+  const listed = dockCatalogEntries([
+    ...ENTRIES,
+    {
+      descriptor: WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR,
+      availability: AVAILABLE,
+      clientRendererPresence: 'present',
+    },
+    {
+      descriptor: WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR,
+      availability: AVAILABLE,
+      clientRendererPresence: 'present',
+    },
+  ]).map((entry) => entry.descriptor.id);
+  expect(listed).not.toContain(WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR.id);
+  expect(listed).not.toContain(WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR.id);
+  // The filter has power only if it kept the panes that ARE offerable.
+  expect(listed).toEqual([
+    WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR.id,
+    WORKSPACE_CHAT_PANE_DESCRIPTOR.id,
+    TASK_NOTES_DESCRIPTOR.id,
+  ]);
 });
 
 /**

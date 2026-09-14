@@ -62,6 +62,7 @@ import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
+import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
   OPEN_PROJECT_CHATS_EVENT,
@@ -82,6 +83,7 @@ import {
   selectChatReadyAgents,
   selectDirectNewChatAgent,
 } from '../agent-selection-policy';
+import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { ContextPercentage } from '../conversation-stats/ConversationStats';
 import { LazyBoundary } from '../LazyBoundary';
@@ -1825,8 +1827,82 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       isDockOwnedViewType(resolveViewFromPath(pathname).type),
   });
 
+  // #2049: what a link in this conversation's rendered markdown may open.
+  // The CONVERSATION's project, not the dock's binding — a model's
+  // repo-relative path names a file in the checkout it was running in — and
+  // the dock's alongside it, because a dock pane binds the dock's project and
+  // the two differing is what makes the pane route wrong rather than merely
+  // unavailable. `openPathInMain` is the route a preview took before #2049
+  // and still takes on a bottom-only device or a mismatched binding.
+  const conversationProjectSlug = activeSession?.projectSlug ?? null;
+  const conversationProjectId = conversationProjectSlug
+    ? (projects.find((project) => project.slug === conversationProjectSlug)
+        ?.id ?? null)
+    : null;
+  // The provider's own fold predicate, CONSUMED rather than copied
+  // (`useDockFoldsToOneRegion`, which `RegionModelProvider` derives its
+  // `bottomOnly` from): a device the model will refuse a side region on must
+  // not be offered one here, and two spellings of that rule could drift.
+  const dockBottomOnly = useDockFoldsToOneRegion();
+  /**
+   * #2050: where the "Background tasks — N running" affordance goes. With a
+   * side dock region on this device it places the Agents PANE, so the list
+   * sits beside the conversation and stays there; on a bottom-only device,
+   * where a side region is not available, it opens the sheet it always did.
+   * `useShowSurface` rather than the region model, because Chat is a pane
+   * renderer and pane renderers do not read region state.
+   */
+  const backgroundTasksOpensPane = !dockBottomOnly;
+  // Two callers with two meanings, kept apart: the More-menu row TOGGLES the
+  // sheet it announces as a dialog, while a switcher row that is dismissing
+  // itself OPENS it. Folding them into one toggle would let a second entry
+  // point close a sheet it never opened. The pane branch is the same either
+  // way — revealing a tab that is already there is a reveal.
+  const showBackgroundTasks = useCallback(() => {
+    if (backgroundTasksOpensPane) {
+      showSurface('workspace-agents');
+      return;
+    }
+    setIsBackgroundTasksOpen(true);
+  }, [backgroundTasksOpensPane, setIsBackgroundTasksOpen, showSurface]);
+  const toggleBackgroundTasks = useCallback(() => {
+    if (backgroundTasksOpensPane) {
+      showSurface('workspace-agents');
+      return;
+    }
+    setIsBackgroundTasksOpen((open) => !open);
+  }, [backgroundTasksOpensPane, setIsBackgroundTasksOpen, showSurface]);
+  const codingLayoutSlug = sessionCodingLayout?.slug ?? null;
+  const markdownLinkContext = useMemo(
+    () => ({
+      projectSlug: conversationProjectSlug,
+      projectId: conversationProjectId,
+      dockProjectSlug,
+      bottomOnly: dockBottomOnly,
+      openPathInMain:
+        conversationProjectSlug && codingLayoutSlug
+          ? (path: string, lineRange?: { start: number; end: number }) =>
+              setLayout(conversationProjectSlug, codingLayoutSlug, {
+                openFilePreviewIntent: {
+                  projectSlug: conversationProjectSlug,
+                  path,
+                  ...(lineRange ? { lineRange } : {}),
+                },
+              })
+          : null,
+    }),
+    [
+      codingLayoutSlug,
+      conversationProjectId,
+      conversationProjectSlug,
+      dockBottomOnly,
+      dockProjectSlug,
+      setLayout,
+    ],
+  );
+
   return (
-    <>
+    <MarkdownLinkContext.Provider value={markdownLinkContext}>
       <SkillShortcutRegistrar
         hasContext={Boolean(
           !importedSessionId && activeSessionId && activeSessionForHook,
@@ -2168,8 +2244,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         ? 0
                         : backgroundTasksRunningCount,
                       isBackgroundTasksOpen,
-                      onToggleBackgroundTasks: () =>
-                        setIsBackgroundTasksOpen((open) => !open),
+                      backgroundTasksOpensPane,
+                      onToggleBackgroundTasks: toggleBackgroundTasks,
                       sessionInventory:
                         !importedSessionId &&
                         !conversationOpenRecovery &&
@@ -2437,9 +2513,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           },
                         );
                       }}
-                      onOpenBackgroundTasks={() =>
-                        setIsBackgroundTasksOpen(true)
-                      }
+                      onOpenBackgroundTasks={showBackgroundTasks}
                     />
                   ) : null}
                 </div>
@@ -2503,7 +2577,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               backgroundTaskCount: backgroundTasksRunningCount,
               onOpenBackgroundTasks: () => {
                 setIsTaskSwitcherOpen(false);
-                setIsBackgroundTasksOpen(true);
+                showBackgroundTasks();
               },
               onOpenSession: (threadId) => {
                 setIsTaskSwitcherOpen(false);
@@ -2893,7 +2967,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ) : null}
 
       <ShareIntakeController />
-    </>
+    </MarkdownLinkContext.Provider>
   );
 }
 

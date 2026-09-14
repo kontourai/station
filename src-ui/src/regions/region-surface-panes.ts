@@ -30,6 +30,14 @@
  * pins the keys to the registry's dock-capable surfaces in both directions
  * and every entry's descriptor to `dockCanSupply`.
  *
+ * Since #2049 the inventory also resolves INSTANCE-KEYED panes, which are not
+ * map entries: `regionSurfacePane` answers for any id whose prefix
+ * `INSTANCE_SURFACE_PREFIXES` describes (`pr:…`, `file-preview:…`) by minting
+ * that one occurrence, and `regionSurfaceOfPane` folds such an occurrence back
+ * to its own id. The map stays exactly the registry's dock-capable surfaces —
+ * `region-surface-boundary.test.ts` pins that — because an instance pane has
+ * no blank occurrence to register.
+ *
  * Kept apart from `region-model.ts` on purpose: the model is pure over ids and
  * imports no pane contract, and stays in the entry chunk; this module is the
  * `RegionPaneHost` chunk's, and stays contract-only — no renderer, and never
@@ -41,6 +49,11 @@ import {
   WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
   WORKSPACE_ACTIVITY_PANE_INSTANCE,
 } from '@kontourai/station-contracts/workspace-activity-pane';
+import {
+  isCanonicalWorkspaceAgentsPaneInstance,
+  WORKSPACE_AGENTS_PANE_DESCRIPTOR,
+  WORKSPACE_AGENTS_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-agents-pane';
 import {
   createWorkspaceChatPaneInstance,
   isCanonicalWorkspaceChatPaneInstance,
@@ -61,12 +74,30 @@ import {
   WORKSPACE_CODING_TERMINAL_PANE_INSTANCE_ID,
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import {
+  WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR,
+  type WorkspaceFilePreviewPaneState,
+} from '@kontourai/station-contracts/workspace-file-preview';
+import {
   toWorkspacePaneInstanceId,
   type WorkspacePaneDescriptor,
   type WorkspacePaneInstance,
   type WorkspacePaneSuppliableContexts,
   workspacePaneModesSatisfiableBy,
 } from '@kontourai/station-contracts/workspace-pane';
+import {
+  createWorkspacePullRequestPaneInstance,
+  isCanonicalWorkspacePullRequestPaneInstance,
+  parseWorkspacePullRequestPaneId,
+  WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR,
+} from '@kontourai/station-contracts/workspace-pull-request-pane';
+import {
+  createFilePreviewPaneInstance,
+  isCanonicalFilePreviewPaneInstance,
+} from '../workspace-panes/filePreviewPaneInstance';
+import {
+  type FilePreviewPaneStateStorage,
+  readFilePreviewPaneState,
+} from '../workspace-panes/filePreviewPaneStateStorage';
 
 /**
  * What a dock region can bind for a pane (#2047). The active project is the
@@ -107,10 +138,28 @@ export function dockCanSupply(descriptor: WorkspacePaneDescriptor): boolean {
 export interface RegionPaneContext {
   /** The active project's id, or null when the dock has none. */
   projectId: string | null;
+  /**
+   * The same project's slug, or null. Carried because a file preview's
+   * persisted state names its project by SLUG (`WorkspaceFilePreviewPaneState`)
+   * while an instance binds it by id: an entry that cannot compare both would
+   * mint an occurrence of THIS dock's project for a file that belongs to
+   * another, and the renderer would report a state mismatch for a tab the
+   * host claimed to have derived (#2049).
+   */
+  projectSlug: string | null;
 }
 
 export interface RegionSurfacePane {
   surfaceId: string;
+  /**
+   * The tab's own title, where the pane derives one from its identity (a
+   * pull request's number, a previewed file's name). Absent for a registered
+   * surface, whose title is the registry's. `RegionPaneHost` prefers this and
+   * falls back to `resolveRegionSurface(id).title` — which is also what the
+   * folded Regions menu and the shell landmark, neither of which resolves an
+   * instance, always show.
+   */
+  title?: string;
   /** The descriptor the pane is an occurrence of (`pane:builtin:<surface>`). */
   descriptorId: string;
   /**
@@ -201,6 +250,16 @@ export const REGION_SURFACE_PANES: ReadonlyMap<string, RegionSurfacePane> =
         isCanonical: isCanonicalWorkspaceActivityPaneInstance,
       },
     ],
+    [
+      'workspace-agents',
+      {
+        surfaceId: 'workspace-agents',
+        descriptorId: WORKSPACE_AGENTS_PANE_DESCRIPTOR.id,
+        instanceId: WORKSPACE_AGENTS_PANE_INSTANCE.instanceId,
+        instance: () => WORKSPACE_AGENTS_PANE_INSTANCE,
+        isCanonical: isCanonicalWorkspaceAgentsPaneInstance,
+      },
+    ],
     codingPane(
       'coding:terminal',
       WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
@@ -224,11 +283,102 @@ export const REGION_SURFACE_PANES: ReadonlyMap<string, RegionSurfacePane> =
     ),
   ]);
 
-/** The pane a surface renders as in a region host, if it has one. */
+/** The exact shape `createFilePreviewPaneInstance` mints its identity in. */
+const FILE_PREVIEW_PANE_ID = /^file-preview:[0-9a-f]{32}$/;
+
+/**
+ * The browser storage a file preview's state lives in, or null where there is
+ * no browser (this module is read from node-environment unit tests). A pane
+ * whose state cannot be read has no occurrence, which is the same answer an
+ * absent state gives.
+ */
+function filePreviewStorage(): FilePreviewPaneStateStorage | null {
+  return typeof window === 'undefined' ? null : window.localStorage;
+}
+
+/** The last segment of a preview's path — the tab's name for the file. */
+function filePreviewTitle(state: WorkspaceFilePreviewPaneState): string {
+  const segments = state.path.split('/');
+  return segments[segments.length - 1] || state.path;
+}
+
+/**
+ * One pull request's pane, resolved from its id (#2049). The occurrence binds
+ * the dock's project because the review route is project-scoped; with no
+ * project the entry has no instance, exactly as a coding pane does.
+ */
+function pullRequestSurfacePane(
+  surfaceId: string,
+): RegionSurfacePane | undefined {
+  const key = parseWorkspacePullRequestPaneId(surfaceId);
+  if (!key) return undefined;
+  return {
+    surfaceId,
+    descriptorId: WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR.id,
+    instanceId: toWorkspacePaneInstanceId(surfaceId),
+    title: `#${key.ref}`,
+    instance: ({ projectId }) =>
+      projectId === null
+        ? null
+        : createWorkspacePullRequestPaneInstance(key, projectId),
+    isCanonical: (instance) =>
+      String(instance.instanceId) === surfaceId &&
+      isCanonicalWorkspacePullRequestPaneInstance(instance),
+  };
+}
+
+/**
+ * One file preview's pane, resolved from its id (#2049). Unlike every other
+ * entry this one reads persisted STATE — the path is not in the id, only the
+ * nonce is — so an occurrence exists only while that state does and names the
+ * dock's own project. A preview of another project's file keeps its tab and
+ * renders the host's "choose a project" placeholder rather than being rebound
+ * to a checkout the path does not belong to.
+ */
+function filePreviewSurfacePane(
+  surfaceId: string,
+): RegionSurfacePane | undefined {
+  const nonce = surfaceId.slice('file-preview:'.length);
+  const storage = filePreviewStorage();
+  const state = storage ? readFilePreviewPaneState(storage, surfaceId) : null;
+  return {
+    surfaceId,
+    descriptorId: WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR.id,
+    instanceId: toWorkspacePaneInstanceId(surfaceId),
+    ...(state ? { title: filePreviewTitle(state) } : {}),
+    instance: ({ projectId, projectSlug }) =>
+      state && projectId !== null && state.projectSlug === projectSlug
+        ? createFilePreviewPaneInstance(state, projectId, nonce)
+        : null,
+    isCanonical: (instance) =>
+      String(instance.instanceId) === surfaceId &&
+      isCanonicalFilePreviewPaneInstance(instance, state),
+  };
+}
+
+/**
+ * The pane a surface renders as in a region host, if it has one: a registered
+ * surface's map entry, else the one occurrence an instance-keyed id names
+ * (#2049). The prefixes here are the same two `INSTANCE_SURFACE_PREFIXES`
+ * declares in `region-model.ts` — that table is the entry chunk's id-keyed
+ * half (placement, titles) and this is the host chunk's occurrence-minting
+ * half; `region-instance-panes.test.ts` pins them to each other by prefix and
+ * descriptor id so neither can grow a family the other does not know.
+ *
+ * An instance entry is minted per call rather than cached: a file preview's
+ * title and occurrence are derived from persisted state, which the opener
+ * writes and the reclaimer removes, so a cached entry would be a stale answer
+ * about storage.
+ */
 export function regionSurfacePane(
   surfaceId: string,
 ): RegionSurfacePane | undefined {
-  return REGION_SURFACE_PANES.get(surfaceId);
+  const registered = REGION_SURFACE_PANES.get(surfaceId);
+  if (registered) return registered;
+  if (surfaceId.startsWith('pr:')) return pullRequestSurfacePane(surfaceId);
+  if (FILE_PREVIEW_PANE_ID.test(surfaceId))
+    return filePreviewSurfacePane(surfaceId);
+  return undefined;
 }
 
 /**
@@ -242,7 +392,13 @@ export function regionSurfaceOfPane(
   for (const pane of REGION_SURFACE_PANES.values()) {
     if (pane.isCanonical(instance)) return pane.surfaceId;
   }
-  return null;
+  // An instance-keyed pane IS its own surface id (#2049), so the reverse fold
+  // is the forward one applied to the id the instance already carries: it
+  // resolves only when the entry that id mints calls this occurrence its own.
+  const identity = String(instance.instanceId);
+  return regionSurfacePane(identity)?.isCanonical(instance) === true
+    ? identity
+    : null;
 }
 
 /**

@@ -1,7 +1,9 @@
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import type { ComponentType } from 'react';
 import {
+  AgentGlyph,
   BoardGlyph,
+  BranchGlyph,
   ChartGlyph,
   CheckGlyph,
   CodeGlyph,
@@ -54,8 +56,12 @@ const BUILTIN_PANE_GLYPHS = {
   'workspace-trust': ShieldGlyph,
   'workspace-browser-preview': GlobeGlyph,
   'workspace-file-preview': DocumentGlyph,
+  // A branch, not the Diff pane's glyph: a pull-request pane and the Diff
+  // pane are two tiles a reader chooses between (#2049).
+  'workspace-pull-request': BranchGlyph,
   'workspace-home': HomeGlyph,
   'workspace-activity': ChartGlyph,
+  'workspace-agents': AgentGlyph,
   'workspace-spatial-board': PinGlyph,
   'workspace-board': BoardGlyph,
   'workspace-basis': DatabaseGlyph,

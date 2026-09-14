@@ -5,7 +5,10 @@ import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
-import { regionHoldsChat } from '../../regions/region-model';
+import {
+  regionHoldsChat,
+  resolveRegionSurface,
+} from '../../regions/region-model';
 import type { DockMode } from '../../types';
 import { ChatDockResizeHandle } from './ChatDockResizeHandle';
 
@@ -58,7 +61,7 @@ export function DockShell({
       : true;
   const landmarkLabel = holdsChat
     ? 'Dock'
-    : (regionModel?.surfaces.get(occupant ?? '')?.title ?? 'Dock');
+    : (resolveRegionSurface(occupant ?? '')?.title ?? 'Dock');
   const resizeLabel = holdsChat
     ? 'Resize chat dock'
     : `Resize ${landmarkLabel}`;
