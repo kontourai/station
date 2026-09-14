@@ -111,11 +111,19 @@ describe('capturing a frame (#1969)', () => {
    * so a screen-reader user is not told something different from what is on
    * screen. Dropping the wording from either reds this; so does any of the
    * forbidden live-stream words appearing.
+   *
+   * The timestamp is derived from the clock rather than written down. A fixed
+   * one is a time bomb: this pane decorates a frame past a 30-second
+   * threshold and dates the label once the frame is not from today, so a
+   * literal date would assert the FRESH, same-day shape only until that date
+   * passed. This case owns the fresh shape; the stale suite owns what a frame
+   * past the threshold adds to it.
    */
   test('the caption and the alt text both claim a snapshot and a time', async () => {
+    const capturedAt = new Date().toISOString();
     stubDeviceFetch({
       inventory: readyInventory(),
-      captures: [captureBody({ capturedAt: '2026-09-14T10:00:05.000Z' })],
+      captures: [captureBody({ capturedAt })],
     });
     authorizeScope();
     const { container } = renderInQueryClient(<DeviceWorkspacePane />);
@@ -123,7 +131,7 @@ describe('capturing a frame (#1969)', () => {
     await click(await screen.findByRole('radio', { name: /iPhone/ }));
     await click(screen.getByRole('button', { name: 'Capture' }));
 
-    const time = new Date('2026-09-14T10:00:05.000Z').toLocaleTimeString();
+    const time = new Date(capturedAt).toLocaleTimeString();
     const image = await screen.findByRole('img');
     expect(image.getAttribute('alt')).toBe(
       `Snapshot of iPhone 17 Pro, captured ${time}`,

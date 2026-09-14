@@ -61,6 +61,42 @@ describe('a stale snapshot (#1969)', () => {
     expect(image.getAttribute('src')).toMatch(/^data:image\/png;base64,/);
   });
 
+  /**
+   * Staleness reaches a screen reader, not only a sighted reader.
+   *
+   * It used to live in the `figcaption` alone while the `alt` carried a bare
+   * `toLocaleTimeString()` — no date and no age — so a frame six hours old
+   * was announced as "captured 5:25:59 AM" and nothing else. Both now read
+   * the same `STALE_NOTE`. Removing it from the `alt` reds the first
+   * assertion; letting a fresh frame carry it reds the last.
+   *
+   * The date is the other half: a time alone is the same string for a frame
+   * taken a minute ago and one taken at the same hour yesterday, so the label
+   * carries a date exactly when the frame is not from today.
+   */
+  test('the alt text carries the staleness, and a day-old frame carries its date', async () => {
+    await captureAt(new Date(Date.now() - 120_000).toISOString());
+    expect(screen.getByRole('img').getAttribute('alt')).toMatch(
+      /more than 30 seconds old, so it may not be the current screen$/,
+    );
+    cleanup();
+
+    const yesterday = new Date(Date.now() - 26 * 60 * 60 * 1000);
+    await captureAt(yesterday.toISOString());
+    const alt = screen.getByRole('img').getAttribute('alt') ?? '';
+    expect(alt).toContain(yesterday.toLocaleString());
+    expect(alt).toContain('more than 30 seconds old');
+    cleanup();
+
+    // Bound to one `Date`, not read from the clock twice: a second boundary
+    // between the fixture and the expectation would make this flake.
+    const fresh = new Date();
+    await captureAt(fresh.toISOString());
+    expect(screen.getByRole('img').getAttribute('alt')).toBe(
+      `Snapshot of iPhone 17 Pro, captured ${fresh.toLocaleTimeString()}`,
+    );
+  });
+
   test('a fresh frame carries no stale wording', async () => {
     await captureAt(new Date().toISOString());
     expect(screen.queryByText(/more than 30 seconds old/)).toBeNull();

@@ -87,12 +87,44 @@ export const DEVICE_SNAPSHOT_STALE_AFTER_MS = 30_000;
 
 const PLATFORM_LABEL = { ios: 'iOS', android: 'Android' } as const;
 
-function capturedAtLabel(capturedAt: string): string {
+/**
+ * When a frame was taken: a time, plus a DATE once it is not from the same
+ * day as `now`.
+ *
+ * `toLocaleTimeString()` alone produces the same string for a frame taken a
+ * minute ago and one taken at the same hour yesterday, which is exactly the
+ * reading the staleness decoration has to fight. The date is the part that
+ * distinguishes them, so it is shown when it differs and omitted when it
+ * would be noise.
+ */
+function capturedAtLabel(capturedAt: string, now: number): string {
   const parsed = new Date(capturedAt);
-  return Number.isFinite(parsed.getTime())
+  if (!Number.isFinite(parsed.getTime())) return capturedAt;
+  return parsed.toDateString() === new Date(now).toDateString()
     ? parsed.toLocaleTimeString()
-    : capturedAt;
+    : parsed.toLocaleString();
 }
+
+/**
+ * What the pane says about a frame past the threshold, in ONE place: the
+ * caption reads it and so does the image's `alt`, so a screen-reader user and
+ * a sighted one are told the same thing. Before this, staleness lived only in
+ * the caption and the `alt` carried a bare time, so a frame hours old was
+ * announced as "captured 5:25:59 AM" and nothing else.
+ *
+ * It states a LOWER BOUND and then the consequence, rather than an age.
+ * "More than 30 seconds old" is true of a frame thirty-one seconds old and of
+ * one six hours old, and on its own the first reading is the one it invites;
+ * the clause after it is what a reader acts on either way. A real age would
+ * have to be re-derived forever to stay true, and the timestamp beside it —
+ * dated once it is not from today — already carries that answer.
+ *
+ * The `30` is written out rather than derived from
+ * `DEVICE_SNAPSHOT_STALE_AFTER_MS`: deriving it would put the two in lockstep
+ * by construction and make the test that checks they agree unable to fail.
+ */
+const STALE_NOTE =
+  'more than 30 seconds old, so it may not be the current screen';
 
 /**
  * Why this row cannot be captured, or null when it can.
@@ -175,10 +207,14 @@ function DeviceWorkspacePaneSurface({
     Number.isFinite(capturedAt) &&
     now - capturedAt >= DEVICE_SNAPSHOT_STALE_AFTER_MS;
 
-  // One ticker, only while there is a frame that has not yet been called old.
+  // One ticker, only while there is a frame. Every second while the frame is
+  // still current, so it goes stale where it sits; once stale, every minute,
+  // which is what keeps `now` honest for the date the caption has to show
+  // when a frame survives past midnight — without a per-second wake for a
+  // decoration that no longer changes.
   useEffect(() => {
-    if (!frame || isStale) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    if (!frame) return;
+    const id = setInterval(() => setNow(Date.now()), isStale ? 60_000 : 1000);
     return () => clearInterval(id);
   }, [frame, isStale]);
 
@@ -354,6 +390,7 @@ function DeviceWorkspacePaneSurface({
           capture={frame}
           isCapturing={capture.isPending}
           isStale={isStale}
+          now={now}
           onRefreshInventory={() => void inventory.refetch()}
           onRetry={() => selected && capture.mutate(selected)}
           outcome={outcome}
@@ -369,6 +406,7 @@ function DeviceStage({
   capture,
   isCapturing,
   isStale,
+  now,
   onRefreshInventory,
   onRetry,
   outcome,
@@ -378,6 +416,7 @@ function DeviceStage({
   capture: MobileDeviceCapture | undefined;
   isCapturing: boolean;
   isStale: boolean;
+  now: number;
   onRefreshInventory: () => void;
   onRetry: () => void;
   outcome: DeviceCaptureOutcome | null;
@@ -388,7 +427,12 @@ function DeviceStage({
 
   const figure =
     capture && selected ? (
-      <DeviceFrame capture={capture} isStale={isStale} selected={selected} />
+      <DeviceFrame
+        capture={capture}
+        isStale={isStale}
+        now={now}
+        selected={selected}
+      />
     ) : null;
 
   if (outcome)
@@ -453,13 +497,15 @@ function DeviceStage({
 function DeviceFrame({
   capture,
   isStale,
+  now,
   selected,
 }: {
   capture: MobileDeviceCapture;
   isStale: boolean;
+  now: number;
   selected: MobileDeviceSummary;
 }) {
-  const time = capturedAtLabel(capture.capturedAt);
+  const time = capturedAtLabel(capture.capturedAt, now);
   const caption = `Snapshot of ${selected.name} · ${PLATFORM_LABEL[selected.platform]} · captured ${time}`;
   return (
     <figure className="device-pane__figure">
@@ -481,18 +527,32 @@ function DeviceFrame({
           } as React.CSSProperties
         }
       >
+        {/*
+          The `alt` carries the staleness too, not just the caption: a reader
+          who reaches the image is told the same thing a reader who reaches
+          the caption is, rather than a bare time that reads as recent.
+        */}
         <img
-          alt={`Snapshot of ${selected.name}, captured ${time}`}
+          alt={`Snapshot of ${selected.name}, captured ${time}${isStale ? ` — ${STALE_NOTE}` : ''}`}
           className="device-pane__image"
           src={`data:${capture.mimeType};base64,${capture.pngBase64}`}
         />
       </div>
-      <figcaption className="device-pane__caption" role="status">
+      {/*
+        No `role="status"` here. It used to carry one, and it never announced:
+        the region is inserted into the document together with its text, which
+        is the case assistive technology does not read out, so the one moment
+        it existed for — a frame arriving — was the one moment it could not
+        cover. A live region that does not announce is a claim nothing
+        computes; the honest carrier is the image's own `alt` above, which a
+        reader reaches by reading the figure.
+      */}
+      <figcaption className="device-pane__caption">
         {caption}
         {isStale ? (
           <span className="device-pane__stale">
             {' '}
-            — more than 30 seconds old; capture again for the current screen.
+            — {STALE_NOTE}; capture again.
           </span>
         ) : null}
       </figcaption>
