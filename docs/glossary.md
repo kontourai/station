@@ -285,6 +285,7 @@ retired names.
 | A thing that can occupy a region (Chat, Activity) | **Surface** |
 | The smallest addressable unit of workspace UI | **Pane** (developer contract: **Workspace Pane**) |
 | Visual grouping inside a page or pane | **Panel** |
+| The one place listing what needs a person's decision (tool approvals, device pairing, proposed changes, paused gate reviews) | **Notifications** (the **attention inbox**; the footer bell counts its pending items) |
 | Durable work identity | **Task** |
 | Execution episode | **Session** |
 | `missing_prerequisites` | name what's missing (e.g. "AWS credentials required") |

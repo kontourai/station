@@ -1,10 +1,13 @@
 # Shell ownership scopes and Boards
 
-Status: **accepted direction, not yet implemented** (owner decisions
+Status: **accepted direction, shipping in slices** (owner decisions
 2026-09-13, recorded from a design session). This record owns the reasoning
 for the next shape of the left panel and for the ownership model that makes
-project-less, user-owned views possible. It does not change shipped behavior.
-The sequence of slices is tracked on epic #2058.
+project-less, user-owned views possible. As of the first batch (slices 1, 2
+and 6 of epic #2058) the places-only panel with its footer, the polymorphic
+layout owner, and the widened attention inbox are shipped; the remaining
+slices are tracked on the epic, and this record describes the target shape,
+not necessarily what a given commit renders.
 
 Vocabulary follows [the glossary](../glossary.md). Where this record
 introduces a term (**Board**, **personal scope**, **attention inbox**) it
