@@ -448,6 +448,40 @@ test('a coding pane bound to another project is refused on open and re-bound on 
 });
 
 /**
+ * #1969: the Device pane is the counter-case to D6 below. Its inventory
+ * entry ignores the dock's context — a device list is a fact about the
+ * Station's host, not about a checkout — so with NO project it renders,
+ * where a coding pane renders the "choose a project" placeholder.
+ *
+ * Making the Device entry project-bound (building it with `codingPane(...)`
+ * in `region-surface-panes.ts`) reds this: the host would have no instance
+ * and would draw the placeholder instead.
+ */
+test('without a project the Device pane renders, bound to nothing', async () => {
+  renderShells();
+  await waitFor(() => expect(model).not.toBeNull());
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+
+  act(() => currentModel().placeSurface('device', 'right'));
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+
+  const pane = await screen.findByTestId('coding-pane');
+  expect(pane.dataset.descriptor).toBe('pane:builtin:device');
+  expect(pane.dataset.project).toBeUndefined();
+  expect(screen.queryByText('Choose a project for this dock')).toBeNull();
+  expect(currentModel().regions.right).toMatchObject({
+    panes: ['device'],
+    occupant: 'device',
+    visible: true,
+  });
+  expect(within(shell('right')).getByLabelText('Hide Device')).toBeTruthy();
+});
+
+/**
  * D6: no active project. The "+" is Part C's; here the placed pane keeps
  * its tab and its record, throws nothing, and renders "Choose a project for
  * this dock" where the pane would be; binding a project afterwards renders

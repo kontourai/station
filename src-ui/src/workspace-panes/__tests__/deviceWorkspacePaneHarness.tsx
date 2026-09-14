@@ -1,0 +1,208 @@
+import type {
+  MobileDeviceHostFailure,
+  MobileDeviceInventory,
+  MobileDeviceSummary,
+} from '@kontourai/station-contracts/mobile-device';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, render } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { vi } from 'vitest';
+
+/**
+ * The Device pane's test harness (#1969).
+ *
+ * Deliberately NOT a mock of the SDK query hooks: the pane is mounted over a
+ * real `QueryClient` and a stubbed `fetch`, so every fixture below has to
+ * survive the SDK client's own parser — which is written against the exact
+ * envelope `LocalMobileDeviceHost` emits and rejects anything else with a
+ * `MobileDeviceRequestError(200)`. A fixture that drifts from the server's
+ * shape therefore fails loudly here rather than being quietly believed.
+ *
+ * The fixtures themselves are copied from what the service produces
+ * (`src-server/services/mobile-device/mobile-device-host.ts`, and the rows in
+ * its own test): `runtime` is the helper's `version`, `deviceId` is the
+ * helper's `id`, and a booted Android device reports an `emulator-<n>`
+ * serial.
+ */
+
+export const IOS_DEVICE_ID = '6E8C08FA-3A81-4347-90B9-AD41B7FAE876';
+export const ANDROID_DEVICE_ID = 'emulator-5584';
+
+/** A 1x1 PNG — the same bytes the service test captures. */
+export const ONE_BY_ONE_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aDWQAAAAASUVORK5CYII=';
+
+export const IOS_DEVICE: MobileDeviceSummary = {
+  hostId: 'local',
+  platform: 'ios',
+  deviceId: IOS_DEVICE_ID,
+  name: 'iPhone 17 Pro',
+  runtime: 'iOS 26.5',
+  booted: true,
+};
+
+export const ANDROID_DEVICE: MobileDeviceSummary = {
+  hostId: 'local',
+  platform: 'android',
+  deviceId: ANDROID_DEVICE_ID,
+  name: 'Pixel 10 Pro XL',
+  runtime: 'Android 16',
+  booted: true,
+};
+
+export const OBSERVED_AT = '2026-09-14T10:00:00.000Z';
+
+export function readyInventory(
+  devices: MobileDeviceSummary[] = [IOS_DEVICE, ANDROID_DEVICE],
+): MobileDeviceInventory {
+  return { hostId: 'local', state: 'ready', observedAt: OBSERVED_AT, devices };
+}
+
+export function partialInventory(
+  devices: MobileDeviceSummary[] = [IOS_DEVICE],
+): MobileDeviceInventory {
+  return {
+    hostId: 'local',
+    state: 'partial',
+    observedAt: OBSERVED_AT,
+    devices,
+  };
+}
+
+/** Exactly the envelope the service returns from its own catch arm. */
+export function unavailableInventory(
+  failure: MobileDeviceHostFailure,
+): MobileDeviceInventory {
+  return {
+    hostId: 'local',
+    state: 'unavailable',
+    observedAt: OBSERVED_AT,
+    devices: [],
+    failure,
+  };
+}
+
+export interface CaptureFixture {
+  captureId?: string;
+  platform?: 'ios' | 'android';
+  deviceId?: string;
+  capturedAt?: string;
+  width?: number;
+  height?: number;
+}
+
+export function captureBody(fixture: CaptureFixture = {}) {
+  const platform = fixture.platform ?? 'ios';
+  return {
+    captureId: fixture.captureId ?? 'a0ea1f6e-0000-4000-8000-000000000001',
+    target: {
+      hostId: 'local',
+      platform,
+      deviceId:
+        fixture.deviceId ??
+        (platform === 'ios' ? IOS_DEVICE_ID : ANDROID_DEVICE_ID),
+    },
+    capturedAt: fixture.capturedAt ?? '2026-09-14T10:00:05.000Z',
+    mimeType: 'image/png',
+    width: fixture.width ?? 1179,
+    height: fixture.height ?? 2556,
+    pngBase64: ONE_BY_ONE_PNG,
+  };
+}
+
+export const SCOPE = {
+  apiBase: 'http://station.test',
+  authorityKey: 'authority-1',
+};
+
+export interface DeviceFetchPlan {
+  inventory?: MobileDeviceInventory | (() => MobileDeviceInventory);
+  /** A thrown transport failure for the inventory read. */
+  inventoryThrows?: Error;
+  inventoryStatus?: number;
+  /** Successive capture answers; the last one repeats. */
+  captures?: ({ status: number } | ReturnType<typeof captureBody>)[];
+}
+
+export interface DeviceFetchLog {
+  inventoryReads: number;
+  captureRequests: string[];
+}
+
+export function stubDeviceFetch(plan: DeviceFetchPlan): DeviceFetchLog {
+  const log: DeviceFetchLog = { inventoryReads: 0, captureRequests: [] };
+  let captureIndex = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/hosts/local/devices')) {
+        log.inventoryReads += 1;
+        if (plan.inventoryThrows) throw plan.inventoryThrows;
+        if (plan.inventoryStatus && plan.inventoryStatus >= 400)
+          return new Response('{}', { status: plan.inventoryStatus });
+        const body =
+          typeof plan.inventory === 'function'
+            ? plan.inventory()
+            : (plan.inventory ?? readyInventory());
+        return new Response(JSON.stringify({ success: true, data: body }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.endsWith('/capture')) {
+        log.captureRequests.push(url);
+        const answers = plan.captures ?? [captureBody()];
+        const answer =
+          answers[Math.min(captureIndex, answers.length - 1)] ?? captureBody();
+        captureIndex += 1;
+        if ('status' in answer)
+          return new Response('{}', { status: answer.status });
+        return new Response(JSON.stringify({ success: true, data: answer }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected request ${url}`);
+    }),
+  );
+  return log;
+}
+
+export function authorizeScope(scope = SCOPE) {
+  setClientCredentialResolver(() => ({
+    origin: scope.apiBase,
+    requestAuthority: { ...scope, isCurrent: () => true },
+  }));
+}
+
+/**
+ * A click, awaited to the next flush. `fireEvent` rather than `user-event`:
+ * this repository does not ship that package, and every interaction here is
+ * an ordinary click on an enabled control.
+ */
+export async function click(element: Element) {
+  fireEvent.click(element);
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
+
+export function renderInQueryClient(element: ReactElement) {
+  const client = new QueryClient({
+    // `retryDelay: 0` as well as `retry: false`: `useApiQuery` passes an
+    // explicit `retry: undefined`, which wins over the client default, so a
+    // refused read still runs React Query's three retries — just instantly.
+    defaultOptions: { queries: { retry: false, retryDelay: 0 } },
+  });
+  const utils = render(
+    <QueryClientProvider client={client}>{element}</QueryClientProvider>,
+  );
+  // RTL's own `rerender` replaces the ROOT, which would drop the provider and
+  // throw "No QueryClient set". This one keeps the same client, which is what
+  // a re-render under a changed authority actually looks like.
+  const rerenderWrapped = (next: ReactElement) =>
+    utils.rerender(
+      <QueryClientProvider client={client}>{next}</QueryClientProvider>,
+    );
+  return { ...utils, client, rerenderWrapped };
+}

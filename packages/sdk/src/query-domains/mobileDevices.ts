@@ -49,6 +49,13 @@ export function useMobileDeviceInventoryQuery(
       // slice does not have, and each tick is a real request to a device
       // host that has to enumerate simulators to answer it.
       staleTime: 15_000,
+      // One retry, not React Query's default three. The default's backoff is
+      // 1s + 2s + 4s, so a helper that is simply not running would hold a
+      // reader on a skeleton for seven seconds before saying anything — and
+      // this surface has an explicit Refresh, so a person can ask again the
+      // moment they have been told.
+      retry: 1,
+      retryDelay: 250,
       ...config,
     },
   );
