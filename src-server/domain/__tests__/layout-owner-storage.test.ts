@@ -353,6 +353,29 @@ describe('owner-scoped layout storage', () => {
     expect(adapter.findLayoutsUsingAgent('codex')).toEqual([]);
   });
 
+  test('the sweep ignores a stray file under the personal layout root', async () => {
+    // Finder writes `.DS_Store` into any folder it browses. Every entry under
+    // `personal/` used to be read as a principal directory, so that one file
+    // raised ENOTDIR out of the sweep and `deleteAgent` threw for EVERY agent
+    // on the machine — a guard failing closed for a reason unrelated to any
+    // dependent.
+    await adapter.createOwnedLayout(
+      { kind: 'principal', principal: alice },
+      {
+        ...board(),
+        config: { tabs: [{ id: 'a', skills: [{ agent: 'claude' }] }] },
+      },
+    );
+    writeFileSync(join(home, 'layouts', 'personal', '.DS_Store'), 'junk');
+
+    expect(adapter.findLayoutsUsingAgent('claude')).toEqual([
+      {
+        owner: { kind: 'principal', principal: alice },
+        layoutSlug: 'my-board',
+      },
+    ]);
+  });
+
   test('an owned-layout read refuses a principal that is not well formed', async () => {
     // LOW-5 — the principal becomes a path and error text before anything
     // validates it, on every one of the three read/write entry points.

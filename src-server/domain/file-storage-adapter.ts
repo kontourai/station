@@ -499,12 +499,21 @@ export class FileStorageAdapter implements IStorageAdapter {
    * A record whose own owner does not place it in the directory it was found
    * in is skipped rather than reported: it is not this owner's layout, and
    * `getOwnedLayout` refuses it by name for whoever asks for it directly.
+   * A record that fails `parseLayoutConfig` is NOT skipped — it throws, in
+   * parity with the project sweep, so a corrupt record cannot be read as
+   * "this agent has no dependents".
+   *
+   * Only directories under `personal/` are principal roots: a stray file the
+   * filesystem leaves there (Finder's `.DS_Store`) is not a key, and reading
+   * it as one raised ENOTDIR out of every `deleteAgent` on the machine.
    */
   #listNonProjectLayouts(): LayoutConfig[] {
     const root = join(this.projectHomeDir, 'layouts');
     const directories = [
       join(root, 'instance'),
-      ...readDirectoryNames(join(root, 'personal'))
+      ...readDirectoryEntries(join(root, 'personal'))
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
         .sort()
         .map((key) => join(root, 'personal', key)),
     ];
