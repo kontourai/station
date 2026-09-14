@@ -438,6 +438,15 @@ function RegionPaneNeedsProject({ title }: { title: string }) {
  * closing a tab is the user's act — but the placeholder must not repeat the
  * "choose a project" instruction, which for this case would name a remedy
  * that does nothing.
+ *
+ * For the same reason it does not say "close the tab": the case this is
+ * pinned on is a LONE preview in its region, and the strip offers a close
+ * only for a region holding more than one pane (`onCloseTab` below,
+ * `tabs.length > 1`), so the instruction would name a control that is not on
+ * screen. What the user can always do is ask the conversation for the file
+ * again — which mints a preview against the project that conversation
+ * belongs to, and renders. "Saved state" is this code's word for it; the
+ * user's is which project it was opened for and which file it showed.
  */
 function RegionPaneUnavailable({ title }: { title: string }) {
   return (
@@ -445,7 +454,7 @@ function RegionPaneUnavailable({ title }: { title: string }) {
       <Empty
         variant="compact"
         label={`${title} is not available in this dock`}
-        description="Its saved state names a different project, or is no longer stored. Close the tab and open it again from the chat."
+        description="It was opened for a different project, or Station no longer remembers which file it showed. Open it again from the chat that linked it."
       />
     </div>
   );
