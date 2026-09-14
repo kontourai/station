@@ -423,7 +423,7 @@ test.describe('Android — Mobile Layout', () => {
     }
   });
 
-  test('sidebar status footer is anchored to the viewport bottom and decoupled from chat-dock-height', async ({
+  test('sidebar footer is anchored to the viewport bottom and decoupled from chat-dock-height', async ({
     page,
   }) => {
     // chat-dock-maximize-readiness: the mobile sidebar is a full-viewport
@@ -441,7 +441,7 @@ test.describe('Android — Mobile Layout', () => {
     const sidebar = page.locator('.sidebar--expanded');
     await expect(sidebar).toBeVisible();
 
-    const status = page.locator('.sidebar__status');
+    const status = page.locator('.sidebar__footer');
     await expect(status).toBeVisible();
 
     // The padding-bottom must not be inflated by the chat dock height.

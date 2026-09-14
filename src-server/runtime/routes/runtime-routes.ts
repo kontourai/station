@@ -3952,7 +3952,18 @@ export function configureRuntimeRoutes(
     attentionProjection,
     webPushService,
     webPushEnabled,
-  } = configureRuntimeSupportServices(context, flowRunService);
+  } = configureRuntimeSupportServices(context, flowRunService, {
+    // #2064 (D4): the same aggregate `/api/survey-flow-reviews` serves, over
+    // the same live project inventory — one read, so a paused review counted
+    // by the bell is the same row the Review page lists.
+    // Whole aggregate, not just `items`: a project Station could not read
+    // must reach the inbox as a stated gap (#2064 review (c)), not as an
+    // absence indistinguishable from "nothing needs you".
+    listGateReviews: () =>
+      surveyReview.listAll(
+        context.projectService.listProjects().map((project) => project.slug),
+      ),
+  });
   const nativeInvocationRunReader =
     runtimeContext.orchestrationEventStore.nativeInvocationRunReader();
   const voiceTurnRunReader =

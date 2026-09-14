@@ -59,7 +59,11 @@ const HEADER_CONSUMERS = [
   'components/home/SnoozeMenu.tsx',
   'components/chat-dock/ChatDockMobileOverflowSheet.tsx',
   'components/chat-dock/ComposerActionsMenu.tsx',
-  'components/project-sidebar/ProjectSidebarStatus.tsx',
+  // #2059: `ProjectSidebarStatus` was this family's sidebar member through its
+  // open-chats popover. That popover restated the panel's own Open chats
+  // section and was retired with the status line; its replacement
+  // (`ProjectSidebarFooter`) renders no ResponsiveDialogSurface, so it is not
+  // dropped from a family it still belongs to — it left the family.
   'components/badges/AcpSessionModeSheet.tsx',
   'components/badges/ComposerModeSheet.tsx',
   // archive#4254 extracted the model picker's dialog chrome into

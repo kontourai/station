@@ -1,58 +1,32 @@
 import type { DiffComment } from '@kontourai/station-contracts/diff-comment';
 import type { LayoutConfig } from '@kontourai/station-contracts/layout';
 import type { ProposedChange } from '@kontourai/station-contracts/proposed-change';
-import type {
-  IndependentReviewReceipt,
-  IndependentReviewRequest,
-  ReviewEvidenceUnavailableReason,
-} from '@kontourai/station-contracts/review-evidence';
 import {
   type SurveyFlowReviewItemVM,
   type SurveyFlowReviewUnavailableReason,
-  useAgentsQuery,
   useAllDiffCommentsQuery,
-  useApproveProposedChangeMutation,
   useBulkApproveProposedChangesMutation,
   useBulkRejectProposedChangesMutation,
   useProjectLayoutsQuery,
-  useProjectsQuery,
   useProposedChangesQuery,
-  useRejectProposedChangeMutation,
   useResolveDiffCommentMutation,
   useReviewEvidenceQuery,
-  useRunIndependentReviewMutation,
   useSurveyFlowReviewsQuery,
 } from '@kontourai/station-sdk';
-import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../components/Button';
 import { CheckGlyph } from '../components/icons/Glyph';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
-import {
-  ResponsiveDialogSurface,
-  ResponsiveSurfaceActions,
-} from '../components/ResponsiveDialogSurface';
+import { IndependentReviewReceiptDetail } from '../components/review/IndependentReviewReceiptDetail';
+import { IndependentReviewRunModal } from '../components/review/IndependentReviewRunModal';
+import { useProposedChangeDecision } from '../components/review/proposedChangeDecision';
+import { REVIEW_UNAVAILABLE_REASON_COPY } from '../components/review/reviewEvidenceCopy';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { useNavigation } from '../contexts/NavigationContext';
 import './ReviewQueueView.css';
 import './page-layout.css';
 
 type BulkAction = 'approve' | 'reject' | null;
-
-/** The operator remedy differs by reason, so the copy names it per project. */
-const REVIEW_UNAVAILABLE_REASON_COPY: Record<
-  ReviewEvidenceUnavailableReason,
-  string
-> = {
-  // Deliberately not "locked by another Station process": the read only knows
-  // the lock was held past its wait, which a slow index repair produces as
-  // readily as a second process, and sending the operator to hunt a process
-  // that may not exist is worse than naming what was observed.
-  'lock-unavailable': 'contended — another Station process or a long repair',
-  'workspace-unreadable': 'workspace path unreadable',
-  'receipts-unreadable': 'receipts unreadable',
-};
 
 /** Same rule for the Flow-review feed's own per-project unavailability
  * (archive#3322): a new reason is a type error here until it has its own copy,
@@ -76,6 +50,28 @@ function reviewEvidenceItemId(projectSlug: string, receiptId: string): string {
   return `${REVIEW_EVIDENCE_PREFIX}${encodeURIComponent(projectSlug)}:${encodeURIComponent(receiptId)}`;
 }
 
+/** The surface name recorded on a decision made here. See `proposedChangeDecision`. */
+const REVIEW_QUEUE_SURFACE = 'review queue';
+
+/**
+ * #2064 (D4): Review stays routed this slice, and the attention inbox's rows
+ * link INTO it — a proposed change by id, a paused gate review by its session
+ * ref. Without this the inbox's "open" landed on the list and asked the user
+ * to find the row again, which is the same "opens somewhere, not at the
+ * thing" failure the receipt deep link above was added to fix.
+ *
+ * Returns the list item id the params name, or `null` when they name nothing.
+ * It never falls back to a different item: a stale link shows the notice
+ * below rather than opening someone else's change.
+ */
+function inboxDeepLinkSelection(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  const changeId = params.get('change');
+  if (changeId) return changeId;
+  const reviewSessionRef = params.get('review');
+  return reviewSessionRef ? `${SURVEY_PREFIX}${reviewSessionRef}` : null;
+}
+
 function receiptDeepLink(): { projectSlug: string; receiptId: string } | null {
   const params = new URLSearchParams(window.location.search);
   const projectSlug = params.get('project');
@@ -86,10 +82,11 @@ function receiptDeepLink(): { projectSlug: string; receiptId: string } | null {
 export function ReviewQueueView() {
   const [search, setSearch] = useState('');
   const [receiptTarget, setReceiptTarget] = useState(receiptDeepLink);
+  const [inboxTarget, setInboxTarget] = useState(inboxDeepLinkSelection);
   const [selectedId, setSelectedId] = useState<string | null>(() =>
     receiptTarget
       ? reviewEvidenceItemId(receiptTarget.projectSlug, receiptTarget.receiptId)
-      : null,
+      : inboxDeepLinkSelection(),
   );
   const [bulkAction, setBulkAction] = useState<BulkAction>(null);
   const [reviewRunOpen, setReviewRunOpen] = useState(false);
@@ -97,10 +94,15 @@ export function ReviewQueueView() {
     const sync = () => {
       const target = receiptDeepLink();
       setReceiptTarget(target);
-      if (target)
+      if (target) {
         setSelectedId(
           reviewEvidenceItemId(target.projectSlug, target.receiptId),
         );
+        return;
+      }
+      const inbox = inboxDeepLinkSelection();
+      setInboxTarget(inbox);
+      if (inbox) setSelectedId(inbox);
     };
     window.addEventListener('popstate', sync);
     return () => window.removeEventListener('popstate', sync);
@@ -161,11 +163,10 @@ export function ReviewQueueView() {
     partialSurveyNotice,
     partialReviewEvidenceNotice,
   ].filter((notice): notice is string => notice !== null);
-  const approveMutation = useApproveProposedChangeMutation();
-  const rejectMutation = useRejectProposedChangeMutation();
+  const changeDecision = useProposedChangeDecision(REVIEW_QUEUE_SURFACE);
   const bulkApproveMutation = useBulkApproveProposedChangesMutation();
   const bulkRejectMutation = useBulkRejectProposedChangesMutation();
-  const resolveMutation = useResolveDiffCommentMutation();
+  const deleteCommentMutation = useResolveDiffCommentMutation();
 
   const filteredChanges = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -213,7 +214,7 @@ export function ReviewQueueView() {
       ...surveyReviews.map((review) => ({
         id: `${SURVEY_PREFIX}${review.reviewSessionRef}`,
         name: review.sessionName,
-        subtitle: `${review.summary.unresolved} unresolved · ${review.workflowSubjectRef}`,
+        subtitle: `${review.pendingDecisions} awaiting a decision · ${review.workflowSubjectRef}`,
         section: `Flow reviews · ${review.projectSlug}`,
       })),
       ...reviewReceipts
@@ -276,21 +277,35 @@ export function ReviewQueueView() {
           ) === selectedId,
       ) ?? null)
     : null;
+  /**
+   * Whether the inbox's deep-linked item is still in its SOURCE — the
+   * unfiltered `changes`/`surveyReviews`, never the search-narrowed `items`.
+   * Keying the notice on the narrowed list would make typing in the search box
+   * announce that a still-pending change had been decided.
+   */
+  const inboxTargetExists = inboxTarget
+    ? changes.some((change) => change.id === inboxTarget) ||
+      surveyReviews.some(
+        (review) =>
+          `${SURVEY_PREFIX}${review.reviewSessionRef}` === inboxTarget,
+      )
+    : true;
   const pendingIds = changes.map((change) => change.id);
   const bulkPending =
     bulkApproveMutation.isPending || bulkRejectMutation.isPending;
 
-  function decide(change: ProposedChange, decision: 'approve' | 'reject') {
-    const reason = `${decision === 'approve' ? 'Approved' : 'Rejected'} from review queue`;
-    if (decision === 'approve') {
-      approveMutation.mutate({ id: change.id, decision: { reason } });
-    } else {
-      rejectMutation.mutate({ id: change.id, decision: { reason } });
-    }
-  }
-
-  function resolveComment(comment: DiffComment) {
-    resolveMutation.mutate(
+  /**
+   * #2064 product decision (b): this DELETES the comment.
+   * `useResolveDiffCommentMutation` calls
+   * `DELETE /api/projects/:slug/diff-comments/:id`, and
+   * `DiffCommentService.delete` removes the record — `DiffComment` has no
+   * resolved state to move it into. The button said "Resolve", which is a
+   * label nothing derives; the diff pane's own control for the same call has
+   * always said "Delete". The copy here now matches the call rather than a
+   * state the data does not have.
+   */
+  function deleteComment(comment: DiffComment) {
+    deleteCommentMutation.mutate(
       { projectSlug: comment.projectId, id: comment.id },
       { onSuccess: () => setSelectedId(null) },
     );
@@ -313,6 +328,21 @@ export function ReviewQueueView() {
 
   return (
     <div className="pane-host" data-first-run-anchor="review-queue">
+      {/* #2064 review LOW-3: a FAILED fetch defaults `changes`/`surveyReviews`
+          to [], so without the error gate this announced "no longer pending"
+          for an item that is pending and simply could not be read — the
+          sourceNotices alert beside it is what that state really means. */}
+      {inboxTarget &&
+        !isLoading &&
+        !surveyLoading &&
+        !changesError &&
+        !surveyError &&
+        !inboxTargetExists && (
+          <p role="status">
+            That review item is no longer pending, and Station won’t open a
+            different one in its place.
+          </p>
+        )}
       {receiptTarget && !reviewEvidenceLoading && !selectedReviewReceipt && (
         <p role="status">
           That review receipt isn’t available for {receiptTarget.projectSlug},
@@ -361,7 +391,7 @@ export function ReviewQueueView() {
         // echoes the sidebar's Review icon, like the sibling views' glyphs.
         emptyIcon={<CheckGlyph />}
         emptyTitle="Select an item"
-        emptyDescription="Review a proposed change, or read and resolve a diff comment."
+        emptyDescription="Review a proposed change, or read and delete a diff comment."
         headerActions={
           <Button
             size="sm"
@@ -407,16 +437,18 @@ export function ReviewQueueView() {
         {selectedChange && (
           <ReviewQueueDetail
             change={selectedChange}
-            pending={approveMutation.isPending || rejectMutation.isPending}
-            onApprove={() => decide(selectedChange, 'approve')}
-            onReject={() => decide(selectedChange, 'reject')}
+            pending={changeDecision.pending}
+            onApprove={() =>
+              changeDecision.decide(selectedChange.id, 'approve')
+            }
+            onReject={() => changeDecision.decide(selectedChange.id, 'reject')}
           />
         )}
         {selectedComment && (
           <ReviewCommentDetail
             comment={selectedComment}
-            pending={resolveMutation.isPending}
-            onResolve={() => resolveComment(selectedComment)}
+            pending={deleteCommentMutation.isPending}
+            onDelete={() => deleteComment(selectedComment)}
           />
         )}
         {selectedSurveyReview && (
@@ -459,334 +491,6 @@ export function ReviewQueueView() {
   );
 }
 
-function IndependentReviewRunModal({
-  isOpen,
-  onClose,
-  onCompleted,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onCompleted: (receiptId: string, projectSlug: string) => void;
-}) {
-  const titleId = useId();
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  const { data: projectData = [] } = useProjectsQuery();
-  const { data: agentData = [] } = useAgentsQuery();
-  const projects = projectData as Array<{ slug: string; name?: string }>;
-  const agents = agentData as Array<{ slug: string }>;
-  const mutation = useRunIndependentReviewMutation();
-  const [mode, setMode] = useState<'initial' | 'delta'>('initial');
-  const [projectSlug, setProjectSlug] = useState('');
-  const [baseRevision, setBaseRevision] = useState('origin/main');
-  const [headRevision, setHeadRevision] = useState('HEAD');
-  const [implementerAgentSlug, setImplementerAgentSlug] = useState('station');
-  const [executorAgentSlugs, setExecutorAgentSlugs] = useState('');
-  const [lensId, setLensId] = useState('architecture');
-  const [lensInstructions, setLensInstructions] = useState(
-    'Review placement, reachability, failure totality, and compatibility.',
-  );
-  const [priorReceiptId, setPriorReceiptId] = useState('');
-  const [claimedFindingIds, setClaimedFindingIds] = useState('');
-  const [validationError, setValidationError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!projectSlug && projects[0]?.slug) setProjectSlug(projects[0].slug);
-  }, [projectSlug, projects]);
-
-  if (!isOpen) return null;
-
-  function submit() {
-    const agentSlugs = commaList(executorAgentSlugs);
-    if (
-      !projectSlug ||
-      !implementerAgentSlug.trim() ||
-      agentSlugs.length === 0
-    ) {
-      setValidationError(
-        'Project, implementing Agent, and reviewer Agents are required.',
-      );
-      return;
-    }
-    if (new Set(agentSlugs).size !== agentSlugs.length) {
-      setValidationError(
-        'Every independent reviewer must use a distinct Agent.',
-      );
-      return;
-    }
-    const deltaFindingIds = commaList(claimedFindingIds);
-    if (
-      mode === 'delta' &&
-      (!priorReceiptId.trim() || deltaFindingIds.length === 0)
-    ) {
-      setValidationError(
-        'Delta reviews require a prior receipt and finding IDs.',
-      );
-      return;
-    }
-    setValidationError(null);
-    const request: IndependentReviewRequest = {
-      requestId: randomCorrelationId(),
-      mode,
-      target: {
-        kind: 'git-range',
-        projectSlug,
-        baseRevision: baseRevision.trim(),
-        headRevision: headRevision.trim(),
-      },
-      implementerAgentSlug: implementerAgentSlug.trim(),
-      reviewers: agentSlugs.map((agentSlug, index) => ({
-        reviewerId: `reviewer-${index + 1}`,
-        executorAgentSlug: agentSlug,
-        lens: { id: lensId.trim(), instructions: lensInstructions.trim() },
-      })),
-      ...(mode === 'delta'
-        ? {
-            delta: {
-              priorReceiptId: priorReceiptId.trim(),
-              claimedFindingIds: deltaFindingIds,
-            },
-          }
-        : {}),
-    };
-    mutation.mutate(request, {
-      onSuccess: (result) =>
-        onCompleted(
-          result.receipt.receiptId,
-          result.receipt.target.projectSlug,
-        ),
-    });
-  }
-
-  return createPortal(
-    <ResponsiveDialogSurface
-      layer="dialog"
-      onClose={onClose}
-      ariaLabelledBy={titleId}
-      overlayClassName="modal-overlay"
-      panelClassName="modal-dialog review-run-modal"
-      initialFocusRef={cancelRef}
-      initialFocusPolicy="always"
-      historyMode="none"
-    >
-      <div className="modal-header">
-        <h3 id={titleId}>Run independent review</h3>
-      </div>
-      <div className="modal-body review-run-modal__fields">
-        <label>
-          Project
-          <select
-            value={projectSlug}
-            onChange={(event) => setProjectSlug(event.target.value)}
-          >
-            <option value="">Select a project</option>
-            {projects.map((project) => (
-              <option key={project.slug} value={project.slug}>
-                {project.name ?? project.slug}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Mode
-          <select
-            value={mode}
-            onChange={(event) =>
-              setMode(event.target.value as 'initial' | 'delta')
-            }
-          >
-            <option value="initial">Initial review</option>
-            <option value="delta">Delta review</option>
-          </select>
-        </label>
-        <label>
-          Base revision
-          <input
-            value={baseRevision}
-            onChange={(event) => setBaseRevision(event.target.value)}
-          />
-        </label>
-        <label>
-          Head revision
-          <input
-            value={headRevision}
-            onChange={(event) => setHeadRevision(event.target.value)}
-          />
-        </label>
-        <label>
-          Implementing Agent
-          <select
-            value={implementerAgentSlug}
-            onChange={(event) => setImplementerAgentSlug(event.target.value)}
-          >
-            {agents.map((agent) => (
-              <option key={agent.slug} value={agent.slug}>
-                {agent.slug}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Reviewer Agent slugs
-          <input
-            list="review-run-agent-slugs"
-            value={executorAgentSlugs}
-            onChange={(event) => setExecutorAgentSlugs(event.target.value)}
-            placeholder="reviewer-one, reviewer-two"
-          />
-          <datalist id="review-run-agent-slugs">
-            {agents.map((agent) => (
-              <option key={agent.slug} value={agent.slug} />
-            ))}
-          </datalist>
-        </label>
-        <label>
-          Lens ID
-          <input
-            value={lensId}
-            onChange={(event) => setLensId(event.target.value)}
-          />
-        </label>
-        <label>
-          Lens instructions
-          <textarea
-            value={lensInstructions}
-            onChange={(event) => setLensInstructions(event.target.value)}
-          />
-        </label>
-        {mode === 'delta' ? (
-          <>
-            <label>
-              Prior receipt ID
-              <input
-                value={priorReceiptId}
-                onChange={(event) => setPriorReceiptId(event.target.value)}
-              />
-            </label>
-            <label>
-              Claimed finding IDs
-              <textarea
-                value={claimedFindingIds}
-                onChange={(event) => setClaimedFindingIds(event.target.value)}
-                placeholder="finding ID, finding ID"
-              />
-            </label>
-          </>
-        ) : null}
-        <p className="review-run-modal__truth">
-          Findings are recorded as evidence input. They do not approve, reject,
-          or satisfy a gate.
-        </p>
-        {validationError ? <p role="alert">{validationError}</p> : null}
-        {mutation.isError ? (
-          <p role="alert">The independent review could not be completed.</p>
-        ) : null}
-      </div>
-      <ResponsiveSurfaceActions className="modal-footer">
-        <Button ref={cancelRef} variant="secondary" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button disabled={mutation.isPending} onClick={submit}>
-          {mutation.isPending ? 'Reviewing…' : 'Run review'}
-        </Button>
-      </ResponsiveSurfaceActions>
-    </ResponsiveDialogSurface>,
-    document.body,
-  );
-}
-
-function commaList(value: string): string[] {
-  return value
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
-function IndependentReviewReceiptDetail({
-  receipt,
-  focused = false,
-}: {
-  receipt: IndependentReviewReceipt;
-  focused?: boolean;
-}) {
-  const detailRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    if (focused) detailRef.current?.focus();
-  }, [focused]);
-  return (
-    <section
-      ref={detailRef}
-      className="review-queue-detail"
-      data-testid="independent-review-receipt-detail"
-      tabIndex={focused ? -1 : undefined}
-    >
-      <header className="review-queue-detail__header">
-        <div>
-          <p className="review-queue-detail__eyebrow">
-            Independent review evidence · input only
-          </p>
-          <h3>{receipt.target.projectSlug}</h3>
-          <p>
-            {receipt.target.baseSha.slice(0, 12)} →{' '}
-            {receipt.target.headSha.slice(0, 12)}
-          </p>
-        </div>
-      </header>
-      <div className="review-queue-detail__meta">
-        <span>{receipt.executions.length} reviewers</span>
-        <span>{receipt.findings.length} findings</span>
-        <span>{new Date(receipt.completedAt).toLocaleString()}</span>
-      </div>
-      <p>
-        These findings are reviewer-authored evidence for verification. This
-        receipt does not approve, reject, or satisfy a gate.
-      </p>
-      <section aria-label="Reviewer execution status">
-        <h3>Reviewer execution</h3>
-        <ul>
-          {receipt.executions.map((execution) => (
-            <li key={execution.reviewerId}>
-              {execution.actor.displayName ?? execution.actor.actorId}:{' '}
-              {execution.status}
-              {execution.failureReason ? ` — ${execution.failureReason}` : ''}
-            </li>
-          ))}
-        </ul>
-      </section>
-      {receipt.findings.length === 0 &&
-      receipt.executions.every(
-        (execution) => execution.status === 'completed',
-      ) ? (
-        <p>All reviewers completed; no concrete findings were recorded.</p>
-      ) : receipt.findings.length === 0 ? (
-        <p>
-          Review evidence is incomplete. No findings can be interpreted as a
-          clean review until every reviewer completes successfully.
-        </p>
-      ) : (
-        receipt.findings.map((finding) => (
-          <article
-            className="review-comment-detail__body"
-            key={finding.findingId}
-          >
-            <h3>{finding.summary}</h3>
-            <p>
-              {finding.location.file}:{finding.location.line} ·{' '}
-              {finding.severity} · {finding.confidence} confidence ·{' '}
-              {finding.basis}
-            </p>
-            <p>
-              <strong>Trigger:</strong> {finding.scenario.stateOrInput}
-            </p>
-            <p>
-              <strong>Wrong outcome:</strong> {finding.scenario.wrongOutcome}
-            </p>
-          </article>
-        ))
-      )}
-    </section>
-  );
-}
-
 function SurveyFlowReviewDetail({
   review,
 }: {
@@ -806,7 +510,9 @@ function SurveyFlowReviewDetail({
       </header>
       <div className="review-queue-detail__meta">
         <span>Project {review.projectSlug}</span>
-        <span>{review.summary.unresolved} unresolved</span>
+        {/* #2064 review MED-2: what the run is waiting for. `summary.unresolved`
+            reads 0 for a session whose remaining items are all escalated. */}
+        <span>{review.pendingDecisions} awaiting a decision</span>
         <span>Source {review.projectionSource}</span>
       </div>
       {review.items.map((item) => (
@@ -886,11 +592,12 @@ function ReviewQueueDetail({
 function ReviewCommentDetail({
   comment,
   pending,
-  onResolve,
+  onDelete,
 }: {
   comment: DiffComment;
   pending: boolean;
-  onResolve: () => void;
+  /** See `deleteComment` — the call removes the record; the label says so. */
+  onDelete: () => void;
 }) {
   const { setLayout } = useNavigation();
   // Resolve the comment's project coding layout so the reviewer can jump from
@@ -938,8 +645,8 @@ function ReviewCommentDetail({
               Open in coding
             </Button>
           )}
-          <Button variant="secondary" disabled={pending} onClick={onResolve}>
-            Resolve
+          <Button variant="secondary" disabled={pending} onClick={onDelete}>
+            Delete
           </Button>
         </div>
       </header>

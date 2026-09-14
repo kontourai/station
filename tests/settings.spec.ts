@@ -119,6 +119,54 @@ test.describe('Settings', () => {
     await goToSettings(page);
   });
 
+  // #2059 (design record D3): the configuration destinations that used to take
+  // rows in the left panel are reached from this page's Manage group. This is
+  // the touch-target half of the contract those panel rows used to carry —
+  // task-first-home.spec.ts owns the drawer's own rows and its footer — and it
+  // lives here because this suite's fixture models the Settings page.
+  test('the Manage group lists the moved destinations at a thumb-sized target', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const manage = page.getByRole('region', { name: 'Manage' });
+    await expect(manage).toBeVisible({ timeout: 10_000 });
+    for (const label of [
+      'Agents',
+      'Guidance',
+      'Connections',
+      'Registry',
+      'Review',
+      'Plugins',
+      'Schedule',
+    ]) {
+      const entry = manage.getByRole('button', { name: label, exact: true });
+      await expect(entry).toBeVisible();
+      expect((await entry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+    // archive#3313 (Settings IA, option A): Developer is settings-gated and
+    // hidden until enabled on this device. The gate followed the entry out of
+    // the panel; it did not stay behind with the row.
+    await expect(
+      manage.getByRole('button', { name: 'Developer', exact: true }),
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(() =>
+        Math.max(
+          document.documentElement.scrollWidth,
+          document.body.scrollWidth,
+        ),
+      ),
+    ).toBeLessThanOrEqual(page.viewportSize()!.width);
+  });
+
+  test('the Manage group opens a destination it lists', async ({ page }) => {
+    await page
+      .getByRole('region', { name: 'Manage' })
+      .getByRole('button', { name: 'Plugins', exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/plugins$/);
+  });
+
   test('page load shows the primary settings sections', async ({ page }) => {
     for (const title of [
       'Appearance',

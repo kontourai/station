@@ -45,6 +45,7 @@ export type {
   LayoutDefinition,
   LayoutDefinitionMetadata,
   LayoutMetadata,
+  LayoutOwner,
   LayoutSkill,
   LayoutTab,
   LayoutTemplate,

@@ -147,6 +147,14 @@ export const OutboxGlyph = /* @__PURE__ */ glyph(
   'M3 3h10v10H3V3Zm0 6h3l1 1.5h2L10 9h3M8 8V2m-2 2 2-2 2 2',
 );
 export const PauseGlyph = /* @__PURE__ */ glyph('M5.5 3.5v9m5-9v9');
+/**
+ * Two overlapping people — the panel footer's presence slot (#2059). Distinct
+ * from `AgentGlyph`'s single figure, which names one agent rather than the
+ * people sharing a workspace.
+ */
+export const PeopleGlyph = /* @__PURE__ */ glyph(
+  'M6 8.5a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Zm0 0c-2 0-3.5 1.2-3.5 2.8V13h7v-1.7c0-1.6-1.5-2.8-3.5-2.8Zm4.4-4.2a2.2 2.2 0 0 1 0 4.2m.6.6c1.5.4 2.5 1.4 2.5 2.7V13',
+);
 export const PinGlyph = /* @__PURE__ */ glyph(
   'm5 2 6 6-2 1.2-.8 3.3-1.5-1.4-3.6 2.8 2.8-3.6L4.5 8.3 7.8 7.5 9 5.5 5 2Z',
 );

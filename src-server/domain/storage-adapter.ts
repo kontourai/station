@@ -2,6 +2,7 @@ import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-
 import type {
   LayoutConfig,
   LayoutMetadata,
+  LayoutOwner,
   LayoutTemplate,
 } from '@kontourai/station-contracts/layout';
 import type {
@@ -46,7 +47,15 @@ export interface DocumentRecord {
 }
 
 export interface LayoutAgentReference {
-  projectSlug: string;
+  /**
+   * Who owns the referencing Layout. Required: the sweep covers non-project
+   * roots too (#2060), and a reference that reports only a project slug
+   * cannot name a Board at all — which is how a Board's agent reference
+   * became invisible to `deleteAgent`.
+   */
+  owner: LayoutOwner;
+  /** Present for a project-owned reference only; mirrors `owner`. */
+  projectSlug?: string;
   layoutSlug: string;
 }
 
@@ -83,6 +92,14 @@ export interface IStorageAdapter {
   createLayout(projectSlug: string, config: LayoutConfig): Promise<void>;
   deleteLayout(projectSlug: string, layoutSlug: string): Promise<void>;
   findLayoutsUsingAgent(agentSlug: string): LayoutAgentReference[];
+
+  // Owner-scoped layouts (#2060). A project owner routes to the four methods
+  // above; principal- and instance-owned records are stored outside
+  // `projects/`, so no project layout route can list or read one.
+  listOwnedLayouts?(owner: LayoutOwner): LayoutMetadata[];
+  getOwnedLayout?(owner: LayoutOwner, layoutSlug: string): LayoutConfig;
+  createOwnedLayout?(owner: LayoutOwner, config: LayoutConfig): Promise<void>;
+  deleteOwnedLayout?(owner: LayoutOwner, layoutSlug: string): Promise<void>;
 
   // Provider connections
   listProviderConnections(): ProviderConnectionConfig[];

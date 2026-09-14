@@ -44,6 +44,7 @@ import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
 import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
+import { SettingsManageSection } from './settings/SettingsManageSection';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
 import { SystemSection } from './settings/SystemSection';
@@ -548,6 +549,12 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       // stay exactly as they are.
       <div className="settings">
         {highlightNotice}
+        {/* #2059: rendered in BOTH branches for the same reason the section
+            nav is — it is derived from the destination registry and the
+            device flags, so it never waits on `/api/config/app`. A failed or
+            slow config read must not be able to strand the only in-app way
+            back to Agents, Connections or Plugins. */}
+        <SettingsManageSection />
         <SettingsSectionNav
           activeSection={activeSection}
           hrefForSection={hrefForSection}
@@ -618,6 +625,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           hrefForSection={hrefForSection}
           navigateToSection={navigateToSection}
         />
+
+        {/* ── Manage (other surfaces, not sections of this page) ── */}
+        <SettingsManageSection />
 
         {/* ── Station scope ── */}
         <section

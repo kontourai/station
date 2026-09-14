@@ -18,6 +18,11 @@ const NOTIFICATION_LABELS: Readonly<Record<string, string>> = {
   'pairing-request': 'Device pairing',
   // #1536 D8: Station's own Agent cannot run yet.
   'setup-incomplete': 'Setup incomplete',
+  // #2064 D4: the two kinds Review used to own alone. Verdict vocabulary
+  // applies here too — a proposed change is DECIDED (approve/reject), a gate
+  // review is READ, and neither is an "approval request".
+  'proposed-change': 'Change pending',
+  'gate-review': 'Gate review',
 };
 
 export function notificationCategoryLabel(category: string): string {
