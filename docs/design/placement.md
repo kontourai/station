@@ -191,7 +191,7 @@ map; anything not listed is a label.
 | declaration | vocabulary | readers |
 |---|---|---|
 | `REGION_SURFACE_REGISTRY` | surface ids | `RegionModelContext` (direct), `ActivityRegionShell` (direct, for `main`'s frame title), `RegionShells` via `regionModel.surfaces` (a dock region mounts a host only for a registered occupant), the region toolbar and `useRegionSurfaceMenu` via `regionModel.surfaces`, `CommandPalette` via the destination registry's `regionSurface` field |
-| `REGION_SURFACE_PANES` (#2045; #2047) | surface id → the canonical `WorkspacePaneInstance` under the dock's context (`instance({ projectId })` — a coding pane is the dock project's and has no instance without one; Chat and Activity ignore the context), plus `descriptorId` and the entry's constant `instanceId` | `RegionPaneHost`: the region's document is its panes' entries in tab order under the dock's project (an unsuppliable pane keeps its tab and renders "Choose a project for this dock"), and a persisted or opened pane is admitted only when `regionSurfaceOfPane` names a surface in the region's `panes` AND it binds the dock's project (an opened pane bound to another project is refused; a persisted one is re-bound by the catalog match); `RegionPaneCatalog` maps a catalog descriptor back to its surface (`regionSurfaceOfDescriptor`) and offers only what `dockCanSupply` admits; `useOpenInRegion` folds an instance to its surface; `region-surface-panes.test.ts` pins the keys to the registry's dock-capable surfaces both ways and every entry's descriptor to `dockCanSupply`. Since #2049 `RegionShells` decides "mount a host" from `resolveRegionSurface`, not from the registry alone — so what makes that sufficient is this pin PLUS `region-instance-panes.test.ts`, which pins the id-keyed resolver and this module's occurrence minter to admit exactly the same instance ids |
+| `REGION_SURFACE_PANES` (#2045; #2047) | surface id → the canonical `WorkspacePaneInstance` under the dock's context (`instance({ projectId })` — a coding pane is the dock project's and has no instance without one; Chat, Activity, Agents and Device ignore the context, Device because a device list is the Station host's fact rather than a Project's — #1969), plus `descriptorId` and the entry's constant `instanceId` | `RegionPaneHost`: the region's document is its panes' entries in tab order under the dock's project (an unsuppliable pane keeps its tab and renders "Choose a project for this dock"), and a persisted or opened pane is admitted only when `regionSurfaceOfPane` names a surface in the region's `panes` AND it binds the dock's project (an opened pane bound to another project is refused; a persisted one is re-bound by the catalog match); `RegionPaneCatalog` maps a catalog descriptor back to its surface (`regionSurfaceOfDescriptor`) and offers only what `dockCanSupply` admits; `useOpenInRegion` folds an instance to its surface; `region-surface-panes.test.ts` pins the keys to the registry's dock-capable surfaces both ways and every entry's descriptor to `dockCanSupply`. Since #2049 `RegionShells` decides "mount a host" from `resolveRegionSurface`, not from the registry alone — so what makes that sufficient is this pin PLUS `region-instance-panes.test.ts`, which pins the id-keyed resolver and this module's occurrence minter to admit exactly the same instance ids |
 | `DOCK_HOST_SUPPLIABLE_CONTEXTS` (#2047) | `{ project, source, workspace }` — what a dock region can bind for a pane | `dockCanSupply` (`workspacePaneModesSatisfiableBy` over it): the catalog's filter for "listed disabled with the reason" and the inventory pin's admission check, one set so the two cannot disagree; `RegionPaneCatalog` derives the resolver's context presence (`task: 'missing'`) from it for the reason it shows |
 | `RegisteredSurface.exposure` (#2047) | absent (`shell`) or `catalog` | `useRegionSurfaceMenu` (`surfaceList`: a catalog-only surface has no Layout-picker row, no chord and no unplaced Show row; a placed one keeps its folded Show/Hide row, which reads `region.panes`) — the region's "+" is a catalog-only surface's only offer; `?surface=<id>` is a command and reveals either kind |
 | `INSTANCE_SURFACE_PREFIXES` / `resolveRegionSurface` (#2049) | an id PREFIX (`pr:`, `file-preview:`) → a `RegisteredSurface`-shaped description: title, icon, the dock regions it may take, `exposure: 'catalog'`, and the `pane:builtin:…` descriptor id its occurrences carry (named as a STRING — this table is in the entry chunk and may import no pane contract) | THE id-keyed lookup: `surfaceMayOccupy`, the record parser's `parseSurfaceEntry`, the provider's `openSurfaceInRegion` and `toggleSurface`, `RegionShells`' mount rule, `RegionPaneHost`'s tab titles and placeholder titles, `useDockShellChrome` (`surfaceTitle`, `surfaceShortcutId`, the landmark), `useRegionSurfaceMenu`'s folded rows, `DockShell`'s landmark, and `RegionPaneCatalog` (which FILTERS their descriptors out of the "+"). `region-instance-panes.test.ts` pins each prefix to the minting half in `region-surface-panes.ts`; `docked-capability-derivation.test.ts` pins each `descriptorId` to a built-in descriptor that exists and declares `docked`. These surfaces are never registry keys — there is no blank occurrence to register — so `model.surfaces` (the SHELL's inventory: what the toolbar may offer, what a chord toggles) holds none of them |
@@ -568,6 +568,36 @@ and the dialog semantics go with the sheet. It is not declared to the server
 catalog, so a region's "+" does not list it — Activity's precedent, for
 Activity's reason.
 
+**Implemented by #1969 (the Device pane), 2026-09-14.** A captured
+simulator or emulator screen as a dock tab (`device`, `exposure: 'catalog'`,
+no chord, dock regions only, `right` by default because a device screen is
+portrait-tall). It rides the #2047 path exactly as this record prescribed:
+descriptor with `docked`, registry entry, inventory entry, renderer, and the
+lockstep pins. Two things make it the first of its shape.
+
+It is the first registered surface that has a catalog card AND ignores the
+dock's context. Its inventory entry answers the same constant whatever the
+context, like Chat's and Activity's, because a device list is a fact about the
+STATION's host rather than about a checkout — so a Device pane renders in a
+dock with no project instead of showing "Choose a project for this dock". It
+is also declared to the SERVER catalog, unlike Activity and Agents, because a
+region's "+" is its only offer and the catalog's Open needs an entry carrying
+an instance. That declaration names neither a `context` nor a
+`requirements.hostCapabilities`: Device needs no Project, and viewing a
+captured PNG needs no desktop capability, so claiming either would be a
+requirement nothing derives (`workspace-pane-known-declarations.test.ts` pins
+both omissions against Browser Preview as its control).
+
+The cost of the singleton is stated rather than hidden: one Device pane per
+region set, so two simulators side by side waits for an instance-keyed Device
+family riding the #2049 prefix mechanism. Which device is selected is bounded
+pane STATE, not pane identity — the selected target is what the pane reads,
+not what it is — which is the same distinction that keeps a routed session id
+out of Activity's instance. The "+" stays project-scoped
+(`RegionPaneHost` gates it on `projectSlug !== null`), so a Station with no
+project cannot reach a pane that needs no project; that limitation is #2047's
+and is documented here rather than widened by this slice.
+
 **Still direction.** More instance-keyed families ride the #2049 prefix
 mechanism as their own change (a second terminal, Browser Preview): a prefix
 entry naming a descriptor that declares `docked`, the minting half in
@@ -575,7 +605,7 @@ entry naming a descriptor that declares `docked`, the minting half in
 `region-instance-panes.test.ts` and `docked-capability-derivation.test.ts`.
 The Device pane (#1969) rides the #2047 path instead (descriptor with
 `docked`, registry entry with `exposure: 'catalog'`, inventory entry,
-renderer, the four lockstep pins). A `?surface=pr:…` deep link stays
+renderer, the four lockstep pins) — done, see above. A `?surface=pr:…` deep link stays
 IGNORED: materialising a pane from a URL is a new entry point nobody asked
 for.
 

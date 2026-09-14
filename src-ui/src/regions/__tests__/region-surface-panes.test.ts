@@ -8,6 +8,7 @@ import {
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-coding-panels';
+import { WORKSPACE_DEVICE_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-device-pane';
 import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-file-preview';
 import {
   parseWorkspacePaneInstance,
@@ -37,6 +38,9 @@ const ENTRY_DESCRIPTORS: Record<string, WorkspacePaneDescriptor> = {
   activity: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
   // #2050: this conversation's background work, beside the conversation.
   'workspace-agents': WORKSPACE_AGENTS_PANE_DESCRIPTOR,
+  // #1969: a captured device screen, and like Activity it binds nothing —
+  // the device list is the Station host's, not a Project's.
+  device: WORKSPACE_DEVICE_PANE_DESCRIPTOR,
   'coding:terminal': WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
   'coding:diff': WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
   'coding:file-browser': WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
@@ -67,6 +71,7 @@ describe('region surface panes (#2045, #2047)', () => {
       'coding:diff',
       'coding:file-browser',
       'coding:terminal',
+      'device',
       'workspace-agents',
     ]);
     expect([...REGION_SURFACE_PANES.keys()].sort()).toEqual(dockCapable);
@@ -97,7 +102,7 @@ describe('region surface panes (#2045, #2047)', () => {
    * are ALSO asserted to bind exactly the project they were given, and no
    * layout (#2047 D5: a docked coding pane is the project's).
    */
-  test('the coding panes have no instance without a project and bind exactly the given project with no layout; Chat and Activity ignore the context', () => {
+  test('the coding panes have no instance without a project and bind exactly the given project with no layout; Chat, Activity, Agents and Device ignore the context', () => {
     for (const surfaceId of [
       'coding:terminal',
       'coding:diff',
@@ -116,7 +121,12 @@ describe('region surface panes (#2045, #2047)', () => {
       expect(other?.instanceId).toBe(bound?.instanceId);
       expect(other?.boundContext?.projectId).toBe('other-project');
     }
-    for (const surfaceId of ['chat', 'activity', 'workspace-agents']) {
+    for (const surfaceId of [
+      'chat',
+      'activity',
+      'workspace-agents',
+      'device',
+    ]) {
       const pane = regionSurfacePane(surfaceId);
       expect(pane?.instance(NO_PROJECT), surfaceId).toBe(
         pane?.instance(PROJECT),

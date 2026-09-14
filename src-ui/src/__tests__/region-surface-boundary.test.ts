@@ -40,6 +40,7 @@ describe('registered surface region boundary', () => {
       'coding:diff',
       'coding:file-browser',
       'coding:terminal',
+      'device',
       'workspace-agents',
     ]);
     expect([...REGION_SURFACE_SHELLS.keys()].sort()).toEqual(declaringMain);

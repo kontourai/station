@@ -741,6 +741,22 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
   // and none has a chord. Dock regions only: their `main` placement is the
   // coding layout, which is a route, not a surface.
   {
+    // #1969: a captured simulator/emulator screen. Dock regions only and
+    // catalog-only, like the coding panes — it is a working surface you add
+    // beside a conversation, not one the Layout picker offers. `right` by
+    // default because a device screen is portrait-tall and a side region is
+    // where the height is. Pure over ids here, like every other entry: the
+    // pane's contract and renderer are the inventory's and the registry's
+    // chunk stays free of both.
+    id: 'device',
+    title: 'Device',
+    icon: 'device',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'right',
+    exposure: 'catalog',
+    sourceFile: 'src-ui/src/workspace-panes/DeviceWorkspacePane.tsx',
+  },
+  {
     id: 'coding:terminal',
     title: 'Terminal',
     icon: 'terminal',

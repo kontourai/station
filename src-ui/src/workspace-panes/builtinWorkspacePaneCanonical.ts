@@ -15,6 +15,7 @@ import {
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-coding-panels';
+import { WORKSPACE_DEVICE_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-device-pane';
 import {
   WORKSPACE_PLAN_PANE_DESCRIPTOR,
   WORKSPACE_READINESS_PANE_DESCRIPTOR,
@@ -277,6 +278,20 @@ export function isCanonicalBuiltinBoardDescriptor(
 }
 
 /**
+ * The Device pane's declaration (#1969), compared field by field like every
+ * other built-in — a plugin cannot reach a device host by reusing the
+ * renderer name.
+ *
+ * Module-private like its neighbours: the only reader is the dispatch in
+ * `isCanonicalBuiltinWorkspacePaneDescriptor` below.
+ */
+function isCanonicalBuiltinDeviceDescriptor(
+  descriptor: WorkspacePaneDescriptor,
+): boolean {
+  return sameBuiltinDescriptor(descriptor, WORKSPACE_DEVICE_PANE_DESCRIPTOR);
+}
+
+/**
  * The Agents pane's declaration (#2050), compared field by field like every
  * other built-in.
  */
@@ -507,6 +522,11 @@ export function isCanonicalBuiltinWorkspacePaneDescriptor(
   )
     return false;
   if (
+    name === 'workspace-device' &&
+    !isCanonicalBuiltinDeviceDescriptor(descriptor)
+  )
+    return false;
+  if (
     name === 'workspace-board' &&
     !isCanonicalBuiltinBoardDescriptor(descriptor)
   )
@@ -546,6 +566,7 @@ const BUILTIN_WORKSPACE_PANE_DESCRIPTORS: readonly WorkspacePaneDescriptor[] = [
   WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
+  WORKSPACE_DEVICE_PANE_DESCRIPTOR,
   WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR,
   WORKSPACE_HOME_PANE_DESCRIPTOR,
   WORKSPACE_PLAN_PANE_DESCRIPTOR,
