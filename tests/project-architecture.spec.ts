@@ -247,11 +247,12 @@ async function seedRoutes(page: import('@playwright/test').Page) {
 }
 
 /**
- * The project row also exposes an expand/collapse chevron whose own
- * accessible name contains the project name (e.g. "Expand Alpha layouts",
- * archive#1629). Target the row's project-navigation button by its full
- * accessible name (icon + name) so a non-exact match doesn't also resolve
- * that chevron.
+ * The project row sits beside other controls that carry its name — the reorder
+ * handle ("Reorder Alpha"), and, once the project is selected, a layout chip
+ * row labelled "Alpha layouts" (#2063, which retired the expand/collapse
+ * chevron archive#1629 added). Target the row's project-navigation button by
+ * its full accessible name (icon + name) so a non-exact match cannot resolve
+ * one of those instead.
  */
 function alphaProjectButton(page: Page) {
   return page.getByRole('button', { name: '🚀 Alpha', exact: true });
