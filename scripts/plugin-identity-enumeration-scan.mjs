@@ -342,6 +342,21 @@ function inventoryKeys() {
   return keys;
 }
 
+/**
+ * The plugin lifecycle channels, derived from the broadcast-safety map itself
+ * rather than from a list kept beside it — a second list is a second thing to
+ * drift, and this check exists because the first version of it asserted a
+ * recorded decision without asserting the decision was honoured.
+ *
+ * Why these six matter: `GET /events` relays every 'broadcast' channel to
+ * every listener unconditionally. While they were 'broadcast', a collaborator
+ * who merely held the stream open watched the instance's plugin inventory
+ * change by name — install, remove, update, settings, grants,
+ * updates-available — which enumerates exactly what `GET /api/plugins` is
+ * projected to withhold, spread over time instead of in one response. They
+ * are 'scoped' now, which in that relay means denied unless a named gate
+ * recognizes the channel, and the gate is the same projection.
+ */
 function pluginEventDispositions() {
   const source = readFileSync(join(ROOT, EVENT_SAFETY), 'utf8');
   const events = [];

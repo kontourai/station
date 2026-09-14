@@ -45,7 +45,7 @@ import {
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 
 /** The record's own shape version; a record without it is read as v1. */
-export const PLUGIN_VISIBILITY_RECORD_VERSION = 1;
+const PLUGIN_VISIBILITY_RECORD_VERSION = 1;
 
 /**
  * Bounded so a corrupt or hostile file cannot be read into memory whole. A

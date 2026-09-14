@@ -146,31 +146,6 @@ export const PLUGIN_IDENTITY_ROUTES: readonly PluginIdentityRoute[] = [
 ];
 
 /**
- * The plugin lifecycle events, and why the stream is part of this family.
- *
- * `GET /events` relays every `'broadcast'` channel to every listener
- * unconditionally (`routes/orchestration/events.ts`). While the six
- * `SERVER_EVENTS.PLUGINS_*` channels were `'broadcast'`, a collaborator who
- * merely held the stream open watched the instance's plugin inventory change
- * by name — install, remove, update, settings, grants, updates-available —
- * which enumerates exactly what `GET /api/plugins` was projected to withhold,
- * just spread over time instead of in one response.
- *
- * They are `'scoped'` now, which in that relay means DENIED unless a named
- * gate recognizes the channel, and the gate is the same projection. The names
- * are listed here so the scan can assert every broadcast plugin channel has a
- * recorded decision.
- */
-export const PLUGIN_IDENTITY_EVENTS = [
-  'PLUGINS_INSTALLED',
-  'PLUGINS_REMOVED',
-  'PLUGINS_UPDATED',
-  'PLUGINS_SETTINGS_CHANGED',
-  'PLUGINS_GRANTS_CHANGED',
-  'PLUGINS_UPDATES_AVAILABLE',
-] as const;
-
-/**
  * Narrows a layout catalog listing to the plugins the caller may see.
  *
  * Built-in layouts are never touched: their provenance names no plugin, and
@@ -212,7 +187,7 @@ export interface PluginPrincipalResolution {
   }): PrincipalRef;
 }
 
-export class PluginOperatorOnlyError extends Error {
+class PluginOperatorOnlyError extends Error {
   constructor(what: string) {
     super(`Only the Station operator can ${what}.`);
     this.name = 'PluginOperatorOnlyError';

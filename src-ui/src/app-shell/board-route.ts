@@ -13,7 +13,7 @@
  * unrelated product object that happens to share the word. Station's glossary
  * carries the collision explicitly.
  */
-export const BOARD_ROUTE_PREFIX = '/boards';
+const BOARD_ROUTE_PREFIX = '/boards';
 
 /** The canonical path for one of the viewer's own Boards. */
 export function boardPath(boardSlug: string): string {
