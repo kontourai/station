@@ -667,6 +667,34 @@ describe('Codex native attached-session adoption', () => {
     expect(process.killed).toBe(true);
   });
 
+  test('station#2072: the maintenance child carries the connection routing keys under the source home', async () => {
+    const process = new FakeCodexProcess();
+    const processFactory = vi.fn(() => process);
+    const adapter = new CodexAdapter({
+      processFactory,
+      resolveSourceHome: () => '/source-home',
+      getConnectionEnv: async () => ({
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+        CODEX_HOME: '/user/chosen/home',
+      }),
+    } as any);
+    const discard = adapter.discardSession(
+      TARGET_ID,
+      recovery({
+        resumeCursor: { codexThreadId: CHILD_ID, sourceAffinity: AFFINITY },
+      }),
+    );
+    await initialize(process);
+    const deletion = await waitForCall(process, 'thread/delete');
+    respond(process, deletion, {});
+    await expect(discard).resolves.toBeUndefined();
+    expect(processFactory).toHaveBeenCalledWith({
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+      CODEX_HOME: '/source-home',
+    });
+    expect(process.killed).toBe(true);
+  });
+
   test('reconciles an unknown child through a bounded list and source-home rollout header', async () => {
     const process = new FakeCodexProcess();
     const child = sourceHomeWithRollout(CHILD_ID);

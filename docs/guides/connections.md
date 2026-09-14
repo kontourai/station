@@ -117,6 +117,54 @@ was able to read.
 
 ---
 
+## Route an engine through a model proxy
+
+A Claude Code or Codex Engine connection can send its traffic through a local
+model proxy (CLIProxyAPI, VibeProxy, or any Anthropic/OpenAI-compatible
+router) instead of logging in directly. Set this in the connection's runtime
+config (`agentConnections.<engine>.config` in `config/app.json`):
+
+- `env` — environment variables merged into every engine subprocess the
+  connection spawns. Names must be valid env-var names; Station-internal
+  secret names and `TMPDIR` are refused. An empty-string value masks an
+  inherited variable.
+- `configHome` — an explicit engine config home (`~` allowed), applied as
+  `CLAUDE_CONFIG_DIR` (Claude Code) or `CODEX_HOME` (Codex). It wins over the
+  station-managed app-home opt-in (`useAppHome`); a selected credential
+  profile still wins over both.
+
+For example, to route the Claude Code connection through a keyless local
+proxy that pools your subscriptions:
+
+```json
+{
+  "agentConnections": {
+    "claude": {
+      "config": {
+        "env": {
+          "ANTHROPIC_BASE_URL": "http://127.0.0.1:8318",
+          "ANTHROPIC_AUTH_TOKEN": "local-proxy",
+          "ANTHROPIC_API_KEY": ""
+        }
+      }
+    }
+  }
+}
+```
+
+For Codex, prefer `configHome` pointing at a dedicated home whose
+`config.toml` sets `model_provider` to the proxy's provider entry, so model
+discovery lists what the proxy serves.
+
+Two boundaries to know: credential login/enrolment children do not receive
+`env` (they always run against the engine's normal config root), and changing
+`configHome` after sessions exist does not migrate their history — a resumed
+thread looks for its transcripts under the home that was active when it last
+ran. Malformed or oversized `env` entries (more than 64 entries or a value
+over 32 KiB) are dropped silently at save time.
+
+---
+
 ## OpenAI-compatible endpoints
 
 Many hosted and self-hosted inference servers expose an OpenAI-compatible API (`/v1/chat/completions`, `/v1/models`). Station connects to these as an **OpenAI-compatible** Model connection.

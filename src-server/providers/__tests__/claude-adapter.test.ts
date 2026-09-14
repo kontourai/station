@@ -3591,6 +3591,231 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  describe('station#2072: per-connection env layering', () => {
+    test('startSession carries the connection routing keys into the SDK env, over the ambient layer', async () => {
+      mockAugmentedSpawnEnv.mockResolvedValue({
+        ...process.env,
+        ANTHROPIC_BASE_URL: 'https://ambient.example.internal',
+      });
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        getConnectionEnv: async () => ({
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          ANTHROPIC_AUTH_TOKEN: 'cliproxy-local',
+          ANTHROPIC_API_KEY: '',
+        }),
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-connection-env',
+        cwd: '/workspace/project',
+      });
+
+      const call = mockQuery.mock.calls.at(-1)?.[0];
+      expect(call.options.env).toMatchObject({
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+        ANTHROPIC_AUTH_TOKEN: 'cliproxy-local',
+        ANTHROPIC_API_KEY: '',
+      });
+      expect(call.options.env.TMPDIR).toBe(engineSpawnTmpDirPath());
+      await iterator.next(); // session.started
+      await iterator.next(); // session.configured
+    });
+
+    test('a selected credential profile still owns CLAUDE_CONFIG_DIR; connection routing keys survive', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        getAppHomeEnv: async () => ({
+          CLAUDE_CONFIG_DIR: '/station/app-homes/claude-profile',
+        }),
+        getConnectionEnv: async () => ({
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          CLAUDE_CONFIG_DIR: '/user/chosen/home',
+        }),
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-profile-beats-connection',
+        credentialProfileRef: 'profile-ref',
+      });
+
+      const call = mockQuery.mock.calls.at(-1)?.[0];
+      expect(call.options.env).toMatchObject({
+        CLAUDE_CONFIG_DIR: '/station/app-homes/claude-profile',
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+      });
+      await iterator.next();
+      await iterator.next();
+    });
+
+    test('with no profile, the connection env carries the config-home key (explicit configHome)', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        getConnectionEnv: async () => ({
+          CLAUDE_CONFIG_DIR: '/Users/brian/.claude_vibe',
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+        }),
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-config-home',
+      });
+
+      const call = mockQuery.mock.calls.at(-1)?.[0];
+      expect(call.options.env).toMatchObject({
+        CLAUDE_CONFIG_DIR: '/Users/brian/.claude_vibe',
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+      });
+      await iterator.next();
+      await iterator.next();
+    });
+
+    test('adoptSession keeps the connection routing keys but drops the config-home key (archive#896 line)', async () => {
+      mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        getConnectionEnv: async () => ({
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          CLAUDE_CONFIG_DIR: '/user/chosen/home',
+        }),
+      });
+
+      await adapter.adoptSession?.({
+        provider: 'claude',
+        threadId: 'station-child-connection-env',
+        sourceSessionId: 'vendor-source',
+        sourceKind: 'claude-transcript',
+        cwd: '/workspace/project',
+      });
+
+      const call = mockQuery.mock.calls.at(-1)?.[0];
+      expect(call.options.env).toMatchObject({
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+      });
+      expect(call.options.env.CLAUDE_CONFIG_DIR).toBeUndefined();
+    });
+
+    test('model discovery sees the connection env — a routed connection lists its own catalog', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        getConnectionEnv: async () => ({
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+        }),
+      });
+
+      await adapter.listModelCatalog?.();
+
+      const catalogCall = mockQuery.mock.calls.at(-1)?.[0];
+      expect(catalogCall.options.env.ANTHROPIC_BASE_URL).toBe(
+        'http://127.0.0.1:8318',
+      );
+    });
+
+    test('a connection-env lookup failure degrades to the unaugmented env with a warning — never blocks the session', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const warn = vi.fn();
+      const adapter = new ClaudeAdapter({
+        getConnectionEnv: async () => {
+          throw new Error('config store exploded');
+        },
+        logger: { warn },
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-connection-env-failure',
+      });
+
+      const call = mockQuery.mock.calls.at(-1)?.[0];
+      expect(call.options.env.ANTHROPIC_BASE_URL).toBeUndefined();
+      expect(call.options.env.TMPDIR).toBe(engineSpawnTmpDirPath());
+      expect(warn).toHaveBeenCalledTimes(1);
+      await iterator.next();
+      await iterator.next();
+    });
+
+    test('a source-affinity cold resume keeps the connection routing keys and drops the config-home key', async () => {
+      const home = mkdtempSync(join(tmpdir(), 'station-claude-conn-env-src-'));
+      vi.stubEnv('CLAUDE_CONFIG_DIR', home);
+      try {
+        const identity = deriveConfigHomeAffinity('claude-config-home', home)!;
+        const options = {
+          resolveSourceHome: (affinity: typeof identity.affinity) =>
+            resolveConfigHomeAffinity('claude-config-home', home, affinity),
+          getConnectionEnv: async () => ({
+            ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+            CLAUDE_CONFIG_DIR: '/user/chosen/home',
+          }),
+        };
+        mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter(options);
+        const child = await adapter.adoptSession(
+          {
+            provider: 'claude',
+            threadId: 'station-child-conn-env',
+            sourceSessionId: 'vendor-source',
+            sourceKind: 'claude-transcript',
+            sourceAffinity: identity.affinity,
+            cwd: '/workspace/project',
+          },
+          {
+            onProviderChildCreationStarted: () => {},
+            onProviderChildCreated: () => {},
+          },
+        );
+        await adapter.stopSession('station-child-conn-env');
+        const adoptCall = mockQuery.mock.calls.at(-1)?.[0];
+        expect(adoptCall.options.env.ANTHROPIC_BASE_URL).toBe(
+          'http://127.0.0.1:8318',
+        );
+        // The connection's home key is dropped, but the spawn still runs
+        // under the SOURCE home — that is the whole point of adoption
+        // (the child must fork where its rollout lives).
+        expect(adoptCall.options.env.CLAUDE_CONFIG_DIR).toBe(home);
+
+        mockQuery.mockReturnValue(
+          createMockQuery([
+            {
+              type: 'system',
+              subtype: 'init',
+              session_id: 'vendor-child',
+              cwd: '/workspace/project',
+              model: 'claude-sonnet-4-6',
+              tools: [],
+              mcp_servers: [],
+            },
+          ]),
+        );
+        const restarted = new ClaudeAdapter(options);
+        const resumed = await restarted.startSession({
+          provider: 'claude',
+          threadId: 'station-child-conn-env',
+          resumeCursor: child.resumeCursor,
+          cwd: '/workspace/project',
+          persistSession: true,
+        });
+        await vi.waitFor(() => expect(resumed.status).toBe('ready'));
+        const resumeCall = mockQuery.mock.calls.at(-1)?.[0];
+        expect(resumeCall.options.env.ANTHROPIC_BASE_URL).toBe(
+          'http://127.0.0.1:8318',
+        );
+        expect(resumeCall.options.env.CLAUDE_CONFIG_DIR).toBe(home);
+        await restarted.stopSession('station-child-conn-env');
+      } finally {
+        vi.unstubAllEnvs();
+        rmSync(home, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe('#1156: Claude Agent SDK subprocess PATH augmentation', () => {
     test("startSession layers the augmented PATH into Options.env even when no app-home profile is active (station#1150 fixed Station's own CLI resolution; this closes the MCP-subprocess gap one layer down)", async () => {
       const augmentedEnv = {

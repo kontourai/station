@@ -120,6 +120,20 @@ interface CodexAdapterOptions {
   getAppHomeEnv?: (
     credentialProfileRef?: string,
   ) => Promise<Record<string, string> | undefined>;
+  /**
+   * station#2072: per-connection env overrides + explicit config home,
+   * resolved from `AgentConnectionSettings.config` (`env` map and
+   * `configHome`, sanitized and tilde-expanded by the runtime's closure —
+   * see `connection-env.ts`). `undefined` when the connection configured
+   * neither; the adapter then keeps today's byte-identical spawn calls.
+   * Applied to EVERY `codex app-server` child of this connection —
+   * sessions (merged under the app-home/source-affinity home key), model
+   * discovery, and quota probes — because a proxy-routed connection's
+   * catalog and account observations must reflect the proxy. A resolution
+   * failure degrades to `undefined` with a warning; this layer asserts no
+   * credentials, so it never blocks a spawn.
+   */
+  getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
   /** Resolve only a source-owned affinity registered by runtime composition. */
   resolveSourceHome?: (
     affinity: ProviderSessionSourceAffinity,
@@ -743,6 +757,10 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
     if (cached) this.quotaSnapshots.delete(cacheKey);
     const generation = this.quotaSnapshotGeneration;
+    // station#2072: the quota probe is an app-server child of this
+    // connection too — it sees the connection env merged under the
+    // resolved profile home, same precedence as the session spawn.
+    const connectionEnvForQuota = await this.resolveConnectionEnv();
     let processHandle: ReturnType<typeof createCodexProcess> | undefined;
     const pending = new Map<
       string,
@@ -755,7 +773,11 @@ export class CodexAdapter implements ProviderAdapterShape {
     };
     let stdout: ReturnType<typeof createInterface> | undefined;
     try {
-      processHandle = this.processFactory(appHomeEnv);
+      processHandle = this.processFactory(
+        appHomeEnv
+          ? { ...connectionEnvForQuota, ...appHomeEnv }
+          : connectionEnvForQuota,
+      );
       stdout = createInterface({ input: processHandle.stdout });
       stdout.on('line', (line) => {
         let message: any;
@@ -1070,7 +1092,15 @@ export class CodexAdapter implements ProviderAdapterShape {
     maxEntries: number;
   }): Promise<ProviderAdapterModelCatalog> {
     const maxEntries = options.maxEntries;
-    const processHandle = this.processFactory();
+    // station#2072: model discovery sees the connection env + explicit
+    // config home, so a proxy-routed connection lists the proxy's catalog.
+    // The credential-profile app-home env stays session-scoped (archive#896
+    // pin above) — profile homes are per-account credential state, the
+    // connection env is connection-level routing.
+    const connectionEnv = await this.resolveConnectionEnv();
+    const processHandle = connectionEnv
+      ? this.processFactory(connectionEnv)
+      : this.processFactory();
     let termination: Promise<void> | null = null;
     const terminate = () => {
       termination ??= terminateCodexProcess(processHandle);
@@ -1425,9 +1455,15 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
     const transport = new CodexAdapterTransport(this.now);
     const externalThreadId = `codex-maintenance:${crypto.randomUUID()}`;
+    // station#2072: routing keys ride this maintenance child; the source
+    // home always owns CODEX_HOME (same precedence as the session spawn).
+    const connectionEnvForMaintenance = await this.resolveConnectionEnv();
     const record = createCodexSessionRecord({
       externalThreadId,
-      process: this.processFactory({ CODEX_HOME: sourceHome }),
+      process: this.processFactory({
+        ...connectionEnvForMaintenance,
+        CODEX_HOME: sourceHome,
+      }),
       provider: this.provider,
       threadId: externalThreadId,
       model: '',
@@ -1635,10 +1671,19 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
     const quotaConnectionId = string(input.metadata?.connectionId);
     const toolServers = this.resolveAgentToolServers(input);
-    const processHandle = this.processFactory(
-      appHomeEnv,
-      toolServers.configArgs,
-    );
+    // station#2072: the connection env layer merges UNDER the app-home
+    // home key — a source-affinity or credential-profile home always owns
+    // CODEX_HOME (an adopted session must run where its rollout lives),
+    // while the connection's routing keys (proxy base URLs etc.) win over
+    // the ambient env. An explicit configHome lands here exactly when no
+    // profile/affinity home did (the runtime resolves only one of
+    // configHome/useAppHome into these layers).
+    const connectionEnv = await this.resolveConnectionEnv();
+    const spawnEnv =
+      connectionEnv && appHomeEnv
+        ? { ...connectionEnv, ...appHomeEnv }
+        : (connectionEnv ?? appHomeEnv);
+    const processHandle = this.processFactory(spawnEnv, toolServers.configArgs);
     const record = createCodexSessionRecord({
       externalThreadId: input.threadId,
       process: processHandle,
@@ -2083,6 +2128,26 @@ export class CodexAdapter implements ProviderAdapterShape {
       }
       (this.options.logger ?? console).warn?.(
         `Codex app-home profile lookup failed; continuing with the global Codex config: ${errorMessage(error)}`,
+      );
+      return undefined;
+    }
+  }
+
+  /**
+   * station#2072: resolves the per-connection env layer (see the option's
+   * doc comment). Degrades to `undefined` with a warning on failure — this
+   * layer asserts no credentials, so a routing-lookup failure must never
+   * block a spawn (the credential-profile branch of `resolveAppHomeEnv`
+   * above stays the only fail-closed one).
+   */
+  private async resolveConnectionEnv(): Promise<
+    Record<string, string> | undefined
+  > {
+    try {
+      return await this.options.getConnectionEnv?.();
+    } catch (error) {
+      (this.options.logger ?? console).warn?.(
+        `Codex connection env lookup failed; continuing with the unaugmented connection env: ${errorMessage(error)}`,
       );
       return undefined;
     }
