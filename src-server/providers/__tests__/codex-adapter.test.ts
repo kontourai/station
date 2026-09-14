@@ -3130,6 +3130,13 @@ describe('CodexAdapter', () => {
     });
 
     const models = adapter.listModels();
+    // station#2072: discovery resolves the connection env (one microtask)
+    // before the factory runs and the error listener attaches. A real
+    // spawn failure is always asynchronous — node emits `error` on a later
+    // tick than `spawn()` returns — so the flush preserves the production
+    // ordering while keeping this pin's contract: the failure surfaces as
+    // a typed rejection, never an uncaught `error` event.
+    await flushIo();
     processHandle.emit('error', new Error('spawn codex ENOENT'));
 
     await expect(models).rejects.toThrow(
@@ -4052,6 +4059,121 @@ describe('CodexAdapter', () => {
       expect(processFactory).not.toHaveBeenCalledWith({
         CODEX_HOME: '/station/app-homes/codex',
       });
+    });
+
+    test('station#2072: model discovery DOES receive the connection env — a routed connection lists its own catalog', async () => {
+      processHandle = new FakeCodexProcess();
+      const processFactory = vi.fn(() => processHandle!);
+      const adapter = new CodexAdapter({
+        processFactory,
+        getConnectionEnv: async () => ({
+          CODEX_HOME: '/Users/brian/.codex_vibe',
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+        }),
+      } as any);
+
+      const discoveryPromise = adapter.listModelCatalog();
+      await flushIo();
+      processHandle!.stdout.write(
+        `${JSON.stringify({ jsonrpc: '2.0', id: '1', result: { userAgent: 'test' } })}\n`,
+      );
+      await flushIo();
+      processHandle!.stdout.write(
+        `${JSON.stringify({
+          jsonrpc: '2.0',
+          id: '2',
+          result: { data: [], nextCursor: null },
+        })}\n`,
+      );
+      await withTimeout(discoveryPromise, 'listModelCatalog');
+
+      expect(processFactory).toHaveBeenCalledWith({
+        CODEX_HOME: '/Users/brian/.codex_vibe',
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+      });
+    });
+
+    test('station#2072: startSession layers the connection env UNDER the app-home home key', async () => {
+      processHandle = new FakeCodexProcess();
+      const processFactory = vi.fn(() => processHandle!);
+      const adapter = new CodexAdapter({
+        processFactory,
+        getAppHomeEnv: async () => ({
+          CODEX_HOME: '/station/app-homes/codex',
+        }),
+        getConnectionEnv: async () => ({
+          CODEX_HOME: '/Users/brian/.codex_vibe',
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+        }),
+      } as any);
+
+      const startSessionPromise = adapter.startSession({
+        provider: 'codex',
+        threadId: 'thread-connection-env',
+        cwd: '/tmp/project',
+        modelId: 'gpt-5-codex',
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-connection-env', {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-connection-env', {
+        id: '2',
+        result: {
+          thread: { id: 'codex-thread-connection-env' },
+          model: 'gpt-5-codex',
+        },
+      });
+      await withTimeout(startSessionPromise, 'startSession');
+
+      expect(processFactory).toHaveBeenCalledWith(
+        {
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          CODEX_HOME: '/station/app-homes/codex',
+        },
+        undefined,
+      );
+      await adapter.stopAll();
+    });
+
+    test('station#2072: with no app-home env, the connection env alone reaches the process factory', async () => {
+      processHandle = new FakeCodexProcess();
+      const processFactory = vi.fn(() => processHandle!);
+      const adapter = new CodexAdapter({
+        processFactory,
+        getConnectionEnv: async () => ({
+          CODEX_HOME: '/Users/brian/.codex_vibe',
+        }),
+      } as any);
+
+      const startSessionPromise = adapter.startSession({
+        provider: 'codex',
+        threadId: 'thread-connection-env-only',
+        cwd: '/tmp/project',
+        modelId: 'gpt-5-codex',
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-connection-env-only', {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-connection-env-only', {
+        id: '2',
+        result: {
+          thread: { id: 'codex-thread-connection-env-only' },
+          model: 'gpt-5-codex',
+        },
+      });
+      await withTimeout(startSessionPromise, 'startSession');
+
+      expect(processFactory).toHaveBeenCalledWith(
+        { CODEX_HOME: '/Users/brian/.codex_vibe' },
+        undefined,
+      );
+      await adapter.stopAll();
     });
   });
 

@@ -257,6 +257,7 @@ import {
   TurnCheckpointCaptureCoordinator,
   wireTurnCheckpointCaptureWhenEnabled,
 } from '../../services/checkpoints/turn-checkpoint-capture.js';
+import { appHomeActive } from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
@@ -3089,9 +3090,14 @@ export function configureRuntimeRoutes(
       // the connection's SAVED config directly — never the in-memory
       // adapter state — same source of truth `runtimeDefaultConfig`/
       // `sanitizeRuntimeConfig` already treat as authoritative.
+      // station#2072: through `appHomeActive`, so an explicit
+      // `configHome` (which wins over the opt-in at spawn time) does not
+      // make this guard claim a station-managed profile is in use when the
+      // connection's spawns actually run from the configured home.
       isUseAppHomeEnabled: async (id) =>
-        (await context.connectionService.getConnection(id))?.config
-          ?.useAppHome === true,
+        appHomeActive(
+          (await context.connectionService.getConnection(id))?.config,
+        ),
       // Credential-profile management delegates all registry/application
       // state transitions to the single ConnectionService authority.
       connectionService: context.connectionService,
