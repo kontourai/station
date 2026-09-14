@@ -10,8 +10,9 @@ import {
   withShortcutHint,
 } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
-import { BellGlyph, PeopleGlyph, SettingsGlyph } from '../icons/Glyph';
+import { BellGlyph, SettingsGlyph } from '../icons/Glyph';
 import './ProjectSidebarFooter.css';
+import { ProjectSidebarPresenceTray } from './ProjectSidebarPresenceTray';
 
 function destinationOrThrow(id: string): DestinationDefinition {
   const destination = APP_DESTINATION_REGISTRY.get(id);
@@ -31,8 +32,8 @@ interface ProjectSidebarFooterProps {
 }
 
 /**
- * The panel footer (#2059, design record D3): presence, the attention bell,
- * the gear, and the command palette's chord. The chord is the one thing kept
+ * The panel footer (#2059, design record D3): presence (#2066, D5), the
+ * attention bell, the gear, and the command palette's chord. The chord is the one thing kept
  * from the status line this replaced, and it earns its place: the palette is
  * one of the two ways to reach everything this slice moved out of the panel.
  *
@@ -79,18 +80,12 @@ export function ProjectSidebarFooter({
     <div className="sidebar__footer">
       <div className="sidebar__footer-meta">
         {/*
-          #2066 owns presence. Until it ships there is no presence authority
-          to read, so this placeholder reports NOTHING about who is here — no
-          count, no avatars, no dot, AND NO ACCESSIBLE NAME. A `role="img"`
-          with an aria-label announced "People here" to a screen reader, which
-          is a presence claim in the one channel where the qualifying tooltip
-          never arrives: an aria-label overrides `title`. A placeholder holding
-          a slot needs no name, so it is hidden from the accessibility tree
-          entirely until there is something true to say.
+          #2066: the placeholder's slot is now the presence tray. What the
+          placeholder was careful about still holds — the trigger's accessible
+          name states the count it derived and nothing more, and with nobody
+          publishing it says so rather than disappearing.
         */}
-        <span aria-hidden="true" className="sidebar__footer-presence">
-          <PeopleGlyph />
-        </span>
+        <ProjectSidebarPresenceTray />
         <button
           type="button"
           className="sidebar__footer-palette"

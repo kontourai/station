@@ -16,16 +16,6 @@
   user-select: none;
 }
 
-.sidebar__footer-presence {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  /* Muted against the footer's own muted text: the placeholder must not read
-     as a live indicator (#2066 brings the real presence tray). */
-  opacity: 0.55;
-  font-size: 15px;
-}
-
 .sidebar__footer-palette {
   /* The footer has no text member to grow now that the build identity moved
      out (#2059 product decision), so the chip carries the gap that pushes the
@@ -101,7 +91,10 @@
   padding: 4px 0;
 }
 
-.sidebar--collapsed .sidebar__footer-presence,
+/* Presence survives the collapse (#2066): it is a real control now, and the
+   rail's other two controls are the panel's only way into Notifications and
+   Settings — hiding a third would strand it. `ProjectSidebarPresenceTray.css`
+   drops its text members at this width. The palette chip has no icon form. */
 .sidebar--collapsed .sidebar__footer-palette {
   display: none;
 }
@@ -120,10 +113,22 @@
     display: none;
   }
 
-  /* Touch targets: the footer's two navigation controls are shared navigation
-     chrome, at the same 44px floor as the drawer's rows. */
+  /* Touch targets: the footer's navigation controls are shared navigation
+     chrome, at the same 44px floor as the drawer's rows. The presence trigger
+     and the tray's row actions (#2066) take the floor here rather than in
+     `ProjectSidebarPresenceTray.css`, so this surface keeps one page-local
+     responsive at-rule instead of two. */
   .sidebar__footer-action {
     width: 44px;
     height: 44px;
+  }
+
+  .sidebar__presence-trigger {
+    min-height: 44px;
+    padding: 0 6px;
+  }
+
+  .sidebar__presence-action {
+    min-height: 44px;
   }
 }
