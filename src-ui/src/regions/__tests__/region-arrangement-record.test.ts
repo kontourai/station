@@ -11,8 +11,10 @@ import {
   toRegionArrangementRecord,
 } from '../region-arrangement-record';
 import {
+  createSurfaceRegistry,
   DEFAULT_DEVICE_REGION_ARRANGEMENT,
   REGION_IDS,
+  REGION_SURFACE_REGISTRY,
   type RegionArrangement,
 } from '../region-model';
 
@@ -588,6 +590,94 @@ describe('region arrangement record (#928 D)', () => {
         }),
       )!.right;
       expect(nothingLeft).toMatchObject({ panes: [], occupant: null });
+    });
+
+    /**
+     * #2047: a coding surface in a region's panes is just a surface id to
+     * the record — `{ kind: 'surface', id: 'coding:terminal' }`, colon and
+     * all — and round-trips like any other. Reverting the registry entries
+     * makes the parser drop it (`parseSurfaceEntry`), which the first
+     * assertion catches.
+     */
+    test('a coding surface round-trips in a pane-host and as a one-pane surface', () => {
+      const withTerminal: RegionArrangement = {
+        ...VALID,
+        right: {
+          visible: true,
+          size: 517,
+          panes: ['chat', 'coding:terminal'],
+          occupant: 'coding:terminal',
+          maximized: false,
+        },
+        bottom: {
+          visible: true,
+          size: 320,
+          panes: ['coding:file-browser'],
+          occupant: 'coding:file-browser',
+          maximized: false,
+        },
+      };
+      const record = toRegionArrangementRecord(withTerminal);
+      expect(record.regions.right.occupant).toEqual({
+        kind: 'pane-host',
+        panes: [
+          { kind: 'surface', id: 'chat' },
+          { kind: 'surface', id: 'coding:terminal' },
+        ],
+        selected: 'coding:terminal',
+      });
+      expect(record.regions.bottom.occupant).toEqual({
+        kind: 'surface',
+        id: 'coding:file-browser',
+      });
+      expect(parseRegionArrangementRecord(record)).toEqual(withTerminal);
+    });
+
+    /**
+     * The rollback story (#2047, same-device stale-tab window): a build whose
+     * registry predates the coding surfaces reads the record a newer build
+     * wrote. A `pane-host` keeps the panes it knows; a `surface` form naming
+     * only the unknown id reads as an EMPTY region — visible, but with
+     * nothing to mount (`RegionShells` mounts a host only for a registered
+     * occupant). The whole record is never rejected.
+     */
+    test('an older registry keeps the panes it knows and reads a coding-only region as empty', () => {
+      const older = createSurfaceRegistry(
+        [...REGION_SURFACE_REGISTRY.values()].filter(
+          (surface) => !surface.id.startsWith('coding:'),
+        ),
+      );
+      expect(older.has('coding:terminal')).toBe(false);
+      const record = toRegionArrangementRecord({
+        ...VALID,
+        right: {
+          visible: true,
+          size: 517,
+          panes: ['chat', 'coding:terminal'],
+          occupant: 'coding:terminal',
+          maximized: false,
+        },
+        bottom: {
+          visible: true,
+          size: 320,
+          panes: ['coding:file-browser'],
+          occupant: 'coding:file-browser',
+          maximized: false,
+        },
+      });
+      const parsed = parseRegionArrangementRecord(record, older);
+      expect(parsed?.right).toMatchObject({
+        visible: true,
+        panes: ['chat'],
+        occupant: 'chat',
+      });
+      expect(parsed?.bottom).toMatchObject({
+        visible: true,
+        size: 320,
+        panes: [],
+        occupant: null,
+      });
+      expect(parsed?.main.occupant).toBe('home');
     });
 
     test('a pane-host without an array of panes reads as empty; a documentId a 2a build wrote is ignored', () => {

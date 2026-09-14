@@ -409,7 +409,7 @@ describe('region model', () => {
     });
   });
 
-  test('registers Chat, Activity and Home with their default regions and the regions each declares', () => {
+  test('registers Chat, Activity, Home and the three coding panes with their default regions, the regions each declares and who offers them', () => {
     expect([...REGION_SURFACE_REGISTRY.values()]).toEqual([
       expect.objectContaining({
         id: 'chat',
@@ -438,8 +438,46 @@ describe('region model', () => {
         regions: ['main'],
         defaultRegion: 'main',
       }),
+      // #2047: catalog-only, dock regions only, no chord. `exposure` is
+      // asserted as the literal on each so that dropping the flag from one
+      // entry — which would put a Terminal row in the Layout picker — reds
+      // here as well as in `useRegionSurfaceMenu.placement.test.tsx`.
+      expect.objectContaining({
+        id: 'coding:terminal',
+        title: 'Terminal',
+        icon: 'terminal',
+        regions: ['left', 'right', 'bottom'],
+        defaultRegion: 'right',
+        exposure: 'catalog',
+      }),
+      expect.objectContaining({
+        id: 'coding:diff',
+        title: 'Diff',
+        icon: 'diff',
+        regions: ['left', 'right', 'bottom'],
+        defaultRegion: 'right',
+        exposure: 'catalog',
+      }),
+      expect.objectContaining({
+        id: 'coding:file-browser',
+        title: 'Files',
+        icon: 'files',
+        regions: ['left', 'right', 'bottom'],
+        defaultRegion: 'left',
+        exposure: 'catalog',
+      }),
     ]);
-    expect(REGION_SURFACE_REGISTRY.get('home')?.shortcut).toBeUndefined();
+    for (const id of [
+      'home',
+      'coding:terminal',
+      'coding:diff',
+      'coding:file-browser',
+    ])
+      expect(REGION_SURFACE_REGISTRY.get(id)?.shortcut, id).toBeUndefined();
+    // Shell exposure is the ABSENT default, not a spelled-out `'shell'`: the
+    // reader treats anything but `'catalog'` as the shell's.
+    for (const id of ['chat', 'activity', 'home'])
+      expect(REGION_SURFACE_REGISTRY.get(id)?.exposure, id).toBeUndefined();
   });
 
   test('Home is the default main occupant and the legacy dock seed preserves it', () => {

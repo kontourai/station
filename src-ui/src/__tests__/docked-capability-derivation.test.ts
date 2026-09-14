@@ -5,6 +5,11 @@ import * as boardPane from '@kontourai/station-board-pane/workspace-board-pane';
 import * as contracts from '@kontourai/station-contracts';
 import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
 import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
+import {
+  WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+  WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
+  WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
+} from '@kontourai/station-contracts/workspace-coding-panels';
 import { WORKSPACE_HOME_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-home-pane';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
@@ -77,6 +82,13 @@ const SURFACE_DESCRIPTORS: Record<string, WorkspacePaneDescriptor> = {
   chat: WORKSPACE_CHAT_PANE_DESCRIPTOR,
   activity: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
   home: WORKSPACE_HOME_PANE_DESCRIPTOR,
+  // #2047: the three coding panes. Browser Preview and File Preview are
+  // deliberately absent (no blank canonical instance; #2049's `openInRegion`
+  // is their reader), so their descriptors must NOT claim `docked` yet — the
+  // both-directions pin below holds that too.
+  'coding:terminal': WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
+  'coding:diff': WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+  'coding:file-browser': WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
 };
 
 function isDescriptorShaped(value: unknown): value is WorkspacePaneDescriptor {

@@ -51,7 +51,15 @@ const parsedWorkspaceFilePreviewPaneDescriptor = parseWorkspacePaneDescriptor({
 if (!parsedWorkspaceFilePreviewPaneDescriptor)
   throw new Error('Canonical File Preview pane descriptor must be valid');
 
-/** One code-owned descriptor shared by server catalog and UI registry. */
+/**
+ * One code-owned descriptor shared by server catalog and UI registry.
+ *
+ * Deliberately NOT `docked` (#2047): a File Preview has no blank canonical
+ * instance — it is keyed by a file path and opened by intent (a Files-pane
+ * click) — so a dock catalog could list it but never open it. Its dock reader
+ * is #2049's `openInRegion` over instance-keyed panes; declare `docked` there,
+ * with that reader.
+ */
 export const WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR =
   parsedWorkspaceFilePreviewPaneDescriptor;
 

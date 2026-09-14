@@ -234,11 +234,35 @@ function CodingPane({
   );
 }
 
+/**
+ * A coding pane's `boundContext.layoutId` is OPTIONAL (#2047 D5): a pane in
+ * a coding layout binds the layout it was placed in; a pane in a dock region
+ * is the PROJECT's and binds none (`REGION_SURFACE_PANES` mints it that way).
+ * The same rule `ChatPane` already applies. A layout binding that IS present
+ * still has to resolve — a dangling one is `layout-unresolvable`, not
+ * silently a project pane.
+ */
+function codingPaneNeedsLayout(instance: WorkspacePaneInstance): boolean {
+  return Boolean(instance.boundContext?.layoutId);
+}
+
+/**
+ * Where a coding pane works (#2047 D5): the layout's `workingDirectory`
+ * where the pane is layout-bound and the layout says, else the project's —
+ * one derivation for all three panes, so a docked Terminal, Diff and Files
+ * agree on the directory. Empty when neither names one (the panes render
+ * "Workspace directory needed"). `project` is the resolved identity's; a
+ * pane still resolving passes none and reads as empty, which the panes gate
+ * on `identity.state` before showing.
+ */
 function codingWorkingDirectory(
   layout: { config?: Record<string, unknown> } | undefined,
+  project: { workingDirectory?: string } | undefined,
 ): string {
-  const value = layout?.config?.workingDirectory;
-  return typeof value === 'string' ? value.trim() : '';
+  const fromLayout = layout?.config?.workingDirectory;
+  if (typeof fromLayout === 'string' && fromLayout.trim())
+    return fromLayout.trim();
+  return project?.workingDirectory?.trim() ?? '';
 }
 
 /**
@@ -272,7 +296,10 @@ function CodingLayoutReadFailure({
 }
 
 function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
-  const identity = useResolvedPaneIdentity(instance, true);
+  const identity = useResolvedPaneIdentity(
+    instance,
+    codingPaneNeedsLayout(instance),
+  );
   const projectSlug =
     identity.state === 'resolved' ? identity.project.slug : '';
   const layoutSlug =
@@ -288,7 +315,10 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
   const paneHostOpen = useWorkspacePaneHostOpenAction();
   const { openFilePreviewIntent, setLayout } = useNavigation();
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const workingDir = codingWorkingDirectory(layout);
+  const workingDir = codingWorkingDirectory(
+    layout,
+    identity.state === 'resolved' ? identity.project : undefined,
+  );
   useEffect(() => {
     if (openFilePreviewIntent?.projectSlug === projectSlug)
       setSelectedPath(openFilePreviewIntent.path);
@@ -299,7 +329,12 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
       // Compact pane navigation unmounts inactive renderers. Keep the selected
       // file in the navigation contract so returning to this pane restores the
       // exact row while the host independently opens the preview occurrence.
-      setLayout(projectSlug, layoutSlug, { openFilePreviewIntent: intent });
+      // A layout-less pane (a dock region, #2047) has no layout route to
+      // keep it in: navigating to `setLayout(project, '')` would leave the
+      // dock for a route that is not this pane's, so it keeps the row in
+      // its own state only.
+      if (layoutSlug)
+        setLayout(projectSlug, layoutSlug, { openFilePreviewIntent: intent });
       if (!paneHostOpen) {
         return;
       }
@@ -319,6 +354,12 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
       // navigation intent above are what the reader sees, and they happen
       // whether or not the preview occurrence is admitted. Reporting a
       // refusal here needs a place in this pane's own chrome to put it.
+      // In a DOCK region (#2047) the refusal is certain, not incidental: File
+      // Preview is no region surface, so the region host's admission refuses
+      // it and there is no `setLayout` to fall back on — a file click in a
+      // docked Files pane selects the row and opens nothing until #2049
+      // gives regions instance-keyed panes. `docs/design/placement.md` says
+      // so in the #2047 paragraph.
       paneHostOpen.open(
         preview,
         createFilePreviewPaneStatePreparation(
@@ -372,7 +413,10 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
 }
 
 function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
-  const identity = useResolvedPaneIdentity(instance, true);
+  const identity = useResolvedPaneIdentity(
+    instance,
+    codingPaneNeedsLayout(instance),
+  );
   const projectSlug =
     identity.state === 'resolved' ? identity.project.slug : '';
   const layoutSlug =
@@ -385,7 +429,10 @@ function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
     enabled: identity.state === 'resolved',
   });
   const [activeRepoRoot, setActiveRepoRoot] = useState<string | null>(null);
-  const workingDir = codingWorkingDirectory(layout);
+  const workingDir = codingWorkingDirectory(
+    layout,
+    identity.state === 'resolved' ? identity.project : undefined,
+  );
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   if (!isCanonicalWorkspaceCodingDiffPaneInstance(instance))
@@ -432,7 +479,10 @@ function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
 }
 
 function CodingTerminalWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
-  const identity = useResolvedPaneIdentity(instance, true);
+  const identity = useResolvedPaneIdentity(
+    instance,
+    codingPaneNeedsLayout(instance),
+  );
   const projectSlug =
     identity.state === 'resolved' ? identity.project.slug : '';
   const layoutSlug =
@@ -444,7 +494,10 @@ function CodingTerminalWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   } = useProjectLayoutQuery(projectSlug, layoutSlug, {
     enabled: identity.state === 'resolved',
   });
-  const workingDir = codingWorkingDirectory(layout);
+  const workingDir = codingWorkingDirectory(
+    layout,
+    identity.state === 'resolved' ? identity.project : undefined,
+  );
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   if (!isCanonicalWorkspaceCodingTerminalPaneInstance(instance))

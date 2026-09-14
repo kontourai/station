@@ -178,8 +178,14 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
     [model],
   );
 
-  const surfaceList = [...surfaces.values()].filter((surface) =>
-    surface.regions.some(isDockRegion),
+  // The surfaces the SHELL offers: those declaring a dock region, minus the
+  // catalog-only ones (#2047, `RegisteredSurface.exposure`) — a region's "+"
+  // is their only offer, so they get no picker row, no chord and no unplaced
+  // Show row. A placed one still appears where it is placed: the per-region
+  // loop in `foldedMenuItems` reads `region.panes`, not this list.
+  const surfaceList = [...surfaces.values()].filter(
+    (surface) =>
+      surface.regions.some(isDockRegion) && surface.exposure !== 'catalog',
   );
   const foldedRegion = foldedDockRegion(regions, lastShownRegion);
 

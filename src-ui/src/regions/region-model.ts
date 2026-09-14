@@ -650,6 +650,18 @@ export interface RegisteredSurface {
    */
   regions: readonly RegionId[];
   defaultRegion: RegionId;
+  /**
+   * Who offers this surface (#2047). `shell` — the default when absent — is
+   * the toolbar's Layout picker, the folded Regions menu's Show rows and a
+   * chord; `catalog` means a region's "+" catalog is its only offer, and the
+   * shell lists it only where it is already placed (a placed pane's tab, its
+   * folded Hide/Show row). An explicit flag rather than "has no shortcut",
+   * which is a coincidence a later entry would break silently. Readers:
+   * `useRegionSurfaceMenu` (`surfaceList`, which feeds the picker rows, the
+   * chords and the unplaced Show rows). `?surface=<id>` is a command and
+   * reveals either kind.
+   */
+  exposure?: 'shell' | 'catalog';
   /** Repository-relative renderer source, used by the architecture ratchet. */
   sourceFile: string;
 }
@@ -709,6 +721,39 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     regions: ['main'],
     defaultRegion: 'main',
     sourceFile: 'src-ui/src/views/home/HomeSurface.tsx',
+  },
+  // The three coding panes as dock surfaces (#2047): one of each per region
+  // set, bound to the dock's active project (`REGION_SURFACE_PANES`). Ids
+  // keep the `pane:builtin:<surface id>` rule the docked-capability pins
+  // assert. Catalog-only: the region's "+" offers them, the toolbar does not,
+  // and none has a chord. Dock regions only: their `main` placement is the
+  // coding layout, which is a route, not a surface.
+  {
+    id: 'coding:terminal',
+    title: 'Terminal',
+    icon: 'terminal',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'right',
+    exposure: 'catalog',
+    sourceFile: 'src-ui/src/components/coding-layout/CodingTerminalPane.tsx',
+  },
+  {
+    id: 'coding:diff',
+    title: 'Diff',
+    icon: 'diff',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'right',
+    exposure: 'catalog',
+    sourceFile: 'src-ui/src/components/coding-layout/DiffPanel.tsx',
+  },
+  {
+    id: 'coding:file-browser',
+    title: 'Files',
+    icon: 'files',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'left',
+    exposure: 'catalog',
+    sourceFile: 'src-ui/src/components/coding-layout/FileTreePanel.tsx',
   },
 ]);
 

@@ -130,6 +130,21 @@ const expectedDependencies = new Map(
     // accepted layout types AND retained-LayoutTab/parser adaptation checks;
     // a UI-only field would make contributed routing metadata unverifiable.
     'src-ui/src/views/ProjectPage.tsx': 'navigation',
+    // #2047: the region model registers the three coding panes as dock
+    // surfaces (`coding:terminal`, `coding:diff`, `coding:file-browser`);
+    // the semantic scan sees the `sourceFile` paths the architecture ratchet
+    // reads. It is pure over ids — no pane contract, no renderer — and
+    // grants nothing; which pane a surface renders as is the inventory's.
+    'src-ui/src/regions/region-model.ts': 'pane-declaration',
+    // #2047: the surface → pane inventory joins those surfaces to the
+    // coding pane contracts' fixed per-project instances and canonical
+    // predicates (`workspace-coding-panels.ts`), the same contract role
+    // `builtinWorkspacePaneCanonical.ts` plays for the built-in host.
+    'src-ui/src/regions/region-surface-panes.ts': 'pane-contract',
+    // #2047: a docked coding pane's renderer, behind the region host's lazy
+    // boundary — it hands the region's project-bound instance to
+    // `getBuiltinWorkspacePaneRenderer`, the registry declared below.
+    'src-ui/src/workspace-panes/RegionBuiltinPane.tsx': 'private-import',
     'src-ui/src/views/ReviewQueueView.tsx': 'navigation',
     'src-ui/src/views/TaskWorkspaceView.tsx': 'private-import',
     'src-ui/src/workspace-panes/BrowserPreviewPaneLauncher.tsx': 'presentation',

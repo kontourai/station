@@ -107,6 +107,33 @@ describe('the Layout picker offers every region the model declares', () => {
     expect(hidden?.map((segment) => segment.label)).toEqual(['Hidden']);
   });
 
+  /**
+   * #2047 (`RegisteredSurface.exposure`): a catalog-only surface has no
+   * Layout-picker row and is not in the list the chords and the folded
+   * unplaced rows read, even though it declares every dock region. Deleting
+   * the `exposure !== 'catalog'` clause from `surfaceList` fails the first
+   * two assertions; dropping the flag from a registry entry fails the
+   * precondition, which points at the registry rather than the hook.
+   */
+  test('a catalog-only surface gets no placement row and is not in the shell’s surface list', () => {
+    const terminal = REGION_SURFACE_REGISTRY.get('coding:terminal');
+    expect(
+      terminal?.exposure,
+      'no registered surface is catalog-only, so this file proves nothing',
+    ).toBe('catalog');
+    expect(terminal?.regions.some((id) => id !== 'main')).toBe(true);
+
+    const { result } = renderHook(() => useRegionSurfaceMenu());
+    expect(result.current.placementRows.map((row) => row.surfaceId)).toEqual([
+      'chat',
+      'activity',
+    ]);
+    expect(result.current.surfaceList.map((surface) => surface.id)).toEqual([
+      'chat',
+      'activity',
+    ]);
+  });
+
   test('a surface is never offered a region it does not declare', () => {
     const { result } = renderHook(() => useRegionSurfaceMenu());
 

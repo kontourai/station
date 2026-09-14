@@ -89,11 +89,13 @@ function renderBar({
   tabs = TABS,
   selected = 'chat',
   closable = true,
+  onAddPane,
 }: {
   chrome?: DockShellChrome;
   tabs?: readonly RegionChromeTab[];
   selected?: string;
   closable?: boolean;
+  onAddPane?: () => void;
 } = {}) {
   return render(
     <RegionChromeBar
@@ -104,6 +106,7 @@ function renderBar({
       onSelectTab={handlers.onSelectTab}
       onCloseTab={closable ? handlers.onCloseTab : undefined}
       onReorderTab={handlers.onReorderTab}
+      onAddPane={onAddPane}
       leadingSlotRef={() => {}}
       trailingSlotRef={() => {}}
     />,
@@ -143,6 +146,51 @@ describe('the region bar control set', () => {
       'Expand dock region to workspace',
       'Hide Chat',
     ]);
+  });
+
+  /**
+   * #2047 D4: the "+" is the region's, in the actions cluster beside
+   * maximize, and renders for a ONE-pane region (no strip) — the case the
+   * acceptance starts from. Fine pointer only (D2), and only when the host
+   * offers it (D6: no project, no "+"). Reverting the `!chrome.isMobile`
+   * guard fails the coarse assertion; dropping the prop's gate fails the
+   * "absent" one; moving the button out of the cluster fails the ordered
+   * control-set pin.
+   */
+  test('the "+" renders beside maximize for a one-pane region on a fine pointer, and calls back; not on a coarse device, not without a host offer', () => {
+    const onAddPane = vi.fn();
+    const one = renderBar({ tabs: [TABS[0]!], closable: false, onAddPane });
+    expect(controlNames()).toEqual([
+      'Move the dock',
+      'Add pane to Bottom',
+      'Expand dock region to workspace',
+      'Hide Chat',
+    ]);
+    fireEvent.click(screen.getByLabelText('Add pane to Bottom'));
+    expect(onAddPane).toHaveBeenCalledTimes(1);
+    expect(handlers.onSelectTab).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Add pane to Bottom').title).toBe(
+      'Add pane to Bottom',
+    );
+    one.unmount();
+
+    const right = renderBar({
+      chrome: chromeStub({ effectiveDockSlotPlacement: 'right' }),
+      onAddPane,
+    });
+    expect(screen.getByLabelText('Add pane to Right')).toBeTruthy();
+    right.unmount();
+
+    const coarse = renderBar({
+      chrome: chromeStub({ isMobile: true, surfaceTitle: 'Activity' }),
+      selected: 'activity',
+      onAddPane,
+    });
+    expect(screen.queryByLabelText(/^Add pane to /)).toBeNull();
+    coarse.unmount();
+
+    renderBar({ tabs: [TABS[0]!], closable: false });
+    expect(screen.queryByLabelText(/^Add pane to /)).toBeNull();
   });
 
   test('the strip hides while the region is collapsed (D1), on a coarse device, and for one pane', () => {
