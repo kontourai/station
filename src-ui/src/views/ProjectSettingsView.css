@@ -344,7 +344,7 @@
 .resources-section__row + .resources-section__row {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid var(--border-subtle, var(--border, transparent));
+  border-top: 1px solid var(--border-primary);
 }
 
 .resources-section__tally {
@@ -360,11 +360,11 @@
 }
 
 .resources-section__row--ready .resources-section__headline {
-  color: var(--status-success, var(--text-primary));
+  color: var(--success-text);
 }
 
 .resources-section__row--repairable .resources-section__headline {
-  color: var(--status-warning, var(--text-primary));
+  color: var(--warning-text);
 }
 
 .resources-section__body {
@@ -390,7 +390,7 @@
 }
 
 .resources-section__slot--answer {
-  border-left: 3px solid var(--status-success, var(--border-primary));
+  border-left: 3px solid var(--success-text);
 }
 
 /*
@@ -398,7 +398,7 @@
  * confirmed. Solid, because something was seen.
  */
 .resources-section__slot--observation {
-  border-left: 3px solid var(--status-warning, var(--border-primary));
+  border-left: 3px solid var(--warning-text);
 }
 
 /*

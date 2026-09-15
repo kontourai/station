@@ -831,7 +831,7 @@
   background: transparent;
 }
 .plugins__assign-project--selected {
-  background: var(--accent-primary-alpha, rgba(59, 130, 246, 0.1));
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
 }
 .plugins__assign-project-count {
   margin-left: auto;
