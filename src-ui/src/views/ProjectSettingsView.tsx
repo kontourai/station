@@ -519,13 +519,13 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           />
           <PageRow
             label="Execution environment"
-            description="Fresh worktrees isolate changes; the current checkout shares this project's working directory."
+            description="Fresh worktrees isolate changes; the current checkout shares this project's working directory. Leave it on the Station default and this project follows whatever Settings says."
             control={
               <select
                 id="project-default-workspace-isolation"
                 className="editor-input"
                 aria-label="Execution environment"
-                value={form.defaultWorkspaceIsolation ?? 'shared'}
+                value={form.defaultWorkspaceIsolation}
                 onChange={(event) =>
                   setField(
                     'defaultWorkspaceIsolation',
@@ -534,6 +534,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                   )
                 }
               >
+                <option value="inherit">Use the Station default</option>
                 <option value="worktree">Use a fresh git worktree</option>
                 <option value="shared">Use the current checkout</option>
               </select>

@@ -292,11 +292,16 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(container.querySelector('#section-workspace')).toBeTruthy();
     expect(container.querySelector('#section-basic-info')).toBeTruthy();
     expect(container.querySelector('#section-model')).toBeTruthy();
+    // #2144 slice 2: the fixture project names no workspace mode, so the
+    // picker shows the inherit option rather than claiming it chose 'shared'.
     expect(
       inputValue(
         screen.getByLabelText('Execution environment') as HTMLSelectElement,
       ),
-    ).toBe('shared');
+    ).toBe('inherit');
+    expect(
+      screen.getByRole('option', { name: 'Use the Station default' }),
+    ).toBeTruthy();
     expect(container.querySelector('#section-danger')).toBeTruthy();
   });
 
@@ -656,6 +661,34 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       }),
     );
     expect(screen.queryByText('unsaved')).toBeNull();
+  });
+
+  /**
+   * #2144 slice 2, the regression this option exists to stop: the fixture
+   * project names no workspace mode, the person renames it, and the save must
+   * not write a concrete mode into a project that was following the Station
+   * default. Driven through the real form and the real Save button — the
+   * payload builder's own unit test cannot see whether the VIEW seeds
+   * 'inherit'.
+   */
+  test('renaming a project that names no workspace mode does not pin one', async () => {
+    const { container } = renderProjectSettings();
+
+    fireEvent.change(
+      container.querySelector('.project-settings__name-input') as Element,
+      { target: { value: 'Renamed' } },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          slug: 'demo',
+          name: 'Renamed',
+          defaultWorkspaceIsolation: null,
+        }),
+      ),
+    );
   });
 
   test('surfaces failed saves through the canonical ErrorState alert', async () => {
