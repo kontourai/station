@@ -6,10 +6,17 @@ import './SettingsManageSection.css';
 
 /**
  * The gear's half of #2059 (design record D3). Agents, Guidance, Connections,
- * Registry, Review, Plugins, Schedule and Developer used to take rows in the
- * left panel beside the places; they are configuration, visited to set Station
- * up rather than to work in. They are reached from here and from the command
+ * Registry, Plugins, Schedule and Developer used to take rows in the left
+ * panel beside the places; they are configuration, visited to set Station up
+ * rather than to work in. They are reached from here and from the command
  * palette now.
+ *
+ * Review was in that list until #2065 retired `/review-queue`, and this
+ * paragraph kept naming it afterwards. It is not a destination any more —
+ * it is a layout kind a Project opens — so the registry carries no
+ * `management` slot for it (order 50 is vacant between Registry and Plugins)
+ * and this group cannot render a row for it. A comment that still advertises
+ * it describes a way back that does not exist.
  *
  * These are not settings SECTIONS: each one is a destination with its own
  * route and page, so this is a navigation group, not a `?view=` deep link into
