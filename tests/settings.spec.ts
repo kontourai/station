@@ -26,7 +26,9 @@ async function openAgentDefaults(page: import('@playwright/test').Page) {
   // when it was promoted to its own top-level scope section; the leaf DOM id
   // (#section-agent-defaults) is unchanged.
   await page.getByRole('link', { name: 'Defaults', exact: true }).click();
-  await page.locator('#section-agent-defaults .agent-defaults__panel').waitFor();
+  await page
+    .locator('#section-agent-defaults .agent-defaults__panel')
+    .waitFor();
 }
 
 /**
