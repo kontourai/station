@@ -132,6 +132,22 @@
   background: var(--bg-tertiary);
 }
 
+/* The family's rows carry NO vertical padding (`.menu-row`, index.css): a 32px
+   `min-height` around one line of text needs none. This menu is the first
+   member whose labels can wrap — the project picker renders arbitrary project
+   names into a 240px rail — and a wrapped label fills the 32px row edge to
+   edge with only the surface's 4px gap outside it. Measured in Chromium
+   against the built assets during #2083's review.
+
+   Padding rather than truncation: a project name is how the user tells two
+   projects apart, and an ellipsis in a picker hides exactly the tail that
+   distinguishes them. This changes nothing for a single-line row, where the
+   32px floor still governs the height, and nothing on a coarse pointer, where
+   the 44px floor already leaves room. */
+.sidebar__board-menu .menu-row {
+  padding-block: var(--space-2);
+}
+
 /* The confirm's question, above the two rows that answer it. No bottom margin:
    `.menu-surface`'s own `gap` separates it from them, and a margin on top of
    that gap would space it differently from every other pair in the family. */

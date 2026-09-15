@@ -194,8 +194,20 @@ export function ProjectSidebarBoards({
    * focusout dismissal fires while the NEXT mode is already set: choosing
    * Rename mounts and focuses an input, choosing Delete mounts the confirm.
    * An unguarded `setMode({kind:'rest'})` there would close the surface the
-   * user just opened, so the close is conditional on the mode that owns it
-   * still being the current one — the same shape `TurnActionsMenu` uses.
+   * user just opened — on a phone that is the rename this menu exists to
+   * provide — so the close is conditional on the mode that owns it still being
+   * the current one. The same shape `TurnActionsMenu` uses.
+   *
+   * UNPROVEN HERE, deliberately recorded rather than left for the next reader
+   * to discover: replacing this with an unconditional reset leaves the whole
+   * of `ProjectSidebarBoards.test.tsx` green. The guard's REJECTION path needs
+   * a focusout that arrives while the mode has already moved on, and jsdom
+   * reaches neither half of that — it delivers no focusout when React removes
+   * a focused node, and by the time a test could dispatch one by hand the
+   * container's listener is gone with the effect that added it. The CLOSING
+   * path is covered (Escape routes through these callbacks). Proving the
+   * rejection needs a real engine: the mobile rename journey under
+   * `tests/`, where a live browser fires the blur this guard answers.
    */
   const closeKind = useCallback((kind: RowMode['kind']) => {
     setMode((current) => (current.kind === kind ? { kind: 'rest' } : current));

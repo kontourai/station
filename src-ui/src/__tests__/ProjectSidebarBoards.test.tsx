@@ -904,14 +904,122 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
     const trigger = openBoardMenu('Daily brief');
     expect(screen.queryByRole('menu')).not.toBeNull();
 
-    // The full gesture, pointerdown included. Dismissing on any outside press
-    // WITHOUT excusing the trigger closes the menu on pointerdown and reopens
-    // it on the click that follows, so the toggle appears to do nothing.
+    // The full gesture, pointerdown included — in TWO `act` blocks, which is
+    // the whole test. A browser delivers `pointerdown` and `click` as separate
+    // tasks with a render between them, so the click handler reads the state
+    // the pointer press left behind. Batched into one `act` React never
+    // re-renders, the click closure still holds the stale `open === true`, and
+    // the menu closes for a reason that has nothing to do with the guard:
+    // measured, not assumed — with both events in one block, deleting
+    // `ref={open ? openTriggerRef : undefined}` left this suite 30/30 green.
     act(() => {
       fireEvent.pointerDown(trigger);
+    });
+    act(() => {
       fireEvent.click(trigger);
     });
+    // Without the trigger's exemption the press closes the menu and the click
+    // that follows reopens it, so the toggle appears to do nothing.
     expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  /**
+   * THE TRANSITION CASES, and the reason the component calls `useMenuFocus`
+   * three times rather than once (`ProjectSidebarBoards.tsx`).
+   *
+   * The hook keys its effects on an open flag. A single call keyed on "some
+   * menu is open" stays true across menu → confirm and menu → picker, so it
+   * would not re-run: focus would never enter the surface that just mounted and
+   * the roving-key listener would stay bound to the container React has already
+   * removed. That argument was written in a comment and asserted by nothing,
+   * which meant the exact refactor it warns against would have landed green.
+   * These two cases are what make it a claim about the product.
+   *
+   * They matter beyond the refactor. The Delete confirm is reached on a phone
+   * from the only surface that offers rename and delete at all, and before
+   * these its focus entry, arrows, focusout and Escape were all untested.
+   */
+  test('the delete confirm takes focus and its own arrow keys', async () => {
+    boards.push({ slug: 'daily', name: 'Daily brief' });
+    await renderSidebar(<ProjectSidebar />);
+    openBoardMenu('Daily brief');
+
+    act(() => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    });
+
+    // A DIFFERENT surface, so focus has to move again. The confirm's own first
+    // command — not the row the user just left, which React has removed.
+    const confirmDelete = screen.getByRole('menuitem', { name: 'Delete' });
+    const cancel = screen.getByRole('menuitem', { name: 'Cancel' });
+    expect(document.activeElement).toBe(confirmDelete);
+
+    const arrow = (key: 'ArrowDown' | 'ArrowUp') => {
+      act(() => {
+        fireEvent.keyDown(document.activeElement ?? document.body, { key });
+      });
+    };
+    arrow('ArrowDown');
+    expect(document.activeElement).toBe(cancel);
+    arrow('ArrowDown');
+    expect(document.activeElement).toBe(confirmDelete);
+    arrow('ArrowUp');
+    expect(document.activeElement).toBe(cancel);
+
+    // Escape dismisses the confirm without deleting — the irreversible command
+    // is a press, never a dismissal.
+    act(() => {
+      fireEvent.keyDown(document.activeElement ?? document.body, {
+        key: 'Escape',
+      });
+    });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(calls.remove).toEqual([]);
+    // Not stranded on `<body>`. The trigger that opened THIS surface was a
+    // menu row the transition removed, so the shared return-focus module falls
+    // back to the nearest surviving ancestor; what is asserted is the contract
+    // that matters — focus is still somewhere inside the Board's own row.
+    const row = document.querySelector('.sidebar__board-row');
+    expect(row?.contains(document.activeElement)).toBe(true);
+  });
+
+  test('the project picker takes focus of its own', async () => {
+    boards.push({ slug: 'daily', name: 'Daily brief' });
+    projects.push(
+      { id: '1', slug: 'demo', name: 'Demo' },
+      { id: '2', slug: 'other', name: 'Other' },
+    );
+    await renderSidebar(<ProjectSidebar />);
+    openBoardMenu('Daily brief');
+
+    act(() => {
+      fireEvent.click(
+        screen.getByRole('menuitem', { name: 'Move to project…' }),
+      );
+    });
+
+    expect(document.activeElement).toBe(
+      screen.getByRole('menuitem', { name: 'Demo' }),
+    );
+    act(() => {
+      fireEvent.keyDown(document.activeElement ?? document.body, {
+        key: 'ArrowDown',
+      });
+    });
+    expect(document.activeElement).toBe(
+      screen.getByRole('menuitem', { name: 'Other' }),
+    );
+
+    // Dismissing the picker moves no Board. Promote is the one command here
+    // that silently takes a record out of the personal list.
+    act(() => {
+      fireEvent.keyDown(document.activeElement ?? document.body, {
+        key: 'Escape',
+      });
+    });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(calls.promote).toEqual([]);
+    expect(screen.getByRole('button', { name: 'Daily brief' })).toBeDefined();
   });
 
   test('collapsing the rail closes the menu rather than stranding it', async () => {
@@ -1007,8 +1115,22 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
       ),
       'utf8',
     );
+    // The retired descendant rule — the one that sized these rows at about
+    // 26px — is gone and stays gone.
     expect(boardsCssText).not.toContain('.sidebar__board-menu button');
-    expect(boardsCssText).not.toContain('.sidebar__board-menu .menu-row');
+    // ...and nothing page-local takes the row's HEIGHT back. Scoped to height
+    // rather than to the selector's existence, because this menu legitimately
+    // owns one row declaration: the `padding-block` its wrapping picker labels
+    // need, which the family's single-line members do not. A blanket "no
+    // page-local row rule" assertion would have forbidden that too, and the
+    // defect it exists to catch is a floor override, not a rule.
+    const rowRuleStart = boardsCssText.indexOf(
+      '\n.sidebar__board-menu .menu-row {',
+    );
+    if (rowRuleStart > -1) {
+      const rowRule = boardsCssText.slice(rowRuleStart);
+      expect(rowRule.slice(0, rowRule.indexOf('\n}'))).not.toContain('height');
+    }
 
     // The one declaration this menu keeps, pinned because dropping it is
     // invisible in a diff and near-invisible on screen: `.menu-surface` fills
