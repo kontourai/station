@@ -87,7 +87,8 @@ interface HeaderActionsProps {
   onOpenProfile: () => void;
   /** Opens the help menu. Never a toggle — see `openHelp` in the view model. */
   onOpenHelp: () => void;
-  onToggleNotifications: () => void;
+  /** Opens the notification popover. Never a toggle — see `useMenuTriggerToggle`. */
+  onOpenNotifications: () => void;
   onToggleSettings: () => void;
   onToggleOverflow: () => void;
   onToggleProfileMenu: () => void;
@@ -111,7 +112,7 @@ export function HeaderActions({
   onOpenConnections,
   onOpenProfile,
   onOpenHelp,
-  onToggleNotifications,
+  onOpenNotifications,
   onToggleSettings,
   onToggleOverflow,
   onToggleProfileMenu,
@@ -162,16 +163,16 @@ export function HeaderActions({
   }, [showNotifications]);
 
   /**
-   * #2081. A plain `onClick={onToggleNotifications}` could not close this
+   * #2081. A plain toggle on `onClick` could not close this
    * popover: the press that reaches it is a `mousedown` outside the panel, and
    * the panel's own `useClickOutside` shuts it on exactly that, so the toggle
    * ran against an already-false state and re-opened what the user pressed to
    * dismiss.
    *
-   * `onToggleNotifications` is the OPEN action here, and it is exact rather
-   * than approximate: the branch runs only when the popover was shut at press
-   * time, and the sole transition possible between the press and its click is a
-   * dismissal, so the state it toggles is false and toggling it opens.
+   * The trigger takes an OPEN and a CLOSE rather than the toggle this prop
+   * used to be: the hook calls one or the other from the press-time state, and
+   * a toggle on the open path would shut a popover that a hotkey or deep link
+   * had opened in the meantime.
    *
    * The other two menus in this row are NOT wired this way, and that is a
    * finding rather than an omission — see #2081. Each renders a full-viewport
@@ -182,10 +183,14 @@ export function HeaderActions({
    * its own trigger and the press lands on the backdrop, which closes it. The
    * stylesheet states the same invariant for the dock's More menu
    * (`index.css:1944-1950`). This popover is the one with no backdrop.
+   *
+   * That invariant is stated and not tested: nothing pins that a backdrop
+   * outranks its own trigger, so raising this toolbar's layer would give four
+   * menus this defect back silently. Filed as #2112.
    */
   const notificationTrigger = useMenuTriggerToggle(
     showNotifications,
-    onToggleNotifications,
+    onOpenNotifications,
     onCloseNotifications,
   );
 

@@ -14,12 +14,11 @@
  * that, and the bell's `click` then reads the already-false state and toggles
  * it straight back open. The control looked inert.
  *
- * The state under test therefore has to be REAL state with the view model's
- * own functional toggle (`useHeaderViewModel.ts:122`), not a spy: a `vi.fn()`
- * toggle records the call and never flushes anything, so the re-open — which
- * is the defect — cannot happen in front of it. The panel has to be the real
- * one for the same reason; the `useClickOutside` dismissal is the path this
- * trigger actually falls down, and a stub has none.
+ * The state under test therefore has to be REAL state, not a spy: a `vi.fn()`
+ * records the call and never flushes anything, so the re-open — which is the
+ * defect — cannot happen in front of it. The panel has to be the real one for
+ * the same reason; the `useClickOutside` dismissal is the path this trigger
+ * actually falls down, and a stub has none.
  *
  * `pointerClick` supplies the one step jsdom omits (focus moves on press) and
  * flushes React between the press and the click, so the click handler reads
@@ -69,11 +68,13 @@ import { pointerClick } from './helpers/pointer';
 /**
  * The header with its notification state held for real.
  *
- * `toggle` is `useHeaderViewModel`'s own shape — `setState((current) =>
- * !current)` — because that functional updater is half of the defect: by the
- * time it runs it reads the state a dismissal has already flushed, so it
- * cannot tell "the user asked to close this" from "something closed it a
- * moment ago and the user is opening it again".
+ * The two setters are `useHeaderViewModel`'s own shapes (`openNotifications`
+ * and `closeNotifications`). The prop used to be a single functional toggle,
+ * which was half of the defect: by the time `setState((current) => !current)`
+ * ran it read the state a dismissal had already flushed, so it could not tell
+ * "the user asked to close this" from "something closed it a moment ago and
+ * the user is opening it again". The decision moved to the trigger, so this
+ * side is now an idempotent open and an idempotent close.
  */
 function Header() {
   const [showNotifications, setShowNotifications] = useState(false);
@@ -94,7 +95,7 @@ function Header() {
       onOpenConnections={vi.fn()}
       onOpenProfile={vi.fn()}
       onOpenHelp={vi.fn()}
-      onToggleNotifications={() => setShowNotifications((current) => !current)}
+      onOpenNotifications={() => setShowNotifications(true)}
       onToggleSettings={vi.fn()}
       onToggleOverflow={vi.fn()}
       onToggleProfileMenu={vi.fn()}
@@ -146,11 +147,16 @@ describe('#2081 — the notification bell closes its own popover', () => {
     pointerClick(bell);
 
     expect(panel()).toBeNull();
-    // And the popover's return-focus contract still holds: focus is on the
-    // control the user pressed, not stranded on `document.body`, which is what
-    // `applyReturnFocus` refuses to focus and what a fix that suppressed the
-    // press-focus without replacing it would leave behind.
-    expect(document.activeElement).toBe(bell);
+    // NO RETURN-FOCUS ASSERTION HERE, deliberately. An earlier version of this
+    // test ended `expect(document.activeElement).toBe(bell)`, which reads like
+    // a check on `useMenuFocus`'s restore and is not one: `pointerClick`
+    // focuses the trigger itself whenever the press is uncancelled, which it
+    // always is for this control, so the helper satisfied the assertion
+    // whatever the product did. Deleting `applyReturnFocus` from
+    // `useMenuFocus` left it green while reddening four tests in
+    // `portalled-menu-focus.test.tsx` and `ProjectSidebarFooter.test.tsx`,
+    // which is where that contract is actually pinned. A test that retires a
+    // question it does not answer is worse than no test.
   });
 
   /**

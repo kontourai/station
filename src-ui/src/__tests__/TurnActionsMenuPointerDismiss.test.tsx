@@ -20,7 +20,7 @@
  * not reachable in that state and are left alone.
  */
 
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import TurnActionsMenu from '../components/chat/TurnActionsMenu';
 import { pointerClick } from './helpers/pointer';
@@ -46,12 +46,33 @@ describe('#2081 — the turn actions trigger closes its own menu', () => {
     // defect too.
     expect(opened?.contains(document.activeElement)).toBe(true);
 
-    pointerClick(trigger);
+    // THE CLOSING GESTURE IS SPLIT, and that is the point of this test rather
+    // than tidiness. Fired as one `pointerClick`, the whole thing rested on the
+    // helper's `act()` flush landing the dismissal before the click: delete
+    // that one line and this test passes against the restored defect, because
+    // the click then closes over a stale `open` and the re-open never happens.
+    // The reviewer showed the same removal also disarms
+    // `ProjectSidebarFooter.test.tsx`'s pointer test, 33/33 green against the
+    // presence tray's own defect — so a one-line tidy in a helper now serving
+    // three suites could silently retire two regressions.
+    //
+    // Asserting BETWEEN the press and the release removes that dependency. The
+    // press dismissing the menu is true of the browser whenever it happens, and
+    // if the flush stops landing this line reds instead of the test quietly
+    // losing its power. The second assertion is then the real claim: the click
+    // does not bring back what the press took away.
+    fireEvent.mouseDown(trigger);
+    act(() => {
+      trigger.focus();
+    });
+    expect(menu()).toBeNull();
+
+    fireEvent.click(trigger, { detail: 1 });
 
     expect(menu()).toBeNull();
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    // `useMenuFocus` restores to the trigger rather than leaving focus on
-    // `document.body`, which `applyReturnFocus` deliberately refuses.
-    expect(document.activeElement).toBe(trigger);
+    // No return-focus assertion: the press above focuses the trigger, so
+    // `document.activeElement === trigger` would hold whatever `useMenuFocus`
+    // did with it. That contract is pinned in `portalled-menu-focus.test.tsx`.
   });
 });

@@ -77,7 +77,7 @@ vi.mock('../components/header/OverflowMenu', () => ({
 
 import { HeaderActions } from '../components/header/HeaderActions';
 
-function renderHeader(onToggleNotifications = vi.fn()) {
+function renderHeader(onOpenNotifications = vi.fn()) {
   render(
     <HeaderActions
       helpPrompts={[]}
@@ -96,13 +96,13 @@ function renderHeader(onToggleNotifications = vi.fn()) {
       onOpenConnections={vi.fn()}
       onOpenProfile={vi.fn()}
       onOpenHelp={vi.fn()}
-      onToggleNotifications={onToggleNotifications}
+      onOpenNotifications={onOpenNotifications}
       onToggleSettings={vi.fn()}
       onToggleOverflow={vi.fn()}
       onViewAllNotifications={vi.fn()}
     />,
   );
-  return onToggleNotifications;
+  return onOpenNotifications;
 }
 
 function renderConnButton() {
@@ -122,7 +122,7 @@ describe('HeaderActions attention badge', () => {
 
   test('exposes the projection count in the badge and accessible label', () => {
     pendingCount = 3;
-    const onToggleNotifications = renderHeader();
+    const onOpenNotifications = renderHeader();
 
     const notifications = screen.getByRole('button', {
       name: 'Notifications (3 need attention)',
@@ -130,7 +130,7 @@ describe('HeaderActions attention badge', () => {
     expect(notifications.textContent).toContain('3');
 
     fireEvent.click(notifications);
-    expect(onToggleNotifications).toHaveBeenCalledOnce();
+    expect(onOpenNotifications).toHaveBeenCalledOnce();
   });
 
   test('does not render a badge when no session needs attention', () => {

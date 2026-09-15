@@ -33,12 +33,28 @@ import { type MouseEvent, useRef } from 'react';
  * trigger that cancels its own press has to focus itself instead —
  * `ProjectSidebarPresenceTray` does exactly that.)
  *
- * `detail === 0` is the keyboard escape hatch: a click the user agent
- * synthesises from Enter or Space has no `mousedown` before it and reports a
- * click count of zero, so there is nothing recorded for it to read and the live
- * state is the truth. Without that branch an abandoned press — pressed, dragged
- * off, released elsewhere — would leave a stale "it was open" for the next
- * keypress to spend itself on.
+ * `detail === 0` means "no press to read": a click the user agent synthesises
+ * from Enter or Space has no `mousedown` before it and reports a click count of
+ * zero, so the live state is the only truth available. Without that branch an
+ * abandoned press — pressed, dragged off, released elsewhere — would leave a
+ * stale "it was open" for the next keypress to spend itself on.
+ *
+ * WHAT THAT BRANCH COSTS, stated rather than implied: it is a test of the CLICK
+ * COUNT, not of the input device. Any stack that delivers a click with
+ * `detail: 0` after a real press — a touch or pen implementation that does not
+ * count taps, a synthetic `element.click()` — takes the live-state path and
+ * degrades to exactly the pre-fix behaviour for that gesture, because the live
+ * state is the one a dismissal has already flushed. The platforms Station ships
+ * on all report `detail: 1` for a tap, which is why this is a disclosed
+ * degradation and not a second defect; nothing here detects the difference, so
+ * a regression in it would be silent.
+ *
+ * `open` MUST BE AN OPEN, NOT A TOGGLE. The open branch runs when the menu was
+ * shut at press time, and while that is nearly always still true at click time,
+ * "nearly" is doing real work: a hotkey, a deep link or a notification arriving
+ * in that window could open the menu, and a toggle would then close what it was
+ * called to open. Handing this an idempotent open removes the question instead
+ * of reasoning about the gap.
  *
  * Spread the result onto the trigger. It owns both handlers; a caller with more
  * to do on press or click should call its own work from a wrapper rather than

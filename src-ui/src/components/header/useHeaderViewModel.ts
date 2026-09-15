@@ -119,7 +119,16 @@ export function useHeaderViewModel({
      * toggle the right shape was removed in D1.
      */
     openHelp: () => setShowHelp(true),
-    toggleNotifications: () => setShowNotifications((current) => !current),
+    /**
+     * OPEN, not toggle (#2081). `useMenuTriggerToggle` decides between opening
+     * and closing from the state the bell was in when it was PRESSED, and calls
+     * `closeNotifications` for the close half — so a toggle here would only be
+     * consulted on the open path, where toggling an already-open popover would
+     * shut it. That window is small (a hotkey or deep link landing between the
+     * press and its click) and an idempotent open removes it rather than
+     * documenting it.
+     */
+    openNotifications: () => setShowNotifications(true),
     toggleOverflow: () => setShowOverflow((current) => !current),
     toggleProfileMenu: () => setShowProfileMenu((current) => !current),
     goHome: () => showSurface('home'),
