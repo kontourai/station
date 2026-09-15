@@ -670,6 +670,39 @@ describe('execution utils', () => {
     expect(resolveProjectProviderManagedExecution(null, [] as any)).toBeNull();
   });
 
+  // The defect the project AI-model section had: `ProjectSettingsView` wrote
+  // `defaultModel` and nothing wrote `defaultProviderId`, and this leg passes
+  // `allowSingleProviderDefault: false` — so the saved model resolved to
+  // nothing however many connections existed. The pair is what applies.
+  test('a project model without a model connection resolves to nothing', () => {
+    const connections = [
+      {
+        id: 'ollama-local',
+        kind: 'model',
+        type: 'ollama',
+        name: 'Local Ollama',
+        enabled: true,
+        capabilities: ['llm'],
+        config: {},
+        status: 'ready',
+        prerequisites: [],
+      },
+    ] as any;
+
+    expect(
+      resolveProjectProviderManagedExecution(
+        { defaultModel: 'llama3.2' },
+        connections,
+      ),
+    ).toBeNull();
+    expect(
+      resolveProjectProviderManagedExecution(
+        { defaultProviderId: 'ollama-local', defaultModel: 'llama3.2' },
+        connections,
+      ),
+    ).not.toBeNull();
+  });
+
   test('resolves a global provider-managed fallback when there is exactly one llm provider', () => {
     const resolved = resolveGlobalProviderManagedExecution(
       {

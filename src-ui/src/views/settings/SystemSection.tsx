@@ -18,6 +18,7 @@ export function SystemSection({
   onExport,
   onImport,
   onResetToDefaults,
+  hasUnsavedChanges = false,
 }: {
   apiBase: string;
   config: AppConfig;
@@ -25,6 +26,13 @@ export function SystemSection({
   onExport: () => void;
   onImport: (file: File) => Promise<void>;
   onResetToDefaults: () => void;
+  /**
+   * A reset writes what the server currently stores; the draft on screen is
+   * not part of it. Pressing Save afterwards would re-store exactly the
+   * values the reset just cleared, so the reset is refused until the form
+   * agrees with the server.
+   */
+  hasUnsavedChanges?: boolean;
 }) {
   const { data: systemStatus } = useSystemStatusForApiBaseQuery(
     apiBase,
@@ -146,13 +154,22 @@ export function SystemSection({
         <button
           type="button"
           className="settings__danger-btn"
+          disabled={hasUnsavedChanges}
           onClick={onResetToDefaults}
         >
-          Reset to Defaults
+          Reset Station settings
         </button>
         <span className="settings__field-hint">
-          Restore all settings to factory defaults. Cannot be undone.
+          Clear the settings shown under Station configuration and Defaults that
+          have a stored value, so Station uses its defaults again. Settings on
+          this device are not affected. Cannot be undone.
         </span>
+        {hasUnsavedChanges && (
+          <span className="settings__field-hint">
+            Save or discard your unsaved changes first. Discard is always
+            available.
+          </span>
+        )}
       </div>
     </SettingsSection>
   );

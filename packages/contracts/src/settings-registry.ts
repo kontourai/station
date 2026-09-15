@@ -274,6 +274,12 @@ export const APP_SETTINGS_REGISTRY = [
     // toggle changes nothing today.
     description:
       'Groundwork for Station’s next knowledge storage system. Turning this on changes nothing yet — it exists for Station development.',
+    // …and why it is not rendered: a Settings control whose own description
+    // says it changes nothing is a switch that persists and does nothing.
+    // It stays settable through `station config set` for the Station
+    // development the description names; the row returns when a consumer
+    // gates on it.
+    userFacing: false,
     defaultValue: false,
   }),
   defineSetting({
