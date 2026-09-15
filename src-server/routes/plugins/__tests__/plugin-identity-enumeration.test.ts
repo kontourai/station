@@ -94,7 +94,7 @@ const { LOCAL_OPERATOR_PRINCIPAL_ID } = await import(
 const { PluginVisibilityService } = await import(
   '../../../services/plugins/plugin-visibility-service.js'
 );
-const { PLUGIN_IDENTITY_ROUTES } = await import(
+const { PLUGIN_IDENTITY_ROUTES, projectLayoutCatalogItems } = await import(
   '../plugin-identity-enumeration.js'
 );
 const { registerPluginInstallRoutes } = await import(
@@ -688,3 +688,42 @@ describe('every route that returns plugin identity is projected or operator-only
 function routeKey(route: { method: string; path: string }): string {
   return `${route.method} ${route.path}`;
 }
+
+/**
+ * The listing projection's own edge, which no route can produce.
+ *
+ * `projectLayoutCatalogItems` used to be the ONE reader in this family that
+ * failed OPEN on a plugin-origin contribution naming no plugin: it kept the
+ * item, while the layout read routes' `layoutPluginBindingWithheld` and the
+ * apply guard that calls it both withhold on exactly that shape. The real
+ * `DistributionProfileService` always sets `pluginId`, so this is asserted
+ * here rather than through a route — and a divergence nothing can reach is
+ * still a divergence the next reader inherits.
+ */
+describe('projectLayoutCatalogItems', () => {
+  const item = (provenance: Record<string, unknown> | undefined) => ({
+    contribution: provenance ? { provenance } : undefined,
+  });
+
+  test('drops a plugin contribution that names no plugin', () => {
+    expect(
+      projectLayoutCatalogItems([item({ origin: 'plugin' })], () => true),
+    ).toEqual([]);
+  });
+
+  test('keeps what it should, so the drop above is not a blanket refusal', () => {
+    const visible = item({ origin: 'plugin', pluginId: SECRET });
+    const builtin = item({ origin: 'builtin' });
+    const unattributed = item({ origin: 'plugin' });
+    expect(
+      projectLayoutCatalogItems(
+        [visible, builtin, unattributed],
+        (pluginId) => pluginId === SECRET,
+      ),
+    ).toEqual([visible, builtin]);
+    // And with no projection wired, nothing is narrowed at all.
+    expect(
+      projectLayoutCatalogItems([visible, builtin, unattributed], undefined),
+    ).toEqual([visible, builtin, unattributed]);
+  });
+});
