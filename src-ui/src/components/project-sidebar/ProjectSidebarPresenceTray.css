@@ -47,7 +47,24 @@
   border: 1px solid var(--bg-secondary);
   border-radius: 50%;
   background: var(--bg-tertiary);
-  color: var(--text-inverse, #fff);
+  /* A FIXED light literal, deliberately, and NOT a theme token.
+     `--text-inverse` was defined in no theme root, so this always rendered the
+     `#fff` fallback anyway; what the reference did was make an unthemed colour
+     look themed (station#3050).
+     The colour is right, and a theme-adaptive token here would be wrong. Every
+     identity avatar overrides `background` INLINE with
+     `hsl(<identiconHue> 45% 32%)` (ProjectSidebarPresenceTray.tsx), so the
+     `--bg-tertiary` above never applies to one: the real backdrop is a fixed
+     dark chip in BOTH themes, and its text must be fixed and light to match.
+     Measured against that chip across all 72 hues: `#fff` gives 4.75-12.02:1,
+     clearing AA everywhere, while `--text-primary` in the LIGHT theme
+     (`--k-text`, #202124) gives 1.34-3.39:1 and `--text-inverted`
+     (`--k-brand-contrast`, #1b1205) gives 1.54-3.89:1 — both fail at every
+     hue. Pointing this at either would be a real light-theme regression.
+     `--bg-tertiary` above is the backdrop only for an avatar rendered with no
+     identicon, and the one such render (`--overflow`, below) restates both its
+     background and its own themed `color`. */
+  color: #fff;
   font-size: 9px;
   font-weight: 600;
   line-height: 1;
