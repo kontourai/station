@@ -119,9 +119,12 @@ const FEATURE_META: Array<{
   {
     catalogId: 'mobile-pairing',
     key: 'mobilePairingEnabled',
+    // The toggle's only effect is mounting `MobilePairingSection` below it —
+    // it enables no pairing capability on the server. The description says
+    // that, and absorbs the privacy note rather than repeating the same
+    // sentence twice in one row.
     description:
-      'Show QR code and LAN discovery for connecting mobile devices to this server.',
-    privacyNote: 'Detects your local IP address via WebRTC when enabled.',
+      'Show the pairing QR code and LAN discovery panel below. While it is shown, this device detects its own local IP address via WebRTC.',
   },
   {
     catalogId: 'tts-readback',
