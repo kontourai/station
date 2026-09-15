@@ -3684,7 +3684,8 @@ describe('ClaudeAdapter', () => {
       // "the connection's value was dropped" with "there is no value at all".
       // The second only holds on a machine where `CLAUDE_CONFIG_DIR` happens
       // to be unset, so the test passed in CI and on an unconfigured laptop
-      // and failed for anyone running Claude Code with a config home set.
+      // and failed for anyone running Claude Code with a config home set
+      // (#2136).
       // The spawned child inherits the operator's, which is intended.
       //
       // Pinning the ambient value makes the real property observable in both
@@ -3737,27 +3738,43 @@ describe('ClaudeAdapter', () => {
     });
 
     test('a connection-env lookup failure degrades to the unaugmented env with a warning — never blocks the session', async () => {
-      mockQuery.mockReturnValue(createMockQuery([]));
-      const warn = vi.fn();
-      const adapter = new ClaudeAdapter({
-        getConnectionEnv: async () => {
-          throw new Error('config store exploded');
-        },
-        logger: { warn },
-      });
-      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      // "Unaugmented" means the operator's own environment, so the ambient
+      // value is stubbed and asserted rather than assumed absent (#2128).
+      //
+      // This read `toBeUndefined()`, which is only true when the developer
+      // has no ANTHROPIC_BASE_URL set. Anyone pointing their shell at a local
+      // proxy -- which is the population most likely to touch this adapter --
+      // saw their own value arrive and the test fail, for a reason that is
+      // the intended behaviour. Pinning it asserts the actual subject: a
+      // failed lookup adds NOTHING, and takes nothing away either.
+      vi.stubEnv('ANTHROPIC_BASE_URL', 'http://operator.example/base');
+      try {
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const warn = vi.fn();
+        const adapter = new ClaudeAdapter({
+          getConnectionEnv: async () => {
+            throw new Error('config store exploded');
+          },
+          logger: { warn },
+        });
+        const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
-      await adapter.startSession({
-        provider: 'claude',
-        threadId: 'thread-connection-env-failure',
-      });
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-connection-env-failure',
+        });
 
-      const call = mockQuery.mock.calls.at(-1)?.[0];
-      expect(call.options.env.ANTHROPIC_BASE_URL).toBeUndefined();
-      expect(call.options.env.TMPDIR).toBe(engineSpawnTmpDirPath());
-      expect(warn).toHaveBeenCalledTimes(1);
-      await iterator.next();
-      await iterator.next();
+        const call = mockQuery.mock.calls.at(-1)?.[0];
+        expect(call.options.env.ANTHROPIC_BASE_URL).toBe(
+          'http://operator.example/base',
+        );
+        expect(call.options.env.TMPDIR).toBe(engineSpawnTmpDirPath());
+        expect(warn).toHaveBeenCalledTimes(1);
+        await iterator.next();
+        await iterator.next();
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
 
     test('a source-affinity cold resume keeps the connection routing keys and drops the config-home key', async () => {
