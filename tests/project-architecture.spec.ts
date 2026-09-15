@@ -18,8 +18,8 @@ import {
   expectRegionTabs,
   FIRST_RENDER_TIMEOUT_MS,
   moveRegionThroughGrab,
-  showSurfaceInEmptyRegion,
   showRegionThroughOverflowMenu,
+  showSurfaceInEmptyRegion,
   surfaceDockShell,
 } from './helpers/region-placement';
 import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
