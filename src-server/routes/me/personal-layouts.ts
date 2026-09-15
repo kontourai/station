@@ -14,7 +14,10 @@
  * its path segment for the same reason (#2060).
  */
 import { randomUUID } from 'node:crypto';
-import type { LayoutOwner } from '@kontourai/station-contracts/layout';
+import type {
+  LayoutOwner,
+  LayoutReadView,
+} from '@kontourai/station-contracts/layout';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { AgentOwnershipRef } from '@kontourai/station-contracts/project-reference-integrity';
 import { type Context, Hono } from 'hono';
@@ -246,10 +249,12 @@ export function createPersonalLayoutRoutes(
       const paneReferences = resolveLayoutPaneReferences(board, {
         canSeePlugin: viewerPluginSight(c),
       });
-      return c.json({
-        success: true,
-        data: paneReferences ? { ...board, paneReferences } : board,
-      });
+      // Assigned to a typed binding rather than spread into a literal: a
+      // misspelling in a spread is not excess-property-checked (#2090
+      // review), so the field would silently vanish from the response.
+      const data: LayoutReadView = { ...board };
+      if (paneReferences) data.paneReferences = paneReferences;
+      return c.json({ success: true, data });
     }),
   );
 
@@ -273,10 +278,9 @@ export function createPersonalLayoutRoutes(
       const verdict = resolveLayoutPaneReferences(updated, {
         canSeePlugin: viewerPluginSight(c),
       });
-      return c.json({
-        success: true,
-        data: verdict ? { ...updated, paneReferences: verdict } : updated,
-      });
+      const data: LayoutReadView = { ...updated };
+      if (verdict) data.paneReferences = verdict;
+      return c.json({ success: true, data });
     }),
   );
 

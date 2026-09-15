@@ -921,3 +921,46 @@ describe('a withheld read-modify-write preserves the whole record', () => {
     });
   });
 });
+
+describe('the restore does not let a withheld caller plant a key', () => {
+  test('a key the stored record lacks is not persisted by a withheld write', async () => {
+    // The restore's fail-closed half: it does not merely copy stored keys
+    // in, it removes any of its keys the stored record does NOT have. Every
+    // other fixture on this branch stores all three, so deleting that half
+    // survived uncaught. It cannot reopen the oracle — the value is the
+    // caller's own — but a config key that appears from a withheld write is
+    // a write the caller could not see the effect of.
+    const { app, storage } = await seeded({ canSeePlugin: () => false });
+    await app.request('/demo/layouts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        slug: 'sparse',
+        name: 'Sparse',
+        // A plugin binding and tabs, and deliberately NO `actions`.
+        config: {
+          plugin: PLUGIN_NAME,
+          tabs: [{ id: 'a', label: 'A', component: `${PLUGIN_NAME}-a` }],
+        },
+      }),
+    });
+    expect(storage.getLayout('demo', 'sparse').config.actions).toBeUndefined();
+
+    const written = await app.request('/demo/layouts/sparse', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Sparse',
+        config: {
+          tabs: [{ id: 'a', label: 'A', component: `${PLUGIN_NAME}-a` }],
+          actions: [{ label: 'Planted', type: 'prompt', data: 'x' }],
+        },
+      }),
+    });
+    expect(written.status).toBe(200);
+    const stored = storage.getLayout('demo', 'sparse');
+    expect(stored.config.actions).toBeUndefined();
+    // The control: the binding the record DID have is still restored.
+    expect(stored.config.plugin).toBe(PLUGIN_NAME);
+  });
+});

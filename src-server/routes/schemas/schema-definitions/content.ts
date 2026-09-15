@@ -304,7 +304,7 @@ export const personalLayoutCreateSchema = z
  *
  * The tolerance itself is narrower than it first looks, and the earlier
  * rationale here overstated it. A FULL read-modify-write of the GET response
- * is refused by this schema anyway, on `id`, `projectSlug`/`owner`,
+ * is refused by this schema anyway, on `id`, `slug`, `projectSlug`/`owner`,
  * `createdAt` and `updatedAt`. So tolerating this key only helps a client
  * that already strips those and keeps this one. It is kept because that
  * client is the reasonable one — it round-trips the fields this family says

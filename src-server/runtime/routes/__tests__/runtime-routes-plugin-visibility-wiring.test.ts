@@ -19,12 +19,12 @@
  * ## What it checks, and the two halves that make it not vacuous
  *
  * `runtime-routes.ts` cannot be imported and driven here: it builds the whole
- * runtime. So the first half is a SOURCE assertion — scoped to the factory's
- * own balanced argument list rather than to the file, and with comments and
- * string literals blanked, so a `canSeePlugin` that is commented out, inside
- * a string, in a different call, or in an unrelated object does not satisfy
- * it. The comment case is not hypothetical: the first version of this file
- * claimed it and did not do it, and a commented-out mount passed.
+ * runtime. So the first half is a SOURCE assertion — but over the mount's
+ * SYNTAX TREE, not its text, so a `canSeePlugin` that is commented out,
+ * inside a string, in a decoy call, or in an unrelated object cannot satisfy
+ * it. Three earlier versions of this file were text scans and all three
+ * claimed that property without having it; `mountedVisibilityKey` records
+ * what each one let through.
  *
  * A source assertion alone is satisfied by a string, so the second half
  * takes the property name the scan just found in the source and BUILDS each
@@ -42,6 +42,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import ts from 'typescript';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 
@@ -86,104 +87,87 @@ afterEach(() => {
 });
 
 /**
- * One factory call's own argument list, with every comment and string
- * literal BLANKED to spaces.
+ * The dependency key each real call to `callee` supplies, read from the
+ * mount's own syntax tree.
  *
- * Both halves matter and the first version had only one. It counted parens
- * without knowing about comments or strings, and claimed in this docblock
- * that a mention in a comment would not satisfy the assertion — it would:
- * replacing the mount lines with commented-out copies left the whole file
- * green while production composed with no projection at all. The paren
- * counting is the same state machine
- * `scripts/plugin-identity-enumeration-scan.mjs`'s `handlerBody` uses (that
- * one is not exported, so it is reproduced here rather than duplicated by
- * accident), and blanking rather than deleting keeps every offset stable so
- * a reported position still means something.
+ * ## Why a parser and not a scan
+ *
+ * Two earlier versions of this file were hand-rolled text scans and both
+ * claimed a property they did not have. The first counted parens with no
+ * comment awareness, so a commented-out mount passed. The second blanked
+ * comments and strings in the BODY but anchored with a raw `indexOf`, so a
+ * commented-out call — or a docblock above the mount describing its shape,
+ * which is an ordinary thing to write — became the match and the real mount
+ * was never read; the behavioural half did not save it, because it then
+ * built its dependencies under the key it had found in the comment.
+ *
+ * A third version blanked comments and strings before anchoring too, and the
+ * docblock decoy STILL passed: a hand-rolled JavaScript tokenizer has to
+ * know about regular-expression literals to stay in sync across three
+ * thousand lines, and mine did not. Rather than keep repairing a tokenizer,
+ * this asks the compiler. Comments are not nodes, a string is a
+ * `StringLiteral` and never a `CallExpression`, and "which properties does
+ * this call's object argument declare" has an exact answer. `typescript` is
+ * already a test-time dependency for source assertions of this shape
+ * (`pairing-route-leaf-scan.ts`, `tool-policy-delivery-tripwire.test.ts`).
+ *
+ * EVERY real call must supply the key, not merely one of them: two mounts of
+ * the same factory where only one is projected is exactly the composition
+ * this exists to refuse.
  */
-function factoryCallArguments(source: string, callee: string): string {
-  const start = source.indexOf(`${callee}(`);
-  if (start === -1) throw new Error(`${callee} is not called in the mount`);
-  const out: string[] = [];
-  let depth = 0;
-  let quote: string | null = null;
-  let comment: 'line' | 'block' | null = null;
-  for (let i = start + callee.length; i < source.length; i += 1) {
-    const ch = source[i] as string;
-    const next = source[i + 1];
-    const keep = (value: string) => {
-      if (depth > 0) out.push(value);
-    };
-    if (comment === 'line') {
-      keep(ch === '\n' ? '\n' : ' ');
-      if (ch === '\n') comment = null;
-      continue;
-    }
-    if (comment === 'block') {
-      keep(ch === '\n' ? '\n' : ' ');
-      if (ch === '*' && next === '/') {
-        keep(' ');
-        comment = null;
-        i += 1;
-      }
-      continue;
-    }
-    if (quote) {
-      keep(' ');
-      if (ch === '\\') {
-        keep(' ');
-        i += 1;
-        continue;
-      }
-      if (ch === quote) quote = null;
-      continue;
-    }
-    if (ch === '/' && next === '/') {
-      keep('  ');
-      comment = 'line';
-      i += 1;
-      continue;
-    }
-    if (ch === '/' && next === '*') {
-      keep('  ');
-      comment = 'block';
-      i += 1;
-      continue;
-    }
-    if (ch === "'" || ch === '"' || ch === '`') {
-      keep(' ');
-      quote = ch;
-      continue;
-    }
-    if (ch === '(') {
-      depth += 1;
-      if (depth > 1) out.push(ch);
-      continue;
-    }
-    if (ch === ')') {
-      depth -= 1;
-      if (depth === 0) return out.join('');
-      out.push(ch);
-      continue;
-    }
-    keep(ch);
-  }
-  throw new Error(`${callee}'s argument list is unbalanced`);
-}
-
-/** The dependency key, read out of the mount rather than restated here. */
 function mountedVisibilityKey(callee: string): string {
-  const args = factoryCallArguments(
+  const source = ts.createSourceFile(
+    RUNTIME_ROUTES,
     readFileSync(RUNTIME_ROUTES, 'utf8'),
-    callee,
+    ts.ScriptTarget.Latest,
+    true,
   );
-  const match = args.match(/(?<!\w)(canSeePlugin)\s*:/);
-  if (!match) {
+  const calls: ts.CallExpression[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === callee
+    ) {
+      calls.push(node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  if (calls.length === 0) {
     throw new Error(
-      `${callee} is mounted WITHOUT a plugin-visibility dependency. ` +
-        'Every layout answer this composition gives is then unprojected.',
+      `${callee} is not CALLED in the mount — a mention in a comment or a ` +
+        'string is not a call.',
     );
   }
-  return match[1] as string;
+
+  for (const call of calls) {
+    const declared = new Set<string>();
+    let spread = false;
+    for (const argument of call.arguments) {
+      if (!ts.isObjectLiteralExpression(argument)) continue;
+      for (const property of argument.properties) {
+        if (ts.isSpreadAssignment(property)) {
+          spread = true;
+          continue;
+        }
+        const name = property.name;
+        if (name && (ts.isIdentifier(name) || ts.isStringLiteral(name))) {
+          declared.add(name.text);
+        }
+      }
+    }
+    if (declared.has('canSeePlugin')) continue;
+    // Fails in the SAFE direction and says so rather than tolerating it: a
+    // dependency object assembled elsewhere and spread in is invisible to
+    // this check, so it refuses instead of guessing.
+    throw new Error(
+      `${callee} is mounted WITHOUT a plugin-visibility dependency` +
+        (spread ? ' that this check can see (it arrives by spread)' : '') +
+        '. Every layout answer this composition gives is then unprojected.',
+    );
+  }
+  return 'canSeePlugin';
 }
 
 describe('the runtime mount supplies plugin visibility to both layout families', () => {

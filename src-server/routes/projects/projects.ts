@@ -1245,24 +1245,23 @@ export function createProjectRoutes(
             },
           )
         : [];
-      // Typed against the contract so the wire key is checked here rather
-      // than spelled independently on each side (#2090 review LOW-10). The
-      // extra member is named rather than left to an index signature: a
-      // `Record<string, unknown>` half turns excess-property checking OFF,
-      // so a misspelled `paneReference` would compile and the field would
-      // simply vanish from the response.
+      // Typed against the contract, and ASSIGNED rather than spread, so the
+      // wire key is really checked (#2090 review). Naming the extra member
+      // instead of an index signature was not enough on its own: TypeScript
+      // does not excess-property-check spread-originated properties, so
+      // `...(x ? { paneReferencess: x } : {})` typechecked clean and the
+      // field simply vanished from the response. A direct assignment to a
+      // typed binding does error (probed: TS2551).
       const data: LayoutReadView & { _integrityDiagnostics?: unknown } = {
         ...derived,
-        ...(diagnostics.length > 0
-          ? { _integrityDiagnostics: diagnostics }
-          : {}),
-        // #2090. Response-only, and absent unless something really is
-        // withheld — `PUT` strips it back off for the same reason the
-        // derived working directory is stripped: the storage schema is
-        // `.strict()`, so a client that read this record and PUT it back
-        // would otherwise be refused by storage.
-        ...(paneReferences ? { paneReferences } : {}),
       };
+      if (diagnostics.length > 0) data._integrityDiagnostics = diagnostics;
+      // #2090. Response-only, and absent unless something really is
+      // withheld — `PUT` strips it back off for the same reason the derived
+      // working directory is stripped: the storage schema is `.strict()`, so
+      // a client that read this record and PUT it back would otherwise be
+      // refused by storage.
+      if (paneReferences) data.paneReferences = paneReferences;
       return c.json({ success: true, data });
     } catch (error: unknown) {
       // An author's retired key is a 400 they can act on, not the storage
@@ -1320,6 +1319,13 @@ export function createProjectRoutes(
         //    `withPluginBindingRestored`, which shares its key list with the
         //    strip — the first version of this restored `plugin` and lost
         //    `actions` and `globalSkills`, and nothing re-derives `actions`.
+        //
+        // DISCLOSED ORDERING (#2090 review): the agent-reference validation
+        // below runs on the PRE-restore config, so a withheld caller's write
+        // is not validated over the keys the restore puts back. There is no
+        // loss and no leak — those values are the stored ones, which were
+        // validated when they were written — but a visible caller gets a 400
+        // where a withheld one gets a 200 for the same stored content.
         const withheld = layoutPluginBindingWithheld(existing, {
           canSeePlugin: viewerPluginSight(c),
         });
@@ -1396,8 +1402,8 @@ export function createProjectRoutes(
           : persisted;
         const data: LayoutReadView = {
           ...withDerivedWorkingDirectory(answered, derived),
-          ...(paneReferences ? { paneReferences } : {}),
         };
+        if (paneReferences) data.paneReferences = paneReferences;
         return c.json({ success: true, data });
       } catch (error: unknown) {
         const message = errorMessage(error);
