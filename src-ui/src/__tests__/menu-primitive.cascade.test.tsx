@@ -30,6 +30,44 @@
  * on one x — a row that forgot its glyph slot satisfies all three and still
  * starts its label 24px to the left, which is precisely the misalignment D4 set
  * out to remove.
+ *
+ * #2113 — THE COARSE BRANCH. The 32px row above is the FINE-pointer floor. The
+ * family also declares a touch floor, `.menu-row.menu-row { min-height: 44px }`
+ * inside `@media (max-width: 768px), (pointer: coarse)` in chat.css, and until
+ * now nothing measured it for any member: this fixture ran one page with no
+ * `hasTouch`, so every number it reported came from the fine arm, and the only
+ * check on the 44 was a test reading the stylesheet as text. A declaration is
+ * not a cascade for the coarse branch either.
+ *
+ * SHAPE — A SECOND CONTEXT, NOT A SECOND ROW AND NOT A SECOND FILE. The branch
+ * is selected by a device capability, so only a differently-configured browser
+ * context can reach it: `browser.newContext({ hasTouch: true })`. A media
+ * override, a `matchMedia` stub or a scan of the CSS text would all report on
+ * something other than what Chromium resolved, which is the whole point of
+ * having a real engine here. It is not a new row in `MENUS` because the branch
+ * is not another menu — every menu already in the table has both floors, and
+ * one table measured twice is what says so.
+ *
+ * The two contexts share ONE page markup (`fixtureHtml()` is built once, in
+ * jsdom, and is byte-identical for both): the branch under test is a cascade
+ * outcome, so re-rendering would vary the input this file exists to hold still.
+ * Both contexts are 1456px wide, so `(max-width: 768px)` — the media rule's
+ * OTHER arm, the one that would make a 44 mean "this is a phone" rather than
+ * "this is a finger" — matches in NEITHER, and `pointer` is the only thing that
+ * differs. `the two contexts differ in pointer and in nothing else` asserts
+ * exactly that, so a 44 here cannot be attributed to width.
+ *
+ * The coarse expectations sit in their own `describe` beside the fine ones
+ * rather than folded into them, because they are a different claim about the
+ * same rows: 32-and-a-laid-out-32 versus 44-and-a-laid-out-44. Reading the two
+ * blocks side by side is how a reviewer sees which floor belongs to which
+ * device — folding them into one parameterized assertion would hide that behind
+ * a variable. What the coarse block does NOT restate is the rest of the spec:
+ * `nothing but the row floor moves` compares the coarse measurement against the
+ * fine one field by field, so the radius, inset, glyph slot, label x and absent
+ * rules are proven unchanged under touch without a second copy of their numbers
+ * — and the Layout picker, which declares no floor of its own, is covered by
+ * that comparison rather than silently dropping out of the coarse block.
  */
 
 import { dirname, resolve } from 'node:path';
@@ -304,113 +342,152 @@ function fixtureHtml(): string {
 </html>`;
 }
 
+type MeasuredRow = {
+  text: string;
+  minHeight: number;
+  rowLeft: number;
+  height: number;
+  paddingLeft: number;
+  labelOffset: number;
+  borderTop: number;
+  borderBottom: number;
+  hasGlyphSlot: boolean;
+  slotWidth: number;
+};
+
+type MeasuredMenu = {
+  name: string;
+  surface: { radius: number; padding: number; rowGap: number };
+  rows: MeasuredRow[];
+};
+
+type Measurement = {
+  /** What Chromium itself answered, not what the context requested. */
+  pointerIsCoarse: boolean;
+  /**
+   * The other arm of `@media (max-width: 768px), (pointer: coarse)`. False in
+   * both contexts, so a coarse floor is attributable to the pointer alone.
+   */
+  viewportIsNarrow: boolean;
+  menus: MeasuredMenu[];
+};
+
+/**
+ * One page in one browser context, measured. `hasTouch` is the only input that
+ * differs between the two calls — same browser, same viewport, same markup.
+ */
+async function measure(
+  browser: Awaited<ReturnType<typeof chromium.launch>>,
+  html: string,
+  hasTouch: boolean,
+): Promise<Measurement> {
+  const context = await browser.newContext({
+    viewport: { width: 1456, height: 900 },
+    hasTouch,
+  });
+  const page = await context.newPage();
+  try {
+    await page.setContent(html);
+    return await page.evaluate(
+      (
+        menus: {
+          name: string;
+          selector: string;
+          rowSelector?: string;
+        }[],
+      ) => {
+        const px = (value: string) =>
+          Math.round(Number.parseFloat(value || '0'));
+        return {
+          pointerIsCoarse: window.matchMedia('(pointer: coarse)').matches,
+          viewportIsNarrow: window.matchMedia('(max-width: 768px)').matches,
+          menus: menus.map((menu) => {
+            const panel = document.querySelector(menu.selector);
+            if (!panel) throw new Error(`no panel for ${menu.name}`);
+            const panelStyle = getComputedStyle(panel);
+            // Every row of the family, wherever it sits — including inside a
+            // `.menu-group`, which is where the retired group hairlines were.
+            const rows = [
+              ...panel.querySelectorAll(menu.rowSelector ?? '.menu-row'),
+            ];
+            return {
+              name: menu.name,
+              surface: {
+                radius: px(panelStyle.borderTopLeftRadius),
+                padding: px(panelStyle.paddingTop),
+                rowGap: px(panelStyle.rowGap),
+              },
+              rows: rows.map((row) => {
+                const style = getComputedStyle(row);
+                const rowRect = row.getBoundingClientRect();
+                const slot = row.querySelector(
+                  '.menu-row__glyph, .region-placement__glyph',
+                );
+                // The label's own left edge, from a Range over the text node
+                // that carries it — the thing a reader's eye lines up on.
+                // The row's own label: its direct text node, or — for the
+                // picker, whose label is wrapped so the segments can sit
+                // opposite it — the text node beside the glyph slot.
+                const labelHost =
+                  row.querySelector('.region-placement__surface') ?? row;
+                const label = [...labelHost.childNodes].find(
+                  (node) =>
+                    node.nodeType === Node.TEXT_NODE &&
+                    (node.textContent ?? '').trim().length > 0,
+                );
+                const range = document.createRange();
+                if (label) range.selectNodeContents(label);
+                return {
+                  text: (row.textContent ?? '').trim().slice(0, 40),
+                  minHeight: px(style.minHeight),
+                  rowLeft: Math.round(rowRect.left),
+                  height: Math.round(rowRect.height),
+                  paddingLeft: px(style.paddingLeft),
+                  labelOffset: label
+                    ? Math.round(
+                        range.getBoundingClientRect().left - rowRect.left,
+                      )
+                    : -1,
+                  borderTop: px(style.borderTopWidth),
+                  borderBottom: px(style.borderBottomWidth),
+                  hasGlyphSlot: slot !== null,
+                  slotWidth: slot
+                    ? Math.round(slot.getBoundingClientRect().width)
+                    : -1,
+                };
+              }),
+            };
+          }),
+        };
+      },
+      MENUS.map((menu) => ({
+        name: menu.name,
+        selector: menu.selector,
+        rowSelector: menu.rowSelector,
+      })),
+    );
+  } finally {
+    await page.close();
+    await context.close();
+  }
+}
+
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 
 describe.skipIf(!chromiumAvailable)(
   'every menu in the shell resolves to one spec (#1552 D4)',
   () => {
     let browser: Awaited<ReturnType<typeof chromium.launch>>;
-    let measured: {
-      name: string;
-      surface: { radius: number; padding: number; rowGap: number };
-      rows: {
-        text: string;
-        minHeight: number;
-        rowLeft: number;
-        height: number;
-        paddingLeft: number;
-        labelOffset: number;
-        borderTop: number;
-        borderBottom: number;
-        hasGlyphSlot: boolean;
-        slotWidth: number;
-      }[];
-    }[];
+    let fine: Measurement;
+    let coarse: Measurement;
 
     beforeAll(async () => {
       browser = await chromium.launch();
-      const page = await browser.newPage({
-        viewport: { width: 1456, height: 900 },
-      });
-      try {
-        await page.setContent(fixtureHtml());
-        measured = await page.evaluate(
-          (
-            menus: {
-              name: string;
-              selector: string;
-              rowSelector?: string;
-            }[],
-          ) => {
-            const px = (value: string) =>
-              Math.round(Number.parseFloat(value || '0'));
-            return menus.map((menu) => {
-              const panel = document.querySelector(menu.selector);
-              if (!panel) throw new Error(`no panel for ${menu.name}`);
-              const panelStyle = getComputedStyle(panel);
-              // Every row of the family, wherever it sits — including inside a
-              // `.menu-group`, which is where the retired group hairlines were.
-              const rows = [
-                ...panel.querySelectorAll(menu.rowSelector ?? '.menu-row'),
-              ];
-              return {
-                name: menu.name,
-                surface: {
-                  radius: px(panelStyle.borderTopLeftRadius),
-                  padding: px(panelStyle.paddingTop),
-                  rowGap: px(panelStyle.rowGap),
-                },
-                rows: rows.map((row) => {
-                  const style = getComputedStyle(row);
-                  const rowRect = row.getBoundingClientRect();
-                  const slot = row.querySelector(
-                    '.menu-row__glyph, .region-placement__glyph',
-                  );
-                  // The label's own left edge, from a Range over the text node
-                  // that carries it — the thing a reader's eye lines up on.
-                  // The row's own label: its direct text node, or — for the
-                  // picker, whose label is wrapped so the segments can sit
-                  // opposite it — the text node beside the glyph slot.
-                  const labelHost =
-                    row.querySelector('.region-placement__surface') ?? row;
-                  const label = [...labelHost.childNodes].find(
-                    (node) =>
-                      node.nodeType === Node.TEXT_NODE &&
-                      (node.textContent ?? '').trim().length > 0,
-                  );
-                  const range = document.createRange();
-                  if (label) range.selectNodeContents(label);
-                  return {
-                    text: (row.textContent ?? '').trim().slice(0, 40),
-                    minHeight: px(style.minHeight),
-                    rowLeft: Math.round(rowRect.left),
-                    height: Math.round(rowRect.height),
-                    paddingLeft: px(style.paddingLeft),
-                    labelOffset: label
-                      ? Math.round(
-                          range.getBoundingClientRect().left - rowRect.left,
-                        )
-                      : -1,
-                    borderTop: px(style.borderTopWidth),
-                    borderBottom: px(style.borderBottomWidth),
-                    hasGlyphSlot: slot !== null,
-                    slotWidth: slot
-                      ? Math.round(slot.getBoundingClientRect().width)
-                      : -1,
-                  };
-                }),
-              };
-            });
-          },
-          MENUS.map((menu) => ({
-            name: menu.name,
-            selector: menu.selector,
-            rowSelector: menu.rowSelector,
-          })),
-        );
-      } finally {
-        await page.close();
-      }
+      // Built ONCE and handed to both contexts: the markup is the control, the
+      // pointer is the variable.
+      const html = fixtureHtml();
+      fine = await measure(browser, html, false);
+      coarse = await measure(browser, html, true);
     });
 
     afterAll(async () => {
@@ -424,10 +501,10 @@ describe.skipIf(!chromiumAvailable)(
     test('all seven menus render, and every one of them has rows to measure', () => {
       // The precondition. A selector that stopped matching would otherwise take
       // its menu silently out of every assertion below.
-      expect(measured.map((menu) => menu.name)).toEqual(
+      expect(fine.menus.map((menu) => menu.name)).toEqual(
         MENUS.map((menu) => menu.name),
       );
-      for (const menu of measured) {
+      for (const menu of fine.menus) {
         expect(
           menu.rows.length,
           `${menu.name} rendered no rows`,
@@ -436,7 +513,7 @@ describe.skipIf(!chromiumAvailable)(
     });
 
     test('one surface spec: 8px radius, 6px padding, a 4px group gap', () => {
-      for (const menu of measured) {
+      for (const menu of fine.menus) {
         expect(menu.surface, menu.name).toEqual({
           radius: 8,
           padding: 6,
@@ -446,7 +523,7 @@ describe.skipIf(!chromiumAvailable)(
     });
 
     test('one row spec: a 32px floor, a 12px inset, and a 16px glyph slot on every row', () => {
-      for (const [index, menu] of measured.entries()) {
+      for (const [index, menu] of fine.menus.entries()) {
         const declaresFloor = MENUS[index]?.rowsDeclareFloor !== false;
         for (const row of menu.rows) {
           const where = `"${row.text}" in ${menu.name}`;
@@ -469,7 +546,7 @@ describe.skipIf(!chromiumAvailable)(
 
     test('every label in every menu starts at the same x inside its row', () => {
       const offsets = new Map<number, string[]>();
-      for (const menu of measured) {
+      for (const menu of fine.menus) {
         for (const row of menu.rows) {
           // -1 means the row carries no direct label text node. No row does
           // today; if one appears, this must red rather than be skipped, because
@@ -495,13 +572,78 @@ describe.skipIf(!chromiumAvailable)(
     });
 
     test('no row anywhere carries a rule — a group is named, never fenced', () => {
-      for (const menu of measured) {
+      for (const menu of fine.menus) {
         for (const row of menu.rows) {
           const where = `"${row.text}" in ${menu.name}`;
           expect(row.borderTop, `${where} top rule`).toBe(0);
           expect(row.borderBottom, `${where} bottom rule`).toBe(0);
         }
       }
+    });
+
+    describe('and under a coarse pointer, to its touch floor (#2113)', () => {
+      test('the two contexts differ in pointer, and in nothing else that selects the branch', () => {
+        // The precondition for everything below. If `hasTouch` stopped
+        // flipping Chromium's primary pointer type, the "coarse" measurement
+        // would silently be a second reading of the fine branch — so this
+        // reads what the ENGINE resolved, not what the context requested.
+        expect(fine.pointerIsCoarse, 'the fine context').toBe(false);
+        expect(coarse.pointerIsCoarse, 'the coarse context').toBe(true);
+        // `@media (max-width: 768px), (pointer: coarse)` has two arms. Both
+        // contexts are 1456px wide, so the width arm matches in neither and a
+        // 44 below is attributable to the pointer alone.
+        expect(fine.viewportIsNarrow, 'the fine context').toBe(false);
+        expect(coarse.viewportIsNarrow, 'the coarse context').toBe(false);
+      });
+
+      test('every command row rises from the 32px floor to a 44px one', () => {
+        // `rowsDeclareFloor: false` is the only way a menu can leave this
+        // assertion, which makes it a lever: setting it on a menu whose rows
+        // stopped reaching 44 would turn a red into a green. Pinned, so that
+        // has to be an argued edit rather than a quiet one. The Layout
+        // picker's own coarse geometry is a gap reported on #2113, not a
+        // claim this file makes.
+        expect(
+          MENUS.filter((menu) => menu.rowsDeclareFloor === false).map(
+            (menu) => menu.name,
+          ),
+        ).toEqual(['the header’s Layout picker']);
+
+        for (const [index, menu] of coarse.menus.entries()) {
+          if (MENUS[index]?.rowsDeclareFloor === false) continue;
+          for (const row of menu.rows) {
+            const where = `"${row.text}" in ${menu.name}`;
+            expect(row.minHeight, `${where} coarse row floor`).toBe(44);
+            // The floor is only a floor. This is the laid-out box a finger
+            // actually lands on, which is the claim the 44 stands for.
+            expect(
+              row.height,
+              `${where} coarse laid-out height`,
+            ).toBeGreaterThanOrEqual(44);
+          }
+        }
+      });
+
+      test('nothing but the row floor moves: the rest of the spec is the same under touch', () => {
+        // The counterpart to the assertion above, and what keeps the Layout
+        // picker in the coarse block rather than dropping out of it: every
+        // other measured property — radius, padding, group gap, inset, glyph
+        // slot, label x, absent rules — is compared against the fine
+        // measurement it already proved correct, so a touch context that
+        // disturbed one of them reds HERE without a second copy of its
+        // numbers. `minHeight` and `height` are the two that are meant to
+        // differ, and are dropped by key so a property added to
+        // `MeasuredRow` later is compared by default rather than forgotten.
+        const withoutHeights = (menu: MeasuredMenu) =>
+          JSON.parse(
+            JSON.stringify(menu, (key, value) =>
+              key === 'minHeight' || key === 'height' ? undefined : value,
+            ),
+          );
+        expect(coarse.menus.map(withoutHeights)).toEqual(
+          fine.menus.map(withoutHeights),
+        );
+      });
     });
   },
 );
