@@ -106,8 +106,11 @@ const DefaultLayout: AgentLayoutComponent = ({ layout, onShowChat }) => (
  */
 export const LAYOUT_TAB_UNAVAILABLE_MESSAGE = 'This tab is not available.';
 
+// No `role="status"`: this is the slot's permanent content for this reader,
+// not something that becomes true while they are looking at it, and a live
+// region announces on mount.
 const UnavailableLayoutTab: AgentLayoutComponent = () => (
-  <div className="workspace-default" role="status">
+  <div className="workspace-default">
     <Empty
       variant="prominent"
       label="Tab not available"

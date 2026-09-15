@@ -50,13 +50,6 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 vi.mock('../../../telemetry/metrics.js', () => ({
   registryOps: { add: vi.fn() },
   sseOps: { add: vi.fn() },
-  // `createProjectRoutes` imports these by name; a missing export is an
-  // import-time failure, not a silent undefined.
-  projectOps: { add: vi.fn() },
-  projectPaneCatalogDuration: { record: vi.fn() },
-  projectResolutionRouteRequests: { add: vi.fn() },
-  projectBindingOperations: { add: vi.fn() },
-  workspacePaneAvailabilityResolutions: { add: vi.fn() },
 }));
 
 vi.mock('../../../providers/registries/registry.js', () => {
@@ -104,13 +97,6 @@ const { registerPluginLifecycleRoutes } = await import(
   '../plugin-lifecycle-routes.js'
 );
 const { createRegistryRoutes } = await import('../registry.js');
-const { createProjectRoutes } = await import('../../projects/projects.js');
-const { FileStorageAdapter } = await import(
-  '../../../domain/file-storage-adapter.js'
-);
-const { ProjectService } = await import(
-  '../../../services/projects/project-service.js'
-);
 const { Hono: HonoApp } = await import('hono');
 
 const cleanups: Array<() => void> = [];
@@ -231,64 +217,6 @@ function registryApp(dir: string, principal: PrincipalRef): Hono {
 }
 
 /**
- * The project layout routes over a real `FileStorageAdapter`, with one saved
- * layout that NAMES the plugin — which is what these two rows are about.
- *
- * The records are written synchronously because `mount` is synchronous; they
- * are the exact files `FileStorageAdapter` reads
- * (`projects/<slug>/project.json` and `projects/<slug>/layouts/<slug>.json`).
- */
-function projectLayoutsApp(dir: string, principal: PrincipalRef): Hono {
-  const projectDir = join(dir, 'projects', 'demo');
-  mkdirSync(join(projectDir, 'layouts'), { recursive: true });
-  writeFileSync(
-    join(projectDir, 'project.json'),
-    JSON.stringify({
-      id: 'project-1',
-      slug: 'demo',
-      name: 'Demo',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    }),
-  );
-  writeFileSync(
-    join(projectDir, 'layouts', 'secret-layout.json'),
-    JSON.stringify({
-      id: 'layout-1',
-      projectSlug: 'demo',
-      type: 'custom',
-      name: 'Secret layout',
-      slug: 'secret-layout',
-      config: {
-        plugin: SECRET,
-        tabs: [{ id: 'notes', label: 'Notes', component: 'notes-view' }],
-      },
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    }),
-  );
-  const storage = new FileStorageAdapter(dir);
-  const visibility = visibilityFor(dir, principal);
-  return FACTORY_SPIES.createProjectRoutes(
-    new ProjectService(storage) as never,
-    storage as never,
-    dir,
-    {
-      listAgents: async () => [],
-      canSeePlugin: visibility.canSeePlugin,
-      layoutCatalog: {
-        listLayouts: () => [pluginLayoutItem()],
-        listInstalledLayouts: () => [pluginLayoutItem()],
-        listPluginWorkspacePaneContributions: () => [],
-        resolveForCatalog: () => {
-          throw new Error('not used');
-        },
-      },
-    } as never,
-  ) as Hono;
-}
-
-/**
  * Each inventory row's REAL handler. `driver` names the production
  * composition; a row whose driver is `'stand-in'` is refused by the coverage
  * assertion, because that is the shape that shipped a guard with no power.
@@ -305,7 +233,6 @@ function projectLayoutsApp(dir: string, principal: PrincipalRef): Hono {
  * if the mount stops calling the factory, the call count stays zero.
  */
 const FACTORY_SPIES = {
-  createProjectRoutes: vi.fn(createProjectRoutes),
   createRegistryRoutes: vi.fn(createRegistryRoutes),
   registerPluginInstallRoutes: vi.fn(registerPluginInstallRoutes),
   registerPluginLifecycleRoutes: vi.fn(registerPluginLifecycleRoutes),
@@ -342,20 +269,6 @@ const DRIVERS: Record<
       });
       return { app, path: '/' };
     },
-  },
-  'GET /api/projects/:slug/layouts': {
-    driver: FACTORY_SPIES.createProjectRoutes,
-    mount: (dir, principal) => ({
-      app: projectLayoutsApp(dir, principal),
-      path: '/demo/layouts',
-    }),
-  },
-  'GET /api/projects/:slug/layouts/:layoutSlug': {
-    driver: FACTORY_SPIES.createProjectRoutes,
-    mount: (dir, principal) => ({
-      app: projectLayoutsApp(dir, principal),
-      path: '/demo/layouts/secret-layout',
-    }),
   },
   'GET /api/plugins/check-updates': {
     driver: FACTORY_SPIES.registerPluginLifecycleRoutes,

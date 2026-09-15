@@ -222,6 +222,19 @@ export interface LayoutPaneReferences {
   readonly unavailableTabIds: readonly string[];
 }
 
+/**
+ * A Layout as a READ answers it: the stored record plus the response-only
+ * verdict above.
+ *
+ * Named so both sides of the wire can refer to one type. The field is NOT on
+ * {@link LayoutConfig}, because that is the shape the storage schema parses
+ * and it is `.strict()` — a record carrying this key is a hard storage
+ * rejection, which is why the write paths strip it.
+ */
+export type LayoutReadView = LayoutConfig & {
+  paneReferences?: LayoutPaneReferences;
+};
+
 export interface LayoutMetadata {
   id: string;
   slug: string;

@@ -61,6 +61,7 @@ export interface LayoutPluginBindingSource {
   config?: Record<string, unknown> | null;
   catalogContribution?: {
     provenance: { origin: string; pluginId?: string };
+    sourceIdentity?: { id?: string };
   };
 }
 
@@ -74,36 +75,80 @@ export interface LayoutPaneReferenceOptions {
 }
 
 /**
- * The plugin a stored layout's panes belong to, or `undefined`.
+ * EVERY plugin name a layout response derives from — not one owning id.
  *
- * Catalog attribution first, because it is SERVER-ISSUED — stripped from
- * client bodies on create and copied from the stored record on update — and
- * `config.plugin` second, because it is the older reference and a caller can
- * write it. A Kit layout carries `config.kit.contributionRef` and no
- * `config.plugin`, so it answers `undefined` and falls into the
- * emit-nothing path.
+ * ## Why this is a set, and why the first version of it was a hole
+ *
+ * The first version answered ONE id, preferring
+ * `catalogContribution.provenance.pluginId` because it is server-issued.
+ * That trusted the server-issued field to speak for a caller-writable one:
+ * the live merge on the read route is keyed on `config.plugin`, so when the
+ * two disagree the gate decided about the contribution while the merge read
+ * the config. A member who can see ANY plugin could apply that plugin's
+ * layout (apply is the only writer of the contribution, and is available to
+ * members), then `PUT` a body whose `config.plugin` names a guess: the
+ * decision, computed from the stored record's contribution, said "visible",
+ * nothing was restored, `config` was replaced wholesale, and the next `GET`
+ * merged the guess and answered with the hidden plugin's live tabs. That is
+ * the enumeration oracle #2103 exists to close, reproduced by review.
+ *
+ * So the rule is: the decision is computed over every name the RESPONSE can
+ * derive from, and it fails closed if ANY of them is not visible. The merge
+ * key (`config.plugin`) and the contribution's two names (`provenance
+ * .pluginId`, `sourceIdentity.id` — both are emitted, the latter as
+ * `plugins/<name>`) are all in that set.
+ *
+ * A plugin-origin contribution that names NO plugin at all is reported as
+ * {@link LayoutPluginReferences.unattributed}, and its callers treat that as
+ * withheld. Not route-reachable today, but a gate that fails open on a
+ * malformed record is the wrong default in this family.
  */
-export function layoutOwningPluginId(
+export interface LayoutPluginReferences {
+  /** Distinct plugin names, in no meaningful order. */
+  readonly pluginIds: readonly string[];
+  /** A `plugin`-origin contribution carrying no usable name. */
+  readonly unattributed: boolean;
+}
+
+function nonEmpty(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+export function layoutReferencedPluginIds(
   layout: LayoutPluginBindingSource,
-): string | undefined {
+): LayoutPluginReferences {
+  const pluginIds = new Set<string>();
+  let unattributed = false;
+
+  // The merge key. A caller can write it, which is exactly why it is read
+  // here rather than inferred from the contribution beside it.
+  const declared = layout.config?.plugin;
+  if (nonEmpty(declared)) pluginIds.add(declared);
+
   const contribution = layout.catalogContribution;
   if (contribution?.provenance.origin === 'plugin') {
-    return contribution.provenance.pluginId;
+    const attributions = [
+      contribution.provenance.pluginId,
+      contribution.sourceIdentity?.id,
+    ].filter(nonEmpty);
+    if (attributions.length === 0) unattributed = true;
+    for (const id of attributions) pluginIds.add(id);
   }
-  const declared = layout.config?.plugin;
-  return typeof declared === 'string' && declared.length > 0
-    ? declared
-    : undefined;
+
+  return { pluginIds: [...pluginIds], unattributed };
 }
 
 /**
  * True when this caller may not be told anything the server derives about
- * the layout's owning plugin.
+ * any plugin this layout names.
  *
  * The SAME answer for a plugin that is installed-but-hidden and for a name
  * nobody ever installed, by construction: `canSeePlugin` is
  * `PluginVisibilityService.canSee`, which reads a grant list rather than the
  * install tree.
+ *
+ * A Kit layout carries `config.kit.contributionRef` and no `config.plugin`,
+ * so it names nothing and falls into the emit-nothing path.
  */
 export function layoutPluginBindingWithheld(
   layout: LayoutPluginBindingSource,
@@ -111,9 +156,9 @@ export function layoutPluginBindingWithheld(
 ): boolean {
   const { canSeePlugin } = options;
   if (!canSeePlugin) return false;
-  const pluginId = layoutOwningPluginId(layout);
-  if (pluginId === undefined) return false;
-  return !canSeePlugin(pluginId);
+  const { pluginIds, unattributed } = layoutReferencedPluginIds(layout);
+  if (unattributed) return true;
+  return pluginIds.some((pluginId) => !canSeePlugin(pluginId));
 }
 
 /** The ids of a stored layout's tabs, in order, skipping malformed entries. */
@@ -159,6 +204,26 @@ export function resolveLayoutPaneReferences(
  * somebody who could see the plugin applied it, and the per-tab verdict
  * above is keyed on those ids. What does NOT stay is anything read LIVE from
  * the plugin on this request — the caller of this function skips that read.
+ *
+ * ## The residual, stated plainly
+ *
+ * A withheld response TYPICALLY STILL SPELLS THE PLUGIN'S NAME, and anyone
+ * reading this should not believe otherwise:
+ *
+ *  - stored tab `component` ids, which real plugins namespace by convention
+ *    (`survey-review-workbench-main`, `fieldwork-review-main`);
+ *  - the layout `name`, which the catalog parser falls back from the
+ *    layout's own to `manifest.displayName` and finally to the PLUGIN NAME
+ *    (`distribution-profile-service.ts`), and `description` likewise to the
+ *    manifest's — apply persists both and this function removes neither;
+ *  - the layout `slug`, which is plugin-authored and IS the route address,
+ *    so it cannot be withheld at all.
+ *
+ * What this closes is the ENUMERATION question: whether a plugin the caller
+ * NAMES is installed here. It does not make a project's own applied layout
+ * anonymous to that project's members, and it is not written as though it
+ * does. `pane-visibility.routes.test.ts` asserts the withheld FIELDS rather
+ * than a whole-body string, for the same reason.
  */
 export function withoutPluginBinding<T extends LayoutPluginBindingSource>(
   layout: T,

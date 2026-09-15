@@ -16,6 +16,7 @@
 import type {
   LayoutConfig,
   LayoutMetadata,
+  LayoutReadView,
 } from '@kontourai/station-contracts/layout';
 import type { ClientRequestOptions } from './http';
 import {
@@ -55,17 +56,23 @@ export async function listPersonalLayouts(
   return (await unwrapOrThrow(response)) as LayoutMetadata[];
 }
 
-/** `GET /api/me/layouts/:layoutSlug` — read one of the caller's own Boards. */
+/**
+ * `GET /api/me/layouts/:layoutSlug` — read one of the caller's own Boards.
+ *
+ * `LayoutReadView`, not `LayoutConfig`: the read may attach `paneReferences`
+ * (#2090), and typing it as the stored record made a rename on either side
+ * typecheck clean while the host silently stopped seeing the verdict.
+ */
 export async function getPersonalLayout(
   apiBase: string,
   layoutSlug: string,
   opts?: ClientRequestOptions,
-): Promise<LayoutConfig> {
+): Promise<LayoutReadView> {
   const response = await getJson(
     `${apiBase}/api/me/layouts/${encodeURIComponent(layoutSlug)}`,
     opts,
   );
-  return (await unwrapOrThrow(response)) as LayoutConfig;
+  return (await unwrapOrThrow(response)) as LayoutReadView;
 }
 
 /** `POST /api/me/layouts` — create a Board. A repeated slug answers 409. */

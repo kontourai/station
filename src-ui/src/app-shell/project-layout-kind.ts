@@ -15,6 +15,8 @@
  * registry by `__tests__/project-layout-kind.test.ts`.
  */
 
+import type { LayoutPaneReferences } from '@kontourai/station-contracts/layout';
+
 /** The keys of `layoutRegistry.ts`'s `layoutTypeRegistry`, restated. */
 export const LAYOUT_TYPE_REGISTRY_KEYS = [
   'chat',
@@ -47,7 +49,7 @@ interface ProjectLayoutRendererFacts {
    * per-tab branch. `unavailableTabIds` may legitimately be empty; the field
    * being absent, not empty, is what means nothing was withheld.
    */
-  paneReferences?: { unavailableTabIds: readonly string[] };
+  paneReferences?: LayoutPaneReferences;
 }
 
 const registryKeys: ReadonlySet<string> = new Set(LAYOUT_TYPE_REGISTRY_KEYS);

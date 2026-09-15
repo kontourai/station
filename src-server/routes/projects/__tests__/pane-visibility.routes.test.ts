@@ -118,14 +118,16 @@ const PLUGIN_LAYOUT = {
 /**
  * The tabs `POST /:slug/layouts/apply` PERSISTS into the project record.
  *
- * Deliberately free of the plugin's name: descriptor and component ids are
- * plugin-author-chosen with no namespacing requirement, so this is the
- * realistic shape, and it is what makes the whole-body assertions below bite
- * on the fields that really do name the plugin rather than on a fixture that
- * spells it everywhere.
+ * NAMESPACED, because that is what real plugins ship: `survey-review-workbench-main`,
+ * `fieldwork-review-main`, `minimal-workspace`. An earlier version of this
+ * fixture used a bare `notes-view` and was commented as "the realistic
+ * shape", which made a whole-body "names the plugin nowhere" assertion pass
+ * for a reason the fixture chose rather than a reason the code guarantees.
+ * It does not hold for an applied layout and the tests below no longer claim
+ * it does — see `a withheld response still spells the plugin name`.
  */
 const STORED_TABS = [
-  { id: 'notes', label: 'Notes', component: 'notes-view' },
+  { id: 'notes', label: 'Notes', component: `${PLUGIN_NAME}-notes-view` },
 ] as const;
 
 /**
@@ -135,6 +137,17 @@ const STORED_TABS = [
  * "names it nowhere" assertion — the merge is the leak, and this is what
  * discriminates it from the stored copy.
  */
+/** A second installed plugin, hidden while `PLUGIN_NAME` is visible. */
+const OTHER_PLUGIN = 'hidden-ledger';
+
+const OTHER_LIVE_TABS = [
+  {
+    id: 'ledger',
+    label: `${OTHER_PLUGIN} ledger`,
+    component: `${OTHER_PLUGIN}.ledger`,
+  },
+] as const;
+
 const LIVE_TABS = [
   {
     id: 'notes',
@@ -151,20 +164,28 @@ async function seeded(options: {
   // The plugin as it exists ON THIS INSTANCE. `readPluginLayout` reads these
   // two files, and a caller who cannot see the plugin must not learn from the
   // response that they exist.
-  const pluginDir = join(home, 'plugins', PLUGIN_NAME);
-  mkdirSync(pluginDir, { recursive: true });
-  writeFileSync(
-    join(pluginDir, 'plugin.json'),
-    JSON.stringify({
-      name: PLUGIN_NAME,
-      version: '4.5.6',
-      layout: { source: 'layout.json' },
-    }),
-  );
-  writeFileSync(
-    join(pluginDir, 'layout.json'),
-    JSON.stringify({ name: 'Secret layout', tabs: LIVE_TABS }),
-  );
+  const installPlugin = (name: string, tabs: unknown) => {
+    const pluginDir = join(home, 'plugins', name);
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        name,
+        version: '4.5.6',
+        layout: { source: 'layout.json' },
+      }),
+    );
+    writeFileSync(
+      join(pluginDir, 'layout.json'),
+      JSON.stringify({ name: `${name} layout`, tabs }),
+    );
+  };
+  installPlugin(PLUGIN_NAME, LIVE_TABS);
+  // A SECOND installed plugin, for the per-plugin cases. A predicate that is
+  // globally true or false cannot discriminate a decision that reads one
+  // field while the merge reads another; two plugins with opposite
+  // visibility is what makes that case fail when it is wrong.
+  installPlugin(OTHER_PLUGIN, OTHER_LIVE_TABS);
   const storage = new FileStorageAdapter(home);
   const projectService = new ProjectService(storage);
   const app = createProjectRoutes(
@@ -173,7 +194,16 @@ async function seeded(options: {
     home,
     {
       listAgents: async () => [],
-      ...(options.canSeePlugin ? { canSeePlugin: options.canSeePlugin } : {}),
+      // The route dep is `(c, pluginId)`; the cases here take a PER-PLUGIN
+      // predicate, so the context is dropped once, here, rather than in
+      // every case (the earlier `() => false` cases happened not to care,
+      // which is what hid the arity from them).
+      ...(options.canSeePlugin
+        ? {
+            canSeePlugin: (_c: unknown, pluginId: string) =>
+              options.canSeePlugin!(pluginId),
+          }
+        : {}),
       layoutCatalog: {
         listLayouts: () => [PLUGIN_LAYOUT],
         listInstalledLayouts: () => [PLUGIN_LAYOUT],
@@ -331,18 +361,40 @@ describe('a saved layout naming a plugin the viewer cannot see', () => {
     const response = await app.request(`/demo/layouts/${PLUGIN_LAYOUT.slug}`);
     expect(response.status).toBe(200);
     const text = await response.text();
-    // Whole body: this family's defect was always a field nobody asserted on.
-    expect(text).not.toContain(PLUGIN_NAME);
     const data = JSON.parse(text).data as Record<string, any>;
+    // Every field the SERVER derives about the plugin is gone.
     expect(data.catalogContribution).toBeUndefined();
     expect(data.config.plugin).toBeUndefined();
+    expect(text).not.toContain(`plugins/${PLUGIN_NAME}`);
+    expect(text).not.toContain(PLUGIN_LAYOUT.contribution.version);
     // The stored tabs remain — they are the project's own record, and the
     // verdict is keyed on their ids. The LIVE ones, read from the plugin on
     // disk, do not: that merge is the disclosure.
     expect(data.config.tabs).toEqual(STORED_TABS);
+    expect(text).not.toContain(LIVE_TABS[0].component);
     expect(data.paneReferences).toEqual({ unavailableTabIds: ['notes'] });
     // The tab id, never the minted descriptor id, which encodes the plugin.
     expect(JSON.stringify(data.paneReferences)).not.toContain('pane:');
+  });
+
+  test('a withheld response still spells the plugin name, and that is the residual', () => {
+    // Stated as a test rather than a comment, because the opposite claim is
+    // easy to make and was made. What a withheld response still carries is
+    // the PROJECT's own stored record, written when somebody who could see
+    // the plugin applied it:
+    //
+    //  - component ids, which real plugins namespace by convention;
+    //  - the layout `name`, which the catalog parser falls back from the
+    //    layout's own to `manifest.displayName` to the PLUGIN NAME
+    //    (`distribution-profile-service.ts`), and `description` likewise to
+    //    the manifest's — apply persists both and the strip removes neither;
+    //  - the layout `slug`, which is plugin-authored and is the route
+    //    ADDRESS, so it cannot be withheld at all.
+    //
+    // None of this reopens the guess oracle, which is about learning whether
+    // a plugin you NAME is installed. It is a disclosure to a member of a
+    // project an operator already applied that layout into.
+    expect(STORED_TABS[0].component).toContain(PLUGIN_NAME);
   });
 
   test('a viewer who can see it reads exactly what they read before', async () => {
@@ -564,9 +616,105 @@ describe('the write path survives what the read path withholds', () => {
     expect(stored.name).toBe('Renamed');
     expect(stored.config.plugin).toBe(PLUGIN_NAME);
     expect(stored).not.toHaveProperty('paneReferences');
-    // The write's own answer is projected exactly as the read is.
-    expect(await written.clone().text()).not.toContain(PLUGIN_NAME);
+    // The write's own answer is projected exactly as the read is. Asserted
+    // on the SERVER-DERIVED facts, not on a whole-body string: the stored
+    // record's own component ids are plugin-authored and stay (see `a
+    // withheld response still spells the plugin name`).
+    const writtenText = await written.clone().text();
+    expect(writtenText).not.toContain(`"plugin":"${PLUGIN_NAME}"`);
+    expect(writtenText).not.toContain(`plugins/${PLUGIN_NAME}`);
     const body = await json<{ data: Record<string, any> }>(written);
     expect(body.data.paneReferences).toEqual({ unavailableTabIds: ['notes'] });
+  });
+});
+
+/**
+ * #2103 CRITICAL — the gate must read every plugin name the response derives
+ * from, not one owning id.
+ *
+ * The first implementation gated on a single id, preferring the SERVER-ISSUED
+ * `catalogContribution.provenance.pluginId`. The live merge is keyed on
+ * `config.plugin`, which a member can write. When those disagree the gate
+ * answered about the contribution while the merge read the config.
+ *
+ * Every case here uses a PER-PLUGIN predicate. A globally true or false
+ * predicate cannot see this defect at all: it needs one plugin the caller can
+ * see (to get a server-issued contribution written into the record at all)
+ * and one they cannot.
+ */
+describe('the withheld decision reads every plugin name in the record', () => {
+  /** Sees `PLUGIN_NAME`; cannot see `OTHER_PLUGIN` or anything else. */
+  const asMember = () =>
+    seeded({ canSeePlugin: (pluginId) => pluginId === PLUGIN_NAME });
+
+  async function appliedThenRepointed(target: string) {
+    const { app } = await asMember();
+    // Apply is available to members and is the ONLY writer of
+    // `catalogContribution`, so this is entirely self-service.
+    expect(
+      (
+        await app.request('/demo/layouts/apply', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ layoutId: PLUGIN_LAYOUT.id }),
+        })
+      ).status,
+    ).toBe(201);
+    const read = await json<{ data: Record<string, any> }>(
+      await app.request(`/demo/layouts/${PLUGIN_LAYOUT.slug}`),
+    );
+    // The record now carries a contribution naming a plugin they CAN see.
+    expect(read.data.catalogContribution.provenance.pluginId).toBe(PLUGIN_NAME);
+    // Repoint the merge key at the guess, leaving the contribution alone.
+    const written = await app.request(`/demo/layouts/${PLUGIN_LAYOUT.slug}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ...read.data,
+        config: { ...read.data.config, plugin: target },
+      }),
+    });
+    expect(written.status).toBe(200);
+    return await (
+      await app.request(`/demo/layouts/${PLUGIN_LAYOUT.slug}`)
+    ).text();
+  }
+
+  test('a guess written into config.plugin does not reach the live merge', async () => {
+    const guessed = await appliedThenRepointed(OTHER_PLUGIN);
+    // The whole defect in one assertion: the hidden plugin's LIVE tabs.
+    expect(guessed).not.toContain(OTHER_LIVE_TABS[0].component);
+    expect(guessed).not.toContain(OTHER_PLUGIN);
+    // And the visible plugin's own facts go too, because the RESPONSE now
+    // derives from a name this caller cannot see.
+    expect(guessed).not.toContain(`plugins/${PLUGIN_NAME}`);
+
+    // The control: the same request naming a plugin nobody installed. If the
+    // two answers differed, the route would still be an existence oracle —
+    // which is exactly how review reproduced the original defect.
+    const absent = await appliedThenRepointed('no-such-plugin-anywhere');
+    const normalize = (body: string) => JSON.parse(body).data.config.tabs;
+    expect(normalize(guessed)).toEqual(normalize(absent));
+    expect(JSON.parse(guessed).data.paneReferences).toEqual(
+      JSON.parse(absent).data.paneReferences,
+    );
+  });
+
+  test('a layout bound only to the visible plugin is unaffected', async () => {
+    // The control for the controls: the per-plugin predicate really does let
+    // one plugin through, so the withholding above is a decision rather than
+    // a route that withholds from everybody.
+    const { app } = await asMember();
+    await app.request('/demo/layouts/apply', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ layoutId: PLUGIN_LAYOUT.id }),
+    });
+    const body = await json<{ data: Record<string, any> }>(
+      await app.request(`/demo/layouts/${PLUGIN_LAYOUT.slug}`),
+    );
+    expect(body.data.config.plugin).toBe(PLUGIN_NAME);
+    expect(body.data.config.tabs).toEqual(LIVE_TABS);
+    expect(body.data.paneReferences).toBeUndefined();
   });
 });

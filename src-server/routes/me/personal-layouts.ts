@@ -266,9 +266,17 @@ export function createPersonalLayoutRoutes(
       // rather than spread into the record by `service.update`.
       const { paneReferences: _paneReferences, ...patch } = getBody(c);
       const updated = await service.update(owner, layoutSlug, patch);
-      return updated === undefined
-        ? noSuchBoard(c)
-        : c.json({ success: true, data: updated });
+      if (updated === undefined) return noSuchBoard(c);
+      // The write answers with the same verdict the read does. Without it a
+      // client rendering from this response falls back to the false "not
+      // installed or registered" sentence until its next refetch.
+      const verdict = resolveLayoutPaneReferences(updated, {
+        canSeePlugin: viewerPluginSight(c),
+      });
+      return c.json({
+        success: true,
+        data: verdict ? { ...updated, paneReferences: verdict } : updated,
+      });
     }),
   );
 

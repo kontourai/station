@@ -15,6 +15,7 @@ import {
   assertNoRetiredLayoutKeys,
   BUILTIN_SESSION_BOARD_LAYOUT,
   type LayoutConfig,
+  type LayoutReadView,
   RetiredLayoutKeyError,
 } from '@kontourai/station-contracts/layout';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
@@ -1243,21 +1244,21 @@ export function createProjectRoutes(
             },
           )
         : [];
-      return c.json({
-        success: true,
-        data: {
-          ...derived,
-          ...(diagnostics.length > 0
-            ? { _integrityDiagnostics: diagnostics }
-            : {}),
-          // #2090. Response-only, and absent unless something really is
-          // withheld — `PUT` strips it back off for the same reason the
-          // derived working directory is stripped: the storage schema is
-          // `.strict()`, so a client that read this record and PUT it back
-          // would otherwise be refused by storage.
-          ...(paneReferences ? { paneReferences } : {}),
-        },
-      });
+      // Typed against the contract so the wire key is checked here rather
+      // than spelled independently on each side (#2090 review LOW-10).
+      const data: LayoutReadView & Record<string, unknown> = {
+        ...derived,
+        ...(diagnostics.length > 0
+          ? { _integrityDiagnostics: diagnostics }
+          : {}),
+        // #2090. Response-only, and absent unless something really is
+        // withheld — `PUT` strips it back off for the same reason the
+        // derived working directory is stripped: the storage schema is
+        // `.strict()`, so a client that read this record and PUT it back
+        // would otherwise be refused by storage.
+        ...(paneReferences ? { paneReferences } : {}),
+      };
+      return c.json({ success: true, data });
     } catch (error: unknown) {
       // An author's retired key is a 400 they can act on, not the storage
       // failure the generic arm below would report it as.
@@ -1392,13 +1393,11 @@ export function createProjectRoutes(
         })
           ? withoutPluginBinding(persisted)
           : persisted;
-        return c.json({
-          success: true,
-          data: {
-            ...withDerivedWorkingDirectory(answered, derived),
-            ...(paneReferences ? { paneReferences } : {}),
-          },
-        });
+        const data: LayoutReadView = {
+          ...withDerivedWorkingDirectory(answered, derived),
+          ...(paneReferences ? { paneReferences } : {}),
+        };
+        return c.json({ success: true, data });
       } catch (error: unknown) {
         const message = errorMessage(error);
         return c.json(
@@ -1458,19 +1457,37 @@ export function createProjectRoutes(
     canSeePlugin?: (pluginId: string) => boolean,
   ) {
     assertSafeLayoutPathSegment('project slug', slug);
-    const resolved = layoutCatalog.resolveForApply(layoutId);
     // #2103 — apply had no visibility check at all, so a member could apply a
     // hidden plugin's layout into a shared project (and learn it exists from
-    // the 201). The refusal is `resolveForCatalog`'s own message for an id
-    // nobody has, verbatim and thrown from the same place, so a hidden plugin
-    // and an id that was never installed are one answer.
-    const owningPluginId =
-      resolved.item.contribution?.provenance?.origin === 'plugin'
-        ? resolved.item.contribution.provenance.pluginId
-        : resolved.pluginName;
-    if (owningPluginId && canSeePlugin && !canSeePlugin(owningPluginId)) {
+    // the 201).
+    //
+    // The check runs BEFORE `resolveForApply`, deliberately. `resolveForApply`
+    // is `resolveForCatalog` plus an installed-and-enabled check, and those
+    // two refusals carry DIFFERENT messages — so checking visibility after it
+    // would let a caller guessing catalog ids tell "exists here, disabled"
+    // from "does not exist". `resolveForCatalog` answers the same way for an
+    // unknown id and an uninstalled one, so a refusal issued here is the
+    // message an id nobody has already gets, verbatim.
+    const forVisibility = layoutCatalog.resolveForCatalog(layoutId);
+    const contribution = forVisibility.item.contribution;
+    const referenced = new Set<string>();
+    let unattributed = false;
+    if (contribution?.provenance?.origin === 'plugin') {
+      const attributions = [
+        contribution.provenance.pluginId,
+        contribution.sourceIdentity?.id,
+      ].filter((id): id is string => typeof id === 'string' && id.length > 0);
+      if (attributions.length === 0) unattributed = true;
+      for (const id of attributions) referenced.add(id);
+    }
+    if (forVisibility.pluginName) referenced.add(forVisibility.pluginName);
+    if (
+      canSeePlugin &&
+      (unattributed || [...referenced].some((id) => !canSeePlugin(id)))
+    ) {
       throw new Error('Layout is not a known installed contribution');
     }
+    const resolved = layoutCatalog.resolveForApply(layoutId);
     const pluginManifest = resolved.pluginName
       ? layoutCatalog.getPluginManifest(resolved.pluginName)
       : undefined;
