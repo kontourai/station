@@ -65,6 +65,20 @@ describe('buildStationResetPlan', () => {
     }
   });
 
+  test('never clears usage telemetry, whose default is the permissive state', () => {
+    // A stored `telemetryEnabled` is almost always `false` — the artifact of
+    // someone opting out — and the registry default is `true`. Clearing it
+    // would turn telemetry back on under the word "reset".
+    const plan = buildStationResetPlan(
+      fileProvenance('telemetryEnabled', 'registryUrl'),
+    );
+
+    expect(plan.delta).toEqual({ registryUrl: null });
+    expect(plan.delta).not.toHaveProperty('telemetryEnabled');
+    expect(RESETTABLE_STATION_SETTING_KEYS).not.toContain('telemetryEnabled');
+    expect(plan.labels).not.toContain('Usage telemetry');
+  });
+
   test('a default- or env-sourced value is not stored, so it is not cleared', () => {
     const plan = buildStationResetPlan({
       mcpUiHost: { source: 'default' },
@@ -86,7 +100,6 @@ describe('buildStationResetPlan', () => {
     // "derived". These are the rows Station and Defaults render today.
     expect([...RESETTABLE_STATION_SETTING_KEYS]).toEqual([
       'approvalGuardian',
-      'telemetryEnabled',
       'defaultMaxTurns',
       'defaultMaxOutputTokens',
       'defaultChatFontSize',

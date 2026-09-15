@@ -23,6 +23,8 @@
  *   Its registry entry declares no `defaultValue`, so there is no factory
  *   value to restore it to — resetting it is deliberately out of scope and
  *   the dialog does not claim otherwise.
+ * - `PRIVACY_PRESERVED_KEYS` are excluded: see below — restoring their
+ *   default would undo an opt-out rather than restore a neutral value.
  * - `userFacing: false` keys never render, so they are never candidates.
  * - `firstRun` is not rendered anywhere and the route refuses it as well.
  */
@@ -51,6 +53,20 @@ const SEPARATELY_WRITTEN_KEYS: ReadonlySet<keyof AppConfig> = new Set([
   'logLevel',
 ]);
 
+/**
+ * Settings whose factory default is MORE permissive than an opt-out, so
+ * "restore the default" and "undo the person's choice" are the same act.
+ *
+ * `telemetryEnabled` defaults to `true`. A stored `false` is the only
+ * artifact of someone turning telemetry off, and clearing it would turn it
+ * back on — a reset silently widening what leaves this Station. The toggle
+ * stays where it is (Station configuration, and the telemetry disclosure);
+ * the dialog says a reset does not touch it.
+ */
+const PRIVACY_PRESERVED_KEYS: ReadonlySet<keyof AppConfig> = new Set([
+  'telemetryEnabled',
+]);
+
 const REGISTRY_BY_KEY: ReadonlyMap<keyof AppConfig, SettingDefinition> =
   new Map(
     USER_FACING_APP_SETTINGS_REGISTRY.map((definition) => [
@@ -71,6 +87,7 @@ export const RESETTABLE_STATION_SETTING_KEYS: readonly (keyof AppConfig)[] = [
   if (!definition) return false;
   if (definition.required) return false;
   if (definition.nullable) return false;
+  if (PRIVACY_PRESERVED_KEYS.has(key)) return false;
   return !SEPARATELY_WRITTEN_KEYS.has(key);
 });
 

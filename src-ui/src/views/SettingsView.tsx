@@ -1011,7 +1011,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         message={
           resetPlan.keys.length === 0
             ? 'No Station setting currently has a stored value, so there is nothing to reset. Settings on this device are not affected.'
-            : `This clears ${resetPlan.keys.length} stored Station setting${resetPlan.keys.length === 1 ? '' : 's'} and lets Station use its default again: ${resetPlan.labels.join(', ')}. The required model settings (Default model, Invoke model, Structure model) and the built-in agent engine choice are kept. Settings on this device are not affected. This cannot be undone.`
+            : `This clears ${resetPlan.keys.length} stored Station setting${resetPlan.keys.length === 1 ? '' : 's'} and lets Station use its default again: ${resetPlan.labels.join(', ')}. The required model settings (Default model, Invoke model, Structure model) and the built-in agent engine choice are kept. Usage telemetry is not changed by a reset. Settings on this device are not affected. This cannot be undone.`
         }
         confirmLabel="Reset"
         confirmDisabled={resetPlan.keys.length === 0}
