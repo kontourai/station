@@ -1084,9 +1084,13 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
     // TEXT-PINNED HALF, and it is text-pinned rather than measured: jsdom
     // computes no layout, and `menu-primitive.cascade.test.tsx` measures this
     // family's FINE-pointer 32px floor in a real Chromium, not the coarse
-    // branch. What is asserted here is that the coarse rule exists and says
-    // 44px — scoped to the rule, not to the block, following the trigger's own
-    // coarse assertion above.
+    // branch — no automated check measures the coarse floor for ANY member of
+    // the family. #2083's review measured these three rows at exactly 44.00px
+    // with `hasTouch`, and #2113 carries giving the cascade fixture a coarse
+    // context so that is a standing claim rather than one observation. What is
+    // asserted here is that the coarse rule exists and says 44px — scoped to
+    // the rule, not to the block, following the trigger's own coarse assertion
+    // above.
     const chatCss = readFileSync(
       join(
         dirname(fileURLToPath(import.meta.url)),
