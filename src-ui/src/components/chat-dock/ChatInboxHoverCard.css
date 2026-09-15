@@ -104,7 +104,7 @@
 }
 
 .chat-dock-inbox-hover-card__dirty {
-  color: var(--warning, #e5c07b);
+  color: var(--warning-text);
 }
 
 .chat-dock-inbox-hover-card__commit {
@@ -218,7 +218,7 @@
 
 .chat-dock-inbox-hover-card__kept {
   flex: none;
-  color: var(--success, #98c379);
+  color: var(--success-text);
   font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;

@@ -252,6 +252,15 @@
 
   --health-success: #10b981;
   --health-error: #ef4444;
+
+  /* Source-preview syntax rungs (FilePreviewPane). Per theme because the
+     GitHub-dark literals this replaced measured 2.29 / 1.77 / 1.40 : 1 on the
+     light page. Dark values are GitHub-dark's own; measured on --bg-primary
+     and on --bg-selected (the requested-line highlight) — keyword 7.7 / 6.4,
+     number 10.0 / 8.3, string 12.6 / 10.5. */
+  --syntax-keyword: #ff7b72;
+  --syntax-number: #79c0ff;
+  --syntax-string: #a5d6ff;
   --health-warning: #f59e0b;
 
   --event-agent-start: #3b82f6;
@@ -488,6 +497,17 @@
   /* Health */
   --health-success: #059669;
   --health-error: #dc2626;
+
+  /* GitHub-light's keyword (#d73a49) is 4.15:1 on this page, under AA, so the
+     keyword rung is darkened. The floor is the highlighted line, not the page:
+     --bg-selected mixes 14% of a DARK teal brand into the page (#d5e3dc), so
+     every rung loses ~0.9 there. Measured on --bg-primary / --bg-selected:
+     keyword 5.54 / 4.60, number 5.71 / 4.75, string 12.0 / 10.0. Gated by
+     syntax-token-contrast.test.ts, which derives the tint from the same
+     --k-* inputs rather than restating these figures. */
+  --syntax-keyword: #b82b3a;
+  --syntax-number: #005cc5;
+  --syntax-string: #032f62;
   --health-warning: #d97706;
 
   /* Event colors */
@@ -1215,30 +1235,6 @@ button:hover {
 .agent-selector__manage-button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-.sidebar {
-  width: 280px;
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border-primary);
-  display: flex;
-  flex-direction: column;
-}
-
-.sidebar-header {
-  padding: 20px;
-  border-bottom: 1px solid var(--border-primary);
-}
-
-.sidebar-header h1 {
-  font-size: var(--text-3xl);
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.sidebar-header p {
-  font-size: var(--text-md);
-  color: var(--text-muted);
 }
 
 .agent-list {
@@ -2585,7 +2581,7 @@ button:hover {
 }
 
 .active-work-frame__file-status {
-  color: var(--warning, #e5c07b);
+  color: var(--warning-text);
   font-weight: 700;
 }
 
@@ -3117,7 +3113,7 @@ button:hover {
   text-overflow: ellipsis;
 }
 .git-badge__dirty {
-  color: var(--warning, #e5c07b);
+  color: var(--warning-text);
   font-weight: 600;
 }
 
@@ -3175,16 +3171,16 @@ button:hover {
   color: var(--text-secondary);
 }
 .git-tooltip__stat--staged {
-  color: var(--success, #98c379);
+  color: var(--success-text);
 }
 .git-tooltip__stat--unstaged {
-  color: var(--warning, #e5c07b);
+  color: var(--warning-text);
 }
 .git-tooltip__stat--untracked {
   color: var(--text-muted);
 }
 .git-tooltip__clean {
-  color: var(--success, #98c379);
+  color: var(--success-text);
   font-size: var(--text-xs);
 }
 
@@ -3471,7 +3467,7 @@ button:hover {
 
 /* Header maximized state */
 .chat-dock__header.is-maximized {
-  background: rgba(var(--color-primary-rgb, 59, 130, 246), 0.1);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
   border-bottom: 2px solid var(--color-primary);
 }
 
@@ -4202,9 +4198,9 @@ button:hover {
   gap: 10px;
   margin: 8px 0;
   padding: 8px 12px;
-  border: 1px solid rgba(var(--accent-primary-rgb, 0, 102, 204), 0.18);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 18%, transparent);
   border-radius: 10px;
-  background: rgba(var(--accent-primary-rgb, 0, 102, 204), 0.06);
+  background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
 }
 
 .background-tasks-banner__label {
@@ -4230,7 +4226,7 @@ button.background-tasks-banner {
 
 button.background-tasks-banner:hover,
 button.background-tasks-banner:focus-visible {
-  background: rgba(var(--accent-primary-rgb, 0, 102, 204), 0.1);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
 }
 
 /* archive#1301: visually-hidden live-region sibling
@@ -4290,15 +4286,18 @@ button.background-tasks-banner:focus-visible {
 @keyframes streaming-progress-pulse {
   0% {
     transform: scale(0.9);
-    box-shadow: 0 0 0 0 rgba(var(--accent-primary-rgb, 0, 102, 204), 0.35);
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--accent-primary) 35%, transparent);
   }
   70% {
     transform: scale(1.05);
-    box-shadow: 0 0 0 8px rgba(var(--accent-primary-rgb, 0, 102, 204), 0);
+    box-shadow: 0 0 0 8px
+      color-mix(in srgb, var(--accent-primary) 0%, transparent);
   }
   100% {
     transform: scale(0.9);
-    box-shadow: 0 0 0 0 rgba(var(--accent-primary-rgb, 0, 102, 204), 0);
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--accent-primary) 0%, transparent);
   }
 }
 
@@ -4777,7 +4776,7 @@ button.tool-call__line:hover {
   flex-shrink: 0;
   border-radius: 999px;
   background: var(--accent-primary);
-  box-shadow: 0 0 0 0 rgba(var(--accent-primary-rgb, 0, 102, 204), 0.45);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-primary) 45%, transparent);
   animation: streaming-progress-pulse var(--motion-status-pulse) var(--ease-out)
     infinite;
 }
@@ -4823,7 +4822,7 @@ button.tool-call__line:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--overlay-scrim, rgba(0, 0, 0, 0.5));
+  background: var(--overlay-bg-darker);
   z-index: var(--z-modal, 1000);
 }
 
@@ -5684,38 +5683,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .meeting-body-content th {
   padding: 0.5rem;
   border: none;
-}
-
-/* Attendee status colors - theme aware */
-.attendee-status--accepted {
-  color: #28a745;
-}
-
-.attendee-status--declined {
-  color: #dc3545;
-}
-
-.attendee-status--tentative {
-  color: #fd7e14;
-}
-
-.attendee-status--no-response {
-  color: var(--color-text-secondary);
-}
-
-/* Dark theme adjustments */
-@media (prefers-color-scheme: dark) {
-  .attendee-status--accepted {
-    color: #4ade80;
-  }
-
-  .attendee-status--declined {
-    color: #f87171;
-  }
-
-  .attendee-status--tentative {
-    color: #fbbf24;
-  }
 }
 
 /* ── Conversation History (push on desktop, overlay on mobile) ── */
@@ -7038,7 +7005,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .knowledge-section__dropzone--active {
   border-color: var(--accent-primary);
-  background: rgba(var(--accent-primary-rgb, 59, 130, 246), 0.06);
+  background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
   color: var(--accent-primary);
 }
 
@@ -7229,7 +7196,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .chat-dock__session-project {
-  background: var(--bg-subtle, rgba(0, 0, 0, 0.06));
+  background: var(--bg-hover);
   border-radius: 3px;
   padding: 1px 6px;
   font-size: var(--text-xs);

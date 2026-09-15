@@ -64,7 +64,7 @@
 }
 
 .file-tree-panel__search-input:focus {
-  border-color: var(--accent-primary, var(--border-focus));
+  border-color: var(--accent-primary);
 }
 
 .file-tree-panel__scroll {

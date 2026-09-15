@@ -54,7 +54,7 @@
 }
 
 .device-pane__choice:has(input:focus-visible) {
-  outline: 2px solid var(--focus-ring, Highlight);
+  outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
 }
 

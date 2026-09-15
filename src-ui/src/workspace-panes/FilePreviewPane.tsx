@@ -288,11 +288,19 @@ function tokenKind(token: string): SourceTokenKind {
   return 'keyword';
 }
 
+/**
+ * Theme-following, not theme-blind. These were three GitHub-dark literals
+ * written straight into this file, which read at 2.29 / 1.77 / 1.40 : 1 on
+ * the light theme's page — the string colour was very nearly invisible. The
+ * tokens below are defined per theme in `index.css` and measured by
+ * `syntax-token-contrast.test.ts`; the comment rung was already a token and
+ * stays one.
+ */
 const TOKEN_COLOR: Record<SourceTokenKind, string> = {
   comment: 'var(--text-muted)',
-  keyword: '#ff7b72',
-  number: '#79c0ff',
-  string: '#a5d6ff',
+  keyword: 'var(--syntax-keyword)',
+  number: 'var(--syntax-number)',
+  string: 'var(--syntax-string)',
 };
 
 /** React text nodes preserve content literally; no workspace markup is parsed. */

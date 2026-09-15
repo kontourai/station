@@ -539,18 +539,6 @@
 }
 
 /* ── Workspace Modal ── */
-.workspace-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--layer-dialog);
-  animation: modal-fade-in var(--motion-slow) var(--ease-standard);
-}
-
 @keyframes modal-fade-in {
   from {
     opacity: 0;
@@ -562,22 +550,6 @@
   }
 }
 
-.workspace-modal {
-  background: var(--bg-secondary);
-  border-radius: 16px;
-  padding: 20px;
-  min-width: 400px;
-  max-width: 600px;
-  box-shadow:
-    0 20px 40px rgba(0, 0, 0, 0.15),
-    0 8px 16px rgba(0, 0, 0, 0.1),
-    0 0 0 1px rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-primary);
-  animation: modal-slide-up var(--motion-slow) var(--ease-standard);
-  position: relative;
-  overflow: hidden;
-}
-
 @keyframes modal-slide-up {
   from {
     transform: translateY(20px) scale(0.95);
@@ -587,106 +559,6 @@
     transform: translateY(0) scale(1);
     opacity: 1;
   }
-}
-
-.workspace-modal::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--accent-primary),
-    transparent
-  );
-  opacity: 0.6;
-}
-
-.workspace-modal__search {
-  width: 100%;
-  padding: 8px 12px;
-  margin-bottom: 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
-  border-radius: 4px;
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: var(--text-lg);
-}
-
-.workspace-modal__search:focus {
-  outline: none;
-  border-color: var(--accent-primary);
-}
-
-.workspace-modal__list {
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.workspace-modal__item {
-  padding: 10px 12px;
-  cursor: pointer;
-  border-radius: 4px;
-  margin-bottom: 4px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: transparent;
-  transition: background var(--motion-fast) var(--ease-standard);
-}
-
-.workspace-modal__item:hover,
-.workspace-modal__item.is-active {
-  background: var(--bg-hover);
-}
-
-.workspace-modal__item-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.workspace-modal__item-name {
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.workspace-modal__item-desc {
-  font-size: var(--text-base);
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-modal__pill {
-  font-size: var(--text-sm);
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-weight: 500;
-}
-
-.workspace-modal__pill--plugin {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-primary);
-}
-
-.workspace-modal__pill--active {
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-}
-
-.workspace-modal__empty {
-  padding: 12px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: var(--text-lg);
 }
 
 /* ── MessageBubble ── */
@@ -950,7 +822,7 @@
   font-size: 0.75rem;
 }
 .session-summary__stale {
-  color: var(--warning, #b06b00) !important;
+  color: var(--warning-text) !important;
 }
 .session-summary__text {
   white-space: pre-wrap;
@@ -1570,31 +1442,6 @@
 }
 
 /* Waiting detection badge (ACP stale output) */
-.message__waiting-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  margin-top: 8px;
-  font-size: 0.7rem;
-  font-family: var(--font-mono);
-  color: #e5534b;
-  background: rgba(229, 83, 75, 0.1);
-  border-radius: 4px;
-  animation: pulse-waiting var(--motion-status-breathe) var(--ease-standard)
-    infinite;
-}
-
-@keyframes pulse-waiting {
-  0%,
-  100% {
-    opacity: 0.7;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
 /* The MCP-UI block's three borders read --border-subtle until archive#1254.
    No such token exists — the ramp is --border-primary (the subtle line) and
    --border-secondary (the strong one) — so the card had no outline, its table
@@ -1756,13 +1603,13 @@
 }
 
 .ui-block__form-required {
-  color: var(--accent-danger, #d14836);
+  color: var(--error-text);
 }
 
 .ui-block__form-error {
   margin: 0.6rem 0 0;
   font-size: 0.8rem;
-  color: var(--accent-danger, #d14836);
+  color: var(--error-text);
 }
 
 .ui-block__form-actions {

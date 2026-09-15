@@ -69,7 +69,7 @@ export function ContextPercentage({
       style={{
         pointerEvents: onClick ? 'auto' : 'none',
         cursor: onClick ? 'pointer' : 'default',
-        background: 'rgba(var(--accent-primary-rgb, 0, 102, 204), 0.08)',
+        background: 'color-mix(in srgb, var(--accent-primary) 8%, transparent)',
         transition: 'background 0.2s',
         border: 'none',
         width: '100%',
@@ -78,12 +78,12 @@ export function ContextPercentage({
       onMouseEnter={(e) => {
         if (onClick) {
           e.currentTarget.style.background =
-            'rgba(var(--accent-primary-rgb, 0, 102, 204), 0.2)';
+            'color-mix(in srgb, var(--accent-primary) 20%, transparent)';
         }
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.background =
-          'rgba(var(--accent-primary-rgb, 0, 102, 204), 0.08)';
+          'color-mix(in srgb, var(--accent-primary) 8%, transparent)';
       }}
     >
       <div className="context-indicator-content">

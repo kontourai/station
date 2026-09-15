@@ -42,21 +42,21 @@
 }
 
 .plugin-permissions__tier--passive {
-  background: #22c55e20;
-  border: 1px solid #22c55e40;
-  color: #22c55e;
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  color: var(--success-text);
 }
 
 .plugin-permissions__tier--active {
-  background: #f59e0b20;
-  border: 1px solid #f59e0b40;
-  color: #f59e0b;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  color: var(--warning-text);
 }
 
 .plugin-permissions__tier--trusted {
-  background: #ef444415;
-  border: 1px solid #ef444440;
-  color: #fca5a5;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  color: var(--error-text);
 }
 
 .plugin-permissions__what {
@@ -114,8 +114,8 @@
 }
 
 .plugin-permissions__binding--changed {
-  background: #f59e0b12;
-  border-left: 2px solid #f59e0b;
+  background: var(--warning-bg);
+  border-left: 2px solid var(--warning-text);
   border-radius: 4px;
   color: var(--text-primary);
   padding: 8px 10px;
