@@ -13,11 +13,12 @@
  * Why the comparison exists at all: the loader's seeding is invisible to
  * every later reader. `config/app.json` after a boot with no `systemPrompt`
  * is byte-identical to one where somebody typed the default prompt in, so
- * provenance reported `source: 'file'` for a value nobody chose — the
- * Settings badge read "Set in file", and "Reset Station settings" named the
- * prompt among the values it would clear, cleared it, and then saw it
- * re-seeded and named again on the next read. A reset that can never reach
- * "nothing is stored" is the label-versus-derivation defect in miniature.
+ * provenance reported `source: 'file'` for a value nobody chose — and
+ * "Reset Station settings", whose plan is built from exactly that
+ * distinction, named the prompt among the values it would clear, cleared
+ * it, and then saw it re-seeded and named again on the next read. A reset
+ * that can never reach "nothing is stored" is the label-versus-derivation
+ * defect in miniature.
  *
  * A value that is byte-equal to the seed is therefore reported as
  * `'default'`. That is lossy in exactly one direction: an operator who types
@@ -48,6 +49,12 @@ export const APP_CONFIG_SEED = {
 /**
  * Keys whose loaded value the loader may have written itself, paired with
  * the seed to compare against. Read by `buildAppConfigProvenance`.
+ *
+ * `defaultModel`, `invokeModel` and `structureModel` seed to `''`, which
+ * provenance already treats as the absence of a decision, so they never
+ * reach the seeded branch today. They are listed for forward compatibility:
+ * the day one of them seeds a real model id, the comparison is already in
+ * place rather than being a second bug to find.
  */
 export const SEEDED_APP_CONFIG_KEYS = [
   'systemPrompt',

@@ -204,21 +204,8 @@ const READY_MODEL_CONNECTION = {
 
 /**
  * A second connection, declaring its default explicitly rather than leaning
- * on catalog order — the two ways `connectionDefaultModelId` can answer.
+ * on catalog order — the two ways `connectionInitialModelId` can answer.
  */
-/**
- * Ready, and yet there is nothing to pre-fill from: no declared
- * `defaultModel`, no catalog. The one case where choosing a connection still
- * leaves the pair half-set.
- */
-const CATALOGLESS_MODEL_CONNECTION = {
-  ...READY_MODEL_CONNECTION,
-  id: 'bare-main',
-  type: 'custom',
-  name: 'Bare (main)',
-  config: {},
-};
-
 const SECOND_MODEL_CONNECTION = {
   ...READY_MODEL_CONNECTION,
   id: 'anthropic-main',
@@ -231,6 +218,19 @@ const SECOND_MODEL_CONNECTION = {
       { id: 'anthropic:claude-sonnet', name: 'Sonnet', originalId: 'sonnet' },
     ],
   },
+};
+
+/**
+ * Ready, and yet there is nothing to pre-fill from: no declared
+ * `defaultModel`, no catalog. The one case where choosing a connection still
+ * leaves the pair half-set.
+ */
+const CATALOGLESS_MODEL_CONNECTION = {
+  ...READY_MODEL_CONNECTION,
+  id: 'bare-main',
+  type: 'custom',
+  name: 'Bare (main)',
+  config: {},
 };
 
 function renderProjectSettings() {
@@ -533,7 +533,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       ).toBe('');
       expect(
         screen.getByText(
-          'Pre-filled with a model this connection offers. Both the connection and a model are needed; with either missing, this project uses the Station default.',
+          'This connection offers no model to pre-fill. Choose one, or this project uses the Station default.',
         ),
       ).toBeTruthy();
     });

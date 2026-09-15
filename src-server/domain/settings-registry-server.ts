@@ -49,18 +49,18 @@ export type { SettingProvenanceEntry, SettingProvenanceSource };
  * discards — the surface re-deriving "absent" for itself, which is the entire
  * thing the shared resolver exists to stop.
  */
+function isStoredValue(value: unknown): boolean {
+  if (value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  return true;
+}
+
 const SEEDED_KEY_SET: ReadonlySet<string> = new Set(SEEDED_APP_CONFIG_KEYS);
 
 function isSeededKey(
   key: string,
 ): key is (typeof SEEDED_APP_CONFIG_KEYS)[number] {
   return SEEDED_KEY_SET.has(key);
-}
-
-function isStoredValue(value: unknown): boolean {
-  if (value === undefined) return false;
-  if (typeof value === 'string') return value.trim().length > 0;
-  return true;
 }
 
 /**
@@ -102,11 +102,10 @@ export function buildAppConfigProvenance(
     if (!isStoredValue(value)) continue;
     // A value the LOADER wrote is not a decision the operator made, and
     // `config/app.json` records no difference between the two — see
-    // `app-config-seed.ts`. Reporting the seed as `'file'` made the Settings
-    // badge claim a choice nobody made, and made "Reset Station settings"
-    // list the seeded prompt and variables among the values it would clear,
-    // clear them, and find them re-seeded (and listed again) on the very
-    // next read.
+    // `app-config-seed.ts`. Reporting the seed as `'file'` made "Reset
+    // Station settings" list the seeded prompt and variables among the
+    // values it would clear, clear them, and find them re-seeded (and listed
+    // again) on the very next read.
     if (isSeededKey(key) && isSeededAppConfigValue(key, value)) {
       provenance[key] = { source: 'default' };
       continue;

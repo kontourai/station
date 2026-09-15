@@ -482,10 +482,16 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           />
           <PageRow
             label="Default model"
+            // Derived from what the field actually holds. A connection that
+            // offered nothing to pre-fill leaves this empty, and saying
+            // "pre-filled" over an empty box is the class of claim this whole
+            // change exists to remove.
             description={
-              form.defaultProviderId
-                ? 'Pre-filled with a model this connection offers. Both the connection and a model are needed; with either missing, this project uses the Station default.'
-                : 'Choose a model connection first. Without one, chats in this project use the Station default.'
+              !form.defaultProviderId
+                ? 'Choose a model connection first. Without one, chats in this project use the Station default.'
+                : form.defaultModel
+                  ? 'Pre-filled with a model this connection offers. Both the connection and a model are needed; with either missing, this project uses the Station default.'
+                  : 'This connection offers no model to pre-fill. Choose one, or this project uses the Station default.'
             }
             control={
               <ModelSelector

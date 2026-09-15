@@ -348,9 +348,9 @@ describe('buildAppConfigProvenance', () => {
    * `loadAppConfigFile` writes these into `config/app.json` itself when they
    * are missing, and the file records no difference between "Station seeded
    * this" and "the operator typed this". Reported as `'file'`, the seeded
-   * prompt carried a "Set in file" badge nobody had earned and survived
-   * every "Reset Station settings" — cleared, re-seeded on the next load,
-   * and named again in the next reset plan.
+   * prompt survived every "Reset Station settings" — the plan is built from
+   * exactly this distinction, so the prompt was named, cleared, re-seeded on
+   * the next load, and named again.
    */
   describe('values the loader seeds are not decisions the operator made', () => {
     test('the seeded system prompt is source "default"', () => {
