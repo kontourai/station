@@ -4,6 +4,7 @@ import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
   executeOwnedProcess,
+  runWindowsTaskkill,
   terminateSuiteExecution,
   waitForOwnedOutputEOF,
 } from '../lib/owned-process.mjs';
@@ -1098,5 +1099,60 @@ describe('terminating a POSIX process tree', () => {
 
     expect(outcome).toMatchObject({ settled: true, escalated: false });
     expect(outcome.errors).toEqual([]);
+  });
+});
+
+/**
+ * The Windows half of #2133.
+ *
+ * `terminateSuiteExecution` checks `isAlive()` and signals afterwards, so a
+ * child that ends on its own in between is signalled after it is gone. On
+ * POSIX that surfaced as ESRCH; on Windows `taskkill` exits 128 — "there is no
+ * running instance of the task" — and every non-zero status was an error, so
+ * the same benign race produced the same false termination failure.
+ *
+ * The real `runWindowsTaskkill` had no direct coverage: every other test in
+ * this file injects a fake through `runtime.runWindowsTaskkill`, so its exit
+ * handling ran nowhere.
+ */
+describe('runWindowsTaskkill exit handling', () => {
+  function taskkillExiting(code: number | null) {
+    return () => {
+      const child = new EventEmitter() as EventEmitter & {
+        kill: (signal?: string) => boolean;
+      };
+      child.kill = () => true;
+      queueMicrotask(() => child.emit('close', code));
+      return child as never;
+    };
+  }
+
+  test('a pid taskkill cannot find is not a termination failure', async () => {
+    // 128 is the whole point: the process is already gone, which is what
+    // termination wanted.
+    await expect(
+      runWindowsTaskkill(4242, false, taskkillExiting(128)),
+    ).resolves.toBeUndefined();
+  });
+
+  test('a successful kill resolves', async () => {
+    await expect(
+      runWindowsTaskkill(4242, true, taskkillExiting(0)),
+    ).resolves.toBeUndefined();
+  });
+
+  test('any other non-zero status is still a failure', async () => {
+    // 1 is access-denied — a genuine inability to terminate a LIVE process.
+    // Swallowing it would turn "I could not kill this" into a silent success,
+    // which is the opposite of the fix above.
+    await expect(
+      runWindowsTaskkill(4242, false, taskkillExiting(1)),
+    ).rejects.toThrow('taskkill exited with status 1');
+  });
+
+  test('a close with no status is a failure, named as unknown', async () => {
+    await expect(
+      runWindowsTaskkill(4242, false, taskkillExiting(null)),
+    ).rejects.toThrow('taskkill exited with status unknown');
   });
 });
