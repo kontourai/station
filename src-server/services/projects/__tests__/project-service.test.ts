@@ -390,6 +390,113 @@ describe('ProjectService', () => {
     expect(updated.description).toBe('kept');
   });
 
+  /**
+   * #2144 slice 2. The preflight is the early, specific failure a person gets
+   * at save time instead of a failed chat start. A project that names no mode
+   * on a Station whose default is `worktree` WILL start chats in a worktree
+   * (`execution-target-resolver.ts`), so the preflight has to resolve the
+   * same chain — otherwise the one project that most needs the check is the
+   * one that skips it.
+   */
+  test('the Station default arms the create preflight for a project that names no mode', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-project-station-'));
+    tmpHomes.push(directory);
+    const adapter = createMockStorageAdapter();
+    const svc = new ProjectService(
+      adapter as any,
+      undefined,
+      async () => 'worktree',
+    );
+
+    await expect(
+      svc.createProject({
+        name: 'Test',
+        slug: 'test',
+        workingDirectory: directory,
+      } as never),
+    ).rejects.toMatchObject({
+      code: 'project_worktree_directory_invalid',
+    });
+  });
+
+  test('no Station default leaves the create preflight unarmed, as before', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-project-nostation-'));
+    tmpHomes.push(directory);
+    const adapter = createMockStorageAdapter();
+    const svc = new ProjectService(
+      adapter as any,
+      undefined,
+      async () => undefined,
+    );
+
+    await expect(
+      svc.createProject({
+        name: 'Test',
+        slug: 'test',
+        workingDirectory: directory,
+      } as never),
+    ).resolves.toMatchObject({ slug: 'test' });
+  });
+
+  /**
+   * Dropping the project's own mode is a change of the EFFECTIVE mode exactly
+   * as setting one is: the project stops naming a mode and lands on the
+   * Station default. Before the trigger list included `null`, "use the
+   * Station default" was the one edit that could newly require a git
+   * repository and never checked for one.
+   */
+  test('the Station default arms the update preflight when a project drops its own mode', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-project-drop-'));
+    tmpHomes.push(directory);
+    const adapter = createMockStorageAdapter();
+    adapter.getProject.mockReturnValue({
+      id: 'project-test',
+      slug: 'test',
+      name: 'Test',
+      workingDirectory: directory,
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+      defaultWorkspaceIsolation: 'shared',
+    });
+    const svc = new ProjectService(
+      adapter as any,
+      undefined,
+      async () => 'worktree',
+    );
+
+    await expect(
+      svc.updateProject('test', { defaultWorkspaceIsolation: null }),
+    ).rejects.toMatchObject({
+      code: 'project_worktree_directory_invalid',
+    });
+    expect(
+      adapter.projectRevision.mock.results[0]?.value.replace,
+    ).not.toHaveBeenCalled();
+  });
+
+  test('an unrelated update does not arm the preflight, Station default or not', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-project-unrelated-'));
+    tmpHomes.push(directory);
+    const adapter = createMockStorageAdapter();
+    adapter.getProject.mockReturnValue({
+      id: 'project-test',
+      slug: 'test',
+      name: 'Test',
+      workingDirectory: directory,
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+    });
+    const svc = new ProjectService(
+      adapter as any,
+      undefined,
+      async () => 'worktree',
+    );
+
+    await expect(
+      svc.updateProject('test', { name: 'Renamed' }),
+    ).resolves.toMatchObject({ name: 'Renamed' });
+  });
+
   test('refuses an update that enables worktree isolation for a non-repository directory', async () => {
     const directory = mkdtempSync(
       join(tmpdir(), 'station-project-update-nonrepo-'),

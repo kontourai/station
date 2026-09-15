@@ -10,6 +10,10 @@ import {
   PROJECT_OVERRIDE_RECORD_FIELDS,
   type ProjectOverrideRecordField,
 } from '@kontourai/station-contracts/project-settings-overrides';
+import {
+  resolveWorkspaceIsolationMode,
+  type WorkspaceIsolationMode,
+} from '@kontourai/station-contracts/workspace-isolation';
 import { FileStorageUnavailableError } from '../../domain/project-file-transactions.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
@@ -220,10 +224,39 @@ export class ProjectService {
    * (`docs/design/portable-project-identity.md` §5, and its archive#1302
    * "designed but dead" precedent).
    */
+  /**
+   * `stationDefaultWorkspaceIsolation` reads this Station's
+   * `AppConfig.defaultWorkspaceIsolation` (#2144 slice 2) so the worktree
+   * directory preflights below judge the mode a chat will ACTUALLY start in,
+   * not just the one the project record names. Optional, and absent resolves
+   * to the shared checkout — which is how every caller behaved before the
+   * Station default existed.
+   */
   constructor(
     private storageAdapter: IStorageAdapter,
     private manifests?: Pick<ProjectManifestStore, 'ensureProjectManifest'>,
+    private stationDefaultWorkspaceIsolation?: () => Promise<
+      WorkspaceIsolationMode | undefined
+    >,
   ) {}
+
+  /**
+   * The mode a new chat in this project would start in — the project's own
+   * choice, then this Station's default, then shared. The preflights below
+   * are the early, specific "this directory is not a git repository" the
+   * person gets at save time instead of a failed chat start; they have to ask
+   * the same question `execution-target-resolver.ts` asks, or a project
+   * inheriting a Station default of `worktree` skips the check entirely and
+   * finds out at the first turn.
+   */
+  private async effectiveWorkspaceIsolation(
+    projectMode: WorkspaceIsolationMode | undefined,
+  ): Promise<WorkspaceIsolationMode> {
+    return resolveWorkspaceIsolationMode(
+      projectMode,
+      await this.stationDefaultWorkspaceIsolation?.(),
+    );
+  }
 
   listProjects(): ProjectMetadata[] {
     return this.storageAdapter.listProjects();
@@ -321,7 +354,11 @@ export class ProjectService {
       }
     }
 
-    if (config.defaultWorkspaceIsolation === 'worktree') {
+    if (
+      (await this.effectiveWorkspaceIsolation(
+        config.defaultWorkspaceIsolation,
+      )) === 'worktree'
+    ) {
       await assertProjectWorktreeDirectory(slug, config.workingDirectory);
     }
 
@@ -366,10 +403,18 @@ export class ProjectService {
     if (updated.defaultEnvironment?.kind === 'current') {
       delete updated.defaultEnvironment;
     }
+    // The trigger list gains `null` (#2144 slice 2): dropping the project's
+    // own mode is a change of the effective mode exactly as setting it is —
+    // the project stops naming one and lands on the Station default, which
+    // may be `worktree`. Without it, "use the Station default" was the one
+    // edit that could newly require a git repository and never check for one.
     if (
-      updated.defaultWorkspaceIsolation === 'worktree' &&
       ('workingDirectory' in updates ||
-        updates.defaultWorkspaceIsolation === 'worktree')
+        updates.defaultWorkspaceIsolation === 'worktree' ||
+        updates.defaultWorkspaceIsolation === null) &&
+      (await this.effectiveWorkspaceIsolation(
+        updated.defaultWorkspaceIsolation,
+      )) === 'worktree'
     ) {
       await assertProjectWorktreeDirectory(slug, updated.workingDirectory);
     }
