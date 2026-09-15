@@ -40,8 +40,30 @@ import { errorMessage } from '../schemas/schemas.js';
  *   disposition for a maintenance surface: there is no useful projected
  *   answer, because the actions it feeds are operator actions anyway, and a
  *   half-answer would be a worse lie than a refusal.
+ * - `projected-with-residual` — the route withholds every plugin fact the
+ *   SERVER derives, but its response can still carry plugin-authored strings
+ *   that come from the caller's own project record and cannot be removed
+ *   without deleting the record's meaning. Added for the two layout READ
+ *   routes (#2090/#2103), which project `config.plugin`, the live
+ *   `plugins/<name>` read and the catalog backfill, yet still answer with a
+ *   layout whose component ids are plugin-namespaced by convention, whose
+ *   `name` the catalog parser falls back to the plugin manifest's (and
+ *   finally to the plugin name), and whose `slug` is plugin-authored and IS
+ *   the route address.
+ *
+ *   It exists because the alternative was worse in both directions: calling
+ *   them `projected` would have them asserted against this family's
+ *   whole-body "names no ungranted plugin" check, which they cannot satisfy
+ *   and which a fixture can be chosen to dodge; excusing them in the scan
+ *   would drop them out of the enumerated list AND out of any executable
+ *   coverage, leaving a prose citation, which is the defect the citation
+ *   guard was built twice to fix. Their test asserts the withheld FIELDS
+ *   with an operator control instead.
  */
-export type PluginIdentityDisposition = 'projected' | 'operator-only';
+export type PluginIdentityDisposition =
+  | 'projected'
+  | 'projected-with-residual'
+  | 'operator-only';
 
 export interface PluginIdentityRoute {
   method: 'GET' | 'POST';
@@ -65,6 +87,20 @@ export const PLUGIN_IDENTITY_ROUTES: readonly PluginIdentityRoute[] = [
     disposition: 'projected',
     rationale:
       'The Pane catalogue a person composes a layout from. Contributions and descriptors for plugins outside the projection are dropped at the source.',
+  },
+  {
+    method: 'GET',
+    path: '/api/projects/:slug/layouts',
+    disposition: 'projected-with-residual',
+    rationale:
+      'Each row carries the stored `config.plugin`, which is dropped for a caller who cannot see that plugin. Withholding that name on the detail read while handing it over here in one request would make the detail route’s withholding theatre, so the same predicate answers both. The residual is the rest of a row: `name`, `description` and `slug` come from the layout the plugin shipped.',
+  },
+  {
+    method: 'GET',
+    path: '/api/projects/:slug/layouts/:layoutSlug',
+    disposition: 'projected-with-residual',
+    rationale:
+      'It merged the plugin’s LIVE layout from disk and backfilled catalog attribution, and `config` is a free record a member can write, so `{plugin: "a-guess"}` read back whether that plugin exists, with its tabs, version and `plugins/<name>` source (#2103). All four are withheld now, and a hidden plugin answers identically to a name nobody installed. The residual is the project’s own stored record: plugin-namespaced component ids, and a layout name and slug the plugin authored.',
   },
   {
     method: 'GET',
@@ -169,8 +205,17 @@ export function projectLayoutCatalogItems<
   return items.filter((item) => {
     const provenance = item.contribution?.provenance;
     if (provenance?.origin !== 'plugin') return true;
+    // A plugin-origin contribution naming no plugin is dropped rather than
+    // kept (#2090 review MEDIUM-D). It used to be kept, which made this the
+    // one place in the family that failed OPEN on a shape every other
+    // reader — the layout read routes' `layoutPluginBindingWithheld` and the
+    // apply guard that calls it — fails CLOSED on. Unreachable from the real
+    // `DistributionProfileService`, which always sets `pluginId`; the cost
+    // if it ever happens is an operator not seeing a malformed item in a
+    // picker, against a collaborator seeing a plugin layout nobody could
+    // attribute.
     return (
-      provenance.pluginId === undefined || canSeePlugin(provenance.pluginId)
+      provenance.pluginId !== undefined && canSeePlugin(provenance.pluginId)
     );
   });
 }

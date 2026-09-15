@@ -14,7 +14,10 @@
  * its path segment for the same reason (#2060).
  */
 import { randomUUID } from 'node:crypto';
-import type { LayoutOwner } from '@kontourai/station-contracts/layout';
+import type {
+  LayoutOwner,
+  LayoutReadView,
+} from '@kontourai/station-contracts/layout';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { AgentOwnershipRef } from '@kontourai/station-contracts/project-reference-integrity';
 import { type Context, Hono } from 'hono';
@@ -25,6 +28,7 @@ import {
 import { assertSafeLayoutPathSegment } from '../../domain/storage-adapter.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
+import { resolveLayoutPaneReferences } from '../../services/layouts/layout-pane-reference.js';
 import {
   type OwnedLayoutStore,
   PersonalLayoutConflictError,
@@ -87,6 +91,29 @@ export interface PersonalLayoutRouteDeps {
     projectSlug: string,
     resourceId: string,
   ) => Promise<string | undefined>;
+  /**
+   * Whether the request's own caller may see a named plugin (#2067), bound
+   * per request — the same projection the project layout routes read.
+   *
+   * A Board reaches `LayoutRenderer` through the same
+   * `layoutWorkspaceShape` derivation a project Layout does, so a Board tab
+   * naming a component from a plugin this person cannot see hits the same
+   * false sentence ("…is not installed or registered"). This is what lets
+   * the Board answer it with the causeless placeholder instead (#2090).
+   *
+   * Optional, and absent means NOTHING is withheld — the layout-only route
+   * tests compose without it and must render exactly as before.
+   *
+   * Unlike the project route, this one withholds nothing else. There is no
+   * live plugin read and no catalog backfill on this path: a Board's
+   * `config.plugin` is the CALLER'S OWN input into their OWN record, so
+   * stripping it would disclose nothing while destroying their binding on
+   * the next read-modify-write.
+   */
+  canSeePlugin?: (
+    c: PersonalLayoutPrincipalContext,
+    pluginId: string,
+  ) => boolean;
 }
 
 /**
@@ -201,15 +228,33 @@ export function createPersonalLayoutRoutes(
     }),
   );
 
+  /** This request's own plugin projection (#2067), or `undefined`. */
+  const viewerPluginSight = (
+    c: Context,
+  ): ((pluginId: string) => boolean) | undefined => {
+    const canSeePlugin = deps.canSeePlugin;
+    return canSeePlugin ? (pluginId) => canSeePlugin(c, pluginId) : undefined;
+  };
+
   app.get(
     '/layouts/:layoutSlug',
     withOwner((c, owner) => {
       const layoutSlug = addressableSlug(c);
       if (layoutSlug === undefined) return noSuchBoard(c);
       const board = service.get(owner, layoutSlug);
-      return board === undefined
-        ? noSuchBoard(c)
-        : c.json({ success: true, data: board });
+      if (board === undefined) return noSuchBoard(c);
+      // #2090 — the Board twin of the project layout read. Emitted only when
+      // a tab really cannot be shown, so absence stays absence and a
+      // composition with no projection renders exactly as it always did.
+      const paneReferences = resolveLayoutPaneReferences(board, {
+        canSeePlugin: viewerPluginSight(c),
+      });
+      // Assigned to a typed binding rather than spread into a literal: a
+      // misspelling in a spread is not excess-property-checked (#2090
+      // review), so the field would silently vanish from the response.
+      const data: LayoutReadView = { ...board };
+      if (paneReferences) data.paneReferences = paneReferences;
+      return c.json({ success: true, data });
     }),
   );
 
@@ -219,10 +264,23 @@ export function createPersonalLayoutRoutes(
     withOwner(async (c, owner) => {
       const layoutSlug = addressableSlug(c);
       if (layoutSlug === undefined) return noSuchBoard(c);
-      const updated = await service.update(owner, layoutSlug, getBody(c));
-      return updated === undefined
-        ? noSuchBoard(c)
-        : c.json({ success: true, data: updated });
+      // #2090 — `paneReferences` is a READ verdict about the caller, and the
+      // storage schema is `.strict()`. A client that read a Board and PUT it
+      // back would otherwise be refused by the store; the update schema
+      // tolerates the key for that reason alone and it is dropped here,
+      // rather than spread into the record by `service.update`.
+      const { paneReferences: _paneReferences, ...patch } = getBody(c);
+      const updated = await service.update(owner, layoutSlug, patch);
+      if (updated === undefined) return noSuchBoard(c);
+      // The write answers with the same verdict the read does. Without it a
+      // client rendering from this response falls back to the false "not
+      // installed or registered" sentence until its next refetch.
+      const verdict = resolveLayoutPaneReferences(updated, {
+        canSeePlugin: viewerPluginSight(c),
+      });
+      const data: LayoutReadView = { ...updated };
+      if (verdict) data.paneReferences = verdict;
+      return c.json({ success: true, data });
     }),
   );
 

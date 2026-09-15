@@ -677,6 +677,22 @@ Content-Type: application/json
 GET /api/me/layouts/:layoutSlug
 ```
 
+The response may carry `paneReferences` (#2090), a response-only verdict
+naming the Board's own tabs that cannot be shown to this caller:
+
+```json
+{ "paneReferences": { "unavailableTabIds": ["notes"] } }
+```
+
+It is present only when something really is withheld, it carries no reason,
+no source and no action, and it is never stored. A Board tab reaches the same
+renderer a project Layout's does, so a tab naming a component from a plugin
+this person cannot see would otherwise render "…is not installed or
+registered" — a cause the server never derived. Unlike the project layout
+read, this route withholds nothing else: it performs no live plugin read and
+no catalog backfill, and a Board's `config.plugin` is the caller's own input
+into their own record.
+
 ### Update a Board
 ```http
 PUT /api/me/layouts/:layoutSlug
@@ -688,6 +704,12 @@ Content-Type: application/json
 Fields the body omits are left as stored. `id`, `slug`, `createdAt`, and the
 owner are immutable. The read and the write happen inside one per-record
 transaction, so two concurrent updates cannot lose one another's change.
+
+This body is otherwise strict — an unrecognized key is refused rather than
+quietly dropped — with one exception: `paneReferences` is ACCEPTED and
+discarded, so that reading a Board and writing it back is not a 400 against a
+field this route itself attached. It never reaches storage. The response
+carries the same verdict the read does.
 
 ### Delete a Board
 ```http
@@ -2568,10 +2590,12 @@ instance. `GET /plugins` was the obvious enumerator; four more were found on
 the same read tier afterwards, and five more plus the event stream after
 that. The dispositions are written down in
 `src-server/routes/plugins/plugin-identity-enumeration.ts`. Each is driven
-against its real handler — most in that file's paired test, the project and
-Home-role rows in `pane-visibility.routes.test.ts` and
-`plugin-home-role-routes.test.ts`, each citation checked to name a file that
-exists. And because a written inventory is only as good as the thing that
+against its real handler — most in that file's paired test, the Pane
+catalogue and layout-picker rows in
+`src-server/routes/projects/__tests__/pane-visibility.routes.test.ts` and the
+Home-role rows in
+`src-server/routes/plugins/__tests__/plugin-home-role-routes.test.ts`, each
+citation checked to name a file that exists. And because a written inventory is only as good as the thing that
 checks it, `scripts/plugin-identity-enumeration-scan.mjs` fails the pre-push
 gate when a handler returns plugin identity and has neither a disposition nor
 a written exclusion. That scan states its own blind spots in its docblock;
@@ -2584,6 +2608,8 @@ read them before trusting it as complete.
 | `GET /projects/layouts/available` | projected — the layout picker |
 | `GET /registry/layouts` | projected |
 | `GET /registry/layouts/installed` | projected |
+| `GET /projects/:slug/layouts` | projected with residual — the stored `config.plugin` is dropped; the rest of a row is the project's own record |
+| `GET /projects/:slug/layouts/:layoutSlug` | projected with residual — the live plugin read, the catalog backfill, `config.plugin`, `catalogContribution` and the plugin's global actions are all withheld |
 | `GET /plugins/home-role/candidates` | projected — a user-facing picker, so a collaborator chooses from what they can see |
 | `GET /plugins/home-role` | projected — a holder the caller cannot see is reported as `none` |
 | `GET /plugins/check-updates` | operator only |
@@ -2597,6 +2623,35 @@ Projected routes answer everybody and narrow the answer. Operator-only routes
 refuse a non-operator outright, because they are maintenance surfaces whose
 actions are operator actions anyway — a projected half-answer there would
 still enumerate while answering a question the caller cannot act on.
+
+**`projected-with-residual`** is the third disposition, and the two layout
+READ routes are why it exists (#2090/#2103). For a caller who cannot see the
+owning plugin they perform no live `plugins/<name>` read and no catalog
+backfill, and they withhold `config.plugin`, `catalogContribution` and the
+plugin's global actions and skills — so a hidden plugin and a name nobody
+ever installed answer identically, which is what closes the enumeration
+question. What they cannot do is satisfy the plain `projected` contract, that
+the response body names no ungranted plugin at all: these routes answer about
+the PROJECT's own stored record, whose component ids are plugin-namespaced by
+convention, whose `name` and `description` the catalog parser falls back to
+the plugin manifest's (and finally to the plugin name itself), and whose
+`slug` is plugin-authored and IS the route address.
+
+Calling them `projected` would have put them under a whole-body string
+assertion they cannot satisfy and that a fixture can be chosen to dodge;
+excusing them in the scan would have dropped them out of the enumerated list
+and out of any executable coverage, leaving a prose citation. So they are
+rows, and their test names the exact strings that must be absent for a
+collaborator and present for the operator — the stored binding, the catalog
+attribution, the `plugins/<name>` source, the contribution version, and the
+tab only the live merge could have produced — and then asserts the residual
+is still there rather than pretending otherwise.
+
+`POST /projects/:slug/layouts/apply` and `POST
+/projects/:slug/layouts/from-plugin` refuse a plugin the caller cannot see
+with the message an id nobody has already gets; the apply check runs before
+the installed-and-enabled check, so "exists here, disabled" is not
+distinguishable from "does not exist".
 
 **The event stream.** The six `plugins:*` channels
 (`installed`, `removed`, `updated`, `settings-changed`, `grants-changed`,
@@ -2614,21 +2669,38 @@ The two axes are independent on purpose: a plugin installed under such a name
 before the reservation existed still cannot ride the exemption, because it
 cannot produce the marker.
 
-**Discovery only, and what that leaves unmet.** A plugin outside the caller's
-projection is dropped from the Pane catalogue entirely. That is correct for
-discovery — "what could I add?" — but it means a layout that ALREADY names
-such a pane renders a blank region. #2067's second acceptance criterion
-("renders that pane as unavailable with a reason, not as an error or as
-empty") is therefore **unmet**, deliberately and disclosed rather than
-shipped inert a third time. Two implementations were tried and removed: one
-was an existence oracle (a project member can seed guessed descriptor ids);
-the other could not work, because a saved layout names a pane by `component`
-and no descriptor id is persisted for a producer to find, and the client
-catalogue builds its entries exclusively from `descriptors` so a
-descriptor-free entry would have been discarded anyway. The reason code and
-its precedence are kept as a contract for the Board slice; see
-`packages/contracts/src/workspace-pane-availability.ts` for what a real
-implementation needs.
+**Discovery, and the reference half beside it.** A plugin outside the
+caller's projection is dropped from the Pane catalogue entirely. That is
+discovery — "what could I add?". The other half, a layout that ALREADY names
+such a pane, is #2090 and is now answered: the layout read routes consult
+`src-server/services/layouts/layout-pane-reference.ts` and attach a
+response-only `paneReferences` verdict, and the host renders that tab as
+unavailable instead of resolving a component it cannot load and asserting
+`Plugin layout component "X" is not installed or registered.` — a cause the
+server never derived and that is false.
+
+The verdict carries NO reason, NO source and NO action: only the ids of the
+layout's own tabs that cannot be shown. The server cannot tell a plugin this
+person cannot see from one that was never installed — the visibility
+predicate reads a grant list, not the install tree — and that
+indistinguishability is exactly what keeps the read from being an existence
+oracle, so a reason code would give it back. It is therefore NOT a
+`WorkspacePaneAvailability`: the `pane-not-available-to-viewer` reason stamps
+`source: "visibility"` and its copy names an operator and Settings. That
+reason code still has no producer and its precedence is still kept as a
+contract; see `packages/contracts/src/workspace-pane-availability.ts`.
+
+The verdict's PRESENCE is also a signal: a response carrying it has had its
+plugin binding withheld, which is why `unavailableTabIds` may be empty and
+why absence of the whole field — not an empty array — is what means nothing
+was withheld.
+
+Two earlier implementations were tried and removed: one was an existence
+oracle (a project member can seed guessed descriptor ids); the other could
+not work, because a saved layout names a pane by `component` and no
+descriptor id is persisted for a producer to find, and the client catalogue
+builds its entries exclusively from `descriptors` so a descriptor-free entry
+would have been discarded anyway.
 
 **What is not closed.** `GET /plugins/:name/bundle.js`, `bundle.css` and
 `permissions` are addressed by name and reveal no other plugin, but a 200

@@ -37,14 +37,41 @@ export type WorkspacePaneAvailabilitySource =
    * was never there without distinguishing them, or it is an existence
    * oracle.
    *
-   * ## NO PRODUCER ON THIS BRANCH — #2067 acceptance criterion 2 is UNMET
+   * ## STILL NO PRODUCER — and the referenced-pane case is answered ELSEWHERE
    *
    * `GET /api/projects/:slug/panes` drops a hidden plugin's panes entirely
-   * (discovery), so nothing reaches this branch and a layout that already
-   * names such a pane renders a BLANK REGION rather than a placeholder. The
-   * criterion — "renders that pane as unavailable with a reason, not as an
-   * error or as empty" — is not satisfied. Two implementations were tried
-   * and removed rather than shipped a third time:
+   * (discovery), so nothing reaches this branch: no resolution has ever
+   * carried this reason code, and this precedence entry remains a contract
+   * rather than a live path. `workspace-pane-availability-resolver.test.ts`
+   * says so, and the ordering is kept because it took three rounds to get
+   * right.
+   *
+   * What CHANGED is that #2067's second acceptance criterion — a layout
+   * already NAMING a pane the viewer cannot see — is now met, and
+   * deliberately not through this vocabulary. The producer is
+   * `src-server/services/layouts/layout-pane-reference.ts`, consulted by
+   * both layout read routes (`routes/projects/projects.ts` and
+   * `routes/me/personal-layouts.ts`). It answers about a reference that
+   * exists in persisted data (the applied plugin LAYOUT, keyed on `tab.id`)
+   * and emits `LayoutPaneReferences` — a bare list of tab ids with no
+   * reason, no source and no action.
+   *
+   * It is NOT a `WorkspacePaneAvailability`, for two reasons this file is
+   * the right place to record:
+   *
+   *   1. A `source: 'visibility'` stamp would be a label nothing derives.
+   *      `workspace-pane-catalog.ts` already records the precedent that a
+   *      pane whose subject is not here gets no availability sentence, and
+   *      the sentence this code's presentation string carries names an
+   *      operator and Settings — a cause and an action the layout route
+   *      cannot derive.
+   *   2. Hidden and never-installed are ONE answer there, by construction:
+   *      the visibility predicate reads a grant list, not the install tree.
+   *      That indistinguishability is what closed the enumeration oracle
+   *      (#2103); a reason code asserting a cause would give it back.
+   *
+   * Two earlier attempts were removed rather than shipped a third time, and
+   * both failed inside THIS vocabulary:
    *
    *   1. Keep the descriptor and withhold its contribution. Removed: it was
    *      an existence oracle. `POST /api/projects/:slug/layouts` is in the
@@ -58,18 +85,6 @@ export type WorkspacePaneAvailabilitySource =
    *      one to find), and the consumer would have discarded it anyway
    *      (`resolvedWorkspacePaneCatalog.ts` builds entries exclusively from
    *      `snapshot.descriptors`, joining availability on as a lookup).
-   *
-   * A real implementation needs all three of: a reference that actually
-   * exists in persisted data (the applied plugin LAYOUT, not a descriptor
-   * id); a host branch keyed on availability entries with no descriptor, so
-   * the renderer can show a placeholder without one; and a reason that
-   * asserts no cause, because the server cannot distinguish "hidden" from
-   * "no longer offered" — the Session Board's panes disappear the same way
-   * when a project has no Builder run — without re-arming the oracle.
-   *
-   * The precedence below is kept and tested because it took three rounds to
-   * get right and the Board slice will need it. It is a contract, not a live
-   * path; `workspace-pane-availability-resolver.test.ts` says so.
    */
   | 'visibility';
 

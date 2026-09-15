@@ -91,6 +91,34 @@ const DefaultLayout: AgentLayoutComponent = ({ layout, onShowChat }) => (
   </div>
 );
 
+/**
+ * The one sentence a tab gets when the server would not say what it holds
+ * (#2090).
+ *
+ * It names no plugin, no operator, no installation, no Builder run, and
+ * offers no action — because the server cannot tell a plugin this person
+ * cannot see from one that was never installed, and re-acquiring that
+ * distinction is exactly the existence oracle #2103 closed. The register is
+ * `WorkspacePaneRouteView`'s descriptor-free answer ("This Project doesn't
+ * have that pane"), NOT
+ * `workspacePaneAvailabilityPresentation.ts`'s `pane-not-available-to-viewer`
+ * string, which names an operator and a place to go.
+ */
+const LAYOUT_TAB_UNAVAILABLE_MESSAGE = 'This tab is not available.';
+
+// No `role="status"`: this is the slot's permanent content for this reader,
+// not something that becomes true while they are looking at it, and a live
+// region announces on mount.
+const UnavailableLayoutTab: AgentLayoutComponent = () => (
+  <div className="workspace-default">
+    <Empty
+      variant="prominent"
+      label="Tab not available"
+      description={LAYOUT_TAB_UNAVAILABLE_MESSAGE}
+    />
+  </div>
+);
+
 const UnsupportedLayoutComponent: AgentLayoutComponent = ({ activeTab }) => {
   const loadStatus = useSyncExternalStore(
     pluginRegistry.subscribe,
@@ -327,6 +355,17 @@ function resolvePluginLayoutComponent(
   return UnsupportedLayoutComponent;
 }
 
+/**
+ * Whether this tab carries the read verdict from #2090.
+ *
+ * The flag is set by `layoutWorkspaceShape` from the RESPONSE's
+ * `paneReferences`, never copied from a stored tab, so it is not part of the
+ * persisted `LayoutTab` contract and is read structurally here.
+ */
+function layoutTabUnavailable(tab: LayoutTab): boolean {
+  return (tab as { unavailable?: unknown }).unavailable === true;
+}
+
 function resolveLayoutComponent(
   component?: string | LayoutComponentRef,
 ): AgentLayoutComponent {
@@ -435,8 +474,20 @@ export function LayoutRenderer({
             layout.tabs.map((tab) => {
               const isActive = tab.id === activeTabId;
               if (!isActive) return null;
-              const Component =
-                trustedPluginLayout ?? resolveLayoutComponent(tab.component);
+              // #2090 — ahead of every resolution, including the trusted
+              // direct-pane component, because this is not a question about
+              // which renderer exists. Without it the bundle never loads,
+              // `resolveLayoutComponent` returns the unsupported placeholder,
+              // and the region asserts a cause the server never derived and
+              // that is false: `Plugin layout component "X" is not installed
+              // or registered.` — sending the reader to reinstall a plugin
+              // this Station already has. Same shape as the remote-isolation
+              // branch in `UnsupportedLayoutComponent`, which exists for
+              // exactly this reason and says so.
+              const Component = layoutTabUnavailable(tab)
+                ? UnavailableLayoutTab
+                : (trustedPluginLayout ??
+                  resolveLayoutComponent(tab.component));
               return (
                 <div key={tab.id} className="workspace-tab-content">
                   <Component

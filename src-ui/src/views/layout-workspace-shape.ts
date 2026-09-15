@@ -1,4 +1,5 @@
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
+import type { LayoutPaneReferences } from '@kontourai/station-contracts/layout';
 
 /**
  * The one `LayoutConfig` → workspace-shape derivation (#2062).
@@ -51,6 +52,13 @@ export interface LayoutWorkspaceSource {
   icon?: string;
   description?: string;
   config?: Record<string, any> | null;
+  /**
+   * The read verdict this response carried (#2090), if any. Response-only:
+   * it is never part of the stored record, and the tabs below take their
+   * `unavailable` flag from THIS and never from a stored tab field, so a
+   * value somebody persisted into `config.tabs` cannot forge one.
+   */
+  paneReferences?: LayoutPaneReferences;
 }
 
 /**
@@ -64,6 +72,12 @@ export function layoutWorkspaceShape(
   if (!layoutData) return null;
   const { annotateAgentRef, reviewPluginAction, hostOwnsGlobalActions } =
     options;
+  // #2090 — the one place a layout tab learns it cannot be shown. Both hosts
+  // reach `LayoutRenderer` through here, so the project Layout and the Board
+  // get the same branch rather than two that drift.
+  const unavailableTabIds = new Set(
+    layoutData.paneReferences?.unavailableTabIds ?? [],
+  );
   return {
     slug: layoutData.slug,
     name: layoutData.name,
@@ -77,6 +91,7 @@ export function layoutWorkspaceShape(
       description: t.description,
       actions: (t.actions ?? []).map(annotateAgentRef).map(reviewPluginAction),
       skills: (t.skills ?? []).map(annotateAgentRef).map(reviewPluginAction),
+      unavailable: unavailableTabIds.has(t.id),
     })),
     globalSkills: (hostOwnsGlobalActions
       ? []

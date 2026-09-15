@@ -73,6 +73,7 @@ vi.mock('@/utils/logger', () => ({
 }));
 
 import { LayoutRenderer } from '../layouts';
+import { layoutWorkspaceShape } from '../views/layout-workspace-shape';
 
 function PluginLayout() {
   return <div>Plugin layout rendered</div>;
@@ -426,5 +427,117 @@ describe('LayoutRenderer component dispatch', () => {
     expect(
       screen.queryByRole('button', { name: 'Summarise the day' }),
     ).toBeNull();
+  });
+});
+
+/**
+ * #2090 — a layout tab whose plugin the viewer cannot see.
+ *
+ * Driven through the REAL `layoutWorkspaceShape` and the REAL
+ * `LayoutRenderer`, deliberately: `LayoutView.test.tsx` and
+ * `PersonalBoardView.test.tsx` both STUB the renderer, so a test at those
+ * layers proves nothing about the branch that renders.
+ */
+describe('a layout tab the server would not describe', () => {
+  const HIDDEN_PLUGIN = 'secret-notes';
+
+  function renderWithVerdict(
+    paneReferences: { unavailableTabIds: readonly string[] } | undefined,
+    tabs: Array<Record<string, unknown>>,
+  ) {
+    const shape = layoutWorkspaceShape(
+      {
+        slug: 'plugin-layout',
+        name: 'Plugin layout',
+        config: { tabs },
+        ...(paneReferences ? { paneReferences } : {}),
+      },
+      {
+        annotateAgentRef: (item) => item,
+        reviewPluginAction: (item) => item,
+        hostOwnsGlobalActions: false,
+      },
+    );
+    render(
+      <LayoutRenderer
+        layout={shape as unknown as LayoutDefinition}
+        activeTab={shape?.tabs[0] as never}
+        activeTabId={shape?.tabs[0]?.id}
+      />,
+    );
+  }
+
+  test('renders one causeless sentence instead of a false cause', () => {
+    // The bundle never loaded, so without the verdict this slot resolves to
+    // the unsupported placeholder and asserts a cause the server never
+    // derived and that is FALSE — the plugin is installed.
+    getLayoutMock.mockReturnValue(undefined);
+
+    renderWithVerdict({ unavailableTabIds: ['notes'] }, [
+      { id: 'notes', label: 'Notes', component: 'notes-view' },
+    ]);
+
+    expect(screen.getByText('This tab is not available.')).toBeTruthy();
+    const rendered = document.body.textContent ?? '';
+    for (const forbidden of [
+      'not installed',
+      'reinstall',
+      'operator',
+      'Operator',
+      'Settings',
+      'registered',
+      HIDDEN_PLUGIN,
+    ]) {
+      expect(rendered).not.toContain(forbidden);
+    }
+  });
+
+  test('the same tab WITHOUT the verdict still reads as uninstalled', () => {
+    // The control, and the reason the branch above is load-bearing: this is
+    // exactly the sentence #2090 exists to replace, still produced when no
+    // verdict says otherwise.
+    getLayoutMock.mockReturnValue(undefined);
+
+    renderWithVerdict(undefined, [
+      { id: 'notes', label: 'Notes', component: 'notes-view' },
+    ]);
+
+    expect(
+      screen.getByText(
+        'Plugin layout component "notes-view" is not installed or registered.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('This tab is not available.')).toBeNull();
+  });
+
+  test('a tab the verdict does not name renders its component', () => {
+    getLayoutMock.mockReturnValue(PluginLayout);
+
+    renderWithVerdict({ unavailableTabIds: ['other'] }, [
+      { id: 'notes', label: 'Notes', component: 'notes-view' },
+    ]);
+
+    expect(screen.getByText('Plugin layout rendered')).toBeTruthy();
+    expect(screen.queryByText('This tab is not available.')).toBeNull();
+  });
+
+  test('an `unavailable` flag persisted into a stored tab cannot forge one', () => {
+    // The flag is a RESPONSE verdict. `layoutWorkspaceShape` builds each tab
+    // explicitly and never copies a stored value, which is what stops a
+    // caller writing `config.tabs[0].unavailable` into their own record and
+    // having it honoured.
+    getLayoutMock.mockReturnValue(PluginLayout);
+
+    renderWithVerdict(undefined, [
+      {
+        id: 'notes',
+        label: 'Notes',
+        component: 'notes-view',
+        unavailable: true,
+      },
+    ]);
+
+    expect(screen.getByText('Plugin layout rendered')).toBeTruthy();
+    expect(screen.queryByText('This tab is not available.')).toBeNull();
   });
 });

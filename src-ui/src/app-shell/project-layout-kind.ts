@@ -15,6 +15,8 @@
  * registry by `__tests__/project-layout-kind.test.ts`.
  */
 
+import type { LayoutPaneReferences } from '@kontourai/station-contracts/layout';
+
 /** The keys of `layoutRegistry.ts`'s `layoutTypeRegistry`, restated. */
 export const LAYOUT_TYPE_REGISTRY_KEYS = [
   'chat',
@@ -37,6 +39,17 @@ interface ProjectLayoutRendererFacts {
   catalogContribution?: {
     provenance: { origin: string };
   };
+  /**
+   * The read verdict from #2090. Its PRESENCE is what this dispatch needs:
+   * a response carrying it has had `config.plugin` and `catalogContribution`
+   * withheld, which are the two facts below that route a contributed layout
+   * to `LayoutView`. Without this a withheld `type: 'coding'` plugin layout
+   * would fall through to the BUILT-IN coding host — a different renderer
+   * for a layout whose panes were withheld, and one that never reaches the
+   * per-tab branch. `unavailableTabIds` may legitimately be empty; the field
+   * being absent, not empty, is what means nothing was withheld.
+   */
+  paneReferences?: LayoutPaneReferences;
 }
 
 const registryKeys: ReadonlySet<string> = new Set(LAYOUT_TYPE_REGISTRY_KEYS);
@@ -49,10 +62,11 @@ function isLayoutTypeRegistryKey(
 
 /**
  * Mirrors `ProjectLayoutRenderer`'s dispatch order exactly: no layout yet →
- * `LayoutView`; a contributed layout (catalog provenance `plugin`/`mcp`) or a
- * persisted `config.plugin` → `LayoutView`, whatever its `type`; `coding` →
- * the built-in Coding host; a registry key → that registry entry; anything
- * else → `LayoutView`.
+ * `LayoutView`; a contributed layout (catalog provenance `plugin`/`mcp`), a
+ * persisted `config.plugin`, or a response whose plugin binding was withheld
+ * (#2090) → `LayoutView`, whatever its `type`; `coding` → the built-in
+ * Coding host; a registry key → that registry entry; anything else →
+ * `LayoutView`.
  */
 export function resolveProjectLayoutRendererKind(
   layout: ProjectLayoutRendererFacts | null | undefined,
@@ -65,7 +79,10 @@ export function resolveProjectLayoutRendererKind(
   const contributionOrigin = layout.catalogContribution?.provenance.origin;
   const isContributedLayout =
     contributionOrigin === 'plugin' || contributionOrigin === 'mcp';
-  if (isContributedLayout || declaredPlugin) return 'layout-view';
+  const bindingWithheld = layout.paneReferences !== undefined;
+  if (isContributedLayout || declaredPlugin || bindingWithheld) {
+    return 'layout-view';
+  }
 
   if (layout.type === 'coding') return 'coding';
 
