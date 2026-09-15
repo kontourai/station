@@ -15,6 +15,7 @@ import {
   chatDockShell,
   documentFitsViewportWidth,
   expectBoxWithinViewport,
+  expectRegionTabs,
   FIRST_RENDER_TIMEOUT_MS,
   placeSurfaceThroughLayoutPicker,
   showRegionThroughOverflowMenu,
@@ -967,14 +968,26 @@ test.describe('ChatDock', () => {
    * page can grow one back.
    *
    * What the retired journey actually guarded survives, and is what this
-   * drives: a non-Chat surface takes the dock region Chat holds, the choice is
-   * device state that outlives a reload, and putting Chat back returns that
-   * same region to Chat. The route is the model's own `placeSurface` through
-   * the header's Layout picker, and every assertion reads the rendered dock —
-   * which surface occupies which region — rather than the model that decided
-   * it.
+   * drives: a non-Chat surface reaches the dock region Chat holds, the choice
+   * is device state that outlives a reload, and asking for Chat again brings
+   * it back to the front without dropping what it now shares the region with.
+   * The route is the model's own `placeSurface` through the header's Layout
+   * picker, and every assertion reads the rendered dock rather than the model
+   * that decided it.
+   *
+   * The MECHANISM under it changed with #2046 2a, and these assertions follow
+   * it. Before 2a a dock placement DISPLACED: Activity took `bottom` and Chat
+   * was relocated to `right`, two shells with two landmarks. Since 2a "a dock
+   * region does not displace at all … a surface placed into an occupied dock
+   * region JOINS its panes, last in tab order and selected, and the pane it
+   * joins stays behind it" (docs/design/placement.md, decision 3). So there is
+   * still ONE shell, it is still Chat's — `#chat-dock`, the "Dock" landmark
+   * and `dock.maximize` belong to the region whose panes INCLUDE Chat,
+   * selected or not (`DockShell.tsx:48-66`, D3) — and the pane set is read
+   * through the region bar's tab strip. `main` keeps displacement; the dock
+   * does not.
    */
-  test('places Activity in the dock region Chat holds and returns that region to Chat', async ({
+  test('joins Activity to the dock region Chat holds and brings Chat back to the front', async ({
     page,
   }) => {
     // One dock shell, Chat's, in the bottom region. `is-collapsed` is
@@ -985,35 +998,41 @@ test.describe('ChatDock', () => {
 
     await placeSurfaceThroughLayoutPicker(page, 'Activity', 'Bottom');
 
-    // The region changed hands, and Chat is not homeless: `placeSurface`
-    // relocates the displaced surface into the first free dock region, which
-    // is `right`. Both halves are asserted, because "Activity is at the
-    // bottom" would also be true of a model that simply dropped Chat.
-    await expect(surfaceDockShell(page, 'Activity')).toHaveClass(
-      /chat-dock--bottom/,
-    );
-    await expect(chatDockShell(page)).toHaveClass(/chat-dock--right/);
+    // Activity joined the region rather than taking it. All three halves are
+    // asserted, because "Activity is showing at the bottom" would also be
+    // true of a model that dropped Chat on the floor, and of one that pushed
+    // it into a second region the user never asked for.
+    await expect(
+      page.locator('.chat-dock'),
+      'a joined pane shares the region it entered; it does not open a second dock',
+    ).toHaveCount(1);
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
+    await expect(
+      surfaceDockShell(page, 'Activity'),
+      'the region still holds Chat, so its landmark stays the Dock, not Activity',
+    ).toHaveCount(0);
+    await expectRegionTabs(page, ['Chat', 'Activity'], 'Activity');
 
     // The arrangement is device state (#928 D), so a reload must render the
-    // same two regions. Read through the DOM rather than through the
+    // same region with the same panes in the same order and the same one
+    // selected. Read through the DOM rather than through the
     // `regionArrangement` device setting: the record is the mechanism, and a
     // reload is the only thing that proves the mechanism ran.
     await page.reload();
-    await expect(surfaceDockShell(page, 'Activity')).toHaveClass(
-      /chat-dock--bottom/,
-    );
-    await expect(chatDockShell(page)).toHaveClass(/chat-dock--right/);
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
+    await expectRegionTabs(page, ['Chat', 'Activity'], 'Activity');
 
+    // Chat is behind Activity's tab, which the picker reads as Hidden — seen
+    // means the region is visible AND this is the pane it shows
+    // (`useRegionSurfaceMenu.ts` `placementOf`) — so choosing Chat's `Bottom`
+    // segment is a select within the region it already holds.
     await placeSurfaceThroughLayoutPicker(page, 'Chat', 'Bottom');
 
     await expect(
       chatDockShell(page),
-      'returning Chat to the bottom region must give it that region back',
+      'asking for Chat at the bottom must leave it in the region it already held',
     ).toHaveClass(/chat-dock--bottom/);
-    await expect(
-      surfaceDockShell(page, 'Activity'),
-      'the surface Chat displaced must take the region Chat vacated, not vanish',
-    ).toHaveClass(/chat-dock--right/);
+    await expectRegionTabs(page, ['Chat', 'Activity'], 'Chat');
     expect(
       await page.evaluate(
         () => document.querySelector('#chat-dock')?.parentElement?.className,
