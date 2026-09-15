@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { DirectWebDriver } from '../../tests/tauri-shell/direct-webdriver';
+import {
+  DirectWebDriver,
+  SCRIPT_TIMEOUT_MS,
+} from '../../tests/tauri-shell/direct-webdriver';
 import { tauriShellBinaryCandidates } from '../run-tauri-shell-e2e.mjs';
 
 const root = new URL('../../', import.meta.url);
@@ -376,10 +379,71 @@ describe('Tauri embedded WebDriver boundary', () => {
 
     test('a driver that will not adopt the bound fails connect() instead of running on the default', async () => {
       driverThatOnlyHonoursThePostCommand(false);
+      // Built from the constant rather than transcribing it. The subject here
+      // is the REFUSAL — that an unadopted bound stops the session instead of
+      // silently running on the driver's 30 s default — and that is true at
+      // any value. The value itself carries a different invariant, pinned
+      // below, and this assertion moving with the constant is what keeps the
+      // two from being confused for one another.
       await expect(new DirectWebDriver(4444).connect()).rejects.toThrow(
-        /did not adopt the script timeout: asked for 120000ms, session reports .*"script":30000/,
+        new RegExp(
+          `did not adopt the script timeout: asked for ${SCRIPT_TIMEOUT_MS}ms, session reports .*"script":30000`,
+        ),
       );
     });
+  });
+
+  /**
+   * #2109. The bound above is PER ATTEMPT, and `waitUntil` re-checks its own
+   * budget only after the predicate returns — so a per-attempt bound longer
+   * than the budget wrapping it means every wait gets exactly one attempt and
+   * the retry loop cannot run.
+   *
+   * That is not hypothetical and it is not a race. At a 120 s bound against
+   * these budgets, ten runs of the plugin-host lane on an idle host produced
+   * 8 passes at 26-39 s and 2 failures at 125-126 s, both `script timeout`,
+   * with an 86-second hole between the two groups: either the probe got
+   * through or it blocked for the whole bound, once. At 5 s: 10 of 10, and
+   * instrumentation showed the readiness wait genuinely taking 2-3 attempts
+   * where it could previously take only one.
+   *
+   * So the ordering is the invariant, not either number. This reads the lane
+   * budgets out of the suites themselves, because a budget added later is
+   * exactly how this would come back.
+   */
+  test('every driver-backed lane budget fits more than one attempt (#2109)', () => {
+    const lanes = [
+      'tests/tauri-shell/plugin-host-security.e2e.ts',
+      'tests/tauri-shell/device-pane.e2e.ts',
+    ];
+
+    // Only waits whose PREDICATE reaches the driver are governed by the script
+    // bound. A `waitUntil` polling in-process state (`hits.requests.length`)
+    // never issues `execute/sync`, so its budget is a product decision about
+    // how long to wait, and holding it to this ordering would force an
+    // unrelated change. Found by this guard reporting a 5 s budget on exactly
+    // such a wait the first time it ran.
+    const driverBacked = /waitUntil\(([\s\S]*?)timeout:\s*([\d_]+)/g;
+    const budgets = lanes.flatMap((lane) =>
+      [...read(lane).matchAll(driverBacked)]
+        .filter(([, predicate]) =>
+          /browser\.execute|findElement/.test(predicate),
+        )
+        .map(([, , ms]) => ({ lane, ms: Number(ms.replaceAll('_', '')) })),
+    );
+
+    // Guards the guard twice over: a regex that stopped matching, or a filter
+    // that excluded everything, would both pass vacuously.
+    expect(budgets.length).toBeGreaterThanOrEqual(6);
+
+    for (const { lane, ms } of budgets) {
+      expect(
+        ms,
+        `${lane} has a ${ms}ms wait budget against a ${SCRIPT_TIMEOUT_MS}ms ` +
+          'per-attempt script bound. A budget must fit at least two attempts, ' +
+          'or its retry loop cannot run and the wait gets one shot (#2109).',
+      ).toBeGreaterThanOrEqual(SCRIPT_TIMEOUT_MS * 2);
+    }
   });
 
   test('does not install unrelated external browser drivers', () => {

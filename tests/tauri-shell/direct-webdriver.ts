@@ -79,7 +79,7 @@ const sleep = (milliseconds: number) =>
  * this constant — either the probe got through or it blocked for the entire
  * bound, once. The value below is short enough that the gap cannot exist.
  */
-const SCRIPT_TIMEOUT_MS = 5_000;
+export const SCRIPT_TIMEOUT_MS = 5_000;
 
 /**
  * How long this client waits for one request, and it MUST exceed
