@@ -5,6 +5,7 @@
  */
 
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import { readProjectOverrides } from '@kontourai/station-contracts/project-settings-overrides';
 import { afterEach, describe, expect, test } from 'vitest';
 import { APP_CONFIG_SEED } from '../app-config-seed.js';
 import { resolveEffectiveAppSetting } from '../settings-effective.js';
@@ -32,6 +33,33 @@ describe('resolveEffectiveAppSetting', () => {
         projectOverrides: { defaultModel: 'project-model' },
       }),
     ).toEqual({ value: 'project-model', source: 'project' });
+  });
+
+  /**
+   * The resolver takes `projectOverrides` as given; the model pair's
+   * all-or-nothing rule lives in `readProjectOverrides`, which is what every
+   * production caller composes with. Asserted through the composition rather
+   * than on the resolver alone — testing the resolver with a hand-built
+   * half-pair would pass under either version of the reader and prove
+   * nothing about what production resolves.
+   */
+  test('a project carrying half the model pair resolves to the Station pair', () => {
+    const projectOverrides = readProjectOverrides({
+      defaultProviderId: 'atlas-engine',
+    } as never);
+    expect(projectOverrides).toEqual({});
+    for (const key of ['defaultModel', 'defaultLLMProvider'] as const) {
+      expect(
+        resolveEffectiveAppSetting(key, {
+          config: config({
+            defaultModel: 'station-model',
+            defaultLLMProvider: 'station-local',
+          }),
+          projectOverrides,
+        })?.source,
+        key,
+      ).toBe('station');
+    }
   });
 
   test('a stored Station value is the Station’s decision', () => {

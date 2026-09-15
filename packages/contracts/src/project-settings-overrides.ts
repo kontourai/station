@@ -69,6 +69,16 @@ void _assertOverridesCoverTheList;
  * renamed here — a rename on either side is a stored-data migration, and this
  * slice is not that. The alias is the seam where the two names meet, declared
  * once so no caller re-derives it.
+ *
+ * The two names describe ONE setting at two scopes, not two settings that
+ * happen to rhyme: `ProviderService.resolveProviderAndModel`
+ * (`src-server/services/connections/provider-service.ts:283-320`) reads the
+ * project's `defaultProviderId`/`defaultModel` pair first and
+ * `AppConfig.defaultLLMProvider`/`AppConfig.defaultModel` as its own
+ * fallback, in one resolver. (The Bedrock read at
+ * `src-server/routes/connections/bedrock.ts` is a second consumer of the Station
+ * value, not the only one — recorded here so the next reader does not repeat
+ * the search that makes it look like two unrelated fields.)
  */
 export const PROJECT_OVERRIDE_FIELD_ALIASES = {
   defaultModel: 'defaultModel',
@@ -80,6 +90,24 @@ export const PROJECT_OVERRIDE_FIELD_ALIASES = {
 >;
 
 /**
+ * The model connection and the model it names are resolved TOGETHER or not at
+ * all.
+ *
+ * `ProviderService.resolveProviderAndModel`
+ * (`src-server/services/connections/provider-service.ts:283`) takes the
+ * project branch only for `project?.defaultProviderId && project.defaultModel`
+ * — a project carrying one without the other falls through to the Station
+ * pair entire. So a half-pair is not a half-override; it is no override, and
+ * reporting either half as `scope: 'project'` would name the project as the
+ * source of a value the resolver never reads.
+ *
+ * `defaultWorkspaceIsolation` is deliberately NOT in this group: it resolves
+ * on its own (`resolveWorkspaceIsolationMode`) and has nothing to be atomic
+ * with.
+ */
+const ATOMIC_MODEL_PAIR = ['defaultModel', 'defaultLLMProvider'] as const;
+
+/**
  * The overrides a project record actually carries, keyed by SETTING key.
  *
  * Absent and empty-string fields are both omitted: a project whose
@@ -88,6 +116,8 @@ export const PROJECT_OVERRIDE_FIELD_ALIASES = {
  * value the resolvers discard. This mirrors `isStoredValue` in
  * `src-server/domain/settings-registry-server.ts` — the same "a decision, not
  * the absence of one" test provenance already applies to the Station file.
+ *
+ * The model pair is additionally all-or-nothing; see {@link ATOMIC_MODEL_PAIR}.
  */
 export function readProjectOverrides(
   project: Pick<ProjectConfig, ProjectOverrideRecordField> | undefined,
@@ -101,6 +131,9 @@ export function readProjectOverrides(
     if (value === undefined || value === null) continue;
     if (typeof value === 'string' && value.trim().length === 0) continue;
     overrides[key] = value;
+  }
+  if (ATOMIC_MODEL_PAIR.some((key) => overrides[key] === undefined)) {
+    for (const key of ATOMIC_MODEL_PAIR) delete overrides[key];
   }
   return overrides as ProjectSettingsOverrides;
 }

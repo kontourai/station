@@ -454,14 +454,21 @@ describe('Config Routes', () => {
               createdAt: 'now',
               updatedAt: 'now',
               defaultProviderId: 'atlas-engine',
+              defaultModel: 'atlas-model',
               defaultWorkspaceIsolation: 'worktree',
             } as never)
           : undefined,
     );
     const body = await json(await app.request('/app?project=atlas'));
     // The alias is applied: the project's `defaultProviderId` is what makes
-    // the SETTING `defaultLLMProvider` project-scoped.
+    // the SETTING `defaultLLMProvider` project-scoped. The project carries
+    // the WHOLE model pair here, which is what makes it an override at all —
+    // see the half-pair case below.
     expect(body.provenance.defaultLLMProvider).toEqual({
+      source: 'file',
+      scope: 'project',
+    });
+    expect(body.provenance.defaultModel).toEqual({
       source: 'file',
       scope: 'project',
     });
@@ -471,18 +478,69 @@ describe('Config Routes', () => {
       source: 'file',
       scope: 'project',
     });
-    expect(body.provenance.terminalShell).toEqual({
-      source: 'file',
-      scope: 'station',
-    });
     // A key the project does not override stays the Station's.
-    expect(body.provenance.defaultModel).toEqual({
+    expect(body.provenance.terminalShell).toEqual({
       source: 'file',
       scope: 'station',
     });
     // Values are untouched: naming a project asks for provenance, not for a
     // different config document.
     expect(body.data.defaultLLMProvider).toBe('station-local');
+  });
+
+  /**
+   * `ProviderService.resolveProviderAndModel` takes the project branch only
+   * when the project has BOTH `defaultProviderId` and `defaultModel`
+   * (provider-service.ts:283). A project carrying one of them resolves to the
+   * Station pair entire, so naming the project as the source of either half
+   * would describe a resolution that never happens.
+   */
+  test('GET /app?project= does not attribute a half model pair to the project', async () => {
+    const loader = createMockConfigLoader({
+      defaultModel: 'claude-3',
+      defaultLLMProvider: 'station-local',
+    });
+    const halfPair = (field: 'defaultProviderId' | 'defaultModel') =>
+      createConfigRoutes(
+        loader as any,
+        mockLogger,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        () =>
+          ({
+            id: 'p',
+            slug: 'atlas',
+            name: 'Atlas',
+            createdAt: 'now',
+            updatedAt: 'now',
+            [field]: 'only-half',
+            defaultWorkspaceIsolation: 'worktree',
+          }) as never,
+      );
+
+    for (const field of ['defaultProviderId', 'defaultModel'] as const) {
+      const body = await json(
+        await halfPair(field).request('/app?project=atlas'),
+      );
+      expect(body.provenance.defaultLLMProvider, field).toEqual({
+        source: 'file',
+        scope: 'station',
+      });
+      expect(body.provenance.defaultModel, field).toEqual({
+        source: 'file',
+        scope: 'station',
+      });
+      // The isolation override is independent and survives — the pair rule
+      // must not take unrelated keys down with it.
+      expect(body.provenance.defaultWorkspaceIsolation, field).toEqual({
+        source: 'file',
+        scope: 'project',
+      });
+    }
   });
 
   test('GET /app?project= answers 404 for a slug this Station does not have', async () => {

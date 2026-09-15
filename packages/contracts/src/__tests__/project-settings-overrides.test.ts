@@ -117,14 +117,42 @@ describe('project settings overrides', () => {
         project({ defaultProviderId: '   ', defaultModel: '' }),
       ),
     ).toEqual({});
+  });
+
+  /**
+   * `ProviderService.resolveProviderAndModel` takes the project branch only
+   * for `project?.defaultProviderId && project.defaultModel`
+   * (`src-server/services/connections/provider-service.ts:283`): a project
+   * carrying one half falls through to the Station pair ENTIRE. A half-pair
+   * is therefore not a half-override, it is no override, and emitting either
+   * half would name the project as the source of a value nothing reads.
+   */
+  test('a half model pair is not an override, by any of the ways a half arises', () => {
+    const halves: Partial<ProjectConfig>[] = [
+      { defaultProviderId: 'anthropic-local' },
+      { defaultModel: 'claude-sonnet' },
+      { defaultProviderId: 'anthropic-local', defaultModel: '' },
+      {
+        defaultProviderId: null as unknown as string,
+        defaultModel: 'claude-sonnet',
+      },
+    ];
+    for (const half of halves) {
+      expect(readProjectOverrides(project(half)), JSON.stringify(half)).toEqual(
+        {},
+      );
+    }
+  });
+
+  test('the pair rule does not take an independent override down with it', () => {
     expect(
       readProjectOverrides(
         project({
-          defaultProviderId: null as unknown as string,
-          defaultModel: 'kept',
+          defaultModel: 'claude-sonnet',
+          defaultWorkspaceIsolation: 'worktree',
         }),
       ),
-    ).toEqual({ defaultModel: 'kept' });
+    ).toEqual({ defaultWorkspaceIsolation: 'worktree' });
   });
 
   test('non-overridable project fields are never reported', () => {
