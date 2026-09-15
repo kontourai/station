@@ -146,6 +146,8 @@ interface ModelSelectorProps {
   defaultModel?: string; // Global default model to show as option
   models?: Model[];
   id?: string; // associate a <label htmlFor> with the input (a11y + testing)
+  /** Refuse edits while a prerequisite selection is missing. */
+  disabled?: boolean;
 }
 
 export function ModelSelector({
@@ -155,6 +157,7 @@ export function ModelSelector({
   defaultModel,
   models: providedModels,
   id,
+  disabled = false,
 }: ModelSelectorProps) {
   const globalModels = useModels();
   const models = providedModels ?? globalModels;
@@ -262,7 +265,9 @@ export function ModelSelector({
         type="text"
         value={isOpen ? search : displayValue}
         onChange={(e) => setSearch(e.target.value)}
+        disabled={disabled}
         onFocus={() => {
+          if (disabled) return;
           setIsOpen(true);
           setSearch('');
           setSelectedIndex(0);

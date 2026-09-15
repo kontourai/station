@@ -6,6 +6,7 @@ export type ProjectForm = Pick<
   | 'icon'
   | 'description'
   | 'defaultModel'
+  | 'defaultProviderId'
   | 'defaultWorkspaceIsolation'
   | 'defaultEnvironment'
   | 'workingDirectory'

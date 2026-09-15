@@ -1,5 +1,7 @@
+import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   useDeleteProjectMutation,
+  useModelConnectionsQuery,
   useProjectQuery,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
@@ -102,6 +104,50 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
       )
       ?.scrollIntoView?.({ block: 'nearest', inline: 'start' });
   }, [activeSection, form]);
+
+  // Connections a project default could actually run through. `status` on a
+  // model connection is derived from "a non-empty key is saved", so `ready`
+  // is the weakest honest filter available here; offering a disabled or
+  // unconfigured connection would persist a pair that resolves to nothing.
+  const { data: modelConnections = [] } = useModelConnectionsQuery() as {
+    data?: ModelConnectionConfig[];
+  };
+  const selectableModelConnections = modelConnections.filter(
+    (connection) =>
+      connection.kind === 'model' &&
+      connection.enabled &&
+      connection.status === 'ready',
+  );
+  const selectedConnection = selectableModelConnections.find(
+    (connection) => connection.id === form?.defaultProviderId,
+  );
+  // A connection's own catalog, in the shape `ModelSelector` takes. Undefined
+  // (not an empty array) when there is no catalog to offer, so the picker
+  // falls back to the global model list rather than rendering empty.
+  const selectedConnectionModels = Array.isArray(
+    selectedConnection?.config.modelOptions,
+  )
+    ? (
+        selectedConnection.config.modelOptions as Array<{
+          id?: unknown;
+          name?: unknown;
+          originalId?: unknown;
+        }>
+      ).flatMap((model) =>
+        typeof model?.id === 'string'
+          ? [
+              {
+                id: model.id,
+                name: typeof model.name === 'string' ? model.name : model.id,
+                originalId:
+                  typeof model.originalId === 'string'
+                    ? model.originalId
+                    : model.id,
+              },
+            ]
+          : [],
+      )
+    : undefined;
 
   const saveMutation = useUpdateProjectMutation();
 
@@ -351,14 +397,55 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           className="project-settings__section"
           eyebrow="Conversation default"
           title="AI model"
-          description="Choose the starting model for new work in this project."
+          description="Choose the starting model for new work in this project. Both a model connection and a model are needed — with only one of them set, this project falls back to the Station default."
         >
           <PageRow
+            label="Model connection"
+            description="Which configured model connection this project's chats run through."
+            control={
+              <select
+                id="project-default-provider"
+                className="editor-input"
+                aria-label="Model connection"
+                value={form.defaultProviderId ?? ''}
+                onChange={(event) => {
+                  const providerId = event.target.value;
+                  setForm((current) =>
+                    current
+                      ? {
+                          ...current,
+                          defaultProviderId: providerId,
+                          // A model id only means something against the
+                          // connection that offers it; clearing the
+                          // connection clears the model with it rather than
+                          // leaving a half-set pair nothing resolves.
+                          defaultModel: providerId ? current.defaultModel : '',
+                        }
+                      : current,
+                  );
+                }}
+              >
+                <option value="">Station default</option>
+                {selectableModelConnections.map((connection) => (
+                  <option key={connection.id} value={connection.id}>
+                    {connection.name}
+                  </option>
+                ))}
+              </select>
+            }
+          />
+          <PageRow
             label="Default model"
-            description="Leave empty to use the system default."
+            description={
+              form.defaultProviderId
+                ? 'Leave empty to use the connection’s own default model.'
+                : 'Choose a model connection first. Without one, chats in this project use the Station default.'
+            }
             control={
               <ModelSelector
                 value={form.defaultModel ?? ''}
+                models={selectedConnectionModels}
+                disabled={!form.defaultProviderId}
                 onChange={(modelId) => setField('defaultModel', modelId)}
                 placeholder="System default"
               />
