@@ -85,7 +85,7 @@ export function resolveEffectiveAppSetting(
     return { value: override, source: 'project' };
   }
 
-  const stored = (input.config as Record<string, unknown>)[key];
+  const stored = (input.config as unknown as Record<string, unknown>)[key];
   if (isStoredValue(stored)) {
     return SEEDED_KEY_SET.has(key) &&
       isSeededAppConfigValue(
