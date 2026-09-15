@@ -3163,6 +3163,11 @@ export function configureRuntimeRoutes(
           resolver: personalLayoutResolver,
           resourceId,
         }),
+      // #2090. The same projection and the same caller resolver the project
+      // layout routes read, so a Board tab and a project Layout tab naming a
+      // plugin this person cannot see answer with the same causeless
+      // placeholder instead of "not installed or registered".
+      canSeePlugin: canSeePluginForRequest,
     }),
   );
   context.app.route(
@@ -3196,12 +3201,14 @@ export function configureRuntimeRoutes(
         // the same project. The stores below share that pinned source for the
         // same reason.
         resolution: buildProjectResolutionRouteDeps(context),
-        // #2067. The pane catalogue's visibility fact, from the same
-        // projection `GET /api/plugins` applies and the same caller resolver.
-        // DISCOVERY only: a plugin outside the projection is dropped from the
-        // catalogue entirely. A layout that already REFERENCES such a pane
-        // renders a blank region — acceptance criterion 2, unmet and
-        // disclosed on the contract's `pluginVisibility` docblock.
+        // #2067/#2090/#2103. The visibility fact for every layout-facing
+        // route in this family, from the same projection `GET /api/plugins`
+        // applies and the same caller resolver. DISCOVERY: a plugin outside
+        // the projection is dropped from the Pane catalogue and the layout
+        // picker. REFERENCE: a saved layout that already names such a pane
+        // has its plugin binding withheld and carries a causeless per-tab
+        // verdict the host renders a placeholder from, and apply,
+        // from-plugin and the layout list answer the same way.
         canSeePlugin: canSeePluginForRequest,
       },
     ),

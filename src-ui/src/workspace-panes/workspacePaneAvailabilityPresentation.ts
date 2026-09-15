@@ -104,8 +104,13 @@ const REASON_LABELS: Record<WorkspacePaneAvailabilityReasonCode, string> = {
   // from the catalogue entirely, so nothing resolves to this code and this
   // string is currently unreachable. It is kept because the reason code is
   // kept: see `WorkspacePaneAvailabilityInput.pluginVisibility` for the two
-  // implementations that were removed rather than shipped inert, and for
-  // what a real one needs. Acceptance criterion 2 of #2067 is unmet.
+  // implementations that were removed rather than shipped inert.
+  //
+  // #2090's referenced-pane placeholder deliberately does NOT reuse this
+  // string. Naming an operator and Settings is a cause and an action the
+  // layout read cannot derive — it cannot tell a hidden plugin from one
+  // that was never installed. Its sentence is
+  // `LAYOUT_TAB_UNAVAILABLE_MESSAGE` in `src-ui/src/layouts/index.tsx`.
   //
   // Says the pane is not available TO THIS VIEWER and stops there.
   // It deliberately does not assert that a plugin exists, is installed, or

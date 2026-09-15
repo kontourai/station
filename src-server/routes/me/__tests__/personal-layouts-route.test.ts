@@ -66,7 +66,9 @@ afterEach(() => {
  */
 const knownAgents = [{ slug: 'helper' as never, project: undefined }];
 
-function seeded() {
+function seeded(
+  options: { canSeePlugin?: (pluginId: string) => boolean } = {},
+) {
   const dir = mkdtempSync(join(tmpdir(), 'station-personal-layouts-route-'));
   tempDirs.push(dir);
   const storage = new FileStorageAdapter(dir);
@@ -99,6 +101,14 @@ function seeded() {
     // can reach; `ghost-agent` deliberately is NOT in this list, which is what
     // makes the refusal case below a refusal rather than a typo.
     listAgents: async () => knownAgents,
+    // #2090. Absent by default, which is the point: every other case in this
+    // file must keep answering exactly as it did before the verdict existed.
+    ...(options.canSeePlugin
+      ? {
+          canSeePlugin: (_c: unknown, pluginId: string) =>
+            options.canSeePlugin!(pluginId),
+        }
+      : {}),
   });
   return { dir, storage, app };
 }
@@ -1127,5 +1137,105 @@ describe('promote and a lost CAS race (#2062)', () => {
     // And the Board is still the caller's — a move that did not land must not
     // have performed its second half.
     expect(deleted).toEqual([]);
+  });
+});
+
+/**
+ * #2090 — the Board twin of the project layout read.
+ *
+ * A Board reaches `LayoutRenderer` through the same `layoutWorkspaceShape`
+ * derivation a project Layout does, so a Board tab naming a component from a
+ * plugin this person cannot see hits the same false "…is not installed or
+ * registered" sentence. The verdict is what lets the host answer it
+ * causelessly instead.
+ *
+ * What this route deliberately does NOT do is withhold `config.plugin`. There
+ * is no live plugin read and no catalog backfill here — a Board's binding is
+ * the caller's own input into their own record — so stripping it would
+ * disclose nothing while destroying that binding on the next
+ * read-modify-write.
+ */
+describe('a Board tab whose plugin its owner cannot see (#2090)', () => {
+  const HIDDEN_PLUGIN = 'secret-notes';
+
+  async function boardWithPluginTab(options: {
+    canSeePlugin?: (pluginId: string) => boolean;
+  }) {
+    const context = seeded(options);
+    const created = await createBoard(context.app, 'alice-laptop', {
+      slug: 'my-board',
+      name: 'My board',
+      config: {
+        plugin: HIDDEN_PLUGIN,
+        tabs: [
+          { id: 'notes', label: 'Notes', component: 'notes-view' },
+          { id: 'extra', label: 'Extra', component: 'extra-view' },
+        ],
+      },
+    });
+    expect(created.status).toBe(201);
+    return context;
+  }
+
+  test('the read carries a causeless per-tab verdict', async () => {
+    const { app } = await boardWithPluginTab({ canSeePlugin: () => false });
+    const body = await json<{ data: Record<string, any> }>(
+      await readBoard(app, 'alice-laptop', 'my-board'),
+    );
+    expect(body.data.paneReferences).toEqual({
+      unavailableTabIds: ['notes', 'extra'],
+    });
+    // No reason, no source, no action: the verdict names only tab ids.
+    expect(Object.keys(body.data.paneReferences)).toEqual([
+      'unavailableTabIds',
+    ]);
+  });
+
+  test('a viewer who can see the plugin gets no verdict', async () => {
+    const { app } = await boardWithPluginTab({ canSeePlugin: () => true });
+    const body = await json<{ data: Record<string, any> }>(
+      await readBoard(app, 'alice-laptop', 'my-board'),
+    );
+    expect(body.data.paneReferences).toBeUndefined();
+  });
+
+  test('a composition with no projection is untouched', async () => {
+    const { app } = await boardWithPluginTab({});
+    const body = await json<{ data: Record<string, any> }>(
+      await readBoard(app, 'alice-laptop', 'my-board'),
+    );
+    expect(body.data.paneReferences).toBeUndefined();
+    expect(body.data.config.plugin).toBe(HIDDEN_PLUGIN);
+  });
+
+  test('a read-modify-write of the verdict is accepted and not persisted', async () => {
+    // `personalLayoutUpdateSchema` is `.strict()`, so without the tolerated
+    // key this PUT is a 400 on an ordinary round trip of this route's own
+    // response; and the storage schema is `.strict()` too, so persisting it
+    // would be a hard rejection one layer down.
+    const { app, dir } = await boardWithPluginTab({
+      canSeePlugin: () => false,
+    });
+    const read = await json<{ data: Record<string, any> }>(
+      await readBoard(app, 'alice-laptop', 'my-board'),
+    );
+    expect(read.data.paneReferences).toBeDefined();
+    const written = await app.request(
+      '/layouts/my-board',
+      as('alice-laptop', {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: 'Renamed',
+          config: read.data.config,
+          paneReferences: read.data.paneReferences,
+        }),
+      }),
+    );
+    expect(written.status).toBe(200);
+    const stored = JSON.parse(
+      readFileSync(join(personalDir(dir, alice), 'my-board.json'), 'utf8'),
+    );
+    expect(stored.name).toBe('Renamed');
+    expect(stored).not.toHaveProperty('paneReferences');
   });
 });

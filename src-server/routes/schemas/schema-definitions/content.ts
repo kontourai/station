@@ -293,10 +293,21 @@ export const personalLayoutCreateSchema = z
   })
   .strict();
 
-/** `PUT /api/me/layouts/:layoutSlug` — the slug is the address, not a field. */
+/**
+ * `PUT /api/me/layouts/:layoutSlug` — the slug is the address, not a field.
+ *
+ * `paneReferences` is the ONE key this family accepts and discards (#2090).
+ * It is a read verdict the GET attaches about the calling principal, never
+ * storage, and the storage schema is `.strict()` — so refusing it here would
+ * 400 an ordinary read-modify-write of this route's own response, and
+ * accepting it into the record would be a hard storage rejection one layer
+ * down. The handler drops it; `z.never()` is not used because the point is
+ * to tolerate the round trip, not to refuse it.
+ */
 export const personalLayoutUpdateSchema = personalLayoutCreateSchema
   .omit({ slug: true })
   .partial()
+  .extend({ paneReferences: z.unknown().optional() })
   .strict();
 
 /**

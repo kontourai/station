@@ -68,6 +68,20 @@ export const PLUGIN_IDENTITY_ROUTES: readonly PluginIdentityRoute[] = [
   },
   {
     method: 'GET',
+    path: '/api/projects/:slug/layouts',
+    disposition: 'projected',
+    rationale:
+      'Each row carries the stored `config.plugin`. It was excused as a scan false positive, which was true of the READER and false of the response: withholding that name on the detail read while handing it over here in one request would make the detail route’s withholding theatre, so the same predicate answers both.',
+  },
+  {
+    method: 'GET',
+    path: '/api/projects/:slug/layouts/:layoutSlug',
+    disposition: 'projected',
+    rationale:
+      'It merged the plugin’s LIVE layout from disk and backfilled catalog attribution, and `config` is a free record a member can write, so `{plugin: "a-guess"}` read back whether that plugin exists, with its tabs, version and `plugins/<name>` source (#2103). Projected rather than refused because the project’s own saved layout is something a member legitimately opens: it still answers, with the plugin binding withheld and a causeless per-tab verdict in its place.',
+  },
+  {
+    method: 'GET',
     path: '/api/plugins/home-role/candidates',
     disposition: 'projected',
     rationale:

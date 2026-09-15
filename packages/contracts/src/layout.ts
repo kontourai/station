@@ -187,6 +187,41 @@ export interface LayoutConfig {
   updatedAt: string;
 }
 
+/**
+ * Which of a layout's own tabs the CALLER reading it may not be shown
+ * (#2090) — a RESPONSE-ONLY field, never persisted and never accepted from a
+ * request body.
+ *
+ * ## It carries no reason on purpose
+ *
+ * A layout tab whose plugin the viewer cannot see is indistinguishable, to
+ * the server, from a tab naming a plugin that was never installed: the
+ * visibility predicate reads a grant list, not the install tree, so both
+ * answer "cannot see". That indistinguishability is what stops the layout
+ * read being an existence oracle (#2103), and a reason code, a source, or an
+ * action would give it back. The one sentence a reader sees asserts no
+ * cause and is client-side copy.
+ *
+ * This is deliberately NOT a `WorkspacePaneAvailability`: that vocabulary's
+ * `pane-not-available-to-viewer` reason stamps `source: 'visibility'`, and
+ * `workspace-pane-catalog.ts` already records the precedent that a pane
+ * whose subject is not here gets no availability sentence at all.
+ *
+ * ## Its PRESENCE is also a signal
+ *
+ * A response carrying this field has had its plugin binding withheld —
+ * `catalogContribution`, `config.plugin` and the plugin's global actions are
+ * gone from it. `resolveProjectLayoutRendererKind` reads that presence,
+ * because the fields it normally dispatches on are the ones removed.
+ * `unavailableTabIds` may therefore be empty for a layout that stores no
+ * tabs; absence of the whole field, not an empty array, is what means
+ * "nothing was withheld".
+ */
+export interface LayoutPaneReferences {
+  /** Ids of this layout's `config.tabs` entries that cannot be shown. */
+  readonly unavailableTabIds: readonly string[];
+}
+
 export interface LayoutMetadata {
   id: string;
   slug: string;

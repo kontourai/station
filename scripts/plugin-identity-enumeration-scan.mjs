@@ -124,11 +124,9 @@ const SCAN_EXCLUSIONS = {
   'POST /api/plugins/host-approvals':
     'A mutation naming its own target; it returns the approval transaction. The `installed+name` signal is the approval record it writes, not a listing of other plugins.',
   'POST /api/projects/:slug/layouts/from-plugin':
-    'A mutation applying a plugin layout the caller named to a project.',
-  'GET /api/projects/:slug/layouts':
-    "Reads `storageAdapter.listLayouts(slug)` — the PROJECT's own saved layouts, not the instance plugin catalog. A scan false positive: the `listLayouts` token is shared by two unrelated readers.",
-  'GET /api/projects/:slug/layouts/:layoutSlug':
-    'One project-local layout, addressed by slug. It merges fresh plugin layout data for a plugin the stored layout already names, so it reveals no plugin the project record did not already contain.',
+    'A mutation applying a plugin layout the caller named to a project. Its lookup is now projected through `projectLayoutCatalogItems` (#2103) — it used to search `listLayouts()` unprojected and answer 404-by-name, which is an existence oracle for a caller guessing names; a hidden plugin and an uninstalled one now get the identical 404. Kept here rather than in the inventory because it is a POST whose 404-vs-201 the inventory test (which drives a bare GET and asserts 200) cannot express.',
+  'PUT /api/projects/:slug/layouts/:layoutSlug':
+    'A mutation addressed by slug. Its `plugin` signal is the STORED binding, read for two reasons that both withhold rather than disclose: to restore a binding the GET withheld from this caller (so their read-modify-write cannot destroy it), and to project its own response exactly as the GET is projected. The inventory cannot hold it — `PluginIdentityRoute.method` is GET|POST — and its read half is the recorded `GET` row beside it.',
   'GET /api/plugins/:name/bundle.js':
     'Addressed by name: serving it reveals no OTHER plugin. DISCLOSED RESIDUAL — a 200 against a 404 is a weak existence oracle for a caller who can already guess an exact plugin name. Closing that means gating asset delivery on the projection, which is a separate change with its own UI path to prove; it is not an enumeration of the inventory.',
   'GET /api/plugins/:name/bundle.css': 'Same as bundle.js, same residual.',
