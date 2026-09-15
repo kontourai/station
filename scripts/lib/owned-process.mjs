@@ -102,7 +102,7 @@ async function sendTreeSignal(
     // kill throws ESRCH because the group is gone, and `child.kill()` returns
     // false because there is nothing left to signal. Reporting that as an
     // error made a completed teardown fail its own `errors` assertion
-    // (#2130), which is a benign race dressed as a defect -- the inverse of
+    // (#2133), which is a benign race dressed as a defect -- the inverse of
     // the rule that a caught error must not become success.
     //
     // Neither `child.kill()`'s false nor `child.exitCode` distinguishes the

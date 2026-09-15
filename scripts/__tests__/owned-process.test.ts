@@ -973,7 +973,7 @@ describe('owned process lifecycle', () => {
 });
 
 /**
- * #2130: every other test in this file passes `platform: 'win32'`, so the
+ * #2133: every other test in this file passes `platform: 'win32'`, so the
  * POSIX signal path had no coverage at all — which is how it came to treat a
  * process that had already exited as a failure to terminate it.
  *
