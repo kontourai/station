@@ -118,6 +118,22 @@ export type ProjectUpdate = Partial<
   [K in ProjectOverrideRecordField]?: ProjectConfig[K] | null;
 };
 
+/**
+ * A `POST /projects` body, as `createProject` accepts it.
+ *
+ * Carries the same `null`-means-drop allowance as {@link ProjectUpdate}, and
+ * for a reason that is not optional: `projectUpdateSchema` IS
+ * `projectCreateSchema.partial()`, so the route's validator admits `null` on
+ * create whatever this type says. Symmetric types keep the service honest
+ * about what the schema already lets through.
+ */
+export type ProjectCreate = Omit<
+  ProjectConfig,
+  'id' | 'createdAt' | 'updatedAt' | ProjectOverrideRecordField
+> & {
+  [K in ProjectOverrideRecordField]?: ProjectConfig[K] | null;
+};
+
 export async function assertProjectWorktreeDirectory(
   projectSlug: string,
   workingDirectory: string | undefined,
@@ -266,9 +282,7 @@ export class ProjectService {
     return this.storageAdapter.getProject(slug);
   }
 
-  async createProject(
-    config: Omit<ProjectConfig, 'id' | 'createdAt' | 'updatedAt'>,
-  ): Promise<ProjectConfig> {
+  async createProject(config: ProjectCreate): Promise<ProjectConfig> {
     const project = await this.prepareProjectConfig(config);
     await this.storageAdapter.createProject(project);
     // The manifest is derived from the project record that was just written,
@@ -327,21 +341,46 @@ export class ProjectService {
   }
 
   private async prepareProjectConfig(
-    config: Omit<ProjectConfig, 'id' | 'createdAt' | 'updatedAt'>,
+    config: ProjectCreate,
   ): Promise<ProjectConfig> {
+    // #2144 slice 2, same rule as `updateProject`: `null` on a
+    // settings-override field means "no override", not "store null". The two
+    // schemas are one schema — `projectUpdateSchema` IS
+    // `projectCreateSchema.partial()` — so create receives the null the
+    // route's validator lets through, and `projectSchema`
+    // (file-storage-schemas.ts) admits none, which would make a brand-new
+    // record unloadable on its first read.
+    //
+    // Dropped HERE, before anything reads the fields: the worktree preflight
+    // below asks what mode this project will resolve to, and `null` is not a
+    // mode — passing it through would make "no override" look like a choice
+    // to whatever read it next.
+    const normalized = { ...config } as Omit<
+      ProjectConfig,
+      'id' | 'createdAt' | 'updatedAt'
+    >;
+    for (const field of PROJECT_OVERRIDE_RECORD_FIELDS) {
+      if ((config as Record<string, unknown>)[field] === null) {
+        delete normalized[field];
+      }
+    }
+    // Rebound, not reassigned: a reassigned parameter keeps its declared
+    // (nullable) type, and every read below must see the narrowed one.
+    const input = normalized;
+
     // Derive name from working directory basename if not provided
-    let name = config.name;
-    if ((!name || name === 'Untitled') && config.workingDirectory) {
-      const basename = config.workingDirectory.split('/').filter(Boolean).pop();
+    let name = input.name;
+    if ((!name || name === 'Untitled') && input.workingDirectory) {
+      const basename = input.workingDirectory.split('/').filter(Boolean).pop();
       if (basename) {
         name = basename.charAt(0).toUpperCase() + basename.slice(1);
       }
     }
-    name = name || config.name;
+    name = name || input.name;
 
     // Derive slug from name when the caller omits it — the storage layer
     // requires a slug for the on-disk project path (archive#597).
-    let slug = config.slug?.trim();
+    let slug = input.slug?.trim();
     if (!slug) {
       const base = slugifyProjectName(name);
       const existingSlugs = new Set(
@@ -356,15 +395,15 @@ export class ProjectService {
 
     if (
       (await this.effectiveWorkspaceIsolation(
-        config.defaultWorkspaceIsolation,
+        input.defaultWorkspaceIsolation,
       )) === 'worktree'
     ) {
-      await assertProjectWorktreeDirectory(slug, config.workingDirectory);
+      await assertProjectWorktreeDirectory(slug, input.workingDirectory);
     }
 
     const now = new Date().toISOString();
     const project: ProjectConfig = {
-      ...config,
+      ...input,
       name,
       slug,
       id: randomUUID(),

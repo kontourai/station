@@ -330,6 +330,67 @@ describe('ProjectService', () => {
   });
 
   /**
+   * M4: `projectUpdateSchema` IS `projectCreateSchema.partial()`, so the
+   * route's validator admits `null` on CREATE too. Storing it would make the
+   * brand-new record unloadable on its very first read, since `projectSchema`
+   * admits no null for any of the three.
+   */
+  test('null on a settings-override field is dropped at create, not stored', async () => {
+    const adapter = createMockStorageAdapter();
+    const svc = new ProjectService(adapter as any);
+    const created = await svc.createProject({
+      name: 'Test',
+      slug: 'test',
+      defaultModel: null,
+      defaultProviderId: null,
+      defaultWorkspaceIsolation: null,
+    } as never);
+
+    for (const field of [
+      'defaultModel',
+      'defaultProviderId',
+      'defaultWorkspaceIsolation',
+    ]) {
+      expect(Object.hasOwn(created, field), field).toBe(false);
+    }
+    const written = (adapter.createProject as any).mock.calls[0][0];
+    for (const field of [
+      'defaultModel',
+      'defaultProviderId',
+      'defaultWorkspaceIsolation',
+    ]) {
+      expect(Object.hasOwn(written, field), field).toBe(false);
+    }
+  });
+
+  /**
+   * The null is dropped BEFORE the preflight reads the mode: `null` is not a
+   * workspace mode, and a preflight that saw one would be deciding on a value
+   * that means "no choice".
+   */
+  test('a null workspace mode at create still falls through to the Station default', async () => {
+    const directory = mkdtempSync(
+      join(tmpdir(), 'station-project-createnull-'),
+    );
+    tmpHomes.push(directory);
+    const adapter = createMockStorageAdapter();
+    const svc = new ProjectService(
+      adapter as any,
+      undefined,
+      async () => 'worktree',
+    );
+
+    await expect(
+      svc.createProject({
+        name: 'Test',
+        slug: 'test',
+        workingDirectory: directory,
+        defaultWorkspaceIsolation: null,
+      } as never),
+    ).rejects.toMatchObject({ code: 'project_worktree_directory_invalid' });
+  });
+
+  /**
    * #2144 slice 2. `null` on a settings-override field DROPS the override.
    * Storing it is not merely untidy: `projectSchema`
    * (`domain/file-storage-schemas.ts`) admits no null for any of the three,

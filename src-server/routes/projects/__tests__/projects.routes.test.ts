@@ -564,6 +564,49 @@ describe('Project Routes', () => {
       );
     });
 
+    /**
+     * M3: naming the workspace mode at CREATE pins it exactly as durably as
+     * naming it on update, so the two entry points must not disagree about
+     * what authority that field takes. The refusal path is executed here for
+     * the same reason it is on the update path — in production the auth
+     * boundary gets there first, which is precisely why nothing else would
+     * ever run it.
+     */
+    test('POST / refuses a workspace mode from a caller below the Station config write scope', async () => {
+      const service = createMockProjectService();
+      const app = createProjectRoutes(
+        service as any,
+        createMockStorageAdapter() as any,
+        '/tmp',
+      );
+      const outer = new Hono();
+      outer.use('*', async (c, next) => {
+        setGrantedPairingScope(c, 'orchestration:read');
+        await next();
+      });
+      outer.route('/', app);
+
+      const refused = await outer.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Atlas',
+          slug: 'atlas',
+          defaultWorkspaceIsolation: 'worktree',
+        }),
+      });
+      expect(refused.status).toBe(403);
+      expect(service.createProject).not.toHaveBeenCalled();
+
+      const allowed = await outer.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Atlas', slug: 'atlas' }),
+      });
+      expect(allowed.status).toBe(201);
+      expect(service.createProject).toHaveBeenCalledOnce();
+    });
+
     test("Station's own internal attestation presents no scope and is not refused", async () => {
       const { service, app } = await seeded();
       const res = await put(app, { defaultWorkspaceIsolation: 'worktree' });

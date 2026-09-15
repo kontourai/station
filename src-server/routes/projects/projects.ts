@@ -648,6 +648,13 @@ export function createProjectRoutes(
       if (anchorRefusal) {
         return c.json({ success: false, error: anchorRefusal }, 400);
       }
+      // Same rule as the update path: naming the workspace mode at CREATE
+      // pins it just as durably, so the two entry points cannot disagree
+      // about what authority that field takes (#2144 slice 2).
+      const isolationRefusal = refuseUnscopedWorkspaceIsolationWrite(c, body);
+      if (isolationRefusal) {
+        return c.json({ success: false, error: isolationRefusal }, 403);
+      }
       const project = await projectService.createProject(body);
       projectOps.add(1, { op: 'create' });
       return c.json({ success: true, data: project }, 201);
