@@ -140,6 +140,9 @@ const STORED_TABS = [
 /** A second installed plugin, hidden while `PLUGIN_NAME` is visible. */
 const OTHER_PLUGIN = 'hidden-ledger';
 
+/** Installed here, but DISABLED — the other refusal `resolveForApply` gives. */
+const DISABLED_LAYOUT_ID = `plugin:${OTHER_PLUGIN}:layout`;
+
 const OTHER_LIVE_TABS = [
   {
     id: 'ledger',
@@ -211,11 +214,36 @@ async function seeded(options: {
         // Returns a layout with no tabs, so the layout itself contributes no
         // Pane and the direct contribution above is the only one. It must
         // not throw: the operator control reaches it.
-        resolveForCatalog: () => ({
-          item: PLUGIN_LAYOUT,
-          definition: { ...PLUGIN_LAYOUT, tabs: [] },
-          pluginName: PLUGIN_NAME,
-        }),
+        resolveForCatalog: (id?: string) =>
+          id === DISABLED_LAYOUT_ID
+            ? {
+                item: {
+                  ...PLUGIN_LAYOUT,
+                  id: DISABLED_LAYOUT_ID,
+                  plugin: OTHER_PLUGIN,
+                  enabled: false,
+                  contribution: {
+                    ...PLUGIN_LAYOUT.contribution,
+                    id: DISABLED_LAYOUT_ID,
+                    sourceIdentity: {
+                      id: OTHER_PLUGIN,
+                      kind: 'local' as const,
+                      source: `plugins/${OTHER_PLUGIN}`,
+                    },
+                    provenance: {
+                      origin: 'plugin' as const,
+                      pluginId: OTHER_PLUGIN,
+                    },
+                  },
+                },
+                definition: { ...PLUGIN_LAYOUT, tabs: [] },
+                pluginName: OTHER_PLUGIN,
+              }
+            : {
+                item: PLUGIN_LAYOUT,
+                definition: { ...PLUGIN_LAYOUT, tabs: [] },
+                pluginName: PLUGIN_NAME,
+              },
         // The apply path's resolver. This one DOES carry tabs, because apply
         // is the only writer of `catalogContribution` and the fixture below
         // needs the record it really writes. An id nobody has throws the
@@ -223,6 +251,13 @@ async function seeded(options: {
         // `distribution-profile-service.ts`), so the refusal-identity case
         // compares two real answers rather than one answer and a quotation.
         resolveForApply: (id: string) => {
+          if (id === DISABLED_LAYOUT_ID) {
+            // The REAL service's other refusal: `resolveForApply` is
+            // `resolveForCatalog` plus an installed-and-enabled check, and
+            // that check throws a DIFFERENT message. It is what makes the
+            // ordering of the visibility check observable.
+            throw new Error('Layout is not installed and enabled');
+          }
           if (id !== PLUGIN_LAYOUT.id) {
             throw new Error('Layout is not a known installed contribution');
           }
@@ -555,6 +590,37 @@ describe('the layout routes are not an enumeration oracle (#2103)', () => {
         })
       ).status,
     ).toBe(201);
+  });
+
+  test('a DISABLED hidden plugin refuses like an id nobody has', async () => {
+    // `resolveForApply` is `resolveForCatalog` plus an installed-and-enabled
+    // check, and the two throw DIFFERENT messages. Checking visibility after
+    // it would let a caller guessing catalog ids tell "exists here, but
+    // disabled" from "does not exist" — a weaker oracle than the one #2103
+    // closed, but the same oracle.
+    const { app } = await asCollaborator();
+    const refusal = async (layoutId: string) => {
+      const response = await app.request('/demo/layouts/apply', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ layoutId }),
+      });
+      return `${response.status} ${await response.text()}`;
+    };
+    expect(await refusal(DISABLED_LAYOUT_ID)).toBe(
+      await refusal('plugin:nobody-has-this:layout'),
+    );
+
+    // The control: an OPERATOR reaches the state refusal, so the message
+    // above really is being withheld rather than being the only message this
+    // fixture can produce.
+    const operator = await seeded({ canSeePlugin: () => true });
+    const asOperator = await operator.app.request('/demo/layouts/apply', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ layoutId: DISABLED_LAYOUT_ID }),
+    });
+    expect(await asOperator.text()).toContain('not installed and enabled');
   });
 
   test('from-plugin answers 404 by name for hidden and uninstalled alike', async () => {
