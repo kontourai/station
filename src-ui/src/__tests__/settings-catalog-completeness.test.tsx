@@ -61,7 +61,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useSetPluginVisibilityMutation: () => ({ mutate: vi.fn(), isError: false }),
   isPluginVisibilityForbidden: () => false,
   useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
-  useConfigProvenanceQuery: () => ({ data: {} }),
+  useConfigProvenanceQuery: () => ({ data: configProvenance }),
   // Settings mounts `UsageTelemetryDisclosure`, and #1608 made its decision
   // hook read the shared `['config']` query and its write path so the offered
   // choice cannot contradict a setting changed since the inventory was
@@ -129,6 +129,9 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 const updateConfig = vi.fn();
 const INITIAL_CONFIG = { logLevel: 'info', templateVariables: [] };
+// Per-field provenance. Mutable because "which settings are stored" is what
+// decides what a reset clears, and it has to differ between tests.
+let configProvenance: Record<string, { source: string }> = {};
 // The reconciliation effect reads the fetch generation, not just the values, so
 // tests drive both: `config` is what the server last returned and
 // `dataUpdatedAt` is when that fetch succeeded.
@@ -231,6 +234,7 @@ describe('settings catalog completeness', () => {
     updateConfig.mockReset();
     updateAppLogLevel.mockReset();
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
+    configProvenance = {};
     window.history.replaceState({}, '', '/settings');
   });
 
@@ -1022,6 +1026,53 @@ describe('settings catalog completeness', () => {
       ),
     );
     expect(window.location.search).toBe('?view=host-runtime');
+  });
+
+  // The reset button used to send `updateConfig({})`: an empty body the route
+  // sanitizes to an empty accepted set, so the dialog promised a factory reset
+  // and the request wrote nothing. These two assert the wiring — the button
+  // reaches the delta builder, and the delta reaches the write.
+  describe('Reset Station settings', () => {
+    test('clears the stored Station settings and nothing else', async () => {
+      configProvenance = {
+        terminalShell: { source: 'file' },
+        systemPrompt: { source: 'file' },
+        // Already the factory resolution; clearing it would change nothing.
+        mcpUiHost: { source: 'default' },
+        // Required: the sanitizer refuses `null` for it.
+        defaultModel: { source: 'file' },
+      };
+      updateConfig.mockResolvedValueOnce({ data: {} });
+      await renderSettings();
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset Station settings' }),
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset', exact: true }),
+      );
+
+      await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
+      expect(updateConfig).toHaveBeenCalledWith({
+        terminalShell: null,
+        systemPrompt: null,
+      });
+    });
+
+    test('refuses to confirm when no Station setting is stored', async () => {
+      await renderSettings();
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset Station settings' }),
+      );
+      const confirm = screen.getByRole('button', {
+        name: 'Reset',
+        exact: true,
+      }) as HTMLButtonElement;
+      expect(confirm.disabled).toBe(true);
+      fireEvent.click(confirm);
+      expect(updateConfig).not.toHaveBeenCalled();
+    });
   });
 
   test('falls back to the labeled Backup and Reset rows, never hidden or destructive controls', async () => {
