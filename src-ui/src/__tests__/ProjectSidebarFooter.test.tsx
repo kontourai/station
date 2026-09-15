@@ -60,6 +60,7 @@ import {
 } from '@kontourai/station-contracts/live-activity';
 import { ACTIVITY_SURFACE_ID } from '@kontourai/station-contracts/surface-deep-link';
 import { ProjectSidebarFooter } from '../components/project-sidebar/ProjectSidebarFooter';
+import { pointerClick } from './helpers/pointer';
 
 /** A participant id is exactly 24 lowercase hex characters on the wire. */
 function participantId(seed: number): string {
@@ -372,21 +373,9 @@ describe('ProjectSidebarFooter', () => {
   // pass with or without the fix, because jsdom moves focus for neither. It
   // emulates exactly the one step jsdom omits, and only when the element did
   // not cancel the press — which is what makes `preventDefault` on mousedown
-  // the thing under test.
-  function pointerClick(element: HTMLElement) {
-    const notCancelled = fireEvent.mouseDown(element);
-    // `act`, and this is load-bearing rather than tidiness: a browser renders
-    // whatever the focus change caused BEFORE it delivers the click, so the
-    // click handler reads the post-dismissal state. Without the flush the
-    // handler still closes over the stale `open`, the reopen never happens,
-    // and the test passes against the defect — it did, until the injection
-    // said so.
-    if (notCancelled)
-      act(() => {
-        element.focus();
-      });
-    fireEvent.click(element);
-  }
+  // the thing under test. It lives in `helpers/pointer.ts` since #2081, which
+  // found the same defect on the header's notification bell and on the
+  // per-turn actions menu; one model of the browser, not three.
 
   test('a pointer click on the trigger closes the tray, it does not reopen it', () => {
     liveActivity.data = projection([human(1, 'Ada Lovelace')]);

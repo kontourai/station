@@ -12,6 +12,7 @@ import { useAttentionQuery } from '@kontourai/station-sdk';
 import { useEffect, useState } from 'react';
 import { APP_DESTINATION_REGISTRY } from '../../app-shell/destination-registry';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
 import { hasRealSavedConnection } from '../../lib/saved-connections';
 import {
   checkServerHealth,
@@ -159,6 +160,34 @@ export function HeaderActions({
   useEffect(() => {
     if (showNotifications) setHasOpenedNotifications(true);
   }, [showNotifications]);
+
+  /**
+   * #2081. A plain `onClick={onToggleNotifications}` could not close this
+   * popover: the press that reaches it is a `mousedown` outside the panel, and
+   * the panel's own `useClickOutside` shuts it on exactly that, so the toggle
+   * ran against an already-false state and re-opened what the user pressed to
+   * dismiss.
+   *
+   * `onToggleNotifications` is the OPEN action here, and it is exact rather
+   * than approximate: the branch runs only when the popover was shut at press
+   * time, and the sole transition possible between the press and its click is a
+   * dismissal, so the state it toggles is false and toggling it opens.
+   *
+   * The other two menus in this row are NOT wired this way, and that is a
+   * finding rather than an omission — see #2081. Each renders a full-viewport
+   * dismiss backdrop one layer under itself (`ProfileMenu.tsx:118-132`,
+   * `OverflowMenu.tsx:101-118`, both at `--layer-navigation - 1` = 9349) while
+   * this toolbar sits at `--layer-sticky` (100) on mobile and at no layer at
+   * all otherwise, so while either of those menus is open its backdrop covers
+   * its own trigger and the press lands on the backdrop, which closes it. The
+   * stylesheet states the same invariant for the dock's More menu
+   * (`index.css:1944-1950`). This popover is the one with no backdrop.
+   */
+  const notificationTrigger = useMenuTriggerToggle(
+    showNotifications,
+    onToggleNotifications,
+    onCloseNotifications,
+  );
 
   // archive#3311: the connection surface is self-describing — status dot +
   // state as visible text + labeled identity — instead of an unlabeled name
@@ -386,7 +415,7 @@ export function HeaderActions({
         <button
           type="button"
           className="app-toolbar__icon-btn"
-          onClick={onToggleNotifications}
+          {...notificationTrigger}
           title={notificationLabel}
           aria-label={`${notificationLabel}${notificationBadge ? ` (${notificationBadge.label})` : ''}`}
         >
