@@ -109,6 +109,26 @@ class WebDriverErrorResponse extends Error {
   }
 }
 
+/**
+ * W3C error codes for which RETRYING IS A CATEGORY ERROR: the session or window
+ * the poll would retry against no longer exists, or the driver does not
+ * implement the command at all, so every remaining attempt fails identically.
+ *
+ * Everything NOT here stays retryable, which is the point of the narrowing
+ * rather than a hedge: a wait that begins while the shell is still coming up
+ * legitimately sees transport failures (`ECONNREFUSED`) and `stale element
+ * reference` for as long as the page is settling, and those are what the loop
+ * is for. `no such element` never reaches here at all — `findElement` answers
+ * `undefined` for it, which is a poll result and not a fault.
+ */
+const SESSION_FATAL_WEBDRIVER_ERRORS: ReadonlySet<string> = new Set([
+  'invalid session id',
+  'no such window',
+  'no such frame',
+  'session not created',
+  'unknown command',
+]);
+
 export class DirectWebDriver {
   readonly origin: string;
   sessionId: string | undefined;
@@ -263,6 +283,25 @@ export class DirectWebDriver {
       try {
         if (await predicate()) return;
       } catch (error) {
+        // A fault the next attempt cannot clear is reported AS ITSELF, now,
+        // rather than retried for the rest of the budget and then delivered as
+        // a suffix on a product-shaped sentence. `findElement` was narrowed so
+        // a dead session stops reading as "the page does not have this
+        // element" (#2091); this is the layer above it. Without this the
+        // WebDriver refusal still arrives, but only after the lane has spent
+        // its whole 30-60s budget polling a session that ended, and only
+        // BEHIND a headline asserting a product fact ("The Device pane never
+        // appeared in the shell.") that the harness was never in a position to
+        // observe. The reader is sent to the product for a fault in the
+        // harness — which is the misdirection #2091 set out to remove, one
+        // layer up.
+        if (
+          error instanceof WebDriverErrorResponse &&
+          error.webDriverError !== undefined &&
+          SESSION_FATAL_WEBDRIVER_ERRORS.has(error.webDriverError)
+        ) {
+          throw error;
+        }
         lastError = error;
       }
       await sleep(options.interval ?? 100);

@@ -34,6 +34,7 @@ import {
   classifyTerminal,
   createVerificationReceipt,
   createVerificationRequest,
+  receiptErrorText,
   VERIFICATION_RECEIPT_SCHEMA_VERSION,
   verificationRequestKey,
 } from '../lib/verification-receipt.mjs';
@@ -1843,5 +1844,96 @@ describe('verification receipt JSON schema (Ajv)', () => {
     const errors = validate.errors as ErrorObject[] | null;
     expect(errors).not.toBeNull();
     expect(errors!.some((e) => e.keyword === 'const')).toBe(true);
+  });
+});
+
+/**
+ * `receiptErrorText` exists because a receipt that recorded `error.stack` alone
+ * rendered a vitest test/hook TIMEOUT as the bare placeholder
+ * `Error: STACK_TRACE_ERROR`, with the duration and the words "timed out" both
+ * absent — a real, actionable failure made unreadable by the receipt writer
+ * choosing the wrong field.
+ *
+ * The donor-stack shape below is not imagined. It was captured from a REAL
+ * executed vitest timeout (a 150ms test awaiting a never-settling promise,
+ * observed through a reporter). That run reported:
+ *
+ *   error.message                      "Test timed out in 150ms.\nIf this is a ..."
+ *   error.stack, first line            "Error: STACK_TRACE_ERROR"
+ *   stack contains the timeout text?   false
+ *
+ * `makeTimeoutError` (`@vitest/runner`) assigns
+ * `error.stack = donor.stack.replace(error.message, donor.message)`, which is a
+ * no-op: it searches the DONOR's stack for the TIMEOUT message, which was never
+ * in it. The donor headline therefore survives and the message lives only in
+ * `.message`.
+ *
+ * These assert the CONTRACT — never destroy either field — rather than that one
+ * library's bug, so they keep their meaning if vitest repairs the `.replace()`.
+ */
+describe('receiptErrorText', () => {
+  /** vitest's `makeTimeoutError`, reproduced line for line. */
+  function vitestTimeoutError(isHook: boolean, timeout: number): Error {
+    const donor = new Error('STACK_TRACE_ERROR');
+    const message =
+      `${isHook ? 'Hook' : 'Test'} timed out in ${timeout}ms.\n` +
+      `If this is a long-running ${isHook ? 'hook' : 'test'}, pass a timeout ` +
+      'value as the last argument or configure it globally with ' +
+      `"${isHook ? 'hookTimeout' : 'testTimeout'}".`;
+    const error = new Error(message);
+    if (donor.stack)
+      error.stack = donor.stack.replace(error.message, donor.message);
+    return error;
+  }
+
+  it('reproduces the shape faithfully: the stack loses the timeout text', () => {
+    // The premise every assertion below depends on. Without this the tests
+    // would pass against an ordinary error and prove nothing about the case
+    // they are named for.
+    const error = vitestTimeoutError(false, 30_000);
+    expect(error.message).toContain('timed out in 30000ms');
+    expect(error.stack).toContain('STACK_TRACE_ERROR');
+    expect(error.stack).not.toContain('timed out');
+  });
+
+  it('names a test timeout that recording the stack alone destroyed', () => {
+    const error = vitestTimeoutError(false, 30_000);
+    expect(error.stack ?? String(error)).not.toContain('timed out');
+
+    const recorded = receiptErrorText(error);
+    expect(recorded).toContain('Test timed out in 30000ms');
+    // The donor stack is why vitest captures one at all — it points at the
+    // test's own source line — so it must be kept, not traded away.
+    expect(recorded).toContain('STACK_TRACE_ERROR');
+  });
+
+  it('distinguishes a hook timeout from a test timeout', () => {
+    expect(receiptErrorText(vitestTimeoutError(true, 5_000))).toContain(
+      'Hook timed out in 5000ms',
+    );
+  });
+
+  it('does not duplicate the message when the stack already carries it', () => {
+    const error = new Error('an ordinary failure');
+    const recorded = receiptErrorText(error);
+    expect(recorded).toBe(error.stack);
+    expect(recorded.match(/an ordinary failure/g)).toHaveLength(1);
+  });
+
+  it('falls back to the message when there is no stack at all', () => {
+    const error = new Error('no stack here');
+    error.stack = undefined as unknown as string;
+    expect(receiptErrorText(error)).toBe('no stack here');
+  });
+
+  it('renders a thrown non-error rather than emitting nothing', () => {
+    expect(receiptErrorText('a thrown string')).toBe('a thrown string');
+    expect(receiptErrorText(null)).toBe('null');
+    expect(receiptErrorText(undefined)).toBe('undefined');
+    expect(receiptErrorText(42)).toBe('42');
+  });
+
+  it('renders an error-shaped object carrying neither field', () => {
+    expect(receiptErrorText({})).toBe('[object Object]');
   });
 });

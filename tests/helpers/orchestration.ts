@@ -33,11 +33,41 @@ const conversationSessionReaders = new WeakMap<
 const CHAT_REGION_LABELS = ['Left', 'Right', 'Bottom'] as const;
 type ChatRegionLabel = (typeof CHAT_REGION_LABELS)[number];
 
+/**
+ * Whether a Playwright rejection is a STRICT-MODE VIOLATION — a locator that
+ * matched more than one element.
+ *
+ * This file used to answer `false`/`null` for it 17 times over, and
+ * `agents-journey.ts:265-277` records what that costs: a broad
+ * `/^Expand chat/` matched three unrelated controls, the surrounding
+ * `.catch(() => false)` swallowed the violation as "not visible", and a real
+ * ambiguity became a silent no-op instead of a loud failure. The sixteen
+ * `isVisible()` reads below no longer catch at all — `isVisible()` returns
+ * immediately and answers `false` for an absent element, so absence never
+ * needed a catch, and a violation, a closed page and an invalid selector were
+ * the only things one could ever have hidden. This predicate exists for the
+ * one read whose catch has a legitimate case to keep.
+ */
+function isAmbiguousLocator(error: unknown): boolean {
+  return (
+    error instanceof Error && error.message.includes('strict mode violation')
+  );
+}
+
 async function activeChatRegion(page: Page): Promise<ChatRegionLabel | null> {
   const className = await page
     .getByRole('region', { name: 'Dock', exact: true })
     .getAttribute('class')
-    .catch(() => null);
+    // NOT a bare `() => null`, unlike the `isVisible()` reads below, and the
+    // difference is real: `getAttribute` DOES auto-wait, so its timeout means
+    // "no Dock region", which is this function's documented `null` answer. A
+    // strict-mode violation is not that — it means the NAME matched several
+    // regions, and answering `null` would report "no dock" for "too many
+    // docks", then pick a layout branch from it.
+    .catch((error: unknown) => {
+      if (isAmbiguousLocator(error)) throw error;
+      return null;
+    });
   const region = className?.match(/\bchat-dock--(left|right|bottom)\b/)?.[1];
   if (!region) return null;
   return `${region[0]?.toUpperCase()}${region.slice(1)}` as ChatRegionLabel;
@@ -52,7 +82,7 @@ async function activeChatRegion(page: Page): Promise<ChatRegionLabel | null> {
 async function regionControlTrigger(page: Page) {
   for (const name of ['Layout regions', 'Regions'] as const) {
     const trigger = page.getByRole('button', { name, exact: true });
-    if (await trigger.isVisible().catch(() => false)) return trigger;
+    if (await trigger.isVisible()) return trigger;
   }
   return null;
 }
@@ -87,7 +117,7 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
   await trigger.click();
 
   const picker = page.getByRole('group', { name: 'Layout regions' });
-  if (await picker.isVisible().catch(() => false)) {
+  if (await picker.isVisible()) {
     // The Dock's own region class is the live shell state; a surface registry
     // can retain a dormant Chat registration elsewhere. Bottom is the
     // registry's `defaultRegion` for Chat, so it is where an unplaced Chat is
@@ -125,7 +155,7 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
   // the newer surface would then fail on the older one with a selector error
   // rather than a statement about Chat.
   const layoutMenu = page.getByRole('menu', { name: 'Layout regions' });
-  if (await layoutMenu.isVisible().catch(() => false)) {
+  if (await layoutMenu.isVisible()) {
     const reopen = async () => {
       const again = await regionControlTrigger(page);
       if (!again) {
@@ -149,7 +179,7 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
       name: 'Hide Chat',
       exact: true,
     });
-    if (await hide.isVisible().catch(() => false)) {
+    if (await hide.isVisible()) {
       await page.keyboard.press('Escape');
       await expect(layoutMenu).toBeHidden();
       return true;
@@ -158,7 +188,7 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
       name: 'Show Chat',
       exact: true,
     });
-    if (await show.isVisible().catch(() => false)) {
+    if (await show.isVisible()) {
       await show.click();
       await expectHideRow();
       return true;
@@ -168,7 +198,7 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
       const place = layoutMenu
         .getByRole('group', { name: activeRegion, exact: true })
         .getByRole('menuitem', { name: 'Place Chat here', exact: true });
-      if (await place.isVisible().catch(() => false)) {
+      if (await place.isVisible()) {
         await place.click();
         await expectHideRow();
         return true;
@@ -181,11 +211,11 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
   // The folded rows name the dock since #1386 ("Hide Chat from the dock"),
   // because the bare verb collided with the docked shell's own control.
   const menu = page.getByRole('menu', { name: 'Region surfaces' });
-  if (await menu.isVisible().catch(() => false)) {
+  if (await menu.isVisible()) {
     const hide = menu.getByRole('menuitemcheckbox', {
       name: 'Hide Chat from the dock',
     });
-    if (!(await hide.isVisible().catch(() => false))) {
+    if (!(await hide.isVisible())) {
       await menu
         .getByRole('menuitemcheckbox', { name: 'Show Chat in the dock' })
         .click();
@@ -233,7 +263,7 @@ export async function openChatRegion(page: Page): Promise<void> {
       name: `Hide Chat ${region} region`,
       exact: true,
     });
-    if (await hide.isVisible().catch(() => false)) {
+    if (await hide.isVisible()) {
       await expect(hide).toBeVisible();
       return;
     }
@@ -254,7 +284,7 @@ export async function openChatRegion(page: Page): Promise<void> {
       name: `Show Chat ${activeRegion} region`,
       exact: true,
     });
-    if (await show.isVisible().catch(() => false)) {
+    if (await show.isVisible()) {
       await show.click();
       await expect(
         page.getByRole('button', {
@@ -269,7 +299,7 @@ export async function openChatRegion(page: Page): Promise<void> {
       name: `Place Chat in ${activeRegion} region`,
       exact: true,
     });
-    if (await place.isVisible().catch(() => false)) {
+    if (await place.isVisible()) {
       await place.click();
       await expect(
         page.getByRole('button', {
@@ -291,7 +321,7 @@ export async function openChatRegion(page: Page): Promise<void> {
     name: 'Layout regions',
     exact: true,
   });
-  if (await layout.isVisible().catch(() => false)) {
+  if (await layout.isVisible()) {
     const openLayoutMenu = async () => {
       await layout.click();
       const menu = page.getByRole('menu', { name: 'Layout regions' });
@@ -312,7 +342,7 @@ export async function openChatRegion(page: Page): Promise<void> {
       name: 'Hide Chat',
       exact: true,
     });
-    if (await hide.isVisible().catch(() => false)) {
+    if (await hide.isVisible()) {
       await page.keyboard.press('Escape');
       await expect(menu).toBeHidden();
       return;
@@ -321,7 +351,7 @@ export async function openChatRegion(page: Page): Promise<void> {
       name: 'Show Chat',
       exact: true,
     });
-    if (await show.isVisible().catch(() => false)) {
+    if (await show.isVisible()) {
       await show.click();
       await expectHideRow();
       return;
@@ -330,7 +360,7 @@ export async function openChatRegion(page: Page): Promise<void> {
       const place = menu
         .getByRole('group', { name: activeRegion, exact: true })
         .getByRole('menuitem', { name: 'Place Chat here', exact: true });
-      if (await place.isVisible().catch(() => false)) {
+      if (await place.isVisible()) {
         await place.click();
         await expectHideRow();
         return;
@@ -342,7 +372,7 @@ export async function openChatRegion(page: Page): Promise<void> {
   const expand = page.getByRole('button', {
     name: /^Expand chat(?: dock)?$/,
   });
-  if (await expand.isVisible().catch(() => false)) {
+  if (await expand.isVisible()) {
     await expand.click();
     await expect(
       page.getByRole('button', { name: /^Collapse chat(?: dock)?$/ }),
