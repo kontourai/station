@@ -1468,24 +1468,27 @@ export function createProjectRoutes(
     // from "does not exist". `resolveForCatalog` answers the same way for an
     // unknown id and an uninstalled one, so a refusal issued here is the
     // message an id nobody has already gets, verbatim.
-    const forVisibility = layoutCatalog.resolveForCatalog(layoutId);
-    const contribution = forVisibility.item.contribution;
-    const referenced = new Set<string>();
-    let unattributed = false;
-    if (contribution?.provenance?.origin === 'plugin') {
-      const attributions = [
-        contribution.provenance.pluginId,
-        contribution.sourceIdentity?.id,
-      ].filter((id): id is string => typeof id === 'string' && id.length > 0);
-      if (attributions.length === 0) unattributed = true;
-      for (const id of attributions) referenced.add(id);
-    }
-    if (forVisibility.pluginName) referenced.add(forVisibility.pluginName);
-    if (
-      canSeePlugin &&
-      (unattributed || [...referenced].some((id) => !canSeePlugin(id)))
-    ) {
-      throw new Error('Layout is not a known installed contribution');
+    //
+    // Guarded on `canSeePlugin` rather than run unconditionally, so a
+    // composition with no projection makes no extra catalog call at all —
+    // absence changes nothing, including which methods this path requires.
+    if (canSeePlugin) {
+      const forVisibility = layoutCatalog.resolveForCatalog(layoutId);
+      const contribution = forVisibility.item.contribution;
+      const referenced = new Set<string>();
+      let unattributed = false;
+      if (contribution?.provenance?.origin === 'plugin') {
+        const attributions = [
+          contribution.provenance.pluginId,
+          contribution.sourceIdentity?.id,
+        ].filter((id): id is string => typeof id === 'string' && id.length > 0);
+        if (attributions.length === 0) unattributed = true;
+        for (const id of attributions) referenced.add(id);
+      }
+      if (forVisibility.pluginName) referenced.add(forVisibility.pluginName);
+      if (unattributed || [...referenced].some((id) => !canSeePlugin(id))) {
+        throw new Error('Layout is not a known installed contribution');
+      }
     }
     const resolved = layoutCatalog.resolveForApply(layoutId);
     const pluginManifest = resolved.pluginName
