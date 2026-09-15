@@ -15,17 +15,25 @@
  * backdrops sit at `calc(var(--layer-navigation) - 1)` = 9349 while
  * `.app-toolbar` is `--layer-sticky` (100) on mobile and carries no `z-index`
  * at all otherwise, and neither `.app` nor `.app__main` opens a stacking
- * context above them. `index.css` states it in prose. Raise the toolbar, drop a
- * backdrop, or give an ancestor of the toolbar a stacking context and four
- * consumers silently reacquire #2081's defect — `RegionToolbarControls` worse
- * than the rest, since its `onClick` only ever OPENS, so a reachable trigger
- * there is inert rather than merely re-toggling.
+ * context above them. `index.css` states it in prose. Raise the toolbar past
+ * 9349, drop a backdrop, or give an ancestor of the toolbar a stacking context
+ * that OUTRANKS 9349, and four consumers silently reacquire #2081's defect —
+ * `RegionToolbarControls` worse than the rest, since its `onClick` only ever
+ * OPENS, so a reachable trigger there is inert rather than merely re-toggling.
+ *
+ * "Outranks" is load-bearing in that sentence, and #2112's own wording ("give
+ * an ancestor of the toolbar a stacking context") is looser than the mechanism.
+ * MEASURED: `.app__main { position: relative; z-index: 1 }` creates a stacking
+ * context and this file stays green, correctly — a LOW-z context CLAMPS the
+ * whole toolbar further below the backdrop, which makes the invariant more
+ * true, not less. The same rule at `z-index: 9400` reds all seven shapes. An
+ * injection is only a verdict once it reaches the case.
  *
  * WHY THIS IS A BROWSER TEST AND NOT A SCAN. jsdom computes no layout, no paint
  * order and no hit testing: `document.elementFromPoint` there is not a weak
  * signal, it is no signal, and a jsdom test calling it would pass identically
  * over every regression named above. A source or computed-style scan is no
- * better — it can read `9349` off a declaration while an ANCESTOR clamps the
+ * better — it can read `9349` off a declaration while an ANCESTOR lifts the
  * whole toolbar above the backdrop, which is one of the three regressions, and
  * the repo has already been burned by a declaration that read correct and lost
  * the cascade (`menu-primitive.cascade.test.tsx`). So this composes the real
@@ -783,8 +791,8 @@ describe.skipIf(!chromiumAvailable)(
             'reach its dismiss backdrop. That is #2081’s defect: the control ' +
             'takes the press instead of the menu closing. The usual causes are ' +
             'a toolbar or dock z-index raised past the backdrop’s 9349, a ' +
-            'stacking context introduced on an ancestor of that chrome, or the ' +
-            'backdrop itself losing its layer.',
+            'stacking context above 9349 introduced on an ancestor of that ' +
+            'chrome, or the backdrop itself losing its layer.',
         ).toEqual([]);
       },
     );
