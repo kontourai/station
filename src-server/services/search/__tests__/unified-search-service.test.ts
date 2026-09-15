@@ -5,6 +5,7 @@ import {
   type UnifiedSearchProviderPage,
 } from '@kontourai/station-contracts/unified-search';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { Logger } from '../../../utils/logger.js';
 import {
   UNIFIED_SEARCH_LIMITS,
   UnifiedSearchService,
@@ -1018,5 +1019,170 @@ describe('UnifiedSearchService', () => {
       reason: 'Search request is invalid',
     });
     expect(search).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * #2102: the provider catch used to be a bare `catch {}` that discarded the
+ * caught value entirely, so a provider that timed out and a provider that
+ * threw for any other reason -- a bug, a bad query, a closed database, a
+ * transform failure -- arrived at the single label
+ * `provider-timeout-or-error` and were indistinguishable everywhere, in the
+ * response and in the logs alike.
+ *
+ * The caller-facing summary is deliberately unchanged here: a search response
+ * must not carry provider-authored failure text. What these assert is that
+ * the distinction now survives somewhere a diagnosis can reach it, and that
+ * the two causes are named differently when it does.
+ */
+describe('a provider failure is preserved for diagnosis', () => {
+  function recordingLogger() {
+    const warn = vi.fn();
+    const logger = {
+      trace: vi.fn(),
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn,
+      error: vi.fn(),
+      fatal: vi.fn(),
+      child: () => logger,
+    };
+    return { warn, logger: logger as unknown as Logger };
+  }
+
+  const warnedMessages = (warn: ReturnType<typeof vi.fn>): string[] =>
+    warn.mock.calls.map((call) => call[0] as string);
+
+  test('keeps the thrown error when a provider throws', async () => {
+    const { warn, logger } = recordingLogger();
+    const service = new UnifiedSearchService(
+      [
+        provider({
+          id: 'station.tasks',
+          search: async () => {
+            throw new Error('sqlite: database is closed');
+          },
+        }),
+      ],
+      { logger },
+    );
+
+    await expect(
+      service.search({ version: UNIFIED_SEARCH_V1, query: 'parser' }),
+    ).resolves.toMatchObject({
+      results: [],
+      sources: [{ state: 'unavailable', reason: 'provider-timeout-or-error' }],
+    });
+
+    expect(warnedMessages(warn)).toEqual(['Unified search provider threw']);
+    expect(warn.mock.calls[0]?.[1]).toMatchObject({
+      providerId: 'station.tasks',
+      cancelled: false,
+    });
+    // The message is the whole point: #1707 had to reconstruct a cause this
+    // would have stated outright.
+    expect((warn.mock.calls[0]?.[1] as { err: Error }).err.message).toBe(
+      'sqlite: database is closed',
+    );
+  });
+
+  test('names a deadline as a deadline, not as a throw', async () => {
+    vi.useFakeTimers();
+    const { warn, logger } = recordingLogger();
+    const service = new UnifiedSearchService(
+      [provider({ id: 'station.tasks', search: () => new Promise(() => {}) })],
+      { logger },
+    );
+
+    const pending = service.search({
+      version: UNIFIED_SEARCH_V1,
+      query: 'parser',
+    });
+    await vi.advanceTimersByTimeAsync(
+      UNIFIED_SEARCH_LIMITS.providerTimeoutMs + 1,
+    );
+
+    await expect(pending).resolves.toMatchObject({
+      results: [],
+      sources: [{ state: 'unavailable', reason: 'provider-timeout-or-error' }],
+    });
+    expect(warnedMessages(warn)).toEqual([
+      'Unified search provider exceeded its deadline',
+    ]);
+    expect(warn.mock.calls[0]?.[1]).toMatchObject({
+      providerId: 'station.tasks',
+      timeoutMs: UNIFIED_SEARCH_LIMITS.providerTimeoutMs,
+    });
+  });
+
+  test('says nothing when the caller cancels, which is the routine path', async () => {
+    const { warn, logger } = recordingLogger();
+    const controller = new AbortController();
+    let started!: () => void;
+    const startedSlow = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const service = new UnifiedSearchService(
+      [
+        provider({
+          id: 'station.tasks',
+          search: () => {
+            started();
+            return new Promise(() => {});
+          },
+        }),
+      ],
+      { logger },
+    );
+
+    const pending = service.search(
+      { version: UNIFIED_SEARCH_V1, query: 'parser' },
+      controller.signal,
+    );
+    await startedSlow;
+    await Promise.resolve();
+    controller.abort();
+
+    await expect(pending).resolves.toMatchObject({
+      sources: [{ reason: 'search-cancelled' }],
+    });
+    // A caller abandoning a query it no longer wants is the normal path. If
+    // it warned, the two conditions worth reading would be buried under it.
+    expect(warnedMessages(warn)).toEqual([]);
+  });
+
+  /**
+   * The discriminating case for WHY the abort sentinel is a branded class
+   * rather than `new Error('search-aborted')`.
+   *
+   * A provider is free to throw an error carrying any message it likes,
+   * including the one this module uses internally. Under a message
+   * comparison this provider's genuine failure would be classified as
+   * Station's own deadline and its error silently dropped -- the exact
+   * destruction #2102 exists to stop, reintroduced through the back door.
+   */
+  test('classifies a provider throwing the abort message as a throw', async () => {
+    const { warn, logger } = recordingLogger();
+    const service = new UnifiedSearchService(
+      [
+        provider({
+          id: 'station.tasks',
+          search: async () => {
+            throw new Error('search-aborted');
+          },
+        }),
+      ],
+      { logger },
+    );
+
+    await expect(
+      service.search({ version: UNIFIED_SEARCH_V1, query: 'parser' }),
+    ).resolves.toMatchObject({
+      sources: [{ reason: 'provider-timeout-or-error' }],
+    });
+    expect(warnedMessages(warn)).toEqual(['Unified search provider threw']);
+    expect((warn.mock.calls[0]?.[1] as { err: Error }).err.message).toBe(
+      'search-aborted',
+    );
   });
 });
