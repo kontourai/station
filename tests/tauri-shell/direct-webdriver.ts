@@ -52,6 +52,16 @@ const sleep = (milliseconds: number) =>
  * call per run at 30,018 ms, answering `{"error":"script timeout"}`. That is the
  * driver's own bound expiring, so widening any lane's `waitUntil` cannot help —
  * the first poll's request cannot complete inside it.
+ *
+ * ASKING FOR IT IN THE CAPABILITIES DOES NOT SET IT. This value was first
+ * passed as `capabilities.alwaysMatch.timeouts.script`, which is the W3C
+ * spelling and which THIS driver ignores: the session it answers with reports
+ * `"timeouts":{"implicit":0,"pageLoad":300000,"script":30000}` — the default,
+ * unchanged, while the constant said 120 s. So the widening was inert and the
+ * lane kept failing at exactly 30,039 ms. `POST /session/:id/timeouts` does
+ * take, and {@link DirectWebDriver.connect} now sends it and READS IT BACK,
+ * failing if the driver did not adopt it, so this constant cannot go back to
+ * describing something nothing applied.
  */
 const SCRIPT_TIMEOUT_MS = 120_000;
 
@@ -163,6 +173,7 @@ export class DirectWebDriver {
   async connect(timeout = 60_000) {
     const started = Date.now();
     let lastError: unknown;
+    let connected = false;
     while (Date.now() - started < timeout) {
       try {
         await this.request('GET', '/status');
@@ -170,7 +181,9 @@ export class DirectWebDriver {
           capabilities: {
             alwaysMatch: {
               browserName: 'tauri',
-              // Chosen, not defaulted. See SCRIPT_TIMEOUT_MS.
+              // Sent because it is the W3C spelling, NOT because it works:
+              // this driver answers with `script: 30000` regardless. The
+              // binding call is `applyScriptTimeout` below.
               timeouts: { script: SCRIPT_TIMEOUT_MS },
             },
             firstMatch: [{}],
@@ -178,15 +191,45 @@ export class DirectWebDriver {
         });
         this.sessionId = session.sessionId;
         this.capabilities = session.capabilities;
-        return;
+        connected = true;
+        break;
       } catch (error) {
         lastError = error;
         await sleep(100);
       }
     }
-    throw new Error(
-      `Embedded WebDriver did not become ready: ${String(lastError)}`,
+    if (!connected) {
+      throw new Error(
+        `Embedded WebDriver did not become ready: ${String(lastError)}`,
+      );
+    }
+    // Outside the retry loop deliberately: a driver that will not adopt the
+    // bound is a fault to report, not a reason to open another session.
+    await this.applyScriptTimeout();
+  }
+
+  /**
+   * Set the script timeout through the command that actually binds it, and
+   * prove it took.
+   *
+   * The read-back is the point. The capability request alone left the session
+   * on the 30 s default while every comment in this file said 120 s, which is
+   * how the widening shipped inert — so this asserts the driver's own answer
+   * rather than trusting the request.
+   */
+  private async applyScriptTimeout() {
+    await this.request('POST', this.sessionPath('/timeouts'), {
+      script: SCRIPT_TIMEOUT_MS,
+    });
+    const applied = await this.request<{ script?: number }>(
+      'GET',
+      this.sessionPath('/timeouts'),
     );
+    if (applied.script !== SCRIPT_TIMEOUT_MS) {
+      throw new Error(
+        `WebDriver did not adopt the script timeout: asked for ${SCRIPT_TIMEOUT_MS}ms, session reports ${JSON.stringify(applied)}.`,
+      );
+    }
   }
 
   private sessionPath(path: string) {

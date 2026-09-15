@@ -266,6 +266,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // its exit STATUS is asserted, not just its pure decision functions — a
   // rejection path that has never executed is unproven.
   'scripts/__tests__/prepush-ui-bundle.test.ts',
+  // Same shape one gate over: runs the pre-push typecheck scope guard as a
+  // real child process — once against a stub `npm` so its REFUSAL exit
+  // status is proven, once with an empty scope so the skip path's zero is
+  // proven. Two bounded single-shot children; the real 82s aggregate never
+  // starts.
+  'scripts/__tests__/prepush-typecheck.test.ts',
   // Asks git (`check-ignore`, `ls-files`) whether the generated Basis MCP app
   // bundles are ignored and untracked, because .gitignore's text cannot say
   // whether a rule still matches or a file was force-added. Two single-shot
