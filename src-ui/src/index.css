@@ -262,6 +262,29 @@
   --event-planning: #8b5cf6;
   --event-reasoning: #ec4899;
 
+  /* Data series and syntax rungs (#2140).
+     These used to be literals inside `style={}` in three components, which
+     is the one place the theme cannot reach: the values were github-dark's
+     and the dark chart palette's, and on the light theme they measured
+     1.5-2.7:1 against a white panel (text floor 4.5:1, graphic floor 3:1).
+     Each rung below is measured against --bg-secondary for its theme. */
+  --series-1: #a78bfa;
+  --series-2: #f59e0b;
+  --series-3: #22c55e;
+  --series-4: #06b6d4;
+  --series-5: #f472b6;
+  --series-6: #fb923c;
+  /* Meter rungs by fill level. Rendered as a bar FILL, so 3:1 is the floor;
+     on this panel they carry 4.7:1 / 8.3:1 / 7.0:1. */
+  --meter-low: #10b981;
+  --meter-mid: #f59e0b;
+  --meter-high: #ef4444;
+  /* Source-preview syntax rungs: github-dark's own values, rendered as
+     TEXT, so 4.5:1 is the floor; 7.7:1 / 10.0:1 / 12.6:1 on this panel. */
+  --syntax-keyword: #ff7b72;
+  --syntax-number: #79c0ff;
+  --syntax-string: #a5d6ff;
+
   --overlay-bg: rgba(0, 0, 0, 0.2);
   --overlay-bg-dark: rgba(0, 0, 0, 0.3);
   --overlay-bg-darker: rgba(0, 0, 0, 0.4);
@@ -498,6 +521,26 @@
   --event-agent-health: #0891b2;
   --event-planning: #7c3aed;
   --event-reasoning: #db2777;
+
+  /* Light rungs for the families the dark block introduces (#2140). Every
+     value is measured against BOTH light backdrops it lands on, since the
+     chart sits on --bg-secondary (#ffffff) and the meter on --bg-primary
+     (#f5f4ef); the lower of the two is quoted. */
+  --series-1: #6d28d9; /* 6.45:1 */
+  --series-2: #b45309; /* 4.56:1 */
+  --series-3: #15803d; /* 4.55:1 */
+  --series-4: #0e7490; /* 4.87:1 */
+  --series-5: #be185d; /* 5.48:1 */
+  --series-6: #c2410c; /* 4.70:1 */
+  /* Bar fills, 3:1 floor. Reuses the light status rungs that already carry
+     text (4.5:1+), so a meter and its label agree on what "high" looks like. */
+  --meter-low: var(--success-text); /* #2e7d32 5.13:1 */
+  --meter-mid: var(--warning-text); /* #92400e */
+  --meter-high: var(--error-text); /* #b3261e 6.54:1 */
+  /* github-light's rungs, rendered as text: 4.86:1 / 6.90:1 / 11.63:1 */
+  --syntax-keyword: #cf222e;
+  --syntax-number: #0550ae;
+  --syntax-string: #0a3069;
 
   /* Overlays & Shadows */
   --overlay-bg: rgba(0, 0, 0, 0.05);
@@ -4202,9 +4245,9 @@ button:hover {
   gap: 10px;
   margin: 8px 0;
   padding: 8px 12px;
-  border: 1px solid rgba(var(--accent-primary-rgb, 0, 102, 204), 0.18);
+  border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
   border-radius: 10px;
-  background: rgba(var(--accent-primary-rgb, 0, 102, 204), 0.06);
+  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
 }
 
 .background-tasks-banner__label {
@@ -4230,7 +4273,7 @@ button.background-tasks-banner {
 
 button.background-tasks-banner:hover,
 button.background-tasks-banner:focus-visible {
-  background: rgba(var(--accent-primary-rgb, 0, 102, 204), 0.1);
+  background: color-mix(in srgb, var(--k-brand) 10%, transparent);
 }
 
 /* archive#1301: visually-hidden live-region sibling
@@ -4290,15 +4333,15 @@ button.background-tasks-banner:focus-visible {
 @keyframes streaming-progress-pulse {
   0% {
     transform: scale(0.9);
-    box-shadow: 0 0 0 0 rgba(var(--accent-primary-rgb, 0, 102, 204), 0.35);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 35%, transparent);
   }
   70% {
     transform: scale(1.05);
-    box-shadow: 0 0 0 8px rgba(var(--accent-primary-rgb, 0, 102, 204), 0);
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--k-brand) 0%, transparent);
   }
   100% {
     transform: scale(0.9);
-    box-shadow: 0 0 0 0 rgba(var(--accent-primary-rgb, 0, 102, 204), 0);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 0%, transparent);
   }
 }
 
@@ -4777,7 +4820,7 @@ button.tool-call__line:hover {
   flex-shrink: 0;
   border-radius: 999px;
   background: var(--accent-primary);
-  box-shadow: 0 0 0 0 rgba(var(--accent-primary-rgb, 0, 102, 204), 0.45);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 45%, transparent);
   animation: streaming-progress-pulse var(--motion-status-pulse) var(--ease-out)
     infinite;
 }
@@ -7038,7 +7081,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .knowledge-section__dropzone--active {
   border-color: var(--accent-primary);
-  background: rgba(var(--accent-primary-rgb, 59, 130, 246), 0.06);
+  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
   color: var(--accent-primary);
 }
 
