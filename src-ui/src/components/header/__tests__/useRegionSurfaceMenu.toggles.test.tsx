@@ -130,10 +130,14 @@ describe('the toolbar offers a toggle for every dock region the model declares',
       ).toBe(true);
 
     const { result } = renderHook(() => useRegionSurfaceMenu());
+    // Exact, per region: a negated `arrayContaining` would pass with four of
+    // five catalog ids leaked. An occupied region offers nothing; an empty
+    // one offers exactly the two shell surfaces.
     for (const toggle of result.current.regionToggles)
-      expect(toggle.offers.map((offer) => offer.surfaceId)).not.toEqual(
-        expect.arrayContaining(catalogOnly.map((surface) => surface.id)),
-      );
+      expect(
+        toggle.offers.map((offer) => offer.surfaceId),
+        toggle.region,
+      ).toEqual(toggle.paneTitles.length ? [] : ['chat', 'activity']);
     expect(result.current.surfaceList.map((surface) => surface.id)).toEqual([
       'chat',
       'activity',

@@ -2,6 +2,7 @@ import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -111,6 +112,33 @@ function RegionTabMoveMenu({
     document.addEventListener('keydown', onKeyDown, true);
     return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [onClose]);
+  // Anchored under the tab, then kept inside the viewport: a tab low in a
+  // short bottom dock or near the right edge would otherwise push rows off
+  // screen with no scroll to recover them. Measured after mount, the way the
+  // grab's own menu measures before it picks a direction.
+  const [position, setPosition] = useState(anchor);
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const box = menu.getBoundingClientRect();
+    const left = Math.max(0, Math.min(anchor.x, window.innerWidth - box.width));
+    const top = Math.max(
+      0,
+      Math.min(anchor.y, window.innerHeight - box.height),
+    );
+    setPosition((current) =>
+      current.x === left && current.y === top ? current : { x: left, y: top },
+    );
+  }, [anchor, menuRef]);
+  // ONE dismissal for the events that mean "the gesture ended on the
+  // backdrop" (#1386): a touch that becomes a scroll ends in `pointercancel`
+  // and never clicks, so `click` alone left the menu open. `pointerdown` is
+  // swallowed so the menu keeps focus — the same contract as the toolbar's
+  // `ToolbarMenuSurface`.
+  const dismiss = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation();
+    onClose();
+  };
   return createPortal(
     <>
       <button
@@ -118,7 +146,13 @@ function RegionTabMoveMenu({
         tabIndex={-1}
         className="header-menu__dismiss-backdrop chat-dock__more-backdrop"
         aria-label={`Close move menu for ${tab.title}`}
-        onClick={onClose}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onPointerUp={dismiss}
+        onPointerCancel={dismiss}
+        onClick={dismiss}
       />
       <div
         ref={menuRef}
@@ -126,7 +160,7 @@ function RegionTabMoveMenu({
         role="menu"
         aria-label={`Move ${tab.title}`}
         tabIndex={-1}
-        style={{ position: 'fixed', left: anchor.x, top: anchor.y }}
+        style={{ position: 'fixed', left: position.x, top: position.y }}
       >
         {regions.map((region) => (
           <button
@@ -268,19 +302,19 @@ function RegionTabStrip({
               className="region-tabs__tab"
               onClick={() => onSelect(tab.surfaceId)}
               onKeyDown={(event) => onKeyDown(event, index, tab.surfaceId)}
-              // The tab's own menu (#2143). A `contextmenu` event arrives
-              // from a right-click with a position, and from Shift+F10 or
-              // the Menu key with none — the tab's own box anchors it then.
+              // The tab's own menu (#2143), opened by `contextmenu` — a
+              // right-click, or the keyboard's context-menu gesture. Anchored
+              // BELOW THE TAB, never at the pointer: a panel at the pointer
+              // sits over the tab that opened it, which is the #2112 shape
+              // the backdrop family forbids (a press on the trigger must reach
+              // the backdrop), and the keyboard has no pointer anyway.
               onContextMenu={(event) => {
                 if (!onMove || moveTargets(tab.surfaceId).length === 0) return;
                 event.preventDefault();
                 const rect = event.currentTarget.getBoundingClientRect();
                 setMoving({
                   tab,
-                  anchor:
-                    event.clientX || event.clientY
-                      ? { x: event.clientX, y: event.clientY }
-                      : { x: rect.left, y: rect.bottom },
+                  anchor: { x: rect.left, y: rect.bottom + 4 },
                 });
               }}
               onPointerDown={(event) => {
@@ -409,8 +443,14 @@ export function RegionChromeBar({
   const mobileChat = chrome.isMobile && selectedSurfaceId === 'chat';
   const addLabel = `Add pane to ${regionLabel(chrome.effectiveDockSlotPlacement)}`;
   // The regions a tab may be moved to (#2143): every region this device can
-  // use plus `main`, minus the one the tab is in, filtered by the model's own
-  // `surfaceMayOccupy` so no row offers a refused placement.
+  // use plus `main`, minus the one this shell RENDERS in on this device
+  // (`effectiveDockSlotPlacement`: the region's own id where the device
+  // offers it, else the device's fallback edge — on a coarse-wide device a
+  // `left` shell renders at `bottom` and that is the edge excluded), filtered
+  // by the model's own `surfaceMayOccupy` so no row offers a refused
+  // placement. The strip this feeds renders only for two or more panes and
+  // only off the mobile layout (`showStrip`), so a lone pane has no move menu
+  // and reaches another region through the bar's ⋮⋮ grab, dock edges only.
   const here: DockRegionId = chrome.effectiveDockSlotPlacement;
   const moveTargets = (surfaceId: string): RegionId[] =>
     [...(chrome.availableDockSlotPlacements as readonly DockMode[]), 'main']

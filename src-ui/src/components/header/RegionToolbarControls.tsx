@@ -329,9 +329,15 @@ function RegionToggleButton({
   onOpenMenu: (trigger: HTMLButtonElement) => void;
 }) {
   const empty = toggle.paneTitles.length === 0;
+  // A menu trigger only while there is something to offer: an empty region
+  // no shell surface declares (none today — both dock surfaces declare all
+  // three edges — but the registry decides that, not this button) would
+  // otherwise announce a popup and open an empty panel. It is disabled
+  // instead, and says why.
+  const offers = empty && toggle.offers.length > 0;
   const label = `${toggle.label} region`;
   const title = empty
-    ? `${label}: empty`
+    ? `${label}: empty${offers ? '' : ', nothing can be shown here'}`
     : `${toggle.visible ? 'Hide' : 'Show'} ${label}: ${toggle.paneTitles.join(', ')}`;
   return (
     <button
@@ -341,8 +347,11 @@ function RegionToggleButton({
       }`}
       aria-label={label}
       title={title}
+      disabled={empty && !offers}
       {...(empty
-        ? { 'aria-haspopup': 'menu' as const, 'aria-expanded': menuOpen }
+        ? offers
+          ? { 'aria-haspopup': 'menu' as const, 'aria-expanded': menuOpen }
+          : {}
         : { 'aria-pressed': toggle.visible })}
       onClick={(event) =>
         empty ? onOpenMenu(event.currentTarget) : toggle.onToggle()
@@ -383,6 +392,19 @@ function ConnectedRegionToolbarControls() {
     setOpenMenu(null);
   }, [bottomOnly, commandsInOverflowMenu]);
   const [menuAnchorRight, setMenuAnchorRight] = useState(8);
+  // The offer menu is a menu of what can be placed in an EMPTY region. The
+  // region can stop being empty while it is open — the ⌘⇧A chord fires with
+  // the menu holding focus (`DOCK_WHEN` excludes only the composer), and a
+  // cross-tab arrangement sync arrives whenever it likes — and then its
+  // trigger is a toggle again while a zero-row panel sits over a viewport
+  // backdrop. Derived from the same toggles the trigger reads, so the panel
+  // cannot outlive the state that justified it.
+  const offering = regionToggles.find((toggle) => toggle.region === openMenu);
+  const offeringIsStale =
+    offering !== undefined && offering.offers.length === 0;
+  useEffect(() => {
+    if (offeringIsStale) setOpenMenu(null);
+  }, [offeringIsStale]);
 
   const anchorTo = useCallback((trigger: HTMLButtonElement) => {
     setMenuAnchorRight(
@@ -460,7 +482,6 @@ function ConnectedRegionToolbarControls() {
   // derives, which is what the five glyphs and the picker both lacked. What a
   // region holds lives in its own tab strip (#2046); how a pane moves is the
   // tab's own menu (`RegionChromeBar`).
-  const offering = regionToggles.find((toggle) => toggle.region === openMenu);
   return (
     <fieldset className="app-toolbar__regions">
       <legend>Regions</legend>
@@ -476,7 +497,7 @@ function ConnectedRegionToolbarControls() {
           }}
         />
       ))}
-      {offering ? (
+      {offering && !offeringIsStale ? (
         <ToolbarMenuSurface
           ariaLabel={`Show in ${offering.label} region`}
           dismissLabel="Close region menu"

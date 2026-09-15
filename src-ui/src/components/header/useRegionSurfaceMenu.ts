@@ -88,9 +88,12 @@ export interface RegionToggle {
   paneTitles: string[];
   visible: boolean;
   /**
-   * Show or hide the region — `setRegion(region, { visible })`, the same write
-   * the region bar's own chevron makes. A no-op for an empty region, whose
-   * control opens `offers` instead.
+   * Show or hide the region — the model's `setRegion(region, { visible })`.
+   * The region bar's chevron reaches the SAME model write through
+   * `applyDockSnap`, which also records the shell's snap and height; this
+   * toggle records neither, so a region hidden here and reopened from its
+   * chevron comes back at whatever snap the chevron last stored. A no-op for
+   * an empty region, whose control opens `offers` instead.
    */
   onToggle: () => void;
   /** What an EMPTY region's control offers; empty for an occupied region. */

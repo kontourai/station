@@ -225,6 +225,8 @@ import { OverflowMenu } from '../components/header/OverflowMenu';
 import { ProfileMenu } from '../components/header/ProfileMenu';
 import { RegionToolbarControls } from '../components/header/RegionToolbarControls';
 import { ProjectSidebarBoards } from '../components/project-sidebar/ProjectSidebarBoards';
+import type { DockShellChrome } from '../hooks/useDockShellChrome';
+import { RegionChromeBar } from '../workspace-panes/RegionChromeBar';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../');
@@ -410,8 +412,86 @@ const MENUS: readonly {
       fireEvent.click(screen.getByLabelText('Move the dock'));
     },
   },
+  {
+    // #2143: a tab's move menu, one more folded menu in the region bar. Opened
+    // from the REAL strip's tab so the rows measured are the ones
+    // `RegionTabMoveMenu` renders. Activity declares every region, so from
+    // `bottom` it is offered Left, Right and Main.
+    name: 'a tab’s move menu',
+    selector: '.region-tabs__move-menu',
+    rowCount: 3,
+    open: () => {
+      render(
+        <RegionChromeBar
+          chrome={moveMenuChrome()}
+          groupId="region:bottom"
+          tabs={[
+            { surfaceId: 'chat', instanceId: 'workspace-chat', title: 'Chat' },
+            {
+              surfaceId: 'activity',
+              instanceId: 'workspace-activity',
+              title: 'Activity',
+            },
+          ]}
+          selectedSurfaceId="activity"
+          onSelectTab={() => {}}
+          onCloseTab={undefined}
+          onReorderTab={() => {}}
+          onMoveTab={() => {}}
+          leadingSlotRef={() => {}}
+          trailingSlotRef={() => {}}
+        />,
+      );
+      fireEvent.contextMenu(screen.getByRole('tab', { name: 'Activity' }));
+    },
+  },
   ...boardMenuEntries(),
 ];
+
+/** The chrome a bar needs to render its strip: open, fine pointer, bottom. */
+function moveMenuChrome(): DockShellChrome {
+  const noop = () => {};
+  return {
+    isDockOpen: true,
+    isDockMaximized: false,
+    dockMode: 'bottom',
+    dockHeight: 320,
+    dockWidth: 400,
+    setDockHeight: noop,
+    setDockWidth: noop,
+    previousDockHeight: 320,
+    setPreviousDockHeight: noop,
+    previousDockOpen: true,
+    setPreviousDockOpen: noop,
+    isDragging: false,
+    setIsDragging: noop,
+    dockSnap: 'half',
+    liveDragHeight: null,
+    setLiveDragHeight: noop,
+    isCollapsedDragPreview: false,
+    toolbarHeight: 46,
+    collapsedHeight: 38,
+    isMobile: false,
+    visualViewport: { style: {}, height: 800, offsetTop: 0 } as never,
+    availableDockSlotPlacements: ['left', 'bottom', 'right'],
+    effectiveDockSlotPlacement: 'bottom',
+    surfaceShortcutId: 'dock.toggle',
+    surfaceTitle: 'Activity',
+    canMaximize: true,
+    regionPanes: [],
+    selectRegionPane: noop,
+    ownsMaximizeShortcut: true,
+    applyDockSnap: noop,
+    commitDesktopBottomHeight: noop,
+    commitDockPlacement: noop,
+    restoreDockToDocked: noop,
+    onSidePanelResizePointerDown: noop,
+    onMobileHeaderDragPointerDown: noop,
+    onMobileHeaderDragClickCapture: noop,
+    activeProjectSlug: null,
+    setActiveProjectSlug: noop,
+  };
+}
 
 /**
  * The Boards row menu's three surfaces (#2113, second half), reached through

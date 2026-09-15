@@ -10,7 +10,13 @@
  * select, close, reorder, and when it does not render at all.
  */
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { DockShellChrome } from '../../hooks/useDockShellChrome';
 import { RegionChromeBar, type RegionChromeTab } from '../RegionChromeBar';
@@ -347,8 +353,24 @@ describe('the tab strip writes the model', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull();
 
-    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chat' }));
-    fireEvent.click(screen.getByLabelText('Close move menu for Chat'));
+    // #1386: every end of a backdrop gesture dismisses, and the press alone
+    // does not — the same contract as the toolbar's menus.
+    const open = () => {
+      fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chat' }));
+      return screen.getByLabelText('Close move menu for Chat');
+    };
+    let backdrop = open();
+    const down = createEvent.pointerDown(backdrop);
+    fireEvent(backdrop, down);
+    expect(down.defaultPrevented).toBe(true);
+    expect(screen.queryByRole('menu')).not.toBeNull();
+    fireEvent.pointerCancel(backdrop);
+    expect(screen.queryByRole('menu')).toBeNull();
+    backdrop = open();
+    fireEvent.pointerUp(backdrop);
+    expect(screen.queryByRole('menu')).toBeNull();
+    backdrop = open();
+    fireEvent.click(backdrop);
     expect(screen.queryByRole('menu')).toBeNull();
     expect(handlers.onMoveTab).not.toHaveBeenCalled();
     unmount();
@@ -360,6 +382,41 @@ describe('the tab strip writes the model', () => {
     // Not intercepted: the browser's own context menu is left alone.
     expect(event).toBe(true);
     expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  test('the move menu is anchored under its tab and never past the viewport edges', () => {
+    renderBar();
+    const tab = screen.getByRole('tab', { name: 'Chat' });
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 800,
+    });
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 600,
+    });
+    const tabBox = { left: 40, bottom: 20, top: 0, right: 100 };
+    vi.spyOn(tab, 'getBoundingClientRect').mockReturnValue(tabBox as DOMRect);
+    const measure = vi
+      .spyOn(HTMLDivElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ width: 160, height: 100 } as DOMRect);
+    try {
+      // Under the tab, whatever the pointer said: the keyboard has none.
+      fireEvent.contextMenu(tab, { clientX: 300, clientY: 300 });
+      let menu = screen.getByRole('menu', { name: 'Move Chat' });
+      expect([menu.style.left, menu.style.top]).toEqual(['40px', '24px']);
+      fireEvent.keyDown(document, { key: 'Escape' });
+
+      // A tab in the bottom-right corner: the menu's own box is what it is
+      // pulled back by, so every row stays on screen.
+      tabBox.left = 790;
+      tabBox.bottom = 590;
+      fireEvent.contextMenu(tab);
+      menu = screen.getByRole('menu', { name: 'Move Chat' });
+      expect([menu.style.left, menu.style.top]).toEqual(['640px', '500px']);
+    } finally {
+      measure.mockRestore();
+    }
   });
 });
 

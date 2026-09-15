@@ -93,7 +93,9 @@ every other route. Four rules make it a region rather than a special case
 - **Coarse devices defer `main`.** `main` has no toolbar control on any
   device (it is always visible; since #2143 the toolbar is per DOCK region),
   and a pane reaches it through its tab's "Move to Main" (a surface that
-  declares `main`, so Activity) on a fine pointer only. A bottom-only device
+  declares `main`, so Activity), which needs a tab: a region holding two or
+  more panes off the mobile layout (`RegionChromeBar`'s `showStrip`; the
+  gate is the 768px layout, not the pointer). A bottom-only device
   folds its region commands into one control (#1400's toolbar occlusion
   floor) and this slice does not widen that fold; Home still reaches `main`
   there through the sidebar's two Home affordances (the header's app-name
@@ -630,24 +632,38 @@ one arrangement, and no control at all that said whether a region was open
 
 - **One toggle per dock region**, in screen order (left, bottom, right),
   `aria-pressed` derived from `RegionState.visible` while the region holds a
-  pane; a press is `setRegion(region, { visible })`, the same write the
-  region bar's chevron makes, so every tab comes back with the selection it
-  had. The accessible name is the region's ("Bottom region") and the panes it
-  holds are the tooltip, so a journey finds the same control in every
-  arrangement.
+  pane; a press is the model's `setRegion(region, { visible })`, so every tab
+  comes back with the selection it had. The region bar's chevron reaches the
+  same model write through `applyDockSnap`, which additionally records the
+  shell's snap and height; the toolbar toggle records neither. The
+  accessible name is the region's ("Bottom region") and the panes it holds
+  are the tooltip, so a journey finds the same control in every arrangement.
 - **An empty region's control is a menu, not a toggle.** An empty region
   cannot be shown (`RegionShells` mounts no host for it; the model hides a
   region its last pane leaves), so its button offers the shell surfaces that
-  declare it ("Show Chat here"), through `placeSurface`. `aria-haspopup` and
-  `aria-pressed` are never both on one button.
-- **A pane's placement is its tab's.** A tab's context menu (right-click,
-  Shift+F10) offers "Move to <region>" for the regions the pane declares on
-  this device minus its own, `main` included for a pane that declares it;
-  a choice is `placeSurface` (joins the target, leaves the source). The
-  region bar's ⋮⋮ grab still moves the whole region.
-- **`main` has no toolbar control.** It is always visible; Activity leaves it
-  through its tab's "Move to <dock region>", or through an empty region's
-  offer, both `placeSurface`.
+  declare it ("Show Chat here"), through `placeSurface`; it closes by itself
+  if the region stops being empty while it is open, and an empty region no
+  shell surface declares gets a disabled button rather than an empty menu.
+  `aria-haspopup` and `aria-pressed` are never both on one button.
+- **A pane's placement is its tab's.** A tab's context menu (right-click, or
+  the keyboard's context-menu gesture where the browser turns it into a
+  `contextmenu` event; the menu anchors under the tab either way, never at
+  the pointer, so it cannot cover its own trigger — #2112's rule) offers
+  "Move to <region>" for the regions the pane
+  declares on this device minus the one its shell renders in, `main`
+  included for a pane that declares it; a choice is `placeSurface` (joins
+  the target, leaves the source). A tab exists only in a region holding two
+  or more panes, so a lone pane moves with its region — the bar's ⋮⋮ grab,
+  dock edges only — and reaches `main` only after another pane joins it.
+- **`main` has no toolbar control and no tab.** It is always visible and
+  renders no `RegionChromeBar`, so a surface holding it (Activity) leaves
+  through: an EMPTY dock region's offer ("Show Activity here"); its chord
+  (⌘⇧A, `toggleSurface`: to its default dock region, Home back in `main`);
+  or the sidebar's Home row (`showSurface('home')` places Home, and the
+  displaced surface is unplaced — its chord or sidebar row places it
+  afresh). With every dock region occupied there is no pointer route in the
+  toolbar itself; the picker's `Hidden` segment for a `main` occupant was
+  unconditional, and this is the one capability the toggles narrow.
 - **Folded devices are unchanged.** A bottom-only device has one dock, so its
   one folded menu (D2 above) is already the per-region control.
 

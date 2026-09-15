@@ -31,6 +31,8 @@ const harness = vi.hoisted(() => ({
   showSurface: vi.fn(),
   toggleSurface: vi.fn(),
   bottomOnly: false,
+  /** The registry the mocked model exposes; one test narrows it. */
+  surfaces: null as null | Map<string, unknown>,
   /** The fine pointer's placements; overridden by one test. */
   placements: ['left', 'right', 'bottom'] as string[],
   // The `⋯` overflow button only exists under the mobile media query, so a
@@ -60,7 +62,7 @@ vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
     ...actual,
     useRegionModelOptional: () => ({
       regions: harness.regions,
-      surfaces: REGION_SURFACE_REGISTRY,
+      surfaces: harness.surfaces ?? REGION_SURFACE_REGISTRY,
       setRegion: vi.fn(),
       placeSurface: harness.placeSurface,
       showSurface: harness.showSurface,
@@ -68,7 +70,7 @@ vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
     }),
     useRegionModel: () => ({
       regions: harness.regions,
-      surfaces: REGION_SURFACE_REGISTRY,
+      surfaces: harness.surfaces ?? REGION_SURFACE_REGISTRY,
       setRegion: harness.setRegion,
       placeSurface: harness.placeSurface,
       showSurface: harness.showSurface,
@@ -109,6 +111,7 @@ vi.mock('../../../hooks/useKeyboardShortcut', () => ({
   },
 }));
 
+import { REGION_SURFACE_REGISTRY } from '../../../regions/region-model';
 import { RegionToolbarControls } from '../RegionToolbarControls';
 
 /** The fine pointer's three region toggles (#2143), by region label. */
@@ -171,6 +174,7 @@ describe('RegionToolbarControls', () => {
     harness.showSurface.mockReset();
     harness.toggleSurface.mockReset();
     harness.bottomOnly = false;
+    harness.surfaces = null;
     harness.placements = ['left', 'right', 'bottom'];
     harness.isMobile = false;
     harness.shortcuts.clear();
@@ -504,6 +508,68 @@ describe('RegionToolbarControls', () => {
       within(menu).getByRole('menuitem', { name: 'Show Activity here' }),
     );
     expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'right');
+  });
+
+  /**
+   * The offer menu is a menu of what an EMPTY region can take. The region can
+   * stop being empty while it is open — ⌘⇧A fires with the menu holding
+   * focus, a cross-tab sync lands whenever it likes — and then the trigger
+   * is a toggle again while a zero-row panel would sit over a full-viewport
+   * backdrop. The panel is derived from the same toggles the trigger reads,
+   * so it closes with the state that justified it.
+   */
+  test('an open offer menu closes by itself when its region stops being empty', () => {
+    const { rerender } = render(<RegionToolbarControls />);
+    openOfferMenu('Right');
+    expect(
+      screen.getByRole('menu', { name: 'Show in Right region' }),
+    ).toBeTruthy();
+
+    Object.assign(harness.regions.right, {
+      visible: true,
+      panes: ['activity'],
+      occupant: 'activity',
+    });
+    rerender(<RegionToolbarControls />);
+
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Close region menu' }),
+    ).toBeNull();
+    const right = regionToggle('Right');
+    expect(right.getAttribute('aria-pressed')).toBe('true');
+    expect(right.getAttribute('aria-haspopup')).toBeNull();
+    expect(right.getAttribute('aria-expanded')).toBeNull();
+  });
+
+  /**
+   * A menu trigger only while there is something to offer. Both dock surfaces
+   * declare every edge today, so this is reached by narrowing the registry —
+   * which this test does through the mocked `surfaces` map — and the button
+   * must then be disabled and say why, not announce a popup over nothing.
+   */
+  test('an empty region nothing declares is a disabled button, not a menu trigger', () => {
+    const narrowed = new Map(
+      [...REGION_SURFACE_REGISTRY.entries()].map(([id, surface]) => [
+        id,
+        surface.regions.includes('left')
+          ? { ...surface, regions: surface.regions.filter((r) => r !== 'left') }
+          : surface,
+      ]),
+    );
+    harness.surfaces = narrowed;
+    render(<RegionToolbarControls />);
+
+    const left = regionToggle('Left');
+    expect(left.hasAttribute('disabled')).toBe(true);
+    expect(left.getAttribute('aria-haspopup')).toBeNull();
+    expect(left.getAttribute('aria-pressed')).toBeNull();
+    expect(left.title).toBe('Left region: empty, nothing can be shown here');
+    fireEvent.click(left);
+    expect(screen.queryByRole('menu')).toBeNull();
+    // Right is untouched by the narrowing and still offers both.
+    const { menu } = openOfferMenu('Right');
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(2);
   });
 
   test('the toggles follow this device’s placements: a two-edge device has two', () => {

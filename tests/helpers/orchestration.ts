@@ -89,8 +89,8 @@ async function regionControlTrigger(page: Page) {
  *
  * FINE POINTER (#2143): one toggle per dock region, `aria-pressed` from the
  * model. Chat's region is read off the Dock's own class; if that region's
- * toggle is pressed, Chat is showing (or behind a tab in a showing region,
- * which ⌘D below brings forward); if not, pressing it shows the region. An
+ * toggle is not pressed, pressing it shows the region; then, if Chat is
+ * behind another pane's tab in that region, its tab is selected. An
  * unplaced Chat has no region: the empty Bottom region (Chat's default) is
  * then a menu, and "Show Chat here" is the placement.
  *
@@ -112,10 +112,26 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
   });
   if (await toggle.isVisible()) {
     const pressed = await toggle.getAttribute('aria-pressed');
-    if (pressed === 'true') return true;
     if (pressed === 'false') {
       await toggle.click();
       await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    }
+    if (pressed !== null) {
+      // The region is showing, but "Dock" names the region whose panes
+      // INCLUDE Chat, selected or not (#2046 D3) — so Chat may be behind
+      // another pane's tab. The strip renders only for two or more panes;
+      // if it is there and Chat's tab is not pressed, select it, and read
+      // the pressed state back rather than the click.
+      const chatTab = page
+        .getByRole('tablist', { name: 'Region panes' })
+        .getByRole('tab', { name: 'Chat', exact: true });
+      if (
+        (await chatTab.count()) > 0 &&
+        (await chatTab.getAttribute('aria-selected')) !== 'true'
+      ) {
+        await chatTab.click();
+        await expect(chatTab).toHaveAttribute('aria-selected', 'true');
+      }
       return true;
     }
     // No pressed state: the region is empty and the control is a menu.
