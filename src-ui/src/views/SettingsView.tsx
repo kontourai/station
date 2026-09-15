@@ -814,7 +814,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   claim both keys while nothing here wrote the Station one. */}
               <PageRow
                 {...settingsRow('chat-font-size')}
-                description={`Font size for chat messages on this device (10–24px). Leave at the Station default of ${config.defaultChatFontSize ?? 14}px unless you want this device to differ.`}
+                // `savedConfig`, not `config`: this quotes what the Station
+                // has STORED, and an unsaved Station-default draft is not
+                // yet the default this device falls back to.
+                description={`Font size for chat messages on this device (10–24px). Leave at the Station default of ${savedConfig.defaultChatFontSize ?? 14}px unless you want this device to differ.`}
                 control={
                   <div className="settings__range-row">
                     <input

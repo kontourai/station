@@ -120,11 +120,13 @@ const FEATURE_META: Array<{
     catalogId: 'mobile-pairing',
     key: 'mobilePairingEnabled',
     // The toggle's only effect is mounting `MobilePairingSection` below it —
-    // it enables no pairing capability on the server. The description says
-    // that, and absorbs the privacy note rather than repeating the same
-    // sentence twice in one row.
-    description:
-      'Show the pairing QR code and LAN discovery panel below. While it is shown, this device detects its own local IP address via WebRTC.',
+    // it enables no pairing capability on the server, which is what the
+    // description used to imply. The WebRTC consequence keeps its own
+    // `privacyNote` element (`.settings__toggle-privacy`) rather than being
+    // folded into the description as an ordinary sentence.
+    description: 'Show the pairing QR code and LAN discovery panel below.',
+    privacyNote:
+      'Detects this device’s local IP address via WebRTC while the panel is shown.',
   },
   {
     catalogId: 'tts-readback',

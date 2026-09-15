@@ -431,9 +431,7 @@ test.describe('Settings', () => {
     await expect(dialog).not.toBeVisible();
   });
 
-  test('Agent defaults shows the generic region field behind the disclosure', async ({
-    page,
-  }) => {
+  test('Defaults shows the generic region field', async ({ page }) => {
     await openAgentDefaults(page);
     await expect(
       page.getByText(
