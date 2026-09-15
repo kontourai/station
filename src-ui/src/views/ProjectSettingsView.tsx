@@ -79,18 +79,29 @@ function connectionModelOptions(
 }
 
 /**
- * The model a project should carry when this connection is chosen.
+ * The model id this field STARTS at when a connection is chosen — an opening
+ * value the person can change, not an authoritative default.
  *
- * A connection alone is not enough: `ProviderService.resolve` requires BOTH
+ * Only the first branch is a declared default (`config.defaultModel`). The
+ * second is the connection's catalog in whatever order the provider listed
+ * it, which is a model the connection offers and nothing stronger; the
+ * copy beside the field says exactly that rather than calling it "the
+ * connection's default".
+ *
+ * Why pre-fill at all: `ProviderService.resolve` requires BOTH
  * `defaultProviderId` and `defaultModel` (provider-service.ts) and silently
  * falls through to the Station default when either is missing — while the
- * browser-side resolver would happily fall back to the connection's own
- * default, so the two disagree about the same project. And a model id left
- * over from a previously chosen connection is refused outright ("Model '…'
- * is not available on provider connection"). So picking a connection commits
- * a model belonging to THAT connection, and the field starts there.
+ * browser-side resolver would fall back to the connection's own default, so
+ * the two disagree about the same project. And a model id left over from a
+ * previously chosen connection is refused outright ("Model '…' is not
+ * available on provider connection").
+ *
+ * Returns `''` when the connection declares no default and offers no
+ * catalog. That leaves the pair genuinely half-set, and it is the one case
+ * this cannot fix from here: there is no model id to commit. The field
+ * renders empty and its hint still says the Station default applies.
  */
-function connectionDefaultModelId(
+function connectionInitialModelId(
   connection: ModelConnectionConfig | undefined,
 ): string {
   if (!connection) return '';
@@ -434,18 +445,23 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                   const providerId = event.target.value;
                   // A model id only means something against the connection
                   // that offers it. Choosing or switching a connection
-                  // commits that connection's own default, so the pair is
-                  // never half-set (which the server resolves as "no project
-                  // default" while the browser resolves as "the connection's
-                  // default") and never carries the previous connection's id
-                  // (which the server refuses outright). Clearing the
-                  // connection clears the model with it.
+                  // commits a model THAT connection offers, so the field
+                  // never carries the previous connection's id (which the
+                  // server refuses outright). Clearing the connection clears
+                  // the model with it.
+                  //
+                  // One case still leaves the pair half-set: a ready
+                  // connection that declares no `config.defaultModel` and
+                  // lists no `modelOptions` has no id to commit, so the
+                  // field lands empty. The server then resolves this project
+                  // to the Station default, which is what the model field's
+                  // own hint says happens when either half is missing.
                   setForm((current) =>
                     current
                       ? {
                           ...current,
                           defaultProviderId: providerId,
-                          defaultModel: connectionDefaultModelId(
+                          defaultModel: connectionInitialModelId(
                             selectableModelConnections.find(
                               (connection) => connection.id === providerId,
                             ),
@@ -468,7 +484,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             label="Default model"
             description={
               form.defaultProviderId
-                ? 'Pre-filled with the connection’s default. Both the connection and a model are needed; with either missing, this project uses the Station default.'
+                ? 'Pre-filled with a model this connection offers. Both the connection and a model are needed; with either missing, this project uses the Station default.'
                 : 'Choose a model connection first. Without one, chats in this project use the Station default.'
             }
             control={

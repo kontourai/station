@@ -206,6 +206,19 @@ const READY_MODEL_CONNECTION = {
  * A second connection, declaring its default explicitly rather than leaning
  * on catalog order — the two ways `connectionDefaultModelId` can answer.
  */
+/**
+ * Ready, and yet there is nothing to pre-fill from: no declared
+ * `defaultModel`, no catalog. The one case where choosing a connection still
+ * leaves the pair half-set.
+ */
+const CATALOGLESS_MODEL_CONNECTION = {
+  ...READY_MODEL_CONNECTION,
+  id: 'bare-main',
+  type: 'custom',
+  name: 'Bare (main)',
+  config: {},
+};
+
 const SECOND_MODEL_CONNECTION = {
   ...READY_MODEL_CONNECTION,
   id: 'anthropic-main',
@@ -253,6 +266,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     sdkMocks.modelConnections = [
       READY_MODEL_CONNECTION,
       SECOND_MODEL_CONNECTION,
+      CATALOGLESS_MODEL_CONNECTION,
     ];
     navigationMocks.navigate.mockClear();
     navigationMocks.showSurface.mockClear();
@@ -503,6 +517,25 @@ describe('ProjectSettingsView (#250 shell port)', () => {
           }),
         ),
       );
+    });
+
+    test('a connection with no declared default and no catalog leaves the model empty', () => {
+      renderProjectSettings();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'bare-main' },
+      });
+
+      // Nothing to commit, so the pair stays half-set — and the hint keeps
+      // saying what the server will actually do with it.
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
+      ).toBe('');
+      expect(
+        screen.getByText(
+          'Pre-filled with a model this connection offers. Both the connection and a model are needed; with either missing, this project uses the Station default.',
+        ),
+      ).toBeTruthy();
     });
 
     test('offers only enabled, ready model connections', () => {
