@@ -2,6 +2,7 @@
 
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { APP_CONFIG_SEED } from '../app-config-seed.js';
 import {
   buildAppConfigProvenance,
   sanitizeAppConfigUpdate,
@@ -341,6 +342,88 @@ describe('buildAppConfigProvenance', () => {
       { injected: {} },
     );
     expect(provenance.mcpUiHost).toEqual({ source: 'file' });
+  });
+
+  /**
+   * `loadAppConfigFile` writes these into `config/app.json` itself when they
+   * are missing, and the file records no difference between "Station seeded
+   * this" and "the operator typed this". Reported as `'file'`, the seeded
+   * prompt carried a "Set in file" badge nobody had earned and survived
+   * every "Reset Station settings" — cleared, re-seeded on the next load,
+   * and named again in the next reset plan.
+   */
+  describe('values the loader seeds are not decisions the operator made', () => {
+    test('the seeded system prompt is source "default"', () => {
+      const provenance = buildAppConfigProvenance(
+        {
+          defaultModel: 'claude-3',
+          invokeModel: 'nova',
+          structureModel: 'nova-micro',
+          systemPrompt: APP_CONFIG_SEED.systemPrompt,
+        },
+        { injected: {} },
+      );
+      expect(provenance.systemPrompt).toEqual({ source: 'default' });
+    });
+
+    test('a customised system prompt is source "file"', () => {
+      const provenance = buildAppConfigProvenance(
+        {
+          defaultModel: 'claude-3',
+          invokeModel: 'nova',
+          structureModel: 'nova-micro',
+          systemPrompt: `${APP_CONFIG_SEED.systemPrompt}\n\nAlways answer in French.`,
+        },
+        { injected: {} },
+      );
+      expect(provenance.systemPrompt).toEqual({ source: 'file' });
+    });
+
+    test('the seeded template variables are source "default"', () => {
+      const provenance = buildAppConfigProvenance(
+        {
+          defaultModel: 'claude-3',
+          invokeModel: 'nova',
+          structureModel: 'nova-micro',
+          templateVariables: [...APP_CONFIG_SEED.templateVariables],
+        },
+        { injected: {} },
+      );
+      expect(provenance.templateVariables).toEqual({ source: 'default' });
+    });
+
+    test('template variables carrying one extra entry are source "file"', () => {
+      // The loader APPENDS its seed rather than replacing, so "seed plus
+      // their own" is a list the operator shaped.
+      const provenance = buildAppConfigProvenance(
+        {
+          defaultModel: 'claude-3',
+          invokeModel: 'nova',
+          structureModel: 'nova-micro',
+          templateVariables: [
+            ...APP_CONFIG_SEED.templateVariables,
+            { key: 'TEAM', type: 'static', value: 'Platform' },
+          ],
+        },
+        { injected: {} },
+      );
+      expect(provenance.templateVariables).toEqual({ source: 'file' });
+    });
+
+    test('a seeded value on an unseeded key is untouched by the comparison', () => {
+      // `registryUrl` is not a seeded key, so an empty-ish-but-stored value
+      // there still reports as the decision it is.
+      const provenance = buildAppConfigProvenance(
+        {
+          defaultModel: 'claude-3',
+          invokeModel: 'nova',
+          structureModel: 'nova-micro',
+          registryUrl: 'https://registry.example.com',
+        },
+        { injected: {} },
+      );
+      expect(provenance.registryUrl).toEqual({ source: 'file' });
+    });
   });
 
   test('a registered key with no defaultValue and absent from the config gets no provenance entry', () => {

@@ -90,6 +90,24 @@ describe('buildStationResetPlan', () => {
     expect(plan.labels).toEqual([]);
   });
 
+  test('a seeded system prompt, which the server reports as "default", is not cleared', () => {
+    // Same predicate as the case above — this names the key the server-side
+    // seed comparison exists for (src-server/domain/app-config-seed.ts).
+    // `loadAppConfigFile` writes the factory prompt into app.json itself, so
+    // before that comparison it arrived here as `source: 'file'`, was listed
+    // in every reset plan, was cleared, and came straight back on the next
+    // read — a plan that could never reach empty.
+    const plan = buildStationResetPlan({
+      systemPrompt: { source: 'default' },
+      templateVariables: { source: 'default' },
+      terminalShell: { source: 'file' },
+    });
+
+    expect(plan.delta).toEqual({ terminalShell: null });
+    expect(plan.keys).not.toContain('systemPrompt');
+    expect(plan.keys).not.toContain('templateVariables');
+  });
+
   test('missing provenance yields an empty plan rather than a blanket clear', () => {
     expect(buildStationResetPlan(undefined).delta).toEqual({});
   });
