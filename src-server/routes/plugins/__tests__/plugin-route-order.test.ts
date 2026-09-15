@@ -53,8 +53,13 @@ describe('composed plugin route order', () => {
     // handler received the request.
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ success: true });
+    // #2067 added the marker to this frame, from the one constructor
+    // `workspaceHomeRoleEventFrame()`. It is written out by hand here, as in
+    // `plugin-home-role-routes.test.ts`, so the expectation does not move
+    // with the constant it is checking.
     expect(emit).toHaveBeenCalledWith(SERVER_EVENTS.PLUGINS_GRANTS_CHANGED, {
       name: 'workspace-home-role',
+      homeRoleSlot: true,
     });
   });
 
