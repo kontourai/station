@@ -152,12 +152,17 @@ function FeatureToggle({
   onToggle: (key: BooleanFeatureSetting) => void;
 }) {
   const descId = `feature-desc-${featureKey}`;
+  const privacyId = `feature-privacy-${featureKey}`;
   return (
     <SettingsToggle
       className="settings__feature-toggle"
       checked={checked}
       onChange={() => onToggle(featureKey)}
-      describedBy={descId}
+      // The privacy note is a consequence of flipping this switch, not
+      // decoration beside it. Left out of the description, a screen-reader
+      // user hears the toggle described without the one sentence that says
+      // what turning it on makes this device do.
+      describedBy={privacyNote ? `${descId} ${privacyId}` : descId}
       label={label}
     >
       <div>
@@ -166,7 +171,9 @@ function FeatureToggle({
           {description}
         </div>
         {privacyNote && (
-          <div className="settings__toggle-privacy">{privacyNote}</div>
+          <div className="settings__toggle-privacy" id={privacyId}>
+            {privacyNote}
+          </div>
         )}
       </div>
     </SettingsToggle>
