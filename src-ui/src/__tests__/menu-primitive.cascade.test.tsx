@@ -34,10 +34,10 @@
  * #2113 — THE COARSE BRANCH. The 32px row above is the FINE-pointer floor. The
  * family also declares a touch floor, `.menu-row.menu-row { min-height: 44px }`
  * inside `@media (max-width: 768px), (pointer: coarse)` in chat.css, and until
- * now nothing measured it for any member: this fixture ran one page with no
- * `hasTouch`, so every number it reported came from the fine arm, and the only
- * check on the 44 was a test reading the stylesheet as text. A declaration is
- * not a cascade for the coarse branch either.
+ * now nothing checked it for any member of the family: not a measurement, and
+ * on this commit not even a text scan. This fixture ran one page with no
+ * `hasTouch`, so every number it ever reported came from the fine arm. A
+ * declaration is not a cascade for the coarse branch either.
  *
  * SHAPE — A SECOND CONTEXT, NOT A SECOND ROW AND NOT A SECOND FILE. The branch
  * is selected by a device capability, so only a differently-configured browser
@@ -45,8 +45,8 @@
  * override, a `matchMedia` stub or a scan of the CSS text would all report on
  * something other than what Chromium resolved, which is the whole point of
  * having a real engine here. It is not a new row in `MENUS` because the branch
- * is not another menu — every menu already in the table has both floors, and
- * one table measured twice is what says so.
+ * is not another menu: the same surfaces are the ones a finger has to hit, so
+ * the shape is one table measured twice rather than a longer table.
  *
  * The two contexts share ONE page markup (`fixtureHtml()` is built once, in
  * jsdom, and is byte-identical for both): the branch under test is a cascade
@@ -59,10 +59,11 @@
  *
  * The coarse expectations sit in their own `describe` beside the fine ones
  * rather than folded into them, because they are a different claim about the
- * same rows: 32-and-a-laid-out-32 versus 44-and-a-laid-out-44. Reading the two
- * blocks side by side is how a reviewer sees which floor belongs to which
- * device — folding them into one parameterized assertion would hide that behind
- * a variable. What the coarse block does NOT restate is the rest of the spec:
+ * same rows: a 32px floor with a laid-out box that clears it, versus a 44px
+ * one. Reading the two blocks side by side is how a reviewer sees which floor
+ * belongs to which device — folding them into one parameterized assertion would
+ * hide that behind a variable. What the coarse block does NOT restate is the
+ * rest of the spec:
  * `nothing but the row floor moves` compares the coarse measurement against the
  * fine one field by field, so the radius, inset, glyph slot, label x and absent
  * rules are proven unchanged under touch without a second copy of their numbers
@@ -597,12 +598,20 @@ describe.skipIf(!chromiumAvailable)(
       });
 
       test('every command row rises from the 32px floor to a 44px one', () => {
-        // `rowsDeclareFloor: false` is the only way a menu can leave this
-        // assertion, which makes it a lever: setting it on a menu whose rows
-        // stopped reaching 44 would turn a red into a green. Pinned, so that
-        // has to be an argued edit rather than a quiet one. The Layout
-        // picker's own coarse geometry is a gap reported on #2113, not a
-        // claim this file makes.
+        // `rowsDeclareFloor: false` is the one lever that drops a menu out of
+        // this assertion without the precondition test above noticing, so the
+        // opt-out list is pinned: removing a menu from the touch floor has to
+        // be an argued edit rather than a quiet one.
+        //
+        // Its single member is the Layout picker, whose rows are `radiogroup`s
+        // rather than commands (#1552 D2) and declare no floor in either
+        // branch — and which does NOT clear 44 under touch. Measured by this
+        // fixture when this block was written: its rows lay out at 38px over
+        // 24px segments, identically in BOTH contexts, because neither
+        // `.region-placement__row` nor `.region-placement__segment` is reached
+        // by a coarse rule. That is reported as a finding on #2113 rather than
+        // fixed or asserted here; this file makes no claim that the picker
+        // clears a finger.
         expect(
           MENUS.filter((menu) => menu.rowsDeclareFloor === false).map(
             (menu) => menu.name,
@@ -614,8 +623,11 @@ describe.skipIf(!chromiumAvailable)(
           for (const row of menu.rows) {
             const where = `"${row.text}" in ${menu.name}`;
             expect(row.minHeight, `${where} coarse row floor`).toBe(44);
-            // The floor is only a floor. This is the laid-out box a finger
-            // actually lands on, which is the claim the 44 stands for.
+            // Not implied by the declaration above: this is the bounding box a
+            // finger actually lands on, and a `transform` on the row or any
+            // ancestor shrinks it while `min-height` goes on computing 44.
+            // Proven by injection — `transform: scale(0.5)` on `.menu-row`
+            // reds this line at 22px with the floor assertion still green.
             expect(
               row.height,
               `${where} coarse laid-out height`,
