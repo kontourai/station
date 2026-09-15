@@ -54,6 +54,51 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['danger', 'Danger zone'],
 ] as const;
 
+/** A connection's own catalog, in the shape `ModelSelector` takes. */
+function connectionModelOptions(
+  connection: ModelConnectionConfig | undefined,
+): Array<{ id: string; name: string; originalId: string }> | undefined {
+  const raw = connection?.config.modelOptions;
+  if (!Array.isArray(raw)) return undefined;
+  return (
+    raw as Array<{ id?: unknown; name?: unknown; originalId?: unknown }>
+  ).flatMap((model) =>
+    typeof model?.id === 'string'
+      ? [
+          {
+            id: model.id,
+            name: typeof model.name === 'string' ? model.name : model.id,
+            originalId:
+              typeof model.originalId === 'string'
+                ? model.originalId
+                : model.id,
+          },
+        ]
+      : [],
+  );
+}
+
+/**
+ * The model a project should carry when this connection is chosen.
+ *
+ * A connection alone is not enough: `ProviderService.resolve` requires BOTH
+ * `defaultProviderId` and `defaultModel` (provider-service.ts) and silently
+ * falls through to the Station default when either is missing — while the
+ * browser-side resolver would happily fall back to the connection's own
+ * default, so the two disagree about the same project. And a model id left
+ * over from a previously chosen connection is refused outright ("Model '…'
+ * is not available on provider connection"). So picking a connection commits
+ * a model belonging to THAT connection, and the field starts there.
+ */
+function connectionDefaultModelId(
+  connection: ModelConnectionConfig | undefined,
+): string {
+  if (!connection) return '';
+  const declared = connection.config.defaultModel;
+  if (typeof declared === 'string' && declared) return declared;
+  return connectionModelOptions(connection)?.[0]?.id ?? '';
+}
+
 export function ProjectSettingsView({ slug }: { slug: string }) {
   const { navigate } = useNavigation();
   const showSurface = useShowSurface();
@@ -121,33 +166,10 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const selectedConnection = selectableModelConnections.find(
     (connection) => connection.id === form?.defaultProviderId,
   );
-  // A connection's own catalog, in the shape `ModelSelector` takes. Undefined
-  // (not an empty array) when there is no catalog to offer, so the picker
-  // falls back to the global model list rather than rendering empty.
-  const selectedConnectionModels = Array.isArray(
-    selectedConnection?.config.modelOptions,
-  )
-    ? (
-        selectedConnection.config.modelOptions as Array<{
-          id?: unknown;
-          name?: unknown;
-          originalId?: unknown;
-        }>
-      ).flatMap((model) =>
-        typeof model?.id === 'string'
-          ? [
-              {
-                id: model.id,
-                name: typeof model.name === 'string' ? model.name : model.id,
-                originalId:
-                  typeof model.originalId === 'string'
-                    ? model.originalId
-                    : model.id,
-              },
-            ]
-          : [],
-      )
-    : undefined;
+  // Undefined (not an empty array) when there is no catalog to offer, so the
+  // picker falls back to the global model list rather than rendering empty,
+  // and an off-catalog id typed into it still commits.
+  const selectedConnectionModels = connectionModelOptions(selectedConnection);
 
   const saveMutation = useUpdateProjectMutation();
 
@@ -410,16 +432,24 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                 value={form.defaultProviderId ?? ''}
                 onChange={(event) => {
                   const providerId = event.target.value;
+                  // A model id only means something against the connection
+                  // that offers it. Choosing or switching a connection
+                  // commits that connection's own default, so the pair is
+                  // never half-set (which the server resolves as "no project
+                  // default" while the browser resolves as "the connection's
+                  // default") and never carries the previous connection's id
+                  // (which the server refuses outright). Clearing the
+                  // connection clears the model with it.
                   setForm((current) =>
                     current
                       ? {
                           ...current,
                           defaultProviderId: providerId,
-                          // A model id only means something against the
-                          // connection that offers it; clearing the
-                          // connection clears the model with it rather than
-                          // leaving a half-set pair nothing resolves.
-                          defaultModel: providerId ? current.defaultModel : '',
+                          defaultModel: connectionDefaultModelId(
+                            selectableModelConnections.find(
+                              (connection) => connection.id === providerId,
+                            ),
+                          ),
                         }
                       : current,
                   );
@@ -438,7 +468,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             label="Default model"
             description={
               form.defaultProviderId
-                ? 'Leave empty to use the connection’s own default model.'
+                ? 'Pre-filled with the connection’s default. Both the connection and a model are needed; with either missing, this project uses the Station default.'
                 : 'Choose a model connection first. Without one, chats in this project use the Station default.'
             }
             control={

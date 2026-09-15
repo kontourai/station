@@ -202,6 +202,24 @@ const READY_MODEL_CONNECTION = {
   },
 };
 
+/**
+ * A second connection, declaring its default explicitly rather than leaning
+ * on catalog order — the two ways `connectionDefaultModelId` can answer.
+ */
+const SECOND_MODEL_CONNECTION = {
+  ...READY_MODEL_CONNECTION,
+  id: 'anthropic-main',
+  type: 'anthropic',
+  name: 'Anthropic (main)',
+  config: {
+    defaultModel: 'anthropic:claude-sonnet',
+    modelOptions: [
+      { id: 'anthropic:claude-opus', name: 'Opus', originalId: 'opus' },
+      { id: 'anthropic:claude-sonnet', name: 'Sonnet', originalId: 'sonnet' },
+    ],
+  },
+};
+
 function renderProjectSettings() {
   return render(<ProjectSettingsView slug="demo" />);
 }
@@ -232,7 +250,10 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     sdkMocks.environments = [];
     sdkMocks.environmentsError = false;
     sdkMocks.environmentsLoading = false;
-    sdkMocks.modelConnections = [READY_MODEL_CONNECTION];
+    sdkMocks.modelConnections = [
+      READY_MODEL_CONNECTION,
+      SECOND_MODEL_CONNECTION,
+    ];
     navigationMocks.navigate.mockClear();
     navigationMocks.showSurface.mockClear();
   });
@@ -395,6 +416,8 @@ describe('ProjectSettingsView (#250 shell port)', () => {
           expect.objectContaining({
             slug: 'demo',
             defaultProviderId: 'openai-main',
+            // This connection declares no `defaultModel`, so its catalog's
+            // first entry is the committed one.
             defaultModel: 'openai:gpt-5',
           }),
         ),
@@ -422,6 +445,61 @@ describe('ProjectSettingsView (#250 shell port)', () => {
           expect.objectContaining({
             defaultProviderId: '',
             defaultModel: '',
+          }),
+        ),
+      );
+    });
+
+    test('choosing a connection pre-fills that connection’s own default model', () => {
+      renderProjectSettings();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'anthropic-main' },
+      });
+
+      // Declared `config.defaultModel` wins over catalog order.
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
+      ).toBe('anthropic:claude-sonnet');
+    });
+
+    test('switching connections replaces the previous connection’s model', () => {
+      renderProjectSettings();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'openai-main' },
+      });
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
+      ).toBe('openai:gpt-5');
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'anthropic-main' },
+      });
+
+      // Not 'openai:gpt-5': the server refuses a model id the newly chosen
+      // connection does not offer.
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
+      ).toBe('anthropic:claude-sonnet');
+    });
+
+    test('a save after switching carries the new connection and its model', async () => {
+      renderProjectSettings();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'openai-main' },
+      });
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'anthropic-main' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() =>
+        expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+          expect.objectContaining({
+            defaultProviderId: 'anthropic-main',
+            defaultModel: 'anthropic:claude-sonnet',
           }),
         ),
       );
