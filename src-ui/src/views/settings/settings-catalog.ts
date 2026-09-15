@@ -108,6 +108,12 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['defaultMaxOutputTokens'],
   },
   {
+    id: 'default-chat-font-size',
+    title: 'Default chat font size',
+    section: 'station-config',
+    configKeys: ['defaultChatFontSize'],
+  },
+  {
     id: 'terminal-shell',
     title: 'Terminal shell',
     section: 'station-config',
@@ -126,16 +132,16 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['surfaceTrustFromVeritasEvidence'],
   },
   {
-    id: 'knowledge-stores-preview',
-    title: 'Knowledge stores (preview)',
-    section: 'station-config',
-    configKeys: ['knowledgeStores'],
-  },
-  {
     id: 'default-skill-registries',
     title: 'Disable default skill registries',
     section: 'station-config',
     configKeys: ['disableDefaultSkillRegistries'],
+  },
+  {
+    id: 'workspace-checkpoints',
+    title: 'Workspace checkpoints',
+    section: 'station-config',
+    configKeys: ['workspaceCheckpoints'],
   },
   {
     id: 'registry-url',
@@ -188,9 +194,9 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   {
     id: 'reset-defaults',
-    title: 'Reset to Defaults',
+    title: 'Reset Station settings',
     section: 'system',
-    keywords: ['factory reset'],
+    keywords: ['factory reset', 'reset to defaults'],
   },
   {
     id: 'feature-previews',
@@ -257,7 +263,10 @@ const SETTINGS_CATALOG_SOURCE = [
     id: 'chat-font-size',
     title: 'Chat font size',
     section: 'appearance',
-    configKeys: ['defaultChatFontSize', 'chatFontSize'],
+    // Device key only: this slider writes `chatFontSize` through the
+    // device-settings store. The Station default (`defaultChatFontSize`) is
+    // its own row under Station configuration.
+    configKeys: ['chatFontSize'],
   },
   {
     id: 'smooth-answer-reveal',

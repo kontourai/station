@@ -148,10 +148,12 @@ export function SystemSection({
           className="settings__danger-btn"
           onClick={onResetToDefaults}
         >
-          Reset to Defaults
+          Reset Station settings
         </button>
         <span className="settings__field-hint">
-          Restore all settings to factory defaults. Cannot be undone.
+          Clear the Station and Defaults settings that have a stored value so
+          Station uses its defaults again. Settings on this device are not
+          affected. Cannot be undone.
         </span>
       </div>
     </SettingsSection>

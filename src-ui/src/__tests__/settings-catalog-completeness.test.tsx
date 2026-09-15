@@ -325,9 +325,11 @@ describe('settings catalog completeness', () => {
     // 37 at the merge base; +2 from archive#3313 (feature-previews,
     // enable-developer-tools) and +1 from the chat-dock lane's
     // sidebar-sections, +1 from station#585 smooth answer reveal, +1 from the
-    // update-ownership split (desktop-app-updates). Counted from the merged
-    // catalog, not added up.
-    expect(SETTINGS_CATALOG).toHaveLength(43);
+    // update-ownership split (desktop-app-updates). This slice: -1
+    // (knowledge-stores-preview, whose setting changes nothing and is no
+    // longer user-facing) and +2 (workspace-checkpoints,
+    // default-chat-font-size). Counted from the merged catalog, not added up.
+    expect(SETTINGS_CATALOG).toHaveLength(44);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
@@ -842,7 +844,11 @@ describe('settings catalog completeness', () => {
     expect(window.location.search).toBe('?view=appearance');
   });
 
-  test('opens the Defaults disclosure before focusing a deep-linked editable field', async () => {
+  test('focuses a deep-linked editable field in the Defaults section', async () => {
+    // The `.agent-defaults__disclosure` assertion that used to close this
+    // test is gone with the disclosure itself: these fields render directly
+    // under the section intro, so there is nothing left to open. The focus
+    // assertion is the part that was ever about the deep link.
     window.history.replaceState(
       {},
       '',
@@ -855,10 +861,7 @@ describe('settings catalog completeness', () => {
         container.querySelector<HTMLInputElement>('#region'),
       ),
     );
-    expect(
-      container.querySelector<HTMLDetailsElement>('.agent-defaults__disclosure')
-        ?.open,
-    ).toBe(true);
+    expect(container.querySelector('.agent-defaults__disclosure')).toBeNull();
   });
 
   test('removes an invalid highlight without disturbing route and shell query state', async () => {

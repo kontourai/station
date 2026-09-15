@@ -59,6 +59,7 @@ import {
   SETTINGS_SECTIONS,
   settingsRow,
 } from './settings/settings-catalog';
+import { buildStationResetPlan } from './settings/station-reset';
 import {
   buildSettingsExportPayload,
   getSettingsValidation,
@@ -125,7 +126,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     developerToolsEnabled,
     sidebarSections,
   } = useDeviceSettings();
-  const { setDeviceSetting } = useDeviceSettingsActions();
+  const { setDeviceSetting, resetDeviceSetting } = useDeviceSettingsActions();
   const { isMobile, isDesktop } = usePlatformProfile();
   const { locale } = useLocale();
 
@@ -300,8 +301,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       const target = document.getElementById(highlight);
       if (!target || done) return false;
       done = true;
-      // Defaults intentionally begins closed. A deep link owns revealing the
-      // declared target, not an arbitrary first button inside the section.
+      // Several Settings rows still live inside a closed <details> (keyboard
+      // shortcuts, update technical detail, host environment). A deep link
+      // owns revealing the declared target, not an arbitrary first button
+      // inside the section. (Defaults no longer needs this: its fields render
+      // directly.)
       target.closest('details')?.setAttribute('open', '');
       target.scrollIntoView?.({
         block: 'center',
@@ -548,14 +552,33 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     }
   };
 
+  // What a reset would actually do, recomputed from the provenance the page
+  // already holds: only a `source: 'file'` key is stored, and only a stored
+  // key changes when it is cleared. The dialog names these, and an empty plan
+  // is a disabled confirm rather than a request that silently does nothing.
+  const resetPlan = buildStationResetPlan(provenance);
+
   const resetToDefaults = async () => {
     setShowResetModal(false);
+    if (resetPlan.keys.length === 0) return;
     try {
       setError(null);
-      await updateConfig({});
+      const result = await updateConfig(resetPlan.delta);
+      const ignoredKeys = result?.ignoredKeys ?? [];
+      // A key the server declined comes back on a 2xx. Absorbing it here is
+      // exactly the failure this whole item exists to remove.
+      setError(
+        ignoredKeys.length > 0
+          ? `Station did not clear ${ignoredKeys
+              .map((entry) => entry.key)
+              .join(', ')}. Every other setting listed was reset.`
+          : null,
+      );
       invalidate(['config']);
       onSaved?.();
     } catch (err: any) {
+      // `updateAppConfig` throws the route's joined violation messages, so a
+      // refusal names the keys instead of disappearing.
       setError(err.message);
     }
   };
@@ -784,9 +807,13 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
           {sectionVisible('appearance') && (
             <Section icon="◐" title="Appearance" id="section-appearance">
+              {/* This slider writes the DEVICE key only. The Station
+                  default it falls back to (`defaultChatFontSize`) has its own
+                  row under Station configuration — the catalog entry used to
+                  claim both keys while nothing here wrote the Station one. */}
               <PageRow
                 {...settingsRow('chat-font-size')}
-                description="Font size for chat messages (10–24px)."
+                description={`Font size for chat messages on this device (10–24px). Leave at the Station default of ${config.defaultChatFontSize ?? 14}px unless you want this device to differ.`}
                 control={
                   <div className="settings__range-row">
                     <input
@@ -806,6 +833,15 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     <span className="settings__range-value">
                       {chatFontSize ?? config.defaultChatFontSize ?? 14}px
                     </span>
+                    {chatFontSize != null && (
+                      <button
+                        type="button"
+                        className="settings__secondary-btn"
+                        onClick={() => resetDeviceSetting('chatFontSize')}
+                      >
+                        Use Station default
+                      </button>
+                    )}
                   </div>
                 }
               />
@@ -971,9 +1007,14 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
       <ConfirmModal
         isOpen={showResetModal}
-        title="Reset to Defaults"
-        message="Are you sure you want to reset all settings to factory defaults? This action cannot be undone."
+        title="Reset Station settings"
+        message={
+          resetPlan.keys.length === 0
+            ? 'No Station setting currently has a stored value, so there is nothing to reset. Settings on this device are not affected.'
+            : `This clears ${resetPlan.keys.length} stored Station setting${resetPlan.keys.length === 1 ? '' : 's'} and lets Station use its default again: ${resetPlan.labels.join(', ')}. The required model settings (Default model, Invoke model, Structure model) and the built-in agent engine choice are kept. Settings on this device are not affected. This cannot be undone.`
+        }
         confirmLabel="Reset"
+        confirmDisabled={resetPlan.keys.length === 0}
         cancelLabel="Cancel"
         variant="danger"
         onConfirm={resetToDefaults}
