@@ -40,6 +40,34 @@ function complexityKeyCounts(report, totalRows) {
   return { introduced, inherited: keys.size - introduced };
 }
 
+/**
+ * An EMPTY comparison: the analyzer was asked for everything changed since a
+ * commit and found no changed file at all, so it emits no `dead_code` section
+ * rather than an empty one. That is not a malformed report — there was nothing
+ * to attribute — and refusing it with `Missing unused_exports findings` named a
+ * symptom two steps from its cause (#2094). It is reached by dispatching CI on
+ * `main`: a dispatch has no pull request, so `STATION_CI_FAST_BASE` is empty,
+ * the base falls back to `origin/main`, and on `main` that IS the head.
+ *
+ * Derived from the report's own `changed_files_count` rather than from
+ * comparing the two SHAs, because the question is what the analyzer compared,
+ * not what it was asked to compare: an empty commit reaches the same state
+ * with two different SHAs. The summary totals must agree — a report claiming
+ * findings while reporting no changed file is malformed and must still be
+ * refused, and an absent count is not a zero.
+ *
+ * This infers no base. The note in `runCodeHealthGate` still holds: the base
+ * is whatever the caller supplied, and nothing here derives one from a branch.
+ */
+function comparedNothing(report, summary) {
+  return (
+    report.changed_files_count === 0 &&
+    summary.dead_code_issues === 0 &&
+    summary.complexity_findings === 0 &&
+    summary.duplication_clone_groups === 0
+  );
+}
+
 /** Scores and estimated coverage require judgment; new unused API needs a caller. */
 export function evaluateCodeHealthAudit(report, base, head) {
   const summary = summarizeFallowReports('changed', [report]);
@@ -76,17 +104,33 @@ export function evaluateCodeHealthAudit(report, base, head) {
       throw new Error(`Code-health report has incomplete ${kind} attribution`);
     introduced[kind] = added;
   }
+  const emptyComparison = comparedNothing(report, summary);
   const blockers = [];
   for (const kind of ['unused_exports', 'unused_types']) {
     const findings = report.dead_code?.[kind];
-    if (!Array.isArray(findings)) throw new Error(`Missing ${kind} findings`);
+    if (!Array.isArray(findings)) {
+      // The two cases the old message could not tell apart: the analyzer
+      // returned no attribution for a comparison that HAD changed files
+      // (a real fault, still refused), versus a comparison that had nothing
+      // to attribute.
+      if (emptyComparison) continue;
+      throw new Error(
+        `Code-health report has no ${kind} attribution for ${report.changed_files_count} changed file(s)`,
+      );
+    }
     for (const finding of findings) {
       if (typeof finding.introduced !== 'boolean')
         throw new Error(`Missing ${kind} finding attribution`);
       if (finding.introduced) blockers.push({ kind, ...finding });
     }
   }
-  return { passed: blockers.length === 0, introduced, blockers, summary };
+  return {
+    passed: blockers.length === 0,
+    emptyComparison,
+    introduced,
+    blockers,
+    summary,
+  };
 }
 
 async function runCodeHealthGate(root, baseRef) {
@@ -154,13 +198,20 @@ if (
       throw new Error('Invalid code-health base');
     const result = await runCodeHealthGate(process.cwd(), base);
     console.log(JSON.stringify(result, null, 2));
+    // An empty comparison must say what it is rather than borrow the verdict
+    // of a real one: this run evaluated nothing, which is not the same claim
+    // as "nothing was wrong" (#2094).
     console.log(
-      'New unused exports/types require a real caller or an explicit entrypoint/public-API contract. Review other introduced findings in the raw report; complexity and estimated coverage are advisory.',
+      result.emptyComparison
+        ? `Compared ${result.base} against ${result.head}: no changed file, so nothing was analyzed and no unused export or type was evaluated. This is not a statement about the tree's code health. A CI dispatch on main reaches this — a dispatch has no pull request, so the base falls back to origin/main, which on main IS the head. Pass --base=<ref> or set STATION_CI_FAST_BASE to compare against something.`
+        : 'New unused exports/types require a real caller or an explicit entrypoint/public-API contract. Review other introduced findings in the raw report; complexity and estimated coverage are advisory.',
     );
     if (process.env.GITHUB_STEP_SUMMARY)
       appendFileSync(
         process.env.GITHUB_STEP_SUMMARY,
-        `\n### Code-health change review\n\nNew candidates: ${result.introduced.dead_code} dead/dependency, ${result.introduced.complexity} complexity, ${result.introduced.duplication} clone groups. Unused export/type blockers: ${result.blockers.length}.\n\nSource: ${result.head}; base: ${result.base}. Full report: ${result.report} in the fast-feedback artifact. Counts describe candidates, not confirmed defects.\n`,
+        result.emptyComparison
+          ? `\n### Code-health change review\n\nNo changed file between base ${result.base} and source ${result.head}, so nothing was analyzed. The zeroes below are the absence of a comparison, not the absence of findings.\n`
+          : `\n### Code-health change review\n\nNew candidates: ${result.introduced.dead_code} dead/dependency, ${result.introduced.complexity} complexity, ${result.introduced.duplication} clone groups. Unused export/type blockers: ${result.blockers.length}.\n\nSource: ${result.head}; base: ${result.base}. Full report: ${result.report} in the fast-feedback artifact. Counts describe candidates, not confirmed defects.\n`,
       );
     process.exitCode = result.passed ? 0 : 1;
   } catch (error) {
