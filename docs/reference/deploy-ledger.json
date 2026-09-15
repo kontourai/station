@@ -1,5 +1,34 @@
 [
   {
+    "timestampUtc": "2026-09-15T17:35:14Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2449.4",
+    "sha": "e8c0b1bfee9de86703c91b7bd136d229ddab056c",
+    "artifactBuiltAt": "2026-09-15T16:54:22.179Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34997120268",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 34997120268)"
+    ],
+    "changelog": {
+      "previousSha": "1701011de1ca23ef0fbf73f259fb3a786752ad01",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2134](https://github.com/kontourai/station/pull/2134) fix(scripts): a child that exits before SIGTERM stops being a termination failure"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-09-15T17:35:12Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2449.4",
