@@ -1,5 +1,41 @@
 [
   {
+    "timestampUtc": "2026-09-15T21:16:27Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2449.35020162279",
+    "sha": "b9f05fe2666c46b9e882726a758a3c6f5a5a3a8a",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35020162279",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2449.35020162279 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e8c0b1bfee9de86703c91b7bd136d229ddab056c",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2142](https://github.com/kontourai/station/pull/2142) fix(ui): the light theme stops rendering dark-theme literals",
+          "[#2141](https://github.com/kontourai/station/pull/2141) fix(ui): three components stop painting dark-theme literals the light theme cannot reach",
+          "[#2138](https://github.com/kontourai/station/pull/2138) fix(scripts): taskkill's process-not-found status stops being a termination failure",
+          "[#2139](https://github.com/kontourai/station/pull/2139) fix(tests): the desktop lane's per-attempt bound drops below the budgets wrapping it"
+        ],
+        "ci": [
+          "[#2135](https://github.com/kontourai/station/pull/2135) ci(regression): a red gate enumerates every failure, not just the first"
+        ],
+        "docs": [],
+        "other": [
+          "[#2137](https://github.com/kontourai/station/pull/2137) test(claude): two adapter assertions stop depending on the developer's environment"
+        ]
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
     "timestampUtc": "2026-09-15T17:35:14Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2449.4",
