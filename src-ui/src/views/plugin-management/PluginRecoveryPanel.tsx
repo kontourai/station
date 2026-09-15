@@ -74,7 +74,7 @@ export function PluginRecoveryPanel({
       });
       setNotice(
         result.configurationActivation?.status === 'pending'
-          ? 'Recovery was accepted. Runtime activation is still pending; refresh status before reviewing another recovery.'
+          ? 'Recovery was accepted. Activation is still pending; refresh status before reviewing another recovery.'
           : 'Recovery completed. Refreshing plugin status.',
       );
     } catch (error) {

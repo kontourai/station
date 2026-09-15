@@ -42,11 +42,6 @@
       "reason": "Legacy suppression covered by the global keyboard-focus floor."
     },
     {
-      "path": "src-ui/src/components/chat/chat.css",
-      "selector": ".workspace-modal__search:focus",
-      "reason": "Legacy suppression covered by the global keyboard-focus floor."
-    },
-    {
       "path": "src-ui/src/components/chat/share-target-picker.css",
       "selector": ".share-target-picker__search:focus",
       "reason": "Search field draws its own focus border; the global keyboard-focus floor still supplies the keyboard outline."

@@ -256,7 +256,7 @@ export function ConversationHistory({
       <ConfirmModal
         isOpen={menu.showClearAllConfirm}
         title="Clear All Conversations"
-        message={`Delete all ${mutableConversations.length} editable conversations? Runtime-owned history will remain available.`}
+        message={`Delete all ${mutableConversations.length} editable conversations? History kept by an external engine stays available.`}
         confirmLabel="Clear All"
         cancelLabel="Cancel"
         variant="danger"

@@ -252,6 +252,7 @@
 
   --health-success: #10b981;
   --health-error: #ef4444;
+
   --health-warning: #f59e0b;
 
   --event-agent-start: #3b82f6;
@@ -511,6 +512,7 @@
   /* Health */
   --health-success: #059669;
   --health-error: #dc2626;
+
   --health-warning: #d97706;
 
   /* Event colors */
@@ -537,8 +539,13 @@
   --meter-low: var(--success-text); /* #2e7d32 5.13:1 */
   --meter-mid: var(--warning-text); /* #92400e */
   --meter-high: var(--error-text); /* #b3261e 6.54:1 */
-  /* github-light's rungs, rendered as text: 4.86:1 / 6.90:1 / 11.63:1 */
-  --syntax-keyword: #cf222e;
+  /* github-light's number and string rungs, rendered as text: 6.90:1 and
+     11.63:1 on the page. The keyword is darkened past github-light's #cf222e
+     because of a third backdrop the pane paints under it: the requested line
+     is highlighted with --bg-selected, a 14% mix of a DARK teal brand into
+     the page (#d5e3dc), and every rung loses ~0.9 there. #cf222e measures
+     4.86 on the page but 4.04 on that line; #b82b3a is 5.54 / 4.60. */
+  --syntax-keyword: #b82b3a;
   --syntax-number: #0550ae;
   --syntax-string: #0a3069;
 
@@ -1258,30 +1265,6 @@ button:hover {
 .agent-selector__manage-button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-.sidebar {
-  width: 280px;
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border-primary);
-  display: flex;
-  flex-direction: column;
-}
-
-.sidebar-header {
-  padding: 20px;
-  border-bottom: 1px solid var(--border-primary);
-}
-
-.sidebar-header h1 {
-  font-size: var(--text-3xl);
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.sidebar-header p {
-  font-size: var(--text-md);
-  color: var(--text-muted);
 }
 
 .agent-list {
@@ -2628,7 +2611,7 @@ button:hover {
 }
 
 .active-work-frame__file-status {
-  color: var(--warning, #e5c07b);
+  color: var(--warning-text);
   font-weight: 700;
 }
 
@@ -3160,7 +3143,7 @@ button:hover {
   text-overflow: ellipsis;
 }
 .git-badge__dirty {
-  color: var(--warning, #e5c07b);
+  color: var(--warning-text);
   font-weight: 600;
 }
 
@@ -3218,16 +3201,16 @@ button:hover {
   color: var(--text-secondary);
 }
 .git-tooltip__stat--staged {
-  color: var(--success, #98c379);
+  color: var(--success-text);
 }
 .git-tooltip__stat--unstaged {
-  color: var(--warning, #e5c07b);
+  color: var(--warning-text);
 }
 .git-tooltip__stat--untracked {
   color: var(--text-muted);
 }
 .git-tooltip__clean {
-  color: var(--success, #98c379);
+  color: var(--success-text);
   font-size: var(--text-xs);
 }
 
@@ -3514,7 +3497,7 @@ button:hover {
 
 /* Header maximized state */
 .chat-dock__header.is-maximized {
-  background: rgba(var(--color-primary-rgb, 59, 130, 246), 0.1);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
   border-bottom: 2px solid var(--color-primary);
 }
 
@@ -4866,7 +4849,7 @@ button.tool-call__line:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--overlay-scrim, rgba(0, 0, 0, 0.5));
+  background: var(--overlay-bg-darker);
   z-index: var(--z-modal, 1000);
 }
 
@@ -5727,38 +5710,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .meeting-body-content th {
   padding: 0.5rem;
   border: none;
-}
-
-/* Attendee status colors - theme aware */
-.attendee-status--accepted {
-  color: #28a745;
-}
-
-.attendee-status--declined {
-  color: #dc3545;
-}
-
-.attendee-status--tentative {
-  color: #fd7e14;
-}
-
-.attendee-status--no-response {
-  color: var(--color-text-secondary);
-}
-
-/* Dark theme adjustments */
-@media (prefers-color-scheme: dark) {
-  .attendee-status--accepted {
-    color: #4ade80;
-  }
-
-  .attendee-status--declined {
-    color: #f87171;
-  }
-
-  .attendee-status--tentative {
-    color: #fbbf24;
-  }
 }
 
 /* ── Conversation History (push on desktop, overlay on mobile) ── */
@@ -7272,7 +7223,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .chat-dock__session-project {
-  background: var(--bg-subtle, rgba(0, 0, 0, 0.06));
+  background: var(--bg-hover);
   border-radius: 3px;
   padding: 1px 6px;
   font-size: var(--text-xs);

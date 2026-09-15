@@ -139,10 +139,40 @@ const css = readFileSync(CSS_PATH, 'utf8');
 const vendor = readFileSync(VENDOR_TOKENS, 'utf8');
 
 /**
+ * `color-mix(in srgb, A p%, B)` on two opaque hex colours, so a backdrop that
+ * index.css DERIVES can be measured instead of transcribed. `resolveHex`
+ * follows `var()` hops but cannot evaluate a mix, which is why the selected
+ * line below is computed here from the two vendored inputs it mixes.
+ */
+function mix(a: string, pct: number, b: string): string {
+  const channel = (hex: string, i: number) =>
+    Number.parseInt(hex.slice(i, i + 2), 16);
+  const t = pct / 100;
+  return `#${[1, 3, 5]
+    .map((i) =>
+      Math.round(channel(a, i) * t + channel(b, i) * (1 - t))
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`;
+}
+
+/**
  * Backdrops per theme: the `--k-bg` / `--k-panel` pairs from the vendored
  * token file. The light pair sits in its own `[data-theme="light"]` block
  * there too, so the same scan applies.
+ *
+ * Plus `--bg-selected`, which FilePreviewPane paints under the requested
+ * line and which is `color-mix(in srgb, var(--k-brand) 14%, var(--k-bg))`
+ * in both themes. On light the brand is a DARK teal, so that tint is darker
+ * than the page (#d5e3dc vs #f5f4ef) and every rung loses about 0.9 there —
+ * github-light's keyword clears the page at 4.86 and fails this line at
+ * 4.04. A page-only measurement passes a value that fails in use, on the one
+ * line the user has just asked to look at. The 14 is pinned as a literal
+ * rather than parsed so a change to the tint reds the assertion below rather
+ * than silently re-basing the measurement.
  */
+const SELECTED_LINE_TINT = 14;
 const themes = [
   {
     name: 'dark',
@@ -152,6 +182,11 @@ const themes = [
       return {
         '--bg-primary': k.get('--k-bg'),
         '--bg-secondary': k.get('--k-panel'),
+        '--bg-selected': mix(
+          k.get('--k-brand') as string,
+          SELECTED_LINE_TINT,
+          k.get('--k-bg') as string,
+        ),
       };
     })(),
   },
@@ -163,12 +198,28 @@ const themes = [
       return {
         '--bg-primary': k.get('--k-bg'),
         '--bg-secondary': k.get('--k-panel'),
+        '--bg-selected': mix(
+          k.get('--k-brand') as string,
+          SELECTED_LINE_TINT,
+          k.get('--k-bg') as string,
+        ),
       };
     })(),
   },
 ] as const;
 
 describe('theme rungs clear their contrast floor on every backdrop (#2140)', () => {
+  test('the selected-line tint modelled here is the one index.css declares', () => {
+    for (const theme of themes) {
+      expect(
+        theme.rungs.get('--bg-selected'),
+        `${theme.name} --bg-selected`,
+      ).toBe(
+        `color-mix(in srgb, var(--k-brand) ${SELECTED_LINE_TINT}%, var(--k-bg))`,
+      );
+    }
+  });
+
   test('the scan found the theme blocks and the vendored backdrops', () => {
     // Guards the guard: a parser that stopped matching would make every
     // assertion below pass over an empty map.

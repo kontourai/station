@@ -131,7 +131,7 @@ function LegacyFileContentViewer({
             role="alert"
             style={{
               fontSize: '12px',
-              color: 'var(--color-negative, #e5534b)',
+              color: 'var(--error-text)',
             }}
           >
             {error instanceof Error

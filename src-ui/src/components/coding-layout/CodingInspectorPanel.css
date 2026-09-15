@@ -58,7 +58,7 @@
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: var(--color-danger, #ef4444);
+  background: var(--error-fill);
   flex-shrink: 0;
 }
 
@@ -197,7 +197,7 @@
 
 .coding-inspector__cta-error {
   margin: 0;
-  color: var(--color-danger, #ef4444);
+  color: var(--error-text);
   font-size: var(--text-sm);
 }
 
@@ -270,5 +270,5 @@
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: var(--color-danger, #ef4444);
+  background: var(--error-fill);
 }

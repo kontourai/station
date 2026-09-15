@@ -182,7 +182,7 @@
 }
 
 .engine-picker--step .engine-picker__description {
-  font-size: var(--font-size-sm, 13px);
+  font-size: var(--text-md);
   line-height: 1.5;
   color: var(--color-text-secondary, var(--text-secondary));
   margin-bottom: var(--space-4, 16px);

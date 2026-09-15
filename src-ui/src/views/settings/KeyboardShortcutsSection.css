@@ -65,7 +65,7 @@
 }
 
 .shortcut-editor__warning {
-  color: var(--warning, #d99a2b) !important;
+  color: var(--warning-text) !important;
 }
 
 .shortcut-editor__controls {
