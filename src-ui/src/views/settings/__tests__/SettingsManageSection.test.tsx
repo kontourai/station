@@ -35,7 +35,11 @@ describe('SettingsManageSection', () => {
     ['Guidance', '/guidance'],
     ['Connections', '/connections'],
     ['Registry', '/registry'],
-    ['Review', '/review-queue'],
+    // #2065 retired the global `/review-queue`: Review is a layout kind a
+    // project opens, not a destination of its own, and `routing.ts` now lists
+    // both spellings in RETIRED_REVIEW_QUEUE_PATHS. The row is gone from the
+    // Manage group with it, so the expectation is what was stale — the same
+    // call #2117 made for the two palette expectations.
     ['Plugins', '/plugins'],
     ['Schedule', '/schedule'],
   ])('drives %s to %s', (label, route) => {
@@ -72,7 +76,6 @@ describe('SettingsManageSection', () => {
       'Guidance',
       'Connections',
       'Registry',
-      'Review',
       'Plugins',
       'Schedule',
     ]);
