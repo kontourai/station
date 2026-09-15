@@ -27,6 +27,7 @@ import {
   replacePluginProvidersForSource,
   retirePluginProvidersForSourceGeneration,
 } from '../../../providers/registries/registry.js';
+import { TEST_OPERATOR_PRINCIPAL } from '../../../routes/plugins/__tests__/plugin-visibility-test-support.js';
 import { registerPluginLifecycleRoutes } from '../../../routes/plugins/plugin-lifecycle-routes.js';
 import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
 import { createPluginGrantReconciliationService } from '../../../services/plugins/plugin-grant-reconciliation.js';
@@ -88,6 +89,19 @@ function writePlugin(
   }
 }
 
+/**
+ * `POST /reload` is operator-only (#2067) and `operatorOnly` has no permissive
+ * default: a composition that supplies no caller resolution is refused 400
+ * before the handler runs. These tests are about what the reload does to the
+ * provider registry once it IS allowed to run, so they have to say who is
+ * calling — and the answer that reaches the reload body is the operator.
+ *
+ * Stated rather than stubbed permissively, and from the same principal the
+ * route suites use, so a change to who counts as the operator reaches here
+ * too.
+ */
+const operatorCaller = { resolvePrincipal: () => TEST_OPERATOR_PRINCIPAL };
+
 function createLogger() {
   return {
     debug: vi.fn(),
@@ -137,6 +151,7 @@ describe('loadRuntimePluginProviders providerAdapter entries', () => {
           pluginsDir: join(projectHomeDir, 'plugins'),
           projectHomeDir,
           logger: logger as unknown as Logger,
+          visibility: operatorCaller,
           buildPlugin: async () => {},
           applyConfigurationMutation: async (operation) =>
             operation(() => {}, { status: 'applied' }),
@@ -204,6 +219,7 @@ describe('loadRuntimePluginProviders providerAdapter entries', () => {
         pluginsDir,
         projectHomeDir,
         logger: logger as unknown as Logger,
+        visibility: operatorCaller,
         buildPlugin: async () => {},
         applyConfigurationMutation: async (operation) =>
           operation(() => {}, { status: 'applied' }),
