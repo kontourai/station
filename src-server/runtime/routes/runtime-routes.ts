@@ -3877,6 +3877,16 @@ export function configureRuntimeRoutes(
       context.getManagedChatOrchestrationEnabled,
       context.rebindBuiltinAgents,
       context.getPluginFrameOrigin,
+      // #2144 slice 2: one project record for `GET /config/app?project=`.
+      // `getProject` throws for an unknown slug; the route needs "absent" as
+      // a value so it can answer 404 rather than a 500.
+      (slug) => {
+        try {
+          return context.storageAdapter.getProject(slug);
+        } catch {
+          return undefined;
+        }
+      },
     ),
   );
   context.app.route(

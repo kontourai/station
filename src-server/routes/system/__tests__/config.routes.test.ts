@@ -412,6 +412,97 @@ describe('Config Routes', () => {
     });
   });
 
+  /**
+   * #2144 slice 2. Two shapes, and the first one is the compatibility
+   * claim: a read that names no project must be byte-identical to what it
+   * was before the field existed. Asserted on the WHOLE entry (`toEqual`,
+   * not `toMatchObject`) — a stray `scope` on an unscoped read is exactly
+   * the regression this pins.
+   */
+  test('GET /app reports no scope when no project is named', async () => {
+    const loader = createMockConfigLoader({
+      defaultModel: 'claude-3',
+      defaultLLMProvider: 'station-local',
+    });
+    const app = createConfigRoutes(loader as any, mockLogger);
+    const body = await json(await app.request('/app'));
+    expect(body.provenance.defaultModel).toEqual({ source: 'file' });
+    expect(body.provenance.defaultLLMProvider).toEqual({ source: 'file' });
+  });
+
+  test('GET /app?project= attributes overridden keys to the project and the rest to the Station', async () => {
+    const loader = createMockConfigLoader({
+      defaultModel: 'claude-3',
+      defaultLLMProvider: 'station-local',
+      terminalShell: '/bin/zsh',
+    });
+    const app = createConfigRoutes(
+      loader as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (slug) =>
+        slug === 'atlas'
+          ? ({
+              id: 'p',
+              slug: 'atlas',
+              name: 'Atlas',
+              createdAt: 'now',
+              updatedAt: 'now',
+              defaultProviderId: 'atlas-engine',
+              defaultWorkspaceIsolation: 'worktree',
+            } as never)
+          : undefined,
+    );
+    const body = await json(await app.request('/app?project=atlas'));
+    // The alias is applied: the project's `defaultProviderId` is what makes
+    // the SETTING `defaultLLMProvider` project-scoped.
+    expect(body.provenance.defaultLLMProvider).toEqual({
+      source: 'file',
+      scope: 'project',
+    });
+    // Stored on the project but absent from the Station file — still a
+    // project-scoped `file`, not the registry default it would otherwise be.
+    expect(body.provenance.defaultWorkspaceIsolation).toEqual({
+      source: 'file',
+      scope: 'project',
+    });
+    expect(body.provenance.terminalShell).toEqual({
+      source: 'file',
+      scope: 'station',
+    });
+    // A key the project does not override stays the Station's.
+    expect(body.provenance.defaultModel).toEqual({
+      source: 'file',
+      scope: 'station',
+    });
+    // Values are untouched: naming a project asks for provenance, not for a
+    // different config document.
+    expect(body.data.defaultLLMProvider).toBe('station-local');
+  });
+
+  test('GET /app?project= answers 404 for a slug this Station does not have', async () => {
+    const loader = createMockConfigLoader();
+    const app = createConfigRoutes(
+      loader as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => undefined,
+    );
+    const res = await app.request('/app?project=missing');
+    expect(res.status).toBe(404);
+    expect((await json(res)).success).toBe(false);
+  });
+
   test('PUT /app strips runtime-derived keys (managedChatOrchestration) and reports them as ignoredKeys, so a GET-then-PUT round trip cannot persist them', async () => {
     const loader = createMockConfigLoader();
     const app = createConfigRoutes(loader as any, mockLogger);

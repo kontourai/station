@@ -17,6 +17,7 @@
  */
 
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import type { ProjectSettingsOverrides } from '@kontourai/station-contracts/project-settings-overrides';
 import {
   APP_SETTINGS_REGISTRY,
   acceptsSettingValue,
@@ -93,9 +94,22 @@ function isSeededKey(
  */
 export function buildAppConfigProvenance(
   config: AppConfig,
-  opts: { injected: Record<string, string> },
+  opts: {
+    injected: Record<string, string>;
+    /**
+     * The overrides a PROJECT carries, when the caller named one
+     * (`GET /config/app?project=<slug>`). Absent means no project was named,
+     * and the output is byte-identical to what it was before #2144 slice 2 —
+     * no `scope` field anywhere. A read that was not asked about a project
+     * has no project to attribute a value to, and stamping every file entry
+     * `scope: 'station'` regardless would be a claim the caller never asked
+     * for and cannot act on.
+     */
+    projectOverrides?: ProjectSettingsOverrides;
+  },
 ): Record<string, SettingProvenanceEntry> {
   const provenance: Record<string, SettingProvenanceEntry> = {};
+  const projectOverrides = opts.projectOverrides;
 
   for (const key of Object.keys(config)) {
     const value = config[key as keyof AppConfig];
@@ -110,7 +124,9 @@ export function buildAppConfigProvenance(
       provenance[key] = { source: 'default' };
       continue;
     }
-    provenance[key] = { source: 'file' };
+    provenance[key] = projectOverrides
+      ? { source: 'file', scope: 'station' }
+      : { source: 'file' };
   }
 
   for (const [key, envVar] of Object.entries(opts.injected)) {
@@ -138,6 +154,20 @@ export function buildAppConfigProvenance(
     }
     if (definition.defaultValue === undefined) continue;
     provenance[key] = { source: 'default' };
+  }
+
+  // The project record is the innermost stored document, so it supersedes
+  // whatever the Station file, the environment, or a registry default would
+  // have reported. Placed last for that reason, and unconditional on what
+  // came before: `readProjectOverrides` has already dropped absent and blank
+  // fields, so anything still here is a decision someone made.
+  //
+  // None of `PROJECT_OVERRIDABLE_APP_SETTING_KEYS` declares an `envFallback`
+  // today, so this never silently reverses an env-sourced value; the
+  // registry test in `packages/contracts` pins that, because the day one
+  // does, this precedence needs deciding rather than inheriting.
+  for (const key of Object.keys(projectOverrides ?? {})) {
+    provenance[key] = { source: 'file', scope: 'project' };
   }
 
   return provenance;

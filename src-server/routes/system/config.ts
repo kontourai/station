@@ -17,6 +17,8 @@ import {
   PAIRING_SCOPE_INFERENCE_INVOKE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
+import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import { readProjectOverrides } from '@kontourai/station-contracts/project-settings-overrides';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import type { ConfigLoader } from '../../domain/config-loader.js';
@@ -159,6 +161,13 @@ export function createConfigRoutes(
   // Runtime-derived origin for the isolated plugin frame. Kept separate from
   // MCP UI so a future listener split remains an internal deployment detail.
   getPluginFrameOrigin?: () => string | undefined,
+  // #2144 slice 2: reads one project record for `GET /app?project=<slug>`,
+  // which reports the per-field provenance a project's overrides produce.
+  // Returns `undefined` for a slug this Station does not have (the route
+  // answers 404 rather than reporting Station-only provenance under a name
+  // that does not exist). Optional so callers and tests that never ask about
+  // a project see no behavior change.
+  readProject?: (slug: string) => ProjectConfig | undefined,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -242,6 +251,25 @@ export function createConfigRoutes(
   app.get('/app', async (c) => {
     try {
       configOps.add(1, { op: 'get_app' });
+      // #2144 slice 2. Asking about a project is a request for MORE
+      // provenance, never for different VALUES: the response body stays this
+      // Station's config, and only `provenance` gains the project's scope
+      // attribution. A surface that wants the effective value composes it
+      // from the overrides it already holds.
+      const projectSlug = c.req.query('project')?.trim();
+      let project: ProjectConfig | undefined;
+      if (projectSlug) {
+        project = readProject?.(projectSlug);
+        if (!project) {
+          return c.json(
+            {
+              success: false,
+              error: `Project '${projectSlug}' was not found on this Station; no provenance was reported.`,
+            },
+            404,
+          );
+        }
+      }
       const config = await configLoader.loadAppConfig();
       const frameOrigin = getMcpUiFrameOrigin?.();
       const pluginFrameOrigin = getPluginFrameOrigin?.();
@@ -284,7 +312,12 @@ export function createConfigRoutes(
             ? { defaultTerminalShell: terminalShellDefault.shell }
             : {}),
         },
-        provenance: buildAppConfigProvenance(config, { injected }),
+        provenance: buildAppConfigProvenance(config, {
+          injected,
+          ...(project
+            ? { projectOverrides: readProjectOverrides(project) }
+            : {}),
+        }),
       });
     } catch (error: unknown) {
       logger.error('Failed to load app config', { error });

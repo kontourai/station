@@ -51,6 +51,23 @@ describe('project settings overrides', () => {
     }
   });
 
+  /**
+   * `buildAppConfigProvenance` applies a project override LAST, over whatever
+   * the Station file, the environment, or a registry default reported. That
+   * is right for the three keys as they stand, and it is only obviously
+   * right because none of them consults an env var. The day one declares an
+   * `envFallback`, the precedence between "the operator set this in the
+   * environment" and "this project overrode it" is a decision somebody has
+   * to make — this test is what makes them make it instead of inheriting an
+   * accident.
+   */
+  test('no overridable key declares an envFallback', () => {
+    for (const key of PROJECT_OVERRIDABLE_APP_SETTING_KEYS) {
+      const definition = APP_SETTINGS_REGISTRY.find((d) => d.key === key);
+      expect(definition?.envFallback, key).toBeUndefined();
+    }
+  });
+
   test('the alias map covers the list and names project-record fields', () => {
     expect(Object.keys(PROJECT_OVERRIDE_FIELD_ALIASES).sort()).toEqual(
       [...PROJECT_OVERRIDABLE_APP_SETTING_KEYS].sort(),

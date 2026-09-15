@@ -827,4 +827,22 @@ export interface SettingProvenanceEntry {
   source: SettingProvenanceSource;
   /** Which env var supplied the value, for `source: 'env'` only. */
   envVar?: string;
+  /**
+   * WHICH stored document the value came from, for `source: 'file'`
+   * (#2144 slice 2). `source` names the kind of origin; a Station file and a
+   * project record are both files, and before this field a surface could not
+   * tell them apart.
+   *
+   * Optional, and deliberately so: `SettingProvenanceSource` stays
+   * byte-compatible, an entry without it means exactly what it meant before
+   * (this Station's `config/app.json`), and a reader that ignores it is not
+   * wrong — only less specific. `GET /config/app` emits it only when it was
+   * asked about a project; an unscoped read has no project to attribute
+   * anything to and must not guess one.
+   *
+   * `'device'` is declared for the device registry's eventual use and is not
+   * emitted by any server path today — device settings never reach the
+   * server.
+   */
+  scope?: 'station' | 'project' | 'device';
 }
