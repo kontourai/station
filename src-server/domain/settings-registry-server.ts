@@ -23,6 +23,10 @@ import {
   type SettingProvenanceEntry,
   type SettingProvenanceSource,
 } from '@kontourai/station-contracts/settings-registry';
+import {
+  isSeededAppConfigValue,
+  SEEDED_APP_CONFIG_KEYS,
+} from './app-config-seed.js';
 
 export {
   type SanitizeAppConfigUpdateResult,
@@ -51,6 +55,14 @@ function isStoredValue(value: unknown): boolean {
   return true;
 }
 
+const SEEDED_KEY_SET: ReadonlySet<string> = new Set(SEEDED_APP_CONFIG_KEYS);
+
+function isSeededKey(
+  key: string,
+): key is (typeof SEEDED_APP_CONFIG_KEYS)[number] {
+  return SEEDED_KEY_SET.has(key);
+}
+
 /**
  * Builds per-field provenance for `GET /config/app`: `'file'` for every key
  * carrying a stored VALUE in the loaded config (see {@link isStoredValue} —
@@ -62,6 +74,13 @@ function isStoredValue(value: unknown): boolean {
  * `default | file | env`). A registered key with no `defaultValue` and no
  * file/env source simply has no provenance entry — there is nothing honest
  * to report.
+ *
+ * One exception to "stored means `'file'`": the loader SEEDS several keys
+ * into `config/app.json` itself (`app-config-seed.ts`), and the file keeps
+ * no record that it did. A loaded value byte-equal to its seed is reported
+ * as `'default'` — it is the factory value written for the operator, not a
+ * decision — which is what lets a reset reach "nothing is stored" instead of
+ * naming the same re-seeded keys on every read.
  *
  * archive#1557: provenance now reports where the value ACTUALLY comes from
  * rather than which env vars happen to be set. A stored value is `'file'`
@@ -79,7 +98,18 @@ export function buildAppConfigProvenance(
   const provenance: Record<string, SettingProvenanceEntry> = {};
 
   for (const key of Object.keys(config)) {
-    if (!isStoredValue(config[key as keyof AppConfig])) continue;
+    const value = config[key as keyof AppConfig];
+    if (!isStoredValue(value)) continue;
+    // A value the LOADER wrote is not a decision the operator made, and
+    // `config/app.json` records no difference between the two — see
+    // `app-config-seed.ts`. Reporting the seed as `'file'` made "Reset
+    // Station settings" list the seeded prompt and variables among the
+    // values it would clear, clear them, and find them re-seeded (and listed
+    // again) on the very next read.
+    if (isSeededKey(key) && isSeededAppConfigValue(key, value)) {
+      provenance[key] = { source: 'default' };
+      continue;
+    }
     provenance[key] = { source: 'file' };
   }
 

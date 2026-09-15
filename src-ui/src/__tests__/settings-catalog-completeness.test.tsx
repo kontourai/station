@@ -61,7 +61,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useSetPluginVisibilityMutation: () => ({ mutate: vi.fn(), isError: false }),
   isPluginVisibilityForbidden: () => false,
   useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
-  useConfigProvenanceQuery: () => ({ data: {} }),
+  useConfigProvenanceQuery: () => ({ data: configProvenance }),
   // Settings mounts `UsageTelemetryDisclosure`, and #1608 made its decision
   // hook read the shared `['config']` query and its write path so the offered
   // choice cannot contradict a setting changed since the inventory was
@@ -129,6 +129,9 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 const updateConfig = vi.fn();
 const INITIAL_CONFIG = { logLevel: 'info', templateVariables: [] };
+// Per-field provenance. Mutable because "which settings are stored" is what
+// decides what a reset clears, and it has to differ between tests.
+let configProvenance: Record<string, { source: string }> = {};
 // The reconciliation effect reads the fetch generation, not just the values, so
 // tests drive both: `config` is what the server last returned and
 // `dataUpdatedAt` is when that fetch succeeded.
@@ -143,9 +146,17 @@ vi.mock('../contexts/ConfigContext', () => ({
   useConfig: () => configSnapshot.config,
   useConfigActions: () => ({ updateConfig, isSaving: false }),
 }));
+// `chatFontSize` is mutable because `null` (no device value) and a number
+// are two different rows: the "Use Station default" action exists only in
+// the second. `setDeviceSetting`/`resetDeviceSetting` are module-level spies
+// rather than fresh `vi.fn()`s per call, so a test can assert what a click
+// actually reached.
+let deviceChatFontSize: number | null = 14;
+const setDeviceSetting = vi.fn();
+const resetDeviceSetting = vi.fn();
 vi.mock('../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({
-    chatFontSize: 14,
+    chatFontSize: deviceChatFontSize,
     hapticsEnabled: true,
     accentColor: null,
     developerToolsEnabled: false,
@@ -156,7 +167,7 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
       draftsHidden: false,
     },
   }),
-  useDeviceSettingsActions: () => ({ setDeviceSetting: vi.fn() }),
+  useDeviceSettingsActions: () => ({ setDeviceSetting, resetDeviceSetting }),
 }));
 let isMobile = false;
 let isDesktop = false;
@@ -231,6 +242,10 @@ describe('settings catalog completeness', () => {
     updateConfig.mockReset();
     updateAppLogLevel.mockReset();
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
+    configProvenance = {};
+    deviceChatFontSize = 14;
+    setDeviceSetting.mockClear();
+    resetDeviceSetting.mockClear();
     window.history.replaceState({}, '', '/settings');
   });
 
@@ -325,9 +340,11 @@ describe('settings catalog completeness', () => {
     // 37 at the merge base; +2 from archive#3313 (feature-previews,
     // enable-developer-tools) and +1 from the chat-dock lane's
     // sidebar-sections, +1 from station#585 smooth answer reveal, +1 from the
-    // update-ownership split (desktop-app-updates). Counted from the merged
-    // catalog, not added up.
-    expect(SETTINGS_CATALOG).toHaveLength(43);
+    // update-ownership split (desktop-app-updates). This slice: -1
+    // (knowledge-stores-preview, whose setting changes nothing and is no
+    // longer user-facing) and +2 (workspace-checkpoints,
+    // default-chat-font-size). Counted from the merged catalog, not added up.
+    expect(SETTINGS_CATALOG).toHaveLength(44);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
@@ -842,7 +859,11 @@ describe('settings catalog completeness', () => {
     expect(window.location.search).toBe('?view=appearance');
   });
 
-  test('opens the Defaults disclosure before focusing a deep-linked editable field', async () => {
+  test('focuses a deep-linked editable field in the Defaults section', async () => {
+    // The `.agent-defaults__disclosure` assertion that used to close this
+    // test is gone with the disclosure itself: these fields render directly
+    // under the section intro, so there is nothing left to open. The focus
+    // assertion is the part that was ever about the deep link.
     window.history.replaceState(
       {},
       '',
@@ -855,10 +876,7 @@ describe('settings catalog completeness', () => {
         container.querySelector<HTMLInputElement>('#region'),
       ),
     );
-    expect(
-      container.querySelector<HTMLDetailsElement>('.agent-defaults__disclosure')
-        ?.open,
-    ).toBe(true);
+    expect(container.querySelector('.agent-defaults__disclosure')).toBeNull();
   });
 
   test('removes an invalid highlight without disturbing route and shell query state', async () => {
@@ -1019,6 +1037,111 @@ describe('settings catalog completeness', () => {
       ),
     );
     expect(window.location.search).toBe('?view=host-runtime');
+  });
+
+  // The reset button used to send `updateConfig({})`: an empty body the route
+  // sanitizes to an empty accepted set, so the dialog promised a factory reset
+  // and the request wrote nothing. These two assert the wiring — the button
+  // reaches the delta builder, and the delta reaches the write.
+  describe('Reset Station settings', () => {
+    test('clears the stored Station settings and nothing else', async () => {
+      configProvenance = {
+        terminalShell: { source: 'file' },
+        systemPrompt: { source: 'file' },
+        // Already the factory resolution; clearing it would change nothing.
+        mcpUiHost: { source: 'default' },
+        // Required: the sanitizer refuses `null` for it.
+        defaultModel: { source: 'file' },
+      };
+      updateConfig.mockResolvedValueOnce({ data: {} });
+      await renderSettings();
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset Station settings' }),
+      );
+      // A bare string name is an exact full-string match in RTL, so this is
+      // the danger button and not `Close Reset Station settings`.
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+      await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
+      expect(updateConfig).toHaveBeenCalledWith({
+        terminalShell: null,
+        systemPrompt: null,
+      });
+    });
+
+    test('is refused while the form holds an unsaved draft', async () => {
+      // A reset writes what the SERVER stores; the draft is not part of it,
+      // so a Save afterwards would re-store the very values just cleared.
+      configProvenance = { terminalShell: { source: 'file' } };
+      await renderSettings();
+
+      fireEvent.change(screen.getByLabelText('Default max turns'), {
+        target: { value: '201' },
+      });
+      await waitFor(() => expect(screen.getByText('Unsaved changes')));
+
+      const reset = screen.getByRole('button', {
+        name: 'Reset Station settings',
+      }) as HTMLButtonElement;
+      expect(reset.disabled).toBe(true);
+      expect(
+        screen.getByText(
+          'Save or discard your unsaved changes first. Discard is always available.',
+        ),
+      ).toBeTruthy();
+      fireEvent.click(reset);
+      expect(updateConfig).not.toHaveBeenCalled();
+    });
+
+    test('refuses to confirm when no Station setting is stored', async () => {
+      await renderSettings();
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset Station settings' }),
+      );
+      const confirm = screen.getByRole('button', {
+        name: 'Reset',
+      }) as HTMLButtonElement;
+      expect(confirm.disabled).toBe(true);
+      fireEvent.click(confirm);
+      expect(updateConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * The Appearance slider writes a DEVICE value that then shadows the
+   * Station default for this browser alone. "Use Station default" is the
+   * only way back, and it is meaningless before a device value exists — so
+   * the row offers it only then.
+   */
+  describe('Use Station default', () => {
+    test('is absent while this device follows the Station default', async () => {
+      deviceChatFontSize = null;
+      const { container } = await renderSettings();
+
+      expect(container.querySelector('#chatFontSize')).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: 'Use Station default' }),
+      ).toBeNull();
+    });
+
+    test('appears once this device has its own size, and clears it', async () => {
+      deviceChatFontSize = 18;
+      await renderSettings();
+
+      const button = screen.getByRole('button', {
+        name: 'Use Station default',
+      });
+      fireEvent.click(button);
+
+      // `reset`, not `setDeviceSetting(…, 14)`: writing the Station's
+      // current value would pin this device to today's number and stop it
+      // following a later change to the Station default.
+      expect(resetDeviceSetting).toHaveBeenCalledTimes(1);
+      expect(resetDeviceSetting).toHaveBeenCalledWith('chatFontSize');
+      expect(setDeviceSetting).not.toHaveBeenCalled();
+    });
   });
 
   test('falls back to the labeled Backup and Reset rows, never hidden or destructive controls', async () => {

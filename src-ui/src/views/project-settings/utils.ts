@@ -32,6 +32,12 @@ export function buildProjectForm(project: ProjectConfig): ProjectForm {
     icon: project.icon ?? '',
     description: project.description ?? '',
     defaultModel: project.defaultModel ?? '',
+    // Both fields are required for a project default to apply: the resolvers
+    // (`resolveProjectProviderManagedExecution`, `ProviderService`) read
+    // `defaultProviderId && defaultModel`. An empty string is sent verbatim on
+    // save, which is what makes "clear it" reach the server at all —
+    // `JSON.stringify` drops an `undefined` and the old value would survive.
+    defaultProviderId: project.defaultProviderId ?? '',
     defaultWorkspaceIsolation: project.defaultWorkspaceIsolation ?? 'shared',
     defaultEnvironment: project.defaultEnvironment ?? { kind: 'current' },
     workingDirectory: project.workingDirectory ?? '',

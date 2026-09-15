@@ -23,6 +23,7 @@ const sdkMocks = vi.hoisted(() => ({
   }>,
   environmentsError: false,
   environmentsLoading: false,
+  modelConnections: [] as Array<Record<string, unknown>>,
 }));
 
 const navigationMocks = vi.hoisted(() => ({
@@ -52,19 +53,28 @@ vi.mock('../hooks/useCloseShortcut', () => ({
 }));
 
 vi.mock('../components/ModelSelector', () => ({
+  // `disabled` and `models` are forwarded, not dropped: the project default
+  // only applies when a model connection is chosen too, and the picker's
+  // availability and its catalog are both derived from that choice.
   ModelSelector: ({
     value,
     onChange,
     placeholder,
+    disabled,
+    models,
   }: {
     value: string;
     onChange: (value: string) => void;
     placeholder: string;
+    disabled?: boolean;
+    models?: Array<{ id: string; name: string }>;
   }) => (
     <input
       aria-label="Default AI Model"
       value={value}
       placeholder={placeholder}
+      disabled={disabled}
+      data-model-catalog={models?.map((model) => model.id).join(',') ?? ''}
       onChange={(event) => onChange(event.target.value)}
     />
   ),
@@ -147,6 +157,9 @@ vi.mock('@kontourai/station-sdk', () => ({
       };
     },
   })),
+  useModelConnectionsQuery: vi.fn(() => ({
+    data: sdkMocks.modelConnections,
+  })),
   useDeleteProjectMutation: vi.fn(() => ({
     isPending: false,
     mutateAsync: async (slug: string) => {
@@ -169,6 +182,55 @@ const projectFixture: ProjectConfig = {
   agents: [agentId('codex')],
   createdAt: '2026-07-07T12:00:00.000Z',
   updatedAt: '2026-07-07T12:00:00.000Z',
+};
+
+/** The shape `useModelConnectionsQuery` returns for a usable connection. */
+const READY_MODEL_CONNECTION = {
+  id: 'openai-main',
+  kind: 'model',
+  type: 'openai',
+  name: 'OpenAI (main)',
+  enabled: true,
+  status: 'ready',
+  capabilities: [],
+  prerequisites: [],
+  config: {
+    modelOptions: [
+      { id: 'openai:gpt-5', name: 'GPT-5', originalId: 'gpt-5' },
+      { id: 'openai:gpt-5-mini', name: 'GPT-5 mini', originalId: 'gpt-5-mini' },
+    ],
+  },
+};
+
+/**
+ * A second connection, declaring its default explicitly rather than leaning
+ * on catalog order — the two ways `connectionInitialModelId` can answer.
+ */
+const SECOND_MODEL_CONNECTION = {
+  ...READY_MODEL_CONNECTION,
+  id: 'anthropic-main',
+  type: 'anthropic',
+  name: 'Anthropic (main)',
+  config: {
+    defaultModel: 'anthropic:claude-sonnet',
+    modelOptions: [
+      { id: 'anthropic:claude-opus', name: 'Opus', originalId: 'opus' },
+      { id: 'anthropic:claude-sonnet', name: 'Sonnet', originalId: 'sonnet' },
+    ],
+  },
+};
+
+/**
+ * Ready, and yet there is nothing to pre-fill from: no declared
+ * `defaultModel`, no catalog. The one case where choosing a connection still
+ * leaves the pair half-set.
+ */
+const CATALOGLESS_MODEL_CONNECTION = {
+  ...READY_MODEL_CONNECTION,
+  id: 'bare-main',
+  type: 'custom',
+  name: 'Bare (main)',
+  config: {},
 };
 
 function renderProjectSettings() {
@@ -201,6 +263,11 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     sdkMocks.environments = [];
     sdkMocks.environmentsError = false;
     sdkMocks.environmentsLoading = false;
+    sdkMocks.modelConnections = [
+      READY_MODEL_CONNECTION,
+      SECOND_MODEL_CONNECTION,
+      CATALOGLESS_MODEL_CONNECTION,
+    ];
     navigationMocks.navigate.mockClear();
     navigationMocks.showSurface.mockClear();
   });
@@ -314,6 +381,184 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     );
   });
 
+  // A project default only applies when BOTH `defaultProviderId` and
+  // `defaultModel` are set — `resolveProjectProviderManagedExecution` passes
+  // `allowSingleProviderDefault: false`, and `ProviderService` gates on
+  // `project?.defaultProviderId && project.defaultModel`. Before this section
+  // had a connection picker, nothing in the UI wrote the first field, so the
+  // model it persisted resolved to nothing.
+  describe('AI model section', () => {
+    test('disables the model field until a model connection is chosen', () => {
+      renderProjectSettings();
+
+      const model = screen.getByLabelText(
+        'Default AI Model',
+      ) as HTMLInputElement;
+      expect(model.disabled).toBe(true);
+      expect(
+        screen.getByText(
+          'Choose a model connection first. Without one, chats in this project use the Station default.',
+        ),
+      ).toBeTruthy();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'openai-main' },
+      });
+
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement)
+          .disabled,
+      ).toBe(false);
+      // The catalog comes from the chosen connection, not the global list.
+      expect(
+        screen
+          .getByLabelText('Default AI Model')
+          .getAttribute('data-model-catalog'),
+      ).toBe('openai:gpt-5,openai:gpt-5-mini');
+    });
+
+    test('saves the chosen connection alongside the model', async () => {
+      renderProjectSettings();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'openai-main' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() =>
+        expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+          expect.objectContaining({
+            slug: 'demo',
+            defaultProviderId: 'openai-main',
+            // This connection declares no `defaultModel`, so its catalog's
+            // first entry is the committed one.
+            defaultModel: 'openai:gpt-5',
+          }),
+        ),
+      );
+    });
+
+    test('clearing the connection clears the model with it', async () => {
+      sdkMocks.project = {
+        ...projectFixture,
+        defaultProviderId: 'openai-main',
+      } as ProjectConfig;
+      renderProjectSettings();
+
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
+      ).toBe('openai:gpt-5');
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: '' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() =>
+        expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+          expect.objectContaining({
+            defaultProviderId: '',
+            defaultModel: '',
+          }),
+        ),
+      );
+    });
+
+    test('choosing a connection pre-fills that connection’s own default model', () => {
+      renderProjectSettings();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'anthropic-main' },
+      });
+
+      // Declared `config.defaultModel` wins over catalog order.
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
+      ).toBe('anthropic:claude-sonnet');
+    });
+
+    test('switching connections replaces the previous connection’s model', () => {
+      renderProjectSettings();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'openai-main' },
+      });
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
+      ).toBe('openai:gpt-5');
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'anthropic-main' },
+      });
+
+      // Not 'openai:gpt-5': the server refuses a model id the newly chosen
+      // connection does not offer.
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
+      ).toBe('anthropic:claude-sonnet');
+    });
+
+    test('a save after switching carries the new connection and its model', async () => {
+      renderProjectSettings();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'openai-main' },
+      });
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'anthropic-main' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() =>
+        expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+          expect.objectContaining({
+            defaultProviderId: 'anthropic-main',
+            defaultModel: 'anthropic:claude-sonnet',
+          }),
+        ),
+      );
+    });
+
+    test('a connection with no declared default and no catalog leaves the model empty', () => {
+      renderProjectSettings();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'bare-main' },
+      });
+
+      // Nothing to commit, so the pair stays half-set — and the hint keeps
+      // saying what the server will actually do with it.
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
+      ).toBe('');
+      expect(
+        screen.getByText(
+          'This connection offers no model to pre-fill. Choose one, or this project uses the Station default.',
+        ),
+      ).toBeTruthy();
+    });
+
+    test('offers only enabled, ready model connections', () => {
+      sdkMocks.modelConnections = [
+        READY_MODEL_CONNECTION,
+        { ...READY_MODEL_CONNECTION, id: 'disabled-one', enabled: false },
+        {
+          ...READY_MODEL_CONNECTION,
+          id: 'unready-one',
+          status: 'needs_setup',
+        },
+      ];
+      renderProjectSettings();
+
+      const options = [
+        ...(
+          screen.getByLabelText('Model connection') as HTMLSelectElement
+        ).querySelectorAll('option'),
+      ].map((option) => option.value);
+      expect(options).toEqual(['', 'openai-main']);
+    });
+  });
+
   test('keeps the active section tab fully visible in the horizontal mobile rail', async () => {
     const scrollIntoView = vi.fn();
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
@@ -403,6 +648,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         icon: 'D',
         description: 'Demo project description',
         defaultModel: 'openai:gpt-5',
+        defaultProviderId: '',
         defaultWorkspaceIsolation: 'worktree',
         defaultEnvironment: { kind: 'current' },
         workingDirectory: '~/dev/demo',

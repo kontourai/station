@@ -3,7 +3,7 @@
  * "Config with no UI" list). A new leaf section, registry-driven, for the
  * Station-scope `AppConfig` fields that had zero Settings UI before this
  * slice: `defaultMaxTurns`, `defaultMaxOutputTokens`, `terminalShell`,
- * `mcpUiHost`, `surfaceTrustFromVeritasEvidence`, `knowledgeStores`,
+ * `mcpUiHost`, `surfaceTrustFromVeritasEvidence`,
  * `disableDefaultSkillRegistries`, `registryUrl`, `approvalGuardian`,
  * `distributionProfile`, `builtinAgentEngineConnectionId`. An explicit,
  * enumerated key list (not "every remaining registry key") so the section
@@ -22,16 +22,17 @@ import type { AppConfig } from '../../types';
 import { renderSettingRow } from './registry-row';
 import { SettingsSection } from './SettingsSection';
 
-const STATION_CONFIG_KEYS: readonly (keyof AppConfig)[] = [
+export const STATION_CONFIG_KEYS: readonly (keyof AppConfig)[] = [
   'approvalGuardian',
   'telemetryEnabled',
   'defaultMaxTurns',
   'defaultMaxOutputTokens',
+  'defaultChatFontSize',
   'terminalShell',
   'mcpUiHost',
   'surfaceTrustFromVeritasEvidence',
-  'knowledgeStores',
   'disableDefaultSkillRegistries',
+  'workspaceCheckpoints',
   'registryUrl',
   'distributionProfile',
   'builtinAgentEngineConnectionId',
