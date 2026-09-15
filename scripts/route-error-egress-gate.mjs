@@ -47,6 +47,25 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   'src-server/routes/plugins/plugin-lifecycle-routes.ts :: route DELETE /:name :: error.message :: 1',
   'src-server/routes/projects/projects.ts :: route PUT /:slug/layouts/:layoutSlug :: validLayout.error.issues[0]?.message :: 1',
   'src-server/routes/share/answer-share-routes.ts :: route POST / :: error.message :: 1',
+  // Per-principal plugin visibility (#2062/#2065/#2067). Three refusals whose
+  // messages are authored HERE, not caught from an engine or a CLI:
+  //
+  // - `operatorOnly`'s `PluginOperatorOnlyError` builds
+  //   `Only the Station operator can <what>.` from its own second argument,
+  //   which every call site supplies as a string literal describing the route
+  //   ('check plugins for updates', 'list installed registry agents').
+  // - `asOperator`'s `NotOperatorError` takes no argument at all; its message
+  //   is one fixed sentence.
+  // - `mutate`'s `PluginVisibilityInputError` is thrown from
+  //   `assertGrantTarget` with one of two fixed sentences about a malformed
+  //   principal id or plugin id.
+  //
+  // None interpolates request content, so none can echo a caller's input back.
+  // A fourth branch, or a construction site that passes a value rather than a
+  // literal, is a new identity and gets reviewed rather than inheriting these.
+  'src-server/routes/plugins/plugin-identity-enumeration.ts :: function operatorOnly :: error.message :: 1',
+  'src-server/routes/plugins/plugin-visibility-routes.ts :: function asOperator :: error.message :: 1',
+  'src-server/routes/plugins/plugin-visibility-routes.ts :: function mutate :: error.message :: 1',
   'src-server/routes/share/answer-share-routes.ts :: route DELETE /:shareId :: error.message :: 1',
   'src-server/routes/system/config.ts :: route PUT /app :: v.message :: 1',
   // The workflow family's `mapServiceError`: `error` here is a domain class
