@@ -364,9 +364,8 @@ describe('ProjectService', () => {
     ]) {
       expect(Object.hasOwn(updated, field), field).toBe(false);
     }
-    const replaced = (
-      adapter.projectRevision.mock.results[0]?.value.replace as any
-    ).mock.calls[0][0];
+    const revision = adapter.projectRevision.mock.results[0]!.value;
+    const replaced = (revision.replace as any).mock.calls[0][0];
     expect(Object.hasOwn(replaced, 'defaultWorkspaceIsolation')).toBe(false);
     expect(replaced.name).toBe('Test');
   });
