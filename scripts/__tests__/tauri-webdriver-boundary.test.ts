@@ -317,6 +317,66 @@ describe('Tauri embedded WebDriver boundary', () => {
     });
   });
 
+  describe('the script timeout is applied, not merely requested (#2089)', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    /**
+     * Answers like the real embedded driver, which IGNORES
+     * `capabilities.timeouts` and only moves on `POST /timeouts`. `adopts`
+     * false is that driver before this was fixed; true is it after.
+     */
+    function driverThatOnlyHonoursThePostCommand(adopts: boolean) {
+      const calls: string[] = [];
+      let script = 30_000;
+      vi.stubGlobal('fetch', (url: string, init?: { method?: string; body?: string }) => {
+        const path = String(url).replace('http://127.0.0.1:4444', '');
+        const method = init?.method ?? 'GET';
+        calls.push(`${method} ${path}`);
+        if (path === '/status') return Promise.resolve(ok({}));
+        if (path === '/session') {
+          // The capability is echoed back UNAPPLIED, exactly as observed.
+          return Promise.resolve(
+            ok({
+              sessionId: 'session-under-test',
+              capabilities: { timeouts: { script: 30_000 } },
+            }),
+          );
+        }
+        if (path === '/session/session-under-test/timeouts') {
+          if (method === 'POST') {
+            if (adopts) script = JSON.parse(init?.body ?? '{}').script;
+            return Promise.resolve(ok(null));
+          }
+          return Promise.resolve(ok({ implicit: 0, pageLoad: 300_000, script }));
+        }
+        throw new Error(`unexpected ${method} ${path}`);
+      });
+      return calls;
+    }
+
+    const ok = (value: unknown) => ({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ value }),
+    });
+
+    test('connect() sends the timeouts command rather than trusting the capability', async () => {
+      const calls = driverThatOnlyHonoursThePostCommand(true);
+      await new DirectWebDriver(4444).connect();
+      expect(calls).toContain('POST /session/session-under-test/timeouts');
+      // And reads it back, which is what makes the value a derivation rather
+      // than a constant nothing applied.
+      expect(calls).toContain('GET /session/session-under-test/timeouts');
+    });
+
+    test('a driver that will not adopt the bound fails connect() instead of running on the default', async () => {
+      driverThatOnlyHonoursThePostCommand(false);
+      await expect(new DirectWebDriver(4444).connect()).rejects.toThrow(
+        /did not adopt the script timeout: asked for 120000ms, session reports .*"script":30000/,
+      );
+    });
+  });
+
   test('does not install unrelated external browser drivers', () => {
     // Station has one pnpm lockfile. Reading a removed npm lockfile made this
     // policy test fail before it could establish anything about the resolved
