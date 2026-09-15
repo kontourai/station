@@ -82,6 +82,7 @@ const handlers = {
   onSelectTab: vi.fn(),
   onCloseTab: vi.fn(),
   onReorderTab: vi.fn(),
+  onMoveTab: vi.fn(),
 };
 
 function renderBar({
@@ -89,12 +90,14 @@ function renderBar({
   tabs = TABS,
   selected = 'chat',
   closable = true,
+  movable = true,
   onAddPane,
 }: {
   chrome?: DockShellChrome;
   tabs?: readonly RegionChromeTab[];
   selected?: string;
   closable?: boolean;
+  movable?: boolean;
   onAddPane?: () => void;
 } = {}) {
   return render(
@@ -106,6 +109,7 @@ function renderBar({
       onSelectTab={handlers.onSelectTab}
       onCloseTab={closable ? handlers.onCloseTab : undefined}
       onReorderTab={handlers.onReorderTab}
+      onMoveTab={movable ? handlers.onMoveTab : undefined}
       onAddPane={onAddPane}
       leadingSlotRef={() => {}}
       trailingSlotRef={() => {}}
@@ -124,6 +128,7 @@ beforeEach(() => {
   handlers.onSelectTab.mockClear();
   handlers.onCloseTab.mockClear();
   handlers.onReorderTab.mockClear();
+  handlers.onMoveTab.mockClear();
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -300,6 +305,61 @@ describe('the tab strip writes the model', () => {
     // After the release, a move is not a drag.
     fireEvent.pointerMove(chat, { pointerId: 1, clientX: 60, clientY: 10 });
     expect(handlers.onReorderTab).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * #2143: a tab's placement is the tab's own menu. The rows are the regions
+   * this device can use plus `main`, minus the one the tab is in, filtered by
+   * the model's `surfaceMayOccupy`: Chat declares no `main`, so its menu has
+   * two rows; Activity declares every region, so its has three. Choosing a
+   * row moves that ONE pane (the grab moves the region).
+   */
+  test('a tab’s context menu offers the regions the pane may move to, and a choice moves that pane', () => {
+    renderBar();
+    const chat = screen.getByRole('tab', { name: 'Chat' });
+    fireEvent.contextMenu(chat, { clientX: 40, clientY: 12 });
+    const menu = screen.getByRole('menu', { name: 'Move Chat' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Move to Left', 'Move to Right']);
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: 'Move to Right' }),
+    );
+    expect(handlers.onMoveTab).toHaveBeenCalledWith('chat', 'right');
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(handlers.onSelectTab).not.toHaveBeenCalled();
+    expect(handlers.onReorderTab).not.toHaveBeenCalled();
+
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Activity' }));
+    expect(
+      within(screen.getByRole('menu', { name: 'Move Activity' }))
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Move to Left', 'Move to Right', 'Move to Main']);
+  });
+
+  test('the move menu dismisses on Escape and on its backdrop, and a model-less mount has none', () => {
+    const { unmount } = renderBar();
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chat' }));
+    expect(screen.getByRole('menu', { name: 'Move Chat' })).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chat' }));
+    fireEvent.click(screen.getByLabelText('Close move menu for Chat'));
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(handlers.onMoveTab).not.toHaveBeenCalled();
+    unmount();
+
+    renderBar({ movable: false });
+    const event = fireEvent.contextMenu(
+      screen.getByRole('tab', { name: 'Chat' }),
+    );
+    // Not intercepted: the browser's own context menu is left alone.
+    expect(event).toBe(true);
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 });
 

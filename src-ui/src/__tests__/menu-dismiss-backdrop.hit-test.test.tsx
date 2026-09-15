@@ -303,14 +303,16 @@ const SHAPES: readonly Shape[] = [
     openerLabel: null,
   },
   {
-    name: 'the header’s Layout menu on a desktop, where its trigger exists',
+    name: 'the header’s empty-region menu on a desktop, where its trigger exists',
     menu: 'region',
     viewport: DESKTOP,
     device: 'desktop',
-    backdropLabel: 'Close layout menu',
+    backdropLabel: 'Close region menu',
     // On a phone `commandsInOverflowMenu` renders no region control at all —
     // the commands move into the ⋯ menu — so this control is desktop-only.
-    openerLabel: 'Layout regions',
+    // The fixture's `left` region is empty, so its control opens a menu
+    // (#2143); an occupied region's is a toggle and opens nothing.
+    openerLabel: 'Left region',
   },
   {
     name: 'the dock header’s More menu on a phone',

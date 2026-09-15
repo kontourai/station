@@ -291,17 +291,17 @@ function OverflowMenuHost() {
  * the menu's own region group — a shell header can carry the same label.
  */
 /**
- * Press one segment of one surface's row of the fine-pointer Layout picker
- * (#1552 D2 replaced the menu of verbs with it). The retired "Swap in X" row
- * under a region heading is X's segment for that region: the incoming surface
- * names itself, and the region it takes is the segment.
+ * The retired "Swap in X" row under a region heading, and #1552 D2's segment
+ * after it, both issued the model's `placeSurface(X, region)`. Since #2143
+ * the toolbar carries no per-surface placement (it is one toggle per region,
+ * and an OCCUPIED region's control is a toggle, not an offer), so the
+ * placement a user makes here is the tab's own move menu or a link's
+ * `openInRegion` — both of which are `placeSurface`. This helper issues that
+ * command through the model, which is what the tests below pin: the JOIN the
+ * command produces and the shell that renders it, not which chrome sent it.
  */
-function chooseLayoutSegment(surfaceTitle: string, segmentLabel: string) {
-  fireEvent.click(screen.getByRole('button', { name: 'Layout regions' }));
-  const row = within(
-    screen.getByRole('group', { name: 'Layout regions' }),
-  ).getByRole('radiogroup', { name: `${surfaceTitle} placement` });
-  fireEvent.click(within(row).getByRole('radio', { name: segmentLabel }));
+function placeThroughModel(surfaceId: string, region: DockMode) {
+  act(() => currentRegionModel().placeSurface(surfaceId, region));
 }
 
 function selectRegionCommand(name: string) {
@@ -588,7 +588,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     const chatShell = await renderShellsSettled();
     const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
 
-    chooseLayoutSegment('Activity', 'Bottom');
+    placeThroughModel('activity', 'bottom');
 
     await waitFor(() =>
       expect(currentRegionModel().regions.bottom).toMatchObject({
@@ -760,7 +760,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     // JOINS Activity to `bottom` (selected) and vacates `right`: nothing is
     // swapped, Chat stays in `bottom` behind Activity's tab, and Chat's
     // mirror has nothing to say (its region did not move).
-    chooseLayoutSegment('Activity', 'Bottom');
+    placeThroughModel('activity', 'bottom');
     await waitFor(() =>
       expect(currentRegionModel().regions.bottom).toMatchObject({
         panes: ['chat', 'activity'],

@@ -2,7 +2,6 @@
 
 import { readFileSync } from 'node:fs';
 import {
-  cleanup,
   createEvent,
   fireEvent,
   render,
@@ -32,6 +31,8 @@ const harness = vi.hoisted(() => ({
   showSurface: vi.fn(),
   toggleSurface: vi.fn(),
   bottomOnly: false,
+  /** The fine pointer's placements; overridden by one test. */
+  placements: ['left', 'right', 'bottom'] as string[],
   // The `⋯` overflow button only exists under the mobile media query, so a
   // coarse device is not automatically one whose commands can move there.
   isMobile: false,
@@ -93,7 +94,7 @@ vi.mock('../../../hooks/useIsMobile', () => ({
     coarsePointer: harness.bottomOnly,
   }),
   availablePlacements: () =>
-    harness.bottomOnly ? ['bottom'] : ['left', 'right', 'bottom'],
+    harness.bottomOnly ? ['bottom'] : harness.placements,
 }));
 
 vi.mock('../../../hooks/useKeyboardShortcut', () => ({
@@ -110,61 +111,31 @@ vi.mock('../../../hooks/useKeyboardShortcut', () => ({
 
 import { RegionToolbarControls } from '../RegionToolbarControls';
 
-/**
- * The fine pointer's one control, and the placement picker it opens.
- *
- * `role="group"`, not `role="menu"`: #1552 D2 replaced the menu of verbs with one
- * `radiogroup` row per surface, and a menu would own the arrow keys those rows
- * need. `useMenuFocus` derives its roving handler from the role, so the change of
- * role IS the change of keyboard ownership — see `ToolbarMenuSurface`.
- */
-function openLayoutMenu() {
-  const trigger = screen.getByRole('button', { name: 'Layout regions' });
+/** The fine pointer's three region toggles (#2143), by region label. */
+function regionToggle(label: 'Left' | 'Bottom' | 'Right') {
+  return screen.getByRole('button', { name: `${label} region` });
+}
+
+/** Each toggle as `[label, aria-pressed]`, in DOM order. */
+function toggleStates() {
+  return [
+    ...screen
+      .getByRole('group', { name: 'Regions' })
+      .querySelectorAll('button'),
+  ].map((button) => [
+    button.getAttribute('aria-label'),
+    button.getAttribute('aria-pressed'),
+  ]);
+}
+
+/** Open an EMPTY region's offer menu from its control. */
+function openOfferMenu(label: 'Left' | 'Bottom' | 'Right') {
+  const trigger = regionToggle(label);
   fireEvent.click(trigger);
   return {
     trigger,
-    menu: screen.getByRole('group', { name: 'Layout regions' }),
+    menu: screen.getByRole('menu', { name: `Show in ${label} region` }),
   };
-}
-
-/** One surface's row of the picker. */
-function surfaceRow(menu: HTMLElement, surfaceTitle: string) {
-  return within(menu).getByRole('radiogroup', {
-    name: `${surfaceTitle} placement`,
-  });
-}
-
-/**
- * Its segments, in order, as `label` plus whether the segment is pressed.
- *
- * The LABEL is the segment's own text node, not `textContent`: a segment that
- * displaces an occupant also carries a `hidden` span for its `aria-describedby`
- * description, which `textContent` would concatenate into the label (#1552
- * review L6). The description has its own assertions.
- */
-function segments(menu: HTMLElement, surfaceTitle: string) {
-  return within(surfaceRow(menu, surfaceTitle))
-    .getAllByRole('radio')
-    .map((segment) => ({
-      label: [...segment.childNodes]
-        .filter((node) => node.nodeType === Node.TEXT_NODE)
-        .map((node) => node.textContent)
-        .join(''),
-      checked: segment.getAttribute('aria-checked'),
-    }));
-}
-
-/** Press one segment of one surface's row. */
-function chooseSegment(
-  menu: HTMLElement,
-  surfaceTitle: string,
-  segmentLabel: string,
-) {
-  fireEvent.click(
-    within(surfaceRow(menu, surfaceTitle)).getByRole('radio', {
-      name: segmentLabel,
-    }),
-  );
 }
 
 describe('RegionToolbarControls', () => {
@@ -200,6 +171,7 @@ describe('RegionToolbarControls', () => {
     harness.showSurface.mockReset();
     harness.toggleSurface.mockReset();
     harness.bottomOnly = false;
+    harness.placements = ['left', 'right', 'bottom'];
     harness.isMobile = false;
     harness.shortcuts.clear();
   });
@@ -234,18 +206,16 @@ describe('RegionToolbarControls', () => {
     expectOnlyToggle('activity', 2);
 
     // The same Hide the retired per-region button carried, then the retired
-    // "Hide Chat" menu row: on a fine pointer it is Chat's `Hidden` segment now
-    // (#1552 D2).
+    // "Hide Chat" menu row, then #1552 D2's `Hidden` segment: on a fine
+    // pointer it is the Bottom region's TOGGLE now (#2143).
     //
-    // A SEGMENT IS NOT THE CHORD'S TOGGLE, and deliberately so. #1523 routed the
-    // toggle through the model because a toggle has to decide what "the other
-    // state" is for an unplaced, docked or `main` surface. A segment names its
-    // destination outright, so `Hidden` must HIDE — issuing `toggleSurface` here
-    // would reveal a Chat that is already hidden. It writes the region's
-    // visibility through the model's own `setRegion` primitive; nothing about
-    // placement is decided in this hook either way.
-    const { menu } = openLayoutMenu();
-    chooseSegment(menu, 'Chat', 'Hidden');
+    // A TOGGLE IS NOT THE CHORD'S TOGGLE, and deliberately so. #1523 routed the
+    // chord through the model because it has to decide what "the other state"
+    // is for an unplaced, docked or `main` surface. The region toggle names a
+    // REGION, whose other state is only ever hidden or shown, so it writes the
+    // region's visibility through the model's own `setRegion` primitive;
+    // nothing about placement is decided in this hook either way.
+    fireEvent.click(regionToggle('Bottom'));
     expect(harness.setRegion).toHaveBeenLastCalledWith('bottom', {
       visible: false,
     });
@@ -302,553 +272,247 @@ describe('RegionToolbarControls', () => {
   });
 
   /**
-   * #1536 F: five unlabeled monochrome rectangles (four region glyphs plus a
-   * `⋯` swap) became ONE control with a visible word. The commands did not
-   * change; where they live did.
+   * #2143: one control per dock region, each a TOGGLE whose pressed state is
+   * the region's visibility from the model. #1536 F folded five unlabeled
+   * rectangles into one control and #1552 D2 made it a per-surface picker;
+   * this is per region again, but each button says what it is ("Bottom
+   * region"), says whether it is on (`aria-pressed`), and says what it holds
+   * (the tooltip) — the three things the five rectangles lacked.
    */
-  test('a fine pointer renders one region control, carrying a visible word inside its accessible name', () => {
+  test('a fine pointer renders one toggle per dock region, pressed where the region is visible', () => {
     render(<RegionToolbarControls />);
 
-    const buttons = [
-      ...screen
-        .getByRole('group', { name: 'Regions' })
-        .querySelectorAll('button'),
-    ];
-    expect(buttons).toHaveLength(1);
-    const trigger = buttons[0] as HTMLButtonElement;
-    expect(trigger.getAttribute('aria-label')).toBe('Layout regions');
-    // No `aria-haspopup`: this branch opens a group of radiogroups, and there
-    // is no value for that — see the popup-claim test above (#1552 review M1).
-    expect(trigger.getAttribute('aria-haspopup')).toBeNull();
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    // WCAG 2.5.3: the visible word must be part of the accessible name.
-    const visible = trigger.querySelector(
-      '.app-toolbar__region-layout-label',
-    )?.textContent;
-    expect(visible).toBe('Layout');
-    expect(trigger.getAttribute('aria-label')).toContain(visible);
-    // And the button is no longer a fixed square glyph box.
-    const layoutRule = chatCss.match(
-      /\.app-toolbar__region-layout\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(layoutRule).toMatch(/width:\s*auto/);
+    expect(toggleStates()).toEqual([
+      ['Left region', null],
+      ['Bottom region', 'true'],
+      ['Right region', null],
+    ]);
+    // Bottom holds Chat and is a pressed toggle. Left and right are EMPTY,
+    // so they are not toggles at all — `null`, not `'false'`: an empty
+    // region has no visibility to report (the next test) — and a hidden
+    // OCCUPIED region is what reads `'false'` (the two-pane test below).
+    expect(regionToggle('Bottom').title).toBe('Hide Bottom region: Chat');
+    // No visible word: the glyph is the region's own edge, and the name is
+    // the tooltip's and the accessible name's.
+    expect(
+      document.querySelector('.app-toolbar__region-layout-label'),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Layout regions' })).toBeNull();
   });
 
   /**
-   * #1552 review M1: the trigger announced `aria-haspopup="menu"` on BOTH
-   * branches while the fine pointer opens a `role="group"` of `radiogroup`s.
-   * Both directions here, because the folded branch really does open a menu and
-   * must keep saying so.
+   * An empty region cannot be shown — `RegionShells` mounts no host for it and
+   * the model hides a region its last pane leaves — so its control is not a
+   * toggle (no `aria-pressed`, which would be a state nothing can change) but
+   * a menu trigger offering what can go there. Never both on one button.
    */
-  test('the trigger claims a popup only when it opens one, and names the right kind', () => {
+  test('an empty region is a menu trigger, not a toggle; an occupied one is a toggle, not a trigger', () => {
     render(<RegionToolbarControls />);
 
-    const picker = screen.getByRole('button', { name: 'Layout regions' });
-    expect(
-      picker.getAttribute('aria-haspopup'),
-      'the picker is a group of radiogroups; there is no aria-haspopup value for that, so it must claim none',
-    ).toBeNull();
-    expect(picker.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(picker);
-    expect(picker.getAttribute('aria-expanded')).toBe('true');
-    // What it actually opened.
-    expect(screen.getByRole('group', { name: 'Layout regions' })).toBeTruthy();
-    expect(screen.queryByRole('menu')).toBeNull();
-    fireEvent.keyDown(document, { key: 'Escape' });
+    const left = regionToggle('Left');
+    expect(left.getAttribute('aria-pressed')).toBeNull();
+    expect(left.getAttribute('aria-haspopup')).toBe('menu');
+    expect(left.getAttribute('aria-expanded')).toBe('false');
+    expect(left.title).toBe('Left region: empty');
 
-    harness.bottomOnly = true;
-    harness.isMobile = false;
-    cleanup();
-    render(<RegionToolbarControls />);
-    const folded = screen.getByRole('button', { name: 'Regions' });
-    expect(folded.getAttribute('aria-haspopup')).toBe('menu');
-    fireEvent.click(folded);
-    expect(screen.getByRole('menu', { name: 'Region surfaces' })).toBeTruthy();
+    const bottom = regionToggle('Bottom');
+    expect(bottom.getAttribute('aria-pressed')).toBe('true');
+    expect(bottom.getAttribute('aria-haspopup')).toBeNull();
+    expect(bottom.getAttribute('aria-expanded')).toBeNull();
   });
 
-  test('the menu opens portalled, anchored to the trigger, and closes on select', () => {
+  test('pressing an occupied region’s toggle hides it; pressing a hidden one shows it — the region, not a surface', () => {
+    const { rerender } = render(<RegionToolbarControls />);
+
+    fireEvent.click(regionToggle('Bottom'));
+    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
+      visible: false,
+    });
+    expect(harness.placeSurface).not.toHaveBeenCalled();
+    expect(harness.toggleSurface).not.toHaveBeenCalled();
+
+    harness.regions.bottom.visible = false;
+    rerender(<RegionToolbarControls />);
+    expect(regionToggle('Bottom').getAttribute('aria-pressed')).toBe('false');
+    expect(regionToggle('Bottom').title).toBe('Show Bottom region: Chat');
+    fireEvent.click(regionToggle('Bottom'));
+    expect(harness.setRegion).toHaveBeenLastCalledWith('bottom', {
+      visible: true,
+    });
+    expect(harness.setRegion).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * A hidden region holding two panes is ONE unpressed toggle, and its press
+   * writes the region's visibility and nothing about its panes — so both tabs
+   * come back with the selection they had. The tooltip lists the panes in tab
+   * order, so a reader knows what the toggle brings back before pressing it.
+   */
+  test('a two-pane region is one toggle that names both panes, and its press touches no pane', () => {
+    Object.assign(harness.regions.right, {
+      visible: false,
+      panes: ['activity', 'chat'],
+      occupant: 'chat',
+    });
+    Object.assign(harness.regions.bottom, {
+      visible: false,
+      panes: [],
+      occupant: null,
+    });
+    render(<RegionToolbarControls />);
+
+    expect(toggleStates()).toEqual([
+      ['Left region', null],
+      ['Bottom region', null],
+      ['Right region', 'false'],
+    ]);
+    expect(regionToggle('Right').title).toBe(
+      'Show Right region: Activity, Chat',
+    );
+    fireEvent.click(regionToggle('Right'));
+    expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: true });
+    expect(harness.setRegion).toHaveBeenCalledTimes(1);
+    expect(harness.placeSurface).not.toHaveBeenCalled();
+  });
+
+  test('an empty region’s menu offers the shell surfaces declaring it, and a choice is the model’s placeSurface', () => {
+    render(<RegionToolbarControls />);
+
+    const { trigger, menu } = openOfferMenu('Left');
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    // The shell surfaces in registry order; catalog-only ones (Agents,
+    // Device, the coding panes) are the "+"'s and never here.
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Show Chat here', 'Show Activity here']);
+
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: 'Show Activity here' }),
+    );
+    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'left');
+    expect(harness.setRegion).not.toHaveBeenCalled();
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('the offer menu opens portalled, anchored to its trigger, and dismisses on Escape and the backdrop', () => {
     const { container } = render(<RegionToolbarControls />);
 
-    const trigger = screen.getByRole('button', { name: 'Layout regions' });
+    const trigger = regionToggle('Right');
     vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({
       right: 760,
     } as DOMRect);
+    trigger.focus();
     fireEvent.click(trigger);
-    const menu = screen.getByRole('group', { name: 'Layout regions' });
+    const menu = screen.getByRole('menu', { name: 'Show in Right region' });
     expect(menu.parentElement).toBe(document.body);
     expect(container.contains(menu)).toBe(false);
     expect(menu.style.right).toBe(`${window.innerWidth - 760}px`);
-    expect(trigger.getAttribute('aria-expanded')).toBe('true');
 
-    // The retired "Place Activity here" under a Left heading: Activity's Left
-    // segment.
-    chooseSegment(menu, 'Activity', 'Left');
-    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'left');
-    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
-  });
-
-  test('it dismisses on Escape and a backdrop click, not on pointerdown, and returns focus', () => {
-    render(<RegionToolbarControls />);
-
-    const trigger = screen.getByRole('button', { name: 'Layout regions' });
-    trigger.focus();
-    fireEvent.click(trigger);
-    expect(screen.getByRole('group', { name: 'Layout regions' })).toBeTruthy();
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
+    expect(screen.queryByRole('menu')).toBeNull();
     expect(document.activeElement).toBe(trigger);
 
     fireEvent.click(trigger);
-    const backdrop = screen.getByRole('button', {
-      name: 'Close layout menu',
-    });
+    const backdrop = screen.getByRole('button', { name: 'Close region menu' });
     const pointerDown = createEvent.pointerDown(backdrop);
     fireEvent(backdrop, pointerDown);
     expect(pointerDown.defaultPrevented).toBe(true);
-    expect(
-      screen.queryByRole('group', { name: 'Layout regions' }),
-    ).not.toBeNull();
+    expect(screen.queryByRole('menu')).not.toBeNull();
     fireEvent.click(backdrop);
-    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
+    expect(screen.queryByRole('menu')).toBeNull();
+    // Dismissal is not a placement.
+    expect(harness.placeSurface).not.toHaveBeenCalled();
+    expect(harness.setRegion).not.toHaveBeenCalled();
   });
 
   /**
    * #1386. `click` was the backdrop's only dismissal, and a pointer sequence
-   * that never becomes a click left the menu open until the next input: a
-   * touch on the backdrop that turns into a scroll ends in `pointercancel`,
-   * and a press released where the browser cannot compute a click target ends
-   * in neither event. Both ends of the sequence dismiss now, and `pointerdown`
-   * still does not — it is swallowed so the panel keeps focus.
+   * that never becomes a click left the menu open until the next input. Both
+   * ends of the sequence dismiss, and `pointerdown` still does not.
    */
   test('the backdrop dismisses on pointercancel and on pointerup, and a whole click closes it once', () => {
     render(<RegionToolbarControls />);
-    const trigger = screen.getByRole('button', { name: 'Layout regions' });
+    const trigger = regionToggle('Left');
     const openBackdrop = () => {
       trigger.focus();
       fireEvent.click(trigger);
-      expect(
-        screen.getByRole('group', { name: 'Layout regions' }),
-      ).toBeTruthy();
-      return screen.getByRole('button', { name: 'Close layout menu' });
+      expect(screen.getByRole('menu')).toBeTruthy();
+      return screen.getByRole('button', { name: 'Close region menu' });
     };
 
-    // A cancelled sequence: press, then the gesture becomes a scroll. No
-    // `click` is ever dispatched, which is what left the menu stuck.
     let backdrop = openBackdrop();
     fireEvent(backdrop, createEvent.pointerDown(backdrop));
-    expect(
-      screen.queryByRole('group', { name: 'Layout regions' }),
-    ).not.toBeNull();
+    expect(screen.queryByRole('menu')).not.toBeNull();
     fireEvent.pointerCancel(backdrop);
-    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
+    expect(screen.queryByRole('menu')).toBeNull();
     expect(document.activeElement).toBe(trigger);
 
-    // The release itself dismisses, so a press whose click never arrives is
-    // still a dismissal.
     backdrop = openBackdrop();
     fireEvent(backdrop, createEvent.pointerDown(backdrop));
     fireEvent.pointerUp(backdrop);
-    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
+    expect(screen.queryByRole('menu')).toBeNull();
     expect(document.activeElement).toBe(trigger);
 
-    // The ordinary click, in browser order. Note what this does NOT prove: a
-    // second `onClose`. `pointerup` unmounts the portal, so the click that
-    // follows dispatches on a detached node whose path reaches neither the
-    // React root nor the portal container — `dismiss` runs once, and the focus
-    // count would read 1 whether or not a second call were inert. The
-    // detachment is the real mechanism, so it is asserted directly below.
-    // What the rest pins is the outcome: closed, focus back on the trigger
-    // exactly once, no model write, and still reopenable.
     backdrop = openBackdrop();
     const returnedFocus = vi.spyOn(trigger, 'focus');
     fireEvent(backdrop, createEvent.pointerDown(backdrop));
     fireEvent.pointerUp(backdrop);
     expect(backdrop.isConnected).toBe(false);
     fireEvent.click(backdrop);
-    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
+    expect(screen.queryByRole('menu')).toBeNull();
     expect(returnedFocus).toHaveBeenCalledTimes(1);
-    expect(document.activeElement).toBe(trigger);
-    // Dismissal is not a placement: the backdrop must never reach the model.
-    expect(harness.placeSurface).not.toHaveBeenCalled();
-    expect(harness.toggleSurface).not.toHaveBeenCalled();
-    expect(harness.setRegion).not.toHaveBeenCalled();
     returnedFocus.mockRestore();
-
-    // And the trigger still opens it again, so nothing was left half-closed.
     fireEvent.click(trigger);
-    expect(screen.getByRole('group', { name: 'Layout regions' })).toBeTruthy();
+    expect(screen.getByRole('menu')).toBeTruthy();
+  });
+
+  test('only one offer menu is open at a time: opening another region’s replaces it', () => {
+    render(<RegionToolbarControls />);
+    openOfferMenu('Left');
+    fireEvent.click(regionToggle('Right'));
+    expect(screen.getAllByRole('menu')).toHaveLength(1);
+    expect(
+      screen.getByRole('menu', { name: 'Show in Right region' }),
+    ).toBeTruthy();
+    expect(regionToggle('Left').getAttribute('aria-expanded')).toBe('false');
+    expect(regionToggle('Right').getAttribute('aria-expanded')).toBe('true');
   });
 
   /**
-   * KEYBOARD OWNERSHIP, which is what the change of role in #1552 D2 buys.
-   *
-   * The picker is a stack of `radiogroup`s: the arrow keys move WITHIN one
-   * surface's segments and wrap; Tab moves BETWEEN surfaces, which is what the
-   * roving `tabIndex` (exactly one tabbable segment per row, the checked one)
-   * expresses. A `role="menu"` container would take the arrow keys for its own
-   * rows — `useMenuFocus` installs that handler only for the menu role — so
-   * this test and `openLayoutMenu`'s `group` query are two halves of one claim.
+   * A main occupant is not a dock toggle's business (#1523): with Activity
+   * in `main`, the empty regions still offer it — choosing one is
+   * `placeSurface` out of `main`, the way out the picker used to give it —
+   * and Chat, which declares no `main`, is unaffected.
    */
-  test('the arrow keys move within a surface row and wrap; each row has exactly one tab stop', () => {
+  test('with Activity in main, an empty region still offers it as its way out', () => {
+    Object.assign(harness.regions.main, {
+      panes: ['activity'],
+      occupant: 'activity',
+    });
     render(<RegionToolbarControls />);
-    const { menu } = openLayoutMenu();
 
-    const chatRow = surfaceRow(menu, 'Chat');
-    const chatSegments = within(chatRow).getAllByRole('radio');
-    expect(chatSegments.map((segment) => segment.textContent)).toEqual([
-      'Left',
-      'Bottom',
-      'Right',
-      'Hidden',
-    ]);
-
-    // Exactly one tab stop per row, and it is the CHECKED segment — Tab lands on
-    // where the surface currently is, not on the first choice offered.
-    for (const surface of ['Chat', 'Activity']) {
-      const tabbable = within(surfaceRow(menu, surface))
-        .getAllByRole('radio')
-        .filter((segment) => segment.getAttribute('tabindex') === '0');
-      expect(
-        tabbable.map((segment) => segment.getAttribute('aria-checked')),
-        `${surface} must have one tab stop, on the checked segment`,
-      ).toEqual(['true']);
-    }
-
-    // WHERE FOCUS LANDS ON OPEN. `useMenuFocus` focuses the first focusable
-    // descendant, which here is the first row's FIRST segment — and a
-    // `tabIndex={-1}` button still matches its `button:not([disabled])` query,
-    // so nothing about the roving tab stop steered it. The panel therefore
-    // opened proposing "Left" while telling assistive technology the checked
-    // segment was the row's tab stop (#1552 review M2). The assertion this
-    // replaces (`activeElement === items[0]`) was dropped in the retarget, which
-    // is why the regression was invisible.
-    expect(document.activeElement).toBe(
-      within(chatRow).getByRole('radio', { name: 'Bottom' }),
-    );
-    expect(
-      (document.activeElement as HTMLElement).getAttribute('aria-checked'),
-      'focus must land on the CHECKED segment, not merely on a fixed one',
-    ).toBe('true');
-
-    chatSegments[1]?.focus();
-    fireEvent.keyDown(chatRow, { key: 'ArrowRight' });
-    expect(document.activeElement).toBe(chatSegments[2]);
-    fireEvent.keyDown(chatRow, { key: 'ArrowLeft' });
-    expect(document.activeElement).toBe(chatSegments[1]);
-    // Wraps at the end, as a radio group does.
-    chatSegments[3]?.focus();
-    fireEvent.keyDown(chatRow, { key: 'ArrowRight' });
-    expect(document.activeElement).toBe(chatSegments[0]);
-
-    // And the arrow keys do NOT leave the row: Activity's segments are
-    // unaffected by Chat's arrows.
-    expect(
-      within(surfaceRow(menu, 'Activity'))
-        .getAllByRole('radio')
-        .includes(document.activeElement as HTMLElement),
-    ).toBe(false);
-
-    expect(
-      screen
-        .getByRole('button', { name: 'Close layout menu' })
-        .getAttribute('tabindex'),
-    ).toBe('-1');
-  });
-
-  /**
-   * THE INVENTORY. Every command the retired verb list carried is reachable, and
-   * each is now a segment rather than an imperative:
-   *   "Place Chat here" (Left)      → Chat's Left segment
-   *   "Swap in Activity" (Bottom)   → Activity's Bottom segment
-   *   "Hide Chat"                   → Chat's Hidden segment
-   *   "Place Activity here" (Main)  → Activity's Main segment
-   * A dropped segment reds this; so does a relabel.
-   */
-  test('every region×surface placement the verb list carried is a segment, and only the declared ones', () => {
-    render(<RegionToolbarControls />);
-    const { menu } = openLayoutMenu();
-
-    // One row per dock surface, in registry order. Home is absent: its only
-    // placement is `main`, so it is not a dock surface and has no row.
+    const { menu } = openOfferMenu('Right');
     expect(
       within(menu)
-        .getAllByRole('radiogroup')
-        .map((row) => row.getAttribute('aria-label')),
-    ).toEqual(['Chat placement', 'Activity placement']);
-
-    // Chat declares the dock regions only — no `Main` segment, because
-    // `REGION_SURFACE_REGISTRY` does not give Chat a `main` placement and the
-    // picker never offers one `placeSurface` would refuse.
-    expect(segments(menu, 'Chat')).toEqual([
-      { label: 'Left', checked: 'false' },
-      { label: 'Bottom', checked: 'true' },
-      { label: 'Right', checked: 'false' },
-      { label: 'Hidden', checked: 'false' },
-    ]);
-    // Activity declares all four, and is unplaced in the default arrangement.
-    expect(segments(menu, 'Activity')).toEqual([
-      { label: 'Left', checked: 'false' },
-      { label: 'Bottom', checked: 'false' },
-      { label: 'Right', checked: 'false' },
-      { label: 'Main', checked: 'false' },
-      { label: 'Hidden', checked: 'true' },
-    ]);
-  });
-
-  test('choosing a region places the surface there; choosing Hidden hides its region', () => {
-    render(<RegionToolbarControls />);
-
-    // "Swap in Activity" under the Bottom heading.
-    let opened = openLayoutMenu();
-    chooseSegment(opened.menu, 'Activity', 'Bottom');
-    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'bottom');
-
-    harness.placeSurface.mockClear();
-    // "Place Activity here" under Main.
-    opened = openLayoutMenu();
-    chooseSegment(opened.menu, 'Activity', 'Main');
-    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'main');
-
-    // "Hide Chat".
-    opened = openLayoutMenu();
-    chooseSegment(opened.menu, 'Chat', 'Hidden');
-    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
-      visible: false,
-    });
-  });
-
-  test('the pressed segment follows VISIBILITY, not merely placement, and re-choosing it reveals', () => {
-    // Chat still occupies `bottom`, but hidden — so `Hidden` is pressed, not
-    // `Bottom`. This is the derivation the retired "Show Chat"/"Hide Chat" verb
-    // carried in its wording.
-    harness.regions.bottom.visible = false;
-    render(<RegionToolbarControls />);
-    const { menu } = openLayoutMenu();
-
-    expect(segments(menu, 'Chat')).toEqual([
-      { label: 'Left', checked: 'false' },
-      { label: 'Bottom', checked: 'false' },
-      { label: 'Right', checked: 'false' },
-      { label: 'Hidden', checked: 'true' },
-    ]);
-
-    // Choosing the region it already occupies is a REVEAL, not a move: the old
-    // "Show Chat" row. It must not go through `placeSurface`, which would churn
-    // the arrangement for a visibility change — nor through the model's
-    // `toggleSurface`, which the folded menu's row uses (#1523) because a
-    // TOGGLE has to pick the other state. A segment already names the state it
-    // wants, and `Show` on an already-hidden Chat must show it, not flip it.
-    chooseSegment(menu, 'Chat', 'Bottom');
-    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
-      visible: true,
-    });
-    expect(harness.placeSurface).not.toHaveBeenCalled();
-    expect(harness.toggleSurface).not.toHaveBeenCalled();
-  });
-
-  /**
-   * The tooltip is the honest form of what "Swap in X" implied. It is DERIVED by
-   * running the model's own `placeSurface` over the arrangement, so it says
-   * what happens to the pane the region shows — and says nothing at all when
-   * nothing is displaced.
-   */
-  test('a segment whose region is taken says what happens to its shown pane, and an empty one promises nothing', () => {
-    render(<RegionToolbarControls />);
-    const { menu } = openLayoutMenu();
-
-    // Activity → Bottom joins Chat's region (#2046 2a, decision 3): Chat is
-    // not evicted, it stays in `bottom` behind Activity's tab — which the
-    // reader will not see until Chat's tab is selected, so "hidden" is the
-    // picker's own word for it. Written as the derivation reports it, which
-    // is the whole argument for computing the sentence from `placeSurface`
-    // rather than composing it by hand: before 2a the same derivation said
-    // "Chat moves to Right".
-    expect(
-      within(surfaceRow(menu, 'Activity'))
-        .getByRole('radio', { name: 'Bottom' })
-        .getAttribute('title'),
-    ).toBe('Chat stays in Bottom, hidden');
-    // Activity → Main displaces Home, and `placeSurface` UNPLACES what leaves
-    // `main` rather than relocating it (#928 C2a).
-    expect(
-      within(surfaceRow(menu, 'Activity'))
-        .getByRole('radio', { name: 'Main' })
-        .getAttribute('title'),
-    ).toBe('Home is hidden');
-    // Left is empty: no consequence, so no tooltip claiming one.
-    const left = within(surfaceRow(menu, 'Activity')).getByRole('radio', {
-      name: 'Left',
-    });
-    expect(left.hasAttribute('title')).toBe(false);
-    expect(left.hasAttribute('aria-describedby')).toBe(false);
-
-    // #1552 review L6: the consequence reaches a non-pointer reader too, and
-    // does so WITHOUT joining the button's accessible name — the segment is
-    // still called "Bottom", which is what `getByRole` above resolves it by.
-    const bottom = within(surfaceRow(menu, 'Activity')).getByRole('radio', {
-      name: 'Bottom',
-    });
-    const described = document.getElementById(
-      bottom.getAttribute('aria-describedby') ?? '',
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Show Chat here', 'Show Activity here']);
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: 'Show Activity here' }),
     );
-    expect(described?.textContent).toBe('Chat stays in Bottom, hidden');
-    expect(bottom.textContent).toContain('Bottom');
+    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'right');
   });
 
-  /**
-   * #1552 review M3. The note and the pressed segment used to contradict each
-   * other for a surface the reader could not see ("moves to Right" beside a
-   * pressed Hidden). Both come from `placementOf`, and since #2046 2a a
-   * surface the region holds behind another pane's tab is the same case: the
-   * note says it stays, hidden, and its own row reads Hidden.
-   */
-  test('a shown pane joined by another is described as staying hidden, and its row reads Hidden', () => {
-    // Chat holds `right` and is SHOWN; Activity holds `bottom` and is hidden.
-    // Choosing CHAT's Bottom segment puts Chat in `bottom` beside Activity,
-    // selected; Activity stays there, behind Chat's tab.
-    Object.assign(harness.regions.right, {
-      visible: true,
-      panes: ['chat'],
-      occupant: 'chat',
-    });
-    Object.assign(harness.regions.bottom, {
-      visible: false,
-      panes: ['activity'],
-      occupant: 'activity',
-    });
+  test('the toggles follow this device’s placements: a two-edge device has two', () => {
+    harness.placements = ['bottom', 'right'];
     render(<RegionToolbarControls />);
-    const { menu } = openLayoutMenu();
-
-    const note = within(surfaceRow(menu, 'Chat'))
-      .getByRole('radio', { name: 'Bottom' })
-      .getAttribute('title');
-    expect(note).toBe('Activity stays in Bottom, hidden');
-    expect(
-      segments(menu, 'Activity').find((segment) => segment.checked === 'true')
-        ?.label,
-    ).toBe('Hidden');
-  });
-
-  /**
-   * #2046 2a: a surface a region holds BEHIND the pane it shows is placed but
-   * not seen. Its row must read Hidden (not the region), its region segment
-   * must issue `placeSurface` — which selects it — rather than the
-   * visibility write a hidden REGION gets, and its Hidden segment, already
-   * pressed, must not hide the region the reader is looking at. Reverting
-   * `placementOf` to "region visible" reds the first assertion; reverting the
-   * segment handler to `setRegion` reds the second; reverting the Hidden
-   * handler reds the third.
-   */
-  test('a pane behind another’s tab reads Hidden, its region segment selects it, and its Hidden segment does nothing', () => {
-    Object.assign(harness.regions.bottom, {
-      visible: true,
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
-    });
-    render(<RegionToolbarControls />);
-    let { menu } = openLayoutMenu();
-
-    expect(segments(menu, 'Chat')).toEqual([
-      { label: 'Left', checked: 'false' },
-      { label: 'Bottom', checked: 'false' },
-      { label: 'Right', checked: 'false' },
-      { label: 'Hidden', checked: 'true' },
+    expect(toggleStates().map(([label]) => label)).toEqual([
+      'Bottom region',
+      'Right region',
     ]);
-    expect(segments(menu, 'Activity')).toEqual([
-      { label: 'Left', checked: 'false' },
-      { label: 'Bottom', checked: 'true' },
-      { label: 'Right', checked: 'false' },
-      { label: 'Main', checked: 'false' },
-      { label: 'Hidden', checked: 'false' },
-    ]);
-    // Choosing Chat's Bottom: it already holds `bottom`, so nothing is
-    // displaced and no note is claimed.
-    const bottom = within(surfaceRow(menu, 'Chat')).getByRole('radio', {
-      name: 'Bottom',
-    });
-    expect(bottom.hasAttribute('title')).toBe(false);
-
-    chooseSegment(menu, 'Chat', 'Bottom');
-    expect(harness.placeSurface).toHaveBeenLastCalledWith('chat', 'bottom');
-    expect(harness.setRegion).not.toHaveBeenCalled();
-
-    ({ menu } = openLayoutMenu());
-    chooseSegment(menu, 'Chat', 'Hidden');
-    expect(harness.setRegion).not.toHaveBeenCalled();
-    expect(harness.placeSurface).toHaveBeenCalledTimes(1);
-  });
-
-  test('with Activity in main, Main is its pressed segment and Chat is still offered no Main', () => {
-    Object.assign(harness.regions.main, {
-      panes: ['activity'],
-      occupant: 'activity',
-    });
-    render(<RegionToolbarControls />);
-    const { menu } = openLayoutMenu();
-
-    expect(segments(menu, 'Activity')).toEqual([
-      { label: 'Left', checked: 'false' },
-      { label: 'Bottom', checked: 'false' },
-      { label: 'Right', checked: 'false' },
-      { label: 'Main', checked: 'true' },
-      { label: 'Hidden', checked: 'false' },
-    ]);
-    expect(segments(menu, 'Chat').map((segment) => segment.label)).toEqual([
-      'Left',
-      'Bottom',
-      'Right',
-      'Hidden',
-    ]);
-  });
-
-  /**
-   * #1523 in the picker's own vocabulary.
-   *
-   * The folded menu gives a `main` occupant a single "Move <title> to the dock"
-   * command because a toggle cannot express anything better for it. The picker
-   * has room to be specific: the same journey is choosing WHICH dock region, and
-   * every one of them is offered and lands through `placeSurface`. The guarantee
-   * that matters is the one #1523 names — a surface in `main` has a real route
-   * out of it — and here it is three routes, not one.
-   */
-  test('a main occupant is offered every dock region it declares as a way out of main', () => {
-    Object.assign(harness.regions.main, {
-      panes: ['activity'],
-      occupant: 'activity',
-    });
-    render(<RegionToolbarControls />);
-
-    for (const region of ['Left', 'Bottom', 'Right'] as const) {
-      // Re-opened, and re-QUERIED, each time: choosing a segment closes the
-      // panel and unmounts its portal, so a menu element captured before the
-      // first choice is a detached node for every iteration after it.
-      const { menu } = openLayoutMenu();
-      chooseSegment(menu, 'Activity', region);
-      expect(
-        harness.placeSurface,
-        `Activity's ${region} segment must place it there`,
-      ).toHaveBeenLastCalledWith('activity', region.toLowerCase());
-      // Not the folded menu's toggle: the segment names its destination, so it
-      // must not hand the choice back to a command that picks one for it.
-      expect(harness.toggleSurface).not.toHaveBeenCalled();
-    }
-  });
-
-  test('Hidden for a surface holding main hands the primary area back to Home', () => {
-    // `main` is always visible, so hiding its occupant cannot be a visibility
-    // write. The only meaning is that Home has the primary area back, which is
-    // `placeSurface`'s own documented rule for `main` (the displaced surface is
-    // unplaced) rather than a new unplace primitive.
-    Object.assign(harness.regions.main, {
-      panes: ['activity'],
-      occupant: 'activity',
-    });
-    render(<RegionToolbarControls />);
-    const { menu } = openLayoutMenu();
-
-    chooseSegment(menu, 'Activity', 'Hidden');
-    expect(harness.placeSurface).toHaveBeenCalledWith('home', 'main');
-    expect(harness.setRegion).not.toHaveBeenCalled();
   });
 
   test('a bottom-only device keeps its glyph-only folded control (#1400 occlusion floor)', () => {
@@ -1005,10 +669,8 @@ describe('RegionToolbarControls', () => {
   test('a wide device gaining a coarse pointer closes the menu instead of re-anchoring it', () => {
     const { rerender } = render(<RegionToolbarControls />);
 
-    openLayoutMenu();
-    expect(
-      screen.queryByRole('group', { name: 'Layout regions' }),
-    ).not.toBeNull();
+    openOfferMenu('Left');
+    expect(screen.queryByRole('menu')).not.toBeNull();
 
     // A wide device can change its PRIMARY pointer to coarse without becoming
     // mobile — a touchscreen laptop, a tablet in a keyboard case. `bottomOnly`
@@ -1019,10 +681,9 @@ describe('RegionToolbarControls', () => {
     harness.isMobile = false;
     rerender(<RegionToolbarControls />);
 
-    // Neither the picker it was showing nor the folded menu that now owns the
-    // trigger: the flip closes, it does not re-render the state under a
-    // different owner.
-    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
+    // Neither the offer menu it was showing nor the folded menu that now
+    // owns the trigger: the flip closes, it does not re-render the state
+    // under a different owner.
     expect(screen.queryByRole('menu')).toBeNull();
     expect(
       screen
@@ -1034,10 +695,8 @@ describe('RegionToolbarControls', () => {
   test('narrowing into the phone layout takes the whole control away and strands no open menu', () => {
     const { container, rerender } = render(<RegionToolbarControls />);
 
-    openLayoutMenu();
-    expect(
-      screen.queryByRole('group', { name: 'Layout regions' }),
-    ).not.toBeNull();
+    openOfferMenu('Left');
+    expect(screen.queryByRole('menu')).not.toBeNull();
 
     // `useDockSlotDevice` re-reads on resize, so the coarse branch can take
     // over with a menu already open and portalled. That portal lives on
@@ -1047,7 +706,6 @@ describe('RegionToolbarControls', () => {
     harness.isMobile = true;
     rerender(<RegionToolbarControls />);
 
-    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
     expect(screen.queryByRole('menu')).toBeNull();
     expect(document.body.querySelectorAll('button')).toHaveLength(0);
     expect(container.querySelector('fieldset')).toBeNull();
@@ -1060,12 +718,8 @@ describe('RegionToolbarControls', () => {
     harness.isMobile = false;
     rerender(<RegionToolbarControls />);
 
-    expect(screen.queryByRole('group', { name: 'Layout regions' })).toBeNull();
-    expect(
-      screen
-        .getByRole('button', { name: 'Layout regions' })
-        .getAttribute('aria-expanded'),
-    ).toBe('false');
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(regionToggle('Left').getAttribute('aria-expanded')).toBe('false');
   });
 
   test('a phone renders no region control in the toolbar row at all (#917)', () => {

@@ -5,12 +5,20 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { DockPlacementControl } from '../components/chat-dock/DockPlacementControl';
 import { CloseGlyph } from '../components/icons/Glyph';
 import { withShortcutHint } from '../contexts/KeyboardShortcutsContext';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { useShortcutDisplay } from '../hooks/useKeyboardShortcut';
-import { regionLabel } from '../regions/region-model';
+import { useMenuFocus } from '../hooks/useMenuFocus';
+import {
+  type DockRegionId,
+  type RegionId,
+  regionLabel,
+  surfaceMayOccupy,
+} from '../regions/region-model';
+import type { DockMode } from '../types';
 import { nextTabIndex } from '../utils/tab-navigation';
 import {
   workspacePaneHostPanelIdentity,
@@ -67,6 +75,82 @@ function RegionExtentGlyph({ expanded }: { expanded: boolean }) {
 }
 
 /**
+ * A tab's own placement (#2143): a `menu` of the regions this pane may move to,
+ * opened from the tab's context menu (right-click, or Shift+F10 / the Menu
+ * key on a focused tab). One pane moves — `placeSurface` into the chosen
+ * region, which joins that region's panes and leaves this one (#2046 2a) —
+ * where the bar's ⋮⋮ grab moves the whole region. `main` is offered to a
+ * pane that declares it (Activity), and takes the primary area the way
+ * `placeSurface` documents (the displaced surface is unplaced).
+ *
+ * This is where #1552 D2's placement picker went: a surface's placement is a
+ * property of its tab, not of the app toolbar, so it is chosen on the tab.
+ * The row set is the model's own `surfaceMayOccupy` over the regions this
+ * device can use, so no row offers a move `placeSurface` would refuse.
+ */
+function RegionTabMoveMenu({
+  tab,
+  regions,
+  anchor,
+  onMove,
+  onClose,
+}: {
+  tab: RegionChromeTab;
+  regions: readonly RegionId[];
+  anchor: { x: number; y: number };
+  onMove: (region: RegionId) => void;
+  onClose: () => void;
+}) {
+  const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      onClose();
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [onClose]);
+  return createPortal(
+    <>
+      <button
+        type="button"
+        tabIndex={-1}
+        className="header-menu__dismiss-backdrop chat-dock__more-backdrop"
+        aria-label={`Close move menu for ${tab.title}`}
+        onClick={onClose}
+      />
+      <div
+        ref={menuRef}
+        className="menu-surface dock-placement-menu region-tabs__move-menu"
+        role="menu"
+        aria-label={`Move ${tab.title}`}
+        tabIndex={-1}
+        style={{ position: 'fixed', left: anchor.x, top: anchor.y }}
+      >
+        {regions.map((region) => (
+          <button
+            key={region}
+            type="button"
+            role="menuitem"
+            className="menu-row"
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+              onMove(region);
+            }}
+          >
+            <span className="menu-row__glyph" aria-hidden="true" />
+            Move to {regionLabel(region)}
+          </button>
+        ))}
+      </div>
+    </>,
+    document.body,
+  );
+}
+
+/**
  * The region's tab strip (#2046 2b): one tab per pane the region holds, in
  * `RegionState.panes` order, the selected one pressed. Driven by the REGION
  * MODEL, not the pane host's controller — a tab click is the model's
@@ -95,6 +179,8 @@ function RegionTabStrip({
   onSelect,
   onClose,
   onReorder,
+  onMove,
+  moveTargets,
 }: {
   groupId: string;
   tabs: readonly RegionChromeTab[];
@@ -102,8 +188,16 @@ function RegionTabStrip({
   onSelect: (surfaceId: string) => void;
   onClose: ((surfaceId: string) => void) | undefined;
   onReorder: (surfaceId: string, toIndex: number) => void;
+  /** Absent for the model-less mount, which has nowhere to move a pane to. */
+  onMove: ((surfaceId: string, region: RegionId) => void) | undefined;
+  /** The regions a pane may be offered, for `onMove`: this device's, minus the one it is in. */
+  moveTargets: (surfaceId: string) => RegionId[];
 }) {
   const [dragging, setDragging] = useState<string | null>(null);
+  const [moving, setMoving] = useState<{
+    tab: RegionChromeTab;
+    anchor: { x: number; y: number };
+  } | null>(null);
   const tabAt = (x: number, y: number): number => {
     const element = document.elementFromPoint(x, y);
     const target =
@@ -174,6 +268,21 @@ function RegionTabStrip({
               className="region-tabs__tab"
               onClick={() => onSelect(tab.surfaceId)}
               onKeyDown={(event) => onKeyDown(event, index, tab.surfaceId)}
+              // The tab's own menu (#2143). A `contextmenu` event arrives
+              // from a right-click with a position, and from Shift+F10 or
+              // the Menu key with none — the tab's own box anchors it then.
+              onContextMenu={(event) => {
+                if (!onMove || moveTargets(tab.surfaceId).length === 0) return;
+                event.preventDefault();
+                const rect = event.currentTarget.getBoundingClientRect();
+                setMoving({
+                  tab,
+                  anchor:
+                    event.clientX || event.clientY
+                      ? { x: event.clientX, y: event.clientY }
+                      : { x: rect.left, y: rect.bottom },
+                });
+              }}
               onPointerDown={(event) => {
                 if (event.button !== 0) return;
                 event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -215,6 +324,15 @@ function RegionTabStrip({
           </div>
         );
       })}
+      {moving && onMove ? (
+        <RegionTabMoveMenu
+          tab={moving.tab}
+          regions={moveTargets(moving.tab.surfaceId)}
+          anchor={moving.anchor}
+          onMove={(region) => onMove(moving.tab.surfaceId, region)}
+          onClose={() => setMoving(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -254,6 +372,7 @@ export function RegionChromeBar({
   onSelectTab,
   onCloseTab,
   onReorderTab,
+  onMoveTab,
   onAddPane,
   leadingSlotRef,
   trailingSlotRef,
@@ -266,6 +385,8 @@ export function RegionChromeBar({
   /** Absent when a tab cannot be closed (one pane; no region model). */
   onCloseTab: ((surfaceId: string) => void) | undefined;
   onReorderTab: (surfaceId: string, toIndex: number) => void;
+  /** A tab's move to another region (#2143); absent for the model-less mount. */
+  onMoveTab?: (surfaceId: string, region: RegionId) => void;
   /** Opens the region's catalog; absent when there is nothing to add with. */
   onAddPane?: () => void;
   leadingSlotRef: (element: HTMLElement | null) => void;
@@ -287,6 +408,14 @@ export function RegionChromeBar({
   const applyDockSnap = chrome.applyDockSnap;
   const mobileChat = chrome.isMobile && selectedSurfaceId === 'chat';
   const addLabel = `Add pane to ${regionLabel(chrome.effectiveDockSlotPlacement)}`;
+  // The regions a tab may be moved to (#2143): every region this device can
+  // use plus `main`, minus the one the tab is in, filtered by the model's own
+  // `surfaceMayOccupy` so no row offers a refused placement.
+  const here: DockRegionId = chrome.effectiveDockSlotPlacement;
+  const moveTargets = (surfaceId: string): RegionId[] =>
+    [...(chrome.availableDockSlotPlacements as readonly DockMode[]), 'main']
+      .filter((region): region is RegionId => region !== here)
+      .filter((region) => surfaceMayOccupy(surfaceId, region));
 
   // A NATIVE listener rather than `onClick`: the pane toolbar is portalled
   // into this bar, and a React handler on the bar never sees a click that
@@ -335,6 +464,8 @@ export function RegionChromeBar({
             onSelect={onSelectTab}
             onClose={onCloseTab}
             onReorder={onReorderTab}
+            onMove={onMoveTab}
+            moveTargets={moveTargets}
           />
         ) : null}
         <span className="chat-dock__pane-toolbar" ref={leadingSlotRef} />

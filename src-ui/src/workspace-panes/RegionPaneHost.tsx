@@ -28,6 +28,7 @@ import { reportRegionClearance } from '../regions/region-clearance';
 import {
   type DockRegionId,
   isDockRegion,
+  type RegionId,
   resolveRegionSurface,
 } from '../regions/region-model';
 import {
@@ -677,6 +678,15 @@ export function RegionPaneHost({
     },
     [model, regionId],
   );
+  // A tab's move (#2143) is the model's own `placeSurface`: the pane joins
+  // the chosen region (last, selected) and leaves this one; into `main` it
+  // takes the primary area by the rule `placeSurface` documents.
+  const moveTab = useCallback(
+    (surfaceId: string, region: RegionId) => {
+      if (model) model.placeSurface(surfaceId, region);
+    },
+    [model],
+  );
   // The bar's slots, published to the panes below so the selected pane's
   // toolbar can render into them (`RegionChromeSlots`). State, not refs: the
   // pane must re-render once the slot exists.
@@ -712,6 +722,7 @@ export function RegionPaneHost({
               regionId && model && tabs.length > 1 ? closeTab : undefined
             }
             onReorderTab={reorderTab}
+            onMoveTab={regionId && model ? moveTab : undefined}
             onAddPane={catalogRegion ? openCatalog : undefined}
             leadingSlotRef={setLeadingSlot}
             trailingSlotRef={setTrailingSlot}
