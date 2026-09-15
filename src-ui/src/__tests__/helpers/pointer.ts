@@ -23,6 +23,20 @@
  *     stale `open`, the re-open never happens, and the test passes against the
  *     defect — which is what the first version of this helper did, caught only
  *     because an injection stayed green.
+ *
+ *     DELETING THAT `act` DISARMS A REGRESSION TEST IN ANOTHER FILE, silently.
+ *     `ProjectSidebarFooter.test.tsx`'s "a pointer click on the trigger closes
+ *     the tray" passes 33/33 against the presence tray's own restored defect
+ *     with the flush removed (#2081 review). It reads as a tidy — the focus
+ *     move looks like it needs no wrapper — and nothing fails to say
+ *     otherwise. `TurnActionsMenuPointerDismiss.test.tsx` no longer depends on
+ *     it: that test splits the press from the release and asserts the
+ *     dismissal in between, so a lost flush reds it rather than quietly
+ *     retiring it. The footer's test has not been given that shape, because it
+ *     belongs to #2066's lane and its own assertion would need rewriting, not
+ *     reordering — the presence tray CANCELS its press, so what is true there
+ *     between press and release is the opposite. Until it is,
+ *     this line is the only thing protecting it.
  *   - `click` fires regardless, carrying `detail: 1`. A real pointer click
  *     always reports its click count; only a click the UA synthesises from a
  *     key press has `detail: 0`, and jsdom's default of `0` would otherwise
