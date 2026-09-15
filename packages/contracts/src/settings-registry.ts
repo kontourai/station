@@ -389,6 +389,24 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: 14,
   }),
   defineSetting({
+    key: 'defaultWorkspaceIsolation',
+    scope: 'station',
+    descriptor: { kind: 'enum', values: ['shared', 'worktree'] },
+    label: 'New chat workspace',
+    help: 'New chats in a project that names no workspace of its own run in this one.',
+    // Station scope, not `defaults`: `defaults`'s own registry test pins an
+    // exact six-key list, and that list is the documented override chain
+    // (default -> project -> agent -> per-invocation). This is a control for
+    // the instance with ONE overrider, so it sits with the other instance
+    // controls. Resolution order and the reason it is shared:
+    // `resolveWorkspaceIsolationMode` in `workspace-isolation.ts`.
+    description:
+      'Shared runs every chat in the project’s own checkout. Worktree gives each chat its own git worktree, which needs the project’s working directory to be a git repository — a chat that cannot get one fails to start rather than quietly sharing.',
+    // Confirmed against execution-target-resolver.ts and
+    // workspace-pane-host-admission.ts: both fall through to 'shared'.
+    defaultValue: 'shared',
+  }),
+  defineSetting({
     key: 'runtime',
     scope: 'station',
     descriptor: { kind: 'enum', values: ['voltagent', 'strands'] },

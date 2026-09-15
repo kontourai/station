@@ -282,6 +282,9 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
       [
         'defaultChatFontSize',
         'defaultMaxTurns',
+        // #2144 slice 2: confirmed against `resolveWorkspaceIsolationMode`
+        // — every reader falls through to 'shared'.
+        'defaultWorkspaceIsolation',
         'knowledgeStores',
         'mcpUiHost',
         'runtime',
