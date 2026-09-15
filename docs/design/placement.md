@@ -90,12 +90,14 @@ every other route. Four rules make it a region rather than a special case
   view renders and the occupant is kept, not cleared. The Home destination
   (`regionSurface: 'home'`) therefore reveals Home by placing it, rather than
   navigating to `/` and showing whatever occupies `main`.
-- **Coarse devices defer `main`.** `main` has no toolbar control on any
-  device (it is always visible; since #2143 the toolbar is per DOCK region),
-  and a pane reaches it through its tab's "Move to Main" (a surface that
-  declares `main`, so Activity), which needs a tab: a region holding two or
-  more panes off the mobile layout (`RegionChromeBar`'s `showStrip`; the
-  gate is the 768px layout, not the pointer). A bottom-only device
+- **`main` has no toolbar control on any device** (it is always visible;
+  since #2143 the toolbar is per DOCK region). A pane reaches it through its
+  tab's "Move to Main" (a surface that declares `main`, so Activity), which
+  needs a tab: a region holding two or more panes while the strip renders
+  (`RegionChromeBar`'s `showStrip`, gated on `isMobile` — the 768px layout,
+  or a short coarse viewport — not on the pointer alone; a wide coarse tablet
+  is bottom-only and still gets the strip, so its one dock's tabs offer
+  "Move to Main"). A bottom-only device
   folds its region commands into one control (#1400's toolbar occlusion
   floor) and this slice does not widen that fold; Home still reaches `main`
   there through the sidebar's two Home affordances (the header's app-name
@@ -635,7 +637,9 @@ one arrangement, and no control at all that said whether a region was open
   pane; a press is the model's `setRegion(region, { visible })`, so every tab
   comes back with the selection it had. The region bar's chevron reaches the
   same model write through `applyDockSnap`, which additionally records the
-  shell's snap and height; the toolbar toggle records neither. The
+  shell's snap and height and passes `maximized` (a chevron collapse clears
+  it); the toolbar toggle writes `visible` alone, so a region hidden here
+  keeps its maximize memory. The
   accessible name is the region's ("Bottom region") and the panes it holds
   are the tooltip, so a journey finds the same control in every arrangement.
 - **An empty region's control is a menu, not a toggle.** An empty region
@@ -643,12 +647,15 @@ one arrangement, and no control at all that said whether a region was open
   region its last pane leaves), so its button offers the shell surfaces that
   declare it ("Show Chat here"), through `placeSurface`; it closes by itself
   if the region stops being empty while it is open, and an empty region no
-  shell surface declares gets a disabled button rather than an empty menu.
+  shell surface declares gets an inert, `aria-disabled` button whose name
+  says so rather than an empty menu.
   `aria-haspopup` and `aria-pressed` are never both on one button.
 - **A pane's placement is its tab's.** A tab's context menu (right-click, or
   the keyboard's context-menu gesture where the browser turns it into a
   `contextmenu` event; the menu anchors under the tab either way, never at
-  the pointer, so it cannot cover its own trigger — #2112's rule) offers
+  the pointer, and flips above the tab when there is no room below rather
+  than sliding up over it, so it does not cover its own trigger — #2112's
+  rule) offers
   "Move to <region>" for the regions the pane
   declares on this device minus the one its shell renders in, `main`
   included for a pane that declares it; a choice is `placeSurface` (joins

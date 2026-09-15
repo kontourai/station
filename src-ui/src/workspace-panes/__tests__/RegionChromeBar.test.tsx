@@ -390,9 +390,17 @@ describe('the tab strip writes the model', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  test('the move menu is anchored under its tab and never past the viewport edges', () => {
+  /**
+   * Under the tab, whatever the pointer said (the keyboard has none); pulled
+   * back sideways at the right edge; and FLIPPED ABOVE the tab when there is
+   * no room below — never slid up over it, which would put the panel on its
+   * own trigger (#2112). Each branch is asserted against its own geometry so
+   * deleting the clamp, or replacing the flip with a slide, reds here.
+   */
+  test('the move menu sits under its tab, is pulled back from the right edge, and flips above when there is no room below', () => {
     renderBar();
     const tab = screen.getByRole('tab', { name: 'Chat' });
+    const viewport = { w: window.innerWidth, h: window.innerHeight };
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
       value: 800,
@@ -401,27 +409,41 @@ describe('the tab strip writes the model', () => {
       configurable: true,
       value: 600,
     });
-    const tabBox = { left: 40, bottom: 20, top: 0, right: 100 };
+    const tabBox = { left: 40, top: 0, bottom: 20, right: 100 };
     vi.spyOn(tab, 'getBoundingClientRect').mockReturnValue(tabBox as DOMRect);
     const measure = vi
       .spyOn(HTMLDivElement.prototype, 'getBoundingClientRect')
       .mockReturnValue({ width: 160, height: 100 } as DOMRect);
-    try {
-      // Under the tab, whatever the pointer said: the keyboard has none.
+    const open = () => {
       fireEvent.contextMenu(tab, { clientX: 300, clientY: 300 });
-      let menu = screen.getByRole('menu', { name: 'Move Chat' });
-      expect([menu.style.left, menu.style.top]).toEqual(['40px', '24px']);
+      const menu = screen.getByRole('menu', { name: 'Move Chat' });
+      const at = [menu.style.left, menu.style.top];
       fireEvent.keyDown(document, { key: 'Escape' });
+      return at;
+    };
+    try {
+      expect(open()).toEqual(['40px', '24px']);
 
-      // A tab in the bottom-right corner: the menu's own box is what it is
-      // pulled back by, so every row stays on screen.
+      // At the right edge: pulled back by the menu's own width.
       tabBox.left = 790;
-      tabBox.bottom = 590;
-      fireEvent.contextMenu(tab);
-      menu = screen.getByRole('menu', { name: 'Move Chat' });
-      expect([menu.style.left, menu.style.top]).toEqual(['640px', '500px']);
+      expect(open()).toEqual(['640px', '24px']);
+
+      // Low in the viewport: 100px of menu will not fit under a tab whose
+      // bottom is at 560, so it opens above the tab's top (540 - 4 - 100).
+      tabBox.left = 40;
+      tabBox.top = 540;
+      tabBox.bottom = 560;
+      expect(open()).toEqual(['40px', '436px']);
     } finally {
       measure.mockRestore();
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: viewport.w,
+      });
+      Object.defineProperty(window, 'innerHeight', {
+        configurable: true,
+        value: viewport.h,
+      });
     }
   });
 });

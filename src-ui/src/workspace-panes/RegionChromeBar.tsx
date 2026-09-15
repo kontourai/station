@@ -40,6 +40,9 @@ export interface RegionChromeTab {
  * a real control, or the actions cluster, whose non-control text (a session
  * count, an unread badge) sits beside controls and reads as part of them.
  */
+/** The gap between a tab and the move menu it opens, above or below. */
+const GAP = 4;
+
 const TOGGLE_EXEMPT =
   'a, button, [role="button"], [role="link"], [role="tab"], input, select, textarea, [data-dock-toggle-shield]';
 
@@ -98,7 +101,8 @@ function RegionTabMoveMenu({
 }: {
   tab: RegionChromeTab;
   regions: readonly RegionId[];
-  anchor: { x: number; y: number };
+  /** `x`/`y`: where the menu opens (the tab's left, bottom + gap); `top`: the tab's top, for the flip. */
+  anchor: { x: number; y: number; top: number };
   onMove: (region: RegionId) => void;
   onClose: () => void;
 }) {
@@ -112,20 +116,24 @@ function RegionTabMoveMenu({
     document.addEventListener('keydown', onKeyDown, true);
     return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [onClose]);
-  // Anchored under the tab, then kept inside the viewport: a tab low in a
-  // short bottom dock or near the right edge would otherwise push rows off
-  // screen with no scroll to recover them. Measured after mount, the way the
-  // grab's own menu measures before it picks a direction.
-  const [position, setPosition] = useState(anchor);
+  // Anchored under the tab, then kept inside the viewport. Sideways it is
+  // pulled back to the edge; vertically it FLIPS ABOVE the tab when there is
+  // no room below, never slides up over it — a panel that is pulled up over
+  // its own trigger is the #2112 shape the backdrop family forbids (a press
+  // on the trigger must reach the backdrop). Measured after mount, the way
+  // the grab's own menu measures before it picks a direction. `anchor.y` is
+  // the tab's bottom edge; `anchor.top` its top edge, for the flip.
+  const [position, setPosition] = useState({ x: anchor.x, y: anchor.y });
   useLayoutEffect(() => {
     const menu = menuRef.current;
     if (!menu) return;
     const box = menu.getBoundingClientRect();
     const left = Math.max(0, Math.min(anchor.x, window.innerWidth - box.width));
-    const top = Math.max(
-      0,
-      Math.min(anchor.y, window.innerHeight - box.height),
-    );
+    const below = anchor.y;
+    const top =
+      below + box.height <= window.innerHeight
+        ? below
+        : Math.max(0, anchor.top - GAP - box.height);
     setPosition((current) =>
       current.x === left && current.y === top ? current : { x: left, y: top },
     );
@@ -239,7 +247,7 @@ function RegionTabStrip({
   const [dragging, setDragging] = useState<string | null>(null);
   const [moving, setMoving] = useState<{
     tab: RegionChromeTab;
-    anchor: { x: number; y: number };
+    anchor: { x: number; y: number; top: number };
   } | null>(null);
   const tabAt = (x: number, y: number): number => {
     const element = document.elementFromPoint(x, y);
@@ -323,7 +331,7 @@ function RegionTabStrip({
                 const rect = event.currentTarget.getBoundingClientRect();
                 setMoving({
                   tab,
-                  anchor: { x: rect.left, y: rect.bottom + 4 },
+                  anchor: { x: rect.left, y: rect.bottom + GAP, top: rect.top },
                 });
               }}
               onPointerDown={(event) => {

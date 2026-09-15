@@ -332,12 +332,15 @@ function RegionToggleButton({
   // A menu trigger only while there is something to offer: an empty region
   // no shell surface declares (none today — both dock surfaces declare all
   // three edges — but the registry decides that, not this button) would
-  // otherwise announce a popup and open an empty panel. It is disabled
-  // instead, and says why.
+  // otherwise announce a popup and open an empty panel. It is inert instead
+  // — `aria-disabled`, not `disabled`, so it stays in the tab order and its
+  // accessible name carries the reason a `title` alone cannot deliver to a
+  // keyboard or screen-reader user.
   const offers = empty && toggle.offers.length > 0;
   const label = `${toggle.label} region`;
+  const inert = empty && !offers;
   const title = empty
-    ? `${label}: empty${offers ? '' : ', nothing can be shown here'}`
+    ? `${label}: empty${inert ? ', nothing can be shown here' : ''}`
     : `${toggle.visible ? 'Hide' : 'Show'} ${label}: ${toggle.paneTitles.join(', ')}`;
   return (
     <button
@@ -345,17 +348,18 @@ function RegionToggleButton({
       className={`app-toolbar__region-btn app-toolbar__region-toggle${
         toggle.visible ? ' is-pressed' : ''
       }`}
-      aria-label={label}
+      aria-label={inert ? title : label}
       title={title}
-      disabled={empty && !offers}
       {...(empty
         ? offers
           ? { 'aria-haspopup': 'menu' as const, 'aria-expanded': menuOpen }
-          : {}
+          : { 'aria-disabled': true }
         : { 'aria-pressed': toggle.visible })}
-      onClick={(event) =>
-        empty ? onOpenMenu(event.currentTarget) : toggle.onToggle()
-      }
+      onClick={(event) => {
+        if (inert) return;
+        if (empty) onOpenMenu(event.currentTarget);
+        else toggle.onToggle();
+      }}
     >
       <RegionGlyph region={toggle.region} pressed={toggle.visible} />
     </button>

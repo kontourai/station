@@ -1996,7 +1996,8 @@ button:hover {
 
 /* #2143: a tab's move menu, opened from the tab's context menu. The same
    `.dock-placement-menu` family as the grab's and the More menu's — one more
-   folded menu in that bar, anchored at the pointer — and the same backdrop. */
+   folded menu in that bar, anchored under (or, without room, above) its tab
+   by `RegionTabMoveMenu` — and the same backdrop. */
 .region-tabs__move-menu {
   bottom: auto;
   left: auto;

@@ -90,10 +90,12 @@ export interface RegionToggle {
   /**
    * Show or hide the region — the model's `setRegion(region, { visible })`.
    * The region bar's chevron reaches the SAME model write through
-   * `applyDockSnap`, which also records the shell's snap and height; this
-   * toggle records neither, so a region hidden here and reopened from its
-   * chevron comes back at whatever snap the chevron last stored. A no-op for
-   * an empty region, whose control opens `offers` instead.
+   * `applyDockSnap`, which also records the shell's snap and height and
+   * passes `maximized` (a chevron collapse clears it); this toggle writes
+   * `visible` alone, so a region hidden here keeps its maximize memory and
+   * comes back maximized, while one hidden from its chevron comes back at
+   * the snap the chevron stored. A no-op for an empty region, whose control
+   * opens `offers` instead.
    */
   onToggle: () => void;
   /** What an EMPTY region's control offers; empty for an occupied region. */

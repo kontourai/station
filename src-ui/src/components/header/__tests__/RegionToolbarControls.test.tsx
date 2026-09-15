@@ -540,6 +540,22 @@ describe('RegionToolbarControls', () => {
     expect(right.getAttribute('aria-pressed')).toBe('true');
     expect(right.getAttribute('aria-haspopup')).toBeNull();
     expect(right.getAttribute('aria-expanded')).toBeNull();
+
+    // Two mechanisms, each pinned on its own. The render gate above is what
+    // keeps a zero-row panel off screen in the commit before the effect
+    // flushes; the EFFECT is what clears the open state, so that the region
+    // becoming empty again does not re-open a menu nobody asked for.
+    Object.assign(harness.regions.right, {
+      visible: false,
+      panes: [],
+      occupant: null,
+    });
+    rerender(<RegionToolbarControls />);
+    expect(
+      screen.queryByRole('menu'),
+      'the offer menu re-opened by itself when its region emptied again',
+    ).toBeNull();
+    expect(regionToggle('Right').getAttribute('aria-expanded')).toBe('false');
   });
 
   /**
@@ -560,13 +576,19 @@ describe('RegionToolbarControls', () => {
     harness.surfaces = narrowed;
     render(<RegionToolbarControls />);
 
-    const left = regionToggle('Left');
-    expect(left.hasAttribute('disabled')).toBe(true);
+    // Inert, not `disabled`: still in the tab order, and its NAME carries
+    // the reason, which a `title` cannot deliver to a keyboard user.
+    const left = screen.getByRole('button', {
+      name: 'Left region: empty, nothing can be shown here',
+    });
+    expect(left.hasAttribute('disabled')).toBe(false);
+    expect(left.getAttribute('aria-disabled')).toBe('true');
     expect(left.getAttribute('aria-haspopup')).toBeNull();
     expect(left.getAttribute('aria-pressed')).toBeNull();
-    expect(left.title).toBe('Left region: empty, nothing can be shown here');
     fireEvent.click(left);
     expect(screen.queryByRole('menu')).toBeNull();
+    expect(harness.placeSurface).not.toHaveBeenCalled();
+    expect(harness.setRegion).not.toHaveBeenCalled();
     // Right is untouched by the narrowing and still offers both.
     const { menu } = openOfferMenu('Right');
     expect(within(menu).getAllByRole('menuitem')).toHaveLength(2);

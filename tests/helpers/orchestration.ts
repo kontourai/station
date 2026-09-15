@@ -120,11 +120,13 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
       // The region is showing, but "Dock" names the region whose panes
       // INCLUDE Chat, selected or not (#2046 D3) — so Chat may be behind
       // another pane's tab. The strip renders only for two or more panes;
-      // if it is there and Chat's tab is not pressed, select it, and read
-      // the pressed state back rather than the click.
+      // if it is there and Chat's tab is not selected, select it, and read
+      // `aria-selected` back rather than trusting the click. `count()` does
+      // not wait, so the strip is given the region's own settle first.
       const chatTab = page
         .getByRole('tablist', { name: 'Region panes' })
         .getByRole('tab', { name: 'Chat', exact: true });
+      await page.getByRole('region', { name: 'Dock' }).waitFor();
       if (
         (await chatTab.count()) > 0 &&
         (await chatTab.getAttribute('aria-selected')) !== 'true'
