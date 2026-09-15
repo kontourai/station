@@ -89,11 +89,45 @@ async function sendTreeSignal(
     await (runtime.runWindowsTaskkill ?? runWindowsTaskkill)(child.pid, force);
     return;
   }
+  const kill = runtime.kill ?? ((pid, value) => process.kill(pid, value));
   try {
-    process.kill(-child.pid, signal);
+    kill(-child.pid, signal);
   } catch {
-    if (!child.kill(signal))
-      throw new Error(`failed to signal ${processLabel} with ${signal}`);
+    if (child.kill(signal)) return;
+    // A process that has already exited cannot be signalled, and that is the
+    // outcome termination is asking for -- not a failure to produce it.
+    //
+    // `terminateSuiteExecution` checks `isAlive()` and signals afterwards, so
+    // a child that ends on its own in between lands exactly here: the group
+    // kill throws ESRCH because the group is gone, and `child.kill()` returns
+    // false because there is nothing left to signal. Reporting that as an
+    // error made a completed teardown fail its own `errors` assertion
+    // (#2133), which is a benign race dressed as a defect -- the inverse of
+    // the rule that a caught error must not become success.
+    //
+    // Neither `child.kill()`'s false nor `child.exitCode` distinguishes the
+    // two cases: false also means "could not deliver", and `exitCode` and
+    // `signalCode` are both still null in the window between the process
+    // dying and Node reaping it. Signal 0 asks the OS directly and answers
+    // for the process rather than for Node's bookkeeping.
+    if (processIsGone(child.pid, kill)) return;
+    throw new Error(`failed to signal ${processLabel} with ${signal}`);
+  }
+}
+
+/**
+ * Whether the OS no longer knows `pid`.
+ *
+ * Signal 0 performs the permission and existence checks without delivering
+ * anything. Only ESRCH means the process is gone; EPERM means it exists and
+ * is someone else's, which is a real failure to signal and must stay one.
+ */
+function processIsGone(pid, kill) {
+  try {
+    kill(pid, 0);
+    return false;
+  } catch (error) {
+    return error?.code === 'ESRCH';
   }
 }
 
