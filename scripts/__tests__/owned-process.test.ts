@@ -971,3 +971,132 @@ describe('owned process lifecycle', () => {
     expect(proven.isAlive()).toBe(false);
   });
 });
+
+/**
+ * #2130: every other test in this file passes `platform: 'win32'`, so the
+ * POSIX signal path had no coverage at all — which is how it came to treat a
+ * process that had already exited as a failure to terminate it.
+ *
+ * `terminateSuiteExecution` checks `isAlive()` and signals afterwards. A child
+ * that ends on its own in that window makes the group kill throw ESRCH and
+ * `child.kill()` return false, and the helper reported that as a SIGTERM
+ * error. The full-regression corpus hit it on
+ * `local-collaboration-lab.test.ts`, whose teardown asserts
+ * `stopped.errors` is empty: the process was gone, `settled` was true, and the
+ * run still failed.
+ */
+describe('terminating a POSIX process tree', () => {
+  const esrch = () =>
+    Object.assign(new Error('no such process'), { code: 'ESRCH' });
+  const eperm = () =>
+    Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+
+  function posixExecution(input: {
+    childKill: () => boolean;
+    kill: (pid: number, signal: string | number) => void;
+  }) {
+    const child = Object.assign(mockChild(), {
+      pid: 4242,
+      kill: input.childKill,
+    });
+    return executeOwnedProcess(
+      'lab',
+      [],
+      (() => child) as never,
+      'local collaboration test',
+      {},
+      { platform: 'darwin', kill: input.kill } as never,
+    );
+  }
+
+  test('a child that exited before the signal landed is not a failure', async () => {
+    const attempts: Array<[number, string | number]> = [];
+    const execution = posixExecution({
+      childKill: () => false,
+      kill: (pid, signal) => {
+        attempts.push([pid, signal]);
+        throw esrch();
+      },
+    });
+
+    await expect(execution.terminate()).resolves.toBeUndefined();
+    // The group kill, then the existence probe — signal 0 asks the OS about
+    // the process itself rather than trusting Node's not-yet-reaped state.
+    expect(attempts).toEqual([
+      [-4242, 'SIGTERM'],
+      [4242, 0],
+    ]);
+  });
+
+  test('a child that is alive but unsignalable is still a failure', async () => {
+    const execution = posixExecution({
+      childKill: () => false,
+      // The group is gone, but the process itself answers the probe: it
+      // exists, and something really did fail to signal it.
+      kill: (_pid, signal) => {
+        if (signal === 0) return;
+        throw esrch();
+      },
+    });
+
+    await expect(execution.terminate()).rejects.toThrow(
+      'failed to signal local collaboration test with SIGTERM',
+    );
+  });
+
+  test('EPERM on the probe is not treated as gone', async () => {
+    const execution = posixExecution({
+      childKill: () => false,
+      kill: (_pid, signal) => {
+        if (signal === 0) throw eperm();
+        throw esrch();
+      },
+    });
+
+    // EPERM means the process exists and belongs to somebody else. Only ESRCH
+    // means gone, and conflating them would turn a genuine inability to
+    // terminate a live process into a silent success.
+    await expect(execution.terminate()).rejects.toThrow('failed to signal');
+  });
+
+  test('a deliverable group signal never reaches the fallback', async () => {
+    let childKills = 0;
+    const attempts: Array<[number, string | number]> = [];
+    const execution = posixExecution({
+      childKill: () => {
+        childKills += 1;
+        return true;
+      },
+      kill: (pid, signal) => {
+        attempts.push([pid, signal]);
+      },
+    });
+
+    await expect(execution.terminate()).resolves.toBeUndefined();
+    expect(attempts).toEqual([[-4242, 'SIGTERM']]);
+    expect(childKills).toBe(0);
+  });
+
+  test('a settled teardown of an exited child reports no errors', async () => {
+    const execution = posixExecution({
+      childKill: () => false,
+      kill: () => {
+        throw esrch();
+      },
+    });
+
+    // The exact shape the corpus produced: the process is gone, so settlement
+    // succeeds. Before the fix this returned `settled: true` alongside a
+    // SIGTERM error, and the lab suite's `expect(stopped.errors).toEqual([])`
+    // turned a completed teardown into a red full-regression run.
+    const outcome = await terminateSuiteExecution(execution, {
+      processLabel: 'local collaboration test',
+      terminationGraceMs: 2000,
+      terminationForceMs: 3000,
+      waitForSuiteSettlement: async () => true,
+    });
+
+    expect(outcome).toMatchObject({ settled: true, escalated: false });
+    expect(outcome.errors).toEqual([]);
+  });
+});
