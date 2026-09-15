@@ -110,7 +110,11 @@ const THEMES = {
   light: { app: lightApp, vendor: lightVendor },
 } as const;
 
-const RUNGS = ['--syntax-keyword', '--syntax-number', '--syntax-string'] as const;
+const RUNGS = [
+  '--syntax-keyword',
+  '--syntax-number',
+  '--syntax-string',
+] as const;
 const WCAG_AA_NORMAL_TEXT = 4.5;
 
 describe('source-preview syntax rungs clear AA in both themes', () => {
