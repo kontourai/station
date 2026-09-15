@@ -38,32 +38,48 @@ const sleep = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
 /**
- * How long the DRIVER may spend on one injected script (#2089).
+ * How long the DRIVER may spend on ONE injected script (#2089, #2109).
  *
- * WebDriver's default script timeout is 30 s, and this harness never chose one,
- * so it had the default. The embedded macOS driver runs `execute/sync` on the
- * WebView's main loop, which the app's own boot occupies: mounting the shell
- * parses two ~40 KB JSON payloads and fires ~50 requests, and in a DEBUG binary
- * on a contended host that runs past 30 s. A one-expression probe like
- * `typeof window.__TAURI_INTERNALS__` then times out — not because the script is
- * slow, but because it is still queued behind the app.
+ * This bounds a single attempt. It is deliberately SHORTER than every lane
+ * budget that wraps it, and that ordering is the whole point — see
+ * {@link DirectWebDriver.waitUntil}, which can only re-check its budget after
+ * a predicate returns. A per-attempt bound longer than the budget containing
+ * it means every wait gets exactly one attempt and the retry loop cannot run.
  *
- * MEASURED, not guessed: instrumenting every request showed exactly one slow
- * call per run at 30,018 ms, answering `{"error":"script timeout"}`. That is the
- * driver's own bound expiring, so widening any lane's `waitUntil` cannot help —
- * the first poll's request cannot complete inside it.
+ * The scripts this bounds are one-expression probes (`document.readyState`,
+ * `typeof window.__TAURI_INTERNALS__`). They do not take seconds to EVALUATE.
+ * What takes time is being QUEUED: the embedded macOS driver runs
+ * `execute/sync` on the WebView's main loop, which the app's own boot occupies
+ * — mounting the shell parses two ~40 KB JSON payloads and fires ~50 requests,
+ * and in a debug binary that runs well past 30 s. Tolerating that queue is the
+ * RETRY LOOP's job, not this bound's. Abandon the queued attempt cheaply and
+ * ask again; once boot finishes, the same probe answers in milliseconds.
  *
- * ASKING FOR IT IN THE CAPABILITIES DOES NOT SET IT. This value was first
- * passed as `capabilities.alwaysMatch.timeouts.script`, which is the W3C
- * spelling and which THIS driver ignores: the session it answers with reports
- * `"timeouts":{"implicit":0,"pageLoad":300000,"script":30000}` — the default,
- * unchanged, while the constant said 120 s. So the widening was inert and the
- * lane kept failing at exactly 30,039 ms. `POST /session/:id/timeouts` does
- * take, and {@link DirectWebDriver.connect} now sends it and READS IT BACK,
- * failing if the driver did not adopt it, so this constant cannot go back to
- * describing something nothing applied.
+ * HISTORY, because the reasoning here has been correct and then wrong twice,
+ * and both times the prose outlived the regime it described.
+ *
+ * It was first the W3C default of 30 s against a 30 s lane budget, so a probe
+ * queued behind boot consumed the whole budget in one attempt. The docblock
+ * that lived here concluded "widening any lane's `waitUntil` cannot help",
+ * which was accurate for that arrangement.
+ *
+ * It was then set to 120 s — but passed as `capabilities.alwaysMatch.timeouts
+ * .script`, which THIS driver ignores, so the session still reported
+ * `"script":30000` while the constant claimed 120 s and the lane kept failing
+ * at exactly 30,039 ms. #2107 fixed the application (`POST
+ * /session/:id/timeouts`, read back in {@link DirectWebDriver.connect}), which
+ * made the 120 s real — and inverted the fault rather than removing it. The
+ * bound went from too short to ever succeed to too long to ever retry, and
+ * the old sentence about widening survived into a world where the opposite
+ * was true.
+ *
+ * MEASURED on a quiet host (load 7.9-13.7, no orphaned emulator), ten runs of
+ * the plugin-host lane at 120 s: 8 passed in 26-39 s, 2 failed at 125-126 s,
+ * both on `script timeout`, with nothing in between. That 86-second gap is
+ * this constant — either the probe got through or it blocked for the entire
+ * bound, once. The value below is short enough that the gap cannot exist.
  */
-const SCRIPT_TIMEOUT_MS = 120_000;
+const SCRIPT_TIMEOUT_MS = 5_000;
 
 /**
  * How long this client waits for one request, and it MUST exceed
