@@ -3125,6 +3125,15 @@ export async function delegateTask(
       readConnection(access as DelegationTarget, id),
     getProject: (access, slug) =>
       readExecutionProject(access, slug, orchestrationService),
+    // #2144 slice 2. Only the CURRENT Station answers: `getProject` above
+    // reads the selected Station, and this Station's config describes this
+    // host. Naming a remote Environment's project with the local default
+    // would attribute one host's setting to another's project, so a remote
+    // Environment keeps today's behavior — its project record, else shared.
+    getStationDefaultWorkspaceIsolation: async (access: EnvironmentAccess) =>
+      access.kind === 'current'
+        ? await orchestrationService.resolveStationDefaultWorkspaceIsolation?.()
+        : undefined,
     getProviderAdapter: (provider) =>
       orchestrationService.getProviderAdapter(provider),
   } satisfies Parameters<typeof resolveExecutionTarget>[1];
@@ -3435,6 +3444,15 @@ export async function executeExecutionTargetMessage(
       }
       return readExecutionProject(access, slug, orchestrationService);
     },
+    // #2144 slice 2. Only the CURRENT Station answers: `getProject` above
+    // reads the selected Station, and this Station's config describes this
+    // host. Naming a remote Environment's project with the local default
+    // would attribute one host's setting to another's project, so a remote
+    // Environment keeps today's behavior — its project record, else shared.
+    getStationDefaultWorkspaceIsolation: async (access: EnvironmentAccess) =>
+      access.kind === 'current'
+        ? await orchestrationService.resolveStationDefaultWorkspaceIsolation?.()
+        : undefined,
     getProviderAdapter: (provider) =>
       orchestrationService.getProviderAdapter(provider),
     ...(admission

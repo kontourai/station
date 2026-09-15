@@ -144,6 +144,12 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['workspaceCheckpoints'],
   },
   {
+    id: 'default-workspace-isolation',
+    title: 'New chat workspace',
+    section: 'station-config',
+    configKeys: ['defaultWorkspaceIsolation'],
+  },
+  {
     id: 'registry-url',
     title: 'Registry URL',
     section: 'station-config',

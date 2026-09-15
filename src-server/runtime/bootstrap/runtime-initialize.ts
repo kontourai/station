@@ -593,6 +593,10 @@ export async function initializeRuntime(
       configLoader.getProjectHomeDir(),
       storageAdapter,
     ),
+    // #2144 slice 2. Loaded per call, not captured: the operator's edit to
+    // this Station's default applies to the next chat, not the next restart.
+    resolveStationDefaultWorkspaceIsolation: async () =>
+      (await configLoader.loadAppConfig()).defaultWorkspaceIsolation,
     nativeDeclaredPullRequestResolver,
     // archive#1501: shadow `resolveProjectResource` against the
     // session-cwd seam over REAL traffic before slice 3c flips it. Dispatched
