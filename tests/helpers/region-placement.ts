@@ -48,6 +48,37 @@ export function surfaceDockShell(page: Page, title: string): Locator {
 }
 
 /**
+ * The region's TAB STRIP as the reader sees it: which panes it holds, in tab
+ * order, and which one is pressed (#2046 2b, `RegionChromeBar`).
+ *
+ * This is how a journey observes a pane SET, because a shell no longer names
+ * one: since #2046 2a a dock placement joins the region's panes instead of
+ * displacing its occupant, so a region holding Chat and Activity is a single
+ * `#chat-dock` shell labelled "Dock" whichever tab is selected (D3), and
+ * `surfaceDockShell` finds nothing for the pane that joined it.
+ *
+ * The strip renders only for a region holding two or more panes, on a fine
+ * pointer, with the region open (`RegionChromeBar`'s `showStrip`, D1/D2) — so
+ * asserting through it also pins that the region is expanded and that the
+ * device is not folded.
+ */
+export async function expectRegionTabs(
+  page: Page,
+  titles: readonly string[],
+  selected: string,
+): Promise<void> {
+  const strip = page.getByRole('tablist', { name: 'Region panes' });
+  await expect(
+    strip.getByRole('tab'),
+    `the region must hold ${titles.join(' and ')}, in that tab order`,
+  ).toHaveText([...titles]);
+  await expect(
+    strip.getByRole('tab', { name: selected, exact: true }),
+    `${selected} must be the pane the region shows`,
+  ).toHaveAttribute('aria-selected', 'true');
+}
+
+/**
  * Places a surface through the header's Layout picker — the shell's public
  * placement route on a fine pointer since #1552 D2 (`RegionToolbarControls`,
  * `useRegionSurfaceMenu`): one `role="group"` panel of per-surface
