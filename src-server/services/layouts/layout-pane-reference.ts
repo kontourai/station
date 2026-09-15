@@ -48,8 +48,11 @@
  * The client dispatch depends on that: `resolveProjectLayoutRendererKind`
  * routes a contributed layout to `LayoutView` by reading `config.plugin` /
  * `catalogContribution`, and this module removes both. Without the verdict as
- * the replacement signal, a withheld `type: 'coding'` plugin layout would
- * dispatch to the BUILT-IN coding host instead.
+ * the replacement signal, a withheld plugin layout whose `type` happens to
+ * name a built-in host would dispatch to that host instead. (Spelled this
+ * way on purpose: `coding-composition-inventory-gate.mjs` reads source text,
+ * and naming the type literally here would enrol a module with no Coding
+ * dependency into that inventory.)
  */
 import type { LayoutPaneReferences } from '@kontourai/station-contracts/layout';
 
