@@ -104,7 +104,7 @@ const DefaultLayout: AgentLayoutComponent = ({ layout, onShowChat }) => (
  * `workspacePaneAvailabilityPresentation.ts`'s `pane-not-available-to-viewer`
  * string, which names an operator and a place to go.
  */
-export const LAYOUT_TAB_UNAVAILABLE_MESSAGE = 'This tab is not available.';
+const LAYOUT_TAB_UNAVAILABLE_MESSAGE = 'This tab is not available.';
 
 // No `role="status"`: this is the slot's permanent content for this reader,
 // not something that becomes true while they are looking at it, and a live
