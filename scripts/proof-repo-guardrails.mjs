@@ -5629,40 +5629,46 @@ const pluginConfigRoutes = readRequiredSource(
 // line, and a byte-literal `includes` reads that as the route being gone.
 // Compare with the whitespace after `(` and `,` collapsed on both sides so
 // the pin still fails when the registration is removed or renamed.
+//
+// This was written for plugin-config-routes and applied only there, while
+// three sibling blocks below pinned the same `app.<method>('…'` shape
+// byte-literally. #2067 made `GET /check-updates` and `POST /reload`
+// operator-only, which wrapped both onto their own lines, and the lifecycle
+// block reported two routes "missing" that are registered five lines away —
+// red on main, and only the full-regression corpus runs this. Every block
+// that pins a call shape now compares layout-free.
 const collapseCallLayout = (text) => text.replace(/([(,])\s+/g, '$1');
-const pluginConfigRoutesLayoutFree = collapseCallLayout(pluginConfigRoutes);
-for (const requiredHelper of [
+/** Does `source` register everything `pins` names, ignoring call layout? */
+const missingCallPins = (source, pins) => {
+  const layoutFree = collapseCallLayout(source);
+  return pins.filter((pin) => !layoutFree.includes(collapseCallLayout(pin)));
+};
+for (const requiredHelper of missingCallPins(pluginConfigRoutes, [
   'export function registerPluginConfigRoutes',
   'pluginSettingsUpdates.add',
   "app.get('/:name/changelog'",
   "'/:name/overrides',",
-]) {
-  if (
-    !pluginConfigRoutesLayoutFree.includes(collapseCallLayout(requiredHelper))
-  ) {
-    errors.push(`plugin-config-routes.ts must include ${requiredHelper}.`);
-  }
+])) {
+  errors.push(`plugin-config-routes.ts must include ${requiredHelper}.`);
 }
 
 const pluginLifecycleRoutes = readRequiredSource(
   '../src-server/routes/plugins/plugin-lifecycle-routes.ts',
 );
-for (const requiredHelper of [
+for (const requiredHelper of missingCallPins(pluginLifecycleRoutes, [
   'export function registerPluginLifecycleRoutes',
   "app.get('/check-updates'",
   "app.post('/:name/update'",
   "app.delete('/:name'",
   "app.post('/reload'",
-]) {
-  if (!pluginLifecycleRoutes.includes(requiredHelper)) {
-    errors.push(`plugin-lifecycle-routes.ts must include ${requiredHelper}.`);
-  }
+])) {
+  errors.push(`plugin-lifecycle-routes.ts must include ${requiredHelper}.`);
 }
 
 const pluginInstallRoutes = readRequiredSource(
   '../src-server/routes/plugins/plugin-install-routes.ts',
 );
-for (const requiredHelper of [
+for (const requiredHelper of missingCallPins(pluginInstallRoutes, [
   'export function registerPluginInstallRoutes',
   "app.get('/',",
   "app.post('/preview'",
@@ -5670,10 +5676,8 @@ for (const requiredHelper of [
   '../../services/plugins/plugin-install-transaction.js',
   '../../services/plugins/plugin-source.js',
   './plugin-bundles.js',
-]) {
-  if (!pluginInstallRoutes.includes(requiredHelper)) {
-    errors.push(`plugin-install-routes.ts must include ${requiredHelper}.`);
-  }
+])) {
+  errors.push(`plugin-install-routes.ts must include ${requiredHelper}.`);
 }
 
 const pluginPublicRoutes = readRequiredSource(
@@ -5686,7 +5690,7 @@ if (
     'plugin-public-routes.ts must delegate server module request/context helpers to plugin-public-server.ts.',
   );
 }
-for (const requiredHelper of [
+for (const requiredHelper of missingCallPins(pluginPublicRoutes, [
   'export function registerPluginPublicRoutes',
   "app.get('/:name/bundle.js'",
   "app.get('/:name/bundle.css'",
@@ -5694,10 +5698,8 @@ for (const requiredHelper of [
   "app.post('/:name/grant'",
   "app.post('/:name/fetch'",
   "app.post('/fetch'",
-]) {
-  if (!pluginPublicRoutes.includes(requiredHelper)) {
-    errors.push(`plugin-public-routes.ts must include ${requiredHelper}.`);
-  }
+])) {
+  errors.push(`plugin-public-routes.ts must include ${requiredHelper}.`);
 }
 for (const retiredPluginPublicSnippet of [
   'function buildRequestContext(',
