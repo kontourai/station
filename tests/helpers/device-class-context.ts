@@ -1,6 +1,7 @@
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { requireE2EBrowserSessionCredential } from './e2e-operator-credential';
+import { deviceClassStatusTimeoutMs } from './playwright-test-timeout';
 
 /**
  * The two device classes `devicePresentation` can report (archive#3843 §1),
@@ -101,6 +102,21 @@ export interface DeviceClassContext {
  * into the other class would otherwise assert the wrong surface and pass —
  * exactly the shape of archive#3753, one layer down.
  */
+/**
+ * The running test's own timeout, or `undefined` outside a Playwright worker.
+ * Lazily imported for the same reason `local-ui-access-readiness.ts` does it:
+ * nothing in a vitest lane should pull the Playwright runner in, and the pure
+ * function above is unit-tested from one.
+ */
+async function currentTestTimeoutMs(): Promise<number | undefined> {
+  try {
+    const { test } = await import('@playwright/test');
+    return test.info().timeout;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function openDeviceClassContext(
   browser: Browser,
   baseURL: string,
@@ -131,7 +147,9 @@ export async function openDeviceClassContext(
     (response) =>
       response.url().includes('/api/system/status') &&
       response.status() === 200,
-    { timeout: 30_000 },
+    // A SHARE of the per-test budget, not a second copy of it. See
+    // `deviceClassStatusTimeoutMs`.
+    { timeout: deviceClassStatusTimeoutMs(await currentTestTimeoutMs()) },
   );
   await page.goto(baseURL);
   const presentation = (await (await statusResponse).json())
