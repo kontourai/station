@@ -814,9 +814,12 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   claim both keys while nothing here wrote the Station one. */}
               <PageRow
                 {...settingsRow('chat-font-size')}
-                // `savedConfig`, not `config`: this quotes what the Station
-                // has STORED, and an unsaved Station-default draft is not
-                // yet the default this device falls back to.
+                // `savedConfig`, not `config`, in all three places below: this
+                // row reports what this device falls back to, which is the
+                // STORED Station default. An unsaved draft of
+                // `defaultChatFontSize` is not in force anywhere yet, so
+                // moving the slider with it would show a fallback no chat is
+                // using.
                 description={`Font size for chat messages on this device (10–24px). Leave at the Station default of ${savedConfig.defaultChatFontSize ?? 14}px unless you want this device to differ.`}
                 control={
                   <div className="settings__range-row">
@@ -826,7 +829,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       type="range"
                       min="10"
                       max="24"
-                      value={chatFontSize ?? config.defaultChatFontSize ?? 14}
+                      value={
+                        chatFontSize ?? savedConfig.defaultChatFontSize ?? 14
+                      }
                       onChange={(e) =>
                         setDeviceSetting(
                           'chatFontSize',
@@ -835,7 +840,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       }
                     />
                     <span className="settings__range-value">
-                      {chatFontSize ?? config.defaultChatFontSize ?? 14}px
+                      {`${chatFontSize ?? savedConfig.defaultChatFontSize ?? 14}px`}
                     </span>
                     {chatFontSize != null && (
                       <button

@@ -1075,7 +1075,9 @@ describe('settings catalog completeness', () => {
       }) as HTMLButtonElement;
       expect(reset.disabled).toBe(true);
       expect(
-        screen.getByText('Save or discard your unsaved changes first.'),
+        screen.getByText(
+          'Save or discard your unsaved changes first. Discard is always available.',
+        ),
       ).toBeTruthy();
       fireEvent.click(reset);
       expect(updateConfig).not.toHaveBeenCalled();

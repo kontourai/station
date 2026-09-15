@@ -166,7 +166,8 @@ export function SystemSection({
         </span>
         {hasUnsavedChanges && (
           <span className="settings__field-hint">
-            Save or discard your unsaved changes first.
+            Save or discard your unsaved changes first. Discard is always
+            available.
           </span>
         )}
       </div>
