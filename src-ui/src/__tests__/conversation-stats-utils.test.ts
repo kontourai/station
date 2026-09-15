@@ -8,9 +8,10 @@ import {
 
 describe('conversation stats utils', () => {
   test('returns the expected context window color thresholds', () => {
-    expect(getContextWindowColor(10)).toBe('#10b981');
-    expect(getContextWindowColor(51)).toBe('#f59e0b');
-    expect(getContextWindowColor(81)).toBe('#ef4444');
+    // Token names, not pigments: the pigment is the theme's decision (#2140).
+    expect(getContextWindowColor(10)).toBe('var(--meter-low)');
+    expect(getContextWindowColor(51)).toBe('var(--meter-mid)');
+    expect(getContextWindowColor(81)).toBe('var(--meter-high)');
   });
 
   test('filters undefined breakdown entries and zero context files', () => {

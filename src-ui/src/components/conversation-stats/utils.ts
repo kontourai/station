@@ -1,7 +1,14 @@
 import type { ConversationStatsSnapshot, ModelStats } from './types';
 
+// Meter rungs are theme tokens (#2140). The literals this returned were the
+// dark values, painted through `style={}` where the theme cannot follow; on
+// light the mid and low rungs measured 2.2:1 and 2.5:1 against a white panel.
 export function getContextWindowColor(percentage: number): string {
-  return percentage > 80 ? '#ef4444' : percentage > 50 ? '#f59e0b' : '#10b981';
+  return percentage > 80
+    ? 'var(--meter-high)'
+    : percentage > 50
+      ? 'var(--meter-mid)'
+      : 'var(--meter-low)';
 }
 
 export function getContextBreakdownEntries(
