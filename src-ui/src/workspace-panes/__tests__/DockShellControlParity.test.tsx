@@ -156,23 +156,28 @@ function dockParam(): string | null {
 }
 
 /**
- * #1536 F folded the toolbar's five per-region buttons into ONE "Layout" control;
- * #1552 D2 made what it opens a placement PICKER — a `radiogroup` row per
- * surface whose segments are the regions it may occupy plus `Hidden`. A
- * placement is therefore the surface's row plus the region's segment, and the
- * panel is a `group` rather than a `menu` (the arrow keys belong to the rows).
+ * #2143: the toolbar is one TOGGLE per dock region, and an EMPTY region's
+ * control opens a menu offering the shell surfaces that declare it. Placing
+ * Chat into empty `right` is therefore that region's offer row, through the
+ * model's own `placeSurface`.
  */
-function layoutPicker() {
-  fireEvent.click(screen.getByRole('button', { name: 'Layout regions' }));
-  return screen.getByRole('group', { name: 'Layout regions' });
+function chooseRegionOffer(regionLabel: string, surfaceTitle: string) {
+  fireEvent.click(
+    screen.getByRole('button', { name: `${regionLabel} region` }),
+  );
+  const menu = screen.getByRole('menu', {
+    name: `Show in ${regionLabel} region`,
+  });
+  fireEvent.click(
+    within(menu).getByRole('menuitem', { name: `Show ${surfaceTitle} here` }),
+  );
 }
 
-/** Press one segment of one surface's row of the picker. */
-function chooseSegment(surfaceTitle: string, segmentLabel: string) {
-  const row = within(layoutPicker()).getByRole('radiogroup', {
-    name: `${surfaceTitle} placement`,
-  });
-  fireEvent.click(within(row).getByRole('radio', { name: segmentLabel }));
+/** Press a region's toggle: the region shows or hides, every pane with it. */
+function pressRegionToggle(regionLabel: string) {
+  fireEvent.click(
+    screen.getByRole('button', { name: `${regionLabel} region` }),
+  );
 }
 
 async function placeChatRight() {
@@ -188,7 +193,7 @@ async function placeChatRight() {
 
 function chooseChatForEmptyRight() {
   // The retired "Place Chat here" under a Right heading.
-  chooseSegment('Chat', 'Right');
+  chooseRegionOffer('Right', 'Chat');
 }
 
 function dockToggle(): () => void {
@@ -552,8 +557,8 @@ describe('the docked Chat gets the full dock chrome (station#4460)', () => {
       expect(document.querySelector('.chat-dock')).not.toBeNull();
     });
     expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
-    // The retired "Hide Chat" row: Chat's `Hidden` segment.
-    chooseSegment('Chat', 'Hidden');
+    // The retired "Hide Chat" row: the Bottom region's toggle (#2143).
+    pressRegionToggle('Bottom');
     await waitFor(() => {
       expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull();
     });

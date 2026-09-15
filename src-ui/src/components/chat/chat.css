@@ -128,106 +128,32 @@
   stroke-width: 1.5;
 }
 
-/* #1536 F: the one folded region control. `width: auto` overrides the square
-   glyph box above — this button carries a visible word, which is the whole
-   point of folding five unlabeled rectangles into it. */
+/* #1536 F: the folded region control a bottom-only device keeps (one dock, one
+   menu). `width: auto` so the box follows its content. */
 .app-toolbar__region-layout {
   width: auto;
-  gap: 6px;
-  padding: 6px 10px;
+  padding: 6px 8px;
   font-size: var(--text-base);
   font-family: inherit;
 }
 
-.app-toolbar__region-layout-label {
-  white-space: nowrap;
-}
-
-/* #1552 D2 retired the Layout menu's per-region groups of VERB rows ("Place
- * Activity here" / "Swap in Activity" / "Hide Chat") along with the hairline
- * that separated them and the scoped override that stopped the flat menu's own
- * hairline from ruling every row inside them. The menu is a placement PICKER
- * now: one row per surface, a segmented control of the regions it declares. See
- * `.region-placement` below.
- */
-
-/* One surface's row of the Layout picker: its label, then the segments for the
-   regions it may occupy plus Hidden. A `radiogroup`, not a `menu` row — the
-   arrangement is a choice per surface, and Tab moves between surfaces while the
-   arrow keys move within one (#1552 D2). */
-.region-placement {
-  min-width: 15rem;
-}
-
-.region-placement__row {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-6);
-  /* The same 12px inset every `.menu-row` uses, so the surface labels line up
-     with the rows of every other menu in the shell. */
-  padding: var(--space-2) var(--space-6);
-}
-
-.region-placement__surface {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-4);
-  color: var(--text-primary);
-  font-size: var(--text-md);
-  white-space: nowrap;
-}
-
-/* The 16px glyph slot `.menu-row__glyph` reserves, so a surface label starts
-   where a menu row's label starts. */
-.region-placement__glyph {
-  display: inline-flex;
-  width: var(--space-8);
-  height: var(--space-8);
-  flex: 0 0 var(--space-8);
-  align-items: center;
-  justify-content: center;
-  color: var(--text-tertiary);
-}
-
-.region-placement__segments {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: stretch;
-  padding: 2px;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: var(--bg-primary);
-}
-
-.region-placement__segment {
-  min-height: 24px;
-  padding: 0 var(--space-3);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--text-base);
-  white-space: nowrap;
-}
-
-.region-placement__segment:hover {
-  color: var(--text-primary);
-}
-
-/* The pressed segment is painted from `aria-checked`, which the component
-   derives from the region model — so the paint cannot disagree with what an
-   assistive technology is told, and there is no second "is this the active
-   one" flag to drift. */
-.region-placement__segment[aria-checked="true"] {
+/* #2143: one toggle per dock region. The pressed state is painted from
+   `aria-pressed`, which the component derives from the region model — so the
+   paint cannot disagree with what an assistive technology is told, and there
+   is no second "is this region open" flag to drift. `.is-pressed` is the same
+   fact for the glyph's fill; the attribute is the selector of record. */
+.app-toolbar__region-toggle[aria-pressed="true"] {
   background: var(--bg-selected);
   color: var(--accent-primary);
-  font-weight: var(--weight-semibold);
 }
+
+.app-toolbar__region-toggle[aria-pressed="true"]:hover {
+  color: var(--accent-primary);
+}
+
+/* #1552 D2's per-surface placement picker (`.region-placement*`) was retired
+   by #2143: the toolbar is per REGION again, and a surface's placement is
+   its tab's own menu (`.region-tabs__move-menu`, index.css). */
 
 @media (max-width: 480px) {
   /* station#1630: two declarations lived here that never applied — an

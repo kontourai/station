@@ -67,9 +67,7 @@
  * rest of the spec:
  * `nothing but the row floor moves` compares the coarse measurement against the
  * fine one field by field, so the radius, inset, glyph slot, label x and absent
- * rules are proven unchanged under touch without a second copy of their numbers
- * — and the Layout picker, which declares no floor of its own, is covered by
- * that comparison rather than silently dropping out of the coarse block.
+ * rules are proven unchanged under touch without a second copy of their numbers.
  *
  * #2113, SECOND HALF — THE BOARDS ROW MENU, an eighth member and the table's
  * last three rows. `ProjectSidebarBoards` adopted `.menu-surface`/`.menu-row`
@@ -227,6 +225,8 @@ import { OverflowMenu } from '../components/header/OverflowMenu';
 import { ProfileMenu } from '../components/header/ProfileMenu';
 import { RegionToolbarControls } from '../components/header/RegionToolbarControls';
 import { ProjectSidebarBoards } from '../components/project-sidebar/ProjectSidebarBoards';
+import type { DockShellChrome } from '../hooks/useDockShellChrome';
+import { RegionChromeBar } from '../workspace-panes/RegionChromeBar';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../');
@@ -268,18 +268,17 @@ const MENUS: readonly {
    */
   rowCount: number;
   /**
-   * The row elements to measure. `.menu-row` everywhere except the Layout
-   * picker, whose rows are `radiogroup`s holding a segmented control rather than
-   * commands — a different pattern, deliberately (#1552 D2), so it does not wear
-   * the command-row class. What it DOES share is the part this file is about: the
-   * surface spec, the 12px inset, the 16px glyph slot, and the label x.
+   * The row elements to measure. `.menu-row` for every member today; kept as a
+   * lever for a menu whose rows deliberately wear another pattern (#1552 D2's
+   * placement picker did, until #2143 retired it), which must still share the
+   * part this file is about: the surface spec, the 12px inset, the 16px glyph
+   * slot, and the label x.
    */
   rowSelector?: string;
   /**
-   * Whether the rows declare the family's own 32px `min-height`. False for the
-   * picker: its height comes from the segmented control inside it (which is
-   * measured against the same 32px floor as a laid-out box below), so a declared
-   * floor would be a second, redundant opinion about the same number.
+   * Whether the rows declare the family's own 32px `min-height`. A menu whose
+   * row height comes from a control inside it (the retired picker's segments)
+   * opts out here, and the opt-out list is pinned below.
    */
   rowsDeclareFloor?: boolean;
   /**
@@ -296,16 +295,15 @@ const MENUS: readonly {
   open: () => void;
 }[] = [
   {
-    name: 'the header’s Layout picker',
+    name: 'the header’s empty-region offer menu',
     selector: '.app-toolbar__region-menu',
+    // Chat and Activity, the shell surfaces declaring `left` (#2143).
     rowCount: 2,
-    rowSelector: '.region-placement__row',
-    rowsDeclareFloor: false,
     open: () => {
       harness.bottomOnly = false;
       harness.isMobile = false;
       render(<RegionToolbarControls />);
-      fireEvent.click(screen.getByRole('button', { name: 'Layout regions' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Left region' }));
     },
   },
   {
@@ -414,8 +412,86 @@ const MENUS: readonly {
       fireEvent.click(screen.getByLabelText('Move the dock'));
     },
   },
+  {
+    // #2143: a tab's move menu, one more folded menu in the region bar. Opened
+    // from the REAL strip's tab so the rows measured are the ones
+    // `RegionTabMoveMenu` renders. Activity declares every region, so from
+    // `bottom` it is offered Left, Right and Main.
+    name: 'a tab’s move menu',
+    selector: '.region-tabs__move-menu',
+    rowCount: 3,
+    open: () => {
+      render(
+        <RegionChromeBar
+          chrome={moveMenuChrome()}
+          groupId="region:bottom"
+          tabs={[
+            { surfaceId: 'chat', instanceId: 'workspace-chat', title: 'Chat' },
+            {
+              surfaceId: 'activity',
+              instanceId: 'workspace-activity',
+              title: 'Activity',
+            },
+          ]}
+          selectedSurfaceId="activity"
+          onSelectTab={() => {}}
+          onCloseTab={undefined}
+          onReorderTab={() => {}}
+          onMoveTab={() => {}}
+          leadingSlotRef={() => {}}
+          trailingSlotRef={() => {}}
+        />,
+      );
+      fireEvent.contextMenu(screen.getByRole('tab', { name: 'Activity' }));
+    },
+  },
   ...boardMenuEntries(),
 ];
+
+/** The chrome a bar needs to render its strip: open, fine pointer, bottom. */
+function moveMenuChrome(): DockShellChrome {
+  const noop = () => {};
+  return {
+    isDockOpen: true,
+    isDockMaximized: false,
+    dockMode: 'bottom',
+    dockHeight: 320,
+    dockWidth: 400,
+    setDockHeight: noop,
+    setDockWidth: noop,
+    previousDockHeight: 320,
+    setPreviousDockHeight: noop,
+    previousDockOpen: true,
+    setPreviousDockOpen: noop,
+    isDragging: false,
+    setIsDragging: noop,
+    dockSnap: 'half',
+    liveDragHeight: null,
+    setLiveDragHeight: noop,
+    isCollapsedDragPreview: false,
+    toolbarHeight: 46,
+    collapsedHeight: 38,
+    isMobile: false,
+    visualViewport: { style: {}, height: 800, offsetTop: 0 } as never,
+    availableDockSlotPlacements: ['left', 'bottom', 'right'],
+    effectiveDockSlotPlacement: 'bottom',
+    surfaceShortcutId: 'dock.toggle',
+    surfaceTitle: 'Activity',
+    canMaximize: true,
+    regionPanes: [],
+    selectRegionPane: noop,
+    ownsMaximizeShortcut: true,
+    applyDockSnap: noop,
+    commitDesktopBottomHeight: noop,
+    commitDockPlacement: noop,
+    restoreDockToDocked: noop,
+    onSidePanelResizePointerDown: noop,
+    onMobileHeaderDragPointerDown: noop,
+    onMobileHeaderDragClickCapture: noop,
+    activeProjectSlug: null,
+    setActiveProjectSlug: noop,
+  };
+}
 
 /**
  * The Boards row menu's three surfaces (#2113, second half), reached through
@@ -608,17 +684,10 @@ async function measure(
               rows: rows.map((row) => {
                 const style = getComputedStyle(row);
                 const rowRect = row.getBoundingClientRect();
-                const slot = row.querySelector(
-                  '.menu-row__glyph, .region-placement__glyph',
-                );
+                const slot = row.querySelector('.menu-row__glyph');
                 // The label's own left edge, from a Range over the text node
                 // that carries it — the thing a reader's eye lines up on.
-                // The row's own label: its direct text node, or — for the
-                // picker, whose label is wrapped so the segments can sit
-                // opposite it — the text node beside the glyph slot.
-                const labelHost =
-                  row.querySelector('.region-placement__surface') ?? row;
-                const label = [...labelHost.childNodes].find(
+                const label = [...row.childNodes].find(
                   (node) =>
                     node.nodeType === Node.TEXT_NODE &&
                     (node.textContent ?? '').trim().length > 0,
@@ -838,20 +907,15 @@ describe.skipIf(!chromiumAvailable)(
         // opt-out list is pinned: removing a menu from the touch floor has to
         // be an argued edit rather than a quiet one.
         //
-        // Its single member is the Layout picker, whose rows are `radiogroup`s
-        // rather than commands (#1552 D2) and declare no floor in either
-        // branch — and which does NOT clear 44 under touch. Measured by this
-        // fixture when this block was written: its rows lay out at 38px over
-        // 24px segments, identically in BOTH contexts, because neither
-        // `.region-placement__row` nor `.region-placement__segment` is reached
-        // by a coarse rule. That is reported as a finding on #2113 rather than
-        // fixed or asserted here; this file makes no claim that the picker
-        // clears a finger.
+        // Empty since #2143 retired the Layout picker (whose `radiogroup`
+        // rows declared no floor and did not clear 44 under touch — the
+        // #2113 finding that the retirement closes): every menu in the
+        // shell now declares the floor and is held to it below.
         expect(
           MENUS.filter((menu) => menu.rowsDeclareFloor === false).map(
             (menu) => menu.name,
           ),
-        ).toEqual(['the header’s Layout picker']);
+        ).toEqual([]);
 
         for (const [index, menu] of coarse.menus.entries()) {
           if (MENUS[index]?.rowsDeclareFloor === false) continue;
@@ -872,8 +936,7 @@ describe.skipIf(!chromiumAvailable)(
       });
 
       test('nothing but the row floor moves: the rest of the spec is the same under touch', () => {
-        // The counterpart to the assertion above, and what keeps the Layout
-        // picker in the coarse block rather than dropping out of it: every
+        // The counterpart to the assertion above: every
         // other measured property — radius, padding, group gap, inset, glyph
         // slot, label x, absent rules — is compared against the fine
         // measurement it already proved correct, so a touch context that
