@@ -30,6 +30,13 @@ written down (§4.1) and audited against every existing surface. Remaining
 longer-term architecture: the naming/cross-links slice (#5) and the
 plumbing-debt slice (#6).
 
+**Two of slice 3's surfaced fields have since moved.** `knowledgeStores` is
+`userFacing: false` and no longer rendered: its own registry description says
+turning it on changes nothing today, so the row was a control that persisted
+and did nothing. It stays settable through `station config set` until a
+consumer gates on it. `defaultChatFontSize` and `workspaceCheckpoints` went
+the other way and gained Station-configuration rows.
+
 ## 1. The problem
 
 Station's settings grew page-by-page, not model-first. The audit found:
