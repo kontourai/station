@@ -146,9 +146,17 @@ vi.mock('../contexts/ConfigContext', () => ({
   useConfig: () => configSnapshot.config,
   useConfigActions: () => ({ updateConfig, isSaving: false }),
 }));
+// `chatFontSize` is mutable because `null` (no device value) and a number
+// are two different rows: the "Use Station default" action exists only in
+// the second. `setDeviceSetting`/`resetDeviceSetting` are module-level spies
+// rather than fresh `vi.fn()`s per call, so a test can assert what a click
+// actually reached.
+let deviceChatFontSize: number | null = 14;
+const setDeviceSetting = vi.fn();
+const resetDeviceSetting = vi.fn();
 vi.mock('../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({
-    chatFontSize: 14,
+    chatFontSize: deviceChatFontSize,
     hapticsEnabled: true,
     accentColor: null,
     developerToolsEnabled: false,
@@ -159,7 +167,7 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
       draftsHidden: false,
     },
   }),
-  useDeviceSettingsActions: () => ({ setDeviceSetting: vi.fn() }),
+  useDeviceSettingsActions: () => ({ setDeviceSetting, resetDeviceSetting }),
 }));
 let isMobile = false;
 let isDesktop = false;
@@ -235,6 +243,9 @@ describe('settings catalog completeness', () => {
     updateAppLogLevel.mockReset();
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
     configProvenance = {};
+    deviceChatFontSize = 14;
+    setDeviceSetting.mockClear();
+    resetDeviceSetting.mockClear();
     window.history.replaceState({}, '', '/settings');
   });
 
@@ -1095,6 +1106,41 @@ describe('settings catalog completeness', () => {
       expect(confirm.disabled).toBe(true);
       fireEvent.click(confirm);
       expect(updateConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * The Appearance slider writes a DEVICE value that then shadows the
+   * Station default for this browser alone. "Use Station default" is the
+   * only way back, and it is meaningless before a device value exists — so
+   * the row offers it only then.
+   */
+  describe('Use Station default', () => {
+    test('is absent while this device follows the Station default', async () => {
+      deviceChatFontSize = null;
+      const { container } = await renderSettings();
+
+      expect(container.querySelector('#chatFontSize')).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: 'Use Station default' }),
+      ).toBeNull();
+    });
+
+    test('appears once this device has its own size, and clears it', async () => {
+      deviceChatFontSize = 18;
+      await renderSettings();
+
+      const button = screen.getByRole('button', {
+        name: 'Use Station default',
+      });
+      fireEvent.click(button);
+
+      // `reset`, not `setDeviceSetting(…, 14)`: writing the Station's
+      // current value would pin this device to today's number and stop it
+      // following a later change to the Station default.
+      expect(resetDeviceSetting).toHaveBeenCalledTimes(1);
+      expect(resetDeviceSetting).toHaveBeenCalledWith('chatFontSize');
+      expect(setDeviceSetting).not.toHaveBeenCalled();
     });
   });
 
