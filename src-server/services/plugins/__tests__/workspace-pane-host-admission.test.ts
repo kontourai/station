@@ -1159,16 +1159,35 @@ describe('Workspace Pane host invocation admission', () => {
   test('no Station default leaves a project that names no workspace mode shared, and provisioning stays refused', async () => {
     const prepared = await prepare();
     const provision = vi.fn(async () => ({ path: join(home, 'never') }));
-    await expect(
-      prepared.run(async (admission) => {
-        expect(admission.workspaceIsolationMode).toBe('shared');
+    // The mode is observed OUTSIDE the rejection assertion. An `expect()`
+    // inside the callback throws, the rejection wrapper catches it as "the
+    // promise rejected", and the test then passes whether the mode was
+    // 'shared' or anything else at all — the assertion would be reporting on
+    // itself.
+    let observed: string | undefined;
+    let caught: unknown;
+    await prepared
+      .run(async (admission) => {
+        observed = admission.workspaceIsolationMode;
         await admission.invoke(
           'provision',
           { threadId: 'shared-thread', agentId: slug, projectSlug },
           provision,
         );
-      }),
-    ).rejects.toThrow();
+      })
+      .catch((error) => {
+        caught = error;
+      });
+    expect(observed).toBe('shared');
+    // Named, not `toThrow()`: the admission's refusal reaches the caller
+    // WRAPPED — the project-storage mutation lease it was refused inside
+    // reports its own `file_storage_unavailable`, and the refusal is the
+    // cause. A bare toThrow() here passes for a storage fault, a fixture
+    // mistake, or a typo in the fixture's own setup.
+    expect(caught).toMatchObject({ code: 'file_storage_unavailable' });
+    expect((caught as { cause?: Error }).cause?.message).toBe(
+      'The captured Workspace Pane action is unavailable or changed before invocation.',
+    );
     expect(provision).not.toHaveBeenCalled();
   });
 

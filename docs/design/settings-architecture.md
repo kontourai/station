@@ -245,8 +245,9 @@ scope's only two sources. Both reuse the existing "is this a decision or the
 absence of one" tests rather than re-deriving them; a second definition of
 absent is how a surface ends up naming a source for a value no resolver uses.
 
-**Write path.** `PUT /projects/:slug` validates the three fields explicitly
-instead of letting AJV reject them later from the file layer. `null` on any of
+**Write path.** `PUT /projects/:slug` (and `POST /projects`) validate the
+three fields explicitly instead of letting the project file schema reject them
+later, from a document the caller never saw. `null` on any of
 them DROPS the override rather than storing it — the project file schema
 admits no null for any of the three, so a stored null would make the record
 unloadable. Changing `defaultWorkspaceIsolation` additionally requires the

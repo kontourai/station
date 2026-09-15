@@ -47,6 +47,11 @@ export interface SettingDefinition<
    * restated as a noun phrase ("Log level" → "Minimum log level" says
    * nothing the label did not).
    *
+   * That last part is a WRITING RULE, not a checked one: the shape test can
+   * only reject a help string that is EXACTLY its label (normalized), which
+   * catches the copy-paste and nothing else. "Minimum log level." would pass
+   * it. Review is what enforces the rule; the test is the floor.
+   *
    * Required, and `defineSetting` is generic over this interface, so the
    * compiler is the completeness guard: a new setting cannot be registered
    * without one. `description` stays the longer explanation (caveats,
@@ -151,7 +156,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'defaults',
     descriptor: { kind: 'string' },
     label: 'Default model',
-    help: 'New agents start on this model when you do not choose one for them.',
+    help: 'Bedrock agents and the Station-level fallback use this model when nothing more specific names one.',
     description: 'Default Bedrock model ID for new agents.',
     required: true,
   }),
@@ -232,7 +237,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'string' },
     label: 'Git remote',
-    help: 'Not read by anything today; kept for compatibility.',
+    help: 'Not read by anything today; nothing changes when you set it.',
     // Verified 2026-08-03 (station#1840 delivery review, M1): NOTHING reads or
     // writes this key today. The update path (system-update-routes.ts) reads
     // the remote straight off the checkout via `git remote get-url origin`,
@@ -436,7 +441,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'string' },
     label: 'Default embedding provider',
-    help: 'Not read by anything today; kept for compatibility.',
+    help: 'Not read by anything today; nothing changes when you set it.',
     // station#3239: typed and settable, but no project-creation path reads
     // it today — setting this has no effect until a consumer exists.
     description: 'Not currently applied. No project-creation path reads it.',
@@ -450,7 +455,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'string' },
     label: 'Default embedding model',
-    help: 'Not read by anything today; kept for compatibility.',
+    help: 'Not read by anything today; nothing changes when you set it.',
     // station#3239: same gap as `defaultEmbeddingProvider` — typed, never read.
     description: 'Not currently applied. No project-creation path reads it.',
     // …and why it is not rendered (epic #2144 slice 2): a Settings row for a
@@ -463,7 +468,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'string' },
     label: 'Default vector DB provider',
-    help: 'Not read by anything today; kept for compatibility.',
+    help: 'Not read by anything today; nothing changes when you set it.',
     // station#3239: same gap as `defaultEmbeddingProvider` — typed, never read.
     description: 'Not currently applied. No project-creation path reads it.',
     // …and why it is not rendered (epic #2144 slice 2): a Settings row for a

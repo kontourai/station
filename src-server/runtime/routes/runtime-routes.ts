@@ -3878,13 +3878,27 @@ export function configureRuntimeRoutes(
       context.rebindBuiltinAgents,
       context.getPluginFrameOrigin,
       // #2144 slice 2: one project record for `GET /config/app?project=`.
-      // `getProject` throws for an unknown slug; the route needs "absent" as
-      // a value so it can answer 404 rather than a 500.
+      // `getProject` throws for an unknown slug, and the route needs "absent"
+      // as a VALUE so it can answer 404. Only the not-found shape becomes
+      // absent: a corrupt `project.json` or an unreadable home is a read
+      // FAILURE, and swallowing it would report "no such project" for a
+      // project that exists — the route would tell the operator to check a
+      // name while the disk is the problem. Anything else rethrows into the
+      // route's own handler, which answers 500 with the message.
+      //
+      // DISCLOSED GAP, identical to `isProjectNotFound` in
+      // `routes/projects/projects.ts`: `IStorageAdapter` has no typed
+      // not-found error, so the two are told apart by matching the adapter's
+      // own message. Fail-safe in the direction that matters — an
+      // unrecognized message falls through to a 500, never to a false 404.
       (slug) => {
         try {
           return context.storageAdapter.getProject(slug);
-        } catch {
-          return undefined;
+        } catch (error) {
+          if (error instanceof Error && error.message.includes('not found')) {
+            return undefined;
+          }
+          throw error;
         }
       },
     ),

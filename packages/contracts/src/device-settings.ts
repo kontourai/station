@@ -342,6 +342,10 @@ export interface DeviceSettingDefinition<
    * holds the value it holds. It ends with a period, and it is not the label
    * restated as a noun phrase.
    *
+   * That last part is a WRITING RULE, not a checked one: the shape test can
+   * only reject a help string that is EXACTLY its label (normalized). Review
+   * enforces the rule; the test is the floor.
+   *
    * Required, and `defineDeviceSetting` is generic over this interface, so
    * the compiler is the completeness guard: a new device setting cannot be
    * registered without one. `description` stays the longer explanation and
