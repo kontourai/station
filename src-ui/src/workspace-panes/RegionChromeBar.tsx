@@ -134,10 +134,18 @@ function RegionTabMoveMenu({
   // backdrop" (#1386): a touch that becomes a scroll ends in `pointercancel`
   // and never clicks, so `click` alone left the menu open. `pointerdown` is
   // swallowed so the menu keeps focus — the same contract as the toolbar's
-  // `ToolbarMenuSurface`.
+  // `ToolbarMenuSurface`, with one difference: this menu opens on
+  // `contextmenu`, which Chromium fires on the PRESS of a right-click, so
+  // that gesture's release lands on a backdrop that did not exist when it
+  // began. A release dismisses only after this backdrop saw the press.
+  const pressed = useRef(false);
   const dismiss = (event: { stopPropagation: () => void }) => {
     event.stopPropagation();
     onClose();
+  };
+  const dismissIfPressed = (event: { stopPropagation: () => void }) => {
+    if (!pressed.current) return;
+    dismiss(event);
   };
   return createPortal(
     <>
@@ -149,9 +157,10 @@ function RegionTabMoveMenu({
         onPointerDown={(event) => {
           event.preventDefault();
           event.stopPropagation();
+          pressed.current = true;
         }}
-        onPointerUp={dismiss}
-        onPointerCancel={dismiss}
+        onPointerUp={dismissIfPressed}
+        onPointerCancel={dismissIfPressed}
         onClick={dismiss}
       />
       <div

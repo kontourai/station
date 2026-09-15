@@ -367,6 +367,12 @@ describe('the tab strip writes the model', () => {
     fireEvent.pointerCancel(backdrop);
     expect(screen.queryByRole('menu')).toBeNull();
     backdrop = open();
+    // The right-click that OPENED the menu releases onto this backdrop:
+    // Chromium fires `contextmenu` on the press, so the release arrives
+    // with no press of its own. That release must not dismiss.
+    fireEvent.pointerUp(backdrop);
+    expect(screen.queryByRole('menu')).not.toBeNull();
+    fireEvent(backdrop, createEvent.pointerDown(backdrop));
     fireEvent.pointerUp(backdrop);
     expect(screen.queryByRole('menu')).toBeNull();
     backdrop = open();
