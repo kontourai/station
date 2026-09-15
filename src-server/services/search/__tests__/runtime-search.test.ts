@@ -491,3 +491,94 @@ describe('runtime search HTTP composition', () => {
     );
   });
 });
+
+/**
+ * #2102: `unified-search-service.ts` takes its logger as a constructor input
+ * and imports the seam type-only, because a value import of `utils/logger.js`
+ * puts pino into the standalone Task-reader bundle that
+ * `server-build-portability` builds and executes, where pino's dynamic
+ * `require('node:os')` cannot resolve.
+ *
+ * That design has one failure mode worth a test of its own: an optional
+ * dependency nobody passes. The preservation would then be real in the unit
+ * suite and absent in the product, which is the shape this repository keeps
+ * finding. So this drives the composition the runtime actually uses and
+ * asserts the provider's failure reaches a logger through it.
+ */
+describe('the runtime composition gives unified search a logger', () => {
+  function readerFakes(searchOutcome: { state: string }) {
+    const provider = {
+      descriptor: {
+        id: 'station.tasks',
+        version: '1.0.0',
+        owner: { kind: 'station' as const, stationId: 'environment-a' },
+        kinds: ['task' as const],
+      },
+      search: async () => ({
+        version: UNIFIED_SEARCH_V1,
+        state: 'available' as const,
+        results: [],
+      }),
+    };
+    return {
+      tasks: {
+        createPersonalSearchReader: () => ({
+          provider,
+          whenReady: async () => {},
+          close: async () => {},
+          open: async () => ({ state: 'unavailable' }),
+          inspect: () => ({}),
+        }),
+      },
+      transcripts: {
+        createIsolatedTranscriptSearch: () => ({
+          whenReady: async () => {},
+          close: async () => {},
+          // The message provider in `runtime-search` throws
+          // `Search unavailable` for any non-available read. That is a real
+          // production path, and before #2102 the thrown error died in the
+          // provider catch.
+          search: async () => searchOutcome,
+          open: async () => ({ state: 'unavailable' }),
+          openSession: async () => ({ state: 'unavailable' }),
+        }),
+        retireIsolatedTranscriptSearchAfterFailedInitialization: () => {},
+      },
+    };
+  }
+
+  test('carries a provider throw out of the real composition', async () => {
+    const warn = vi.fn();
+    const fakes = readerFakes({ state: 'unavailable' });
+    const search = createRuntimeSearch({
+      stationId: 'environment-a',
+      tasks: fakes.tasks as never,
+      transcripts: fakes.transcripts as never,
+      logger: { warn } as never,
+    });
+
+    const outcome = await search.search(
+      { version: UNIFIED_SEARCH_V1, query: 'parser' },
+      {
+        authority: sessionReadAuthorityFromRequest('user', undefined, undefined),
+        current: () => true,
+      },
+    );
+
+    expect(outcome).toMatchObject({
+      sources: expect.arrayContaining([
+        expect.objectContaining({
+          providerId: 'station.messages',
+          reason: 'provider-timeout-or-error',
+        }),
+      ]),
+    });
+    expect(warn.mock.calls.map((call) => call[0])).toEqual([
+      'Unified search provider threw',
+    ]);
+    expect((warn.mock.calls[0]?.[1] as { err: Error }).err.message).toBe(
+      'Search unavailable',
+    );
+    await search.close();
+  });
+});

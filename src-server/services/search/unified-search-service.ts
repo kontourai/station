@@ -24,9 +24,23 @@ import {
   type UnifiedSearchScope,
   type UnifiedSearchSourceState,
 } from '@kontourai/station-contracts/unified-search';
-import { createLogger, type Logger } from '../../utils/logger.js';
+import type { Logger } from '../../utils/logger.js';
 
-const defaultLogger = createLogger({ name: 'unified-search' });
+/**
+ * The logger arrives as a constructor input and this import stays TYPE-ONLY,
+ * which is a packaging constraint rather than a style preference.
+ *
+ * `isolated-task-search.ts` imports `parseUnifiedSearchProviderPage` from this
+ * module, and `scripts/__tests__/server-build-portability.test.ts` bundles
+ * that file into a standalone ESM probe and executes it. A value import of
+ * `utils/logger.js` puts pino in that bundle, and pino reaches `node:os`
+ * through a dynamic `require` esbuild cannot express in ESM -- so the packaged
+ * Task reader dies at import with `Dynamic require of "node:os" is not
+ * supported`. The type disappears at build; a value import would not.
+ *
+ * `runtime-search.ts` -- the one production caller, and not part of any
+ * portable probe -- owns the real logger and passes it in.
+ */
 
 /**
  * The rejection this module raises for its own deadline and cancellation
@@ -648,13 +662,13 @@ function responseState(
 export class UnifiedSearchService {
   private readonly providers: readonly BoundProvider[];
   private readonly continuationKey = randomBytes(32);
-  private readonly logger: Logger;
+  private readonly logger: Logger | undefined;
 
   constructor(
     providers: readonly UnifiedSearchProvider[],
     options?: { logger?: Logger },
   ) {
-    this.logger = options?.logger ?? defaultLogger;
+    this.logger = options?.logger;
     const providerValues = denseDataArray(
       providers,
       UNIFIED_SEARCH_LIMITS.providers,
@@ -1031,14 +1045,14 @@ export class UnifiedSearchService {
         // longer wants is the normal path, and logging it would bury the two
         // conditions worth reading. A deadline is not routine.
         if (!cancelled) {
-          this.logger.warn('Unified search provider exceeded its deadline', {
+          this.logger?.warn('Unified search provider exceeded its deadline', {
             providerId: provider.descriptor.id,
             owner: provider.descriptor.owner,
             timeoutMs: UNIFIED_SEARCH_LIMITS.providerTimeoutMs,
           });
         }
       } else {
-        this.logger.warn('Unified search provider threw', {
+        this.logger?.warn('Unified search provider threw', {
           providerId: provider.descriptor.id,
           owner: provider.descriptor.owner,
           // Logged even when the search was cancelled: the provider still
