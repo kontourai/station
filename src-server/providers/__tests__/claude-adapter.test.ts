@@ -3677,28 +3677,47 @@ describe('ClaudeAdapter', () => {
     });
 
     test('adoptSession keeps the connection routing keys but drops the config-home key (archive#896 line)', async () => {
-      mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
-      mockQuery.mockReturnValue(createMockQuery([]));
-      const adapter = new ClaudeAdapter({
-        getConnectionEnv: async () => ({
+      // The operator's own config home is STUBBED rather than inherited.
+      //
+      // This assertion is about a CONNECTION being unable to choose the
+      // config home, and it used to read `toBeUndefined()` -- which conflates
+      // "the connection's value was dropped" with "there is no value at all".
+      // The second only holds on a machine where `CLAUDE_CONFIG_DIR` happens
+      // to be unset, so the test passed in CI and on an unconfigured laptop
+      // and failed for anyone running Claude Code with a config home set.
+      // The spawned child inherits the operator's, which is intended.
+      //
+      // Pinning the ambient value makes the real property observable in both
+      // directions: the operator's home survives, the connection's does not.
+      // This matches the source-affinity test below, which already stubs the
+      // ambient home and asserts a concrete value.
+      vi.stubEnv('CLAUDE_CONFIG_DIR', '/operator/own/home');
+      try {
+        mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter({
+          getConnectionEnv: async () => ({
+            ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+            CLAUDE_CONFIG_DIR: '/user/chosen/home',
+          }),
+        });
+
+        await adapter.adoptSession?.({
+          provider: 'claude',
+          threadId: 'station-child-connection-env',
+          sourceSessionId: 'vendor-source',
+          sourceKind: 'claude-transcript',
+          cwd: '/workspace/project',
+        });
+
+        const call = mockQuery.mock.calls.at(-1)?.[0];
+        expect(call.options.env).toMatchObject({
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
-          CLAUDE_CONFIG_DIR: '/user/chosen/home',
-        }),
-      });
-
-      await adapter.adoptSession?.({
-        provider: 'claude',
-        threadId: 'station-child-connection-env',
-        sourceSessionId: 'vendor-source',
-        sourceKind: 'claude-transcript',
-        cwd: '/workspace/project',
-      });
-
-      const call = mockQuery.mock.calls.at(-1)?.[0];
-      expect(call.options.env).toMatchObject({
-        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
-      });
-      expect(call.options.env.CLAUDE_CONFIG_DIR).toBeUndefined();
+        });
+        expect(call.options.env.CLAUDE_CONFIG_DIR).toBe('/operator/own/home');
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
 
     test('model discovery sees the connection env — a routed connection lists its own catalog', async () => {
