@@ -700,6 +700,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 onExport={exportSettings}
                 onImport={importSettings}
                 onResetToDefaults={() => setShowResetModal(true)}
+                hasUnsavedChanges={hasChanges}
               />
               <ExistingSetupImportStepper />
             </>

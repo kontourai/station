@@ -1059,6 +1059,28 @@ describe('settings catalog completeness', () => {
       });
     });
 
+    test('is refused while the form holds an unsaved draft', async () => {
+      // A reset writes what the SERVER stores; the draft is not part of it,
+      // so a Save afterwards would re-store the very values just cleared.
+      configProvenance = { terminalShell: { source: 'file' } };
+      await renderSettings();
+
+      fireEvent.change(screen.getByLabelText('Default max turns'), {
+        target: { value: '201' },
+      });
+      await waitFor(() => expect(screen.getByText('Unsaved changes')));
+
+      const reset = screen.getByRole('button', {
+        name: 'Reset Station settings',
+      }) as HTMLButtonElement;
+      expect(reset.disabled).toBe(true);
+      expect(
+        screen.getByText('Save or discard your unsaved changes first.'),
+      ).toBeTruthy();
+      fireEvent.click(reset);
+      expect(updateConfig).not.toHaveBeenCalled();
+    });
+
     test('refuses to confirm when no Station setting is stored', async () => {
       await renderSettings();
 
