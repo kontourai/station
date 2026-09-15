@@ -40,6 +40,24 @@ export interface SettingDefinition<
   scope: SettingScope;
   descriptor: SettingValueDescriptor;
   label: string;
+  /**
+   * One sentence stating the CONSEQUENCE of this setting for the person
+   * reading it — what is different about Station because the setting holds
+   * the value it holds. It ends with a period, and it is not the label
+   * restated as a noun phrase ("Log level" → "Minimum log level" says
+   * nothing the label did not).
+   *
+   * Required, and `defineSetting` is generic over this interface, so the
+   * compiler is the completeness guard: a new setting cannot be registered
+   * without one. `description` stays the longer explanation (caveats,
+   * defaults, encoding) and is still what `views/settings/registry-row.tsx`
+   * renders and what `settings-catalog.ts` searches; `help` is the short
+   * consequence sentence a later slice renders beside the control.
+   *
+   * Governed as user-facing copy by `scripts/noun-consistency-gate.mjs`'s
+   * `COPY_FIELD_NAMES`, exactly like `label`/`description`/`placeholder`.
+   */
+  help: string;
   description: string;
   /**
    * False when this persisted field is an implementation detail rather than
@@ -124,6 +142,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'defaults',
     descriptor: { kind: 'string', pattern: '^[a-z]{2}-[a-z]+-[0-9]{1}$' },
     label: 'AWS region',
+    help: 'Station picks this AWS region for Bedrock models when an agent does not name its own.',
     description: 'Default AWS region for Bedrock (e.g. us-east-1).',
     envFallback: 'AWS_REGION',
   }),
@@ -132,6 +151,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'defaults',
     descriptor: { kind: 'string' },
     label: 'Default model',
+    help: 'New agents start on this model when you do not choose one for them.',
     description: 'Default Bedrock model ID for new agents.',
     required: true,
   }),
@@ -140,6 +160,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'defaults',
     descriptor: { kind: 'string' },
     label: 'Invoke model',
+    help: 'The /invoke endpoint calls tools with this model.',
     description: 'Model used for the /invoke endpoint’s tool calling.',
     required: true,
   }),
@@ -148,6 +169,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'defaults',
     descriptor: { kind: 'string' },
     label: 'Structure model',
+    help: 'The /invoke endpoint produces structured output with this model.',
     description: 'Model used for the /invoke endpoint’s structured output.',
     required: true,
   }),
@@ -160,6 +182,7 @@ export const APP_SETTINGS_REGISTRY = [
     // (views/settings/AgentDefaultsSection.tsx) — the registry was carrying a
     // second, divergent name for one setting.
     label: 'Default agent instructions',
+    help: 'Every agent starts its context with these instructions, ahead of its own.',
     description: 'Global instructions prepended to every agent.',
   }),
   defineSetting({
@@ -167,6 +190,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'defaults',
     descriptor: { kind: 'composite' },
     label: 'Template variables',
+    help: 'Agent instructions can reference these values as {{key}} instead of repeating them.',
     description:
       'Custom template variables available as {{key}} in agent instructions.',
   }),
@@ -180,6 +204,7 @@ export const APP_SETTINGS_REGISTRY = [
       values: ['trace', 'debug', 'info', 'warn', 'error'],
     },
     label: 'Log level',
+    help: 'Station writes server log entries at this severity and above, and drops quieter ones.',
     description: 'Minimum severity Station writes to its server logs.',
   }),
   defineSetting({
@@ -187,6 +212,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'boolean' },
     label: 'Usage telemetry',
+    help: 'Station sends the documented anonymous product-usage events only while this is on and a telemetry endpoint is configured.',
     description:
       'Allow Station to send the documented anonymous product-usage events when this Station has a telemetry endpoint configured. No endpoint is configured by default, so nothing is sent.',
     defaultValue: true,
@@ -197,6 +223,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'string' },
     label: 'Registry URL',
+    help: 'The Registry page loads its catalog of agents, skills, and plugins from here.',
     description:
       'Where the Registry page loads its catalog of agents, skills, and plugins. Leave empty for the default catalog.',
   }),
@@ -205,6 +232,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'string' },
     label: 'Git remote',
+    help: 'Not read by anything today; kept for compatibility.',
     // Verified 2026-08-03 (station#1840 delivery review, M1): NOTHING reads or
     // writes this key today. The update path (system-update-routes.ts) reads
     // the remote straight off the checkout via `git remote get-url origin`,
@@ -212,12 +240,17 @@ export const APP_SETTINGS_REGISTRY = [
     // implements — say so plainly until a consumer exists.
     description:
       'Not currently used. Update checks read the git remote from the Station checkout itself.',
+    // …and why it is not rendered (epic #2144 slice 2): a Settings row for a
+    // key nothing reads is a control that persists and does nothing. It stays
+    // settable through `station config set`; the row returns with a consumer.
+    userFacing: false,
   }),
   defineSetting({
     key: 'terminalShell',
     scope: 'station',
     descriptor: { kind: 'string' },
     label: 'Terminal shell',
+    help: 'Terminal sessions Station opens for you start in this shell instead of the host default.',
     description: 'Shell used when Station spawns a terminal session.',
   }),
   defineSetting({
@@ -225,6 +258,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'boolean' },
     label: 'Disable default skill registries',
+    help: 'Only the skill registries you add yourself appear, and Station’s built-in catalogs are skipped.',
     description:
       'Skip Station’s built-in skill catalogs so only registries you add yourself appear.',
   }),
@@ -233,6 +267,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'composite' },
     label: 'Approval guardian',
+    help: 'A second model screens tool calls that would pause for your approval and clears the safe ones so they run uninterrupted.',
     // Mechanics: src-server/services/approvals/approval-guardian.ts, consumed
     // in agent-hooks.ts. An "allow" verdict skips the human approval pause in
     // BOTH modes; "deny" is blocked only in enforce mode; "defer" (and every
@@ -245,6 +280,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'boolean' },
     label: 'MCP UI host',
+    help: 'Tools that ship their own interface display it in chat inside a sandboxed frame instead of a plain unsupported notice.',
     // The MCP Apps host (docs/design/mcp-ui-host.md). Off makes a
     // successfully-resolved MCP UI fall back to the inert "unsupported" state.
     description:
@@ -257,6 +293,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'boolean' },
     label: 'Surface trust from Veritas evidence',
+    help: 'A project’s Trust panel fills in from the newest Veritas evidence record in its workspace.',
     description:
       'Fill in a project’s Trust panel from the newest Veritas evidence record in its workspace. Turn off to leave those evidence records out of Trust.',
     // Confirmed against runtime-routes.ts: `... !== false`.
@@ -267,6 +304,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'boolean' },
     label: 'Knowledge stores (preview)',
+    help: 'Turning this on changes nothing yet; it exists for Station development.',
     // K2 store-layer work: registers the KnowledgeStoreProvider seam alongside
     // the namespace-based knowledge path. No consumer gates on this flag yet
     // (K3+ work) — no read path is rewired and no data moves until an explicit
@@ -287,6 +325,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'boolean' },
     label: 'Workspace checkpoints',
+    help: 'After a restart, Station snapshots the session project’s directory in git each turn so later turns can be compared or recovered.',
     // station#2802: capture is wired through
     // wireTurnCheckpointCaptureWhenEnabled (turn-checkpoint-capture.ts) and
     // reads this at boot wiring time — a flip applies after a Station
@@ -302,6 +341,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'composite' },
     label: 'Layout sources',
+    help: 'After its next restart, Station offers projects only the layout sources named here.',
     description:
       'Controls which layouts Station offers to projects after its next restart. Standard offers built-in layouts and locally installed plugin layouts; Minimal offers no layout sources. This is application configuration, not build or distribution, and does not set the Registry URL.',
   }),
@@ -310,6 +350,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'number', min: 1, integer: true },
     label: 'Default max turns',
+    help: 'Station stops an agent run once it has taken this many steps.',
     description:
       'How many steps an agent may take in one run before Station stops it. Raise it for long-running work; lower it to rein in runaway agents.',
     // `resolveMaxSteps` (src-server/constants.ts) falls through
@@ -323,6 +364,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'number', min: 1, integer: true },
     label: 'Default max output tokens',
+    help: 'A model may produce at most this many tokens in one response, and empty means the model’s own limit applies.',
     description:
       'Cap on the tokens a model may produce in one response. Leave empty to use each model’s own limit.',
     placeholder: 'no cap',
@@ -340,6 +382,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'number', min: 10, max: 24 },
     label: 'Default chat font size',
+    help: 'Chat messages render at this size on devices that have not chosen their own.',
     description: 'Default font size for chat messages, in pixels.',
     // Confirmed against ChatDock.tsx: `appConfig?.defaultChatFontSize ??
     // CONFIG_DEFAULTS.defaultChatFontSize` (14).
@@ -354,6 +397,7 @@ export const APP_SETTINGS_REGISTRY = [
     // copy because internal config/provenance diagnostics may name the field;
     // renderers fail closed on `userFacing: false` below.
     label: 'Station engine framework (internal)',
+    help: 'An implementation detail of Station’s engine, not a product choice you need to make.',
     description:
       "Implementation framework used by Station's engine; not a user-facing product setting.",
     userFacing: false,
@@ -366,6 +410,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'string' },
     label: 'Default model connection',
+    help: 'Model options resolve through this model connection when nothing closer names one.',
     description: 'Default model connection used to resolve LLM model options.',
   }),
   defineSetting({
@@ -373,31 +418,47 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'string' },
     label: 'Default embedding provider',
+    help: 'Not read by anything today; kept for compatibility.',
     // station#3239: typed and settable, but no project-creation path reads
     // it today — setting this has no effect until a consumer exists.
     description: 'Not currently applied. No project-creation path reads it.',
+    // …and why it is not rendered (epic #2144 slice 2): a Settings row for a
+    // key nothing reads is a control that persists and does nothing. It stays
+    // settable through `station config set`; the row returns with a consumer.
+    userFacing: false,
   }),
   defineSetting({
     key: 'defaultEmbeddingModel',
     scope: 'station',
     descriptor: { kind: 'string' },
     label: 'Default embedding model',
+    help: 'Not read by anything today; kept for compatibility.',
     // station#3239: same gap as `defaultEmbeddingProvider` — typed, never read.
     description: 'Not currently applied. No project-creation path reads it.',
+    // …and why it is not rendered (epic #2144 slice 2): a Settings row for a
+    // key nothing reads is a control that persists and does nothing. It stays
+    // settable through `station config set`; the row returns with a consumer.
+    userFacing: false,
   }),
   defineSetting({
     key: 'defaultVectorDbProvider',
     scope: 'station',
     descriptor: { kind: 'string' },
     label: 'Default vector DB provider',
+    help: 'Not read by anything today; kept for compatibility.',
     // station#3239: same gap as `defaultEmbeddingProvider` — typed, never read.
     description: 'Not currently applied. No project-creation path reads it.',
+    // …and why it is not rendered (epic #2144 slice 2): a Settings row for a
+    // key nothing reads is a control that persists and does nothing. It stays
+    // settable through `station config set`; the row returns with a consumer.
+    userFacing: false,
   }),
   defineSetting({
     key: 'agentConnections',
     scope: 'station',
     descriptor: { kind: 'composite' },
     label: 'Agent connections',
+    help: 'The agents named here run on the connection recorded for them instead of the Station default.',
     // Persisted as a map keyed by agent slug.
     description: 'Connection overrides for individual agents.',
   }),
@@ -407,6 +468,7 @@ export const APP_SETTINGS_REGISTRY = [
     descriptor: { kind: 'string', pattern: CLEAN_ID_PATTERN.source },
     nullable: true,
     label: 'Built-in agent engine',
+    help: 'Station’s built-in agents run on the engine you pick here, and keep using it until you change it.',
     // station#1194. Serialized states (see the `nullable` doc above): absent =
     // re-derived each boot; null = explicitly Station, sticky; a connection
     // id = explicitly that engine, sticky. The description says what the
@@ -420,6 +482,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'composite' },
     label: 'Fleet contribution',
+    help: 'Your inference fleet may use the local model connections named here, and nothing else.',
     // station#1398.
     description:
       'Which local model connections this Station offers to your inference fleet. Nothing is contributed until you turn this on and name the connections.',
@@ -433,6 +496,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'composite' },
     label: 'Contribution',
+    help: 'Each shared space may use only the repos, agents, and model connections named for it here.',
     // station#1500. Persisted as a map keyed by scope key; the "fleet" key is
     // NOT read here — fleet contribution is its own setting above.
     description:
@@ -446,6 +510,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'composite' },
     label: 'About you',
+    help: 'Chats run by Station’s own engine include what you said about your role and the detail you want back.',
     // station#2652. Persisted as `{ role?, comfort? }` from the first-run
     // "About you" step. The description states the reach honestly: this is
     // read on Station's own engine's turn path only, and no default is
@@ -462,6 +527,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'composite' },
     label: 'First run',
+    help: 'Station offers the guided first run only while this records that you have neither finished nor skipped it.',
     // UX audit RT-02/SHELL-12. Persisted as `{ status, completedAt?,
     // skippedAt? }`. Registered so `PUT /config/app` accepts the write the
     // first-run chapter makes when it is completed or deferred; it has no

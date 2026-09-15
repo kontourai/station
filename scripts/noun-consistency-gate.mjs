@@ -667,15 +667,19 @@ export function scanFileContent(file, rawContent) {
 
 /**
  * The user-facing string fields of a `SettingDefinition`
- * (`packages/contracts/src/settings-registry.ts`): `label` and `description`
- * are required, `placeholder` optional. Every one of them reaches the screen
- * through `views/settings/registry-row.tsx` — `label` as both the row label
- * and the control's `aria-label`. Keep this list in step with that interface;
- * `scanCopySourceContent` fails closed on any field here whose value it cannot
- * read, so a shape it does not understand reds the gate instead of vanishing
- * from the scan.
+ * (`packages/contracts/src/settings-registry.ts`): `label`, `help` and
+ * `description` are required, `placeholder` optional. `label` and
+ * `description` reach the screen through `views/settings/registry-row.tsx` —
+ * `label` as both the row label and the control's `aria-label`. `help` is
+ * copy of the same kind, written for the same reader (epic #2144 slice 2),
+ * and is scanned from the day it is declared rather than from the day a
+ * surface first renders it: copy that escapes the gate until a consumer
+ * appears is copy nobody governs while it is being written. Keep this list in
+ * step with that interface; `scanCopySourceContent` fails closed on any field
+ * here whose value it cannot read, so a shape it does not understand reds the
+ * gate instead of vanishing from the scan.
  */
-const COPY_FIELD_NAMES = ['label', 'description', 'placeholder'];
+const COPY_FIELD_NAMES = ['label', 'help', 'description', 'placeholder'];
 
 /**
  * The scanner reads copy out of `defineSetting({ ... })` blocks rather than
