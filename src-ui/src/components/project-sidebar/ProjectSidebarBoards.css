@@ -104,36 +104,56 @@
   color: var(--text-primary);
 }
 
+/* WHERE the menu sits, and nothing else (#2083).
+
+   Its surface and its rows are `.menu-surface` / `.menu-row` from index.css —
+   the one spec #1552 D4 gave every menu in the app — so what used to live here
+   is gone: a 6px radius, a 4px pad, `bg-tertiary`, and `padding: 6px 8px` at
+   `--text-sm` rows, which measured about 26px against the 44px touch floor
+   src-ui/AGENTS.md requires. Adopting the shared row is what supplies that
+   floor, through `.menu-row.menu-row { min-height: 44px }` in the
+   `(pointer: coarse)` block of components/chat/chat.css. Writing a fourth
+   coarse block HERE would have re-answered a question the family already
+   answers, and answered it only for this menu.
+
+   `.menu-surface` owns the box; positioning stays with each menu, which is the
+   split that section documents. This one is in flow rather than portalled, so
+   its position is an inset. */
 .sidebar__board-menu {
-  display: flex;
-  flex-direction: column;
   margin: 2px 12px 6px;
-  padding: 4px;
-  border: 1px solid var(--border-subtle, var(--bg-hover));
-  border-radius: 6px;
+  /* The one declaration of the spec this menu cannot take. `.menu-surface`
+     fills with `--bg-secondary`, which is `--k-panel` — the EXACT fill of
+     `.sidebar` itself. Every other member of the family floats over content of
+     some other colour, where the surface's border and `--shadow-menu` are
+     enough; this one renders in flow on the panel it belongs to, so the spec's
+     fill would leave the menu reading as an unfilled outline drawn on the rail.
+     `--bg-tertiary` is `--k-panel-raised`, which is the raised-on-panel answer
+     the token set already has, and is what this menu used before #2083. */
   background: var(--bg-tertiary);
 }
 
-.sidebar__board-menu button {
-  padding: 6px 8px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
+/* The family's rows carry NO vertical padding (`.menu-row`, index.css): a 32px
+   `min-height` around one line of text needs none. This menu is the first
+   member whose labels can wrap — the project picker renders arbitrary project
+   names into a 240px rail — and a wrapped label fills the 32px row edge to
+   edge with only the surface's 4px gap outside it. Measured in Chromium
+   against the built assets during #2083's review.
+
+   Padding rather than truncation: a project name is how the user tells two
+   projects apart, and an ellipsis in a picker hides exactly the tail that
+   distinguishes them. This changes nothing for a single-line row, where the
+   32px floor still governs the height, and nothing on a coarse pointer, where
+   the 44px floor already leaves room. */
+.sidebar__board-menu .menu-row {
+  padding-block: var(--space-2);
 }
 
-.sidebar__board-menu button:hover,
-.sidebar__board-menu button:focus-visible {
-  background: var(--bg-hover);
-}
-
+/* The confirm's question, above the two rows that answer it. No bottom margin:
+   `.menu-surface`'s own `gap` separates it from them, and a margin on top of
+   that gap would space it differently from every other pair in the family. */
 .sidebar__board-confirm {
-  margin: 0 0 4px;
-  padding: 4px 8px;
+  margin: 0;
+  padding: 4px var(--space-6);
   color: var(--text-muted);
   font-size: var(--text-xs);
 }

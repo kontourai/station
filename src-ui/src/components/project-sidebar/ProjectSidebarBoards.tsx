@@ -5,9 +5,11 @@ import {
   usePromotePersonalLayoutMutation,
   useUpdatePersonalLayoutMutation,
 } from '@kontourai/station-sdk';
+import type { ReactNode, RefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { boardPath } from '../../app-shell/board-route';
 import { useProjects } from '../../contexts/ProjectsContext';
+import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { NEW_BOARD_REQUEST_EVENT } from './new-board-events';
 import './ProjectSidebarBoards.css';
 
@@ -81,6 +83,78 @@ export function nextBoardSlug(taken: readonly string[]): string {
   }
 }
 
+/**
+ * One of the row's three `role="menu"` surfaces (#2083).
+ *
+ * WHAT THIS DOES NOT DO is the point. #2083 found this menu declaring
+ * `role="menu"` without a single behaviour the role promises, and the fix
+ * named in the issue is to adopt the repo's shared menu primitive rather than
+ * grow five hand-rolled behaviours here. That primitive exists in two halves
+ * and neither is a component:
+ *
+ * - `useMenuFocus` (`src-ui/src/hooks/useMenuFocus.ts`) owns focus entry on
+ *   open, ArrowUp/ArrowDown/Home/End roving focus — gated on the container
+ *   DECLARING `role="menu"`, which is why the attribute below is load-bearing
+ *   rather than decorative — dismissal when focus leaves, and focus return to
+ *   whatever opened the menu. `ProjectSidebarBoards` calls it; this component
+ *   only receives the ref.
+ * - `.menu-surface` / `.menu-row` (`src-ui/src/index.css`, with the
+ *   coarse-pointer 44px row floor in `src-ui/src/components/chat/chat.css`)
+ *   own the visual spec. Adopting them is what answers #2083's target-size
+ *   half: the rows were `padding: 6px 8px` at `--text-sm`, about 26px, and the
+ *   floor now comes from the shared rule every other menu in the app already
+ *   uses instead of a fourth page-local coarse block.
+ *
+ * So all this wrapper adds is Escape, which every consumer of the primitive
+ * still hand-rolls — `TurnActionsMenu` on its container, `ProfileMenu` and
+ * `ChatDockHeaderMoreMenu` on a capturing document listener. The container
+ * form is used here because this menu is IN FLOW inside the rail rather than
+ * portalled, so there is no case where a key aimed at it is delivered
+ * anywhere else first. Closing is all Escape does: the focus return is
+ * `useMenuFocus`'s teardown, which is why nothing here touches the trigger.
+ *
+ * NO `.menu-row__glyph` SLOT on the rows below. The shared slot exists so
+ * menus a reader compares in sequence start their labels on one x
+ * (#1552 D4); every row here is a bare command, this surface sits in a 240px
+ * rail rather than beside the header and dock menus that share that x, and
+ * reserving 24px of a narrow menu to align with a menu that is never on
+ * screen with it would cost width to align nothing.
+ */
+function BoardRowMenu({
+  containerRef,
+  label,
+  onDismiss,
+  children,
+}: {
+  containerRef: RefObject<HTMLDivElement | null>;
+  label: string;
+  onDismiss: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      ref={containerRef}
+      className="menu-surface sidebar__board-menu"
+      role="menu"
+      aria-label={label}
+      // Required by `useMenuFocus`: a menu whose items have not arrived — the
+      // project picker with no projects — has nothing focusable, and the
+      // container is where focus lands instead.
+      tabIndex={-1}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        // The shell carries document-level Escape handlers; dismissing a menu
+        // is not also a request to close whatever is behind it.
+        event.stopPropagation();
+        onDismiss();
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function ProjectSidebarBoards({
   collapsed,
   isMobile,
@@ -91,6 +165,137 @@ export function ProjectSidebarBoards({
   const { data: boards } = usePersonalLayoutsQuery();
   const { projects } = useProjects();
   const [mode, setMode] = useState<RowMode>({ kind: 'rest' });
+
+  /**
+   * The menu-bearing half of `RowMode`. Three kinds render a `role="menu"`;
+   * `rest` and `rename` do not.
+   */
+  const menuOpen =
+    mode.kind === 'menu' ||
+    mode.kind === 'confirm-delete' ||
+    mode.kind === 'pick-project';
+
+  /**
+   * The open row's `⋯` button, so the outside-pointer dismissal below can tell
+   * "the user pressed somewhere else" from "the user pressed the control whose
+   * whole job is toggling this menu".
+   *
+   * Without the distinction the trigger stops closing the menu: the dismissal
+   * runs on `pointerdown` and sets `rest`, React re-renders, and the `click`
+   * that follows reaches a handler that now reads `open === false` and opens
+   * the menu straight back up.
+   */
+  const openTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  /**
+   * Returns to `rest` only from the kind that asked.
+   *
+   * Every one of these is handed to `useMenuFocus` as its `onClose`, and its
+   * focusout dismissal fires while the NEXT mode is already set: choosing
+   * Rename mounts and focuses an input, choosing Delete mounts the confirm.
+   * An unguarded `setMode({kind:'rest'})` there would close the surface the
+   * user just opened — on a phone that is the rename this menu exists to
+   * provide — so the close is conditional on the mode that owns it still being
+   * the current one. The same shape `TurnActionsMenu` uses.
+   *
+   * UNPROVEN HERE, deliberately recorded rather than left for the next reader
+   * to discover: replacing this with an unconditional reset leaves the whole
+   * of `ProjectSidebarBoards.test.tsx` green. The guard's REJECTION path needs
+   * a focusout that arrives while the mode has already moved on, and jsdom
+   * reaches neither half of that — it delivers no focusout when React removes
+   * a focused node, and by the time a test could dispatch one by hand the
+   * container's listener is gone with the effect that added it. The CLOSING
+   * path is covered (Escape routes through these callbacks). Proving the
+   * rejection needs a real engine: the mobile rename journey under
+   * `tests/`, where a live browser fires the blur this guard answers.
+   */
+  const closeKind = useCallback((kind: RowMode['kind']) => {
+    setMode((current) => (current.kind === kind ? { kind: 'rest' } : current));
+  }, []);
+  const closeMenu = useCallback(() => closeKind('menu'), [closeKind]);
+  const closeConfirm = useCallback(
+    () => closeKind('confirm-delete'),
+    [closeKind],
+  );
+  const closePicker = useCallback(() => closeKind('pick-project'), [closeKind]);
+
+  /**
+   * One `useMenuFocus` per menu kind rather than one for "a menu is open".
+   *
+   * The hook keys its effects on the open flag, so a single call shared by all
+   * three would not re-run when the user moves from the actions menu to the
+   * confirm: the flag stays true, focus never enters the surface that just
+   * mounted, and the roving-key listener stays bound to the container React
+   * has already removed. Three flags flip correctly across exactly those
+   * transitions. Only one row can be non-`rest` at a time — `mode` holds a
+   * single slug — so three refs are enough for a list of any length, which is
+   * also why these can be top-level hooks at all rather than one per row.
+   */
+  const menuRef = useMenuFocus<HTMLDivElement>(mode.kind === 'menu', closeMenu);
+  const confirmRef = useMenuFocus<HTMLDivElement>(
+    mode.kind === 'confirm-delete',
+    closeConfirm,
+  );
+  const pickerRef = useMenuFocus<HTMLDivElement>(
+    mode.kind === 'pick-project',
+    closePicker,
+  );
+
+  /**
+   * Outside-pointer dismissal.
+   *
+   * `useMenuFocus`'s focusout covers leaving by keyboard, and in a browser it
+   * covers a press on a focusable element elsewhere. It does NOT cover a press
+   * on ordinary page furniture — the rail's own background, a section label —
+   * because that moves focus to `<body>` in some engines and nowhere at all in
+   * others. A menu that only closes when focus happens to move is a menu that
+   * stays open over the app.
+   *
+   * `pointerdown` in the capture phase, following `InfoTip` and
+   * `DockPlacementControl`: the portalled header menus dismiss with a
+   * full-viewport `.header-menu__dismiss-backdrop` button, which is not
+   * available to a menu that renders in flow inside a scrolling rail.
+   */
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (openTriggerRef.current?.contains(target)) return;
+      for (const ref of [menuRef, confirmRef, pickerRef]) {
+        if (ref.current?.contains(target)) return;
+      }
+      setMode({ kind: 'rest' });
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () =>
+      document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [menuOpen, menuRef, confirmRef, pickerRef]);
+
+  /**
+   * Collapsing the rail closes any open menu (#2083).
+   *
+   * `.sidebar--collapsed .sidebar__board-menu` hides the menu and the trigger
+   * stops rendering, while `mode` stayed set — so the section kept a mode
+   * whose only exits were inside a surface nobody could see, and re-expanding
+   * reopened a menu the user had not asked for. Closing on the transition is
+   * what makes the collapsed rail a state with no unreachable modes in it.
+   *
+   * Scoped to the menu kinds. `rename` is deliberately left alone: its input
+   * commits on blur, and clearing the mode here would unmount that input
+   * instead, turning a commit into a discard — a behaviour change this issue
+   * did not ask for.
+   */
+  useEffect(() => {
+    if (!collapsed) return;
+    setMode((current) =>
+      current.kind === 'menu' ||
+      current.kind === 'confirm-delete' ||
+      current.kind === 'pick-project'
+        ? { kind: 'rest' }
+        : current,
+    );
+  }, [collapsed]);
 
   /**
    * Focuses the rename input WHEN IT MOUNTS.
@@ -370,6 +575,12 @@ export function ProjectSidebarBoards({
               {!collapsed && !renaming && (
                 <button
                   type="button"
+                  // Only the OPEN row's trigger is recorded, which is all the
+                  // outside-pointer dismissal needs and is what keeps a list of
+                  // forty Boards from leaving thirty-nine stale nodes behind:
+                  // the row whose menu is open is the only one whose press must
+                  // not be read as "somewhere else".
+                  ref={open ? openTriggerRef : undefined}
                   className="sidebar__board-menu-trigger"
                   aria-label={`${board.name} actions`}
                   aria-haspopup="menu"
@@ -387,9 +598,14 @@ export function ProjectSidebarBoards({
               )}
             </div>
             {open && mode.kind === 'menu' && (
-              <div className="sidebar__board-menu" role="menu">
+              <BoardRowMenu
+                containerRef={menuRef}
+                label={`${board.name} actions`}
+                onDismiss={closeMenu}
+              >
                 <button
                   type="button"
+                  className="menu-row"
                   role="menuitem"
                   onClick={() => setMode({ kind: 'rename', slug: board.slug })}
                 >
@@ -397,6 +613,7 @@ export function ProjectSidebarBoards({
                 </button>
                 <button
                   type="button"
+                  className="menu-row"
                   role="menuitem"
                   onClick={() =>
                     setMode({ kind: 'pick-project', slug: board.slug })
@@ -406,6 +623,7 @@ export function ProjectSidebarBoards({
                 </button>
                 <button
                   type="button"
+                  className="menu-row"
                   role="menuitem"
                   onClick={() =>
                     setMode({ kind: 'confirm-delete', slug: board.slug })
@@ -413,17 +631,22 @@ export function ProjectSidebarBoards({
                 >
                   Delete
                 </button>
-              </div>
+              </BoardRowMenu>
             )}
             {open && mode.kind === 'confirm-delete' && (
               // Deleting is the one irreversible row action, and a Board can
               // hold a whole arrangement. The confirm lives in the same menu
               // rather than a Dialog so the panel stays free of dialog chrome
               // it would otherwise load eagerly.
-              <div className="sidebar__board-menu" role="menu">
+              <BoardRowMenu
+                containerRef={confirmRef}
+                label={`Delete ${board.name}`}
+                onDismiss={closeConfirm}
+              >
                 <p className="sidebar__board-confirm">Delete {board.name}?</p>
                 <button
                   type="button"
+                  className="menu-row"
                   role="menuitem"
                   onClick={() => {
                     setMode({ kind: 'rest' });
@@ -434,15 +657,20 @@ export function ProjectSidebarBoards({
                 </button>
                 <button
                   type="button"
+                  className="menu-row"
                   role="menuitem"
                   onClick={() => setMode({ kind: 'rest' })}
                 >
                   Cancel
                 </button>
-              </div>
+              </BoardRowMenu>
             )}
             {open && mode.kind === 'pick-project' && (
-              <div className="sidebar__board-menu" role="menu">
+              <BoardRowMenu
+                containerRef={pickerRef}
+                label={`Move ${board.name} to a project`}
+                onDismiss={closePicker}
+              >
                 {/* Every project this Station holds. Station has no
                     per-project write authorization today — `GET /api/projects`
                     is the raw project listing and no project layout handler
@@ -468,6 +696,7 @@ export function ProjectSidebarBoards({
                     <button
                       key={project.slug}
                       type="button"
+                      className="menu-row"
                       role="menuitem"
                       onClick={() => {
                         setMode({ kind: 'rest' });
@@ -481,7 +710,7 @@ export function ProjectSidebarBoards({
                     </button>
                   ))
                 )}
-              </div>
+              </BoardRowMenu>
             )}
           </div>
         );
