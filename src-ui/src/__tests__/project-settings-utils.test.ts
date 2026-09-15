@@ -14,6 +14,7 @@ describe('project-settings utils', () => {
         icon: undefined,
         description: undefined,
         defaultModel: undefined,
+        defaultProviderId: undefined,
         workingDirectory: undefined,
         agents: undefined,
       } as any),
@@ -22,6 +23,10 @@ describe('project-settings utils', () => {
       icon: '',
       description: '',
       defaultModel: '',
+      // Empty string, not absent: the pair is what a project default needs,
+      // and an `undefined` would be dropped by JSON.stringify on save, so
+      // clearing the connection would never reach the server.
+      defaultProviderId: '',
       defaultWorkspaceIsolation: 'shared',
       defaultEnvironment: { kind: 'current' },
       workingDirectory: '',
