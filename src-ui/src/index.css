@@ -1705,8 +1705,9 @@ button:hover {
  * width stay with each menu, because where a menu opens is genuinely its own
  * business and is the one thing they do not share (see
  * `.chat-dock__more-menu`). `src-ui/src/__tests__/menu-primitive.cascade.test.tsx`
- * measures all SEVEN — the six above and ProfileMenu — in one real Chromium
- * cascade.
+ * measures all EIGHT — the six above, ProfileMenu, and the Boards row menu,
+ * whose three surfaces are three entries — in one real Chromium cascade, at
+ * both a fine and a coarse pointer.
  *
  * WHAT IS DELIBERATELY ABSENT: per-row dividers. A rule between every row
  * turns a list into a ruled table in which the ONE division that carries
