@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-15T21:22:59Z | nightly-desktop | 0.1.11-nightly.2449.5 | `b9f05fe` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35020162279) |
 | 2026-09-15T21:22:56Z | nightly-android | 0.1.11-nightly.2449.5 | `b9f05fe` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35020162279) |
 | 2026-09-15T21:16:27Z | nightly-npm | 0.6.0-nightly.2449.35020162279 | `b9f05fe` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35020162279) |
 | 2026-09-15T17:35:14Z | nightly-desktop | 0.1.11-nightly.2449.4 | `e8c0b1b` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/34997120268) |
@@ -89,6 +90,32 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-15T21:22:59Z · nightly-desktop · 0.1.11-nightly.2449.5
+
+- Ship SHA: `b9f05fe2666c46b9e882726a758a3c6f5a5a3a8a`
+- Artifact built at: `2026-09-15T20:40:09.548Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 35020162279)
+
+### Changelog
+
+Commits since `e8c0b1b` ([full sha](https://github.com/kontourai/station/commit/e8c0b1bfee9de86703c91b7bd136d229ddab056c)):
+
+**Fixes**
+
+- [#2142](https://github.com/kontourai/station/pull/2142) fix(ui): the light theme stops rendering dark-theme literals
+- [#2141](https://github.com/kontourai/station/pull/2141) fix(ui): three components stop painting dark-theme literals the light theme cannot reach
+- [#2138](https://github.com/kontourai/station/pull/2138) fix(scripts): taskkill's process-not-found status stops being a termination failure
+- [#2139](https://github.com/kontourai/station/pull/2139) fix(tests): the desktop lane's per-attempt bound drops below the budgets wrapping it
+
+**CI / workflow**
+
+- [#2135](https://github.com/kontourai/station/pull/2135) ci(regression): a red gate enumerates every failure, not just the first
+
+**Other**
+
+- [#2137](https://github.com/kontourai/station/pull/2137) test(claude): two adapter assertions stop depending on the developer's environment
 
 ## 2026-09-15T21:22:56Z · nightly-android · 0.1.11-nightly.2449.5
 
