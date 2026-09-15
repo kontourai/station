@@ -29,8 +29,9 @@
  * the real route registrations in `src-server/routes/plugins/` and fails in
  * both directions:
  * a literal segment Station mounts and this list does not name, and a name
- * here that Station no longer mounts. That scan is why this list has seven
- * entries rather than the two an unaided reading would produce.
+ * here that Station no longer mounts. That scan is why this list has eight
+ * entries rather than the two an unaided reading would produce — `visibility`
+ * (#2067) is the most recent one it caught.
  */
 export const STATION_RESERVED_PLUGIN_IDENTITIES = Object.freeze([
   'check-updates',
@@ -40,6 +41,7 @@ export const STATION_RESERVED_PLUGIN_IDENTITIES = Object.freeze([
   'install',
   'preview',
   'reload',
+  'visibility',
 ]);
 
 function isReservedPluginIdentity(pluginName: string): boolean {

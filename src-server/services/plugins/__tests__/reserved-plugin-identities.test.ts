@@ -80,7 +80,7 @@ describe('STATION_RESERVED_PLUGIN_IDENTITIES', () => {
     ).toEqual([]);
   });
 
-  it('has the seven entries the scan produces, named independently', () => {
+  it('has the eight entries the scan produces, named independently', () => {
     // Pinned by hand ON PURPOSE, and the reason is narrower than "the
     // derivations cannot see a removal" — verified by injection, the first
     // one CAN: it iterates the scanned segments and reports any the constant
@@ -89,7 +89,7 @@ describe('STATION_RESERVED_PLUGIN_IDENTITIES', () => {
     // What neither derivation can do is notice the SCAN going quiet. Both
     // are stated relative to `declaredLiteralFirstSegments()`, and its only
     // self-guard is `size >= 2` plus two named segments — so a regex that
-    // stopped matching four of the seven would leave both green against a
+    // stopped matching four of the eight would leave both green against a
     // constant that had lost the same four. This assertion is the one fact
     // in the file that does not depend on the scan working.
     expect([...STATION_RESERVED_PLUGIN_IDENTITIES]).toEqual([
@@ -100,6 +100,7 @@ describe('STATION_RESERVED_PLUGIN_IDENTITIES', () => {
       'install',
       'preview',
       'reload',
+      'visibility',
     ]);
   });
 });
