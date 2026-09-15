@@ -35,7 +35,6 @@ describe('SettingsManageSection', () => {
     ['Guidance', '/guidance'],
     ['Connections', '/connections'],
     ['Registry', '/registry'],
-    ['Review', '/review-queue'],
     ['Plugins', '/plugins'],
     ['Schedule', '/schedule'],
   ])('drives %s to %s', (label, route) => {
@@ -72,7 +71,6 @@ describe('SettingsManageSection', () => {
       'Guidance',
       'Connections',
       'Registry',
-      'Review',
       'Plugins',
       'Schedule',
     ]);
