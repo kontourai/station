@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-15T15:59:32Z | nightly-npm | 0.6.0-nightly.2449.34987268974 | `1701011` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/34987268974) |
 | 2026-09-15T12:24:07Z | nightly-desktop | 0.1.11-nightly.2449.2 | `9f05d7a` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/34963886217) |
 | 2026-09-15T12:24:03Z | nightly-android | 0.1.11-nightly.2449.2 | `9f05d7a` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/34963886217) |
 | 2026-09-15T12:15:41Z | nightly-npm | 0.6.0-nightly.2449.34963886217 | `9f05d7a` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/34963886217) |
@@ -81,6 +82,30 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-15T15:59:32Z · nightly-npm · 0.6.0-nightly.2449.34987268974
+
+- Ship SHA: `1701011de1ca23ef0fbf73f259fb3a786752ad01`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2449.34987268974 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `9f05d7a` ([full sha](https://github.com/kontourai/station/commit/9f05d7aa0dd78c227e53250fed973a39a3cec0c8)):
+
+**Fixes**
+
+- [#2132](https://github.com/kontourai/station/pull/2132) fix(backlog): a truncated read of the backlog stops passing as a clean one
+- [#2129](https://github.com/kontourai/station/pull/2129) fix(search): a provider that throws stops being indistinguishable from one that timed out
+
+**Docs**
+
+- [#2130](https://github.com/kontourai/station/pull/2130) docs(ui): the Manage group stops advertising a destination #2065 retired
+
+**Other**
+
+- [#2125](https://github.com/kontourai/station/pull/2125) test(ui): the Boards row menu joins the cascade fixture, and a dropped row stops being invisible (#2113)
 
 ## 2026-09-15T12:24:07Z · nightly-desktop · 0.1.11-nightly.2449.2
 
