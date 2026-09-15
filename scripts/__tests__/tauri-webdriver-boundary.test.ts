@@ -328,29 +328,34 @@ describe('Tauri embedded WebDriver boundary', () => {
     function driverThatOnlyHonoursThePostCommand(adopts: boolean) {
       const calls: string[] = [];
       let script = 30_000;
-      vi.stubGlobal('fetch', (url: string, init?: { method?: string; body?: string }) => {
-        const path = String(url).replace('http://127.0.0.1:4444', '');
-        const method = init?.method ?? 'GET';
-        calls.push(`${method} ${path}`);
-        if (path === '/status') return Promise.resolve(ok({}));
-        if (path === '/session') {
-          // The capability is echoed back UNAPPLIED, exactly as observed.
-          return Promise.resolve(
-            ok({
-              sessionId: 'session-under-test',
-              capabilities: { timeouts: { script: 30_000 } },
-            }),
-          );
-        }
-        if (path === '/session/session-under-test/timeouts') {
-          if (method === 'POST') {
-            if (adopts) script = JSON.parse(init?.body ?? '{}').script;
-            return Promise.resolve(ok(null));
+      vi.stubGlobal(
+        'fetch',
+        (url: string, init?: { method?: string; body?: string }) => {
+          const path = String(url).replace('http://127.0.0.1:4444', '');
+          const method = init?.method ?? 'GET';
+          calls.push(`${method} ${path}`);
+          if (path === '/status') return Promise.resolve(ok({}));
+          if (path === '/session') {
+            // The capability is echoed back UNAPPLIED, exactly as observed.
+            return Promise.resolve(
+              ok({
+                sessionId: 'session-under-test',
+                capabilities: { timeouts: { script: 30_000 } },
+              }),
+            );
           }
-          return Promise.resolve(ok({ implicit: 0, pageLoad: 300_000, script }));
-        }
-        throw new Error(`unexpected ${method} ${path}`);
-      });
+          if (path === '/session/session-under-test/timeouts') {
+            if (method === 'POST') {
+              if (adopts) script = JSON.parse(init?.body ?? '{}').script;
+              return Promise.resolve(ok(null));
+            }
+            return Promise.resolve(
+              ok({ implicit: 0, pageLoad: 300_000, script }),
+            );
+          }
+          throw new Error(`unexpected ${method} ${path}`);
+        },
+      );
       return calls;
     }
 
