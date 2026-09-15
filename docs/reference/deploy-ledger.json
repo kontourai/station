@@ -1,5 +1,39 @@
 [
   {
+    "timestampUtc": "2026-09-15T16:06:17Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2449.3",
+    "sha": "1701011de1ca23ef0fbf73f259fb3a786752ad01",
+    "artifactBuiltAt": "2026-09-15T15:24:46.172Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34987268974",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 34987268974)"
+    ],
+    "changelog": {
+      "previousSha": "9f05d7aa0dd78c227e53250fed973a39a3cec0c8",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2132](https://github.com/kontourai/station/pull/2132) fix(backlog): a truncated read of the backlog stops passing as a clean one",
+          "[#2129](https://github.com/kontourai/station/pull/2129) fix(search): a provider that throws stops being indistinguishable from one that timed out"
+        ],
+        "ci": [],
+        "docs": [
+          "[#2130](https://github.com/kontourai/station/pull/2130) docs(ui): the Manage group stops advertising a destination #2065 retired"
+        ],
+        "other": [
+          "[#2125](https://github.com/kontourai/station/pull/2125) test(ui): the Boards row menu joins the cascade fixture, and a dropped row stops being invisible (#2113)"
+        ]
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
     "timestampUtc": "2026-09-15T16:06:14Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2449.3",
