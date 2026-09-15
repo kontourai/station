@@ -32,6 +32,7 @@ import {
   expectBoxWithinViewport,
   expectRegionTabs,
   FIRST_RENDER_TIMEOUT_MS,
+  moveRegionThroughGrab,
   moveTabToRegion,
   showSurfaceInEmptyRegion,
   surfaceDockShell,
@@ -93,13 +94,11 @@ test.describe('Activity surface deep link', () => {
     // only for a region holding two or more panes — so Activity first joins
     // Chat's region through the region bar's own grab (every pane of `right`
     // moves; Activity is the only one), then its tab moves to Main.
-    await surfaceDockShell(page, 'Activity')
-      .getByRole('button', { name: 'Move the dock', exact: true })
-      .click();
-    await page
-      .getByRole('menu', { name: 'Dock placement' })
-      .getByRole('menuitemradio', { name: 'Bottom', exact: true })
-      .click();
+    await moveRegionThroughGrab(
+      page,
+      surfaceDockShell(page, 'Activity'),
+      'Bottom',
+    );
     await expectRegionTabs(page, ['Chat', 'Activity'], 'Activity');
     await moveTabToRegion(page, 'Activity', 'Main');
 

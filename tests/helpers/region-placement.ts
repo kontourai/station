@@ -166,6 +166,29 @@ export async function moveTabToRegion(
 }
 
 /**
+ * Moves a whole REGION — every pane, in order, with its selection — through
+ * the region bar's ⋮⋮ grab (`moveRegionPanes`, #2046 2b). The grab is
+ * revealed by hovering the bar (#1552 D3: hidden until the row is engaged),
+ * so the hover is part of the gesture, not a workaround.
+ */
+export async function moveRegionThroughGrab(
+  page: Page,
+  shell: Locator,
+  regionLabel: 'Left' | 'Bottom' | 'Right',
+): Promise<void> {
+  await shell.locator('.chat-dock__header').hover();
+  await shell
+    .getByRole('button', { name: 'Move the dock', exact: true })
+    .click();
+  const menu = page.getByRole('menu', { name: 'Dock placement' });
+  await expect(menu).toBeVisible();
+  await menu
+    .getByRole('menuitemradio', { name: regionLabel, exact: true })
+    .click();
+  await expect(menu).toBeHidden();
+}
+
+/**
  * The phone's region route (#917): a coarse pointer narrow enough to be
  * mobile renders no region control in the toolbar row at all — the width
  * budget could not hold one — so the Show/Hide rows live in the `⋯` overflow

@@ -17,6 +17,7 @@ import {
   expectBoxWithinViewport,
   expectRegionTabs,
   FIRST_RENDER_TIMEOUT_MS,
+  moveRegionThroughGrab,
   showSurfaceInEmptyRegion,
   showRegionThroughOverflowMenu,
   surfaceDockShell,
@@ -1001,13 +1002,11 @@ test.describe('ChatDock', () => {
     // through that region's control, then move the whole region onto Bottom
     // with its ⋮⋮ grab, which joins Chat's panes (`moveRegionPanes`).
     await showSurfaceInEmptyRegion(page, 'Activity', 'Right');
-    await surfaceDockShell(page, 'Activity')
-      .getByRole('button', { name: 'Move the dock', exact: true })
-      .click();
-    await page
-      .getByRole('menu', { name: 'Dock placement' })
-      .getByRole('menuitemradio', { name: 'Bottom', exact: true })
-      .click();
+    await moveRegionThroughGrab(
+      page,
+      surfaceDockShell(page, 'Activity'),
+      'Bottom',
+    );
 
     // Activity joined the region rather than taking it. All three halves are
     // asserted, because "Activity is showing at the bottom" would also be
