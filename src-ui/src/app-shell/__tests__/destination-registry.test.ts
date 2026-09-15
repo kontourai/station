@@ -58,10 +58,6 @@ describe('DestinationRegistry', () => {
       'guidance-commands',
       'guidance-skills',
       'registry',
-      // #2059: Review's panel row was its ONLY advertised entry point. D4
-      // requires it stay palette-reachable until the inbox and the Review
-      // layout kind retire /review-queue, so removing the row added this.
-      'review-queue',
       'connections',
       // 6-OPS-32: Notifications and Profile are top-level destinations that
       // ⌘K could not reach at all — "notif" and "prof" each returned zero
@@ -86,7 +82,6 @@ describe('DestinationRegistry', () => {
       'guidance-commands',
       'guidance-skills',
       'registry',
-      'review-queue',
       'connections',
       'notifications',
       'plugins',
