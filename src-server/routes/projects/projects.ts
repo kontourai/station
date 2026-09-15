@@ -7,6 +7,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
+  PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+  pairingScopeIncludes,
+} from '@kontourai/station-contracts/environment-security';
+import {
   describeKnowledgeRepoRootProblem,
   type KnowledgeNamespaceConfig,
   knowledgeRepoRootProblem,
@@ -47,6 +51,10 @@ import {
   assertSafeLayoutPathSegment,
   type IStorageAdapter,
 } from '../../domain/storage-adapter.js';
+import {
+  grantedPairingScope,
+  type PairingScopeContextStore,
+} from '../../security/pairing-route-scopes.js';
 import type { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import {
   layoutPluginBindingWithheld,
@@ -307,6 +315,14 @@ const BIND_REFUSAL_STATUS: Record<BindProjectResourceRefusalCode, 400 | 409> = {
   'remotes-do-not-intersect': 409,
 };
 
+/**
+ * The scope `PUT /config/app` requires — the authority that writing a
+ * Station setting takes. Named here so the coupling in
+ * `refuseUnscopedWorkspaceIsolationWrite` is a reference to that route's
+ * tier rather than a second, drifting opinion about it.
+ */
+const PROJECT_WORKSPACE_ISOLATION_SCOPE = PAIRING_SCOPE_ORCHESTRATION_OPERATE;
+
 export function createProjectRoutes(
   projectService: ProjectService,
   storageAdapter: IStorageAdapter,
@@ -532,6 +548,44 @@ export function createProjectRoutes(
     };
   }
 
+  /**
+   * #2144 slice 2, decision 4: a project's `defaultWorkspaceIsolation` is a
+   * Station setting a project overrides, so writing it requires the scope
+   * that writing the Station setting requires —
+   * `requiredPairingScope('PUT', '/config/app')`, which is
+   * `orchestration:operate`.
+   *
+   * WHAT THIS DOES AND DOES NOT ADD, stated plainly because the honest
+   * answer is "less than the decision's wording implies". `PUT
+   * /api/projects/:slug` ALREADY requires `orchestration:operate` (the
+   * `/api/projects` family's mutate tier), so for a caller that reached this
+   * handler through the runtime auth boundary, the predicate is already
+   * satisfied and this guard refuses nobody today. It is defense in depth
+   * against a future narrowing of the project family's tier — the moment
+   * project mutation drops below the config tier, this field does not drop
+   * with it — and it is the place the coupling is written down.
+   *
+   * It is NOT a claim that project updates are authorized more narrowly than
+   * they were. An absent scope is Station's own internal-token attestation
+   * and passes, exactly as it does in `PUT /config/app`'s guards.
+   */
+  function refuseUnscopedWorkspaceIsolationWrite(
+    c: Context,
+    body: Record<string, unknown>,
+  ): string | undefined {
+    if (!Object.hasOwn(body, 'defaultWorkspaceIsolation')) return undefined;
+    const presentedScope = grantedPairingScope(
+      c as unknown as PairingScopeContextStore,
+    );
+    if (presentedScope === undefined) return undefined;
+    if (
+      pairingScopeIncludes(presentedScope, PROJECT_WORKSPACE_ISOLATION_SCOPE)
+    ) {
+      return undefined;
+    }
+    return 'The workspace new chats start in is a Station setting this project overrides, so changing it needs the same authority as changing it on the Station. No changes were saved.';
+  }
+
   function integrityError(
     diagnostics: ReturnType<typeof validateProjectAgentScope>,
   ) {
@@ -717,6 +771,10 @@ export function createProjectRoutes(
       const anchorRefusal = refuseInvalidRepoAnchors(slug, body);
       if (anchorRefusal) {
         return c.json({ success: false, error: anchorRefusal }, 400);
+      }
+      const isolationRefusal = refuseUnscopedWorkspaceIsolationWrite(c, body);
+      if (isolationRefusal) {
+        return c.json({ success: false, error: isolationRefusal }, 403);
       }
       const updated = await projectService.updateProject(slug, body);
       projectOps.add(1, { op: 'update' });

@@ -108,3 +108,13 @@ export function readProjectOverrides(
 /** The project-record fields `readProjectOverrides` reads, and nothing else. */
 export type ProjectOverrideRecordField =
   (typeof PROJECT_OVERRIDE_FIELD_ALIASES)[ProjectOverridableAppSettingKey];
+
+/**
+ * The same fields as values, for the write path: `PUT /projects/:slug`
+ * accepts `null` on each of these to mean "drop this override", and
+ * `updateProject` deletes rather than stores it. Derived from the alias map
+ * so the read side and the write side cannot come to name different fields.
+ */
+export const PROJECT_OVERRIDE_RECORD_FIELDS = Object.values(
+  PROJECT_OVERRIDE_FIELD_ALIASES,
+) as readonly ProjectOverrideRecordField[];

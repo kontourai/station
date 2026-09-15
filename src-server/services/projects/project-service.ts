@@ -6,6 +6,10 @@ import type {
   ProjectMetadata,
 } from '@kontourai/station-contracts/project';
 import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
+import {
+  PROJECT_OVERRIDE_RECORD_FIELDS,
+  type ProjectOverrideRecordField,
+} from '@kontourai/station-contracts/project-settings-overrides';
 import { FileStorageUnavailableError } from '../../domain/project-file-transactions.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
@@ -95,6 +99,21 @@ export async function raceWorktreeDirectoryCheck<T>(
 }
 
 /** Validate the persisted-directory precondition before worktree provisioning. */
+/**
+ * A `PUT /projects/:slug` body, as `updateProject` accepts it.
+ *
+ * The settings-override fields additionally accept `null`, which DROPS the
+ * override (#2144 slice 2). Null is not a stored value for any of them —
+ * `projectSchema` has no null — so "clear this" needs a spelling that is not
+ * "store this", and `undefined` cannot be it: a spread merge cannot tell an
+ * absent key from one the caller explicitly left out.
+ */
+export type ProjectUpdate = Partial<
+  Omit<ProjectConfig, 'id' | 'slug' | 'createdAt' | ProjectOverrideRecordField>
+> & {
+  [K in ProjectOverrideRecordField]?: ProjectConfig[K] | null;
+};
+
 export async function assertProjectWorktreeDirectory(
   projectSlug: string,
   workingDirectory: string | undefined,
@@ -324,7 +343,7 @@ export class ProjectService {
 
   async updateProject(
     slug: string,
-    updates: Partial<Omit<ProjectConfig, 'id' | 'slug' | 'createdAt'>>,
+    updates: ProjectUpdate,
   ): Promise<ProjectConfig> {
     const revision = this.storageAdapter.projectRevision(slug);
     const existing = revision.value;
@@ -332,7 +351,18 @@ export class ProjectService {
       ...existing,
       ...updates,
       updatedAt: new Date().toISOString(),
-    };
+    } as ProjectConfig;
+    // #2144 slice 2: `null` on a settings-override field DROPS the override
+    // rather than storing it. Storing it is not an option that merely reads
+    // oddly — `projectSchema` (file-storage-schemas.ts) has no null for any
+    // of these, so a stored null makes the record unloadable on the next
+    // read. Applied after the spread so it also clears a field the existing
+    // record carried.
+    for (const field of PROJECT_OVERRIDE_RECORD_FIELDS) {
+      if ((updates as Record<string, unknown>)[field] === null) {
+        delete updated[field];
+      }
+    }
     if (updated.defaultEnvironment?.kind === 'current') {
       delete updated.defaultEnvironment;
     }

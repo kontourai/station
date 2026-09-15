@@ -329,6 +329,68 @@ describe('ProjectService', () => {
     );
   });
 
+  /**
+   * #2144 slice 2. `null` on a settings-override field DROPS the override.
+   * Storing it is not merely untidy: `projectSchema`
+   * (`domain/file-storage-schemas.ts`) admits no null for any of the three,
+   * so a stored null makes the record unloadable on the next read. Asserted
+   * with `Object.hasOwn` on the replaced record — `toEqual` treats an absent
+   * key and an `undefined` one alike, and only one of those survives a JSON
+   * round trip through the schema.
+   */
+  test('null on a settings-override field drops it rather than storing it', async () => {
+    const adapter = createMockStorageAdapter();
+    adapter.getProject.mockReturnValue({
+      id: 'project-test',
+      slug: 'test',
+      name: 'Test',
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+      defaultModel: 'claude-sonnet',
+      defaultProviderId: 'anthropic-local',
+      defaultWorkspaceIsolation: 'shared',
+    });
+    const svc = new ProjectService(adapter as any);
+    const updated = await svc.updateProject('test', {
+      defaultModel: null,
+      defaultProviderId: null,
+      defaultWorkspaceIsolation: null,
+    });
+
+    for (const field of [
+      'defaultModel',
+      'defaultProviderId',
+      'defaultWorkspaceIsolation',
+    ]) {
+      expect(Object.hasOwn(updated, field), field).toBe(false);
+    }
+    const replaced = (
+      adapter.projectRevision.mock.results[0]?.value.replace as any
+    ).mock.calls[0][0];
+    expect(Object.hasOwn(replaced, 'defaultWorkspaceIsolation')).toBe(false);
+    expect(replaced.name).toBe('Test');
+  });
+
+  test('a non-override field is untouched by the drop pass', async () => {
+    const adapter = createMockStorageAdapter();
+    adapter.getProject.mockReturnValue({
+      id: 'project-test',
+      slug: 'test',
+      name: 'Test',
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+      description: 'kept',
+      defaultEmbeddingModel: 'embed-1',
+    });
+    const svc = new ProjectService(adapter as any);
+    const updated = await svc.updateProject('test', {
+      defaultEmbeddingModel: null as unknown as string,
+    });
+    expect(Object.hasOwn(updated, 'defaultEmbeddingModel')).toBe(true);
+    expect(updated.defaultEmbeddingModel).toBeNull();
+    expect(updated.description).toBe('kept');
+  });
+
   test('refuses an update that enables worktree isolation for a non-repository directory', async () => {
     const directory = mkdtempSync(
       join(tmpdir(), 'station-project-update-nonrepo-'),

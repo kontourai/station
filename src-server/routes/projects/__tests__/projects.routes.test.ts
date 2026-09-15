@@ -24,12 +24,14 @@ import {
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { resolveWorkspacePaneAvailability } from '@kontourai/station-contracts/workspace-pane-availability';
 import { WORKSPACE_SPATIAL_BOARD_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-spatial-board';
+import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import {
   loadAgentConfig,
   saveAgentConfig,
 } from '../../../domain/config-loader-agents.js';
+import { setGrantedPairingScope } from '../../../security/pairing-route-scopes.js';
 
 const projectOps = { add: vi.fn() };
 const projectPaneCatalogDuration = { record: vi.fn() };
@@ -437,6 +439,132 @@ describe('Project Routes', () => {
       body: JSON.stringify({ name: 'Test', slug: 'test' }),
     });
     expect(res.status).toBe(201);
+  });
+
+  describe('PUT /:slug settings overrides (#2144 slice 2)', () => {
+    async function seeded() {
+      const service = createMockProjectService();
+      const app = createProjectRoutes(
+        service as any,
+        createMockStorageAdapter() as any,
+        '/tmp',
+      );
+      await app.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Atlas', slug: 'atlas' }),
+      });
+      return { service, app };
+    }
+
+    /** Mounts the routes behind a middleware that presents `scope`. */
+    function withPresentedScope(
+      app: Awaited<ReturnType<typeof seeded>>['app'],
+      scope: string,
+    ) {
+      const outer = new Hono();
+      outer.use('*', async (c, next) => {
+        setGrantedPairingScope(c, scope);
+        await next();
+      });
+      outer.route('/', app);
+      return outer;
+    }
+
+    const put = (
+      app: { request: (path: string, init: RequestInit) => Promise<Response> },
+      body: unknown,
+    ) =>
+      app.request('/atlas', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+    test('the model pair is accepted', async () => {
+      const { service, app } = await seeded();
+      const res = await put(app, {
+        defaultModel: 'claude-sonnet',
+        defaultProviderId: 'anthropic-local',
+      });
+      expect(res.status).toBe(200);
+      expect(service.updateProject).toHaveBeenCalledWith(
+        'atlas',
+        expect.objectContaining({
+          defaultModel: 'claude-sonnet',
+          defaultProviderId: 'anthropic-local',
+        }),
+      );
+    });
+
+    test('null reaches the service as null, which is its drop signal', async () => {
+      const { service, app } = await seeded();
+      const res = await put(app, {
+        defaultModel: null,
+        defaultProviderId: null,
+      });
+      expect(res.status).toBe(200);
+      expect(service.updateProject).toHaveBeenCalledWith(
+        'atlas',
+        expect.objectContaining({
+          defaultModel: null,
+          defaultProviderId: null,
+        }),
+      );
+    });
+
+    test('a workspace mode outside the enum is refused before the file layer', async () => {
+      const { service, app } = await seeded();
+      const res = await put(app, { defaultWorkspaceIsolation: 'sandbox' });
+      expect(res.status).toBe(400);
+      expect(service.updateProject).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The guard's rejection path, executed. `PUT /api/projects/:slug` already
+     * requires `orchestration:operate` at the auth boundary, so a caller
+     * presenting less never reaches this handler in production — which is
+     * exactly why the path needs a test that drives the handler directly. A
+     * guard whose refusal has never run is a guard nobody has seen work.
+     */
+    test('a presented scope below the Station config write scope cannot change the workspace mode', async () => {
+      const { service, app } = await seeded();
+      const scoped = withPresentedScope(app, 'orchestration:read');
+      const res = await put(scoped, {
+        defaultWorkspaceIsolation: 'worktree',
+      });
+      expect(res.status).toBe(403);
+      expect((await json(res)).error).toContain('Station setting');
+      expect(service.updateProject).not.toHaveBeenCalled();
+    });
+
+    test('the same caller may still change the model pair', async () => {
+      const { service, app } = await seeded();
+      const scoped = withPresentedScope(app, 'orchestration:read');
+      const res = await put(scoped, { defaultModel: 'claude-sonnet' });
+      expect(res.status).toBe(200);
+      expect(service.updateProject).toHaveBeenCalledOnce();
+    });
+
+    test('a caller holding the Station config write scope may change it', async () => {
+      const { service, app } = await seeded();
+      const scoped = withPresentedScope(app, 'orchestration:operate');
+      const res = await put(scoped, {
+        defaultWorkspaceIsolation: 'worktree',
+      });
+      expect(res.status).toBe(200);
+      expect(service.updateProject).toHaveBeenCalledWith(
+        'atlas',
+        expect.objectContaining({ defaultWorkspaceIsolation: 'worktree' }),
+      );
+    });
+
+    test("Station's own internal attestation presents no scope and is not refused", async () => {
+      const { service, app } = await seeded();
+      const res = await put(app, { defaultWorkspaceIsolation: 'worktree' });
+      expect(res.status).toBe(200);
+      expect(service.updateProject).toHaveBeenCalledOnce();
+    });
   });
 
   // archive#3315: the static /order segment must reach the reorder handler,
