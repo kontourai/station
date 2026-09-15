@@ -5647,6 +5647,13 @@ for (const requiredHelper of [
 const pluginLifecycleRoutes = readRequiredSource(
   '../src-server/routes/plugins/plugin-lifecycle-routes.ts',
 );
+// Same layout-insensitivity as the config-routes pins above, and for the same
+// reason: #2067 wrapped `/check-updates` and `/reload` in `operatorOnly(...)`,
+// which wrapped their paths onto their own lines. Both registrations are still
+// there; a byte-literal `includes` simply stopped being able to see them.
+const pluginLifecycleRoutesLayoutFree = collapseCallLayout(
+  pluginLifecycleRoutes,
+);
 for (const requiredHelper of [
   'export function registerPluginLifecycleRoutes',
   "app.get('/check-updates'",
@@ -5654,7 +5661,11 @@ for (const requiredHelper of [
   "app.delete('/:name'",
   "app.post('/reload'",
 ]) {
-  if (!pluginLifecycleRoutes.includes(requiredHelper)) {
+  if (
+    !pluginLifecycleRoutesLayoutFree.includes(
+      collapseCallLayout(requiredHelper),
+    )
+  ) {
     errors.push(`plugin-lifecycle-routes.ts must include ${requiredHelper}.`);
   }
 }
