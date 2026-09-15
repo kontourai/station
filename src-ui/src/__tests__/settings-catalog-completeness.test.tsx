@@ -1048,9 +1048,9 @@ describe('settings catalog completeness', () => {
       fireEvent.click(
         screen.getByRole('button', { name: 'Reset Station settings' }),
       );
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Reset', exact: true }),
-      );
+      // A bare string name is an exact full-string match in RTL, so this is
+      // the danger button and not `Close Reset Station settings`.
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
 
       await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
       expect(updateConfig).toHaveBeenCalledWith({
@@ -1067,7 +1067,6 @@ describe('settings catalog completeness', () => {
       );
       const confirm = screen.getByRole('button', {
         name: 'Reset',
-        exact: true,
       }) as HTMLButtonElement;
       expect(confirm.disabled).toBe(true);
       fireEvent.click(confirm);
