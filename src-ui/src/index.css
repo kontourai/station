@@ -253,14 +253,6 @@
   --health-success: #10b981;
   --health-error: #ef4444;
 
-  /* Source-preview syntax rungs (FilePreviewPane). Per theme because the
-     GitHub-dark literals this replaced measured 2.29 / 1.77 / 1.40 : 1 on the
-     light page. Dark values are GitHub-dark's own; measured on --bg-primary
-     and on --bg-selected (the requested-line highlight) — keyword 7.7 / 6.4,
-     number 10.0 / 8.3, string 12.6 / 10.5. */
-  --syntax-keyword: #ff7b72;
-  --syntax-number: #79c0ff;
-  --syntax-string: #a5d6ff;
   --health-warning: #f59e0b;
 
   --event-agent-start: #3b82f6;
@@ -270,6 +262,29 @@
   --event-agent-health: #06b6d4;
   --event-planning: #8b5cf6;
   --event-reasoning: #ec4899;
+
+  /* Data series and syntax rungs (#2140).
+     These used to be literals inside `style={}` in three components, which
+     is the one place the theme cannot reach: the values were github-dark's
+     and the dark chart palette's, and on the light theme they measured
+     1.5-2.7:1 against a white panel (text floor 4.5:1, graphic floor 3:1).
+     Each rung below is measured against --bg-secondary for its theme. */
+  --series-1: #a78bfa;
+  --series-2: #f59e0b;
+  --series-3: #22c55e;
+  --series-4: #06b6d4;
+  --series-5: #f472b6;
+  --series-6: #fb923c;
+  /* Meter rungs by fill level. Rendered as a bar FILL, so 3:1 is the floor;
+     on this panel they carry 4.7:1 / 8.3:1 / 7.0:1. */
+  --meter-low: #10b981;
+  --meter-mid: #f59e0b;
+  --meter-high: #ef4444;
+  /* Source-preview syntax rungs: github-dark's own values, rendered as
+     TEXT, so 4.5:1 is the floor; 7.7:1 / 10.0:1 / 12.6:1 on this panel. */
+  --syntax-keyword: #ff7b72;
+  --syntax-number: #79c0ff;
+  --syntax-string: #a5d6ff;
 
   --overlay-bg: rgba(0, 0, 0, 0.2);
   --overlay-bg-dark: rgba(0, 0, 0, 0.3);
@@ -498,16 +513,6 @@
   --health-success: #059669;
   --health-error: #dc2626;
 
-  /* GitHub-light's keyword (#d73a49) is 4.15:1 on this page, under AA, so the
-     keyword rung is darkened. The floor is the highlighted line, not the page:
-     --bg-selected mixes 14% of a DARK teal brand into the page (#d5e3dc), so
-     every rung loses ~0.9 there. Measured on --bg-primary / --bg-selected:
-     keyword 5.54 / 4.60, number 5.71 / 4.75, string 12.0 / 10.0. Gated by
-     syntax-token-contrast.test.ts, which derives the tint from the same
-     --k-* inputs rather than restating these figures. */
-  --syntax-keyword: #b82b3a;
-  --syntax-number: #005cc5;
-  --syntax-string: #032f62;
   --health-warning: #d97706;
 
   /* Event colors */
@@ -518,6 +523,31 @@
   --event-agent-health: #0891b2;
   --event-planning: #7c3aed;
   --event-reasoning: #db2777;
+
+  /* Light rungs for the families the dark block introduces (#2140). Every
+     value is measured against BOTH light backdrops it lands on, since the
+     chart sits on --bg-secondary (#ffffff) and the meter on --bg-primary
+     (#f5f4ef); the lower of the two is quoted. */
+  --series-1: #6d28d9; /* 6.45:1 */
+  --series-2: #b45309; /* 4.56:1 */
+  --series-3: #15803d; /* 4.55:1 */
+  --series-4: #0e7490; /* 4.87:1 */
+  --series-5: #be185d; /* 5.48:1 */
+  --series-6: #c2410c; /* 4.70:1 */
+  /* Bar fills, 3:1 floor. Reuses the light status rungs that already carry
+     text (4.5:1+), so a meter and its label agree on what "high" looks like. */
+  --meter-low: var(--success-text); /* #2e7d32 5.13:1 */
+  --meter-mid: var(--warning-text); /* #92400e */
+  --meter-high: var(--error-text); /* #b3261e 6.54:1 */
+  /* github-light's number and string rungs, rendered as text: 6.90:1 and
+     11.63:1 on the page. The keyword is darkened past github-light's #cf222e
+     because of a third backdrop the pane paints under it: the requested line
+     is highlighted with --bg-selected, a 14% mix of a DARK teal brand into
+     the page (#d5e3dc), and every rung loses ~0.9 there. #cf222e measures
+     4.86 on the page but 4.04 on that line; #b82b3a is 5.54 / 4.60. */
+  --syntax-keyword: #b82b3a;
+  --syntax-number: #0550ae;
+  --syntax-string: #0a3069;
 
   /* Overlays & Shadows */
   --overlay-bg: rgba(0, 0, 0, 0.05);
@@ -4198,9 +4228,9 @@ button:hover {
   gap: 10px;
   margin: 8px 0;
   padding: 8px 12px;
-  border: 1px solid color-mix(in srgb, var(--accent-primary) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
+  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
 }
 
 .background-tasks-banner__label {
@@ -4226,7 +4256,7 @@ button.background-tasks-banner {
 
 button.background-tasks-banner:hover,
 button.background-tasks-banner:focus-visible {
-  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+  background: color-mix(in srgb, var(--k-brand) 10%, transparent);
 }
 
 /* archive#1301: visually-hidden live-region sibling
@@ -4286,18 +4316,15 @@ button.background-tasks-banner:focus-visible {
 @keyframes streaming-progress-pulse {
   0% {
     transform: scale(0.9);
-    box-shadow: 0 0 0 0
-      color-mix(in srgb, var(--accent-primary) 35%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 35%, transparent);
   }
   70% {
     transform: scale(1.05);
-    box-shadow: 0 0 0 8px
-      color-mix(in srgb, var(--accent-primary) 0%, transparent);
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--k-brand) 0%, transparent);
   }
   100% {
     transform: scale(0.9);
-    box-shadow: 0 0 0 0
-      color-mix(in srgb, var(--accent-primary) 0%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 0%, transparent);
   }
 }
 
@@ -4776,7 +4803,7 @@ button.tool-call__line:hover {
   flex-shrink: 0;
   border-radius: 999px;
   background: var(--accent-primary);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-primary) 45%, transparent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 45%, transparent);
   animation: streaming-progress-pulse var(--motion-status-pulse) var(--ease-out)
     infinite;
 }
@@ -7005,7 +7032,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .knowledge-section__dropzone--active {
   border-color: var(--accent-primary);
-  background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
+  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
   color: var(--accent-primary);
 }
 

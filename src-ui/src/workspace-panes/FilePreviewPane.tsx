@@ -288,14 +288,10 @@ function tokenKind(token: string): SourceTokenKind {
   return 'keyword';
 }
 
-/**
- * Theme-following, not theme-blind. These were three GitHub-dark literals
- * written straight into this file, which read at 2.29 / 1.77 / 1.40 : 1 on
- * the light theme's page — the string colour was very nearly invisible. The
- * tokens below are defined per theme in `index.css` and measured by
- * `syntax-token-contrast.test.ts`; the comment rung was already a token and
- * stays one.
- */
+// Syntax rungs are theme tokens (#2140). These were github-dark's literals in
+// `style={}`; on the light theme they rendered as TEXT at 1.5-2.5:1 against
+// the pane -- the string rung was nearly invisible. index.css maps each to
+// github-dark on dark and github-light on light, both measured.
 const TOKEN_COLOR: Record<SourceTokenKind, string> = {
   comment: 'var(--text-muted)',
   keyword: 'var(--syntax-keyword)',
