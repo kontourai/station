@@ -506,6 +506,20 @@ describe('runtime search HTTP composition', () => {
  * asserts the provider's failure reaches a logger through it.
  */
 describe('the runtime composition gives unified search a logger', () => {
+  /**
+   * The context of the first recorded warning. A missing call throws here,
+   * naming the real precondition, rather than surfacing as a TypeError on a
+   * property read three lines later.
+   */
+  const recordedContext = (
+    warn: ReturnType<typeof vi.fn>,
+  ): Record<string, unknown> => {
+    const call = warn.mock.calls[0];
+    if (!call) throw new Error('no warning was recorded');
+    return call[1] as Record<string, unknown>;
+  };
+  const recordedError = (warn: ReturnType<typeof vi.fn>): Error =>
+    (recordedContext(warn) as { err: Error }).err;
   function readerFakes(searchOutcome: { state: string }) {
     const provider = {
       descriptor: {
@@ -560,7 +574,11 @@ describe('the runtime composition gives unified search a logger', () => {
     const outcome = await search.search(
       { version: UNIFIED_SEARCH_V1, query: 'parser' },
       {
-        authority: sessionReadAuthorityFromRequest('user', undefined, undefined),
+        authority: sessionReadAuthorityFromRequest(
+          'user',
+          undefined,
+          undefined,
+        ),
         current: () => true,
       },
     );
@@ -576,9 +594,7 @@ describe('the runtime composition gives unified search a logger', () => {
     expect(warn.mock.calls.map((call) => call[0])).toEqual([
       'Unified search provider threw',
     ]);
-    expect((warn.mock.calls[0]?.[1] as { err: Error }).err.message).toBe(
-      'Search unavailable',
-    );
+    expect(recordedError(warn).message).toBe('Search unavailable');
     await search.close();
   });
 });

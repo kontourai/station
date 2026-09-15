@@ -1053,6 +1053,21 @@ describe('a provider failure is preserved for diagnosis', () => {
   const warnedMessages = (warn: ReturnType<typeof vi.fn>): string[] =>
     warn.mock.calls.map((call) => call[0] as string);
 
+  /**
+   * The context of the first recorded warning. A missing call throws here,
+   * naming the real precondition, rather than surfacing as a TypeError on a
+   * property read three lines later.
+   */
+  const recordedContext = (
+    warn: ReturnType<typeof vi.fn>,
+  ): Record<string, unknown> => {
+    const call = warn.mock.calls[0];
+    if (!call) throw new Error('no warning was recorded');
+    return call[1] as Record<string, unknown>;
+  };
+  const recordedError = (warn: ReturnType<typeof vi.fn>): Error =>
+    (recordedContext(warn) as { err: Error }).err;
+
   test('keeps the thrown error when a provider throws', async () => {
     const { warn, logger } = recordingLogger();
     const service = new UnifiedSearchService(
@@ -1075,15 +1090,13 @@ describe('a provider failure is preserved for diagnosis', () => {
     });
 
     expect(warnedMessages(warn)).toEqual(['Unified search provider threw']);
-    expect(warn.mock.calls[0]?.[1]).toMatchObject({
+    expect(recordedContext(warn)).toMatchObject({
       providerId: 'station.tasks',
       cancelled: false,
     });
     // The message is the whole point: #1707 had to reconstruct a cause this
     // would have stated outright.
-    expect((warn.mock.calls[0]?.[1] as { err: Error }).err.message).toBe(
-      'sqlite: database is closed',
-    );
+    expect(recordedError(warn).message).toBe('sqlite: database is closed');
   });
 
   test('names a deadline as a deadline, not as a throw', async () => {
@@ -1109,7 +1122,7 @@ describe('a provider failure is preserved for diagnosis', () => {
     expect(warnedMessages(warn)).toEqual([
       'Unified search provider exceeded its deadline',
     ]);
-    expect(warn.mock.calls[0]?.[1]).toMatchObject({
+    expect(recordedContext(warn)).toMatchObject({
       providerId: 'station.tasks',
       timeoutMs: UNIFIED_SEARCH_LIMITS.providerTimeoutMs,
     });
@@ -1181,8 +1194,6 @@ describe('a provider failure is preserved for diagnosis', () => {
       sources: [{ reason: 'provider-timeout-or-error' }],
     });
     expect(warnedMessages(warn)).toEqual(['Unified search provider threw']);
-    expect((warn.mock.calls[0]?.[1] as { err: Error }).err.message).toBe(
-      'search-aborted',
-    );
+    expect(recordedError(warn).message).toBe('search-aborted');
   });
 });
