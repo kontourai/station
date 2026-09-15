@@ -222,6 +222,7 @@ import * as React from 'react';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { nextBoardSlug } from '../components/project-sidebar/ProjectSidebarBoards';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 
 reactApi.current = React;
 
@@ -256,6 +257,13 @@ beforeEach(() => {
     (calls as Record<string, unknown[]>)[key].length = 0;
   }
   window.localStorage.clear();
+  // The rail's collapsed state lives in a MODULE SINGLETON, so clearing
+  // storage does not clear it: the #2083 collapse case drives the real
+  // `Collapse sidebar` control, and a failure between collapsing and
+  // re-expanding would otherwise leave every later test rendering a rail with
+  // no Boards chrome in it — nine unrelated reds pointing at the wrong file.
+  // Observed while fault-injecting that case, not hypothesised.
+  deviceSettingsStore.reset('projectSidebarCollapsed');
   sdk.notify();
 });
 
