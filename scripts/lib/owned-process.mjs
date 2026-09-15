@@ -37,6 +37,22 @@ function errorDetails(error) {
 }
 
 /** Terminates exactly the supplied Windows process tree, never a name pattern. */
+/**
+ * `taskkill`'s exit status for a pid it cannot find.
+ *
+ * The Windows twin of ESRCH, and it matters for the same reason (#2133):
+ * `terminateSuiteExecution` checks `isAlive()` and signals afterwards, so a
+ * child that ends on its own in between is reported as a failure to terminate
+ * it -- when a process that has already exited is precisely the outcome
+ * termination is asking for.
+ *
+ * `taskkill` documents 128 as "there is no running instance of the task", so
+ * it is the one non-zero status that means success here. Every other non-zero
+ * status stays a failure: 1 covers access-denied, which is a genuine inability
+ * to terminate a live process and must not be swallowed.
+ */
+const TASKKILL_PROCESS_NOT_FOUND = 128;
+
 export function runWindowsTaskkill(
   pid,
   force,
@@ -68,7 +84,7 @@ export function runWindowsTaskkill(
     taskkill.once('error', finish);
     taskkill.once('close', (code) =>
       finish(
-        code === 0
+        code === 0 || code === TASKKILL_PROCESS_NOT_FOUND
           ? undefined
           : new Error(`taskkill exited with status ${code ?? 'unknown'}`),
       ),
