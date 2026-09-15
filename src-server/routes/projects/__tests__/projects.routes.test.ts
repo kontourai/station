@@ -471,11 +471,16 @@ describe('Project Routes', () => {
       return outer;
     }
 
-    const put = (
-      app: { request: (path: string, init: RequestInit) => Promise<Response> },
+    const put = async (
+      app: {
+        request: (
+          path: string,
+          init: RequestInit,
+        ) => Response | Promise<Response>;
+      },
       body: unknown,
     ) =>
-      app.request('/atlas', {
+      await app.request('/atlas', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
