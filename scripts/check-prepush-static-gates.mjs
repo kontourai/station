@@ -25,11 +25,10 @@
  * delegates to the existing scripts, so the counts, the ceilings, and the
  * remedies all keep coming from one voice.
  *
- * Cost, measured on this repo: most run in under 500ms each (~4s combined for
- * the twenty-one, random-uuid-guard included); `a11y` is ~5s because it runs
- * its own biome pass, and `ui-glyph-coverage` and `stored-path-expansion` are
- * the next slowest at ~0.7s and ~0.6s. A docs-only or workflow-only push pays
- * none of it.
+ * Cost, measured on this repo: 8.6s for all twenty-two together. Most are
+ * under 500ms each; `a11y` is ~5s of that because it runs its own biome pass,
+ * and `ui-glyph-coverage` (~0.7s) and `stored-path-expansion` (~0.6s) are the
+ * next slowest. A docs-only or workflow-only push pays none of it.
  *
  * When the scope cannot be computed the gate runs anyway: "I could not look"
  * must not resolve to the same answer as "nothing changed"
