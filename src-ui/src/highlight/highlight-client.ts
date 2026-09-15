@@ -55,7 +55,18 @@
  */
 
 import { initShiki } from '../contexts/SyntaxHighlighterContext';
+import {
+  IncrementalHighlightStore,
+  sessionTokenizerFor,
+} from './incremental-session';
 import { escapeHtml, HighlightCache, highlightCacheKey, THEME } from './shared';
+
+/**
+ * #2093 — the fallback shares the worker's resume store (same module, same
+ * bound), so degraded mode and jsdom keep resume behavior instead of forking
+ * it. Module-level because the fallback itself is stateless per call.
+ */
+const fallbackSessions = new IncrementalHighlightStore(16);
 
 /**
  * archive#3354 — main-thread fallback used when `Worker` is unavailable
@@ -73,7 +84,11 @@ async function highlightOnMainThread(
     ? lang
     : 'text';
   try {
-    return highlighter.codeToHtml(code, { lang: resolvedLang, theme: THEME });
+    return fallbackSessions.highlight(
+      sessionTokenizerFor(highlighter, THEME),
+      code,
+      resolvedLang,
+    );
   } catch {
     return `<pre style="background:#0d1117;color:#e6edf3;padding:12px;border-radius:6px;overflow-x:auto"><code>${escapeHtml(code)}</code></pre>`;
   }
