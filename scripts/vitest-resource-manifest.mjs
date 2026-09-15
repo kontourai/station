@@ -827,6 +827,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fix tied on specificity with a rule 90 lines below it and lost on source
   // order while the declaration read correct.
   'src-ui/src/__tests__/menu-primitive.cascade.test.tsx',
+  // #2112: same shape again — launches a real Chromium to hit-test each header
+  // and dock menu's dismiss backdrop against the chrome control that opens it.
+  // jsdom returns nothing useful from `elementFromPoint`, and a computed-style
+  // read cannot see a stacking context introduced on an ancestor of the
+  // toolbar, which is one of the regressions this pins.
+  'src-ui/src/__tests__/menu-dismiss-backdrop.hit-test.test.tsx',
   // #1616: same shape again — launches a real Chromium to measure whether the
   // workspace pane picker's overlay is taken out of flow using only the entry
   // stylesheet every route loads. jsdom computes no layout and would report
