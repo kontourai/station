@@ -254,6 +254,20 @@ const MENUS: readonly {
   name: string;
   selector: string;
   /**
+   * How many rows this menu renders.
+   *
+   * A COUNT rather than "more than one", because the two are not the same
+   * check and only the count catches the thing that actually goes wrong here.
+   * Every row in this table is measured because it MATCHES `rowSelector`; a
+   * row that stops matching — a hand-written `className="menu-row"` dropped
+   * from one of the Boards menu's six buttons, say — does not fail anything,
+   * it simply leaves the measured set, and a loop asserting the list is
+   * non-empty just runs one fewer time. Proven by injection: deleting
+   * `menu-row` from the actions menu's Rename row left the whole file green
+   * before this pin, and reds it after.
+   */
+  rowCount: number;
+  /**
    * The row elements to measure. `.menu-row` everywhere except the Layout
    * picker, whose rows are `radiogroup`s holding a segmented control rather than
    * commands — a different pattern, deliberately (#1552 D2), so it does not wear
@@ -284,6 +298,7 @@ const MENUS: readonly {
   {
     name: 'the header’s Layout picker',
     selector: '.app-toolbar__region-menu',
+    rowCount: 2,
     rowSelector: '.region-placement__row',
     rowsDeclareFloor: false,
     open: () => {
@@ -296,6 +311,7 @@ const MENUS: readonly {
   {
     name: 'the header’s ⋯ overflow menu',
     selector: '.app-toolbar__overflow-menu:not(.app-toolbar__region-menu)',
+    rowCount: 5,
     open: () => {
       // The coarse branch, so the region rows render inside it too — that
       // `fieldset` is the group whose leading hairline D4 replaced with a gap.
@@ -317,6 +333,7 @@ const MENUS: readonly {
   {
     name: 'the avatar’s profile menu',
     selector: '.app-toolbar__profile-menu',
+    rowCount: 3,
     open: () => {
       // The fine pointer, where this menu exists at all: on a phone the avatar
       // that opens it is hidden and the panel closes itself (see ProfileMenu).
@@ -340,6 +357,7 @@ const MENUS: readonly {
   {
     name: 'the header’s help menu',
     selector: '.app-toolbar__help-menu',
+    rowCount: 3,
     open: () => {
       render(
         <HelpMenu
@@ -357,6 +375,7 @@ const MENUS: readonly {
   {
     name: 'the dock header’s More menu',
     selector: '.chat-dock__more-menu',
+    rowCount: 2,
     open: () => {
       render(
         <ChatDockHeaderMoreMenu
@@ -372,6 +391,7 @@ const MENUS: readonly {
   {
     name: 'the breadcrumb’s layout switcher',
     selector: '.layout-switcher__menu',
+    rowCount: 2,
     open: () => {
       render(<LayoutSwitcher projectSlug="demo" layoutSlug="coding" />);
       fireEvent.click(screen.getByRole('button', { name: 'Switch layout' }));
@@ -380,6 +400,7 @@ const MENUS: readonly {
   {
     name: 'the dock’s placement menu',
     selector: '.dock-placement-menu:not(.chat-dock__more-menu)',
+    rowCount: 3,
     open: () => {
       render(
         <div className="chat-dock__header">
@@ -423,6 +444,7 @@ const MENUS: readonly {
 function boardMenuEntries(): {
   name: string;
   selector: string;
+  rowCount: number;
   rowsReserveGlyphSlot?: boolean;
   open: () => void;
 }[] {
@@ -453,18 +475,24 @@ function boardMenuEntries(): {
     {
       name: 'the Boards row’s actions menu',
       selector: `.sidebar__board-menu[aria-label="${board} actions"]`,
+      // Rename, Move to project…, Delete.
+      rowCount: 3,
       rowsReserveGlyphSlot: false,
       open: () => openBoardMenu(),
     },
     {
       name: 'the Boards row’s delete confirm',
       selector: `.sidebar__board-menu[aria-label="Delete ${board}"]`,
+      // Delete and Cancel. The question above them is a `<p>`, not a row.
+      rowCount: 2,
       rowsReserveGlyphSlot: false,
       open: () => openBoardMenu('Delete'),
     },
     {
       name: 'the Boards row’s project picker',
       selector: `.sidebar__board-menu[aria-label="Move ${board} to a project"]`,
+      // One row per project the harness publishes.
+      rowCount: harness.projects.length,
       rowsReserveGlyphSlot: false,
       open: () => openBoardMenu('Move to project…'),
     },
@@ -652,12 +680,16 @@ describe.skipIf(!chromiumAvailable)(
       expect(fine.menus.map((menu) => menu.name)).toEqual(
         MENUS.map((menu) => menu.name),
       );
-      for (const menu of fine.menus) {
-        expect(
-          menu.rows.length,
-          `${menu.name} rendered no rows`,
-        ).toBeGreaterThan(1);
-      }
+      // Counted, not just non-empty. See `rowCount`'s note: a row that stops
+      // matching `rowSelector` leaves the measured set in silence, and every
+      // assertion below is a loop that would simply run one fewer time.
+      expect(
+        Object.fromEntries(
+          fine.menus.map((menu) => [menu.name, menu.rows.length]),
+        ),
+      ).toEqual(
+        Object.fromEntries(MENUS.map((menu) => [menu.name, menu.rowCount])),
+      );
     });
 
     test('one surface spec: 8px radius, 6px padding, a 4px group gap', () => {
