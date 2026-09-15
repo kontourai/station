@@ -420,9 +420,26 @@ async function renderShellMarkup(
     // The three header menus are behind `LazyBoundary`, so the portal does not
     // exist on the render that flips their flag. Awaiting the backdrop by name
     // is what makes the serialized body contain an OPEN menu rather than a
-    // suspended one — and it fails loudly rather than silently serializing a
-    // shell with no menu in it.
-    await screen.findByLabelText(shape.backdropLabel);
+    // suspended one.
+    //
+    // This is also where "someone deleted a backdrop" lands — MEASURED, by
+    // removing `ProfileMenu`'s and watching it red here rather than in the
+    // browser. The rethrow is what carries the reason: without it the reader
+    // gets testing-library's generic "unable to find a label" over a serialized
+    // body dump, which describes the symptom and not the invariant.
+    try {
+      await screen.findByLabelText(shape.backdropLabel);
+    } catch (cause) {
+      throw new Error(
+        `the open ${shape.menu} menu rendered no dismiss backdrop named ` +
+          `"${shape.backdropLabel}". #2081 ruled this menu out of its fix ` +
+          'precisely because it draws one; without it the menu no longer ' +
+          'covers its own trigger and this file cannot measure the invariant. ' +
+          'Either the backdrop was removed — the regression — or it was ' +
+          'renamed, in which case point this shape at the new name.',
+        { cause },
+      );
+    }
   }
 
   return document.body.innerHTML;
@@ -706,11 +723,11 @@ describe.skipIf(!chromiumAvailable)(
         const measured = await measure(shape);
         expect(
           measured.backdropPresent,
-          `no element named "${shape.backdropLabel}" rendered, so this menu no ` +
-            'longer draws the dismiss backdrop four consumers were ruled out ' +
-            'of #2081 on the strength of. Either the backdrop was removed — ' +
-            'which is the regression this file exists to catch — or it was ' +
-            'renamed, in which case point this shape at the new name.',
+          `"${shape.backdropLabel}" is in the rendered tree but not in the page ` +
+            'this fixture served, so the markup was lost between serializing ' +
+            'the body and loading it. A DELETED backdrop does not reach here: ' +
+            'it reds in `renderShellMarkup`, which is where that message ' +
+            'lives.',
         ).toBe(true);
         expect(
           measured.backdropCoversViewport,
