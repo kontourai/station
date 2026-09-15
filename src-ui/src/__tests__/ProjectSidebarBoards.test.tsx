@@ -1009,6 +1009,18 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
     );
     expect(boardsCssText).not.toContain('.sidebar__board-menu button');
     expect(boardsCssText).not.toContain('.sidebar__board-menu .menu-row');
+
+    // The one declaration this menu keeps, pinned because dropping it is
+    // invisible in a diff and near-invisible on screen: `.menu-surface` fills
+    // with `--bg-secondary`, which is the same `--k-panel` the rail itself
+    // uses, so without this the menu reads as an outline drawn on the panel
+    // rather than a surface raised off it.
+    const menuRule = boardsCssText.slice(
+      boardsCssText.indexOf('\n.sidebar__board-menu {'),
+    );
+    expect(menuRule.slice(0, menuRule.indexOf('\n}'))).toContain(
+      'background: var(--bg-tertiary)',
+    );
   });
 });
 

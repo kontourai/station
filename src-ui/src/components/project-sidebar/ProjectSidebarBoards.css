@@ -121,6 +121,15 @@
    its position is an inset. */
 .sidebar__board-menu {
   margin: 2px 12px 6px;
+  /* The one declaration of the spec this menu cannot take. `.menu-surface`
+     fills with `--bg-secondary`, which is `--k-panel` — the EXACT fill of
+     `.sidebar` itself. Every other member of the family floats over content of
+     some other colour, where the surface's border and `--shadow-menu` are
+     enough; this one renders in flow on the panel it belongs to, so the spec's
+     fill would leave the menu reading as an unfilled outline drawn on the rail.
+     `--bg-tertiary` is `--k-panel-raised`, which is the raised-on-panel answer
+     the token set already has, and is what this menu used before #2083. */
+  background: var(--bg-tertiary);
 }
 
 /* The confirm's question, above the two rows that answer it. No bottom margin:
