@@ -435,11 +435,23 @@ const MENUS: readonly {
  * have a surface of their own to prove.
  *
  * What differs between them is worth having measured rather than assumed. The
- * confirm and the picker both open with a `.sidebar__board-confirm` paragraph
- * ABOVE their rows — a non-row child of `.menu-surface`, which no other member
- * of the family has — and the picker's rows carry arbitrary project names
- * rather than fixed command labels, which is the case
- * `.sidebar__board-menu .menu-row`'s `padding-block` was added for.
+ * CONFIRM — and only the confirm, as this fixture configures them — opens with
+ * a `.sidebar__board-confirm` paragraph above its two rows: a non-row child of
+ * `.menu-surface`, which no other member of the family has, and which the
+ * surface's own `gap` is what separates from the rows below it. (The picker
+ * renders that same paragraph only when there are NO projects to list, which
+ * is also the case where it has no rows at all; the harness publishes two, so
+ * the picker measured here is the one with rows.) The picker's rows in turn
+ * carry arbitrary project names rather than fixed command labels.
+ *
+ * NOT PROVEN HERE: the wrapped-label case that
+ * `.sidebar__board-menu .menu-row`'s `padding-block` was added for. Every
+ * entry in this table renders into the page's full 1456px width rather than
+ * the 240px rail, so these rows are all single-line and the floors — not the
+ * padding — are what set their heights. The padding is composed in (see
+ * `BOARDS_CSS_PATH`) so the measurement is of the real cascade; what is
+ * measured is the one-line row. A second entry at rail width would be a
+ * different claim and belongs with whatever asserts the rail's own geometry.
  */
 function boardMenuEntries(): {
   name: string;
