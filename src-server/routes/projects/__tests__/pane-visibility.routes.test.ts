@@ -412,7 +412,7 @@ describe('a saved layout naming a plugin the viewer cannot see', () => {
     expect(JSON.stringify(data.paneReferences)).not.toContain('pane:');
   });
 
-  test('a withheld response still spells the plugin name, and that is the residual', () => {
+  test('a withheld response still spells the plugin name, and that is the residual', async () => {
     // Stated as a test rather than a comment, because the opposite claim is
     // easy to make and was made. What a withheld response still carries is
     // the PROJECT's own stored record, written when somebody who could see
@@ -429,7 +429,26 @@ describe('a saved layout naming a plugin the viewer cannot see', () => {
     // None of this reopens the guess oracle, which is about learning whether
     // a plugin you NAME is installed. It is a disclosure to a member of a
     // project an operator already applied that layout into.
-    expect(STORED_TABS[0].component).toContain(PLUGIN_NAME);
+    // Asserted on a real withheld RESPONSE. An earlier version of this test
+    // compared `STORED_TABS[0].component` against its own literal, which is
+    // a const asserting itself under a name claiming something about a
+    // response — it stayed green if the response stopped spelling the name,
+    // and if the strip removed tabs entirely.
+    let visible = true;
+    const { app } = await seeded({ canSeePlugin: () => visible });
+    await app.request('/demo/layouts/apply', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ layoutId: PLUGIN_LAYOUT.id }),
+    });
+    visible = false;
+    const withheld = await (
+      await app.request(`/demo/layouts/${PLUGIN_LAYOUT.slug}`)
+    ).text();
+    expect(withheld).toContain(PLUGIN_NAME);
+    expect(JSON.parse(withheld).data.config.tabs[0].component).toContain(
+      PLUGIN_NAME,
+    );
   });
 
   test('a viewer who can see it reads exactly what they read before', async () => {
@@ -782,5 +801,123 @@ describe('the withheld decision reads every plugin name in the record', () => {
     expect(body.data.config.plugin).toBe(PLUGIN_NAME);
     expect(body.data.config.tabs).toEqual(LIVE_TABS);
     expect(body.data.paneReferences).toBeUndefined();
+  });
+});
+
+describe('a withheld read-modify-write preserves the whole record', () => {
+  /**
+   * The strip removes three `config` keys and the restore has to return all
+   * three. The first version returned `plugin` only, so an ordinary rename by
+   * a caller who could not see the plugin silently destroyed `actions` and
+   * `globalSkills` — permanently, because the read route's live merge
+   * restores `tabs`, `globalSkills`, `defaultAgent`, `availableAgents` and
+   * `requiredProviders` and never `actions`. It also dropped the layout out
+   * of `buildLayoutAgentReferences` (`domain/file-storage-records.ts`), which
+   * reads exactly `config.actions` and `config.globalSkills`.
+   *
+   * The applied fixture above carries neither key — `applyCatalogLayout`
+   * writes no `actions` at all — which is why this case builds its record
+   * through the OTHER real writer, the ordinary create route, with both keys
+   * present.
+   */
+  const CONFIG = {
+    plugin: PLUGIN_NAME,
+    tabs: [{ id: 'notes', label: 'Notes', component: `${PLUGIN_NAME}-notes` }],
+    actions: [{ label: 'Run the report', type: 'prompt', data: 'report' }],
+    globalSkills: [{ id: 'skill-1', label: 'Summarize', prompt: 'summarize' }],
+  };
+
+  test('a rename keeps every key the read withheld', async () => {
+    const { app, storage } = await seeded({ canSeePlugin: () => false });
+    expect(
+      (
+        await app.request('/demo/layouts', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            slug: 'bound',
+            name: 'Bound',
+            config: CONFIG,
+          }),
+        })
+      ).status,
+    ).toBe(201);
+
+    const read = await json<{ data: Record<string, any> }>(
+      await app.request('/demo/layouts/bound'),
+    );
+    // The read really did remove all three; otherwise the write below would
+    // have nothing to restore and would pass for the wrong reason.
+    expect(read.data.config.plugin).toBeUndefined();
+    expect(read.data.config.actions).toBeUndefined();
+    expect(read.data.config.globalSkills).toBeUndefined();
+
+    const written = await app.request('/demo/layouts/bound', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...read.data, name: 'Renamed' }),
+    });
+    expect(written.status).toBe(200);
+
+    const stored = storage.getLayout('demo', 'bound');
+    expect(stored.name).toBe('Renamed');
+    expect(stored.config).toEqual(CONFIG);
+  });
+
+  test('a viewer who CAN see the plugin still edits it normally', async () => {
+    // The control: the restore must not freeze a config for somebody the
+    // read withheld nothing from.
+    const { app, storage } = await seeded({ canSeePlugin: () => true });
+    await app.request('/demo/layouts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug: 'bound', name: 'Bound', config: CONFIG }),
+    });
+    const written = await app.request('/demo/layouts/bound', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Bound',
+        config: { ...CONFIG, actions: [] },
+      }),
+    });
+    expect(written.status).toBe(200);
+    expect(storage.getLayout('demo', 'bound').config.actions).toEqual([]);
+  });
+
+  test('a built-in tab is not marked unavailable by a plugin binding', async () => {
+    // The verdict is layout-level, but a tab whose component declares a
+    // BUILTIN kind is by construction not plugin-owned, and a Board mixes
+    // the two. Marking it would blank a tab the derivation never showed was
+    // plugin-owned.
+    const { app } = await seeded({ canSeePlugin: () => false });
+    await app.request('/demo/layouts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        slug: 'mixed',
+        name: 'Mixed',
+        config: {
+          plugin: PLUGIN_NAME,
+          tabs: [
+            { id: 'from-plugin', label: 'Plugin', component: 'notes-view' },
+            {
+              id: 'from-station',
+              label: 'Runs',
+              component: {
+                kind: 'builtin-component',
+                name: 'flow-run-console',
+              },
+            },
+          ],
+        },
+      }),
+    });
+    const body = await json<{ data: Record<string, any> }>(
+      await app.request('/demo/layouts/mixed'),
+    );
+    expect(body.data.paneReferences).toEqual({
+      unavailableTabIds: ['from-plugin'],
+    });
   });
 });

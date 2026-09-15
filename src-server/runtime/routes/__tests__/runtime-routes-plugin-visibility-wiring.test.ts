@@ -19,10 +19,12 @@
  * ## What it checks, and the two halves that make it not vacuous
  *
  * `runtime-routes.ts` cannot be imported and driven here: it builds the whole
- * runtime. So the first half is a SOURCE assertion — but scoped to the
- * factory's own balanced argument list rather than to the file, so a
- * `canSeePlugin` mentioned in a comment, in a different call, or in an
- * unrelated object does not satisfy it.
+ * runtime. So the first half is a SOURCE assertion — scoped to the factory's
+ * own balanced argument list rather than to the file, and with comments and
+ * string literals blanked, so a `canSeePlugin` that is commented out, inside
+ * a string, in a different call, or in an unrelated object does not satisfy
+ * it. The comment case is not hypothetical: the first version of this file
+ * claimed it and did not do it, and a commented-out mount passed.
  *
  * A source assertion alone is satisfied by a string, so the second half
  * takes the property name the scan just found in the source and BUILDS each
@@ -84,20 +86,86 @@ afterEach(() => {
 });
 
 /**
- * The text of one factory call's own argument list, from the first `(` after
- * the callee to its matching `)`. Scoped rather than file-wide so a mention
- * anywhere else in this 3000-line file cannot satisfy the assertion.
+ * One factory call's own argument list, with every comment and string
+ * literal BLANKED to spaces.
+ *
+ * Both halves matter and the first version had only one. It counted parens
+ * without knowing about comments or strings, and claimed in this docblock
+ * that a mention in a comment would not satisfy the assertion — it would:
+ * replacing the mount lines with commented-out copies left the whole file
+ * green while production composed with no projection at all. The paren
+ * counting is the same state machine
+ * `scripts/plugin-identity-enumeration-scan.mjs`'s `handlerBody` uses (that
+ * one is not exported, so it is reproduced here rather than duplicated by
+ * accident), and blanking rather than deleting keeps every offset stable so
+ * a reported position still means something.
  */
 function factoryCallArguments(source: string, callee: string): string {
   const start = source.indexOf(`${callee}(`);
   if (start === -1) throw new Error(`${callee} is not called in the mount`);
+  const out: string[] = [];
   let depth = 0;
+  let quote: string | null = null;
+  let comment: 'line' | 'block' | null = null;
   for (let i = start + callee.length; i < source.length; i += 1) {
-    if (source[i] === '(') depth += 1;
-    else if (source[i] === ')') {
-      depth -= 1;
-      if (depth === 0) return source.slice(start + callee.length + 1, i);
+    const ch = source[i] as string;
+    const next = source[i + 1];
+    const keep = (value: string) => {
+      if (depth > 0) out.push(value);
+    };
+    if (comment === 'line') {
+      keep(ch === '\n' ? '\n' : ' ');
+      if (ch === '\n') comment = null;
+      continue;
     }
+    if (comment === 'block') {
+      keep(ch === '\n' ? '\n' : ' ');
+      if (ch === '*' && next === '/') {
+        keep(' ');
+        comment = null;
+        i += 1;
+      }
+      continue;
+    }
+    if (quote) {
+      keep(' ');
+      if (ch === '\\') {
+        keep(' ');
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      keep('  ');
+      comment = 'line';
+      i += 1;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      keep('  ');
+      comment = 'block';
+      i += 1;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      keep(' ');
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') {
+      depth += 1;
+      if (depth > 1) out.push(ch);
+      continue;
+    }
+    if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) return out.join('');
+      out.push(ch);
+      continue;
+    }
+    keep(ch);
   }
   throw new Error(`${callee}'s argument list is unbalanced`);
 }

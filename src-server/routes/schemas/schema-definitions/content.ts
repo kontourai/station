@@ -298,11 +298,18 @@ export const personalLayoutCreateSchema = z
  *
  * `paneReferences` is the ONE key this family accepts and discards (#2090).
  * It is a read verdict the GET attaches about the calling principal, never
- * storage, and the storage schema is `.strict()` — so refusing it here would
- * 400 an ordinary read-modify-write of this route's own response, and
- * accepting it into the record would be a hard storage rejection one layer
- * down. The handler drops it; `z.never()` is not used because the point is
- * to tolerate the round trip, not to refuse it.
+ * storage, and the storage schema is `.strict()`, so accepting it into the
+ * record would be a hard rejection one layer down — which is why the handler
+ * drops it, and that half is load-bearing.
+ *
+ * The tolerance itself is narrower than it first looks, and the earlier
+ * rationale here overstated it. A FULL read-modify-write of the GET response
+ * is refused by this schema anyway, on `id`, `projectSlug`/`owner`,
+ * `createdAt` and `updatedAt`. So tolerating this key only helps a client
+ * that already strips those and keeps this one. It is kept because that
+ * client is the reasonable one — it round-trips the fields this family says
+ * are writable plus whatever the read added — and because a 400 naming a
+ * key the server itself attached is a bad answer to give it.
  */
 export const personalLayoutUpdateSchema = personalLayoutCreateSchema
   .omit({ slug: true })

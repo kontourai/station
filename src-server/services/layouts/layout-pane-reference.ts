@@ -95,8 +95,12 @@ export interface LayoutPaneReferenceOptions {
  * So the rule is: the decision is computed over every name the RESPONSE can
  * derive from, and it fails closed if ANY of them is not visible. The merge
  * key (`config.plugin`) and the contribution's two names (`provenance
- * .pluginId`, `sourceIdentity.id` — both are emitted, the latter as
- * `plugins/<name>`) are all in that set.
+ * .pluginId` and `sourceIdentity.id`, both emitted in the response; the
+ * latter is the BARE plugin name — it is `sourceIdentity.source` beside it
+ * that reads `plugins/<name>`) are all in that set. Do not "correct" this to
+ * compare against a `plugins/`-prefixed value: the visibility grant list is
+ * keyed on bare names, so a prefixed lookup would miss every grant and
+ * withhold every plugin layout from everyone, the operator included.
  *
  * A plugin-origin contribution that names NO plugin at all is reported as
  * {@link LayoutPluginReferences.unattributed}, and its callers treat that as
@@ -161,13 +165,35 @@ export function layoutPluginBindingWithheld(
   return pluginIds.some((pluginId) => !canSeePlugin(pluginId));
 }
 
-/** The ids of a stored layout's tabs, in order, skipping malformed entries. */
-function layoutTabIds(layout: LayoutPluginBindingSource): string[] {
+/**
+ * The ids of the tabs a withheld binding can actually be about.
+ *
+ * NOT every tab. A tab whose `component` is `{kind: 'builtin-component'}` or
+ * `{kind: 'mcp-tool-ui'}` is by construction not owned by a plugin, and a
+ * Board legitimately mixes those with plugin ones — marking them unavailable
+ * would blank tabs the derivation never showed were plugin-owned. A bare
+ * string normalizes to a plugin component (`normalizeLayoutComponentRef`),
+ * so it counts, as does an explicit `plugin-component`.
+ *
+ * It remains an over-approximation within that set: the server cannot tell
+ * WHICH plugin a component id belongs to, because those ids are
+ * plugin-author-chosen with no namespacing requirement. A layout naming
+ * components from two plugins, one visible and one not, marks both. Telling
+ * them apart would mean resolving a component id against the install tree,
+ * which is the existence oracle this whole change closes.
+ */
+function withheldTabIds(layout: LayoutPluginBindingSource): string[] {
   const tabs = layout.config?.tabs;
   if (!Array.isArray(tabs)) return [];
   return tabs.flatMap((tab) => {
-    const id = (tab as { id?: unknown } | null)?.id;
-    return typeof id === 'string' && id.length > 0 ? [id] : [];
+    const entry = tab as { id?: unknown; component?: unknown } | null;
+    const id = entry?.id;
+    if (typeof id !== 'string' || id.length === 0) return [];
+    const component = entry?.component;
+    if (typeof component === 'string') return [id];
+    if (component === undefined || component === null) return [id];
+    const kind = (component as { kind?: unknown }).kind;
+    return kind === undefined || kind === 'plugin-component' ? [id] : [];
   });
 }
 
@@ -186,8 +212,15 @@ export function resolveLayoutPaneReferences(
   options: LayoutPaneReferenceOptions,
 ): LayoutPaneReferences | undefined {
   if (!layoutPluginBindingWithheld(layout, options)) return undefined;
-  return { unavailableTabIds: layoutTabIds(layout) };
+  return { unavailableTabIds: withheldTabIds(layout) };
 }
+
+/**
+ * The `config` keys a withheld read removes — the ONE list, shared with
+ * {@link withPluginBindingRestored} so the strip and the restore cannot
+ * drift apart.
+ */
+const WITHHELD_CONFIG_KEYS = ['plugin', 'actions', 'globalSkills'] as const;
 
 /**
  * The layout with everything that NAMES its owning plugin removed.
@@ -230,11 +263,43 @@ export function withoutPluginBinding<T extends LayoutPluginBindingSource>(
 ): T {
   const { catalogContribution: _catalogContribution, ...withoutContribution } =
     layout;
-  const {
-    plugin: _plugin,
-    actions: _actions,
-    globalSkills: _globalSkills,
-    ...config
-  } = layout.config ?? {};
+  const config = { ...(layout.config ?? {}) };
+  for (const key of WITHHELD_CONFIG_KEYS) delete config[key];
   return { ...withoutContribution, config } as T;
+}
+
+/**
+ * The inverse, and the reason it is in this file rather than at the route.
+ *
+ * A caller who read a withheld layout PUTs back a `config` with these keys
+ * MISSING, and the update route replaces `config` wholesale — so every key
+ * {@link withoutPluginBinding} removed has to come back from the stored
+ * record or the write destroys it. The first version of this pair restored
+ * `plugin` and forgot `actions` and `globalSkills`, and `actions` is not
+ * re-derived by anything: the read route's live merge restores `tabs`,
+ * `globalSkills`, `defaultAgent`, `availableAgents` and `requiredProviders`,
+ * never `actions`. The loss was permanent, for the operator too, and it also
+ * silently dropped the layout out of `buildLayoutAgentReferences`
+ * (`domain/file-storage-records.ts`), which reads exactly `config.actions`
+ * and `config.globalSkills` for its global-reference half.
+ *
+ * So the two functions share ONE key list and live beside each other. That
+ * is the whole point: a key added to the strip is restored by construction
+ * rather than by somebody remembering a second site.
+ *
+ * `catalogContribution` is deliberately not handled here — the update route
+ * already carries it over from the stored record unconditionally, for every
+ * caller, and has since before any of this existed.
+ */
+export function withPluginBindingRestored<T extends LayoutPluginBindingSource>(
+  next: T,
+  stored: LayoutPluginBindingSource,
+): T {
+  const storedConfig = stored.config ?? {};
+  const config = { ...(next.config ?? {}) };
+  for (const key of WITHHELD_CONFIG_KEYS) {
+    if (Object.hasOwn(storedConfig, key)) config[key] = storedConfig[key];
+    else delete config[key];
+  }
+  return { ...next, config } as T;
 }

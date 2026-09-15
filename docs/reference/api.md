@@ -2608,6 +2608,8 @@ read them before trusting it as complete.
 | `GET /projects/layouts/available` | projected — the layout picker |
 | `GET /registry/layouts` | projected |
 | `GET /registry/layouts/installed` | projected |
+| `GET /projects/:slug/layouts` | projected with residual — the stored `config.plugin` is dropped; the rest of a row is the project's own record |
+| `GET /projects/:slug/layouts/:layoutSlug` | projected with residual — the live plugin read, the catalog backfill, `config.plugin`, `catalogContribution` and the plugin's global actions are all withheld |
 | `GET /plugins/home-role/candidates` | projected — a user-facing picker, so a collaborator chooses from what they can see |
 | `GET /plugins/home-role` | projected — a holder the caller cannot see is reported as `none` |
 | `GET /plugins/check-updates` | operator only |
@@ -2622,26 +2624,34 @@ refuse a non-operator outright, because they are maintenance surfaces whose
 actions are operator actions anyway — a projected half-answer there would
 still enumerate while answering a question the caller cannot act on.
 
-**The two layout READ routes are projected but are deliberately NOT inventory
-rows** (#2103): `GET /projects/:slug/layouts` and
-`GET /projects/:slug/layouts/:layoutSlug`. For a caller who cannot see the
+**`projected-with-residual`** is the third disposition, and the two layout
+READ routes are why it exists (#2090/#2103). For a caller who cannot see the
 owning plugin they perform no live `plugins/<name>` read and no catalog
 backfill, and they withhold `config.plugin`, `catalogContribution` and the
-plugin's global actions — so a hidden plugin and a name nobody ever installed
-answer identically, which is what closes the enumeration question. What they
-cannot do is satisfy the inventory's own contract, which is that the response
-body names no ungranted plugin: these routes answer about the PROJECT's own
-stored record, whose component ids are plugin-namespaced by convention, whose
-`name` and `description` the catalog parser falls back to the plugin
-manifest's (and finally to the plugin name itself), and whose `slug` is
-plugin-authored and IS the route address. Recording them as inventory rows
-would have made a whole-body assertion pass on fixture choice. They carry
-written exclusions in the scan instead, and their behaviour is driven in
-`pane-visibility.routes.test.ts`, which asserts the withheld FIELDS. `POST
-/projects/:slug/layouts/apply` and `POST /projects/:slug/layouts/from-plugin`
-refuse a plugin the caller cannot see with the message an id nobody has
-already gets; the apply check runs before the installed-and-enabled check, so
-"exists here, disabled" is not distinguishable from "does not exist".
+plugin's global actions and skills — so a hidden plugin and a name nobody
+ever installed answer identically, which is what closes the enumeration
+question. What they cannot do is satisfy the plain `projected` contract, that
+the response body names no ungranted plugin at all: these routes answer about
+the PROJECT's own stored record, whose component ids are plugin-namespaced by
+convention, whose `name` and `description` the catalog parser falls back to
+the plugin manifest's (and finally to the plugin name itself), and whose
+`slug` is plugin-authored and IS the route address.
+
+Calling them `projected` would have put them under a whole-body string
+assertion they cannot satisfy and that a fixture can be chosen to dodge;
+excusing them in the scan would have dropped them out of the enumerated list
+and out of any executable coverage, leaving a prose citation. So they are
+rows, and their test names the exact strings that must be absent for a
+collaborator and present for the operator — the stored binding, the catalog
+attribution, the `plugins/<name>` source, the contribution version, and the
+tab only the live merge could have produced — and then asserts the residual
+is still there rather than pretending otherwise.
+
+`POST /projects/:slug/layouts/apply` and `POST
+/projects/:slug/layouts/from-plugin` refuse a plugin the caller cannot see
+with the message an id nobody has already gets; the apply check runs before
+the installed-and-enabled check, so "exists here, disabled" is not
+distinguishable from "does not exist".
 
 **The event stream.** The six `plugins:*` channels
 (`installed`, `removed`, `updated`, `settings-changed`, `grants-changed`,

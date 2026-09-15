@@ -52,6 +52,7 @@ import {
   layoutPluginBindingWithheld,
   resolveLayoutPaneReferences,
   withoutPluginBinding,
+  withPluginBindingRestored,
 } from '../../services/layouts/layout-pane-reference.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import type { CheckoutRemoteReader } from '../../services/projects/checkout-remote-reader.js';
@@ -1245,8 +1246,12 @@ export function createProjectRoutes(
           )
         : [];
       // Typed against the contract so the wire key is checked here rather
-      // than spelled independently on each side (#2090 review LOW-10).
-      const data: LayoutReadView & Record<string, unknown> = {
+      // than spelled independently on each side (#2090 review LOW-10). The
+      // extra member is named rather than left to an index signature: a
+      // `Record<string, unknown>` half turns excess-property checking OFF,
+      // so a misspelled `paneReference` would compile and the field would
+      // simply vanish from the response.
+      const data: LayoutReadView & { _integrityDiagnostics?: unknown } = {
         ...derived,
         ...(diagnostics.length > 0
           ? { _integrityDiagnostics: diagnostics }
@@ -1309,16 +1314,15 @@ export function createProjectRoutes(
         //    `.strict()`, so a GET→PUT round trip would be a hard storage
         //    rejection. Stripped here exactly as the derived working
         //    directory is, and for the same recorded reason.
-        //  - `config.plugin` was REMOVED from what this caller read. Their
-        //    PUT therefore carries a config with no plugin binding, and
-        //    replacing `config` wholesale would silently destroy the
-        //    project's plugin layout on an ordinary rename. Restored from
-        //    the stored record, which is what `catalogContribution` a few
-        //    lines below has always done for the same reason.
+        //  - every `config` key the read REMOVED is missing from what this
+        //    caller read back, and `config` is replaced wholesale here, so
+        //    an ordinary rename would destroy them. Restored by
+        //    `withPluginBindingRestored`, which shares its key list with the
+        //    strip — the first version of this restored `plugin` and lost
+        //    `actions` and `globalSkills`, and nothing re-derives `actions`.
         const withheld = layoutPluginBindingWithheld(existing, {
           canSeePlugin: viewerPluginSight(c),
         });
-        const storedPluginBinding = existing.config?.plugin;
         // id, projectSlug, slug, and createdAt are immutable record identity.
         // updatedAt is server-owned. Only mutable fields replace their stored
         // values, so a partial rename cannot erase the saved LayoutDefinition.
@@ -1373,13 +1377,10 @@ export function createProjectRoutes(
           derived,
         );
         if (conflict) return c.json({ success: false, error: conflict }, 400);
-        const persisted = withoutPersistedWorkingDirectory({
-          ...layout,
-          config:
-            withheld && typeof storedPluginBinding === 'string'
-              ? { ...(layout.config ?? {}), plugin: storedPluginBinding }
-              : (layout.config ?? {}),
-        });
+        const merged = { ...layout, config: layout.config ?? {} };
+        const persisted = withoutPersistedWorkingDirectory(
+          withheld ? withPluginBindingRestored(merged, existing) : merged,
+        );
         await revision.replace(persisted);
         // The write's own answer is projected exactly as the read is: a
         // response that handed back the plugin name the GET withheld would
@@ -1474,19 +1475,23 @@ export function createProjectRoutes(
     // absence changes nothing, including which methods this path requires.
     if (canSeePlugin) {
       const forVisibility = layoutCatalog.resolveForCatalog(layoutId);
-      const contribution = forVisibility.item.contribution;
-      const referenced = new Set<string>();
-      let unattributed = false;
-      if (contribution?.provenance?.origin === 'plugin') {
-        const attributions = [
-          contribution.provenance.pluginId,
-          contribution.sourceIdentity?.id,
-        ].filter((id): id is string => typeof id === 'string' && id.length > 0);
-        if (attributions.length === 0) unattributed = true;
-        for (const id of attributions) referenced.add(id);
-      }
-      if (forVisibility.pluginName) referenced.add(forVisibility.pluginName);
-      if (unattributed || [...referenced].some((id) => !canSeePlugin(id))) {
+      // The SAME derivation the read routes use, called rather than
+      // restated. An earlier version inlined the identity set here; it
+      // agreed with the helper on the day it was written, which is exactly
+      // the shape `runtime-routes.ts` records as "a second reader of an
+      // authorized store eventually gets the authorization wrong". A catalog
+      // item is shaped into the layout the helper reads: its `pluginName` is
+      // this path's merge key, and its contribution is the same field a
+      // stored layout carries.
+      const asStoredLayout = {
+        config: forVisibility.pluginName
+          ? { plugin: forVisibility.pluginName }
+          : {},
+        ...(forVisibility.item.contribution
+          ? { catalogContribution: forVisibility.item.contribution }
+          : {}),
+      };
+      if (layoutPluginBindingWithheld(asStoredLayout, { canSeePlugin })) {
         throw new Error('Layout is not a known installed contribution');
       }
     }

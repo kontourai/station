@@ -50,6 +50,13 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 vi.mock('../../../telemetry/metrics.js', () => ({
   registryOps: { add: vi.fn() },
   sseOps: { add: vi.fn() },
+  // `createProjectRoutes` imports these BY NAME; a missing export is an
+  // import-time failure, not a silent undefined.
+  projectOps: { add: vi.fn() },
+  projectPaneCatalogDuration: { record: vi.fn() },
+  projectResolutionRouteRequests: { add: vi.fn() },
+  projectBindingOperations: { add: vi.fn() },
+  workspacePaneAvailabilityResolutions: { add: vi.fn() },
 }));
 
 vi.mock('../../../providers/registries/registry.js', () => {
@@ -97,6 +104,13 @@ const { registerPluginLifecycleRoutes } = await import(
   '../plugin-lifecycle-routes.js'
 );
 const { createRegistryRoutes } = await import('../registry.js');
+const { createProjectRoutes } = await import('../../projects/projects.js');
+const { FileStorageAdapter } = await import(
+  '../../../domain/file-storage-adapter.js'
+);
+const { ProjectService } = await import(
+  '../../../services/projects/project-service.js'
+);
 const { Hono: HonoApp } = await import('hono');
 
 const cleanups: Array<() => void> = [];
@@ -216,6 +230,90 @@ function registryApp(dir: string, principal: PrincipalRef): Hono {
   ) as Hono;
 }
 
+/** The live tab the plugin declares ON DISK; the merge is the disclosure. */
+const LIVE_TAB_COMPONENT = `${SECRET}.live-only`;
+
+/**
+ * The project layout routes over a real `FileStorageAdapter`, with one saved
+ * layout that names the plugin and one plugin installed on disk that
+ * declares a DIFFERENT tab — so a response that performed the live merge is
+ * distinguishable from one that answered from the stored record alone.
+ *
+ * Written synchronously because `mount` is synchronous; these are the exact
+ * files the adapter reads.
+ */
+function projectLayoutsApp(dir: string, principal: PrincipalRef): Hono {
+  const pluginDir = join(dir, 'plugins', SECRET);
+  mkdirSync(pluginDir, { recursive: true });
+  writeFileSync(
+    join(pluginDir, 'plugin.json'),
+    JSON.stringify({
+      name: SECRET,
+      version: '1.0.0',
+      layout: { source: 'layout.json' },
+    }),
+  );
+  writeFileSync(
+    join(pluginDir, 'layout.json'),
+    JSON.stringify({
+      name: 'Secret layout',
+      tabs: [{ id: 'live', label: 'Live', component: LIVE_TAB_COMPONENT }],
+    }),
+  );
+  const projectDir = join(dir, 'projects', 'demo');
+  mkdirSync(join(projectDir, 'layouts'), { recursive: true });
+  writeFileSync(
+    join(projectDir, 'project.json'),
+    JSON.stringify({
+      id: 'project-1',
+      slug: 'demo',
+      name: 'Demo',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }),
+  );
+  writeFileSync(
+    join(projectDir, 'layouts', 'secret-layout.json'),
+    JSON.stringify({
+      id: 'layout-1',
+      projectSlug: 'demo',
+      type: 'custom',
+      name: 'Secret layout',
+      slug: 'secret-layout',
+      catalogContribution: pluginLayoutItem().contribution,
+      config: {
+        plugin: SECRET,
+        tabs: [
+          { id: 'stored', label: 'Stored', component: `${SECRET}-stored` },
+        ],
+        actions: [{ label: 'Do the thing' }],
+        globalSkills: [{ id: 's1', label: 'Skill', prompt: 'go' }],
+      },
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }),
+  );
+  const storage = new FileStorageAdapter(dir);
+  const visibility = visibilityFor(dir, principal);
+  return FACTORY_SPIES.createProjectRoutes(
+    new ProjectService(storage) as never,
+    storage as never,
+    dir,
+    {
+      listAgents: async () => [],
+      canSeePlugin: visibility.canSeePlugin,
+      layoutCatalog: {
+        listLayouts: () => [pluginLayoutItem()],
+        listInstalledLayouts: () => [pluginLayoutItem()],
+        listPluginWorkspacePaneContributions: () => [],
+        resolveForCatalog: () => {
+          throw new Error('not used');
+        },
+      },
+    } as never,
+  ) as Hono;
+}
+
 /**
  * Each inventory row's REAL handler. `driver` names the production
  * composition; a row whose driver is `'stand-in'` is refused by the coverage
@@ -233,6 +331,7 @@ function registryApp(dir: string, principal: PrincipalRef): Hono {
  * if the mount stops calling the factory, the call count stays zero.
  */
 const FACTORY_SPIES = {
+  createProjectRoutes: vi.fn(createProjectRoutes),
   createRegistryRoutes: vi.fn(createRegistryRoutes),
   registerPluginInstallRoutes: vi.fn(registerPluginInstallRoutes),
   registerPluginLifecycleRoutes: vi.fn(registerPluginLifecycleRoutes),
@@ -250,6 +349,15 @@ const DRIVERS: Record<
      * the identity check below.
      */
     driver: { mock: { calls: unknown[] } };
+    /**
+     * For a `projected-with-residual` row: the exact strings that must be
+     * ABSENT for a collaborator and PRESENT for the operator. A whole-body
+     * string match is not available to these rows — their response is the
+     * project's own record, which keeps plugin-authored component ids, name
+     * and slug — and choosing a fixture that dodges a whole-body match is
+     * how a row reads as fully projected when it is not.
+     */
+    residual?: readonly string[];
     mount: (
       dir: string,
       principal: PrincipalRef,
@@ -269,6 +377,32 @@ const DRIVERS: Record<
       });
       return { app, path: '/' };
     },
+  },
+  'GET /api/projects/:slug/layouts': {
+    driver: FACTORY_SPIES.createProjectRoutes,
+    residual: [`"plugin":"${SECRET}"`],
+    mount: (dir, principal) => ({
+      app: projectLayoutsApp(dir, principal),
+      path: '/demo/layouts',
+    }),
+  },
+  'GET /api/projects/:slug/layouts/:layoutSlug': {
+    driver: FACTORY_SPIES.createProjectRoutes,
+    // Every plugin fact the SERVER derives, one marker each: the stored
+    // binding, the catalog backfill's attribution and its `plugins/<name>`
+    // source identity, its version, and the tab only the LIVE merge could
+    // have produced.
+    residual: [
+      `"plugin":"${SECRET}"`,
+      'catalogContribution',
+      `plugins/${SECRET}`,
+      '"version":"1.0.0"',
+      LIVE_TAB_COMPONENT,
+    ],
+    mount: (dir, principal) => ({
+      app: projectLayoutsApp(dir, principal),
+      path: '/demo/layouts/secret-layout',
+    }),
   },
   'GET /api/plugins/check-updates': {
     driver: FACTORY_SPIES.registerPluginLifecycleRoutes,
@@ -392,6 +526,11 @@ describe('every route that returns plugin identity is projected or operator-only
     (route) =>
       route.disposition === 'operator-only' && DRIVERS[routeKey(route)],
   );
+  const residualRows = PLUGIN_IDENTITY_ROUTES.filter(
+    (route) =>
+      route.disposition === 'projected-with-residual' &&
+      DRIVERS[routeKey(route)],
+  );
 
   test.each(projected.map((route) => [routeKey(route)] as const))(
     '%s answers a non-operator and names no ungranted plugin',
@@ -424,6 +563,44 @@ describe('every route that returns plugin identity is projected or operator-only
       // would be a broken route, not a refusal.
       const asOperator = await request(key, OPERATOR, dir);
       expect(asOperator.status).not.toBe(403);
+    },
+  );
+
+  test.each(residualRows.map((route) => [routeKey(route)] as const))(
+    '%s withholds every plugin fact the server derives',
+    async (key) => {
+      const dir = home();
+      const markers = DRIVERS[key]!.residual;
+      expect(
+        markers?.length,
+        `${key} is projected-with-residual, so it must name the strings its projection is about`,
+      ).toBeGreaterThan(0);
+
+      const asCollaborator = await request(key, COLLABORATOR, dir);
+      covered.set(key, asCollaborator.factoryCalls);
+      expect(asCollaborator.status).toBe(200);
+      for (const marker of markers ?? []) {
+        expect(
+          asCollaborator.body,
+          `${key} still discloses ${marker}`,
+        ).not.toContain(marker);
+      }
+
+      // The control, and it is what makes the absences above a projection
+      // rather than a fixture that never had these facts in it.
+      const asOperator = await request(key, OPERATOR, dir);
+      expect(asOperator.status).toBe(200);
+      for (const marker of markers ?? []) {
+        expect(
+          asOperator.body,
+          `${key}: the fixture never produced ${marker}, so withholding it proves nothing`,
+        ).toContain(marker);
+      }
+
+      // The residual itself, asserted rather than left to a comment: the
+      // response IS still about a layout this plugin shipped, and these rows
+      // do not claim otherwise.
+      expect(asCollaborator.body).toContain('secret-layout');
     },
   );
 
@@ -494,7 +671,11 @@ describe('every route that returns plugin identity is projected or operator-only
 
   test('every row states a disposition and a reason for it', () => {
     for (const route of PLUGIN_IDENTITY_ROUTES) {
-      expect(['projected', 'operator-only']).toContain(route.disposition);
+      expect([
+        'projected',
+        'projected-with-residual',
+        'operator-only',
+      ]).toContain(route.disposition);
       // Asserted against the shape of a sentence rather than a length
       // constant compared to its own literal: a rationale has to name a
       // reason, and a bare noun phrase does not.
