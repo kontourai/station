@@ -126,7 +126,7 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
       const chatTab = page
         .getByRole('tablist', { name: 'Region panes' })
         .getByRole('tab', { name: 'Chat', exact: true });
-      await page.getByRole('region', { name: 'Dock' }).waitFor();
+      await page.getByRole('region', { name: 'Dock', exact: true }).waitFor();
       if (
         (await chatTab.count()) > 0 &&
         (await chatTab.getAttribute('aria-selected')) !== 'true'
