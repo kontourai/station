@@ -334,7 +334,11 @@ export function ProjectSidebarPresenceTray() {
             )}
           </span>
         )}
-        {available && (
+        {/* #2150: a bare `0` beside the glyph read as a bug, not as "nobody
+            here". The count is information only when it is non-zero; the
+            glyph alone says "presence lives here", and the accessible name
+            already carries the full sentence for a zero roster. */}
+        {available && participants.length > 0 && (
           <span className="sidebar__presence-count" aria-hidden="true">
             {participants.length}
           </span>
