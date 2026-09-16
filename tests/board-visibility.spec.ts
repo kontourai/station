@@ -8,6 +8,10 @@ import {
   test,
 } from './helpers/authenticated-request';
 import { resolveE2EApiBase } from './helpers/e2e-target';
+import {
+  FIRST_RENDER_TIMEOUT_MS,
+  openPillInRegionThroughMenu,
+} from './helpers/region-placement';
 
 /**
  * D8 (`reports/board-notifications-lane/DESIGN.md`): a project shows a Board
@@ -274,6 +278,62 @@ test.describe("Board visibility follows the server's Builder-run predicate", () 
     await expect(strip.getByRole('button', { name: 'Board' })).toBeVisible({
       timeout: 20_000,
     });
+  });
+
+  /**
+   * #2158: a Layout chip is a pill the reader can SEND somewhere, not only a
+   * destination to follow.
+   *
+   * Driven here rather than against a mocked fixture because the pane id is
+   * `layout:<projectId>/<layoutId>` and both halves must be the lowercase
+   * UUIDs the SERVER mints — `POST /api/projects` and `POST
+   * /api/projects/:slug/layouts` are what produce them, and a fixture that
+   * invented the ids would be asserting against its own spelling. The `Notes`
+   * layout these projects already carry is the subject.
+   *
+   * The Session Board chip beside it is deliberately excluded: it is a route,
+   * not a pane (#2157), and this asserts that difference is visible to a user
+   * rather than only to a unit test.
+   */
+  test('a Layout chip opens into the Right region, and the reload keeps it', async ({
+    page,
+  }) => {
+    await gotoAndClearPassiveChrome(page, `/projects/${WITH_RUN_SLUG}`);
+    const { strip } = await projectLayoutChips(page, WITH_RUN_NAME);
+    const notes = strip.getByRole('button', { name: 'Notes', exact: true });
+    await expect(notes).toBeVisible({ timeout: 20_000 });
+
+    // The Board chip offers no such menu, so the rows below belong to the
+    // Layout rather than to every chip in the strip.
+    await strip
+      .getByRole('button', { name: 'Board', exact: true })
+      .click({ button: 'right' });
+    await expect(page.getByRole('menu', { name: 'Board actions' })).toHaveCount(
+      0,
+    );
+
+    await openPillInRegionThroughMenu(page, notes, 'Notes', 'Right');
+
+    // The region holds it: a dock shell rendered in `right`, carrying the
+    // Layout's own name — the title `RegionPaneHost` resolves from the
+    // project's layout list, not the `layout:` prefix fallback.
+    const right = page.locator('.chat-dock--right');
+    await expect(right).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+    await expect(
+      page.getByRole('button', { name: 'Move Notes', exact: true }),
+      'the right region must hold a pane the model calls Notes',
+    ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+
+    // …and it is a placement, not a render: the arrangement is persisted, so
+    // the reader finds it there again. A tab that only survived until the next
+    // navigation would make the menu a preview rather than an open.
+    await page.reload();
+    await expect(page.locator('.chat-dock--right')).toBeVisible({
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
+    await expect(
+      page.getByRole('button', { name: 'Move Notes', exact: true }),
+    ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
   });
 });
 

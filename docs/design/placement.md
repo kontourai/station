@@ -689,7 +689,7 @@ launch to the pane's bound project, or hiding the bar, is #2171.
 **Openers.** `openSurfaceInRegion('board:<id>')` from the model, or
 `openLayoutInRegion(model, key)` in `useOpenInRegion.ts`, which mints the
 occurrence and refuses an id the grammar cannot (`no-surface`). This slice
-adds NO sidebar entry point; #2158 adds the context menu and drag.
+adds NO sidebar entry point; #2158 adds the context menu, and #2175 the drag.
 
 **One-way rollback, disclosed and accepted.** The record shape is unchanged
 (`{ kind: 'surface', id }`), so a build without this reads a `board:` or
@@ -706,6 +706,68 @@ The Device pane (#1969) rides the #2047 path instead (descriptor with
 renderer, the four lockstep pins) — done, see above. A `?surface=pr:…` deep link stays
 IGNORED: materialising a pane from a URL is a new entry point nobody asked
 for.
+
+## A sidebar pill opens into a region (#2158)
+
+**Implemented by #2158, 2026-09-16.** The pane #2157 declared now has a way in
+that a user can find: a Boards row or a project's Layout chip is right-clicked
+and its menu offers **Open in Left / Open in Right / Open in Bottom**. The pill
+stays a destination — a plain click still navigates, and a `contextmenu` never
+does.
+
+**The drag is #2175.** The owner asked for both routes and this sequences them.
+The menu is the route every device gets, and the only one a keyboard or a
+screen reader has; the drag needs `usePlacementDrag`/`DockPlacementTargets`
+extracted out of `DockPlacementControl` (a shipped control on a journey's
+critical path) plus entry-chunk weight this one does not have.
+
+**What opens what.** A Boards row opens `board:<layoutId>`; a project Layout
+chip opens `layout:<projectId>/<layoutId>`, with the project id taken from the
+row's own `ProjectMetadata`. The synthesized **Board** chip gets no placement
+rows at all: it is the project's SESSION board, which is a route rather than a
+pane (`pane:builtin:board`, one per project). The Boards row menu keeps its
+Rename / Move to project… / Delete and gains the placement rows ABOVE them —
+the family a reader compares this against opens with Open and ends with the
+destructive row, and the phone loses nothing by it (see the fold rule below,
+which leaves Rename first there).
+
+**Ids must parse or the rows are absent.** `workspaceLayoutPaneId` refuses
+anything that is not a lowercase UUID, so a pre-provisioned project's
+hand-written id, or a record from before the server minted them, cannot be
+named. The UI applies the same rule BEFORE rendering: `sidebarLayoutPaneId`
+(`src-ui/src/components/project-sidebar/pill-region-placement.ts`) builds the
+id and admits it through `resolveRegionSurface`, and a null answer renders no
+row. A legacy record degrades to an absent row, never to a row that refuses
+when pressed. Same shape for the device: where the dock folds to one region (a
+coarse pointer, or a viewport at 768px or under), there are no placement rows
+rather than three rows of which two would be turned down — `DockPlacementControl`'s
+existing rule for the same question.
+
+**Why the sidebar calls the model rather than the opener hook.** `openLayoutInRegion`
+in `src-ui/src/contexts/useOpenInRegion.ts` is the natural caller and is the
+wrong import here: that module's own docblock records it at +1,820 B gzip
+against a 527 B headroom, which is why every one of its callers sits behind a
+lazy boundary. The sidebar does not — it is `main.tsx` → `App.tsx` →
+`ProjectSidebar`, statically, in the entry chunk. So the pill builds the id
+string itself and hands it to `RegionModelContext.openSurfaceInRegion`, which
+is already in that chunk and resolves both prefixes by prefix table with no
+pane inventory. The only duplication that leaves is the id's spelling, and
+`pill-region-placement.test.ts` pins it against `workspaceLayoutPaneId` for
+both families and for every id the grammar refuses — a test-only import, where
+the bytes are free.
+
+**The chip's menu is a sibling of its strip, and lazy.** The chip row is a
+`role="toolbar"` composite widget: one tab stop, Left/Right inside it. A
+`role="menu"` mounted INSIDE it would add a second focusable structure to that
+widget and put its rows in the strip's own arrow order, so the menu renders as
+the strip's sibling; the right-click moves the roving stop onto the chip it
+focuses, so there is still exactly one. The menu itself is behind a
+`LazyBoundary` — 307 B gzip of entry chunk otherwise, paid by every cold load
+for a surface opened by a minority gesture, which is the same reason the Boards
+SECTION beside it is lazy. Its cost is stated where it is taken
+(`ProjectLayoutChipMenu.tsx`): the first right-click fetches the chunk, and a
+fetch that fails renders nothing rather than planting an error card in a 240px
+rail.
 
 ## The toolbar is per region (#2143)
 

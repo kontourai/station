@@ -228,6 +228,36 @@ export async function moveRegionThroughGrab(
 }
 
 /**
+ * Opens a SIDEBAR PILL — a Boards row or a project's Layout chip — into a dock
+ * region through its context menu (#2158).
+ *
+ * The gesture is a real right-click on the pill, which is the route every
+ * device gets and the only one a keyboard reaches; the drag is #2175. The
+ * menu is the pill's own, named for it, so this asserts the menu that opened
+ * belongs to the pill that was clicked rather than to whatever menu happens to
+ * be on screen — the rail holds a Boards row menu with the same row labels.
+ *
+ * A pill whose Layout id is not a lowercase UUID, or a device whose dock folds
+ * to one region, renders NO placement rows at all (#2158 D2/D4). This helper
+ * therefore fails loudly rather than silently proving nothing: the menu it
+ * waits for does not open for those pills.
+ */
+export async function openPillInRegionThroughMenu(
+  page: Page,
+  pill: Locator,
+  pillName: string,
+  regionLabel: 'Left' | 'Bottom' | 'Right',
+): Promise<void> {
+  await pill.click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: `${pillName} actions` });
+  await expect(menu).toBeVisible();
+  await menu
+    .getByRole('menuitem', { name: `Open in ${regionLabel}`, exact: true })
+    .click();
+  await expect(menu).toBeHidden();
+}
+
+/**
  * The phone's region route (#917): a coarse pointer narrow enough to be
  * mobile renders no region control in the toolbar row at all — the width
  * budget could not hold one — so the Show/Hide rows live in the `⋯` overflow
