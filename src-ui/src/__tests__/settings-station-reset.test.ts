@@ -119,9 +119,19 @@ describe('buildStationResetPlan', () => {
   });
 
   test('the candidate list covers the rows the page actually renders', () => {
-    // Pinned literally: derived-from-the-registry is what keeps this list
-    // honest, but a filter that silently stopped matching would still read
-    // "derived". These are the rows Station and Defaults render today.
+    // Pinned literally, and this is the assertion #2182 turns on. The list is
+    // derived from the settings CATALOG, which spans every card the page
+    // draws; it used to be derived from one card's own key list, so moving a
+    // row to a different card would have dropped it from the reset with
+    // nothing red — the dialog names only the keys that are currently stored,
+    // so a shorter list still reads as plausible. A literal expectation is
+    // the only thing that can see that, because "derived" keeps reading as
+    // derived while the thing it derives from shrinks.
+    //
+    // Order is render order, which is catalog order. (It differs from the
+    // pre-#2182 pin in one place: `region` renders above the default agent
+    // instructions in `AgentDefaultsSection`, and the hand-written list this
+    // replaces had them the other way round while claiming render order.)
     expect([...RESETTABLE_STATION_SETTING_KEYS]).toEqual([
       'approvalGuardian',
       'defaultMaxTurns',
@@ -139,8 +149,8 @@ describe('buildStationResetPlan', () => {
       'defaultApprovalMode',
       'registryUrl',
       'distributionProfile',
-      'systemPrompt',
       'region',
+      'systemPrompt',
       'templateVariables',
     ]);
   });

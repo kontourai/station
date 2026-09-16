@@ -27,7 +27,15 @@ import { renderSettingRow } from './registry-row';
 import type { PendingOverrideChange } from './SettingInheritanceLayers';
 import { SettingsSection } from './SettingsSection';
 
-export const STATION_CONFIG_KEYS: readonly (keyof AppConfig)[] = [
+/**
+ * The rows this card renders, in order.
+ *
+ * Module-local since #2182: it used to be exported so `station-reset.ts`
+ * could reuse it as "the Station keys a reset clears", which tied what a
+ * reset touches to what this one card happens to render. That list is now
+ * derived from the settings catalog, which spans every card.
+ */
+const STATION_CONFIG_KEYS: readonly (keyof AppConfig)[] = [
   'approvalGuardian',
   'telemetryEnabled',
   'defaultMaxTurns',

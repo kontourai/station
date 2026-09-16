@@ -1,6 +1,8 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DEVICE_SETTINGS_REGISTRY } from '@kontourai/station-contracts/device-settings';
+import { APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import { describe, expect, test } from 'vitest';
 import {
   buildRegistryDocument,
@@ -172,5 +174,117 @@ describe('settings registry generator', () => {
     await expect(
       generateSettingsRegistry({ check: true, root: ROOT }),
     ).resolves.toEqual({ written: false, entries: document.settings.length });
+  });
+});
+
+/**
+ * The published write authority of every settings row, pinned literally.
+ *
+ * `scope` is the field that tells an agent WHICH DOCUMENT to write, so it is
+ * the one field in this artifact that a purely presentational change must
+ * never move. Before #2182 it was derived from the row's SECTION, which made
+ * it move with any information-architecture change: filing the Station-scope
+ * `default-chat-font-size` row under the device-scope Chat card would have
+ * published `scope: "device"` for a key that lives in the Station document,
+ * and an agent reading this artifact would have written it to the wrong one.
+ * Nothing on screen would have said so — `scopeBadgeLabel` collapses
+ * `station` and `defaults` to the same chip.
+ *
+ * It is pinned as an exhaustive MAP, not a spot check: the defect this
+ * catches is a row silently changing authority while every count, every
+ * route and every label stays correct.
+ */
+/** What each registry declares for its own key — the authority `scope` copies. */
+const DECLARED_SCOPE: ReadonlyMap<string, string> = new Map(
+  [...APP_SETTINGS_REGISTRY, ...DEVICE_SETTINGS_REGISTRY].map((definition) => [
+    String(definition.key),
+    definition.scope as string,
+  ]),
+);
+
+const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
+  'approval-guardian': 'station',
+  'usage-telemetry': 'station',
+  'telemetry-destination': 'informational',
+  'default-max-turns': 'station',
+  'default-max-output-tokens': 'station',
+  'default-chat-font-size': 'station',
+  'terminal-shell': 'station',
+  'mcp-ui-host': 'station',
+  'surface-trust': 'station',
+  'default-skill-registries': 'station',
+  'workspace-checkpoints': 'station',
+  'default-workspace-isolation': 'station',
+  'default-approval-mode': 'station',
+  'registry-url': 'station',
+  'distribution-profile': 'station',
+  'builtin-agent-engine': 'station',
+  'desktop-app-updates': 'station',
+  'core-app-updates': 'station',
+  'deployed-build': 'informational',
+  'log-level': 'station',
+  'backup-restore': 'mixed',
+  'reset-defaults': 'station',
+  'reset-device-defaults': 'device',
+  'feature-previews': 'station',
+  'enable-developer-tools': 'device',
+  'shared-answers': 'station',
+  'plugin-visibility': 'station',
+  'host-runtime': 'informational',
+  'diagnostics-bundle': 'informational',
+  'default-model': 'defaults',
+  'default-region': 'defaults',
+  'default-agent-instructions': 'defaults',
+  'template-variables': 'defaults',
+  'chat-font-size': 'device',
+  'smooth-answer-reveal': 'device',
+  'chat-show-reasoning': 'device',
+  'chat-show-tool-details': 'device',
+  'chat-dock-auto-hide': 'device',
+  'diff-style': 'device',
+  'diff-wrap': 'device',
+  theme: 'device',
+  'sidebar-sections': 'device',
+  'haptic-feedback': 'device',
+  'confirm-conversation-delete': 'device',
+  'accent-color': 'device',
+  'keyboard-shortcuts': 'device',
+  'push-notifications': 'device',
+  'speech-to-text': 'device',
+  'text-to-speech': 'device',
+  'message-context': 'temporary',
+  'voice-pill': 'device',
+  'mobile-pairing': 'device',
+  'tts-readback': 'device',
+  'personal-knowledge-store': 'station',
+};
+
+describe('published write authority', () => {
+  test('every row publishes the scope of the document it writes', () => {
+    expect(
+      Object.fromEntries(
+        document.settings.map((entry) => [entry.id, entry.scope]),
+      ),
+    ).toEqual(PUBLISHED_SCOPE_BY_ID);
+  });
+
+  test('a row with a config key takes its scope from that key, not its section', () => {
+    // The population is pinned first: an assertion that iterates a list is
+    // satisfied by an empty list.
+    const withKey = document.settings.filter(
+      (entry) => entry.configKey !== undefined,
+    );
+    expect(withKey.length).toBeGreaterThan(30);
+    const mismatched = withKey
+      .filter((entry) => DECLARED_SCOPE.has(entry.configKey as string))
+      .filter(
+        (entry) =>
+          entry.scope !== DECLARED_SCOPE.get(entry.configKey as string),
+      )
+      .map((entry) => `${entry.id} (${entry.configKey}): ${entry.scope}`);
+    // No exemption list. Every row that names a key agrees with that key's
+    // registry today, and a row that needed to disagree would have to say so
+    // here rather than acquiring the difference from where it is rendered.
+    expect(mismatched).toEqual([]);
   });
 });

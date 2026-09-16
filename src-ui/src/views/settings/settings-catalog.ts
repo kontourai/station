@@ -534,12 +534,34 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   'message-context': 'temporary',
 };
 
-function scopeForSection(
-  id: SettingsCatalogId,
+/**
+ * The write authority each registry declares for its own key.
+ *
+ * Both registries carry `scope` on every definition (`settings-registry.ts`
+ * for the Station document, `device-settings.ts` for this device's store), so
+ * a row that names a key has an authoritative answer and never has to be
+ * guessed at from where it is rendered.
+ */
+const SCOPE_BY_CONFIG_KEY: ReadonlyMap<
+  string,
+  NonNullable<SettingsCatalogEntry['scope']>
+> = new Map(
+  [...APP_SETTINGS_REGISTRY, ...DEVICE_SETTINGS_REGISTRY].map((definition) => [
+    String(definition.key),
+    definition.scope as NonNullable<SettingsCatalogEntry['scope']>,
+  ]),
+);
+
+/**
+ * The scope a row with NO config key gets, from the section it sits in.
+ *
+ * This is a last resort, not the rule — see `scopeForEntry`. A status
+ * reading, a surface or a button has no registry definition to ask, so the
+ * section's own storage character is the only honest answer available.
+ */
+function scopeForKeylessSection(
   section: SettingsSectionId,
 ): NonNullable<SettingsCatalogEntry['scope']> {
-  const override = SETTING_SCOPE_OVERRIDES[id];
-  if (override) return override;
   if (section === 'agent-defaults') return 'defaults';
   if (
     section === 'appearance' ||
@@ -555,7 +577,43 @@ function scopeForSection(
   return 'station';
 }
 
-/** Every entry has write authority metadata, derived once from its owning section. */
+/**
+ * Which document an edit to this row is written to.
+ *
+ * Read from the row's OWN key, not from the section it is rendered in
+ * (#2182). A section is an information-architecture choice and is expected to
+ * move; `scope` is a persistence fact and must not move with it. This field is
+ * published to agents in `src-server/generated/settings-registry.json`, so
+ * deriving it from the section let "which card is this under" silently decide
+ * "which document does an agent write": filing `default-chat-font-size` under
+ * Chat would have flipped it from `station` to `device`, and filing the
+ * per-run Station controls under the defaults card would have flipped them to
+ * `defaults`, contradicting the closed six-key `defaults` list that
+ * `packages/contracts/src/__tests__/settings-registry.test.ts` pins.
+ *
+ * The FIRST config key, matching `scripts/gen-settings-registry.ts`: a row
+ * with several keys is one control over one primary value, and that is the
+ * key the published artifact names.
+ *
+ * `SETTING_SCOPE_OVERRIDES` still has the final say — it exists for the rows
+ * whose registry answer is true of the KEY but not of what this row does with
+ * it (a derived status line, an export that spans both documents).
+ */
+function scopeForEntry(
+  id: SettingsCatalogId,
+  section: SettingsSectionId,
+  configKeys: readonly string[] | undefined,
+): NonNullable<SettingsCatalogEntry['scope']> {
+  const override = SETTING_SCOPE_OVERRIDES[id];
+  if (override) return override;
+  const declaredKey = configKeys?.[0];
+  const declared = declaredKey
+    ? SCOPE_BY_CONFIG_KEY.get(declaredKey)
+    : undefined;
+  return declared ?? scopeForKeylessSection(section);
+}
+
+/** Every entry has write authority metadata, derived once from its own key. */
 type SettingsCatalogWithScope = readonly (SettingsCatalogEntry & {
   readonly id: SettingsCatalogId;
   readonly scope: NonNullable<SettingsCatalogEntry['scope']>;
@@ -563,7 +621,14 @@ type SettingsCatalogWithScope = readonly (SettingsCatalogEntry & {
 
 export const SETTINGS_CATALOG = SETTINGS_CATALOG_SOURCE.map((entry) => ({
   ...entry,
-  scope: scopeForSection(entry.id, entry.section),
+  // `configKeys` is absent from the literal type of every keyless row, and
+  // the source is a union of 54 such literals, so it is read through the
+  // declared shape rather than off the union member.
+  scope: scopeForEntry(
+    entry.id,
+    entry.section,
+    (entry as Omit<SettingsCatalogEntry, 'scope'>).configKeys,
+  ),
 })) as SettingsCatalogWithScope;
 
 export interface SettingsPaletteCommand {
