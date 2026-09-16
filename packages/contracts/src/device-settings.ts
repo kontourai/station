@@ -293,6 +293,19 @@ export interface DeviceSettings {
    */
   firstRunProgress: FirstRunProgress;
   /**
+   * Whether deleting a conversation asks first on this device (epic #2144
+   * slice 6 item E). Default true — the delete is not undoable, so the
+   * confirm is the honest default and turning it off is an explicit choice.
+   *
+   * Consumer: `src-ui/src/components/chat/ConversationHistory.tsx` resolves
+   * the pending delete immediately instead of parking it in the confirm
+   * modal. It deliberately covers ONE action: "Clear all conversations" and
+   * every other destructive confirm keep asking, because nothing here says
+   * otherwise and a setting named for one action must not widen to others.
+   * Never had a prior key: the confirm was unconditional.
+   */
+  confirmConversationDelete: boolean;
+  /**
    * archive#3313: show the Developer surface (logs, system, telemetry,
    * memory, archive) in this device's sidebar and command palette. Gates
    * navigation advertisement only — /developer deep links keep working when
@@ -593,8 +606,14 @@ export const DEVICE_SETTINGS_REGISTRY = [
     key: 'featureSettings',
     scope: 'device',
     descriptor: { kind: 'composite' },
-    label: 'Features',
-    help: 'Only the optional features turned on here are active on this device.',
+    // Named for everything the composite holds, because it is listed by
+    // label in the "Restore device defaults" confirmation and restoring it
+    // also restores `notificationSounds` — a member nothing else in that
+    // dialog named (#2144 slice 6 fix round 1). The single label is the
+    // smaller honest change than splitting a composite every consumer,
+    // migration and `priorStorageKey` reads as one value.
+    label: 'Features, including notification sounds',
+    help: 'Only the optional features turned on here are active on this device, and this is where each notification category’s sound is kept.',
     description: 'Per-device feature toggles.',
     priorStorageKey: 'station-feature-settings',
     // Confirmed against useFeatureSettings.ts's own DEFAULTS: all off
@@ -845,6 +864,21 @@ export const DEVICE_SETTINGS_REGISTRY = [
     defaultValue: true,
   }),
   defineDeviceSetting({
+    key: 'confirmConversationDelete',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Ask before deleting a conversation',
+    // Renders beside the control in BOTH states, so it cannot describe only
+    // the on state (#2144 slice 6 fix round 1).
+    help: 'When on, deleting a conversation on this device asks for confirmation first; deleting is not undoable either way.',
+    description:
+      'Show a confirmation before deleting a conversation. Turning this off deletes immediately, which cannot be undone. Clearing all conversations always asks.',
+    // #2144 slice 6: default on. The delete is not undoable and the confirm
+    // was previously unconditional, so `false` here is a choice somebody
+    // made rather than a state a fresh device can fall into.
+    defaultValue: true,
+  }),
+  defineDeviceSetting({
     key: 'developerToolsEnabled',
     scope: 'device',
     descriptor: { kind: 'boolean' },
@@ -923,6 +957,69 @@ export const DEVICE_SETTINGS_PRIOR_KEYS: readonly string[] =
     ): definition is typeof definition & { priorStorageKey: string } =>
       definition.priorStorageKey !== undefined,
   ).map((definition) => definition.priorStorageKey);
+
+/**
+ * Device settings whose value is a RECORD OF DIRECT MANIPULATION — where a
+ * window was dragged to, which panel was left open, how far a guided run
+ * got. Nobody chose them in a settings form; they are the residue of using
+ * the app (epic #2144 slice 6 item F).
+ *
+ * "Restore device defaults" excludes them. Restoring `chatDockHeight` or
+ * `regionArrangement` would rearrange the window out from under someone who
+ * asked to reset their PREFERENCES, and restoring `firstRunProgress` or
+ * `onboardingSetupDismissed` would reopen a guided run they finished — none
+ * of which is what that button says it does.
+ *
+ * This is a CLASSIFICATION, not a denylist: every registered key belongs to
+ * exactly one of this list and {@link PREFERENCE_DEVICE_KEYS}, asserted by
+ * `device-settings.test.ts`, so a new device setting fails that test until
+ * somebody decides which it is.
+ */
+export const DIRECT_MANIPULATION_DEVICE_KEYS = [
+  'chatDockHeight',
+  'chatDockWidth',
+  'regionArrangement',
+  'dockSlotPlacement',
+  'chatDockProjectSlug',
+  'inboxOpen',
+  'inboxSections',
+  'projectSidebarCollapsed',
+  'firstRunProgress',
+  'onboardingSetupDismissed',
+] as const satisfies readonly (keyof DeviceSettings)[];
+
+/**
+ * Device settings somebody CHOSE — the ones "Restore device defaults"
+ * restores. The complement of {@link DIRECT_MANIPULATION_DEVICE_KEYS}, but
+ * written out rather than derived: a derived complement would silently
+ * absorb every future key as a preference, which is the one outcome the
+ * completeness assertion exists to prevent.
+ *
+ * `sidebarSections` sits here even though the sidebar's own × affordance
+ * writes it: it has a Settings control of its own ("Sidebar sections"), so
+ * it is presented as a preference and restoring it restores what that
+ * control shows.
+ */
+export const PREFERENCE_DEVICE_KEYS = [
+  'theme',
+  'accentColor',
+  'featureSettings',
+  'sttProvider',
+  'ttsProvider',
+  'chatDockAutoHide',
+  'diffStyle',
+  'diffWrap',
+  'sidebarSections',
+  'shortcutOverrides',
+  'skillShortcuts',
+  'modelPickerPreferences',
+  'chatShowReasoning',
+  'chatShowToolDetails',
+  'chatFontSize',
+  'hapticsEnabled',
+  'developerToolsEnabled',
+  'confirmConversationDelete',
+] as const satisfies readonly (keyof DeviceSettings)[];
 
 type RegisteredDeviceKey = (typeof DEVICE_SETTINGS_REGISTRY)[number]['key'];
 

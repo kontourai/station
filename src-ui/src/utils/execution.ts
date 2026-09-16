@@ -4,7 +4,13 @@ import {
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import type { EngineId } from '@kontourai/station-contracts/provider';
+import {
+  isSessionLifecycleStateStopped,
+  SESSION_LIFECYCLE_STATES,
+  type SessionLifecycleState,
+} from '@kontourai/station-contracts/session-lifecycle';
 import {
   type AgentConnectionView,
   type ConnectionConfig,
@@ -713,6 +719,38 @@ export function executionStatusLabel(status?: string | null): string {
   return connectionStatusLabel(status);
 }
 
+/**
+ * WHICH engine connection a chat session is actually running on.
+ *
+ * One derivation because two surfaces read it for the same session and must
+ * not disagree: the composer decides whether to render an approval control
+ * from it (`useChatDockViewModel`), and the send path decides whether to put
+ * a posture on the wire from it (`useSendMessage`). Round 2 LOW-5 — the
+ * enforcement side read only `chatState.agentConnectionId`, so a chip shown
+ * off an OBSERVED binding could sit above a dispatch that carried nothing.
+ *
+ * A resolved conversation-open observation wins, but only while it describes
+ * the session the chat is actually on (`sessionId === currentSessionId`);
+ * otherwise the chat's own stored binding, then the Agent record's.
+ */
+export function resolveSessionEngineConnectionId(input: {
+  conversationOpenState?: ConversationOpenResolution | null;
+  currentSessionId?: string | null;
+  /** `ChatUIState.agentConnectionId`. */
+  chatStateConnectionId?: string | null;
+  /** `agent.execution.agentConnectionId` for the chat's Agent. */
+  agentBoundConnectionId?: string | null;
+}): string | null {
+  const observed =
+    input.conversationOpenState?.status === 'resolved'
+      ? input.conversationOpenState.execution
+      : undefined;
+  if (observed && observed.sessionId === input.currentSessionId) {
+    return observed.engineConnectionId ?? null;
+  }
+  return input.chatStateConnectionId ?? input.agentBoundConnectionId ?? null;
+}
+
 export function buildProviderOptions(
   agentConnectionId?: string | null,
   runtimeOptions?: Record<string, unknown>,
@@ -965,6 +1003,92 @@ export function resolveSessionExecutionSummary(
     model: session.orchestrationModel ?? session.model ?? undefined,
     status: session.orchestrationStatus ?? session.status ?? undefined,
   };
+}
+
+/**
+ * Client-written `orchestrationStatus` values that mean the SESSION ended —
+ * the ones no lifecycle state covers. Today that is `session.exited`
+ * (`sessionHandlers`, and the snapshot's dead-session fold in
+ * `snapshotHandlers`).
+ *
+ * The writers of `orchestrationStatus` this derivation has been checked
+ * against, because the distinction is the whole point (round 4 N1). The
+ * field is written from three vocabularies, none of which is
+ * `SessionLifecycleState`: `session.state-changed` carries a `SessionState`
+ * (`packages/contracts/src/runtime-events.ts`), the connect-time snapshot
+ * carries `ProviderSession['status']`, and the turn handlers write their own
+ * strings. SESSION-level writers: `session.state-changed` (`event.to`, with
+ * 'running'-without-an-open-turn-or-local-send folded to 'idle') and the
+ * snapshot's `session.status`. TURN-level writers: `turn.started`
+ * ('running'), `assistantTurn` ('idle'), `turn.aborted` ('aborted'),
+ * `runtime.error` ('errored'), the approval handlers
+ * ('awaiting-approval'/'running'), and the storage rehydrator, which scrubs
+ * 'running'/'awaiting-approval' on restore.
+ *
+ * 'errored' arrives from BOTH levels — `runtime.error` and a
+ * `session.state-changed` from the Codex and station-agent adapters — and
+ * `sessionHandlers` treats the latter as terminal for activity hints. It is
+ * LIVE here regardless: the server decides continuation on the lifecycle
+ * state, not this string, and an errored thread can return to idle. Likewise
+ * 'aborted': a user pressing Stop leaves the process alive and
+ * `orchestrationSessionStarted` untouched. Both were settled in round 3,
+ * which re-requested the posture into a session the server merely continues.
+ *
+ * Known gap, tracked in #2168: the snapshot vocabulary's 'dead' and
+ * 'closed' fall through both halves below and read live, so a send against
+ * such a row withholds the posture from a genuine restart.
+ */
+const CLIENT_SESSION_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+  'exited',
+]);
+
+/** Whether an `orchestrationStatus` means this chat's SESSION is over. */
+function orchestrationStatusIsSessionSettled(status: string): boolean {
+  if (CLIENT_SESSION_TERMINAL_STATUSES.has(status)) return true;
+  // The lifecycle half is derived, never re-listed: station#1548 is two
+  // hand-written copies of "terminal" drifting apart.
+  return (SESSION_LIFECYCLE_STATES as readonly string[]).includes(status)
+    ? isSessionLifecycleStateStopped(status as SessionLifecycleState)
+    : false;
+}
+
+/**
+ * Whether the server will CONTINUE this chat's existing session rather than
+ * start a new one — the question "is a session live", asked by the send path
+ * so a session-start-only payload (the resolved approval posture, #2144
+ * slice 6) is withheld only when there is genuinely a live session.
+ *
+ * Deliberately NOT `orchestrationSessionStarted || currentSessionId`, which
+ * was true on two paths where the server really does call `startSession`
+ * (round 3 F1): `currentSessionId` outlives the session it names —
+ * `session.exited` writes `orchestrationSessionStarted: false` and leaves the
+ * id in place — and `commitConversationOpen` sets BOTH for any
+ * `status: 'resolved'` resolution, which means "continuable", not "running"
+ * (a stopped conversation resolves too, and its next send takes the server's
+ * `startRequired: true` path).
+ *
+ * UNSURE ANSWERS "not live", ON PURPOSE. A reopened conversation carries no
+ * `orchestrationStatus` at all, and the client cannot reproduce the server's
+ * `resolveConversationContinuation` (it reads the session lineage and the
+ * process detail). "Not live" means the posture IS sent, which is the safe
+ * side twice over: the value is deterministic per chat, so re-sending it to
+ * an already-configured session is a no-op at the adapter
+ * (`targetPermissionMode !== record.currentPermissionMode`,
+ * claude-adapter.ts), while withholding it leaves a genuinely new session
+ * running a posture the composer is simultaneously claiming.
+ */
+export function chatSessionIsLive(
+  session?: {
+    orchestrationSessionStarted?: boolean;
+    orchestrationStatus?: string;
+    orchestrationTurnOpen?: boolean;
+  } | null,
+): boolean {
+  if (!session) return false;
+  if (session.orchestrationSessionStarted !== true) return false;
+  if (session.orchestrationTurnOpen === true) return true;
+  if (!session.orchestrationStatus) return false;
+  return !orchestrationStatusIsSessionSettled(session.orchestrationStatus);
 }
 
 export function isSessionExecutionActive(

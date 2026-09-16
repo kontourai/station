@@ -79,6 +79,12 @@
       "minimum": 10,
       "maximum": 24
     },
+    "defaultApprovalMode": {
+      "type": "string",
+      "enum": ["connection-default", "ask", "auto", "never"],
+      "description": "Approval posture a new chat starts in when neither the chat nor its engine connection names one. \"connection-default\" states no posture. Default: connection-default",
+      "default": "connection-default"
+    },
     "defaultWorkspaceIsolation": {
       "type": "string",
       "enum": ["shared", "worktree"],
