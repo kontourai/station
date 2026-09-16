@@ -74,6 +74,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, symlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { ACCENT_FOREGROUND_SOURCE_ROOTS } from '../accent-foreground-ratchet.mjs';
 import {
   importGuardrail,
   runGuardrail,
@@ -991,15 +992,14 @@ describe('focus-visible:ratchet rejects a new outline suppression', () => {
 
 describe('accent-foreground:ratchet rejects an underived foreground on an accent fill', () => {
   const SCRIPT = 'accent-foreground-ratchet.mjs';
+  // Seeded from the gate's OWN root list, not a copy of it. The copy that
+  // used to live here went stale the moment #1542 gave the minimal example a
+  // `src/` directory and added it to the gate: the gate scandirs every root,
+  // so the scratch repo was missing one and all three cases died with ENOENT
+  // — on Nightly, which is the only lane that runs this file. A hand-written
+  // list of someone else's list has no way to notice that.
   const roots = Object.fromEntries(
-    [
-      'src-ui/src',
-      'packages/connect/src/react',
-      'packages/sdk/src',
-      'examples/getting-started-starter/src',
-      'examples/coding-starter/src',
-      'examples/knowledge-docs-starter/src',
-    ].map((root) => [`${root}/.keep`, '']),
+    ACCENT_FOREGROUND_SOURCE_ROOTS.map((root) => [`${root}/.keep`, '']),
   );
   const inventory = (exceptions: unknown[]) => ({
     'docs/ui/accent-foreground-exceptions.json': `${JSON.stringify({ exceptions }, null, 2)}\n`,

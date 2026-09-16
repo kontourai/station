@@ -63,7 +63,7 @@ const INVENTORY = join(ROOT, 'docs/ui/accent-foreground-exceptions.json');
  * INLINE JSX style, so this gate never reads that declaration either way
  * (limitation 2 above): its root is in scope, the rule is not (review L3).
  */
-const SOURCE_ROOTS = [
+export const ACCENT_FOREGROUND_SOURCE_ROOTS = [
   'src-ui/src',
   'packages/connect/src/react',
   'packages/sdk/src',
@@ -226,7 +226,7 @@ export function findAccentFilledRules(css, path) {
 }
 
 export function discoverAccentFilledRules(root = ROOT) {
-  return SOURCE_ROOTS.flatMap((sourceRoot) =>
+  return ACCENT_FOREGROUND_SOURCE_ROOTS.flatMap((sourceRoot) =>
     walk(join(root, sourceRoot))
       .filter((path) => path.endsWith('.css'))
       .flatMap((path) =>
