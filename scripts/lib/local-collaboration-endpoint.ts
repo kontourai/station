@@ -49,6 +49,12 @@ export async function startLocalSecurityEndpoint(home: string, marker: string) {
       security.verifyOperatorCredential(credential),
     isApprovalCurrent: (request) =>
       isRuntimeRequestPrincipalCurrent(request, security),
+    // Operator pairing management fails closed when this is absent, so the
+    // lab has to supply it for the same reason the runtime does: without it
+    // `DELETE /api/pairing/devices/:id` answers 401 and the revocation leg
+    // of the security check can never run.
+    isRequestPrincipalCurrent: (request) =>
+      isRuntimeRequestPrincipalCurrent(request, security),
   });
   app.get('/api/projects/local-lab-probe', (c) => {
     const actor = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
