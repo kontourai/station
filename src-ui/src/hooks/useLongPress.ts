@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef } from 'react';
 
-/** How long a press must be held, uninterrupted, to count as a long press. */
-export const LONG_PRESS_MS = 500;
+/**
+ * How long a press must be held, uninterrupted, to count as a long press.
+ * Module-private: a caller that needs a different hold passes `durationMs`,
+ * and an exported constant with no importer is a number two places could
+ * drift from. The e2e that drives the gesture holds 600ms against it with
+ * room to spare rather than reading it (`openChooserFromToggle`).
+ */
+const LONG_PRESS_MS = 500;
 
 /**
  * How far the pointer may travel before the press stops being a press. Six

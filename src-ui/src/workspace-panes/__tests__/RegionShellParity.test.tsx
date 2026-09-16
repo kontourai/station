@@ -1245,7 +1245,7 @@ describe('the toolbar toggle and the region bar chevron are one act (#2155)', ()
     seedPlacement('right', 'open');
     const shell = await renderShellsSettled();
     const toolbarToggle = () =>
-      screen.getByRole('button', { name: 'Right region', exact: true });
+      screen.getByRole('button', { name: 'Right region' });
     const press = (
       route: 'toolbar' | 'chevron',
       label: 'Hide Chat' | 'Show Chat',
