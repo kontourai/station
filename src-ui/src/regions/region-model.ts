@@ -24,7 +24,15 @@ export interface RegionState {
    * region may hold several; `main` holds at most one (it keeps
    * displacement, #928 C2a). No surface is in two regions' `panes` at once
    * (`placeSurface` removes it from the region it leaves) and no id repeats
-   * within one. `updateRegion` and the record parser hold these.
+   * within one. `updateRegion` holds both.
+   *
+   * The record parser holds the second outright and the first for SHELL
+   * surfaces only (#2159 slice A): it tolerates an instance-keyed id
+   * (`isInstanceSurface`) in two regions so that this release can READ a
+   * record the NEXT one will write, when `placeSurface` stops vacating for
+   * those ids. Nothing in this build writes such a record — `placeSurface`
+   * still vacates — so the tolerance is unreachable from the product today
+   * and is here only to make that later change revertable.
    */
   panes: readonly string[];
   /**
@@ -982,6 +990,27 @@ export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
     sourceFile: LAYOUT_PANE_SOURCE_FILE,
   },
 ];
+
+/**
+ * Whether an id names an INSTANCE-KEYED pane rather than a shell surface
+ * (#2159 slice A). Registry-first, so the two are a total partition with no
+ * third "unknown id" state: an id the registry holds is a shell surface even
+ * if a family's grammar would also match it, an id no family mints is not an
+ * instance pane, and Chat — a registry key — is refused here, which is what
+ * keeps Chat single-placement while the instance families stop being.
+ *
+ * THE question every site that treats the two kinds differently asks, kept in
+ * one place beside the table it reads. Its one caller today is the record
+ * parser's cross-region de-dup (`region-arrangement-record.ts`), which
+ * records only the ids this refuses, so a shell surface named by two regions
+ * still keeps the first and an instance id survives in both.
+ */
+export function isInstanceSurface(id: string): boolean {
+  return (
+    !REGION_SURFACE_REGISTRY.has(id) &&
+    INSTANCE_SURFACE_PREFIXES.some((entry) => entry.matches(id))
+  );
+}
 
 const INSTANCE_SURFACE_CACHE = new Map<string, RegisteredSurface>();
 
