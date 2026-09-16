@@ -18,14 +18,18 @@ import { useDockProject } from './useDockProject';
  * has to be on this side of the boundary rather than in the toolbar for the
  * same reason — it reaches the projects queries.
  *
- * Nothing renders while that read is in FLIGHT, which is the rule the "+"
+ * No ROWS render while that read is in flight, which is the rule the "+"
  * applies (`RegionPaneHost`'s `chooserRegion`, #2154 review M3): a
  * projectless context during the read would list Terminal, Diff and Files
  * disabled with a remedy — "choose a project for this dock" — for a state
  * the user may not be in, and then flip them enabled a frame later. The
- * panel arrives with the answer instead. For a dock with no bound project
- * and no route project there is no read to wait for (`useProject` is
- * disabled on the empty slug), so the common case opens immediately.
+ * PANEL still opens and says what it is waiting for (#2155 review M3): the
+ * "+" may decline to render itself while the read is in flight, and a toggle
+ * the user has already HELD may not — a completed gesture that produces
+ * nothing at all is indistinguishable from a broken one. For a dock with no
+ * bound project and no route project there is no read to wait for
+ * (`useProject` is disabled on the empty slug), so the common case opens
+ * with its rows immediately.
  */
 export function RegionChooserPanel({
   regionId,
@@ -42,7 +46,6 @@ export function RegionChooserPanel({
     () => ({ projectId, projectSlug }),
     [projectId, projectSlug],
   );
-  if (pending) return null;
   return (
     <RegionEmptyChooser
       regionId={regionId}
@@ -50,6 +53,7 @@ export function RegionChooserPanel({
       variant="panel"
       anchor={anchor}
       onClose={onClose}
+      pending={pending}
     />
   );
 }

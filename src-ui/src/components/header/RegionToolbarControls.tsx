@@ -345,9 +345,16 @@ function RegionToggleButton({
   // and since #2154 what it shows is the chooser — with "(empty)" where the
   // pane list would be, so no state of this control names an act it does not
   // perform.
+  //
+  // The second line is the HOLD (#2155 review L4). It is the only place this
+  // control advertises the chooser: `aria-haspopup` would describe the press
+  // the user is about to make as opening a menu, which it is not. A tooltip
+  // is a weak channel and this is not the panel's only route — the region's
+  // own body and its "+" carry the same rows — but an undiscoverable gesture
+  // named nowhere is worse than one named here.
   const title = `${toggle.visible ? 'Hide' : 'Show'} ${label}${
     holds ? `: ${toggle.paneTitles.join(', ')}` : ' (empty)'
-  }`;
+  }\nHold or right-click to choose what goes here`;
   const gesture = useLongPress({
     onLongPress: onOpenChooser,
     onClick: toggle.onToggle,

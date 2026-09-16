@@ -27,7 +27,13 @@ export type RegionVisibilityApplier = (open: boolean) => void;
  *
  * An absent entry is a real state, not a failure: a HIDDEN EMPTY region
  * mounts no host at all (#2153), so nothing has an `applyDockSnap` for it and
- * `RegionToggle.onToggle` writes the model directly instead.
+ * `RegionToggle.onToggle` writes the model directly instead. The same is true
+ * for ONE FRAME of a host that is mounting: the shell publishes from an
+ * effect, and its chunk is lazy, so a press landing between the mount and
+ * that effect takes the fallback (#2155 review L5). The fallback's write is
+ * the same visibility change — what it misses is the snap and height the
+ * shell would have recorded, on a region whose shell has not finished
+ * arriving.
  */
 const appliers = new Map<DockRegionId, RegionVisibilityApplier>();
 
@@ -38,11 +44,16 @@ export function registerRegionVisibilityApplier(
 ): () => void {
   appliers.set(region, applier);
   return () => {
-    // Only if it is still OURS. React can commit a replacement shell before
-    // running the departing one's cleanup (the same ordering
-    // `registerRegionSurfaceHost` counts for), and an unconditional delete
-    // would then drop the live shell's applier and leave the region on the
-    // model-write fallback for the rest of its life.
+    // DEFENSIVE, and named as such (#2155 review L2). React can commit a
+    // replacement shell before running the departing one's cleanup — the
+    // ordering `registerRegionSurfaceHost` counts for rather than flags — and
+    // an unconditional delete would then drop the LIVE shell's applier and
+    // leave the region on the model-write fallback for the rest of its life.
+    // No test constructs that interleaving: it needs two hosts alive for one
+    // region, which `RegionShells` (one host per region, keyed by it) does
+    // not produce, so what the guard protects against is a React scheduling
+    // shape this code cannot stage. It is one comparison; the alternative is
+    // a silent, permanent downgrade if the shape ever arrives.
     if (appliers.get(region) === applier) appliers.delete(region);
   };
 }

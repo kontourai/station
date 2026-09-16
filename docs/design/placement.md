@@ -944,11 +944,38 @@ goes in this region" standing beside the region's own chooser.
   opens #2154's chooser anchored under the toggle. `contextmenu` is prevented,
   so the control opens its own panel rather than the browser's. On a coarse
   pointer the hold is the only route, which is why it exists. The click that
-  the hold's release still produces is SUPPRESSED — exactly one, cleared at
-  the click and again at the next press — or the gesture would open the panel
-  and toggle the region under it. The toggle does not announce the panel with
-  `aria-haspopup`: its primary act is the toggle, and the panel is a shortcut
-  to a control the region also carries.
+  the hold's release still produces is SUPPRESSED — exactly one — or the
+  gesture would open the panel and toggle the region under it. The toggle does
+  not announce the panel with `aria-haspopup`: its primary act is the toggle,
+  and the panel is a shortcut to a control the region also carries. What it
+  does carry is a second tooltip line naming the gesture, because an
+  undiscoverable gesture named nowhere is worse than one named weakly.
+
+  **A HOLD OPENS A PANEL WHILE THE POINTER IS STILL DOWN, and that is the
+  whole difficulty** (review B1, reproduced in Chromium before it was fixed).
+  The chooser's dismiss backdrop is `position: fixed; inset: 0`, a contract
+  written for the "+", whose press and release are both spent before the panel
+  exists. Under a hold the backdrop mounts BETWEEN the press and the release,
+  so the release landed on it and dismissed the panel the hold had just
+  opened — on a mouse through `pointerup`, and on a touch through the
+  compatibility `click` that follows the `pointerup` implicit capture
+  retargets to the toggle. Two halves fix it, and both are load-bearing:
+
+  1. the backdrop dismisses only a release it saw the PRESS for (a `pressed`
+     ref — the shape `RegionTabMoveMenu` already carries, for the same reason:
+     a tab's move menu opens on `contextmenu`, which fires on the press). This
+     alone fixes both pointer types, and it now serves #2154's "+" too.
+  2. The toggle takes `setPointerCapture` on its `pointerdown` and gives it
+     back on the release, so the release returns to the control that began the
+     gesture — which is what consumes the click-suppression flag, and what
+     keeps `pointermove` arriving once the pointer leaves the 32px box, so a
+     press dragged away cancels. Where an engine has no capture (jsdom, or a
+     refused id) `pointerleave` supplies that second job.
+
+  The `contextmenu` route suppresses a trailing click as well: a mouse's
+  right-click produces none, but Android and iOS fire `contextmenu` from their
+  own long-press recogniser, before this control's threshold, and do deliver
+  one.
 - **D3 — the toolbar hide IS the chevron's hide.** Each mounted region shell
   publishes its own `setRegionOpen` — the expression its chevron presses,
   which goes through `applyDockSnap` — into
@@ -972,7 +999,10 @@ goes in this region" standing beside the region's own chooser.
   directions. That is not a degraded path: a hidden empty region mounts no
   host at all (#2153), so there is no shell to hold a snap for it, and the
   same is true of every region while the app renders no region hosts (a Chat
-  workspace layout). Only the ambient per-region host publishes — a fullscreen
+  workspace layout). It is also true for ONE FRAME of a host that is mounting
+  — the shell publishes from an effect behind a lazy chunk — so a press
+  landing in that window makes the same visibility change without the snap and
+  height the shell would have recorded (review L5). Only the ambient per-region host publishes — a fullscreen
   Chat pane's own chrome instance reads Chat's region without rendering it,
   and letting it publish would give one region two appliers whose unmount
   order decided which survived.
@@ -983,9 +1013,10 @@ goes in this region" standing beside the region's own chooser.
   screen, but it is not nothing either); the default is hidden and empty (the
   frame alone). #2143 drew the last two identically. There is no `aria-*` for
   "hidden and holding": `aria-pressed` reports the visibility a press changes,
-  and what the region holds is the tooltip's — `Hide Right region: Chat,
-  Activity`, `Show Right region: Chat, Activity`, `Show Right region (empty)`.
-  The accessible name stays the region's.
+  and what the region holds is the tooltip's first line — `Hide Right region:
+  Chat, Activity`, `Show Right region: Chat, Activity`, `Show Right region
+  (empty)` — over a second line that names the hold. The accessible name stays
+  the region's.
 - **D5 — retired, not flagged off.** `RegionOfferMenu`, `RegionToggleOffer`,
   `RegionToggle.offers` and the inert branch are deleted.
   `ToolbarMenuSurface`'s one remaining caller is the folded device's flat
@@ -994,16 +1025,23 @@ goes in this region" standing beside the region's own chooser.
   helper `showSurfaceInEmptyRegion` keeps its name and signature and now
   drives the two controls that replaced the menu — the toggle opens the
   region, the region's own chooser fills it — and `openChooserFromToggle`
-  drives the hold.
+  drives the hold. `tests/helpers/orchestration.ts` takes the same retarget:
+  its fine-pointer branch keyed on an empty region having no `aria-pressed`,
+  which every toggle now reports, so it opened an empty region and waited for
+  a `Dock` landmark an empty region never has.
 
 The chooser the toolbar opens is loaded lazily (`RegionChooserPanel`), so
 neither it nor the pane inventory behind it joins the entry chunk the toolbar
 lives in. That module carries the dock's project read with it —
 `useDockProject`, moved out of `RegionPaneHost` so the host and the panel
-share one derivation rather than two copies of four queries — and renders
-nothing while that read is in flight, which is the rule the "+" applies
+share one derivation rather than two copies of four queries — and holds back
+its ROWS while that read is in flight, which is the rule the "+" applies
 (#2154 review M3): listing the coding rows disabled with "choose a project for
-this dock" would name a remedy for a state the user may not be in.
+this dock" would name a remedy for a state the user may not be in. The panel
+itself still opens and says what it is waiting for: the "+" may decline to
+render at all while the read runs, and a toggle the user has already HELD may
+not, because a completed gesture that produces nothing is indistinguishable
+from a broken one (#2155 review M3).
 
 ## Failure shapes this design is meant to prevent
 

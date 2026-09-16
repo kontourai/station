@@ -54,6 +54,8 @@ const harness = vi.hoisted(() => ({
   // The `⋯` overflow button only exists under the mobile media query, so a
   // coarse device is not automatically one whose commands can move there.
   isMobile: false,
+  /** The dock's project read, in flight for one test (#2155 review M3). */
+  projectPending: false,
   shortcuts: new Map<
     string,
     {
@@ -106,7 +108,10 @@ vi.mock('../../../contexts/DeviceSettingsContext', () => ({
 }));
 
 vi.mock('../../../contexts/ProjectsContext', () => ({
-  useProject: () => ({ project: undefined, isLoading: false }),
+  useProject: () => ({
+    project: undefined,
+    isLoading: harness.projectPending,
+  }),
 }));
 
 vi.mock('../../../hooks/useActiveProject', () => ({
@@ -178,19 +183,49 @@ async function holdToggle(
   label: 'Left' | 'Bottom' | 'Right',
   holdMs = 500,
 ): Promise<HTMLElement> {
+  const trigger = pressToggle(label);
+  await holdFor(holdMs);
+  // THE PANEL MOUNTS BEFORE THE RELEASE, because that is the order the
+  // browser produces: the hold fires from a timer while the pointer is still
+  // down (#2155 review B1). Settling the chunk first is what puts this test
+  // in that order — running the release before it hid the whole class of
+  // defect where the panel's own dismiss contract eats the gesture's release.
+  await settleChooserChunk();
+  releaseOn(trigger);
+  await settleChooserChunk();
+  return trigger;
+}
+
+/** The press half: focus (a real press does), then `pointerdown`. */
+function pressToggle(label: 'Left' | 'Bottom' | 'Right'): HTMLElement {
   const trigger = regionToggle(label);
-  // A real press focuses the button before anything else happens; jsdom's
-  // synthetic pointer events do not, and the panel's focus RETURN is captured
-  // from whatever held focus when it opened.
+  // jsdom's synthetic pointer events do not focus, and the panel's focus
+  // RETURN is captured from whatever held focus when it opened.
   trigger.focus();
-  fireEvent.pointerDown(trigger, { button: 0, clientX: 40, clientY: 10 });
+  fireEvent.pointerDown(trigger, {
+    button: 0,
+    pointerId: 7,
+    clientX: 40,
+    clientY: 10,
+  });
+  return trigger;
+}
+
+async function holdFor(holdMs: number): Promise<void> {
   await act(async () => {
     vi.advanceTimersByTime(holdMs);
   });
-  fireEvent.pointerUp(trigger);
-  fireEvent.click(trigger);
-  await settleChooserChunk();
-  return trigger;
+}
+
+/**
+ * The release, on whatever element the engine delivers it to: the TRIGGER
+ * where the pointer capture the press requested holds (every real engine),
+ * and the backdrop where it does not — which is the case the panel's own
+ * guard has to survive, driven by its own test below.
+ */
+function releaseOn(element: HTMLElement): void {
+  fireEvent.pointerUp(element, { pointerId: 7 });
+  fireEvent.click(element);
 }
 
 /**
@@ -201,6 +236,16 @@ async function settleChooserChunk(): Promise<void> {
   await act(async () => {
     await vi.dynamicImportSettled();
   });
+}
+
+/**
+ * A toggle's tooltip minus its second line, which every toggle carries and
+ * one test below asserts on its own (#2155 review L4: the hold is named
+ * there because `aria-haspopup` would misdescribe the press). Splitting it
+ * keeps the state assertions about state.
+ */
+function toggleState(label: 'Left' | 'Bottom' | 'Right'): string {
+  return (regionToggle(label).title ?? '').split('\n')[0] ?? '';
 }
 
 /** The chooser panel for a region, as #2154 names it. */
@@ -245,6 +290,7 @@ describe('RegionToolbarControls', () => {
     harness.surfaces = null;
     harness.placements = ['left', 'right', 'bottom'];
     harness.isMobile = false;
+    harness.projectPending = false;
     harness.shortcuts.clear();
     // The hold is a real 500ms wait, so every test that drives one runs on
     // fake time; the rest are unaffected by an idle fake clock.
@@ -370,7 +416,7 @@ describe('RegionToolbarControls', () => {
     // Bottom holds Chat and is pressed. Left and right are EMPTY and hidden,
     // and since #2155 that is `'false'`, not `null`: they are toggles too,
     // and pressing one opens its region on the chooser.
-    expect(regionToggle('Bottom').title).toBe('Hide Bottom region: Chat');
+    expect(toggleState('Bottom')).toBe('Hide Bottom region: Chat');
     // No visible word: the glyph is the region's own edge, and the name is
     // the tooltip's and the accessible name's.
     expect(
@@ -439,14 +485,14 @@ describe('RegionToolbarControls', () => {
    */
   test('a VISIBLE empty region reads as on, and its tooltip names the act and the emptiness', () => {
     const { rerender } = render(<RegionToolbarControls />);
-    expect(regionToggle('Left').title).toBe('Show Left region (empty)');
+    expect(toggleState('Left')).toBe('Show Left region (empty)');
     expect(regionToggle('Left').classList.contains('is-pressed')).toBe(false);
     // Hidden AND empty is the default state, not the holding one.
     expect(regionToggle('Left').classList.contains('is-holding')).toBe(false);
 
     harness.regions.left.visible = true;
     rerender(<RegionToolbarControls />);
-    expect(regionToggle('Left').title).toBe('Hide Left region (empty)');
+    expect(toggleState('Left')).toBe('Hide Left region (empty)');
     expect(regionToggle('Left').classList.contains('is-pressed')).toBe(true);
     expect(regionToggle('Left').getAttribute('aria-pressed')).toBe('true');
     harness.regions.left.visible = false;
@@ -466,7 +512,7 @@ describe('RegionToolbarControls', () => {
     harness.regions.bottom.visible = false;
     rerender(<RegionToolbarControls />);
     expect(regionToggle('Bottom').getAttribute('aria-pressed')).toBe('false');
-    expect(regionToggle('Bottom').title).toBe('Show Bottom region: Chat');
+    expect(toggleState('Bottom')).toBe('Show Bottom region: Chat');
     fireEvent.click(regionToggle('Bottom'));
     expect(harness.setRegion).toHaveBeenLastCalledWith('bottom', {
       visible: true,
@@ -508,8 +554,10 @@ describe('RegionToolbarControls', () => {
     ]);
     const right = regionToggle('Right');
     const bottom = regionToggle('Bottom');
-    expect(right.title).toBe('Show Right region: Activity, Chat');
-    expect(bottom.title).toBe('Show Bottom region (empty)');
+    expect(right.title.split('\n')[0]).toBe(
+      'Show Right region: Activity, Chat',
+    );
+    expect(bottom.title.split('\n')[0]).toBe('Show Bottom region (empty)');
     // Same `aria-pressed`, different state: the class and the glyph carry
     // what "hidden" alone cannot say.
     expect(right.classList.contains('is-holding')).toBe(true);
@@ -571,6 +619,137 @@ describe('RegionToolbarControls', () => {
   });
 
   /**
+   * #2155 review B1, THE DEFECT THIS ROUND EXISTS FOR, from the side jsdom
+   * can drive. The hold opens the panel from a timer while the pointer is
+   * still DOWN, and that panel's dismiss backdrop is `position: fixed;
+   * inset: 0` — so on any engine that does not hand this control the release
+   * (no pointer capture), and on touch, where the compatibility `click`
+   * follows the retargeted `pointerup`, the gesture's own release lands on
+   * the backdrop. The backdrop must refuse a release it never saw the press
+   * for. Dropping `pressed` from `RegionEmptyChooser`'s `ChooserPanel` reds
+   * both halves below.
+   */
+  test('the release that ends the hold does not dismiss the panel it just opened', async () => {
+    render(<RegionToolbarControls />);
+
+    // The mouse-without-capture path: both ends of the release on the
+    // backdrop, because that is where an uncaptured pointer sends them.
+    pressToggle('Right');
+    await holdFor(500);
+    await settleChooserChunk();
+    const backdrop = screen.getByRole('button', {
+      name: 'Close the Add to Right region menu',
+    });
+    releaseOn(backdrop);
+    expect(
+      screen.queryByRole('menu'),
+      'the hold opened the panel and its own release closed it again',
+    ).not.toBeNull();
+
+    // The touch path: implicit capture retargets `pointerup` to the toggle,
+    // and the compatibility `click` still goes to the topmost element under
+    // the finger — the backdrop.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    const trigger = pressToggle('Right');
+    await holdFor(500);
+    await settleChooserChunk();
+    fireEvent.pointerUp(trigger, { pointerId: 7 });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Close the Add to Right region menu',
+      }),
+    );
+    expect(
+      screen.queryByRole('menu'),
+      'the touch hold’s compatibility click closed the panel',
+    ).not.toBeNull();
+    expect(harness.setRegion).not.toHaveBeenCalled();
+
+    // The backdrop still dismisses a press of its OWN, which is the whole
+    // point of it — so the guard is a discrimination, not a disablement.
+    const live = screen.getByRole('button', {
+      name: 'Close the Add to Right region menu',
+    });
+    fireEvent(live, createEvent.pointerDown(live));
+    fireEvent.pointerUp(live);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  /**
+   * The other half of B1: the press asks for the pointer, so a real engine
+   * delivers the release back HERE rather than to the panel's backdrop — and
+   * the suppression flag is consumed by a click that actually arrives.
+   * jsdom implements no pointer capture, so this asserts the request and the
+   * hand-back; what capture then does is the engine's.
+   */
+  test('the press captures the pointer and gives it back on release', async () => {
+    render(<RegionToolbarControls />);
+    const trigger = regionToggle('Right');
+    const captured = new Set<number>();
+    Object.assign(trigger, {
+      setPointerCapture: vi.fn((id: number) => captured.add(id)),
+      releasePointerCapture: vi.fn((id: number) => captured.delete(id)),
+      hasPointerCapture: vi.fn((id: number) => captured.has(id)),
+    });
+
+    trigger.focus();
+    fireEvent.pointerDown(trigger, { button: 0, pointerId: 7 });
+    expect(trigger.setPointerCapture).toHaveBeenCalledWith(7);
+
+    await holdFor(500);
+    await settleChooserChunk();
+    fireEvent.pointerUp(trigger, { pointerId: 7 });
+    expect(trigger.releasePointerCapture).toHaveBeenCalledWith(7);
+    expect(captured.size, 'the control kept the pointer after its turn').toBe(
+      0,
+    );
+  });
+
+  /**
+   * #2155 review H1. One click is swallowed and no more, and the residue the
+   * hook's comment names is held open here: a hold whose release this control
+   * never sees reaches no click to clear the flag at, so a KEYBOARD
+   * activation — which starts no pointer sequence either — is what would be
+   * swallowed next. With the press captured that sequence does not arise from
+   * a pointer; this drives it directly, so the bound is asserted rather than
+   * argued.
+   */
+  test('a completed hold swallows exactly one click, and the next press is not swallowed', async () => {
+    render(<RegionToolbarControls />);
+
+    const trigger = await holdToggle('Right');
+    expect(harness.setRegion).not.toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    // The keyboard's activation: a `click` with no pointer sequence at all.
+    // The hold's own click already consumed the flag, so this one acts.
+    fireEvent.click(trigger);
+    expect(harness.setRegion).toHaveBeenCalledWith('right', {
+      visible: true,
+      maximized: false,
+    });
+  });
+
+  /**
+   * #2155 review M2. `pointermove` stops arriving once an UNCAPTURED pointer
+   * leaves the element, so the 8px tolerance alone cannot see a press dragged
+   * away — which is the whole of the gesture on an engine that refused the
+   * capture (and all of it in jsdom, which has none). `pointerleave` is that
+   * departure.
+   */
+  test('a press dragged off the control opens nothing', async () => {
+    render(<RegionToolbarControls />);
+
+    const trigger = pressToggle('Right');
+    fireEvent.pointerLeave(trigger, { pointerId: 7 });
+    await holdFor(500);
+    await settleChooserChunk();
+
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(harness.setRegion).not.toHaveBeenCalled();
+  });
+
+  /**
    * The boundary, from the other side: a press RELEASED before the threshold
    * is the ordinary toggle. Without it "the hold opens a panel" would be
    * consistent with "every press opens a panel", and the 500ms would be a
@@ -606,14 +785,43 @@ describe('RegionToolbarControls', () => {
     expect(chooserPanel('Left')).toBeTruthy();
     expect(harness.setRegion).not.toHaveBeenCalled();
 
-    // And the next ordinary press is NOT swallowed: the suppression belongs
-    // to a completed hold, and a right-click produces no click to suppress.
+    // And the next ordinary PRESS is not swallowed: the suppression the
+    // contextmenu set is cleared at the next `pointerdown`, which is what
+    // every pointer-driven press begins with.
     fireEvent.keyDown(document, { key: 'Escape' });
-    fireEvent.click(regionToggle('Left'));
+    const next = pressToggle('Left');
+    releaseOn(next);
     expect(harness.setRegion).toHaveBeenCalledWith('left', {
       visible: true,
       maximized: false,
     });
+  });
+
+  /**
+   * #2155 review M1. A mouse's right-click produces no click, so on a desktop
+   * the flag the `contextmenu` handler sets costs nothing. Android and iOS
+   * fire `contextmenu` from their OWN long-press recogniser — before this
+   * control's 500ms — and then deliver a trailing click, which without the
+   * flag would toggle the region under the panel the platform just opened.
+   * Removing `completed.current = true` from `onContextMenu` reds this.
+   */
+  test('a platform contextmenu mid-press swallows the click that follows it', async () => {
+    render(<RegionToolbarControls />);
+
+    const trigger = pressToggle('Right');
+    await holdFor(200);
+    fireEvent.contextMenu(trigger);
+    await settleChooserChunk();
+    expect(chooserPanel('Right')).toBeTruthy();
+
+    releaseOn(trigger);
+    await settleChooserChunk();
+
+    expect(
+      harness.setRegion,
+      'the trailing click toggled the region the chooser is about',
+    ).not.toHaveBeenCalled();
+    expect(chooserPanel('Right')).toBeTruthy();
   });
 
   /**
@@ -659,6 +867,27 @@ describe('RegionToolbarControls', () => {
 
     expect(screen.queryByRole('menu')).toBeNull();
     expect(harness.setRegion).not.toHaveBeenCalled();
+  });
+
+  /**
+   * #2155 review M3. The region's "+" can decline to render at all while the
+   * dock's project read is in flight (#2154 review M3: listing the coding
+   * rows disabled with "choose a project for this dock" would name a remedy
+   * for a state the user may not be in). A toggle the user has ALREADY held
+   * has no such option — a completed gesture that produces nothing is
+   * indistinguishable from a broken one — so the panel opens and says what it
+   * is waiting for. Returning `null` from `RegionChooserPanel` while pending
+   * reds this.
+   */
+  test('a hold during the dock’s project read opens the panel, waiting, not nothing', async () => {
+    harness.projectPending = true;
+    render(<RegionToolbarControls />);
+
+    await holdToggle('Right');
+
+    const panel = chooserPanel('Right');
+    expect(within(panel).queryAllByRole('menuitem')).toHaveLength(0);
+    expect(within(panel).getByText(/Reading this dock/)).toBeTruthy();
   });
 
   /**
@@ -738,7 +967,7 @@ describe('RegionToolbarControls', () => {
     expect(left.getAttribute('aria-disabled')).toBeNull();
     expect(left.hasAttribute('disabled')).toBe(false);
     expect(left.getAttribute('aria-pressed')).toBe('false');
-    expect(left.title).toBe('Show Left region (empty)');
+    expect(toggleState('Left')).toBe('Show Left region (empty)');
     fireEvent.click(left);
     expect(harness.setRegion).toHaveBeenCalledWith('left', {
       visible: true,
