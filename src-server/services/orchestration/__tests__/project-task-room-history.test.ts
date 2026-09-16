@@ -560,8 +560,8 @@ describe('ProjectTaskRoomHistory v2', () => {
     it.each([
       ['newline', 'line\nbreak'],
       ['tab', 'tab\there'],
-      ['nul', 'nul byte'],
-      ['delete', 'delchar'],
+      ['nul', 'nul\u0000byte'],
+      ['delete', 'del\u007fchar'],
     ])(
       'refuses a %s in a proposal id whether or not a port is attached',
       async (_label, proposalId) => {
@@ -612,10 +612,10 @@ describe('ProjectTaskRoomHistory v2', () => {
         '',
         'line\nbreak',
         'tab\there',
-        'nul byte',
-        'delchar',
-        'escseq',
-        'unitsep',
+        'nul\u0000byte',
+        'del\u007fchar',
+        'esc\u001bseq',
+        'unit\u001fsep',
         'space here',
         'emoji-\u{1f600}',
         'accent-é',
