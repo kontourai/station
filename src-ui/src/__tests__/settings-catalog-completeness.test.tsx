@@ -1,6 +1,9 @@
 /** @vitest-environment jsdom */
 
-import { DEFAULT_NOTIFICATION_SOUND_PREFERENCES } from '@kontourai/station-contracts/device-settings';
+import {
+  DEFAULT_NOTIFICATION_SOUND_PREFERENCES,
+  DEVICE_SETTINGS_REGISTRY,
+} from '@kontourai/station-contracts/device-settings';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -179,7 +182,17 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
   };
 });
 
-let deviceFeatureSettings: Record<string, unknown> = {};
+/**
+ * The device store folds registry defaults in, so the harness starts from
+ * the real default object rather than `{}` — an empty object is a device
+ * that differs from its defaults in every field, which is not what an
+ * untouched device looks like (#2144 slice 6 items B and F).
+ */
+const DEFAULT_DEVICE_FEATURE_SETTINGS = DEVICE_SETTINGS_REGISTRY.find(
+  (definition) => definition.key === 'featureSettings',
+)!.defaultValue as Record<string, unknown>;
+let deviceFeatureSettings: Record<string, unknown> =
+  DEFAULT_DEVICE_FEATURE_SETTINGS;
 vi.mock('../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({
     chatFontSize: deviceChatFontSize,
@@ -274,7 +287,7 @@ describe('settings catalog completeness', () => {
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
     configProvenance = {};
     deviceChatFontSize = 14;
-    deviceFeatureSettings = {};
+    deviceFeatureSettings = DEFAULT_DEVICE_FEATURE_SETTINGS;
     telemetryEndpointConfigured = undefined;
     setDeviceSetting.mockClear();
     resetDeviceSetting.mockClear();
@@ -377,9 +390,10 @@ describe('settings catalog completeness', () => {
     // longer user-facing) and +2 (workspace-checkpoints,
     // default-chat-font-size). #2144 slice 2: +1
     // (default-workspace-isolation). Counted from the merged catalog, not
-    // added up. #2144 slice 6: +3 (default-approval-mode,
-    // telemetry-destination, confirm-conversation-delete).
-    expect(SETTINGS_CATALOG).toHaveLength(48);
+    // added up. #2144 slice 6: +4 (default-approval-mode,
+    // telemetry-destination, confirm-conversation-delete,
+    // reset-device-defaults).
+    expect(SETTINGS_CATALOG).toHaveLength(49);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
@@ -1281,6 +1295,57 @@ describe('settings catalog completeness', () => {
         'confirmConversationDelete',
         false,
       );
+    });
+  });
+
+  /**
+   * #2144 slice 6 item F. The plan builder's own cases are in
+   * settings-station-reset.test.ts; these assert the wiring — the button
+   * reflects the plan, names it in the dialog, and confirming reaches the
+   * device store once per listed key.
+   */
+  describe('Restore device defaults', () => {
+    function button() {
+      return screen.getByRole('button', {
+        name: 'Restore device defaults',
+      }) as HTMLButtonElement;
+    }
+
+    test('is refused, and says so, on a device that has changed nothing', async () => {
+      deviceChatFontSize = null as unknown as number;
+      await renderSettings();
+      expect(button().disabled).toBe(true);
+      expect(
+        screen.getByText(
+          'Every setting on this device is already at its default.',
+        ),
+      ).toBeTruthy();
+    });
+
+    test('names exactly the changed settings and restores each one', async () => {
+      // This device follows its defaults everywhere except the chat font.
+      deviceChatFontSize = 20;
+      await renderSettings();
+      expect(button().disabled).toBe(false);
+
+      fireEvent.click(button());
+      const dialog = screen.getByText(/This restores 1 setting on this device/);
+      expect(dialog.textContent).toContain('Chat font size');
+      // Not a list of everything: a plan that over-reported would promise to
+      // undo choices nobody made.
+      expect(dialog.textContent).not.toContain('Theme');
+      expect(dialog.textContent).not.toContain('Chat dock height');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
+      expect(resetDeviceSetting.mock.calls).toEqual([['chatFontSize']]);
+    });
+
+    test('cancelling restores nothing', async () => {
+      deviceChatFontSize = 20;
+      await renderSettings();
+      fireEvent.click(button());
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(resetDeviceSetting).not.toHaveBeenCalled();
     });
   });
 

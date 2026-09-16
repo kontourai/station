@@ -950,6 +950,69 @@ export const DEVICE_SETTINGS_PRIOR_KEYS: readonly string[] =
       definition.priorStorageKey !== undefined,
   ).map((definition) => definition.priorStorageKey);
 
+/**
+ * Device settings whose value is a RECORD OF DIRECT MANIPULATION — where a
+ * window was dragged to, which panel was left open, how far a guided run
+ * got. Nobody chose them in a settings form; they are the residue of using
+ * the app (epic #2144 slice 6 item F).
+ *
+ * "Restore device defaults" excludes them. Restoring `chatDockHeight` or
+ * `regionArrangement` would rearrange the window out from under someone who
+ * asked to reset their PREFERENCES, and restoring `firstRunProgress` or
+ * `onboardingSetupDismissed` would reopen a guided run they finished — none
+ * of which is what that button says it does.
+ *
+ * This is a CLASSIFICATION, not a denylist: every registered key belongs to
+ * exactly one of this list and {@link PREFERENCE_DEVICE_KEYS}, asserted by
+ * `device-settings.test.ts`, so a new device setting fails that test until
+ * somebody decides which it is.
+ */
+export const DIRECT_MANIPULATION_DEVICE_KEYS = [
+  'chatDockHeight',
+  'chatDockWidth',
+  'regionArrangement',
+  'dockSlotPlacement',
+  'chatDockProjectSlug',
+  'inboxOpen',
+  'inboxSections',
+  'projectSidebarCollapsed',
+  'firstRunProgress',
+  'onboardingSetupDismissed',
+] as const satisfies readonly (keyof DeviceSettings)[];
+
+/**
+ * Device settings somebody CHOSE — the ones "Restore device defaults"
+ * restores. The complement of {@link DIRECT_MANIPULATION_DEVICE_KEYS}, but
+ * written out rather than derived: a derived complement would silently
+ * absorb every future key as a preference, which is the one outcome the
+ * completeness assertion exists to prevent.
+ *
+ * `sidebarSections` sits here even though the sidebar's own × affordance
+ * writes it: it has a Settings control of its own ("Sidebar sections"), so
+ * it is presented as a preference and restoring it restores what that
+ * control shows.
+ */
+export const PREFERENCE_DEVICE_KEYS = [
+  'theme',
+  'accentColor',
+  'featureSettings',
+  'sttProvider',
+  'ttsProvider',
+  'chatDockAutoHide',
+  'diffStyle',
+  'diffWrap',
+  'sidebarSections',
+  'shortcutOverrides',
+  'skillShortcuts',
+  'modelPickerPreferences',
+  'chatShowReasoning',
+  'chatShowToolDetails',
+  'chatFontSize',
+  'hapticsEnabled',
+  'developerToolsEnabled',
+  'confirmConversationDelete',
+] as const satisfies readonly (keyof DeviceSettings)[];
+
 type RegisteredDeviceKey = (typeof DEVICE_SETTINGS_REGISTRY)[number]['key'];
 
 type KeysMatch<A extends string, B extends string> = [A] extends [B]

@@ -5,9 +5,15 @@
  * about the delta the button now sends: it must clear what is stored, and it
  * must never name a key the write path would refuse or misread.
  */
+
+import {
+  DEVICE_SETTINGS_REGISTRY,
+  DIRECT_MANIPULATION_DEVICE_KEYS,
+} from '@kontourai/station-contracts/device-settings';
 import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
 import { describe, expect, test } from 'vitest';
 import {
+  buildDeviceResetPlan,
   buildStationResetPlan,
   RESETTABLE_STATION_SETTING_KEYS,
 } from '../views/settings/station-reset';
@@ -137,5 +143,82 @@ describe('buildStationResetPlan', () => {
       'region',
       'templateVariables',
     ]);
+  });
+});
+
+/**
+ * Epic #2144 slice 6 item F. "Restore device defaults" must name exactly
+ * what it will change: a plan that over-reports would promise to undo
+ * choices nobody made, and one that includes a direct-manipulation key
+ * would rearrange the window out from under the person who pressed it.
+ */
+describe('buildDeviceResetPlan', () => {
+  /** The resolved snapshot a pristine device store hands out. */
+  function pristine(): Record<string, unknown> {
+    return Object.fromEntries(
+      DEVICE_SETTINGS_REGISTRY.map((definition) => [
+        definition.key as string,
+        definition.defaultValue,
+      ]),
+    );
+  }
+
+  test('a pristine device has nothing to restore', () => {
+    const plan = buildDeviceResetPlan(pristine() as never);
+    expect(plan.keys).toEqual([]);
+    expect(plan.labels).toEqual([]);
+  });
+
+  test('lists exactly the changed preferences, by their registry labels', () => {
+    const plan = buildDeviceResetPlan({
+      ...pristine(),
+      theme: 'light',
+      chatFontSize: 20,
+    } as never);
+    expect(plan.keys).toEqual(['theme', 'chatFontSize']);
+    expect(plan.labels).toEqual(['Theme', 'Chat font size']);
+  });
+
+  test('a composite counts as changed by value, not by identity', () => {
+    // Every snapshot is a fresh object, so an identity comparison would
+    // report `featureSettings` as changed on every device, always.
+    const untouched = buildDeviceResetPlan({
+      ...pristine(),
+      featureSettings: { ...(pristine().featureSettings as object) },
+    } as never);
+    expect(untouched.keys).not.toContain('featureSettings');
+
+    const changed = buildDeviceResetPlan({
+      ...pristine(),
+      featureSettings: {
+        ...(pristine().featureSettings as object),
+        smoothReveal: true,
+      },
+    } as never);
+    expect(changed.keys).toContain('featureSettings');
+  });
+
+  test('a direct-manipulation key that differs is neither listed nor restored', () => {
+    const plan = buildDeviceResetPlan({
+      ...pristine(),
+      chatDockHeight: 720,
+      inboxOpen: false,
+      onboardingSetupDismissed: true,
+      theme: 'light',
+    } as never);
+    // Only the preference is listed, and every excluded key is absent even
+    // though all three genuinely differ from their defaults.
+    expect(plan.keys).toEqual(['theme']);
+    for (const key of DIRECT_MANIPULATION_DEVICE_KEYS) {
+      expect(plan.keys as readonly string[]).not.toContain(key);
+    }
+  });
+
+  test('an absent key reads as its default rather than as a change', () => {
+    // The live store folds defaults in, so `undefined` only appears for a
+    // partial snapshot; reporting it as stored would promise to restore
+    // something that was never set.
+    expect(buildDeviceResetPlan({}).keys).toEqual([]);
+    expect(buildDeviceResetPlan(undefined).keys).toEqual([]);
   });
 });

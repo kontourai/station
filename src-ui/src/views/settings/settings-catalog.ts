@@ -218,6 +218,12 @@ const SETTINGS_CATALOG_SOURCE = [
     keywords: ['factory reset', 'reset to defaults'],
   },
   {
+    id: 'reset-device-defaults',
+    title: 'Restore device defaults',
+    section: 'system',
+    keywords: ['reset this device', 'device defaults', 'restore'],
+  },
+  {
     id: 'feature-previews',
     title: 'Feature previews',
     section: 'feature-previews',
@@ -436,6 +442,9 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   Partial<Record<SettingsCatalogId, NonNullable<SettingsCatalogEntry['scope']>>>
 > = {
   'backup-restore': 'mixed',
+  // #2144 slice 6 item F: in the Station's System section, but it writes
+  // this device's store and nothing on the Station.
+  'reset-device-defaults': 'device',
   // #2144 slice 6 item D: a derived status line with no writer, inside a
   // section whose other rows are all Station-scope writes.
   'telemetry-destination': 'informational',

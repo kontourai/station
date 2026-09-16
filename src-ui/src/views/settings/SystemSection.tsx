@@ -1,5 +1,11 @@
 import { useSystemStatusForApiBaseQuery } from '@kontourai/station-sdk';
+import { useState } from 'react';
 import { SettingsGlyph } from '../../components/icons/Glyph';
+import { ConfirmModal } from '../../components/modals/ConfirmModal';
+import {
+  useDeviceSettings,
+  useDeviceSettingsActions,
+} from '../../contexts/DeviceSettingsContext';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { AppConfig } from '../../types';
 import {
@@ -10,6 +16,7 @@ import { ConnectedServerUpdates } from './ConnectedServerUpdates';
 import { DesktopUpdateCheck } from './DesktopUpdateCheck';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
+import { buildDeviceResetPlan } from './station-reset';
 
 export function SystemSection({
   apiBase,
@@ -39,6 +46,13 @@ export function SystemSection({
     60_000,
   );
   const platformProfile = usePlatformProfile();
+  // #2144 slice 6 item F. Local state and local hooks: unlike the Station
+  // reset, this needs neither the draft config nor a server request, so
+  // threading it through the page would buy nothing.
+  const deviceSettings = useDeviceSettings();
+  const { resetDeviceSetting } = useDeviceSettingsActions();
+  const [showDeviceResetModal, setShowDeviceResetModal] = useState(false);
+  const deviceResetPlan = buildDeviceResetPlan(deviceSettings);
 
   return (
     <SettingsSection
@@ -145,6 +159,47 @@ export function SystemSection({
           run <code>station home backup</code>.
         </span>
       </div>
+
+      {/* #2144 slice 6 item F. Its own control beside the Station reset,
+          because the two clear different stores: the Station reset says in
+          its own hint that settings on this device are not affected, and
+          before this there was no way to undo a device's choices at all. */}
+      <div
+        className="settings__field"
+        {...settingsRow('reset-device-defaults')}
+        tabIndex={-1}
+      >
+        <span className="settings__field-label">
+          {settingsRow('reset-device-defaults').title}
+        </span>
+        <button
+          type="button"
+          className="settings__secondary-btn"
+          disabled={deviceResetPlan.keys.length === 0}
+          onClick={() => setShowDeviceResetModal(true)}
+        >
+          Restore device defaults
+        </button>
+        <span className="settings__field-hint">
+          {deviceResetPlan.keys.length === 0
+            ? 'Every setting on this device is already at its default.'
+            : `Restores ${deviceResetPlan.keys.length} setting${deviceResetPlan.keys.length === 1 ? '' : 's'} you have changed on this device. Window layout, panel sizes and guided-run progress are not touched, and nothing on the Station changes.`}
+        </span>
+      </div>
+
+      <ConfirmModal
+        isOpen={showDeviceResetModal}
+        title="Restore device defaults"
+        message={`This restores ${deviceResetPlan.keys.length} setting${deviceResetPlan.keys.length === 1 ? '' : 's'} on this device to its default: ${deviceResetPlan.labels.join(', ')}. Window layout, panel sizes and guided-run progress are left as they are, and no Station setting changes. This cannot be undone.`}
+        confirmLabel="Restore"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={() => {
+          setShowDeviceResetModal(false);
+          for (const key of deviceResetPlan.keys) resetDeviceSetting(key);
+        }}
+        onCancel={() => setShowDeviceResetModal(false)}
+      />
 
       <div
         className="settings__danger"
