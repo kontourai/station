@@ -64,6 +64,37 @@ interface Layer {
  * value came from, and a clever renderer for each descriptor kind would be a
  * second control masquerading as an explanation.
  */
+/**
+ * Does this Station carry a decision for the key at all?
+ *
+ * `''` and absent are the SAME answer — that is `isStoredValue`'s rule on the
+ * server (`src-server/domain/settings-registry-server.ts`), and the layer
+ * list must not invent a second one: a blank string is not a value the
+ * resolver reads, so rendering it as "none" while an absent field renders
+ * "uses the built-in default" would make one state look like a decision and
+ * the other like an absence when they resolve identically.
+ */
+function isUnstored(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  return typeof value === 'string' && value.trim().length === 0;
+}
+
+/**
+ * How a Station that has stored nothing for a key reads.
+ *
+ * NOT always "uses the built-in default": of the three project-overridable
+ * settings only `defaultWorkspaceIsolation` declares a `defaultValue`.
+ * `defaultLLMProvider` has none and nothing fills it in, so that sentence
+ * would sit directly above "Built-in default: none" and promise a fallback
+ * the chain does not have. A `required` setting is the same case by
+ * declaration — see the built-in layer below, which applies the same test.
+ */
+function unstoredStationValue(definition: SettingDefinition): string {
+  return definition.required || definition.defaultValue === undefined
+    ? 'nothing stored'
+    : 'uses the built-in default';
+}
+
 function describeValue(value: unknown): string {
   if (value === undefined || value === null) return 'none';
   if (typeof value === 'string') return value.trim() === '' ? 'none' : value;
@@ -124,17 +155,16 @@ export function inheritanceLayers({
     //   that value is STORED or is the default the server already resolved,
     //   because the scoped read replaced this key's entry with the project's;
     //   the note below says exactly that.
-    // - nothing in hand -> the Station's config carries no value for the key,
-    //   so the Station falls back to the registry default. Rendering that as
-    //   "none" said the Station had no value at all, which is false for every
-    //   setting that has a default — and there is nothing unknown to note.
+    // - nothing stored -> `unstoredStationValue` decides, because whether
+    //   there is a default to fall back to is a property of the DEFINITION,
+    //   not of the absence. There is nothing unknown to note in this case
+    //   either, so the source note below is withheld for it.
     layers.push({
       id: 'station',
       label: 'This Station',
-      value:
-        stationValue === undefined
-          ? 'uses the built-in default'
-          : describeValue(stationValue),
+      value: isUnstored(stationValue)
+        ? unstoredStationValue(definition)
+        : describeValue(stationValue),
       inEffect: false,
     });
   }
@@ -169,7 +199,7 @@ export function SettingInheritanceLayers(props: SettingInheritanceLayersProps) {
   // Only where there is something the page genuinely cannot report: a Station
   // that carries no value for the key falls back to the default, full stop.
   const stationSourceUnreported =
-    overriddenByProject && props.stationValue !== undefined;
+    overriddenByProject && !isUnstored(props.stationValue);
   const pending = props.pending !== undefined;
 
   return (
@@ -207,7 +237,7 @@ export function SettingInheritanceLayers(props: SettingInheritanceLayersProps) {
         // it no longer shows. Say which state the list describes rather than
         // guessing at the one that has not been saved.
         <p className="setting-inheritance__note">
-          Unsaved change: the layers below describe what is saved.
+          Unsaved change: the layers above describe what is saved.
         </p>
       )}
       {stationSourceUnreported && (

@@ -13,6 +13,7 @@
 
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import {
+  PROJECT_OVERRIDABLE_APP_SETTING_KEYS,
   PROJECT_OVERRIDE_FIELD_ALIASES,
   type ProjectOverridableAppSettingKey,
   type ProjectOverrideRecordField,
@@ -123,6 +124,44 @@ export function buildProjectOverrideUpdate(
       : null;
   }
   return update;
+}
+
+/**
+ * Which keys a save would actually change, and in which direction.
+ *
+ * Derived from the UPDATE BODY, not from the delta, because the two are not
+ * the same set: {@link buildProjectOverrideUpdate} widens the touched keys
+ * when the model pair goes half-stored, so resetting `defaultModel` also
+ * drops `defaultLLMProvider`. A map built from the delta would leave that
+ * second row claiming a live, in-effect project override that the very next
+ * save removes — and offering a Reset button for it.
+ *
+ * Reading the body also settles the blank-string case for free: the body has
+ * already normalised `'  '` to `null`, so it classifies as the reset it is
+ * rather than as an edit.
+ *
+ * Takes the RAW draft and narrows it here. `buildProjectOverrideUpdate`
+ * treats every key it is handed as touched, so passing the draft straight
+ * through would report a draft entry equal to the project's stored value as
+ * an unsaved edit — a row telling someone their saved value is pending.
+ */
+export function pendingOverrideChanges(
+  draft: ProjectOverrideDraft,
+  savedOverrides: ProjectSettingsOverrides,
+): Partial<Record<ProjectOverridableAppSettingKey, 'reset' | 'edit'>> {
+  const update = buildProjectOverrideUpdate(
+    projectOverrideDelta(draft, savedOverrides),
+    savedOverrides,
+  ) as Record<string, unknown>;
+  const pending: Partial<
+    Record<ProjectOverridableAppSettingKey, 'reset' | 'edit'>
+  > = {};
+  for (const key of PROJECT_OVERRIDABLE_APP_SETTING_KEYS) {
+    const field = PROJECT_OVERRIDE_FIELD_ALIASES[key];
+    if (!Object.hasOwn(update, field)) continue;
+    pending[key] = update[field] === null ? 'reset' : 'edit';
+  }
+  return pending;
 }
 
 /** The overrides a fetched project record carries, or none for no project. */

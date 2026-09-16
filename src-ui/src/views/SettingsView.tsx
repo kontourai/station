@@ -57,6 +57,7 @@ import {
   buildProjectOverrideUpdate,
   effectiveOverrideValue,
   type ProjectOverrideDraft,
+  pendingOverrideChanges,
   projectOverrideDelta,
   savedOverridesFor,
 } from './settings/project-override-draft';
@@ -120,14 +121,20 @@ export const SETTINGS_SAVE_DEADLINE_MS = 30_000;
  * How long the save path waits for the saved project's record to be re-read
  * before clearing the override draft anyway.
  *
- * The write has already landed when this runs; the wait is a cosmetic one
- * (clearing the draft before the refetch flashes the pre-save value back).
- * It is therefore its own, much shorter deadline rather than a second use of
- * the save deadline above — and it must have one at all, because it runs
- * AFTER the save deadline's race has been decided, so a refetch that never
- * settles would otherwise leave `Save` spinning with nothing left to wait
- * for. On timeout the draft clears regardless: a brief flash is a strictly
- * better outcome than a stuck button.
+ * The write has already landed when this runs, so the wait only decides what
+ * the row shows next. It is its own, much shorter deadline rather than a
+ * second use of the save deadline above, and it must have one at all because
+ * it runs AFTER the save deadline's race has been decided — a refetch that
+ * never settles would otherwise leave `Save` spinning with nothing left to
+ * wait for.
+ *
+ * What the timeout costs, stated honestly: the draft clears against a record
+ * this page has not re-read. If the refetch was merely SLOW the stale value
+ * shows until it lands. If it FAILED, the row goes on showing the pre-save
+ * value with no pill and no error — the save did happen, and this page will
+ * not say so until something else refetches the project. That is still the
+ * better of the two outcomes against a Save button that never releases, but
+ * it is a real gap, not a flicker.
  */
 export const SETTINGS_OVERRIDE_REFETCH_DEADLINE_MS = 3_000;
 
@@ -255,19 +262,12 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             effectiveOverrideValue(key, overrideDraft, savedOverrides),
           ]),
         ),
-        // Derived from the DELTA, not the raw draft: a draft entry equal to
-        // what the project already stores is not an unsaved change, and
-        // marking it as one would tell someone their saved value is pending.
-        // A `null` (or otherwise unstored) delta value is a pending reset;
-        // anything else is a pending edit.
-        pending: Object.fromEntries(
-          Object.entries(overrideDelta).map(([key, value]) => [
-            key,
-            value === undefined || value === null || value === ''
-              ? 'reset'
-              : 'edit',
-          ]),
-        ),
+        // The set the SAVE will change, which is neither the raw draft nor
+        // the delta: a draft entry equal to the stored value is not a change
+        // at all, and the delta is too NARROW because the model pair is
+        // written whole — resetting one half drops the other. Both rules live
+        // in `pendingOverrideChanges`, which reads the request body itself.
+        pending: pendingOverrideChanges(overrideDraft, savedOverrides),
         onChange: (key: ProjectOverridableAppSettingKey, value: unknown) =>
           setOverrideDraft((current) => ({ ...current, [key]: value })),
         // `null`, not a delete: the route reads `null` as "drop this
@@ -668,8 +668,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       if (overrideSlug && overrideOutcome.status === 'fulfilled') {
         // Await the project record's refetch BEFORE clearing the draft: the
         // row falls back to `savedOverrides` the instant the draft goes, and
-        // that read is stale until this settles, so clearing first flashes the
-        // pre-save value back at the person who just changed it.
+        // that read is stale until this settles, so clearing first shows the
+        // pre-save value back at the person who just changed it. Bounded —
+        // see `SETTINGS_OVERRIDE_REFETCH_DEADLINE_MS` for what expiry costs.
         let refetchTimer: ReturnType<typeof setTimeout> | undefined;
         try {
           await Promise.race([

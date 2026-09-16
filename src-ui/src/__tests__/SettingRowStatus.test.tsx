@@ -120,6 +120,51 @@ describe('inheritance layers', () => {
     expect(layers.find((layer) => layer.inEffect)?.id).toBe('project');
   });
 
+  /**
+   * Only `defaultWorkspaceIsolation` of the three overridable keys declares a
+   * `defaultValue`. For the other two, "uses the built-in default" would sit
+   * directly above "Built-in default: none" and promise a fallback the chain
+   * does not have.
+   */
+  for (const [name, extra] of [
+    ['a definition with no defaultValue', { defaultValue: undefined }],
+    ['a required definition', { required: true }],
+  ] as const) {
+    test(`${name} never claims the Station falls back to a built-in default`, () => {
+      render(
+        <SettingInheritanceLayers
+          definition={{ ...definition, ...extra } as SettingDefinition}
+          provenance={{ source: 'file', scope: 'project' }}
+          projectName="Atlas"
+          projectValue="openai-main"
+        />,
+      );
+      const station = screen.getByText('This Station').closest('li')!;
+      expect(station.textContent).toContain('nothing stored');
+      expect(station.textContent).not.toContain('built-in default');
+      // And the built-in layer agrees rather than contradicting it.
+      expect(
+        screen.getByText('Built-in default').closest('li')!.textContent,
+      ).toContain('none');
+    });
+  }
+
+  test('a blank Station value reads exactly as an absent one', () => {
+    // `''` is what `isStoredValue` treats as no decision, so the two states
+    // resolve identically and must not be spelled differently.
+    for (const stationValue of [undefined, '', '   ']) {
+      const layers = inheritanceLayers({
+        definition,
+        provenance: { source: 'file', scope: 'project' },
+        projectValue: 'worktree',
+        stationValue,
+      });
+      expect(layers.find((layer) => layer.id === 'station')?.value).toBe(
+        'uses the built-in default',
+      );
+    }
+  });
+
   test('a Station that stores nothing reads as the default, not as "none"', () => {
     render(
       <SettingInheritanceLayers
@@ -156,7 +201,7 @@ describe('inheritance layers', () => {
       expect(screen.queryByText('in effect')).toBeNull();
       expect(
         screen.getByText(
-          'Unsaved change: the layers below describe what is saved.',
+          'Unsaved change: the layers above describe what is saved.',
         ),
       ).toBeTruthy();
       // The layers themselves are unchanged — only the claim is withheld.

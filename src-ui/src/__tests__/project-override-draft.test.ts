@@ -8,6 +8,7 @@ import { describe, expect, test } from 'vitest';
 import {
   buildProjectOverrideUpdate,
   effectiveOverrideValue,
+  pendingOverrideChanges,
   projectOverrideDelta,
 } from '../views/settings/project-override-draft';
 
@@ -102,5 +103,54 @@ describe('project override update body', () => {
         { defaultModel: 'gpt-5', defaultLLMProvider: 'openai-main' },
       ),
     ).toEqual({ defaultWorkspaceIsolation: 'shared' });
+  });
+});
+
+/**
+ * What the rows are told is unsaved.
+ *
+ * Asserted here rather than through a rendered row because neither half of
+ * the model pair HAS a Settings row in this slice (`defaultModel` is a
+ * bespoke Defaults field and `defaultLLMProvider` has no control at all), so
+ * this map is the only place the pair's widening is observable.
+ */
+describe('pending override changes', () => {
+  const PAIR = {
+    defaultModel: 'gpt-5',
+    defaultLLMProvider: 'openai-main',
+  } as const;
+
+  test('resetting one half of the model pair marks the other pending too', () => {
+    // The save drops both (`readProjectOverrides` accepts the pair only
+    // whole), so leaving the second row claiming a live, in-effect project
+    // override — with a Reset button — describes a state the next write ends.
+    expect(pendingOverrideChanges({ defaultModel: null }, PAIR)).toEqual({
+      defaultModel: 'reset',
+      defaultLLMProvider: 'reset',
+    });
+  });
+
+  test('a blank draft value is the reset it will be written as', () => {
+    expect(
+      pendingOverrideChanges(
+        { defaultWorkspaceIsolation: '  ' },
+        { defaultWorkspaceIsolation: 'worktree' },
+      ),
+    ).toEqual({ defaultWorkspaceIsolation: 'reset' });
+  });
+
+  test('a new value is an edit, and an unchanged one is not pending at all', () => {
+    expect(
+      pendingOverrideChanges(
+        { defaultWorkspaceIsolation: 'shared' },
+        { defaultWorkspaceIsolation: 'worktree' },
+      ),
+    ).toEqual({ defaultWorkspaceIsolation: 'edit' });
+    expect(
+      pendingOverrideChanges(
+        { defaultWorkspaceIsolation: 'worktree' },
+        { defaultWorkspaceIsolation: 'worktree' },
+      ),
+    ).toEqual({});
   });
 });

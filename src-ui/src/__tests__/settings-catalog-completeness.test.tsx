@@ -1493,8 +1493,11 @@ describe('settings catalog completeness', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
       await waitFor(() => expect(updateProjectAsync).toHaveBeenCalledTimes(1));
-      // The button comes back and the draft clears anyway — a brief flash of
-      // the pre-save value beats a Save that never releases.
+      // The button comes back and the draft clears against a record this page
+      // never re-read. If the refetch was only slow the row corrects itself;
+      // if it FAILED the row keeps showing the pre-save value with no pill
+      // and no error until something else refetches the project. That gap is
+      // the accepted cost of not stranding Save forever.
       await waitFor(
         () => expect(screen.queryByText('Unsaved changes')).toBeNull(),
         { timeout: 8000 },
@@ -1516,11 +1519,18 @@ describe('settings catalog completeness', () => {
       await renderSettings();
 
       selectAtlas();
-      await waitFor(() =>
-        expect(
-          (screen.getByLabelText(WORKSPACE_ROW) as HTMLSelectElement).value,
-        ).toBe('worktree'),
-      );
+      const workspace = screen.getByLabelText(
+        WORKSPACE_ROW,
+      ) as HTMLSelectElement;
+      await waitFor(() => expect(workspace.value).toBe('worktree'));
+
+      // Touched and put BACK. An untouched row would make "no project write"
+      // true by construction; this reaches the delta's equality
+      // normalisation, which is the thing that has to hold.
+      fireEvent.change(workspace, { target: { value: 'shared' } });
+      expect(screen.getByText('Unsaved changes')).toBeTruthy();
+      fireEvent.change(workspace, { target: { value: 'worktree' } });
+
       fireEvent.change(screen.getByLabelText('Registry URL'), {
         target: { value: 'https://two.test' },
       });
@@ -1533,6 +1543,48 @@ describe('settings catalog completeness', () => {
       // Re-writing an unchanged override would restate the project's values
       // on every unrelated Station save.
       expect(updateProjectAsync).not.toHaveBeenCalled();
+    });
+
+    test('an unsaved override makes the row’s own popover say so', async () => {
+      // The whole path, once: SettingsView derives the pending map,
+      // StationConfigSection routes it per key, registry-row hands it to the
+      // status strip, and the lazily-loaded layer list withholds its "in
+      // effect" claim. Every layer of that is unit-tested; nothing else
+      // proves they are actually wired to each other.
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas', defaultWorkspaceIsolation: 'worktree' };
+      projectProvenance = {
+        defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
+      };
+      await renderSettings();
+
+      selectAtlas();
+      const workspace = screen.getByLabelText(
+        WORKSPACE_ROW,
+      ) as HTMLSelectElement;
+      await waitFor(() => expect(workspace.value).toBe('worktree'));
+
+      const trigger = within(workspace.closest('.page-row')!).getByRole(
+        'button',
+        { name: `Where ${WORKSPACE_ROW} comes from` },
+      );
+
+      // Saved state first: the project layer is claimed as in effect.
+      fireEvent.click(trigger);
+      expect(await screen.findByText('in effect')).toBeTruthy();
+      fireEvent.click(trigger);
+
+      fireEvent.change(workspace, { target: { value: 'shared' } });
+      fireEvent.click(trigger);
+      expect(
+        await screen.findByText(
+          'Unsaved change: the layers above describe what is saved.',
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText('in effect')).toBeNull();
     });
   });
 
