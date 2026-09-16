@@ -74,7 +74,7 @@ function registry() {
       href:
         input.starterId === 'inspect-approval'
           ? '/notifications?approval=notification-1'
-          : '/review-queue?receipt=receipt-1&project=alpha',
+          : '/projects/alpha/layouts/review?receipt=receipt-1',
       completion: { state: 'open' },
       evidence: { state: 'NOT_VERIFIED', reason: 'fixture' },
     }),
@@ -171,7 +171,7 @@ describe('starter work routes', () => {
       success: true,
       data: {
         state: 'opened',
-        href: '/review-queue?receipt=receipt-1&project=alpha',
+        href: '/projects/alpha/layouts/review?receipt=receipt-1',
       },
     });
     const mismatch = await app.request('/launch', {

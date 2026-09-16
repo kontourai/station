@@ -3,7 +3,7 @@
 /**
  * archive#4460: before the fix, only Chat's dock chrome had a resize handle,
  * maximize/collapse and a placement control. These tests drive the REAL
- * `NavigationProvider` (unlike `AmbientChatDockPaneHost.test.tsx`'s static
+ * `NavigationProvider` (unlike `RegionPaneHost.test.tsx`'s static
  * navigation mock) so maximize/collapse genuinely round-trip through the
  * shared navigation store.
  */
@@ -31,7 +31,7 @@ import {
   useRegionModel,
 } from '../../contexts/RegionModelContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
-import { AmbientChatDockPaneHost } from '../AmbientChatDockPaneHost';
+import { RegionPaneHost } from '../RegionPaneHost';
 
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
@@ -48,6 +48,9 @@ vi.mock('../../contexts/ProjectsContext', () => ({
     isLoading: false,
     isConfirmedLoaded: true,
   }),
+  // #2047: the region host resolves the dock's project through this read;
+  // no project here, so the panes that need one derive none.
+  useProject: () => ({ project: undefined, isLoading: false }),
 }));
 
 const AMBIENT_DOCK_STORAGE_KEY =
@@ -115,7 +118,7 @@ function renderHost() {
           />
           <RegionModelProbe />
           <RegionToolbarControls />
-          <AmbientChatDockPaneHost
+          <RegionPaneHost
             renderChatPane={(instance) => (
               <p data-testid="ambient-chat-occupant">
                 Chat pane {instance.instanceId}
@@ -152,24 +155,11 @@ function dockParam(): string | null {
   return new URLSearchParams(window.location.search).get('dock');
 }
 
-/**
- * #1536 F folded the toolbar's five per-region buttons into ONE "Layout" control;
- * #1552 D2 made what it opens a placement PICKER — a `radiogroup` row per
- * surface whose segments are the regions it may occupy plus `Hidden`. A
- * placement is therefore the surface's row plus the region's segment, and the
- * panel is a `group` rather than a `menu` (the arrow keys belong to the rows).
- */
-function layoutPicker() {
-  fireEvent.click(screen.getByRole('button', { name: 'Layout regions' }));
-  return screen.getByRole('group', { name: 'Layout regions' });
-}
-
-/** Press one segment of one surface's row of the picker. */
-function chooseSegment(surfaceTitle: string, segmentLabel: string) {
-  const row = within(layoutPicker()).getByRole('radiogroup', {
-    name: `${surfaceTitle} placement`,
-  });
-  fireEvent.click(within(row).getByRole('radio', { name: segmentLabel }));
+/** Press a region's toggle: the region shows or hides, every pane with it. */
+function pressRegionToggle(regionLabel: string) {
+  fireEvent.click(
+    screen.getByRole('button', { name: `${regionLabel} region` }),
+  );
 }
 
 async function placeChatRight() {
@@ -183,9 +173,18 @@ async function placeChatRight() {
   );
 }
 
+/**
+ * The retired "Place Chat here", then #2143's "Show Chat here" offer row
+ * under an empty region's toolbar button. Since #2155 the toolbar places
+ * nothing at all — its toggles only show and hide, and what goes in a region
+ * is the region's own chooser (#2154) — so the placement these tests need as
+ * a fixture is issued through the model, the same command every surviving
+ * route (a tab's move menu, the chooser, a link's `openInRegion`) reaches.
+ * What this file pins is the MIRROR a placement produces, not which chrome
+ * sent it; `RegionToolbarControls.test.tsx` owns the toolbar's own behaviour.
+ */
 function chooseChatForEmptyRight() {
-  // The retired "Place Chat here" under a Right heading.
-  chooseSegment('Chat', 'Right');
+  act(() => currentRegionModel().placeSurface('chat', 'right'));
 }
 
 function dockToggle(): () => void {
@@ -549,8 +548,8 @@ describe('the docked Chat gets the full dock chrome (station#4460)', () => {
       expect(document.querySelector('.chat-dock')).not.toBeNull();
     });
     expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
-    // The retired "Hide Chat" row: Chat's `Hidden` segment.
-    chooseSegment('Chat', 'Hidden');
+    // The retired "Hide Chat" row: the Bottom region's toggle (#2143).
+    pressRegionToggle('Bottom');
     await waitFor(() => {
       expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull();
     });
@@ -572,5 +571,59 @@ describe('the docked Chat gets the full dock chrome (station#4460)', () => {
       document.querySelector('hr.chat-dock__resize-handle'),
       'the bottom-dock resize handle must be present regardless of occupant',
     ).not.toBeNull();
+  });
+
+  /**
+   * #2153, through the REAL `useDockShellChrome`: a visible EMPTY region has
+   * no occupant to be named after, so the chrome names the REGION and every
+   * control that reads `surfaceTitle` follows — the chevron ("Hide Right
+   * region"), the landmark and the resize grip.
+   *
+   * Reverting `surfaceTitle`'s empty-region branch in `useDockShellChrome.ts`
+   * to the bare `'Chat'` fallback reds all three: the shell would offer
+   * "Hide Chat" on a region holding no Chat, which is #1386's defect
+   * relocated. `canMaximize` stays false for an empty region (it reads
+   * `shellOccupant !== null`), which is why no maximize control is here.
+   */
+  test('an empty region names ITSELF in the chevron, the landmark and the grip', async () => {
+    render(
+      <KeyboardShortcutsProvider>
+        <NavigationProvider>
+          <RegionModelProvider>
+            <RegionModelProbe />
+            <RegionPaneHost
+              regionId="right"
+              renderChatPane={() => <p>unused</p>}
+            />
+          </RegionModelProvider>
+        </NavigationProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    const empty = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>(
+        'section[aria-label="Right region"]',
+      );
+      if (!element) throw new Error('the empty region shell never rendered');
+      return element;
+    });
+    expect(currentRegionModel().regions.right).toMatchObject({
+      panes: [],
+      occupant: null,
+      visible: false,
+    });
+    // Hidden to start: the chevron offers to SHOW it, under the region's own
+    // name. Pressing it is the real model write — an empty region can be
+    // shown (#2153) — and the name follows the new state.
+    fireEvent.click(within(empty).getByLabelText('Show Right region'));
+    await waitFor(() =>
+      expect(currentRegionModel().regions.right.visible).toBe(true),
+    );
+    expect(within(empty).getByLabelText('Hide Right region')).toBeTruthy();
+    expect(within(empty).getByLabelText('Resize Right region')).toBeTruthy();
+    // No maximize for an empty region, and no tabs.
+    expect(
+      within(empty).queryByLabelText(/^Expand .* to workspace$/),
+    ).toBeNull();
+    expect(within(empty).queryAllByRole('tab')).toHaveLength(0);
   });
 });

@@ -204,7 +204,7 @@ dependency-free starters, so installing one never needs the network:
 | Plugin | What it shows |
 |---|---|
 | `getting-started-starter` | Agents, chat dock control, navigation, toast feedback |
-| `coding-starter` | File browser, terminal, diff review, chat handoff |
+| `coding-starter` | Two Workspace Panes with labelled code examples and an owner-qualified review action |
 | `knowledge-docs-starter` | Project knowledge ingestion and search |
 | `minimal-layout` | The smallest useful layout surface |
 | `demo-layout` | A tour of Station capabilities, no external services |

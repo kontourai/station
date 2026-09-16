@@ -70,7 +70,20 @@ const CONSENT_PORT = 4979;
 const CONSENT_HOST = `localhost:${CONSENT_PORT}`;
 const OPERATOR_CREDENTIAL = 'O'.repeat(43);
 
-function setup(options: { withChannel?: boolean } = {}) {
+function setup(
+  options: {
+    withChannel?: boolean;
+    /**
+     * #2067: the caller's plugin projection. Defaults to the operator (this
+     * file's subject is the Home role); the projection cases below pass a
+     * narrowing projector to drive the collaborator path through the REAL
+     * handler.
+     */
+    projectVisiblePlugins?: () => (
+      installed: readonly string[],
+    ) => readonly string[];
+  } = {},
+) {
   const projectHomeDir = mkdtempSync(join(tmpdir(), 'station-home-role-'));
   cleanup.push(projectHomeDir);
   const pluginsDir = join(projectHomeDir, 'plugins');
@@ -95,6 +108,11 @@ function setup(options: { withChannel?: boolean } = {}) {
     pluginsDir,
     projectHomeDir,
     consentChannel: channel,
+    // #2067: this file's subject is the Home role, so it states the caller.
+    // The default is the operator; the projection cases pass a narrowing
+    // projector and drive the same real handlers.
+    projectVisiblePlugins:
+      options.projectVisiblePlugins ?? (() => (installed) => installed),
   });
   return { app, consentApp, channel, emit, projectHomeDir, pluginsDir };
 }
@@ -235,8 +253,15 @@ describe('the grant does not outlive what it approved (derived on every read)', 
     const response = await app.request('/home-role', { method: 'DELETE' });
     expect(response.status).toBe(200);
     expect(await readStatus(app)).toEqual({ state: 'none' });
+    // #2067: the marker is part of the frame, not incidental. The SSE relay
+    // exempts this frame from the per-principal plugin projection, and the
+    // sentinel NAME alone is not a safe discriminator — it satisfies
+    // `isCanonicalPluginId`, so Station would emit it for a plugin of that
+    // name too. The marker is what a plugin frame can never carry, so
+    // asserting it here is asserting the exemption still has a key.
     expect(emit).toHaveBeenCalledWith('plugins:grants-changed', {
       name: 'workspace-home-role',
+      homeRoleSlot: true,
     });
   });
 });
@@ -438,8 +463,15 @@ describe('the grant channel (station#3677 PR 2): distinct-origin consent only', 
 
     const status = await readStatus(app);
     expect(status.state).toBe('granted');
+    // #2067: the marker is part of the frame, not incidental. The SSE relay
+    // exempts this frame from the per-principal plugin projection, and the
+    // sentinel NAME alone is not a safe discriminator — it satisfies
+    // `isCanonicalPluginId`, so Station would emit it for a plugin of that
+    // name too. The marker is what a plugin frame can never carry, so
+    // asserting it here is asserting the exemption still has a key.
     expect(emit).toHaveBeenCalledWith('plugins:grants-changed', {
       name: 'workspace-home-role',
+      homeRoleSlot: true,
     });
     // The status poll the opening UI runs reflects the decision.
     const poll = await app.request(`/home-role/requests/${body.request!.id}`);
@@ -527,6 +559,7 @@ describe('the grant channel (station#3677 PR 2): distinct-origin consent only', 
       pluginsDir,
       projectHomeDir,
       consentChannel: channel,
+      projectVisiblePlugins: () => (installed) => installed,
       listContributions: () => {
         if (armedReadsUntilMutation > 0) armedReadsUntilMutation -= 1;
         if (armedReadsUntilMutation === 0) {
@@ -618,5 +651,70 @@ describe('the grant channel (station#3677 PR 2): distinct-origin consent only', 
         version: '3.1.0',
       },
     ]);
+  });
+});
+
+/**
+ * #2067, driven through the REAL Home-role handlers.
+ *
+ * `GET /home-role` names the holder's `pluginId` and `GET
+ * /home-role/candidates` names every eligible plugin, so both are members of
+ * the plugin-identity enumeration family (`PLUGIN_IDENTITY_ROUTES`). They are
+ * driven here rather than in `plugin-identity-enumeration.test.ts` because
+ * proving the STATUS projection needs a real stored grant, which needs this
+ * file's on-disk plugin fixture and `grantDirectly`.
+ */
+describe('per-principal plugin visibility (#2067)', () => {
+  const hideEverything = () => (_installed: readonly string[]) => [];
+
+  test('a collaborator who cannot see the holder is told no plugin holds Home', async () => {
+    const operatorView = setup();
+    await grantDirectly(operatorView.projectHomeDir, operatorView.pluginsDir);
+    // The control FIRST: the grant is real and the operator sees the holder,
+    // so the collaborator's `none` below is a projection rather than an
+    // empty store.
+    const asOperator = await readStatus(operatorView.app);
+    expect(JSON.stringify(asOperator)).toContain(PLUGIN);
+
+    const collaboratorApp = new Hono();
+    registerPluginHomeRoleRoutes(collaboratorApp, {
+      eventBus: { emit: vi.fn() } as never,
+      pluginsDir: operatorView.pluginsDir,
+      projectHomeDir: operatorView.projectHomeDir,
+      projectVisiblePlugins: hideEverything,
+    });
+    const response = await collaboratorApp.request('/home-role');
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).not.toContain(PLUGIN);
+    expect(JSON.parse(body).status).toEqual({ state: 'none' });
+  });
+
+  test('a collaborator who cannot see a plugin gets no candidate from it', async () => {
+    const operatorView = setup();
+    const asOperator = await operatorView.app.request('/home-role/candidates');
+    // Control: the candidate exists for somebody.
+    expect(await asOperator.text()).toContain(PLUGIN);
+
+    const collaboratorApp = new Hono();
+    registerPluginHomeRoleRoutes(collaboratorApp, {
+      eventBus: { emit: vi.fn() } as never,
+      pluginsDir: operatorView.pluginsDir,
+      projectHomeDir: operatorView.projectHomeDir,
+      projectVisiblePlugins: hideEverything,
+    });
+    const response = await collaboratorApp.request('/home-role/candidates');
+    expect(response.status).toBe(200);
+    expect(await response.text()).not.toContain(PLUGIN);
+  });
+
+  test('an uncomposed projection refuses rather than answering', async () => {
+    const app = new Hono();
+    registerPluginHomeRoleRoutes(app, {
+      eventBus: { emit: vi.fn() } as never,
+      pluginsDir: '/tmp/does-not-matter',
+      projectHomeDir: '/tmp/does-not-matter',
+    });
+    expect((await app.request('/home-role/candidates')).status).toBe(400);
   });
 });

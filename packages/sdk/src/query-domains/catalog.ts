@@ -41,12 +41,14 @@ interface RegistryActionInput {
    */
   consent?: {
     grantRevision?: string;
+    registryTrustRevision?: string;
     permissions: string[];
     contentDigest: string;
     dependencies: string[];
     dependencyApprovals?: Array<{
       id: string;
       grantRevision?: string;
+      registryTrustRevision?: string;
       permissions: string[];
       contentDigest: string;
       dependencies: string[];

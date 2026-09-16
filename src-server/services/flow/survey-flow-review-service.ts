@@ -13,6 +13,7 @@ import {
   buildReviewItemPresentation,
   reviewSessionSummary,
 } from '@kontourai/survey/review-workbench';
+import { deriveServerReviewSessionApplyResult } from '@kontourai/survey/review-workbench/server-review-session';
 import {
   surveyFlowReviewContinuations,
   surveyFlowReviewDiscoveries,
@@ -134,6 +135,29 @@ interface SurveyFlowReviewQueueItem {
   readonly sessionName: string;
   readonly updatedAt: string;
   readonly summary: ReturnType<typeof reviewSessionSummary>;
+  /**
+   * #2064 review MED-2: how many review items still have no recorded decision
+   * — i.e. how many are keeping `continuePausedGate` from running.
+   *
+   * `summary.unresolved` is NOT that number and must not be used for it.
+   * `reviewSessionSummary` files an undecided item whose
+   * `candidateSetStatus` is `escalated` under `escalated`, and an undecided
+   * item whose status is `resolved` under `accepted` — so a paused gate whose
+   * every remaining item is escalated reports `{escalated: 2, unresolved: 0}`
+   * while continuation still refuses. The inbox showed nothing for exactly
+   * the sessions most stuck.
+   *
+   * This is derived by the same function the continuation path calls, on the
+   * same inputs: `deriveServerReviewSessionApplyResult` over the record, its
+   * events, the current snapshot and its event count
+   * (`@kontourai/flow-agents`' `continuePausedFlowGateFromSurvey`, which
+   * additionally passes `requiredResolvedItems: 'all'`). Its
+   * `unresolvedItemNames` is the set of items with no entry in the session
+   * export's `results`, and `results` is built only from
+   * `decisionsByItemName` — so this is not a second reading of "needs a
+   * decision", it is the continuation precondition itself, counted.
+   */
+  readonly pendingDecisions: number;
   readonly items: readonly ReturnType<typeof buildReviewItemPresentation>[];
 }
 
@@ -189,6 +213,25 @@ interface SurveyFlowReviewAggregate {
   readonly unavailableProjects: SurveyFlowReviewUnavailableProject[];
 }
 
+/**
+ * See `SurveyFlowReviewQueueItem.pendingDecisions`. A session whose events do
+ * not replay cannot continue at all, so it counts as every item pending: the
+ * derivation throws for a stale record or invalid events, and answering that
+ * with 0 would hide the most stuck sessions of all behind the tidiest number.
+ */
+function pendingDecisionCount(session: StationSurveyReviewSession): number {
+  try {
+    return deriveServerReviewSessionApplyResult({
+      record: session.record,
+      events: session.events,
+      currentSnapshot: session.currentSnapshot,
+      currentEventCount: session.currentEventCount,
+    }).unresolvedItemNames.length;
+  } catch {
+    return session.currentSnapshot.items.length;
+  }
+}
+
 function projectQueueItems(
   sessions: readonly StationSurveyReviewSession[],
 ): SurveyFlowReviewQueueItem[] {
@@ -200,6 +243,7 @@ function projectQueueItems(
     sessionName: session.record.sessionName,
     updatedAt: session.record.updatedAt,
     summary: reviewSessionSummary(session.currentSnapshot),
+    pendingDecisions: pendingDecisionCount(session),
     items: session.currentSnapshot.items.map((item) =>
       buildReviewItemPresentation(item),
     ),

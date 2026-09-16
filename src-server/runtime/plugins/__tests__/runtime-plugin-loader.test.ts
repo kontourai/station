@@ -28,6 +28,7 @@ import {
   retirePluginProvidersForSourceGeneration,
 } from '../../../providers/registries/registry.js';
 import { registerPluginLifecycleRoutes } from '../../../routes/plugins/plugin-lifecycle-routes.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
 import { createPluginGrantReconciliationService } from '../../../services/plugins/plugin-grant-reconciliation.js';
 import { publishGrantedPluginProviderGeneration } from '../../../services/plugins/plugin-installation-generation-fence.js';
@@ -97,6 +98,19 @@ function createLogger() {
   };
 }
 
+/**
+ * The operator composition `POST /reload` requires since #2067 made it
+ * operator-only. Without it `operatorOnly` refuses with 400
+ * `plugin visibility was not composed for this route` — which is the correct
+ * fail-closed answer, and is not what these two tests are about: their
+ * subject is that reload cannot bypass an UNAVAILABLE GRANT STORE, which
+ * lives past the authorization boundary. The refusal itself is covered by
+ * `plugin-identity-enumeration.test.ts` and `pane-visibility.routes.test.ts`.
+ */
+const operatorVisibility = {
+  resolvePrincipal: () => ({ id: LOCAL_OPERATOR_PRINCIPAL_ID }) as never,
+};
+
 describe('loadRuntimePluginProviders providerAdapter entries', () => {
   let projectHomeDir: string;
 
@@ -140,6 +154,7 @@ describe('loadRuntimePluginProviders providerAdapter entries', () => {
           buildPlugin: async () => {},
           applyConfigurationMutation: async (operation) =>
             operation(() => {}, { status: 'applied' }),
+          visibility: operatorVisibility,
         });
         const response = await app.request('/reload', { method: 'POST' });
         expect(response.status).toBe(500);
@@ -207,6 +222,7 @@ describe('loadRuntimePluginProviders providerAdapter entries', () => {
         buildPlugin: async () => {},
         applyConfigurationMutation: async (operation) =>
           operation(() => {}, { status: 'applied' }),
+        visibility: operatorVisibility,
       });
       let reloadStatus: number | undefined;
       const loading =

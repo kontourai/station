@@ -76,10 +76,12 @@ category.
 - [private-cloud-environment.md](private-cloud-environment.md) — Private cloud Station environment
 - [project-membership.md](project-membership.md) — Project membership and device enrollment
 - [project-task-room-history.md](project-task-room-history.md) — Project/Task room history
+- [registry-trust-policy.md](registry-trust-policy.md) — Applied registry trust policy
 - [revision-bound-evidence.md](revision-bound-evidence.md) — Design: revision-bound evidence
 - [session-tape-replay.md](session-tape-replay.md) — Session tape replay
 - [settings-architecture.md](settings-architecture.md) — Settings Architecture: scope-first settings for Station
 - [shared-working-state.md](shared-working-state.md) — Shared working-state protocol
+- [shell-ownership-and-boards.md](shell-ownership-and-boards.md) — Shell ownership scopes and Boards
 - [shell-skeletons.md](shell-skeletons.md) — Design: Shell skeletons (#193 shell convergence)
 - [ssh-launched-environments.md](ssh-launched-environments.md) — Design: SSH-launched Environments
 - [station-instance-reconciler.md](station-instance-reconciler.md) — Station instance reconciliation

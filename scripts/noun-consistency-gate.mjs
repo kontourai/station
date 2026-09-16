@@ -82,7 +82,28 @@ export const SCAN_EXTENSIONS = UI_SCAN_EXTENSIONS;
  */
 export const COPY_SOURCE_FILES = [
   'packages/contracts/src/settings-registry.ts',
+  // The device-scope registry is the same kind of file, read by the same
+  // person, and was outside the scope while carrying 27 labels, 27 help
+  // sentences and 27 descriptions (epic #2144 slice 2). Its factory has a
+  // different name, hence COPY_SOURCE_OPENERS below.
+  'packages/contracts/src/device-settings.ts',
 ];
+
+/**
+ * The object-literal factory whose blocks carry a file's user-facing copy.
+ * `scanCopySourceContent` reads copy only from inside these blocks, because
+ * the same field identifiers appear in each file's own `interface`
+ * declaration where they are types, not copy.
+ *
+ * A file with no entry uses `defineSetting(`. The two openers are disjoint as
+ * substrings — `defineDeviceSetting(` does not contain `defineSetting(` — so
+ * neither file's blocks can be found by the other's opener, and a file
+ * scanned with the wrong one reports zero blocks, which is a hard failure
+ * rather than a quiet clean scan.
+ */
+export const COPY_SOURCE_OPENERS = {
+  'packages/contracts/src/device-settings.ts': 'defineDeviceSetting(',
+};
 
 /**
  * Paths that must be inside the enumerated scope. The tree-walk oracle in
@@ -101,6 +122,7 @@ export const PINNED_SCOPE_INVENTORY = [
   'src-ui/src/App.tsx',
   'src-ui/src/main.tsx',
   'packages/contracts/src/settings-registry.ts',
+  'packages/contracts/src/device-settings.ts',
   // Review L: this file rendered "{title} Prompts" as JSX text while sitting
   // outside the gate's only root — the pin keeps a future root-narrowing from
   // re-hiding it.
@@ -667,15 +689,21 @@ export function scanFileContent(file, rawContent) {
 
 /**
  * The user-facing string fields of a `SettingDefinition`
- * (`packages/contracts/src/settings-registry.ts`): `label` and `description`
- * are required, `placeholder` optional. Every one of them reaches the screen
- * through `views/settings/registry-row.tsx` — `label` as both the row label
- * and the control's `aria-label`. Keep this list in step with that interface;
- * `scanCopySourceContent` fails closed on any field here whose value it cannot
- * read, so a shape it does not understand reds the gate instead of vanishing
- * from the scan.
+ * (`packages/contracts/src/settings-registry.ts`, and the same four fields on
+ * `DeviceSettingDefinition` in `packages/contracts/src/device-settings.ts`):
+ * `label`, `help` and
+ * `description` are required, `placeholder` optional. `label` and
+ * `description` reach the screen through `views/settings/registry-row.tsx` —
+ * `label` as both the row label and the control's `aria-label`. `help` is
+ * copy of the same kind, written for the same reader (epic #2144 slice 2),
+ * and is scanned from the day it is declared rather than from the day a
+ * surface first renders it: copy that escapes the gate until a consumer
+ * appears is copy nobody governs while it is being written. Keep this list in
+ * step with that interface; `scanCopySourceContent` fails closed on any field
+ * here whose value it cannot read, so a shape it does not understand reds the
+ * gate instead of vanishing from the scan.
  */
-const COPY_FIELD_NAMES = ['label', 'description', 'placeholder'];
+const COPY_FIELD_NAMES = ['label', 'help', 'description', 'placeholder'];
 
 /**
  * The scanner reads copy out of `defineSetting({ ... })` blocks rather than
@@ -684,6 +712,11 @@ const COPY_FIELD_NAMES = ['label', 'description', 'placeholder'];
  * types, not copy. Zero blocks is a hard failure, not a clean scan.
  */
 const COPY_SOURCE_BLOCK_OPENER = 'defineSetting(';
+
+/** The opener a registered copy source is scanned with. */
+export function copySourceOpener(file) {
+  return COPY_SOURCE_OPENERS[file] ?? COPY_SOURCE_BLOCK_OPENER;
+}
 
 const COPY_FIELD_KEY_PATTERN = new RegExp(
   `\\b(?:${COPY_FIELD_NAMES.join('|')})\\s*:\\s*`,
@@ -706,7 +739,11 @@ const COPY_FIELD_VALUE_SOURCE =
  * scanner that silently drops the shapes it does not understand is the same
  * defect this whole change exists to close.
  */
-export function scanCopySourceContent(file, rawContent) {
+export function scanCopySourceContent(
+  file,
+  rawContent,
+  opener = copySourceOpener(file),
+) {
   const content = stripComments(rawContent);
   const findings = [];
   const unscannable = [];
@@ -714,21 +751,18 @@ export function scanCopySourceContent(file, rawContent) {
 
   let searchFrom = 0;
   for (;;) {
-    const openerIndex = content.indexOf(COPY_SOURCE_BLOCK_OPENER, searchFrom);
+    const openerIndex = content.indexOf(opener, searchFrom);
     if (openerIndex === -1) break;
-    const braceIndex = content.indexOf(
-      '{',
-      openerIndex + COPY_SOURCE_BLOCK_OPENER.length,
-    );
+    const braceIndex = content.indexOf('{', openerIndex + opener.length);
     const closeIndex =
       braceIndex === -1 ? -1 : findMatchingBrace(content, braceIndex);
     if (braceIndex === -1 || closeIndex === -1) {
       unscannable.push({
         file,
         line: lineNumberAt(content, openerIndex),
-        snippet: `${COPY_SOURCE_BLOCK_OPENER} block never closes — cannot scan its copy`,
+        snippet: `${opener} block never closes — cannot scan its copy`,
       });
-      searchFrom = openerIndex + COPY_SOURCE_BLOCK_OPENER.length;
+      searchFrom = openerIndex + opener.length;
       continue;
     }
     blocks++;
@@ -774,7 +808,7 @@ export function scanCopySourceContent(file, rawContent) {
       file,
       line: 1,
       snippet:
-        `no ${COPY_SOURCE_BLOCK_OPENER}...) blocks found — this file is registered as a ` +
+        `no ${opener}...) blocks found — this file is registered as a ` +
         'user-facing copy source but the scanner read no copy from it',
     });
   }
@@ -867,9 +901,10 @@ function main() {
       console.error(`  ${entry.file}:${entry.line}: ${entry.snippet}`);
     }
     console.error(
-      '\nThe scanner reads plain string literals out of defineSetting({ ... })' +
-        '\nblocks. Copy it cannot read is reported instead of skipped — express the' +
-        '\nstring as a literal, or teach scanCopySourceContent the new shape.',
+      "\nThe scanner reads plain string literals out of each copy source's own" +
+        '\nfactory blocks (COPY_SOURCE_OPENERS). Copy it cannot read is reported' +
+        '\ninstead of skipped — express the string as a literal, register the' +
+        '\nright opener, or teach scanCopySourceContent the new shape.',
     );
   }
 

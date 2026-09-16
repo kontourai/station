@@ -252,6 +252,7 @@
 
   --health-success: #10b981;
   --health-error: #ef4444;
+
   --health-warning: #f59e0b;
 
   --event-agent-start: #3b82f6;
@@ -261,6 +262,29 @@
   --event-agent-health: #06b6d4;
   --event-planning: #8b5cf6;
   --event-reasoning: #ec4899;
+
+  /* Data series and syntax rungs (#2140).
+     These used to be literals inside `style={}` in three components, which
+     is the one place the theme cannot reach: the values were github-dark's
+     and the dark chart palette's, and on the light theme they measured
+     1.5-2.7:1 against a white panel (text floor 4.5:1, graphic floor 3:1).
+     Each rung below is measured against --bg-secondary for its theme. */
+  --series-1: #a78bfa;
+  --series-2: #f59e0b;
+  --series-3: #22c55e;
+  --series-4: #06b6d4;
+  --series-5: #f472b6;
+  --series-6: #fb923c;
+  /* Meter rungs by fill level. Rendered as a bar FILL, so 3:1 is the floor;
+     on this panel they carry 4.7:1 / 8.3:1 / 7.0:1. */
+  --meter-low: #10b981;
+  --meter-mid: #f59e0b;
+  --meter-high: #ef4444;
+  /* Source-preview syntax rungs: github-dark's own values, rendered as
+     TEXT, so 4.5:1 is the floor; 7.7:1 / 10.0:1 / 12.6:1 on this panel. */
+  --syntax-keyword: #ff7b72;
+  --syntax-number: #79c0ff;
+  --syntax-string: #a5d6ff;
 
   --overlay-bg: rgba(0, 0, 0, 0.2);
   --overlay-bg-dark: rgba(0, 0, 0, 0.3);
@@ -488,6 +512,7 @@
   /* Health */
   --health-success: #059669;
   --health-error: #dc2626;
+
   --health-warning: #d97706;
 
   /* Event colors */
@@ -498,6 +523,31 @@
   --event-agent-health: #0891b2;
   --event-planning: #7c3aed;
   --event-reasoning: #db2777;
+
+  /* Light rungs for the families the dark block introduces (#2140). Every
+     value is measured against BOTH light backdrops it lands on, since the
+     chart sits on --bg-secondary (#ffffff) and the meter on --bg-primary
+     (#f5f4ef); the lower of the two is quoted. */
+  --series-1: #6d28d9; /* 6.45:1 */
+  --series-2: #b45309; /* 4.56:1 */
+  --series-3: #15803d; /* 4.55:1 */
+  --series-4: #0e7490; /* 4.87:1 */
+  --series-5: #be185d; /* 5.48:1 */
+  --series-6: #c2410c; /* 4.70:1 */
+  /* Bar fills, 3:1 floor. Reuses the light status rungs that already carry
+     text (4.5:1+), so a meter and its label agree on what "high" looks like. */
+  --meter-low: var(--success-text); /* #2e7d32 5.13:1 */
+  --meter-mid: var(--warning-text); /* #92400e */
+  --meter-high: var(--error-text); /* #b3261e 6.54:1 */
+  /* github-light's number and string rungs, rendered as text: 6.90:1 and
+     11.63:1 on the page. The keyword is darkened past github-light's #cf222e
+     because of a third backdrop the pane paints under it: the requested line
+     is highlighted with --bg-selected, a 14% mix of a DARK teal brand into
+     the page (#d5e3dc), and every rung loses ~0.9 there. #cf222e measures
+     4.86 on the page but 4.04 on that line; #b82b3a is 5.54 / 4.60. */
+  --syntax-keyword: #b82b3a;
+  --syntax-number: #0550ae;
+  --syntax-string: #0a3069;
 
   /* Overlays & Shadows */
   --overlay-bg: rgba(0, 0, 0, 0.05);
@@ -1217,30 +1267,6 @@ button:hover {
   cursor: not-allowed;
 }
 
-.sidebar {
-  width: 280px;
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border-primary);
-  display: flex;
-  flex-direction: column;
-}
-
-.sidebar-header {
-  padding: 20px;
-  border-bottom: 1px solid var(--border-primary);
-}
-
-.sidebar-header h1 {
-  font-size: var(--text-3xl);
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.sidebar-header p {
-  font-size: var(--text-md);
-  color: var(--text-muted);
-}
-
 .agent-list {
   flex: 1;
   overflow-y: auto;
@@ -1588,6 +1614,105 @@ button:hover {
   color: var(--text-primary);
 }
 
+/* #2046 2b: the region's tab strip, inside the region bar between the
+   placement grab and the selected pane's own toolbar. One tab per pane the
+   region holds; the pressed tab is the pane on screen. Sized to the bar's
+   row, not to a row of its own — the bar is the dock's one chrome bar
+   (#1064, #3309), and the strip shares it. */
+.region-tabs {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: stretch;
+  align-self: stretch;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.region-tabs__item {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.region-tabs__tab {
+  padding: 0 var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.region-tabs__tab:hover {
+  color: var(--text-primary);
+}
+
+.region-tabs__tab[aria-selected="true"] {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.region-tabs__tab:focus-visible,
+.region-tabs__close:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+/* The close, revealed the way the placement grab is (#1552 D3): on an
+   engaged bar, or always where nothing can hover. */
+.region-tabs__close {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chat-dock__header:hover .region-tabs__close,
+.chat-dock__header:focus-within .region-tabs__close {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.region-tabs__close:hover,
+.region-tabs__close:focus-visible {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* The slots a pane's own toolbar renders into (`RegionChromeSlots`): no box
+   of their own, so the pane's identity, meter and context are flex items of
+   the bar's clusters exactly as they were when the pane rendered the bar. */
+.chat-dock__pane-toolbar {
+  display: contents;
+}
+
+/* The `dock` host's active panel: the one element between the shell and the
+   pane, carrying the strip's `tabpanel` role. It fills the shell below the
+   bar the way the pane did as a direct child, and clips like it. */
+.workspace-pane-host__panel--dock {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* ─────────────────────────── ONE MENU PRIMITIVE ───────────────────────────
  *
  * #1552 D4. This shell had five independent menu vocabularies across six
@@ -1606,8 +1731,9 @@ button:hover {
  * width stay with each menu, because where a menu opens is genuinely its own
  * business and is the one thing they do not share (see
  * `.chat-dock__more-menu`). `src-ui/src/__tests__/menu-primitive.cascade.test.tsx`
- * measures all SEVEN — the six above and ProfileMenu — in one real Chromium
- * cascade.
+ * measures all EIGHT — the six above, ProfileMenu, and the Boards row menu,
+ * whose three surfaces are three entries — in one real Chromium cascade, at
+ * both a fine and a coarse pointer.
  *
  * WHAT IS DELIBERATELY ABSENT: per-row dividers. A rule between every row
  * turns a list into a ruled table in which the ONE division that carries
@@ -1866,6 +1992,17 @@ button:hover {
   position: fixed;
   inset: 0;
   z-index: calc(var(--layer-navigation) - 1);
+}
+
+/* #2143: a tab's move menu, opened from the tab's context menu. The same
+   `.dock-placement-menu` family as the grab's and the More menu's — one more
+   folded menu in that bar, anchored under (or, without room, above) its tab
+   by `RegionTabMoveMenu` — and the same backdrop. */
+.region-tabs__move-menu {
+  bottom: auto;
+  left: auto;
+  z-index: var(--layer-navigation);
+  box-shadow: var(--shadow-menu);
 }
 
 .dock-placement-target {
@@ -2485,7 +2622,7 @@ button:hover {
 }
 
 .active-work-frame__file-status {
-  color: var(--warning, #e5c07b);
+  color: var(--warning-text);
   font-weight: 700;
 }
 
@@ -3017,7 +3154,7 @@ button:hover {
   text-overflow: ellipsis;
 }
 .git-badge__dirty {
-  color: var(--warning, #e5c07b);
+  color: var(--warning-text);
   font-weight: 600;
 }
 
@@ -3075,16 +3212,16 @@ button:hover {
   color: var(--text-secondary);
 }
 .git-tooltip__stat--staged {
-  color: var(--success, #98c379);
+  color: var(--success-text);
 }
 .git-tooltip__stat--unstaged {
-  color: var(--warning, #e5c07b);
+  color: var(--warning-text);
 }
 .git-tooltip__stat--untracked {
   color: var(--text-muted);
 }
 .git-tooltip__clean {
-  color: var(--success, #98c379);
+  color: var(--success-text);
   font-size: var(--text-xs);
 }
 
@@ -3371,7 +3508,7 @@ button:hover {
 
 /* Header maximized state */
 .chat-dock__header.is-maximized {
-  background: rgba(var(--color-primary-rgb, 59, 130, 246), 0.1);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
   border-bottom: 2px solid var(--color-primary);
 }
 
@@ -3673,6 +3810,24 @@ button:hover {
   margin: 3px 0 0 24px;
   font-size: var(--text-base);
   color: var(--text-secondary);
+}
+
+/* #2144 decision 3: the step from this shortcut panel to Chat's full settings
+   section. Styled as a link rather than a button because it navigates away
+   instead of changing something here, and it keeps the 44px touch floor every
+   other control in this panel clears. */
+.chat-settings-modal__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-primary);
+  font-family: inherit;
+  font-size: var(--text-base);
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .chat-settings-modal__actions {
@@ -4102,9 +4257,9 @@ button:hover {
   gap: 10px;
   margin: 8px 0;
   padding: 8px 12px;
-  border: 1px solid rgba(var(--accent-primary-rgb, 0, 102, 204), 0.18);
+  border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
   border-radius: 10px;
-  background: rgba(var(--accent-primary-rgb, 0, 102, 204), 0.06);
+  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
 }
 
 .background-tasks-banner__label {
@@ -4130,7 +4285,7 @@ button.background-tasks-banner {
 
 button.background-tasks-banner:hover,
 button.background-tasks-banner:focus-visible {
-  background: rgba(var(--accent-primary-rgb, 0, 102, 204), 0.1);
+  background: color-mix(in srgb, var(--k-brand) 10%, transparent);
 }
 
 /* archive#1301: visually-hidden live-region sibling
@@ -4190,15 +4345,15 @@ button.background-tasks-banner:focus-visible {
 @keyframes streaming-progress-pulse {
   0% {
     transform: scale(0.9);
-    box-shadow: 0 0 0 0 rgba(var(--accent-primary-rgb, 0, 102, 204), 0.35);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 35%, transparent);
   }
   70% {
     transform: scale(1.05);
-    box-shadow: 0 0 0 8px rgba(var(--accent-primary-rgb, 0, 102, 204), 0);
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--k-brand) 0%, transparent);
   }
   100% {
     transform: scale(0.9);
-    box-shadow: 0 0 0 0 rgba(var(--accent-primary-rgb, 0, 102, 204), 0);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 0%, transparent);
   }
 }
 
@@ -4677,7 +4832,7 @@ button.tool-call__line:hover {
   flex-shrink: 0;
   border-radius: 999px;
   background: var(--accent-primary);
-  box-shadow: 0 0 0 0 rgba(var(--accent-primary-rgb, 0, 102, 204), 0.45);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 45%, transparent);
   animation: streaming-progress-pulse var(--motion-status-pulse) var(--ease-out)
     infinite;
 }
@@ -4723,7 +4878,7 @@ button.tool-call__line:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--overlay-scrim, rgba(0, 0, 0, 0.5));
+  background: var(--overlay-bg-darker);
   z-index: var(--z-modal, 1000);
 }
 
@@ -5584,38 +5739,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .meeting-body-content th {
   padding: 0.5rem;
   border: none;
-}
-
-/* Attendee status colors - theme aware */
-.attendee-status--accepted {
-  color: #28a745;
-}
-
-.attendee-status--declined {
-  color: #dc3545;
-}
-
-.attendee-status--tentative {
-  color: #fd7e14;
-}
-
-.attendee-status--no-response {
-  color: var(--color-text-secondary);
-}
-
-/* Dark theme adjustments */
-@media (prefers-color-scheme: dark) {
-  .attendee-status--accepted {
-    color: #4ade80;
-  }
-
-  .attendee-status--declined {
-    color: #f87171;
-  }
-
-  .attendee-status--tentative {
-    color: #fbbf24;
-  }
 }
 
 /* ── Conversation History (push on desktop, overlay on mobile) ── */
@@ -6938,7 +7061,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .knowledge-section__dropzone--active {
   border-color: var(--accent-primary);
-  background: rgba(var(--accent-primary-rgb, 59, 130, 246), 0.06);
+  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
   color: var(--accent-primary);
 }
 
@@ -7129,7 +7252,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .chat-dock__session-project {
-  background: var(--bg-subtle, rgba(0, 0, 0, 0.06));
+  background: var(--bg-hover);
   border-radius: 3px;
   padding: 1px 6px;
   font-size: var(--text-xs);

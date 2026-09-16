@@ -62,6 +62,7 @@ import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
+import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
   OPEN_PROJECT_CHATS_EVENT,
@@ -82,6 +83,7 @@ import {
   selectChatReadyAgents,
   selectDirectNewChatAgent,
 } from '../agent-selection-policy';
+import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { ContextPercentage } from '../conversation-stats/ConversationStats';
 import { LazyBoundary } from '../LazyBoundary';
@@ -108,7 +110,6 @@ import {
   chatModelLabel,
   effectiveChatModelId,
   inboxPanelMounts,
-  markDockFirstRunSeen,
   projectDisplayName,
   resolveDirectNewChatProjectSlug,
   resolveDockBadgeProjectName,
@@ -116,7 +117,6 @@ import {
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
   routeToOpenChatsCollection,
-  shouldOpenDockForFirstRun,
   shouldRouteScopedChatProject,
 } from './chat-dock-utils';
 import { submitCommandLauncherIntent } from './command-launcher-model';
@@ -134,6 +134,7 @@ import { useChatDockOverlays } from './useChatDockOverlays';
 import { useChatDockViewModel } from './useChatDockViewModel';
 import { useConversationBoundaryDialogs } from './useConversationBoundaryDialogs';
 import { useDockCopyActions } from './useDockCopyActions';
+import { useFirstRunDockNudge } from './useFirstRunDockNudge';
 
 /**
  * Re-open an offline queued turn from what its owning session persistently
@@ -298,17 +299,23 @@ const loadConversationOpenRevalidator = () =>
  * already settled), and App.tsx's `showAmbientChatDock` remounts the dock on
  * ordinary navigation.
  */
-const loadAmbientChatDockPaneHost = () =>
-  import('../../workspace-panes/AmbientChatDockPaneHost').then((module) => ({
-    default: module.AmbientChatDockPaneHost,
+const loadRegionPaneHost = () =>
+  import('../../workspace-panes/RegionPaneHost').then((module) => ({
+    default: module.RegionPaneHost,
   }));
 
-void loadAmbientChatDockPaneHost().catch(() => {
+void loadRegionPaneHost().catch(() => {
   // The boundary reports a failed import where it renders; the warm-up has
   // no surface of its own.
 });
 
-function renderAmbientChatPane(
+/**
+ * Chat as a region pane: what `RegionPaneHost` renders for the canonical
+ * Chat occurrence, whichever dock region holds it (#2045). Exported for
+ * `RegionShells`, which hands it to each region's host; the chat stack this
+ * pane mounts stays in this module.
+ */
+export function renderAmbientChatPane(
   _instance: WorkspacePaneInstance,
   onRequestAuth: (() => Promise<boolean> | undefined) | undefined,
   shellChrome: DockShellChrome,
@@ -407,7 +414,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     isDockMaximized,
     isMobile,
     visualViewport,
-    availableDockSlotPlacements,
     effectiveDockSlotPlacement,
     commitDockPlacement,
   } = chrome;
@@ -496,6 +502,20 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     status: orchestrationSessionsStatus,
     refetch: refetchOrchestrationSessions,
   } = useOrchestrationSessionsQuery();
+  // The inbox rows' hover cards resolve git facts against the row's local
+  // session working directory (only local sessions have one worth answering:
+  // `useOrchestrationSessionsQuery` never carries remote environments'
+  // sessions, so a remote row cannot resolve a cwd here at all). Referentially
+  // stable for the panel's `memo()` wrap, like `openInboxChatSessionIds`.
+  const cwdByThreadId = useMemo(
+    () =>
+      new Map(
+        orchestrationSessions
+          .filter((session) => !!session.cwd)
+          .map((session) => [session.threadId, session.cwd as string]),
+      ),
+    [orchestrationSessions],
+  );
   const openChatItems = useOpenChats(agents, orchestrationSessions);
   const inventory = useConversationInventoryQuery();
   const acknowledgeConversation = useAcknowledgeConversationMutation();
@@ -563,7 +583,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const {
     dockSnap,
     dockHeight,
-    isDragging,
     applyDockSnap,
     restoreDockToDocked,
     onMobileHeaderDragPointerDown,
@@ -1134,16 +1153,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     rehydrateSessions();
   }, [rehydrateSessions]);
 
-  // First-run nudge: surface the chat dock once so a new user discovers the
-  // primary surface (skipped for automated/e2e sessions — see the helper). The
-  // localStorage flag, not the deps, is what makes this fire once; re-runs are
-  // a no-op once the flag is set.
-  useEffect(() => {
-    if (isFullscreenPlacement) return;
-    if (!shouldOpenDockForFirstRun()) return;
-    markDockFirstRunSeen();
-    if (!isDockOpen) setDockState(true);
-  }, [isDockOpen, isFullscreenPlacement, setDockState]);
+  // First-run nudge (#2151): opens the dock once, on a known non-empty
+  // inbox. The decision and the effect live in `useFirstRunDockNudge`.
+  useFirstRunDockNudge({
+    isFullscreenPlacement,
+    sessionsStatus: orchestrationSessionsStatus,
+    sessionCount: allSessions.length,
+    isDockOpen,
+    setDockState,
+  });
 
   // Get updateChat from context
   const { updateChat } = useActiveChatActions();
@@ -1807,8 +1825,82 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       isDockOwnedViewType(resolveViewFromPath(pathname).type),
   });
 
+  // #2049: what a link in this conversation's rendered markdown may open.
+  // The CONVERSATION's project, not the dock's binding — a model's
+  // repo-relative path names a file in the checkout it was running in — and
+  // the dock's alongside it, because a dock pane binds the dock's project and
+  // the two differing is what makes the pane route wrong rather than merely
+  // unavailable. `openPathInMain` is the route a preview took before #2049
+  // and still takes on a bottom-only device or a mismatched binding.
+  const conversationProjectSlug = activeSession?.projectSlug ?? null;
+  const conversationProjectId = conversationProjectSlug
+    ? (projects.find((project) => project.slug === conversationProjectSlug)
+        ?.id ?? null)
+    : null;
+  // The provider's own fold predicate, CONSUMED rather than copied
+  // (`useDockFoldsToOneRegion`, which `RegionModelProvider` derives its
+  // `bottomOnly` from): a device the model will refuse a side region on must
+  // not be offered one here, and two spellings of that rule could drift.
+  const dockBottomOnly = useDockFoldsToOneRegion();
+  /**
+   * #2050: where the "Background tasks — N running" affordance goes. With a
+   * side dock region on this device it places the Agents PANE, so the list
+   * sits beside the conversation and stays there; on a bottom-only device,
+   * where a side region is not available, it opens the sheet it always did.
+   * `useShowSurface` rather than the region model, because Chat is a pane
+   * renderer and pane renderers do not read region state.
+   */
+  const backgroundTasksOpensPane = !dockBottomOnly;
+  // Two callers with two meanings, kept apart: the More-menu row TOGGLES the
+  // sheet it announces as a dialog, while a switcher row that is dismissing
+  // itself OPENS it. Folding them into one toggle would let a second entry
+  // point close a sheet it never opened. The pane branch is the same either
+  // way — revealing a tab that is already there is a reveal.
+  const showBackgroundTasks = useCallback(() => {
+    if (backgroundTasksOpensPane) {
+      showSurface('workspace-agents');
+      return;
+    }
+    setIsBackgroundTasksOpen(true);
+  }, [backgroundTasksOpensPane, setIsBackgroundTasksOpen, showSurface]);
+  const toggleBackgroundTasks = useCallback(() => {
+    if (backgroundTasksOpensPane) {
+      showSurface('workspace-agents');
+      return;
+    }
+    setIsBackgroundTasksOpen((open) => !open);
+  }, [backgroundTasksOpensPane, setIsBackgroundTasksOpen, showSurface]);
+  const codingLayoutSlug = sessionCodingLayout?.slug ?? null;
+  const markdownLinkContext = useMemo(
+    () => ({
+      projectSlug: conversationProjectSlug,
+      projectId: conversationProjectId,
+      dockProjectSlug,
+      bottomOnly: dockBottomOnly,
+      openPathInMain:
+        conversationProjectSlug && codingLayoutSlug
+          ? (path: string, lineRange?: { start: number; end: number }) =>
+              setLayout(conversationProjectSlug, codingLayoutSlug, {
+                openFilePreviewIntent: {
+                  projectSlug: conversationProjectSlug,
+                  path,
+                  ...(lineRange ? { lineRange } : {}),
+                },
+              })
+          : null,
+    }),
+    [
+      codingLayoutSlug,
+      conversationProjectId,
+      conversationProjectSlug,
+      dockBottomOnly,
+      dockProjectSlug,
+      setLayout,
+    ],
+  );
+
   return (
-    <>
+    <MarkdownLinkContext.Provider value={markdownLinkContext}>
       <SkillShortcutRegistrar
         hasContext={Boolean(
           !importedSessionId && activeSessionId && activeSessionForHook,
@@ -2007,6 +2099,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 onRestoreDock: () => applyDockSnap('half'),
                 isDockMaximized: isPaneMaximized,
                 dockControls: !isFullscreenPlacement,
+                // The region's other panes (#2046 2b): a coarse device has
+                // no tab strip, so the sheet is where a pane sharing Chat's
+                // region is reached. From the chrome, which derives it from
+                // the region model this renderer may not read.
+                regionPanes: chrome.regionPanes,
+                onSelectRegionPane: chrome.selectRegionPane,
               }}
             />
           ) : (
@@ -2114,24 +2212,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 onNewChat: () => setShowNewChatModal(true),
                 setShowChatSettings,
               }}
-              isDragging={isDragging}
-              onDockSnap={applyDockSnap}
+              // The region's own controls — placement, maximize, visibility,
+              // the tab strip — are the region bar's (`RegionChromeBar`,
+              // #2046 2b); this is Chat's toolbar content, rendered into
+              // that bar's slots.
               fullscreen={isFullscreenPlacement}
-              availableDockSlotPlacements={availableDockSlotPlacements}
-              effectiveDockSlotPlacement={effectiveDockSlotPlacement}
-              onDockPlacementChange={commitDockPlacement}
               regionVisible={isDockOpen}
-              shellMaximized={isDockMaximized}
-              // #1386: Chat's own header said "Hide dock region" while every
-              // other shell said "Hide <title>", because this was the one
-              // `ChatDockHeader` that passed no title. From the chrome, not
-              // from the registry: Chat's renderer is not allowed to read the
-              // region model (`region-surface-boundary.test.ts`), and the
-              // chrome already derives the shell's shortcut id the same way.
-              surfaceTitle={chrome.surfaceTitle}
-              canMaximize={chrome.canMaximize}
-              showMaximizeShortcut={chrome.ownsMaximizeShortcut}
-              surfaceShortcutId={chrome.surfaceShortcutId}
               moreActions={importedSessionId ? [] : dockMoreActions}
               // #3309: the tab strip's controls fold into the header — one
               // chrome bar, every reclaimed pixel is transcript space. Only
@@ -2156,8 +2242,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         ? 0
                         : backgroundTasksRunningCount,
                       isBackgroundTasksOpen,
-                      onToggleBackgroundTasks: () =>
-                        setIsBackgroundTasksOpen((open) => !open),
+                      backgroundTasksOpensPane,
+                      onToggleBackgroundTasks: toggleBackgroundTasks,
                       sessionInventory:
                         !importedSessionId &&
                         !conversationOpenRecovery &&
@@ -2225,6 +2311,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         exiting: inboxPresence.exiting,
                         items: taskItems,
                         agents,
+                        cwdByThreadId,
                         activeChatSessionId:
                           importedSessionId ?? activeSessionId,
                         openChatSessionIds: openInboxChatSessionIds,
@@ -2360,6 +2447,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       connectionApprovalModeDefault={
                         connectionApprovalModeDefault
                       }
+                      stationApprovalModeDefault={
+                        appConfig?.defaultApprovalMode
+                      }
                       toolPolicyDelivery={toolPolicyDelivery}
                       availableModels={effectiveModels}
                       modelsLoading={modelsLoading}
@@ -2424,9 +2514,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           },
                         );
                       }}
-                      onOpenBackgroundTasks={() =>
-                        setIsBackgroundTasksOpen(true)
-                      }
+                      onOpenBackgroundTasks={showBackgroundTasks}
                     />
                   ) : null}
                 </div>
@@ -2490,7 +2578,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               backgroundTaskCount: backgroundTasksRunningCount,
               onOpenBackgroundTasks: () => {
                 setIsTaskSwitcherOpen(false);
-                setIsBackgroundTasksOpen(true);
+                showBackgroundTasks();
               },
               onOpenSession: (threadId) => {
                 setIsTaskSwitcherOpen(false);
@@ -2880,15 +2968,22 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ) : null}
 
       <ShareIntakeController />
-    </>
+    </MarkdownLinkContext.Provider>
   );
 }
 
 /**
- * The ambient application placement of the shared Chat workspace pane: Chat
- * mounted in its own dock (`AmbientChatDockPaneHost` → `DockShell` →
- * chromeless `WorkspacePaneHost`). Chat is the only pane that host renders
- * (#928 C2b deleted the legacy docked-Home path and its occupant switching).
+ * The model-less ambient placement of the shared Chat workspace pane: Chat
+ * mounted in its own dock (`RegionPaneHost` → `DockShell` → chromeless
+ * `WorkspacePaneHost`). `RegionShells` mounts this only without a region
+ * model (App-level tests on the pre-region mount), and without a `regionId`,
+ * which is what puts the host on the legacy `chat-dock` document. With a
+ * model, every dock region mounts its own host and Chat renders through it
+ * as a pane (#2045). A `regionId` forwarded here — pinned plumbing
+ * (`ChatDockRegionForwarding.test.tsx`), no production caller — makes the
+ * host that region's, on that region's document, with the same admission
+ * `RegionShells` would apply (not the same props: this path supplies no
+ * Activity renderer).
  */
 export function ChatDock({
   regionId,
@@ -2902,7 +2997,7 @@ export function ChatDock({
   // without a visible gap rather than blinking a placeholder in and out.
   return (
     <LazyBoundary
-      load={loadAmbientChatDockPaneHost}
+      load={loadRegionPaneHost}
       componentProps={{
         onRequestAuth,
         renderChatPane: renderAmbientChatPane,

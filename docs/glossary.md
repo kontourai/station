@@ -136,6 +136,7 @@ with two explicit, structurally identical exceptions, both off by default and ne
 - **Tool** — one callable: a function from an integration, or a `station-control` platform function.
 - **Command** — a slash command.
 - **Plugin** — an installable platform extension (layouts, agents, integrations, providers, …).
+- **Plugin visibility** — which installed plugins one principal may see and compose a Board or a personal agent from (#2067). Installation stays instance-wide: visibility is a *projection* of that one installed set onto one person, derived from the operator's grant record plus the live inventory, never a stored `visible` label. The operator sees everything; anybody else sees only what they have been granted, and a plugin outside their projection is absent from their plugin list rather than flagged. It is a listing and composition projection only — the execution authority for a plugin remains its permission grants, which every invocation rechecks.
 
 > **MCP passthrough (exception 1):** an ACP-connected External agent's connection can
 > explicitly opt in to receiving Station's stdio MCP tool servers inside its own
@@ -220,21 +221,63 @@ retired names.
   (`REGION_IDS`). The shell owns regions; nothing placed in one reads which
   region it is in.
 - **Surface** — a thing registered to occupy a region, with an id, title,
-  icon, keyboard chord and default region (`REGION_SURFACE_REGISTRY`). Chat
-  and Activity are surfaces. "Surface" means this in the region model and its
-  chrome; older prose still uses the lowercase word for any page or area, and
-  the Kontour product Surface is always written with its product name. The
-  twenty navigable places the palette and sidebar send you to are
-  **destinations** (`APP_DESTINATION_REGISTRY`).
-- **Layout** — a project's named view the sidebar navigates between: Coding,
-  Tasks, Session board, or a plugin's (`LayoutConfig`, a server record whose
-  `type` selects the renderer). Use **Layout** for the product object and its
+  icon, optional keyboard chord, default region and who offers it
+  (`REGION_SURFACE_REGISTRY`; `exposure`). Chat, Activity and, since #2047,
+  the docked Terminal, Diff and Files are surfaces; the last three are
+  **catalog-only** — offered by a dock region's "+" (the **dock catalog**)
+  rather than the toolbar, and bound to the dock's active project. "Surface"
+  means this in the region model and its chrome; older prose still uses the
+  lowercase word for any page or area, and the Kontour product Surface is
+  always written with its product name. The twenty navigable places the
+  palette and sidebar send you to are **destinations**
+  (`APP_DESTINATION_REGISTRY`).
+- **Layout** — a named view the sidebar navigates between: Coding, Tasks,
+  Session board, or a plugin's (`LayoutConfig`, a server record whose `type`
+  selects the renderer). A Layout is owned by a project, a principal, or the
+  Station instance (`LayoutOwner`; derive it with `layoutOwner`, never by
+  reading `projectSlug`) — a principal-owned Layout is a **Board**
+  ([design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
+  decision D1). Use **Layout** for the product object and its
   chooser, editor, sources and persistence. Do not use it for the map of
   which surface sits in which region (that is the arrangement) or for the
   split/tab tree inside a view (that is a pane host). Lowercase "layout" may
   still describe spatial arrangement in developer prose, and internal widget
   names such as `SplitPaneLayout` describe implementation, not another
-  product object.
+  product object. A project Layout may also be held by a dock region as a
+  pane (`layout:<projectId>/<layoutId>`, #2157;
+  [design/placement.md](design/placement.md)) — Coding and Chat kinds render
+  in the main region only.
+- **Board** — a Layout owned by a principal: the viewer's own, project-less
+  page, listed in the left panel's `Boards` section between Activity and
+  Projects and rendered by the same layout renderer a project Layout is
+  (#2062; [design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
+  decision D1). A Board can be **promoted** — MOVED into a project, where it
+  becomes that project's Layout under the same id; the personal record is gone
+  afterwards, so promote is never a copy. A Board may also be held by a dock
+  region as a pane beside Chat (`board:<layoutId>`, #2157;
+  [design/placement.md](design/placement.md)).
+
+  The word is overloaded in this codebase and the overload is deliberate to
+  name, not to resolve: the **Session Board** (`BUILTIN_SESSION_BOARD_LAYOUT`,
+  a layout `type`) and the **board face** (`NavigationView`'s `board` member at
+  `/board/task/…`, archive#4079) are unrelated objects that share the English
+  word. A Board in the D1 sense routes at `/boards/:slug` and its view type is
+  `personal-board`; prefer the qualified name in code.
+- **Personal scope** — the fourth ownership scope, keyed by principal and
+  stored server-side under the Station home (`layouts/personal/<principal-key>/`),
+  so what a person owns follows them across their devices. It is the scope
+  Boards live in, and it is neither of the two things "personal" used to mean
+  in Station: not **instance** scope (which only reads as personal on a
+  single-operator Station) and not **device** scope (the arrangement, which is
+  a property of the screen you are sitting at). Reached over HTTP at
+  `/api/me/*`, where no path segment, body field or query parameter names a
+  principal — the owner comes from the request's own authentication, which is
+  what makes one person's records unaddressable by another.
+
+  Instance-owned Layouts are a sibling scope that exists in the contract
+  (`LayoutOwner`'s `{kind:'instance'}`) and in storage (`layouts/instance/`)
+  and has no route, no client and no UI: "instance-shared Boards" are designed
+  (D1) and not shipped.
 - **Pane** — the smallest addressable UI unit; what plugins contribute
   (`WorkspacePaneDescriptor` and its instances). A pane hosts content such as
   chat, files, terminal, or a plugin contribution, and knows nothing about
@@ -275,8 +318,10 @@ retired names.
 | A thing that can occupy a region (Chat, Activity) | **Surface** |
 | The smallest addressable unit of workspace UI | **Pane** (developer contract: **Workspace Pane**) |
 | Visual grouping inside a page or pane | **Panel** |
+| The one place listing what needs a person's decision (tool approvals, device pairing, proposed changes, paused gate reviews) | **Notifications** (the **attention inbox**; the footer bell counts its pending items) |
 | Durable work identity | **Task** |
 | Execution episode | **Session** |
+| An authored instruction a user or agent can reuse (some are runnable as `/command`) | **Skill** — the page is **Skills** (`/guidance`, with a Commands tab) |
 | `missing_prerequisites` | name what's missing (e.g. "AWS credentials required") |
 
 ## Persisted identity records
@@ -293,6 +338,13 @@ This is the current pre-release vocabulary. Station does not preserve incompatib
   connection** on the Models tab, **Engine** on the Engines tab, **Model** for
   the option selected within a connection. Station/external and model/agent
   distinctions remain execution properties.
+- **Guidance → Skills (#2144):** the page a reader reaches at `/guidance` is
+  labelled **Skills** — in the Settings navigation, in the command palette, and
+  as its own `h1`. The rename is user-facing only: the `/guidance` route, the
+  `guidance` navigation view, the `guidance` destination id and the tab memory
+  key are unchanged, `/skills` still redirects to `/guidance?tab=skills`, and
+  "guidance" survives as a palette keyword so the retired word still finds the
+  surface. Commands remains a tab on that page, not a separate label.
 - **Data model:** `ConnectionKind` is `'model' | 'agent'`; Agent execution uses
   `agentConnectionId`; execution mode is `'external' | 'station'`; and adapter
   capability derives from `engineId` plus the engine capability matrix. Agent

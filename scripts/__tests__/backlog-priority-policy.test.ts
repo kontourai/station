@@ -1,8 +1,12 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { describe, expect, test } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, describe, expect, test } from 'vitest';
 import {
   BACKLOG_POLICY,
+  backlogIssueFromNode,
+  backlogReadIsComplete,
   evaluateBacklogPriorityPolicy,
 } from '../backlog-priority-policy.mjs';
 
@@ -154,6 +158,123 @@ describe('backlog priority policy', () => {
     expect(evaluateBacklogPriorityPolicy(issues)).toMatchObject({
       findings: [],
       summary: { open: 0, actionableP1: 0, unclassified: 0 },
+    });
+  });
+
+  describe('completeness of the live read', () => {
+    const directories: string[] = [];
+    afterAll(() => {
+      for (const directory of directories)
+        rmSync(directory, { recursive: true, force: true });
+    });
+
+    function connection(nodes: object[], totalCount: number) {
+      return JSON.stringify({
+        data: {
+          repository: {
+            issues: {
+              totalCount,
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes,
+            },
+          },
+        },
+      });
+    }
+
+    function node(number: number, labels: string[]) {
+      return { number, labels: { nodes: labels.map((name) => ({ name })) } };
+    }
+
+    /**
+     * Puts a `gh` on PATH ahead of the real one, answering the backlog query
+     * with `response`. These drive the script's own entrypoint and assert the
+     * exit status: the summary is printed from `main`, and the refusal only
+     * exists there.
+     */
+    function runWithStubbedGh(response: string) {
+      const directory = mkdtempSync(join(tmpdir(), 'backlog-gate-'));
+      directories.push(directory);
+      writeFileSync(
+        join(directory, 'gh'),
+        `#!/bin/sh\ncat <<'JSON'\n${response}\nJSON\n`,
+        { mode: 0o755 },
+      );
+      return spawnSync(
+        process.execPath,
+        ['scripts/backlog-priority-policy.mjs'],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            GITHUB_REPOSITORY: 'kontourai/station',
+            PATH: `${directory}:${process.env.PATH}`,
+          },
+        },
+      );
+    }
+
+    test('a read that returns nothing is refused, not reported as clean', () => {
+      // The measured failure: the REST listing answered 200 with an empty
+      // array while 361 issues were open, and the gate printed
+      // `{"open":0,"actionableP1":0,"unclassified":0}` and exited 0.
+      const result = runWithStubbedGh(connection([], 361));
+
+      expect(result.status).not.toBe(0);
+      expect(result.stdout).not.toContain('"unclassified":0');
+      expect(result.stderr).toContain('Read 0 of 361');
+    });
+
+    test('a partial read is refused even though it parses and classifies', () => {
+      // Distinct from the empty case: these issues are real, well-formed and
+      // fully classified. The read is clean AND wrong, which is the shape a
+      // tolerance would let through.
+      const result = runWithStubbedGh(connection([node(1, [p2])], 361));
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('Read 1 of 361');
+    });
+
+    test('a complete read is still accepted, with its findings', () => {
+      // Without this, the two above are satisfied by a gate that refuses
+      // everything. An unclassified issue also has to still be REPORTED, so
+      // the completeness check cannot be swallowing the findings it guards.
+      const result = runWithStubbedGh(
+        connection([node(1, [p2]), node(2, [])], 2),
+      );
+
+      expect(result.stdout).toContain('"open":2');
+      expect(result.stderr).toContain('Unclassified open issues: #2');
+      expect(result.status).not.toBe(0);
+    });
+
+    test('a complete and fully classified read exits clean', () => {
+      const result = runWithStubbedGh(
+        connection([node(1, [p2]), node(2, [p1])], 2),
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('"open":2');
+      expect(result.stdout).toContain('"unclassified":0');
+    });
+
+    test('a GraphQL node becomes the shape the policy evaluates', () => {
+      // GraphQL returns neither `state` nor `pull_request`: the query filters
+      // to open, and `repository.issues` never contains a pull request. The
+      // evaluator reads both, because its other caller is a saved REST list.
+      expect(backlogIssueFromNode(node(7, [p1, 'bug']))).toEqual({
+        number: 7,
+        state: 'open',
+        labels: [{ name: p1 }, { name: 'bug' }],
+      });
+    });
+
+    test('completeness compares against the count from the same response', () => {
+      expect(backlogReadIsComplete([{ number: 1 }, { number: 2 }], 2)).toBe(
+        true,
+      );
+      expect(backlogReadIsComplete([], 2)).toBe(false);
+      expect(backlogReadIsComplete([{ number: 1 }], 2)).toBe(false);
     });
   });
 });

@@ -16,17 +16,19 @@ async function goToSettings(page: import('@playwright/test').Page) {
 }
 
 /**
- * Default Model, Default Region, Default Agent Instructions, and Template
- * Variables are de-emphasized fallback values behind a closed <details>
- * disclosure in "Defaults" (formerly "Agent defaults") — open it before interacting with any of
- * those fields.
+ * Navigate to "Defaults", where Default Model, Default Region, Default Agent
+ * Instructions, and Template Variables live. They used to sit behind a closed
+ * <details> disclosure that had to be opened first; they now render directly
+ * under the section intro, so navigating is the whole step.
  */
 async function openAgentDefaults(page: import('@playwright/test').Page) {
   // station#settings-revamp slice 3: "Agent defaults" was renamed "Defaults"
   // when it was promoted to its own top-level scope section; the leaf DOM id
   // (#section-agent-defaults) is unchanged.
   await page.getByRole('link', { name: 'Defaults', exact: true }).click();
-  await page.locator('#section-agent-defaults summary').click();
+  await page
+    .locator('#section-agent-defaults .agent-defaults__panel')
+    .waitFor();
 }
 
 /**
@@ -117,6 +119,67 @@ test.describe('Settings', () => {
       }),
     );
     await goToSettings(page);
+  });
+
+  // #2059 (design record D3): the configuration destinations that used to take
+  // rows in the left panel are reached from this page. #2144 slice 4 removed
+  // the separate Manage GRID that held them and made each one a row in the
+  // section navigation itself, so one list answers "what can I change here?".
+  // This is the touch-target half of the contract those panel rows used to
+  // carry — task-first-home.spec.ts owns the drawer's own rows and its footer
+  // — and it lives here because this suite's fixture models the Settings page.
+  //
+  // The labels are the rows a reader sees, not destination ids: Guidance is
+  // listed as 'Skills' and Connections as 'Engines & Models' (#2144 decisions
+  // 1 and 7), and Registry has no row because it folds into Plugins
+  // (decision 4, proven end to end in registry.spec.ts).
+  test('the section navigation lists the moved destinations at a thumb-sized target', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const sections = page.getByRole('navigation', {
+      name: 'Settings sections',
+    });
+    await expect(sections).toBeVisible({ timeout: 10_000 });
+    for (const label of [
+      'Agents',
+      'Skills',
+      'Engines & Models',
+      'Plugins',
+      'Schedule',
+    ]) {
+      const entry = sections.getByRole('link', { name: label, exact: true });
+      await expect(entry).toBeVisible();
+      expect((await entry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+    await expect(
+      sections.getByRole('link', { name: 'Registry', exact: true }),
+    ).toHaveCount(0);
+    // archive#3313 (Settings IA, option A): Developer is settings-gated and
+    // hidden until enabled on this device. The gate followed the entry out of
+    // the panel; it did not stay behind with the row, and it did not stay
+    // behind with the grid either.
+    await expect(
+      sections.getByRole('link', { name: 'Developer', exact: true }),
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(() =>
+        Math.max(
+          document.documentElement.scrollWidth,
+          document.body.scrollWidth,
+        ),
+      ),
+    ).toBeLessThanOrEqual(page.viewportSize()!.width);
+  });
+
+  test('a nav-only row leaves Settings for the destination it names', async ({
+    page,
+  }) => {
+    await page
+      .getByRole('navigation', { name: 'Settings sections' })
+      .getByRole('link', { name: 'Plugins', exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/plugins$/);
   });
 
   test('page load shows the primary settings sections', async ({ page }) => {
@@ -362,24 +425,26 @@ test.describe('Settings', () => {
     ).not.toBeVisible();
   });
 
-  test('reset to defaults shows confirm modal', async ({ page }) => {
-    await page.getByRole('link', { name: 'System', exact: true }).click();
-    await page.getByRole('button', { name: 'Reset to Defaults' }).click();
-    await expect(
-      page.getByText('Are you sure you want to reset'),
-    ).toBeVisible();
-    await page
-      .getByRole('dialog')
-      .getByRole('button', { name: 'Cancel', exact: true })
-      .click();
-    await expect(
-      page.getByText('Are you sure you want to reset'),
-    ).not.toBeVisible();
-  });
-
-  test('Agent defaults shows the generic region field behind the disclosure', async ({
+  test('reset shows a confirm modal that states what it does and does not touch', async ({
     page,
   }) => {
+    await page.getByRole('link', { name: 'System', exact: true }).click();
+    await page.getByRole('button', { name: 'Reset Station settings' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Reset Station settings' });
+    await expect(dialog).toBeVisible();
+    // The one sentence that holds whatever this Station currently stores: the
+    // list of cleared labels varies with the instance, the device-scope
+    // carve-out does not.
+    await expect(
+      dialog.getByText('Settings on this device are not affected.', {
+        exact: false,
+      }),
+    ).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+  });
+
+  test('Defaults shows the generic region field', async ({ page }) => {
     await openAgentDefaults(page);
     await expect(
       page.getByText(

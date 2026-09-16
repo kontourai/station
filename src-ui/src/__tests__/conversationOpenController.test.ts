@@ -249,6 +249,39 @@ test('restored Codex state adopts the current Claude child without carrying mode
   expect(conversationCanMutate(actual)).toBe(true);
 });
 
+test('a changed child does not inherit the predecessor session status', () => {
+  // Round 4 N5: the reset clears turn state; leaving `orchestrationStatus`
+  // behind let a reused tab whose previous child ended 'idle' read as a LIVE
+  // session (`chatSessionIsLive`) for a child nothing has reported on — and
+  // the approval posture a session start should carry was withheld from it.
+  const previous = {
+    conversationId: conversation.id,
+    currentSessionId: 'old-codex',
+    agentSlug: 'codex',
+    agentName: 'Old Codex',
+    provider: 'codex',
+    agentConnectionId: 'old-codex-connection',
+    orchestrationStatus: 'idle',
+    orchestrationSessionStarted: true,
+  };
+  const resolution: ConversationOpenResolution = {
+    ...resolved(),
+    execution: {
+      sessionId: 'conversation-749:child:2',
+      agentId: conversation.agentSlug,
+      provider: 'codex',
+      engineConnectionId: 'codex-connection',
+      model: 'current-model',
+    },
+  };
+
+  const patch = conversationOpenPatch(resolution, previous);
+
+  expect(patch).toHaveProperty('orchestrationStatus');
+  expect(patch.orchestrationStatus).toBeUndefined();
+  expect({ ...previous, ...patch }.orchestrationStatus).toBeUndefined();
+});
+
 test('same-child deliberate model intent waits for capability evidence and survives only a valid choice', () => {
   const resolution: ConversationOpenResolution = {
     ...resolved(),

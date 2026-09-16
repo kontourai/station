@@ -33,7 +33,7 @@
 
 .acp-connection-card__open:focus-visible {
   border-radius: var(--radius-sm, 0.25rem);
-  outline: 2px solid var(--focus-ring, var(--accent-primary));
+  outline: 2px solid var(--accent-primary);
   outline-offset: 4px;
 }
 

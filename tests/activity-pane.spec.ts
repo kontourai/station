@@ -28,10 +28,13 @@
 import { expect, test } from '@playwright/test';
 import {
   chatDockShell,
+  chooseSurfaceInEmptyRegion,
   documentFitsViewportWidth,
   expectBoxWithinViewport,
   FIRST_RENDER_TIMEOUT_MS,
-  placeSurfaceThroughLayoutPicker,
+  moveLonePaneToRegion,
+  openChooserFromToggle,
+  showSurfaceInEmptyRegion,
   surfaceDockShell,
 } from './helpers/region-placement';
 
@@ -87,7 +90,12 @@ test.describe('Activity surface deep link', () => {
   test('places the revealed surface in the primary area, keeps it across a reload, and gives the area back to Home', async ({
     page,
   }) => {
-    await placeSurfaceThroughLayoutPicker(page, 'Activity', 'Main');
+    // #2160: Activity is alone in `right`, so it renders no tab strip — and
+    // the bar's own "Move Activity" button opens the same menu a tab would,
+    // with Main among its rows. That is the whole route: no detour through
+    // another region to acquire a tab first, and no ⋮⋮ grab, which moves the
+    // region and offers dock edges only.
+    await moveLonePaneToRegion(page, 'Activity', 'Main');
 
     // In `main` the surface is the page: `ActivityRegionShell` renders it
     // through a `PageFrame`, whose title is the registry's, so the primary
@@ -119,7 +127,10 @@ test.describe('Activity surface deep link', () => {
       timeout: FIRST_RENDER_TIMEOUT_MS,
     });
 
-    await placeSurfaceThroughLayoutPicker(page, 'Activity', 'Right');
+    // The way back from `main` is the empty Right region: its toolbar toggle
+    // opens the region, and the chooser in its body offers Activity because
+    // it declares that region (#2143, #2154, #2155).
+    await showSurfaceInEmptyRegion(page, 'Activity', 'Right');
 
     await expect(
       surfaceDockShell(page, 'Activity'),
@@ -130,6 +141,140 @@ test.describe('Activity surface deep link', () => {
       'an emptied primary area reads as Home',
     ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
     await expect(mainHeading(page, 'Activity')).toHaveCount(0);
+  });
+});
+
+test.describe('An empty region is a chooser', () => {
+  /**
+   * #2154: a VISIBLE, EMPTY dock region renders a chooser in its body —
+   * every registry surface declaring the region, the coding rows disabled
+   * with the reason while the dock has no project — and choosing Activity
+   * places it there through the model. No control produces the visible-empty
+   * state before #2155 (a region's last tab has no close; the toolbar button
+   * on an empty region opens its offer menu), so the arrangement is seeded
+   * the way a returning device's is: through the `regionArrangement` device
+   * setting, the record the model reads on boot (#2153 pins the shape).
+   */
+  /**
+   * #2155: the chooser's other route — a HOLD on the region's toolbar toggle,
+   * which is the only route a coarse pointer has to it.
+   *
+   * THE SECOND HOLD IS THE TEST (review B1). A hold opens the panel from a
+   * timer while the pointer is still DOWN, so the panel's dismiss backdrop is
+   * on screen before the release — and a backdrop that dismissed on any
+   * release would eat the gesture that opened it. On the FIRST hold the lazy
+   * chunk's fetch hides that: the panel arrives late enough that the release
+   * beats it. Once the module registry is warm the backdrop is up within a
+   * frame of the 500ms mark, which is the real ordering and the one this
+   * asserts.
+   */
+  test('a hold on the Right toggle opens the chooser, and again with the module warm', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/, {
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
+    const toggle = page.getByRole('button', {
+      name: 'Right region',
+      exact: true,
+    });
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+    // Cold chunk.
+    const first = await openChooserFromToggle(page, 'Right');
+    await expect(
+      first.getByRole('menuitem', { name: /^Activity/ }),
+    ).toBeVisible();
+    // The hold must not ALSO have toggled the region under its own panel.
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await page.keyboard.press('Escape');
+    await expect(first).toBeHidden();
+
+    // Warm chunk: the panel is up before the release lands.
+    const second = await openChooserFromToggle(page, 'Right');
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await second.getByRole('menuitem', { name: /^Activity/ }).click();
+    await expect(second).toBeHidden();
+    await expect(
+      surfaceDockShell(page, 'Activity'),
+      'choosing through the held-open panel must place Activity in Right',
+    ).toHaveClass(/chat-dock--right/);
+  });
+
+  test('a visible empty Right region lists what can go there and places Activity on choice', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'station-device-settings-v1',
+        JSON.stringify({
+          version: 2,
+          values: {
+            regionArrangement: {
+              version: 1,
+              regions: {
+                main: {
+                  visible: true,
+                  size: 0,
+                  occupant: { kind: 'surface', id: 'home' },
+                },
+                left: { visible: false, size: 400, occupant: null },
+                right: { visible: true, size: 400, occupant: null },
+                bottom: {
+                  visible: true,
+                  size: 320,
+                  occupant: { kind: 'surface', id: 'chat' },
+                },
+              },
+            },
+          },
+        }),
+      );
+    });
+    await page.goto('/');
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/, {
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
+
+    // The region is on screen with no pane, named for itself, and its body
+    // is the chooser: the seven dock surfaces in registry order. The coding
+    // rows are disabled with the dock's own sentence — this instance binds
+    // no project to its dock — and stay in the tab order (`aria-disabled`).
+    const right = page.locator('.chat-dock[aria-label="Right region"]');
+    await expect(right).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+    const list = right.getByRole('list', { name: 'Add to Right region' });
+    await expect(list).toBeVisible();
+    await expect(list.getByRole('button')).toHaveText([
+      /^Chat/,
+      /^Activity/,
+      /^Agents/,
+      /^Device/,
+      /^Terminal/,
+      /^Diff/,
+      /^Files/,
+    ]);
+    await expect(
+      list.getByRole('button', { name: /^Terminal Choose a project/ }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    // Chat is held at the bottom, so its row is a move, not hidden.
+    await expect(
+      list.getByRole('button', { name: 'Chat Move here from Bottom' }),
+    ).toBeVisible();
+    // The bar's "+" is the same chooser as a menu, offered without a project.
+    const add = right.getByRole('button', { name: 'Add pane to Right' });
+    await expect(add).toHaveAttribute('aria-haspopup', 'menu');
+
+    await chooseSurfaceInEmptyRegion(page, 'Activity', 'Right');
+    await expect(
+      surfaceDockShell(page, 'Activity').getByRole('button', {
+        name: 'Hide Activity',
+        exact: true,
+      }),
+    ).toBeVisible();
+    // Chat's region is untouched by a placement into another region.
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
+    await expect(right).toHaveCount(0);
   });
 });
 

@@ -279,9 +279,12 @@ export const projectTaskRoomQueries = {
 };
 
 export const liveActivityQueries = {
+  // Key only. Staleness and the poll live on `useLiveActivityQuery`, which
+  // reads them from `LIVE_ACTIVITY_POLL_INTERVAL_MS`; a second literal here
+  // was dead (only `.queryKey` is ever read) and would be the first place a
+  // reader following this factory would land.
   current: () => ({
     queryKey: ['live-activity'],
-    staleTime: 10_000,
   }),
 };
 

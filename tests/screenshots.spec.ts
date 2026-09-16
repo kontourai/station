@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, type Page, type Route, test } from '@playwright/test';
 import { contrastRatio } from './helpers/color-contrast';
+import { openChooserFromToggle } from './helpers/region-placement';
 import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
 
 /**
@@ -225,12 +226,6 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  * test, so re-capturing the identical build never perturbs the gallery
  * pixel-for-pixel (archive#4464):
  *
- *  - `.sidebar__status-version` (ProjectSidebarStatus.tsx, via
- *    `buildLabel` in src-ui/src/build-info.ts): the `v<version> ·
- *    <commit>` build stamp rendered in the persistent project sidebar on
- *    every route. Comparing it pixel-for-pixel would invalidate a
- *    committed baseline on every version/commit bump even when nothing
- *    about the screen itself changed.
  *  - `.time-filter-wrapper` (MonitoringTimeControls.tsx, Developer →
  *    Telemetry): the whole relative/absolute time-window control —
  *    `.time-range-sublabel` alone (the absolute "Aug 26, 11:30 PM -> now"
@@ -264,9 +259,13 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  * CSS-hidden (not Playwright's screenshot `mask` option), so the gallery
  * itself stays clean for a human/design reviewer instead of getting an
  * opaque box stamped over it that a reviewer has to mentally discount on
- * every tile. The build-stamp label's text is fixed per build (no live state
- * to vary its width), so `visibility: hidden` preserves the sidebar footer's
- * row height exactly as authored.
+ * every tile. Each label's text is fixed for the shot (no live state to vary
+ * its width), so `visibility: hidden` preserves the row height exactly as
+ * authored.
+ *
+ * #2059 removed the `.sidebar__footer-version` build stamp from the sidebar
+ * footer, and its rule with it: the volatile text is no longer on screen, so
+ * hiding it is not a thing this helper has to do.
  *
  * Must be called AFTER `page.goto` (a fresh navigation drops any
  * previously injected style tag) and as close to the shot as practical.
@@ -274,7 +273,6 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
 async function hideVolatileChrome(page: Page) {
   await page.addStyleTag({
     content: `
-      .sidebar__status-version { visibility: hidden !important; }
       .time-filter-wrapper { visibility: hidden !important; }
       .monitoring-summary { visibility: hidden !important; }
       .status-badge { visibility: hidden !important; }
@@ -1392,7 +1390,7 @@ const SCREENS: Screen[] = [
   { name: 'agents', title: 'Agents', path: '/agents', viewport: DESKTOP },
   {
     name: 'skills',
-    title: 'Guidance — Skills',
+    title: 'Skills',
     path: '/guidance?tab=skills',
     viewport: DESKTOP,
   },
@@ -1432,12 +1430,13 @@ const SCREENS: Screen[] = [
     viewport: DESKTOP,
     ...connectionsHubBadgeSettleHooks(),
   },
-  {
-    name: 'review',
-    title: 'Review',
-    path: '/review-queue',
-    viewport: DESKTOP,
-  },
+
+  // #2065 retired the `review` capture with the global `/review-queue` page it
+  // photographed. Not retargeted to `/projects/<slug>/layouts/review`: that
+  // surface is Project-scoped and reads three seeded stores (proposed changes,
+  // Flow reviews, review evidence) this spec does not stub, so pointing the
+  // same entry at it would photograph an empty state under a name that claims
+  // otherwise. A real capture is new work with its own fixtures.
   {
     name: 'sessions',
     title: 'Activity',
@@ -1898,38 +1897,39 @@ const SCREENS: Screen[] = [
   // deterministic trigger (never the transient home-route redirect race —
   // see `newProjectOverlay`'s doc comment) so its shot is reproducible.
   {
-    // Renamed from `overlay-dock-picker` (#1541): the overlay it captured —
-    // the dock's own occupant picker — was deleted with the rest of the
-    // surface-owned docking path in #928 C2b, so the screen could not
-    // capture at all. Its successor is the header's Layout picker, which is
-    // where placement is chosen now; the baseline entry was renamed with it
-    // rather than left pointing at a shot nothing can reproduce.
-    name: 'overlay-layout-picker',
-    title: 'Overlay — Layout regions placement picker',
+    // Renamed three times: `overlay-dock-picker` (#1541, the dock's own
+    // occupant picker, deleted in #928 C2b) became `overlay-layout-picker`
+    // (#1552 D2's per-surface placement picker), which #2143 retired for one
+    // toggle per region and an empty region's offer menu
+    // (`overlay-region-offer-menu`). #2155 retires that too: the toggles only
+    // show and hide, and the panel they open is #2154's chooser — the same
+    // rows the region's own body and its "+" carry. This shot is that panel,
+    // opened the way the toolbar opens it.
+    name: 'overlay-region-chooser-from-toggle',
+    title: 'Overlay — region chooser, held open from its toggle',
     path: '/?dock=open',
     viewport: DESKTOP,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      // #1552 D2: one folded control in the toolbar opens a `role="group"`
-      // panel of per-surface `radiogroup` rows — a segmented choice over the
-      // regions each surface declares plus `Hidden` — replacing the list of
-      // placement VERBS the dock header used to carry.
+      // A fresh home holds Chat in Bottom; Right is empty and hidden, and its
+      // toggle is a toggle — so the panel is behind the HOLD, not the click.
       const trigger = page.getByRole('button', {
-        name: 'Layout regions',
+        name: 'Right region',
         exact: true,
       });
       await trigger.waitFor({ timeout: 10_000 });
-      await trigger.click();
-      const picker = page.getByRole('group', { name: 'Layout regions' });
-      await expect(picker).toBeVisible({ timeout: 10_000 });
+      await expect(trigger).toHaveAttribute('aria-pressed', 'false');
+      const menu = await openChooserFromToggle(page, 'Right');
       // Rows, not just the panel: an empty panel would still be "visible"
-      // and would capture a shot of nothing.
+      // and would capture a shot of nothing. Chat is placed (in Bottom) and
+      // lists as a MOVE; the coding rows list disabled without a project —
+      // both of which the retired offer menu could not show at all.
+      await expect(menu.getByRole('menuitem', { name: /^Chat/ })).toBeVisible();
       await expect(
-        picker.getByRole('radiogroup', { name: 'Chat placement' }),
+        menu.getByRole('menuitem', { name: /^Activity/ }),
       ).toBeVisible();
-      await expect(
-        picker.getByRole('radiogroup', { name: 'Activity placement' }),
-      ).toBeVisible();
+      // The hold must not ALSO have toggled the region under the panel.
+      await expect(trigger).toHaveAttribute('aria-pressed', 'false');
     },
   },
   {

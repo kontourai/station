@@ -288,11 +288,15 @@ function tokenKind(token: string): SourceTokenKind {
   return 'keyword';
 }
 
+// Syntax rungs are theme tokens (#2140). These were github-dark's literals in
+// `style={}`; on the light theme they rendered as TEXT at 1.5-2.5:1 against
+// the pane -- the string rung was nearly invisible. index.css maps each to
+// github-dark on dark and github-light on light, both measured.
 const TOKEN_COLOR: Record<SourceTokenKind, string> = {
   comment: 'var(--text-muted)',
-  keyword: '#ff7b72',
-  number: '#79c0ff',
-  string: '#a5d6ff',
+  keyword: 'var(--syntax-keyword)',
+  number: 'var(--syntax-number)',
+  string: 'var(--syntax-string)',
 };
 
 /** React text nodes preserve content literally; no workspace markup is parsed. */

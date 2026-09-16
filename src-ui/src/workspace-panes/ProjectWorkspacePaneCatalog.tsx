@@ -81,6 +81,9 @@ function CatalogContents({
 /**
  * The pane picker, mounted from BOTH `views/ProjectPage.tsx` and
  * `app-shell/ProjectLayoutRenderer.tsx` — two separately lazy-loaded routes.
+ * The dock no longer mounts it: a region's "+" and an empty region's body
+ * are `RegionEmptyChooser` (#2154), a registry-driven list rather than a
+ * catalog dialog.
  *
  * #1616: it used to hand `ResponsiveDialogSurface` the project page's own
  * `project-page__modal-overlay`/`project-page__modal` classes, which are
@@ -107,6 +110,8 @@ export function ProjectWorkspacePaneModal({
   show,
   onClose,
   notice,
+  title = 'Add workspace pane',
+  subtitle = 'Every known pane is listed. Available panes open directly; the others carry their state as a badge with the next step.',
   ...catalog
 }: CatalogProps & {
   show: boolean;
@@ -118,12 +123,20 @@ export function ProjectWorkspacePaneModal({
    * (`no-lease`) can resolve while the picker is still on screen.
    */
   notice?: string | null;
+  /**
+   * The dialog's name and the sentence under it. The defaults are the
+   * layout picker's, which lists every known pane; a host that lists fewer
+   * (as #2047's dock catalog did, until #2154) must say so here rather than
+   * inherit a claim its list does not keep.
+   */
+  title?: string;
+  subtitle?: string;
 }) {
   if (!show) return null;
   return (
     <Dialog
-      title="Add workspace pane"
-      subtitle="Every known pane is listed. Available panes open directly; the others carry their state as a badge with the next step."
+      title={title}
+      subtitle={subtitle}
       closeLabel="Close pane picker"
       size="lg"
       onClose={onClose}

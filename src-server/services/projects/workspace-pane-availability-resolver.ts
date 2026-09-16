@@ -38,6 +38,21 @@ export interface WorkspacePaneCatalogAvailabilityOptions {
   ) => WorkspacePaneAvailabilityInput;
   /** Optional telemetry sink; it receives descriptor/state/reason code only. */
   recordTelemetry?: (event: WorkspacePaneAvailabilityTelemetry) => void;
+  /**
+   * Whether the CALLER may see a named plugin (#2067) —
+   * `PluginVisibilityService.canSee` bound to the request's resolved
+   * principal. Consulted only for a descriptor whose provenance positively
+   * names a plugin; a built-in or MCP-origin pane never reaches it.
+   *
+   * Absent means this composition has no caller to project onto (the
+   * layout-only route tests, and the catalog reads the install transaction
+   * performs against itself). Those compositions are not answering a person,
+   * so no `pluginVisibility` fact is produced at all and the resolver behaves
+   * exactly as it did before — the distinction the contract's
+   * `pluginVisibility` docblock records as "undefined means no owning
+   * plugin". The route that DOES answer a person supplies it.
+   */
+  canSeePlugin?: (pluginId: string) => boolean | undefined;
 }
 
 function mergeAvailabilityInput(
@@ -208,11 +223,38 @@ export function resolveWorkspacePaneCatalogAvailability(
     // A declaration supplies only the facts it owns. In particular,
     // `coming-soon` wins resolution precedence but must not discard the
     // distribution/context facts supplied by the catalog edge.
-    const input = mergeAvailabilityInput(
+    const merged = mergeAvailabilityInput(
       defaultAvailabilityInput(candidate),
       options.resolveInput?.(candidate),
       candidate.availabilityInput,
     );
+    // Applied AFTER the merge, never as one more mergeable fact: every other
+    // input above is something a declaration, a manifest, or a host adapter
+    // may assert about itself, and a plugin that could assert its own
+    // visibility would be asserting that it may be seen. This is the one
+    // fact only the server's grant record can produce, so it is written last
+    // and overwrites whatever reached it.
+    const owningPluginId =
+      candidate.descriptor.provenance.origin === 'plugin'
+        ? candidate.descriptor.provenance.pluginId
+        : undefined;
+    // `undefined` is a third answer and not a default: it means this id is
+    // not one the plugin grant record governs at all (a portable Kit's
+    // contribution ref, which carries `origin: 'plugin'` because the
+    // provenance union has no Kit origin). Recording `visible` for it would
+    // state a projection verdict nothing derived — the label-nothing-computes
+    // shape this whole seam exists to avoid — so no fact is produced.
+    const seesOwningPlugin =
+      owningPluginId !== undefined && options.canSeePlugin
+        ? options.canSeePlugin(owningPluginId)
+        : undefined;
+    const input: WorkspacePaneAvailabilityInput =
+      seesOwningPlugin === undefined
+        ? merged
+        : {
+            ...merged,
+            pluginVisibility: seesOwningPlugin ? 'visible' : 'hidden',
+          };
     const availability = resolveForCandidateModes(candidate, input);
     options.recordTelemetry?.(
       toWorkspacePaneAvailabilityTelemetry(

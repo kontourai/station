@@ -357,36 +357,29 @@ describe('project sidebar reorder (station#3315)', () => {
     // The base rule's 0 must not survive into the coarse block.
     expect(coarseBlock).not.toContain('opacity: 0');
 
-    // archive#3346: the row's other control. Whole-block `toContain` cannot
-    // tell whose 44px it found — the handle already contributes one — so read
-    // the chevron's own nested rule.
+    // Whole-block `toContain` cannot tell whose 44px it found, so read the
+    // handle's own nested rule.
     const coarseRuleBody = (selector: string): string => {
       const start = coarseBlock.indexOf(`\n  ${selector} {`);
       expect(start).toBeGreaterThan(-1);
       const from = start + selector.length + 6;
       return coarseBlock.slice(from, coarseBlock.indexOf('\n  }', from));
     };
-    const chevron = coarseRuleBody(
-      '.sidebar:not(.sidebar--collapsed) .sidebar__chevron',
-    );
-    expect(chevron).toContain('height: 44px');
-    // 28px is the widest that clears the handle's column, so the pair must
-    // stay consistent: handle at right 34px + 28px wide, chevron at right 4px
-    // + 28px wide, and the row reserving 66px for text left of both.
-    expect(chevron).toContain('width: 28px');
-    expect(chevron).toContain('right: 4px');
+    // #2063 retired the expand chevron with the nested layout tree
+    // (archive#3346 sized it here), so the handle is the row's only overlaid
+    // control and takes the column the chevron held: 4-32px from the right
+    // edge, with the row reserving 36px of text so the name still clears it
+    // by the same 4px the 66px reservation gave when the two shared the edge.
     const handle = coarseRuleBody('.sidebar__reorder-handle');
     expect(handle).toContain('width: 28px');
-    expect(handle).toContain('right: 34px');
+    expect(handle).toContain('right: 4px');
     const row = coarseRuleBody(
       '.sidebar:not(.sidebar--collapsed) .sidebar__project-btn',
     );
-    expect(row).toContain('padding-right: 66px');
-    // Base geometry the coarse block overrides — 20px wide at right 8px keeps
-    // the same 18px centre, which is why the glyph does not move.
-    const chevronBase = ruleBody('.sidebar__chevron');
-    expect(chevronBase).toContain('width: 20px');
-    expect(chevronBase).toContain('right: 8px');
+    expect(row).toContain('padding-right: 36px');
+    // The control the chevron's removal freed this column of is really gone,
+    // so nothing sized for a two-control row survives to collide with it.
+    expect(css).not.toContain('.sidebar__chevron');
   });
 
   // The accent palette is allocated over the SORTED slug set

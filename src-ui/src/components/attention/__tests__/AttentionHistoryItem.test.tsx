@@ -4,6 +4,8 @@
 
 import type {
   ApprovalAttentionItem,
+  GateReviewAttentionItem,
+  ProposedChangeAttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
 import { render, screen } from '@testing-library/react';
@@ -295,5 +297,87 @@ describe('AttentionHistoryItem — dismiss affordance', () => {
       (screen.getByRole('button', { name: 'Dismiss' }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+});
+
+/**
+ * #2064 review LOW-5: the two kinds that moved in from Review have no session
+ * behind them at all — a proposed change is a file decision and a paused gate
+ * review is a Survey session — so the popover's default "Open session" label
+ * named a destination that does not exist and does not match where the link
+ * goes.
+ */
+describe('AttentionHistoryItem — decision kinds', () => {
+  const now = '2026-09-13T12:00:00.000Z';
+
+  test('an acknowledged proposed change opens in Review, not in a session', () => {
+    render(
+      <AttentionHistoryItem
+        item={
+          {
+            id: 'proposed-change:change-1',
+            kind: 'proposed-change',
+            title: 'src/index.ts',
+            createdAt: now,
+            updatedAt: now,
+            projectSlug: 'campfit',
+            path: 'src/index.ts',
+            contentKind: 'code',
+            sourceRuntime: 'claude',
+            openHref: '/projects/campfit/layouts/review?change=change-1',
+            source: {
+              proposedChangeId: 'change-1',
+              projectSlug: 'campfit',
+            },
+          } as ProposedChangeAttentionItem
+        }
+        isPending={false}
+        isDismissPending={false}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    const link = screen.getByRole('link', { name: 'Open in Review' });
+    expect(link.getAttribute('href')).toBe(
+      '/projects/campfit/layouts/review?change=change-1',
+    );
+    expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
+  });
+
+  test('an acknowledged gate review opens the review', () => {
+    render(
+      <AttentionHistoryItem
+        item={
+          {
+            id: 'gate-review:review-session-1',
+            kind: 'gate-review',
+            title: 'Survey gate review',
+            createdAt: now,
+            updatedAt: now,
+            projectSlug: 'campfit',
+            pendingDecisions: 2,
+            openHref:
+              '/projects/campfit/layouts/review?review=review-session-1',
+            source: {
+              reviewSessionRef: 'review-session-1',
+              projectSlug: 'campfit',
+              workflowSubjectRef: 'flow:build#7',
+            },
+          } as GateReviewAttentionItem
+        }
+        isPending={false}
+        isDismissPending={false}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('link', { name: 'Open review' }).getAttribute('href'),
+    ).toBe('/projects/campfit/layouts/review?review=review-session-1');
+    expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
   });
 });

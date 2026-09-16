@@ -272,7 +272,19 @@ export async function bindProjectResource(
   return outcome;
 }
 
-/** `GET /api/projects/:slug/layouts/:layoutSlug` — get one layout. */
+/**
+ * `GET /api/projects/:slug/layouts/:layoutSlug` — get one layout.
+ *
+ * The response shape is {@link LayoutReadView} — the stored record plus the
+ * response-only `paneReferences` verdict (#2090). It is DECLARED `any` here,
+ * and that is a disclosed gap rather than a choice: four call sites read
+ * `config` members and top-level keys the stored contract does not declare,
+ * and they only compile because this is untyped. Narrowing it is a separate
+ * change. The Board twin (`client/personal-layouts.ts`) IS typed, the server
+ * builds this body as a `LayoutReadView`, and both client derivations import
+ * `LayoutPaneReferences` from the contract, so the field is named against
+ * the contract everywhere except this one return annotation.
+ */
 export async function getProjectLayout(
   apiBase: string,
   projectSlug: string,

@@ -120,22 +120,23 @@ describe('GuidanceView', () => {
     expect(screen.getByText('Commands body')).toBeTruthy();
   });
 
-  // archive#4463: the page title is
-  // 'Guidance' and must not change when the tab changes — the tab strip
-  // already names the section. Only the top-level nav route decides this, so
-  // the tabs must not restate it as 'Skills'/'Commands' the way the retired
-  // per-tab header used to.
+  // archive#4463: the page title is a CONSTANT and must not change when the
+  // tab changes — the tab strip already names the section, so the tabs must
+  // not restate it the way the retired per-tab header used to. #2144 slice 4
+  // renamed that constant from 'Guidance' to 'Skills'; the rule it enforces is
+  // the same one, which is why the Commands tab below still has to render
+  // 'Skills' and no 'Commands' heading.
   //
-  // Fix round (test-power): the spec's fallback title must NOT equal
-  // 'Guidance' — if it did, a GuidanceView that stopped publishing an
-  // override entirely would still render 'Guidance' from the FALLBACK and
+  // Fix round (test-power): the spec's fallback title must NOT equal the page
+  // title — if it did, a GuidanceView that stopped publishing an
+  // override entirely would still render it from the FALLBACK and
   // every assertion below would pass despite the view being broken. The
   // placeholder text below can only appear if GuidanceView never calls
   // `usePageHeader` with a title, which is exactly the regression these
   // tests exist to catch.
   const FALLBACK_TITLE = 'FALLBACK — must be overridden';
 
-  describe('the page title stays "Guidance" across tabs', () => {
+  describe('the page title stays "Skills" across tabs', () => {
     function renderFramed(route: Parameters<typeof GuidanceView>[0]['route']) {
       return render(
         <PageFrame spec={{ title: FALLBACK_TITLE }} routeIdentity="guidance">
@@ -147,7 +148,7 @@ describe('GuidanceView', () => {
     test('on the Skills tab', () => {
       renderFramed({ type: 'guidance', tab: 'skills' });
       expect(
-        screen.getByRole('heading', { level: 1, name: 'Guidance' }),
+        screen.getByRole('heading', { level: 1, name: 'Skills' }),
       ).toBeTruthy();
       expect(screen.queryByText(FALLBACK_TITLE)).toBeNull();
     });
@@ -155,7 +156,7 @@ describe('GuidanceView', () => {
     test('on the Commands tab', () => {
       renderFramed({ type: 'guidance', tab: 'commands' });
       expect(
-        screen.getByRole('heading', { level: 1, name: 'Guidance' }),
+        screen.getByRole('heading', { level: 1, name: 'Skills' }),
       ).toBeTruthy();
       expect(screen.queryByText(FALLBACK_TITLE)).toBeNull();
     });
@@ -167,7 +168,7 @@ describe('GuidanceView', () => {
         </PageFrame>,
       );
       expect(
-        screen.getByRole('heading', { level: 1, name: 'Guidance' }),
+        screen.getByRole('heading', { level: 1, name: 'Skills' }),
       ).toBeTruthy();
 
       rerender(
@@ -176,13 +177,13 @@ describe('GuidanceView', () => {
         </PageFrame>,
       );
       expect(
-        screen.getByRole('heading', { level: 1, name: 'Guidance' }),
+        screen.getByRole('heading', { level: 1, name: 'Skills' }),
       ).toBeTruthy();
       expect(screen.queryByRole('heading', { name: 'Commands' })).toBeNull();
       expect(screen.queryByText(FALLBACK_TITLE)).toBeNull();
     });
 
-    test('no eyebrow — Guidance is a top-level nav page', () => {
+    test('no eyebrow — Skills is a top-level nav page', () => {
       const { container } = renderFramed({ type: 'guidance', tab: 'skills' });
       expect(container.querySelector('.page__label')).toBeNull();
     });

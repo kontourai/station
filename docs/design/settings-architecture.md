@@ -30,6 +30,13 @@ written down (§4.1) and audited against every existing surface. Remaining
 longer-term architecture: the naming/cross-links slice (#5) and the
 plumbing-debt slice (#6).
 
+**Two of slice 3's surfaced fields have since moved.** `knowledgeStores` is
+`userFacing: false` and no longer rendered: its own registry description says
+turning it on changes nothing today, so the row was a control that persisted
+and did nothing. It stays settable through `station config set` until a
+consumer gates on it. `defaultChatFontSize` and `workspaceCheckpoints` went
+the other way and gained Station-configuration rows.
+
 ## 1. The problem
 
 Station's settings grew page-by-page, not model-first. The audit found:
@@ -129,7 +136,8 @@ migrations from every legacy key, hydration-tracked so UI can distinguish
 ### S4. Entity — settings live with the thing they configure
 Already mostly right; the revamp names it as a rule rather than an accident:
 - **Project** → `/projects/:slug/edit` (workspace dir, project model, agent
-  availability, project knowledge, layouts).
+  availability, project knowledge, layouts), plus the three Station settings a
+  project may override — see §4.2.
 - **Agent** → agent editor (engine, model, thinking/effort defaults, guardrails,
   region override, prompt/skills/tools/commands).
 - **Connection / engine / plugin / integration** → their own detail panels.
@@ -139,6 +147,31 @@ Already mostly right; the revamp names it as a rule rather than an accident:
   device-scope fallback.
 Entity screens keep their homes; the global page never absorbs them. Cross-links
 replace duplication (e.g. Defaults page links to "override per agent").
+
+#2144 slice 4 applied that last rule to the chat gear panel in both
+directions. The panel is a SHORTCUT, not an entity screen: every control on it
+is S3 device scope, so Settings now carries a `chat` section holding all of
+them — the two that used to sit under Appearance (`chat-font-size`,
+`smooth-answer-reveal`) plus the five that had a device-settings contract row
+and no Settings row at all (`chat-show-reasoning`, `chat-show-tool-details`,
+`chat-dock-auto-hide`, `diff-style`, `diff-wrap`). The panel was the only
+surface for `chat-show-reasoning`, `chat-show-tool-details` and
+`chat-dock-auto-hide`; `diff-style` and `diff-wrap` were never on it, and were
+reachable only from `DiffPanel`'s own style toggle and Wrap button, which write
+the same two device keys. The panel keeps the handful someone changes
+mid-conversation and links to the section for the rest; every one of these
+surfaces writes the same device-settings key through the same store, so none of
+them holds a copy of another's state.
+
+The Settings section navigation groups those sections under four names —
+Set up, This Station, Control, This device — plus Knowledge, which keeps a group of its
+own for now. The names are presentation: no section id moved with them, and
+what DECIDES a setting is still the row's own scope, stated on the row. Set up
+holds no sections at all; its rows are links to other surfaces (Agents, Skills,
+Engines & Models, Plugins, Schedule, and Developer under This Station when
+device developer tools are on), which replaced the separate "Manage" grid that
+used to sit below the nav. Registry has no row of its own: it is reached from
+Plugins, which carries the step to the catalogue.
 
 ### S5. Connections — integration-shaped config stays in the hub
 Models, engines, stations/environments (incl. the still-CLI-only peer credentials,
@@ -158,11 +191,97 @@ defineSetting({
   schema: z.enum(['debug', 'info', 'warn', 'error']),
   default: 'info',
   label: 'Log level',
+  help: 'Station writes server log entries at this severity and above, and drops quieter ones.',
   description: '…',
   envFallback: 'STATION_LOG_LEVEL',   // optional: env var consulted when nothing is stored
   secret: false,
 })
 ```
+
+**`help` is required on every registered setting** (epic #2144 slice 2), on
+both `SettingDefinition` and `DeviceSettingDefinition`. One sentence, stating
+what is different about Station — or about this device — because the setting
+holds the value it holds; it ends with a period and it is not the label
+restated as a noun phrase. `defineSetting`/`defineDeviceSetting` are generic
+over their interfaces, so the compiler refuses a registration without one, and
+shape tests in each registry's test file assert the properties a type cannot:
+one sentence, at most 160 characters, not equal to the label. `help` is
+scanned as user-facing copy by `scripts/noun-consistency-gate.mjs`'s
+`COPY_FIELD_NAMES` from the day it is declared, not from the day a surface
+first renders it.
+
+`description` stays: it is the longer explanation (caveats, defaults,
+encoding) and remains what `views/settings/registry-row.tsx` renders and what
+`settings-catalog.ts` searches. Four keys nothing reads — `gitRemote`,
+`defaultEmbeddingProvider`, `defaultEmbeddingModel`, `defaultVectorDbProvider`
+— are `userFacing: false` for the same reason `knowledgeStores` is: a row for
+a key nothing reads is a control that persists and does nothing. Their `help`
+sentences say exactly that rather than describing behavior that does not
+exist.
+
+### 4.2 Project overrides (epic #2144 slice 2)
+
+Three Station settings, and only three, may be overridden per project
+(`packages/contracts/src/project-settings-overrides.ts`):
+
+| Setting | Project record field |
+| --- | --- |
+| `defaultModel` | `defaultModel` |
+| `defaultLLMProvider` | `defaultProviderId` |
+| `defaultWorkspaceIsolation` | `defaultWorkspaceIsolation` |
+
+The list is a closed `as const`, not "whatever the project record carries": a
+project record has fields that were never settings, and deriving the
+overridable set from its shape would present them as Station settings the
+moment someone added one. `PROJECT_OVERRIDE_FIELD_ALIASES` records the one
+name the two sides spell differently; neither side is being renamed, because
+a rename on either is a stored-data migration.
+
+`defaultWorkspaceIsolation` is new in this slice — a Station-scope setting for
+the workspace a new project chat starts in. Resolution is
+`project.defaultWorkspaceIsolation -> AppConfig.defaultWorkspaceIsolation ->
+'shared'`, through the single exported `resolveWorkspaceIsolationMode`. It is
+exported rather than inlined because the execution-target resolver DECIDES the
+mode and the plugin foreground-invocation admission separately re-checks it as
+a provisioning precondition: two readers of one resolution is two chances to
+get it wrong, and a precondition reading only the project record would refuse
+exactly the worktrees a Station-level default produces. A remote Environment
+keeps its existing behavior — its own project record, else shared — because
+this Station's config describes this host.
+
+**Provenance gains a scope.** `SettingProvenanceEntry.scope`
+(`'station' | 'project' | 'device'`) is optional and additive:
+`SettingProvenanceSource` is unchanged, an entry without `scope` means what it
+always meant, and a reader that ignores it is less specific rather than wrong.
+`GET /config/app?project=<slug>` emits it — overridden keys as
+`{ source: 'file', scope: 'project' }`, the rest of the file-sourced keys as
+`{ source: 'file', scope: 'station' }`. A read that names no project emits no
+`scope` at all: it has no project to attribute anything to and must not guess
+one. Naming a project asks for more provenance, never for different values;
+the response body stays this Station's config. An unknown slug is a 404, not a
+Station-only answer under a name that does not exist.
+
+**Effective values** are resolved by `resolveEffectiveAppSetting`
+(`src-server/domain/settings-effective.ts`) — project, then Station, then a
+declared `envFallback` the field's own validator accepts, then the registry
+default — and by `resolveEffectiveDeviceSetting`
+(`src-ui/src/views/settings/effective-device-setting.ts`) for the device
+scope's only two sources. Both reuse the existing "is this a decision or the
+absence of one" tests rather than re-deriving them; a second definition of
+absent is how a surface ends up naming a source for a value no resolver uses.
+
+**Write path.** `PUT /projects/:slug` (and `POST /projects`) validate the
+three fields explicitly instead of letting the project file schema reject them
+later, from a document the caller never saw. `null` on any of
+them DROPS the override rather than storing it — the project file schema
+admits no null for any of the three, so a stored null would make the record
+unloadable. Changing `defaultWorkspaceIsolation` additionally requires the
+scope that `PUT /config/app` requires, since it overrides a Station setting.
+Stated honestly: that scope is `orchestration:operate`, which
+`PUT /api/projects/:slug` already requires, so the guard refuses no caller
+today. It is defense in depth against a future narrowing of the project
+family's tier and the place the coupling is written down — not a claim that
+project updates are authorized more narrowly than they were.
 
 Derived from the registry, so they can never drift:
 - the typed `PUT /config/app` request schema (replacing `z.record(z.unknown())`),
@@ -266,6 +385,35 @@ superseded or when the person has intentionally focused elsewhere, so it does
 not compete with palette return focus. Navigating within mounted Settings keeps
 the form and its drafts alive; only a genuine route leave crosses the existing
 unsaved-changes guard, so Back retains the expected Settings intent.
+
+Epic #2144 slice 3 gives every generic registry row a status strip
+(`src-ui/src/views/settings/SettingRowStatus.tsx`): a scope badge naming the
+document that owns the value — **Station**, **This device**, or **Project**
+when `GET /config/app?project=<slug>` reported the project as its source — the
+unchanged provenance chip beside it, and a trigger opening an on-demand
+inheritance list (`SettingInheritanceLayers.tsx`, loaded through
+`LazyBoundary`). That list shows the layers a value resolves through, project
+override first and built-in default last, with exactly one marked "in effect"
+— derived from the provenance entry the server computed, never re-derived by
+comparing raw values. A row the selected project overrides also offers **Reset
+to inherited**, which sends `null` on `PUT /api/projects/:slug` (the route's
+own spelling for dropping an override) rather than omitting the field. It is
+withheld in two cases: a `required` setting has nothing to fall back to, and
+a key the draft has *already* reset has nothing left to give back — the row
+is showing the inherited value and a second click would write the same `null`
+again. **Reset Station settings** reads a separate, UNSCOPED
+`GET /config/app` provenance map: a scoped read reports an overridden key as
+`{ source: 'file', scope: 'project' }`, which the reset plan would read as an
+ordinary stored Station value and then clear from the STATION document —
+a write against the wrong authority, decided by whichever project happened to
+be selected. The
+project the page is attributed to comes from a selector above the scope
+groups; its draft is held outside the Station draft, folded into the same
+unsaved-changes guard, and saved by its own request beside the config write.
+A project may only change the keys
+`PROJECT_OVERRIDABLE_APP_SETTING_KEYS` lists, and the model pair is written
+whole or not at all. The three composite rows keep no status strip in this
+slice.
 
 - `/settings` becomes three registry-driven sections with explicit scope labels:
   **Station** (S1), **Defaults** (S2), **This device** (S3) — progressive

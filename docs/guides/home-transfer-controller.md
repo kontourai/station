@@ -188,18 +188,49 @@ waiting, or losing a process does not finish an admission.
 With that port configured, a new append obtains admission inside the local
 write transaction after checking local authority, existing proposal identity,
 source seal and capacity. Local authority is checked again after admission.
+Admission is also the last step before the transaction's first durable write:
+the sequencing envelope, its validation, the record and receipt budgets, and
+the retention plan including its anchor are all computed first, over rows the
+transaction has only read. A refusal from any of them rolls back without having
+asked the controller for anything, so no deterministic local failure can leave
+an admission behind.
+
 Committed and duplicate outcomes settle only from the validated durable receipt;
 a lost settlement acknowledgement returns unavailable, and the same intent can
 be retried on the open room, where it replays through the duplicate path.
-Duplicate replay does not request new admission. Each port call is bounded to
-one second. The admission phase as a whole (the local authority check, the port
-call and the repeated authority check) runs while the worker holds the write
+Duplicate replay does not request new admission. A duplicate whose record the
+controller holds no admission for — an existing room whose home is adopted
+later — settles as a duplicate rather than as unavailable: the port reports
+that there is nothing to settle, which is a distinct result from being unable
+to settle. A durable record never becomes unretryable.
+
+Each port call is bounded to one second, and a call that returns exactly on the
+deadline is kept. The admission phase as a whole (the local authority check, the
+port call and the repeated authority check) runs while the worker holds the write
 transaction and shares the worker's pre-existing five-second request budget;
-the authority checks are not separately bounded. A timeout never clears an
-unresolved controller record. Rooms without the port write through the same
-transaction without requesting admission. For every room, with or without the
-port, a commit-time local authority check that is unavailable now returns
-unavailable rather than denied.
+the authority checks are not separately bounded. Nothing settles an admission
+whose effect never became durable: reconciliation settles only from a verified
+finished admission carrying a receipt digest, so an admission recorded for a
+write that never committed stays unresolved until an operator acts. Losing the
+response to a timeout does not clear the controller's record either. Rooms
+without the port write through the same transaction without requesting
+admission, and the legal alphabet does not depend on whether a room is
+controlled: the room's own identifier check refuses code points below 32 and
+127 whether or not a port is attached, so a `proposalId` like `"line\nbreak"`
+is refused as `malformed` by both. Every identifier the room accepts is
+therefore one the controller's `plannedHomeAdmissionIdentifier` accepts too.
+The relation is containment, not equality — the room is the narrower of the
+two, because it also refuses lone surrogates, which that validator accepts —
+and containment is the direction that matters: attaching a port can never turn
+an append the room already allowed into a `denied` that reads as a permission
+decision.
+For every room, with or without the port, a commit-time local authority check
+that is unavailable now returns unavailable rather than denied.
+
+A port refusal reported as denied is not necessarily a permission decision: the
+journal collapses a full journal, a pending transfer, an owner-revision
+mismatch, a changed intent under a known admission id and a malformed call into
+one conflict result, and the history has no derived way to tell them apart.
 
 This is private integration infrastructure: production runtime composition and
 Agent launch paths are not yet connected to the controller journal. Integrators must verify a durable local effect
@@ -219,23 +250,31 @@ integration remain prerequisites for enabling sustained Agent execution.
 The private control-session authority adds a separate `home:control` pairing
 permission. An operator must add it to an already-paired home. Operator
 currentness is rechecked after body buffering and parsing, so credential
-rotation while a scope-change request is pending prevents the promotion. It is absent
-from the default grant and every pairing preset, including `home-transfer`.
+rotation while a scope-change request is pending prevents the promotion. It is
+absent from the default grant and every pairing preset, including `home-transfer`.
 Transfer participation cannot open or bind a control session, and a control
 session does not authorize room access or Agent execution.
 
 The controller stores one session record per paired home, bounded to 4,096
-records in the external authority database. The record stores capability and replay secrets only as SHA-256 digests,
-alongside their identity and generation metadata. The fresh
-256-bit capability and 256-bit replay secret remain in runtime memory and must
-never be written to a Station home, Project, peer record, log or portable
-archive. A new open or same-process retry supplies the open ID and replay
-secret. Knowing the inspectable open ID or copying the pairing credential is
-insufficient to recover the cached capability. After restart, a caller may
+records in the external authority database. The record stores capability and
+replay secrets only as SHA-256 digests, alongside their identity and generation
+metadata. The controller mints the 256-bit capability. The replay secret is
+supplied by the caller as a 64-character hex string; the controller checks only
+its format, never its entropy, so a caller must generate it with a
+cryptographically secure random source. Both values remain in runtime memory
+and must never be written to a Station home, Project, peer record, log or
+portable archive. A new open or same-process retry supplies the open ID and
+replay secret. Knowing the inspectable open ID or copying the pairing
+credential is insufficient to recover the cached capability, but only to the
+extent the caller's replay secret is unguessable. After restart, a caller may
 instead present the exact retained capability. If the controller loses its
 replay cache and the runtime has no retained capability, the result is
-`recovery-required`, even if the runtime still knows the replay secret. A different open cannot replace an active
-session. There is no timeout, process-ID expiry or automatic deletion path.
+`recovery-required`, even if the runtime still knows the replay secret. A
+different open cannot replace an active session. There is no timeout,
+process-ID expiry or automatic deletion path. Removing and re-granting
+`home:control` advances the grant revision: the existing session no longer
+binds, and a new open is refused as a conflict until an operator retires the
+old generation.
 
 Operator retirement names the exact paired device and expected session
 generation. It refuses while any admission for that home remains unresolved.
@@ -258,9 +297,23 @@ Binding also fixes the admission kind and requires the exact current owner
 channel/revision plus a separate caller-owned synchronous local-authority guard.
 Historical finished admission replay returns `settled`, never permission to
 repeat an effect. The caller must verify a durable local effect receipt before
-finishing; a stored receipt digest
-does not independently verify it. This is private foundation only: no HTTP
-route, bootstrap composition, room writer or Agent launch path uses it yet.
+finishing; a stored receipt digest does not independently verify it.
+
+The personal-controller prototype exposes only these control-session endpoints:
+
+| Method and path | Authority and result |
+| --- | --- |
+| `POST /api/home-authority/control-sessions/open` | A current `home:control` participant submits an exact open/replay body and receives a no-store capability observation. |
+| `POST /api/home-authority/control-sessions/:deviceId/inspect` | The current operator reads the home reference, open ID, generation, state and unresolved count. No capability or digest of one. |
+| `POST /api/home-authority/control-sessions/:deviceId/retire` | The current operator conditionally retires the exact expected generation. |
+
+Every successful OBSERVATION carries execution-transfer and resume flags, and
+both are always false; a refusal carries only its `kind` and has no such
+flags, so it is not a place those flags could be true. A malformed body is
+refused with 400 before any authority runs, so a payload that can never
+succeed is distinguishable from a 409 the caller can act on. There is no
+admission begin/finish endpoint, room writer, Agent launch or target
+activation in this slice.
 
 ## Private room-write adapter
 
@@ -323,6 +376,7 @@ From an isolated repository worktree with managed dependencies installed:
 
 ```bash
 npm run test:focused -- \
+  src-server/routes/environments/__tests__/home-control-session-routes.test.ts \
   src-server/services/orchestration/__tests__/planned-home-control-session-authority.test.ts \
   src-server/services/orchestration/__tests__/planned-home-control-room-write-adapter.test.ts \
   src-server/services/orchestration/__tests__/planned-home-control-room-write-receipt-verifier.test.ts \

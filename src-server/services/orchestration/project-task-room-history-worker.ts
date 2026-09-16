@@ -79,6 +79,8 @@ interface WorkerInit {
   retentionRecords: number;
   retentionBytes: number;
   maxIdentities: number;
+  /** SQLite busy wait; derived by the owner from the admission deadline. */
+  lockWaitMs: number;
   faultAfterCommitOnce?: boolean;
   unavailableAfterCommitOnce?: boolean;
 }
@@ -139,6 +141,7 @@ if (
     'retentionRecords',
     'retentionBytes',
     'maxIdentities',
+    'lockWaitMs',
     'faultAfterCommitOnce',
     'unavailableAfterCommitOnce',
   ]) ||
@@ -151,6 +154,8 @@ if (
   Number(workerData.retentionBytes) < 48 * 1024 ||
   !Number.isSafeInteger(workerData.maxIdentities) ||
   Number(workerData.maxIdentities) < Number(workerData.retentionRecords) ||
+  !Number.isSafeInteger(workerData.lockWaitMs) ||
+  Number(workerData.lockWaitMs) < 1 ||
   (workerData.faultAfterCommitOnce !== undefined &&
     typeof workerData.faultAfterCommitOnce !== 'boolean') ||
   (workerData.unavailableAfterCommitOnce !== undefined &&
@@ -487,7 +492,9 @@ function validRequest(value: unknown): value is Request {
     }).ok
   );
 }
-const db = new DatabaseSync(init.databasePath, { timeout: 175 });
+// `sqliteLockWaitMs` in project-task-room-history.ts says why this is
+// derived rather than a literal (#1531).
+const db = new DatabaseSync(init.databasePath, { timeout: init.lockWaitMs });
 // archive#3661: bounded retry rather than a silent swallow — see
 // `enableWalJournalMode` for why `busy_timeout` does not cover this pragma.
 applyWalJournalMode(db, { store: 'project task room history' });
@@ -858,6 +865,20 @@ function refused(disposition: CommitDisposition) {
   return { kind: disposition === 'unavailable' ? 'unavailable' : 'denied' };
 }
 
+/**
+ * The retention plan is computed before the pending record is inserted, so the
+ * scan has to be handed that record explicitly. It always carries the highest
+ * seq in the epoch (`head_seq + 1`), and the stored rows arrive behind it in
+ * descending seq order, which is the exact sequence a post-insert scan saw.
+ */
+function* retentionCandidates(
+  pending: { seq: number; record_bytes: number },
+  stored: IterableIterator<{ seq: number; record_bytes: number }>,
+): IterableIterator<{ seq: number; record_bytes: number }> {
+  yield pending;
+  yield* stored;
+}
+
 async function append(request: AppendRequest, requestId: number) {
   let committed = false;
   try {
@@ -899,17 +920,6 @@ async function append(request: AppendRequest, requestId: number) {
     if (count.count >= init.maxIdentities) {
       db.exec('ROLLBACK');
       return { kind: 'capacity' };
-    }
-    if (request.writeAdmissionRequired) {
-      const admission = await authorizeCommit(
-        requestId,
-        request.authorizationId,
-        'admit-new-write',
-      );
-      if (admission !== 'admitted') {
-        db.exec('ROLLBACK');
-        return refused(admission);
-      }
     }
     const seq = room.head_seq + 1;
     const proposalBody = {
@@ -1011,26 +1021,13 @@ async function append(request: AppendRequest, requestId: number) {
     if (!recordMeasure.ok) throw new Error('room record exceeds budget');
     const recordJson = canonical(record);
     const recordBytes = recordMeasure.bytes;
-    db.prepare(
-      'INSERT INTO project_task_room_records(channel_id,epoch,seq,proposal_id,proposal_digest,envelope_digest,checkpoint_digest,record_json,record_bytes) VALUES(?,?,?,?,?,?,?,?,?)',
-    ).run(
-      room.channel_id,
-      room.epoch,
-      seq,
-      request.proposalId,
-      request.proposalDigest,
-      envelopeDigest,
-      nextCheckpoint,
-      recordJson,
-      recordBytes,
-    );
     let anchorSeq = room.retained_anchor_seq;
     let anchorEnvelope = room.retained_anchor_envelope_digest;
     let anchorCheckpoint = room.retained_anchor_checkpoint_digest;
     let retainedCount = 0;
     let retainedBytes = 0;
     let floor = seq;
-    const newest = db
+    const stored = db
       .prepare(
         'SELECT seq,record_bytes FROM project_task_room_records WHERE channel_id=? AND epoch=? ORDER BY seq DESC',
       )
@@ -1038,6 +1035,10 @@ async function append(request: AppendRequest, requestId: number) {
       seq: number;
       record_bytes: number;
     }>;
+    const newest = retentionCandidates(
+      { seq, record_bytes: recordBytes },
+      stored,
+    );
     for (const candidate of newest) {
       if (
         retainedCount >= init.retentionRecords ||
@@ -1062,21 +1063,6 @@ async function append(request: AppendRequest, requestId: number) {
       anchorEnvelope = anchor.envelope_digest;
       anchorCheckpoint = anchor.checkpoint_digest;
     }
-    db.prepare(
-      'DELETE FROM project_task_room_records WHERE channel_id=? AND epoch=? AND seq<=?',
-    ).run(room.channel_id, room.epoch, anchorSeq);
-    db.prepare(
-      'UPDATE project_task_room_heads SET head_seq=?,head_envelope_digest=?,head_checkpoint_digest=?,retained_anchor_seq=?,retained_anchor_envelope_digest=?,retained_anchor_checkpoint_digest=? WHERE channel_id=? AND head_seq=?',
-    ).run(
-      seq,
-      envelopeDigest,
-      nextCheckpoint,
-      anchorSeq,
-      anchorEnvelope,
-      anchorCheckpoint,
-      room.channel_id,
-      room.head_seq,
-    );
     const receipt: ProjectTaskRoomAppendReceipt = {
       schemaVersion: 'station.project-task-room-append-receipt/v1',
       proposalId: request.proposalId,
@@ -1099,6 +1085,56 @@ async function append(request: AppendRequest, requestId: number) {
     });
     if (!receiptMeasure.ok) throw new Error('room receipt exceeds budget');
     const receiptJson = canonical(receipt);
+    // Admission is the last step before the first durable write of this
+    // transaction. Everything above it — the envelope, its validation, the
+    // record and receipt budgets, and the retention plan including its anchor
+    // lookup — is computation over rows this transaction has only read, so a
+    // deterministic refusal there rolls back without having asked the
+    // controller for anything. Nothing between this call and COMMIT can fail
+    // on its own inputs; what remains is process death and storage faults —
+    // COMMIT can still return SQLITE_FULL or SQLITE_IOERR, and the record
+    // INSERT would collide on its primary key if a room's head_seq ever
+    // lagged its rows. Both strand an unresolved admission and both are
+    // reconciliation's job, not a reordering's.
+    if (request.writeAdmissionRequired) {
+      const admission = await authorizeCommit(
+        requestId,
+        request.authorizationId,
+        'admit-new-write',
+      );
+      if (admission !== 'admitted') {
+        db.exec('ROLLBACK');
+        return refused(admission);
+      }
+    }
+    db.prepare(
+      'INSERT INTO project_task_room_records(channel_id,epoch,seq,proposal_id,proposal_digest,envelope_digest,checkpoint_digest,record_json,record_bytes) VALUES(?,?,?,?,?,?,?,?,?)',
+    ).run(
+      room.channel_id,
+      room.epoch,
+      seq,
+      request.proposalId,
+      request.proposalDigest,
+      envelopeDigest,
+      nextCheckpoint,
+      recordJson,
+      recordBytes,
+    );
+    db.prepare(
+      'DELETE FROM project_task_room_records WHERE channel_id=? AND epoch=? AND seq<=?',
+    ).run(room.channel_id, room.epoch, anchorSeq);
+    db.prepare(
+      'UPDATE project_task_room_heads SET head_seq=?,head_envelope_digest=?,head_checkpoint_digest=?,retained_anchor_seq=?,retained_anchor_envelope_digest=?,retained_anchor_checkpoint_digest=? WHERE channel_id=? AND head_seq=?',
+    ).run(
+      seq,
+      envelopeDigest,
+      nextCheckpoint,
+      anchorSeq,
+      anchorEnvelope,
+      anchorCheckpoint,
+      room.channel_id,
+      room.head_seq,
+    );
     db.prepare(
       'INSERT INTO project_task_room_identities(channel_id,proposal_id,proposal_digest,epoch,seq,envelope_digest,checkpoint_digest,committed_at,receipt_json,receipt_bytes,receipt_digest) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
     ).run(

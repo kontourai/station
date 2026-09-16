@@ -5,7 +5,7 @@
   margin-block: var(--space-3, 0.75rem);
 }
 .system-tab__card {
-  border: 1px solid var(--border-subtle, #d0d7de);
+  border: 1px solid var(--border-primary);
   border-radius: var(--radius-md, 0.5rem);
   padding: var(--space-3, 0.75rem);
   margin-block: var(--space-3, 0.75rem);
@@ -47,7 +47,7 @@
   border-radius: 999px;
   padding: 0.1rem 0.4rem;
   font-size: 0.75rem;
-  background: var(--surface-raised, #eef2f6);
+  background: var(--bg-tertiary);
 }
 .system-tab__derived {
   color: var(--text-secondary);

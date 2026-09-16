@@ -43,6 +43,7 @@ import {
 import {
   humanPrincipal,
   isPrincipalRef,
+  type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
@@ -423,6 +424,28 @@ export function manualCodeFromEntropy(
 
 function manualCode(): string {
   return manualCodeFromEntropy();
+}
+
+/**
+ * The principal a paired DEVICE itself acts as, when no person binding
+ * narrows it further. One derivation, read by the personal-conversation
+ * family, by {@link DevicePairingService.listKnownPrincipals}, and by nothing
+ * that spells it out again — three copies of this expression is how two
+ * readers of the same registry end up disagreeing about who a device is.
+ */
+function devicePrincipal(device: StoredDevice): PrincipalRef {
+  return humanPrincipal('device', device.id, device.name.trim() || device.id);
+}
+
+/** The person who requested a pairing, when the approval recorded one. */
+function requesterPrincipal(device: StoredDevice): PrincipalRef | null {
+  return device.requester
+    ? humanPrincipal(
+        device.requester.provider,
+        device.requester.login,
+        device.requester.login,
+      )
+    : null;
 }
 
 function publicDevice(device: StoredDevice): PairedDevice {
@@ -1330,17 +1353,9 @@ export class DevicePairingService {
     const owners = new Set<string>([LOCAL_OPERATOR_PRINCIPAL_ID]);
     for (const device of this.#registry.devices) {
       if (device.kind !== 'device') continue;
-      owners.add(
-        humanPrincipal('device', device.id, device.name.trim() || device.id).id,
-      );
-      if (device.requester)
-        owners.add(
-          humanPrincipal(
-            device.requester.provider,
-            device.requester.login,
-            device.requester.login,
-          ).id,
-        );
+      owners.add(devicePrincipal(device).id);
+      const requester = requesterPrincipal(device);
+      if (requester) owners.add(requester.id);
     }
     return [...owners];
   }
@@ -1362,16 +1377,8 @@ export class DevicePairingService {
       )
         return false;
       return (
-        humanPrincipal('device', device.id, device.name.trim() || device.id)
-          .id === principalId ||
-        Boolean(
-          device.requester &&
-            humanPrincipal(
-              device.requester.provider,
-              device.requester.login,
-              device.requester.login,
-            ).id === principalId,
-        )
+        devicePrincipal(device).id === principalId ||
+        requesterPrincipal(device)?.id === principalId
       );
     });
   }
@@ -1388,6 +1395,56 @@ export class DevicePairingService {
       typeof device.homeControlGrantRevision === 'number'
       ? device.homeControlGrantRevision
       : undefined;
+  }
+
+  /**
+   * Every principal this instance has a PAIRING RECORD of (#2067).
+   *
+   * The trusted device registry is the only durable list of who has been
+   * admitted to this Station — there is no member table
+   * (`docs/design/principals.md` §1), so an operator UI that needs "the people
+   * this instance knows" reads this rather than inventing a directory. What it
+   * reports is exactly what was recorded: one entry per paired device, plus
+   * the requesting person where the pairing approval captured one. The
+   * operator is deliberately NOT here: it is not a pairing record, and its
+   * caller adds it from the one id `principal-resolver` owns.
+   *
+   * A REVOKED device stays listed and carries `revoked`. Its grants survive
+   * revocation of one position, and an operator reviewing grants has to see
+   * them in order to remove them.
+   *
+   * This is not a membership model and confers nothing. It answers "who could
+   * a grant name", never "who may do what". Ids only: a display string is
+   * cosmetic and `display` must never key a store
+   * (`packages/contracts/src/principal.ts`).
+   */
+  listKnownPrincipals(): { id: string; display: string; revoked: boolean }[] {
+    const known = new Map<
+      string,
+      { id: string; display: string; revoked: boolean }
+    >();
+    for (const device of this.#registry.devices) {
+      if (device.kind !== 'device') continue;
+      const revoked = device.revokedAt !== null;
+      for (const principal of [
+        devicePrincipal(device),
+        requesterPrincipal(device),
+      ]) {
+        if (!principal) continue;
+        const existing = known.get(principal.id);
+        // A person who paired two devices, one of them revoked, is not
+        // revoked: the flag describes that principal's standing across every
+        // position naming it, so an active position clears it.
+        if (existing) existing.revoked = existing.revoked && revoked;
+        else
+          known.set(principal.id, {
+            id: principal.id,
+            display: principal.display,
+            revoked,
+          });
+      }
+    }
+    return [...known.values()];
   }
 
   /** Stable environment identifier for an already-authenticated UI session. */

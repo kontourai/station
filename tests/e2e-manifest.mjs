@@ -375,12 +375,12 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/daily-driver-switching.spec.ts',
     'tests/coding-git-toolbar.spec.ts',
     'tests/diff-review-annotations.spec.ts',
-    'tests/review-queue-comments.spec.ts',
     'tests/first-run-zero-provider.spec.ts',
     'tests/knowledge-onboarding.spec.ts',
     'tests/root-route-restore.spec.ts',
     'tests/task-first-home.spec.ts',
     'tests/activity-pane.spec.ts',
+    'tests/device-pane.spec.ts',
     'tests/connections-sections.spec.ts',
     'tests/connections-computers-ssh.spec.ts',
   ],
@@ -434,6 +434,13 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // Work Board writes the personal revisioned board through the live API.
     // It cannot share that state with another product browser journey.
     'tests/work-board.spec.ts',
+    // #2144 slice 4 promotion (#2146). Settings SAVES: its persistence
+    // journeys drive real PUT /config/app writes and read the value back. The
+    // reset journey only opens the confirmation and cancels, so it is the
+    // writes that carry this. The instance's app configuration is
+    // exactly the state every other product journey reads at boot, so this
+    // spec cannot run beside one.
+    'tests/settings.spec.ts',
   ],
 };
 
@@ -611,7 +618,7 @@ export const e2eManifest = [
   {
     path: 'tests/skills-command-surface.spec.ts',
     bucket: 'product',
-    surface: 'Guidance',
+    surface: 'Skills',
     tierTarget: 'full',
     primary: true,
     rationale:
@@ -777,6 +784,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/device-pane.spec.ts',
+    bucket: 'product',
+    surface: 'Device',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "#1969: the Device pane had five jsdom suites and no browser journey, so its aspect-ratio assertions read a CSS custom property off an inline style and NOTHING had observed the pane lay out — which is why docs/ui/responsive-action-surfaces.txt listed it as an exception. This is the render. The setup state is un-intercepted: the suite instance runs with STATION_MOBILE_DEVICE_HUB_URL unset, so the real LocalMobileDeviceHost answers not-configured through the real route and the pane's first-run card is the pane's own reading of it — asserted to offer no retry and to render no device list, so an unconfigured Station can never read as 'no devices'. The populated states need a booted simulator and a booted emulator no runner has, so they are supplied through page.route in the exact envelope mobile-device-host.ts emits (a UDID iOS row and an emulator-<n> Android row, the only spellings that host admits for booted devices) with REAL PNGs built in the spec — valid signature/IHDR/IEND, so the SDK client's base64 check and the host's own reader both accept them. Desktop: both native app targets selectable and captured in turn; the frame's ratio read from getBoundingClientRect rather than getComputedStyle, because the computed property is the declaration echoed back and only the laid out box can fail; a second iOS capture with swapped dimensions relayouts the frame from taller-than-wide to wider-than-tall; caption and image alt both carry 'Snapshot' and the browser's rendering of the capture's own capturedAt, stamped ten seconds in the past so a time taken from Date.now() would differ; switching devices drops the frame rather than hiding it. A 403 on capture renders the access-denied copy and leaves Capture ENABLED — the amended decision on the issue, because a changed sign-in is repairable in place and Capture is the retry — while adding no second button. 390x844 isMobile variant measures the picker rows and Capture against the 44px floor from their laid out boxes, with one hundredth of a pixel of slack because a composited min-height:44px row reports 43.99999237060547 (#2086) and an exact integer comparison would encode the compositor's rounding rather than the CSS. It reaches no device helper and proves nothing about expo-device-hub or the capture route's own authorization; tests/tauri-shell/device-pane.e2e.ts is the lane that drives the real service against a real hub.",
+    exceptions: [],
+  },
+  {
     path: 'tests/mcp-ui-layout.spec.ts',
     bucket: 'product',
     surface: 'Projects',
@@ -834,6 +851,26 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Proves one host action bar across direct and placed real Project Pane routes, keyboard Agent selection and 390px reflow. Provider transport is intercepted; server integration separately proves actual captured invocation.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/coding-workspace-example.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Actual portable coding example with both Project renderers and one captured native model action through a controlled HTTP provider into the owned worktree Session receipt.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/minimal-workspace-example.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Installs the actual portable minimal example, opens an explicit Project-bound Pane through the public SDK, proves local dock navigation without a chat mutation, and refuses the occurrence after uninstall.',
     exceptions: [],
   },
   {
@@ -1007,7 +1044,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Live bundled Registry install, persisted installed state, project Add Layout/use, unavailable-component recovery after uninstall, reinstall, and 390x844 overflow proof.',
+      'Live bundled Registry install through the UI, persisted installed state, project Add pane/use of the Minimal Workspace occurrence, pane withdrawal after uninstall, reinstall, and 390x844 overflow proof.',
     exceptions: [],
   },
   {
@@ -1063,7 +1100,7 @@ export const e2eManifest = [
   {
     path: 'tests/skills-command-routes.spec.ts',
     bucket: 'product',
-    surface: 'Guidance',
+    surface: 'Skills',
     tierTarget: 'full',
     primary: true,
     rationale:
@@ -1547,16 +1584,15 @@ export const e2eManifest = [
       'Diff review annotations: DiffPanel renders a parsed diff, fetches project diff-comments, and renders a seeded comment inline via the @pierre/diffs annotation slot.',
     exceptions: [],
   },
-  {
-    path: 'tests/review-queue-comments.spec.ts',
-    bucket: 'product',
-    surface: 'Review Queue',
-    tierTarget: 'full',
-    primary: true,
-    rationale:
-      'Review queue surfaces diff comments: the queue fetches the cross-project /api/diff-comments feed, lists a seeded comment, and opens its detail with a Resolve action.',
-    exceptions: [],
-  },
+  // #2065: `tests/review-queue-comments.spec.ts` was retired with the global
+  // `/review-queue` page. Not retargeted, because its subject no longer
+  // exists anywhere: D4 dropped cross-project diff-comment DISCOVERY (a
+  // comment now resolves inside the diff it annotates), and with it the
+  // comment detail, its Resolve action, and its "Open in coding" jump. The
+  // one action that survived — deleting a comment — lives on the diff pane's
+  // own Delete and is pinned by "the diff pane deletes the comment its own
+  // Delete names, in its own Project" in src-ui/src/__tests__/DiffPanel.test.tsx.
+  // Inline comment rendering keeps its own spec (diff-review-annotations).
   {
     path: 'tests/core-update.spec.ts',
     bucket: 'extended',
@@ -1799,12 +1835,12 @@ export const e2eManifest = [
   },
   {
     path: 'tests/settings.spec.ts',
-    bucket: 'extended',
+    bucket: 'product',
     surface: 'Settings',
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Settings is a routed surface pending product-bucket promotion review.',
+      "#2144 slice 4 promotion (#2146). The move is not about how often the spec runs: `product` and `extended` are both weighted buckets of `scripts/run-e2e-coverage.mjs`, which `verify:e2e:full` drives, so the same lane executes either one. It is about isolation being DECLARED. Settings SAVES — its journeys drive real PUT /config/app writes and read the value back — so it must not share its instance with a concurrent sibling. `product` is the only bucket where that requirement is written down and enforced: `PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive` above, checked by `validateE2EManifest`, which refuses a product spec carrying no execution class. In `extended` the same isolation happens to hold, because `scripts/run-e2e-suite.mjs` runs every non-product suite as a single `workers: 1` phase — but nothing declares it, nothing validates it, and no test pins that worker count, so a later parallelization of `extended` would withdraw it silently. This spec did carry a stale 'Review' assertion naming a Manage-group destination #2065 had retired; that is a grep-every-bucket failure of the change that retired it — `docs/guides/testing.md` records the same thing happening to this same file at #190/#205 — and the bucket it sits in does not fix that. The assertions themselves are ones only a browser can make — the section navigation's rows measured against the 44px touch floor at 390x844 with no horizontal document scroll, a nav-only row really leaving /settings for its destination's route, the scope captions each section's persistence rule is written in, and the highlight/view deep-link round-trips landing on a rendered row — and they are made against an instance no sibling spec is writing to.",
     exceptions: [],
   },
   {

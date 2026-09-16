@@ -1,0 +1,22 @@
+{
+  "name": "station-signed-registry-example",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "prepare:catalog": "tsx prepare.ts",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx verify.ts"
+  },
+  "dependencies": {
+    "@kontourai/station-contracts": "^0.7.0",
+    "@kontourai/station-shared": "^0.7.0",
+    "tsx": "4.23.13"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}

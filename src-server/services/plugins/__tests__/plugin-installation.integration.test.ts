@@ -299,6 +299,7 @@ test('the actual install route uses transport-backed installation control and ex
   };
   const app = new Hono();
   registerPluginInstallRoutes(app, {
+    projectVisiblePlugins: () => (installed) => installed,
     ...f.deps,
     // Installation control travels through IPC; execution remains this
     // local adapter and uses its shared admission journal explicitly.
@@ -364,7 +365,10 @@ test.each(['con', 'nul', 'com1', 'con.foo'])(
         .map((plugin) => plugin.manifest.name),
     ).toEqual([name]);
     const app = new Hono();
-    registerPluginInstallRoutes(app, f.deps);
+    registerPluginInstallRoutes(app, {
+      ...f.deps,
+      projectVisiblePlugins: () => (installed) => installed,
+    });
     registerPluginLifecycleRoutes(app, f.deps);
     const listed = (await (await app.request('/')).json()) as {
       plugins: unknown[];

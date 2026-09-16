@@ -15,9 +15,12 @@ import {
   chatDockShell,
   documentFitsViewportWidth,
   expectBoxWithinViewport,
+  expectRegionTabs,
   FIRST_RENDER_TIMEOUT_MS,
-  placeSurfaceThroughLayoutPicker,
+  moveRegionThroughGrab,
+  moveTabToRegion,
   showRegionThroughOverflowMenu,
+  showSurfaceInEmptyRegion,
   surfaceDockShell,
 } from './helpers/region-placement';
 import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
@@ -41,9 +44,20 @@ const SEED_STORAGE = `
   window.localStorage.setItem('station-connect-connections-active', 'c1');
 `;
 
+/**
+ * The ids the SERVER mints: `randomUUID()` in `project-service.ts` and in the
+ * project layout routes. `p1`/`l1` was shorthand until #2158 gave the ids a
+ * job — a chip's dock pane is `layout:<projectId>/<layoutId>` and the grammar
+ * refuses anything that is not a lowercase UUID, so a fixture carrying the
+ * shorthand would silently make every chip in this spec undockable and hide a
+ * regression behind a shape no real record has.
+ */
+const ALPHA_PROJECT_ID = '4d0f9c21-8b3e-4a57-9f62-0c18ab7d5e34';
+const CHAT_LAYOUT_ID = '7a63be05-1c94-4d28-8e10-3f5b6d9c2a71';
+
 const TEST_PROJECTS = [
   {
-    id: 'p1',
+    id: ALPHA_PROJECT_ID,
     slug: 'alpha',
     name: 'Alpha',
     icon: '🚀',
@@ -56,7 +70,7 @@ const TEST_PROJECTS = [
 
 const ALPHA_LAYOUTS = [
   {
-    id: 'l1',
+    id: CHAT_LAYOUT_ID,
     slug: 'chat',
     projectSlug: 'alpha',
     type: 'chat',
@@ -66,7 +80,7 @@ const ALPHA_LAYOUTS = [
 ];
 
 const ALPHA_CONFIG = {
-  id: 'p1',
+  id: ALPHA_PROJECT_ID,
   slug: 'alpha',
   name: 'Alpha',
   icon: '🚀',
@@ -76,7 +90,7 @@ const ALPHA_CONFIG = {
 };
 
 const CHAT_LAYOUT = {
-  id: 'l1',
+  id: CHAT_LAYOUT_ID,
   slug: 'chat',
   projectSlug: 'alpha',
   type: 'chat',
@@ -247,29 +261,38 @@ async function seedRoutes(page: import('@playwright/test').Page) {
 }
 
 /**
- * The project row also exposes an expand/collapse chevron whose own
- * accessible name contains the project name (e.g. "Expand Alpha layouts",
- * archive#1629). Target the row's project-navigation button by its full
- * accessible name (icon + name) so a non-exact match doesn't also resolve
- * that chevron.
+ * The project row sits beside other controls that carry its name — the reorder
+ * handle ("Reorder Alpha"), and, once the project is selected, a layout chip
+ * row labelled "Alpha layouts" (#2063, which retired the expand/collapse
+ * chevron archive#1629 added). Target the row's project-navigation button by
+ * its full accessible name (icon + name) so a non-exact match cannot resolve
+ * one of those instead.
  */
 function alphaProjectButton(page: Page) {
   return page.getByRole('button', { name: '🚀 Alpha', exact: true });
 }
 
-async function openCustomizationNavigation(page: Page) {
+/**
+ * #2059: configuration destinations left the panel, reached instead through
+ * the footer's gear. #2144 slice 4 removed the Manage GRID this helper used to
+ * open: those destinations are rows in Settings' own section navigation now,
+ * beside the settings sections, so a reader finds Agents in the same list they
+ * find Appearance in rather than in a separate grid below it. The helper keeps
+ * its role — put the caller in front of the configuration destinations — and
+ * changes only where that is. They are LINKS here, not buttons: a nav-only row
+ * leaves /settings for the destination's own route.
+ */
+async function openSettingsNavigation(page: Page) {
   const navigation = page.getByRole('navigation', {
     name: 'Primary navigation',
   });
-  const customize = navigation.getByRole('button', {
-    name: 'Customize',
-    exact: true,
-  });
-  if ((await customize.getAttribute('aria-expanded')) !== 'true') {
-    await customize.click();
-  }
-  await expect(customize).toHaveAttribute('aria-expanded', 'true');
-  return navigation;
+  await navigation
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/settings/);
+  const sections = page.getByRole('navigation', { name: 'Settings sections' });
+  await expect(sections).toBeVisible({ timeout: 10_000 });
+  return sections;
 }
 
 test.describe('Project Sidebar', () => {
@@ -289,13 +312,28 @@ test.describe('Project Sidebar', () => {
     await expect(
       page.getByRole('button', { name: /New Project/ }),
     ).toBeVisible();
-    const navigation = await openCustomizationNavigation(page);
+    // The panel's own rows are places only now: Home and Activity.
+    const navigation = page.getByRole('navigation', {
+      name: 'Primary navigation',
+    });
     await expect(
-      navigation.getByRole('button', { name: 'Agents', exact: true }),
+      navigation.getByRole('button', { name: 'Activity', exact: true }),
+    ).toBeVisible();
+    for (const gone of ['Agents', 'Connections', 'Customize', 'System']) {
+      await expect(
+        navigation.getByRole('button', { name: gone, exact: true }),
+      ).toHaveCount(0);
+    }
+    // …and the configuration destinations are behind the gear. Connections is
+    // listed as 'Engines & Models' (#2144 decision 7): the row names what a
+    // reader is looking for and opens the hub at that tab.
+    const sections = await openSettingsNavigation(page);
+    await expect(
+      sections.getByRole('link', { name: 'Agents', exact: true }),
     ).toBeVisible();
     await expect(
-      navigation.getByRole('button', {
-        name: 'Connections',
+      sections.getByRole('link', {
+        name: 'Engines & Models',
         exact: true,
       }),
     ).toBeVisible();
@@ -873,13 +911,18 @@ test.describe('Provider Settings', () => {
   });
 
   test('connections view renders', async ({ page }) => {
-    const navigation = await openCustomizationNavigation(page);
-    await navigation
-      .getByRole('button', { name: 'Connections', exact: true })
+    const sections = await openSettingsNavigation(page);
+    await sections
+      .getByRole('link', { name: 'Engines & Models', exact: true })
       .click();
-    await expect(page).toHaveURL(/\/connections/);
+    // The row opens the hub AT its Engines tab, so the landed page is the
+    // section — 'Engines' is the h1 there, with 'Connections' as the eyebrow
+    // (src-ui/src/app-shell/page-frame-registry.ts). Asserting the section
+    // rather than the hub root is what would catch the row quietly reverting
+    // to /connections and leaving the reader a redirect short.
+    await expect(page).toHaveURL(/\/connections\/engines$/);
     await expect(
-      page.getByRole('heading', { name: 'Connections', exact: true }),
+      page.getByRole('heading', { name: 'Engines', exact: true }),
     ).toBeVisible({ timeout: 5000 });
   });
 });
@@ -918,9 +961,13 @@ test.describe('ChatDock', () => {
       page.locator('.workspace-pane-host', { has: page.locator('.chat-dock') }),
       'the chromeless host must contribute no element around the dock',
     ).toHaveCount(0);
+    // #2046 2b: a region's tab strip is the region bar's, and it renders
+    // only for a region holding two or more panes. The default dock holds
+    // Chat alone, so there is still no strip here — the pane's own toolbar
+    // is worth more than the pane's name (#1064).
     await expect(
       page.locator('.chat-dock').getByRole('tablist'),
-      'a chromeless host has no tab strip',
+      'a one-pane region renders no tab strip',
     ).toHaveCount(0);
     // And the dock is still where the shell put it: a DIRECT child of the
     // main region, which is what those combinators require.
@@ -944,14 +991,26 @@ test.describe('ChatDock', () => {
    * page can grow one back.
    *
    * What the retired journey actually guarded survives, and is what this
-   * drives: a non-Chat surface takes the dock region Chat holds, the choice is
-   * device state that outlives a reload, and putting Chat back returns that
-   * same region to Chat. The route is the model's own `placeSurface` through
-   * the header's Layout picker, and every assertion reads the rendered dock —
-   * which surface occupies which region — rather than the model that decided
-   * it.
+   * drives: a non-Chat surface reaches the dock region Chat holds, the choice
+   * is device state that outlives a reload, and asking for Chat again brings
+   * it back to the front without dropping what it now shares the region with.
+   * The route is the model's own `placeSurface` through the header's Layout
+   * picker, and every assertion reads the rendered dock rather than the model
+   * that decided it.
+   *
+   * The MECHANISM under it changed with #2046 2a, and these assertions follow
+   * it. Before 2a a dock placement DISPLACED: Activity took `bottom` and Chat
+   * was relocated to `right`, two shells with two landmarks. Since 2a "a dock
+   * region does not displace at all … a surface placed into an occupied dock
+   * region JOINS its panes, last in tab order and selected, and the pane it
+   * joins stays behind it" (docs/design/placement.md, decision 3). So there is
+   * still ONE shell, it is still Chat's — `#chat-dock`, the "Dock" landmark
+   * and `dock.maximize` belong to the region whose panes INCLUDE Chat,
+   * selected or not (`DockShell.tsx:48-66`, D3) — and the pane set is read
+   * through the region bar's tab strip. `main` keeps displacement; the dock
+   * does not.
    */
-  test('places Activity in the dock region Chat holds and returns that region to Chat', async ({
+  test('joins Activity to the dock region Chat holds and brings Chat back to the front', async ({
     page,
   }) => {
     // One dock shell, Chat's, in the bottom region. `is-collapsed` is
@@ -960,43 +1019,72 @@ test.describe('ChatDock', () => {
     await expect(page.locator('.chat-dock')).toHaveCount(1);
     await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
 
-    await placeSurfaceThroughLayoutPicker(page, 'Activity', 'Bottom');
-
-    // The region changed hands, and Chat is not homeless: `placeSurface`
-    // relocates the displaced surface into the first free dock region, which
-    // is `right`. Both halves are asserted, because "Activity is at the
-    // bottom" would also be true of a model that simply dropped Chat.
-    await expect(surfaceDockShell(page, 'Activity')).toHaveClass(
-      /chat-dock--bottom/,
+    // #2143: an occupied region's toolbar control is a toggle, so a JOIN is
+    // made the way a user makes one — show Activity in the empty Right region
+    // through that region's control, then move the whole region onto Bottom
+    // with its ⋮⋮ grab, which joins Chat's panes (`moveRegionPanes`).
+    await showSurfaceInEmptyRegion(page, 'Activity', 'Right');
+    await moveRegionThroughGrab(
+      page,
+      surfaceDockShell(page, 'Activity'),
+      'Bottom',
     );
-    await expect(chatDockShell(page)).toHaveClass(/chat-dock--right/);
+
+    // Activity joined the region rather than taking it. All three halves are
+    // asserted, because "Activity is showing at the bottom" would also be
+    // true of a model that dropped Chat on the floor, and of one that pushed
+    // it into a second region the user never asked for.
+    await expect(
+      page.locator('.chat-dock'),
+      'a joined pane shares the region it entered; it does not open a second dock',
+    ).toHaveCount(1);
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
+    await expect(
+      surfaceDockShell(page, 'Activity'),
+      'the region still holds Chat, so its landmark stays the Dock, not Activity',
+    ).toHaveCount(0);
+    await expectRegionTabs(page, ['Chat', 'Activity'], 'Activity');
 
     // The arrangement is device state (#928 D), so a reload must render the
-    // same two regions. Read through the DOM rather than through the
+    // same region with the same panes in the same order and the same one
+    // selected. Read through the DOM rather than through the
     // `regionArrangement` device setting: the record is the mechanism, and a
     // reload is the only thing that proves the mechanism ran.
     await page.reload();
-    await expect(surfaceDockShell(page, 'Activity')).toHaveClass(
-      /chat-dock--bottom/,
-    );
-    await expect(chatDockShell(page)).toHaveClass(/chat-dock--right/);
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
+    await expectRegionTabs(page, ['Chat', 'Activity'], 'Activity');
 
-    await placeSurfaceThroughLayoutPicker(page, 'Chat', 'Bottom');
+    // Chat is behind Activity's tab. Asking for it again is ⌘D — Chat's
+    // chord, `toggleSurface`, which selects its tab within the region it
+    // already holds (#2046 2a) rather than placing it anywhere.
+    await page.keyboard.press('ControlOrMeta+d');
 
     await expect(
       chatDockShell(page),
-      'returning Chat to the bottom region must give it that region back',
+      'asking for Chat at the bottom must leave it in the region it already held',
     ).toHaveClass(/chat-dock--bottom/);
-    await expect(
-      surfaceDockShell(page, 'Activity'),
-      'the surface Chat displaced must take the region Chat vacated, not vanish',
-    ).toHaveClass(/chat-dock--right/);
+    await expectRegionTabs(page, ['Chat', 'Activity'], 'Chat');
     expect(
       await page.evaluate(
         () => document.querySelector('#chat-dock')?.parentElement?.className,
       ),
       'returning to Chat must keep it a direct shell child',
     ).toMatch(/app__main/);
+
+    // #2143's tab route, driven end to end: with two panes in the region,
+    // Activity's TAB carries the move menu. "Move to Right" takes Activity
+    // out of the joined region into an empty Right, leaving Chat alone at
+    // the bottom — the strip is gone, the landmark is still Chat's.
+    await moveTabToRegion(page, 'Activity', 'Right');
+    await expect(
+      surfaceDockShell(page, 'Activity'),
+      'the moved pane must render its own region on the right',
+    ).toHaveClass(/chat-dock--right/);
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
+    await expect(
+      chatDockShell(page).getByRole('tablist', { name: 'Region panes' }),
+      'a one-pane region renders no strip',
+    ).toHaveCount(0);
   });
 });
 

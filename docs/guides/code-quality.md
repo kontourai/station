@@ -23,16 +23,19 @@ npm run hooks:install    # git config core.hooksPath .githooks
 change surface feeds, using the hook's own scope deciders — ask it before
 writing to know what a change will owe.
 
-The pre-push hook runs six checks, in this order (the hook file,
+The pre-push hook runs nine checks, in this order (the hook file,
 `.githooks/pre-push`, is the source of truth if this table drifts):
 
 | Check | Cost | Refuses |
 | --- | --- | --- |
 | `npm run lint:check` | ~4s | a lint, formatting, or organize-imports error |
+| `npm run proof:repo-governance` | ~4s | a governance-proof violation. Until 2026-09-14 this proof was composed only by `full:regression:raw`, which no pull-request, push or merge-queue trigger reaches, so two violations landed on `main` while the Nightly that owned them was itself red |
 | `node scripts/check-prepush-ui-bundle.mjs` | ~9s, and only when the push changes a UI build input | a tree over the entry-bundle ceiling |
 | `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a prepared exact-main baseline when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
 | `node scripts/check-prepush-static-gates.mjs` | ~7s, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (#3208) |
 | `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (#3629) |
+| `npm run veritas:readiness` | ~15s idle, ~35s typical | a Veritas FAIL line: a missing required artifact, an unsynced AI instruction file, a stale protected-standards attestation, or a failing routed evidence-check. It cannot be path-scoped — its rules read repository state and run repository-wide commands rather than a diff — and it runs after the governance proof because it re-executes it. It is not redundant with that proof: the proof evaluates three of the nine repo-standards rules, readiness evaluates all nine plus the protected-standards attestation |
+| `node scripts/check-prepush-typecheck.mjs` | ~50-90s (51s wall measured end to end, preconditions included; station#4273 recorded 82s for the aggregate alone), and only when the push changes a `.ts`/`.tsx`/`.mts`/`.cts` source, any `tsconfig`, a manifest, or a patch | any of the thirteen `typecheck:*` lanes. `ci:fast` already runs the same aggregate pre-merge, so this moves the finding to the author rather than a CI cycle later |
 | `node scripts/commit-message-gate.mjs --prepush-stdin` | instant | a commit subject in the push range that breaks the conventional grammar the forthcoming deploy-ledger changelog (station#4572) will generate from |
 
 The transfer check has a finite capture **liveness timeout**, which only bounds

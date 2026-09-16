@@ -1,8 +1,6 @@
-import { useState } from 'react';
 import {
   APP_DESTINATION_REGISTRY,
   type DestinationDefinition,
-  type DestinationSection,
 } from '../../app-shell/destination-registry';
 import { resolveViewFromPath } from '../../app-shell/routing';
 import { usePendingRouteSurfaceId } from '../../app-shell/useRoutePending';
@@ -10,8 +8,21 @@ import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { occupiedRegion } from '../../regions/region-model';
-import { destinationIcon, PROJECT_SIDEBAR_NAV_GROUPS } from './nav-items';
+import { destinationIcon } from './nav-items';
 
+/**
+ * The panel's destination rows. #2059 (design record D3): the left panel
+ * lists PLACES only, so this is a flat list with no group headers — the
+ * `Customize` and `System` disclosure groups went with the eleven
+ * configuration destinations they held, which are now reached through the
+ * footer's gear (Settings' Manage group) and the command palette. The
+ * registry's `sidebar` field is the seam; routes, pages and palette entries
+ * did not move.
+ *
+ * What survives here is the row itself: `aria-current` for a routed place,
+ * `aria-pressed` for a placed surface, and the pending-route mark. Activity
+ * is the only row today; Boards join it in slice 4 (#2061).
+ */
 interface ProjectSidebarNavProps {
   collapsed: boolean;
   isMobile: boolean;
@@ -41,25 +52,6 @@ export function ProjectSidebarNav({
     useSurfaceVisibilityFlags(),
   );
   const pendingSurfaceId = usePendingRouteSurfaceId();
-
-  // SHELL-15: `Customize` and `System` used to be mutually exclusive
-  // accordions whose open state was DERIVED FROM THE ROUTE — exactly one
-  // could be open, and on Home neither was, so every one of the nine
-  // management destinations cost two clicks from Home and every cross-group
-  // move cost two clicks from anywhere. Both groups now start open (the rows
-  // fit: three top-level entries plus two groups of two and five) and the
-  // user's own collapse survives navigation instead of being overwritten by
-  // whichever group the next route belongs to.
-  const [collapsedSections, setCollapsedSections] = useState<
-    ReadonlySet<DestinationSection>
-  >(() => new Set());
-  const toggleSection = (section: DestinationSection) => {
-    setCollapsedSections((previous) => {
-      const next = new Set(previous);
-      if (!next.delete(section)) next.add(section);
-      return next;
-    });
-  };
 
   const renderRow = (destination: DestinationDefinition) => {
     const label = destination.label();
@@ -146,46 +138,7 @@ export function ProjectSidebarNav({
     );
   };
 
-  const primaryDestinations = sidebarDestinations.filter(
-    (destination) => destination.sidebar?.section === 'primary',
-  );
-
   return (
-    <div className="sidebar__nav">
-      {primaryDestinations.map(renderRow)}
-      {PROJECT_SIDEBAR_NAV_GROUPS.map((section) => {
-        const sectionOpen = !collapsedSections.has(section.id);
-        const sectionActive =
-          activeDestination?.sidebar?.section === section.id;
-        const items = sidebarDestinations.filter(
-          (destination) => destination.sidebar?.section === section.id,
-        );
-        return (
-          <div className="sidebar__nav-group" key={section.id}>
-            <button
-              type="button"
-              className={`sidebar__nav-btn sidebar__nav-group-toggle${sectionActive ? ' sidebar__nav-btn--active' : ''}`}
-              aria-expanded={sectionOpen}
-              aria-controls={`sidebar-${section.id}-nav`}
-              onClick={() => toggleSection(section.id)}
-              title={collapsed ? section.label : undefined}
-            >
-              {section.icon}
-              <span className="sidebar__nav-label">{section.label}</span>
-              <span className="sidebar__nav-chevron" aria-hidden="true">
-                {sectionOpen ? '−' : '+'}
-              </span>
-            </button>
-            <div
-              id={`sidebar-${section.id}-nav`}
-              className="sidebar__nav-group-items"
-              hidden={!sectionOpen}
-            >
-              {items.map(renderRow)}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <div className="sidebar__nav">{sidebarDestinations.map(renderRow)}</div>
   );
 }

@@ -205,6 +205,14 @@ describe('known Workspace Pane declarations', () => {
         distribution: 'enabled',
         context: { project: 'present' },
       },
+      // #1969 Device: the ONE entry with neither a `context` nor a
+      // `requirements`, in declaration order between the coding terminal and
+      // Plan. Adding either to the declaration reds this exact-shape list as
+      // well as the dedicated test below.
+      {
+        rollout: 'available',
+        distribution: 'enabled',
+      },
       {
         rollout: 'available',
         distribution: 'enabled',
@@ -262,24 +270,81 @@ describe('known Workspace Pane declarations', () => {
     );
   });
 
-  test('the only known declaration claiming docked is Chat, the one that is a registered shell surface (#928)', () => {
-    // `docked` means "may occupy a shell region as a registered surface".
-    // The UI pins the claim over the built-in descriptor constants
-    // (`src-ui/src/__tests__/docked-capability-derivation.test.ts`); this
-    // pins the same claim over the server's own inline declarations, which
-    // that scan cannot see (e.g. the flow-run-console preview). A new entry
-    // here claiming `docked` must also be registered in
-    // `REGION_SURFACE_REGISTRY`, or the claim is a label nothing derives.
+  test('the known declarations claiming docked are exactly Chat, the three coding panes, File Preview and Device (#928, #2047, #2049, #1969)', () => {
+    // `docked` means "may occupy a shell region". Since #2049 a descriptor
+    // may earn that two ways, and both have a reader:
+    //
+    // - as a REGISTERED SURFACE — Chat and the three coding panes, in
+    //   `REGION_SURFACE_REGISTRY`;
+    // - as an INSTANCE-KEYED family — File Preview, which has no blank
+    //   canonical occurrence and so is no registry key at all; it reaches a
+    //   region through `INSTANCE_SURFACE_PREFIXES` (`file-preview:<nonce>`),
+    //   and `docked-capability-derivation.test.ts` pins each prefix's
+    //   descriptor id to a descriptor that exists and declares `docked`.
+    //
+    // A new entry here claiming `docked` must have one of those two readers,
+    // or the claim is a label nothing derives. Note File Preview IS declared
+    // to this catalog, but a region's chooser lists registry surfaces, and
+    // no prefix family is a registry key (`region-model.ts`), so it can never
+    // list a row that cannot open. Declaration order, so a reordering is
+    // visible too.
     const claimingDocked = KNOWN_WORKSPACE_PANE_DECLARATIONS.filter(
       ({ descriptor }) =>
         descriptor.placement.supportedRegions.includes('docked'),
     ).map(({ descriptor }) => descriptor.id);
-    expect(claimingDocked).toEqual(['pane:builtin:chat']);
+    expect(claimingDocked).toEqual([
+      'pane:builtin:chat',
+      'pane:builtin:workspace-preview:file-preview',
+      'pane:builtin:coding:file-browser',
+      'pane:builtin:coding:diff',
+      'pane:builtin:coding:terminal',
+      // #1969: a REGISTERED SURFACE (`device` in `REGION_SURFACE_REGISTRY`),
+      // so it earns `docked` the first of the two ways above.
+      'pane:builtin:device',
+    ]);
     // The pin has power only if the set it filters is the real one.
     expect(KNOWN_WORKSPACE_PANE_DECLARATIONS.length).toBeGreaterThan(5);
     expect(
       KNOWN_WORKSPACE_PANE_DECLARATIONS.map(({ descriptor }) => descriptor.id),
     ).toContain('pane:builtin:workspace-preview:flow-run-console');
+  });
+
+  /**
+   * #1969: what the Device declaration deliberately does NOT claim. Adding
+   * `requirements: { hostCapabilities: ['local-browser-preview'] }` — the
+   * shape Browser Preview carries two entries above — reds the second
+   * assertion; adding `context: { project: 'present' }`, which every
+   * neighbouring entry declares, reds the third. Both would be availability
+   * facts nothing about a captured PNG derives, and either would refuse the
+   * pane in a dock with no project.
+   */
+  test('the Device declaration requires no host capability and no Project, and issues the one constant occurrence (#1969)', () => {
+    const device = KNOWN_WORKSPACE_PANE_DECLARATIONS.find(
+      ({ descriptor }) => descriptor.id === 'pane:builtin:device',
+    );
+    expect(device).toBeDefined();
+    expect(device?.availabilityInput).toEqual({
+      rollout: 'available',
+      distribution: 'enabled',
+    });
+    expect(device?.availabilityInput.context).toBeUndefined();
+
+    // Browser Preview is the control: the capability claim IS reachable in
+    // this catalog, so Device's absence of one is a choice, not a gap.
+    const browserPreview = KNOWN_WORKSPACE_PANE_DECLARATIONS.find(
+      ({ descriptor }) =>
+        descriptor.id === 'pane:builtin:workspace-preview:browser-preview',
+    );
+    expect(
+      browserPreview?.availabilityInput.requirements?.hostCapabilities,
+    ).toEqual(['local-browser-preview']);
+
+    // One occurrence whatever the project, and it binds no project.
+    const first = device?.createInstance?.('project-a');
+    const second = device?.createInstance?.('project-b');
+    expect(first).toBe(second);
+    expect(first?.boundContext?.projectId).toBeUndefined();
+    expect(first?.instanceId).toBe('workspace-device');
   });
 
   test('deduplicates an identical descriptor and rejects an identity collision', () => {

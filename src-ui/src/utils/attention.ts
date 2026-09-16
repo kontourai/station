@@ -1,4 +1,7 @@
-import { isStandingAttentionKind } from '@kontourai/station-contracts/attention';
+import {
+  isAcknowledgeableAttentionKind,
+  isPendingAttentionItem,
+} from '@kontourai/station-contracts/attention';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   ApprovalAttentionItem,
@@ -51,7 +54,12 @@ export function isApprovalLivePending(item: ApprovalAttentionItem): boolean {
  * the row's timestamp.
  */
 export function isAcknowledgeableAttentionItem(item: AttentionItem): boolean {
-  return !isStandingAttentionKind(item.kind);
+  // #2064 (a) added a SECOND refusal beside the standing-notice one — a
+  // proposed change and a paused gate review resolve by being decided, not by
+  // being dismissed. Both memberships live in the contract and are joined
+  // there, so this predicate, the server's refusal and "Dismiss all" remain
+  // three readings of one declaration rather than three lists.
+  return isAcknowledgeableAttentionKind(item.kind);
 }
 
 /**
@@ -75,7 +83,11 @@ export function isAcknowledgeableAttentionItem(item: AttentionItem): boolean {
  * module exists to prevent.
  */
 export function pendingAttentionItems(items: AttentionItem[]): AttentionItem[] {
-  return items.filter((item) => !item.acknowledgedAt);
+  // #2064: the predicate itself moved to the contract, where the server's
+  // `pendingCount` and the per-project counts read it too — three surfaces,
+  // one declaration, instead of three `!item.acknowledgedAt` spellings that
+  // agree today.
+  return items.filter(isPendingAttentionItem);
 }
 
 /** See `pendingAttentionItems` — the same one predicate, counted. */

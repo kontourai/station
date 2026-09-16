@@ -40,7 +40,7 @@ export function Header({
     showOverflow,
     showProfileMenu,
     openHelp,
-    toggleNotifications,
+    openNotifications,
     toggleOverflow,
     toggleProfileMenu,
     userInitials,
@@ -157,7 +157,7 @@ export function Header({
         onOpenConnections={openConnectionModal}
         onOpenProfile={openProfile}
         onOpenHelp={openHelp}
-        onToggleNotifications={toggleNotifications}
+        onOpenNotifications={openNotifications}
         onToggleSettings={onToggleSettings}
         onToggleOverflow={toggleOverflow}
         onToggleProfileMenu={toggleProfileMenu}

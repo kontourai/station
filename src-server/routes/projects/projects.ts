@@ -7,6 +7,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
+  PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+  pairingScopeIncludes,
+} from '@kontourai/station-contracts/environment-security';
+import {
   describeKnowledgeRepoRootProblem,
   type KnowledgeNamespaceConfig,
   knowledgeRepoRootProblem,
@@ -15,6 +19,7 @@ import {
   assertNoRetiredLayoutKeys,
   BUILTIN_SESSION_BOARD_LAYOUT,
   type LayoutConfig,
+  type LayoutReadView,
   RetiredLayoutKeyError,
 } from '@kontourai/station-contracts/layout';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
@@ -35,7 +40,7 @@ import {
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID,
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID,
 } from '@kontourai/station-contracts/workspace-coding-panels';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import {
   FileStorageAlreadyExistsError,
   FileStorageConflictError,
@@ -46,7 +51,17 @@ import {
   assertSafeLayoutPathSegment,
   type IStorageAdapter,
 } from '../../domain/storage-adapter.js';
+import {
+  grantedPairingScope,
+  type PairingScopeContextStore,
+} from '../../security/pairing-route-scopes.js';
 import type { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
+import {
+  layoutPluginBindingWithheld,
+  resolveLayoutPaneReferences,
+  withoutPluginBinding,
+  withPluginBindingRestored,
+} from '../../services/layouts/layout-pane-reference.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import type { CheckoutRemoteReader } from '../../services/projects/checkout-remote-reader.js';
 import { findGitEntryOnPath } from '../../services/projects/checkout-remote-reader.js';
@@ -79,6 +94,7 @@ import {
 import { createLogger } from '../../utils/logger.js';
 import { pathAccessFailure } from '../../utils/path-access-failure.js';
 import { expandTilde } from '../../utils/paths.js';
+import { projectLayoutCatalogItems } from '../plugins/plugin-identity-enumeration.js';
 import {
   errorMessage,
   getBody,
@@ -99,6 +115,7 @@ import {
   withoutPersistedWorkingDirectory,
 } from './layout-working-directory.js';
 import { createProjectIdentityRoutes } from './project-identity-routes.js';
+import { admitProjectLayoutWrite } from './project-layout-admission.js';
 import { createWorkspacePanePreviewRoutes } from './workspace-pane-previews.js';
 
 /** Read a plugin's layout.json to create a layout reference */
@@ -205,6 +222,28 @@ interface ProjectRouteDeps {
    * honest 501 rather than answering from a store nobody chose.
    */
   resolution?: ProjectResolutionRouteDeps;
+  /**
+   * Whether the request's own caller may see a named plugin (#2067) — the
+   * projection `PluginVisibilityService` derives, bound per request.
+   *
+   * The catalogue IS an enumeration boundary — it carries every plugin's
+   * name, version, `plugins/<name>` source and lifecycle state — so a plugin
+   * outside the projection is ABSENT from `contributions`, `descriptors`,
+   * `instances` and `availability` alike. That is the discovery half.
+   *
+   * The REFERENCE half is #2090, and it is live: the layout read routes
+   * consult `services/layouts/layout-pane-reference.ts`, which withholds
+   * everything naming the owning plugin (the live `plugins/<name>` merge,
+   * the catalog backfill, `config.plugin`, `catalogContribution`, the
+   * plugin's global actions) and emits a causeless per-tab verdict the host
+   * renders a placeholder from. The layout list, apply, and from-plugin
+   * paths read the same predicate (#2103), so a hidden plugin and a name
+   * nobody installed answer identically on every one of them.
+   *
+   * Absent (the layout-only route tests), no visibility fact is produced and
+   * availability resolves exactly as before.
+   */
+  canSeePlugin?: (c: Context, pluginId: string) => boolean;
 }
 
 /**
@@ -276,6 +315,14 @@ const BIND_REFUSAL_STATUS: Record<BindProjectResourceRefusalCode, 400 | 409> = {
   'remotes-do-not-intersect': 409,
 };
 
+/**
+ * The scope `PUT /config/app` requires — the authority that writing a
+ * Station setting takes. Named here so the coupling in
+ * `refuseUnscopedWorkspaceIsolationWrite` is a reference to that route's
+ * tier rather than a second, drifting opinion about it.
+ */
+const PROJECT_WORKSPACE_ISOLATION_SCOPE = PAIRING_SCOPE_ORCHESTRATION_OPERATE;
+
 export function createProjectRoutes(
   projectService: ProjectService,
   storageAdapter: IStorageAdapter,
@@ -303,6 +350,21 @@ export function createProjectRoutes(
 
   async function readKnownAgents(): Promise<AgentOwnershipRef[] | undefined> {
     return deps.listAgents ? await deps.listAgents() : undefined;
+  }
+
+  /**
+   * This request's own plugin projection (#2067), or `undefined` when the
+   * composition supplied none.
+   *
+   * Every layout handler below reads it through this one binding so that
+   * "absent means nothing is withheld" is decided once, rather than in each
+   * handler where one of them would eventually get it backwards.
+   */
+  function viewerPluginSight(
+    c: Context,
+  ): ((pluginId: string) => boolean) | undefined {
+    const canSeePlugin = deps.canSeePlugin;
+    return canSeePlugin ? (pluginId) => canSeePlugin(c, pluginId) : undefined;
   }
 
   /**
@@ -486,6 +548,44 @@ export function createProjectRoutes(
     };
   }
 
+  /**
+   * #2144 slice 2, decision 4: a project's `defaultWorkspaceIsolation` is a
+   * Station setting a project overrides, so writing it requires the scope
+   * that writing the Station setting requires —
+   * `requiredPairingScope('PUT', '/config/app')`, which is
+   * `orchestration:operate`.
+   *
+   * WHAT THIS DOES AND DOES NOT ADD, stated plainly because the honest
+   * answer is "less than the decision's wording implies". `PUT
+   * /api/projects/:slug` ALREADY requires `orchestration:operate` (the
+   * `/api/projects` family's mutate tier), so for a caller that reached this
+   * handler through the runtime auth boundary, the predicate is already
+   * satisfied and this guard refuses nobody today. It is defense in depth
+   * against a future narrowing of the project family's tier — the moment
+   * project mutation drops below the config tier, this field does not drop
+   * with it — and it is the place the coupling is written down.
+   *
+   * It is NOT a claim that project updates are authorized more narrowly than
+   * they were. An absent scope is Station's own internal-token attestation
+   * and passes, exactly as it does in `PUT /config/app`'s guards.
+   */
+  function refuseUnscopedWorkspaceIsolationWrite(
+    c: Context,
+    body: Record<string, unknown>,
+  ): string | undefined {
+    if (!Object.hasOwn(body, 'defaultWorkspaceIsolation')) return undefined;
+    const presentedScope = grantedPairingScope(
+      c as unknown as PairingScopeContextStore,
+    );
+    if (presentedScope === undefined) return undefined;
+    if (
+      pairingScopeIncludes(presentedScope, PROJECT_WORKSPACE_ISOLATION_SCOPE)
+    ) {
+      return undefined;
+    }
+    return 'The workspace new chats start in is a Station setting this project overrides, so changing it needs the same authority as changing it on the Station. No changes were saved.';
+  }
+
   function integrityError(
     diagnostics: ReturnType<typeof validateProjectAgentScope>,
   ) {
@@ -547,6 +647,13 @@ export function createProjectRoutes(
       );
       if (anchorRefusal) {
         return c.json({ success: false, error: anchorRefusal }, 400);
+      }
+      // Same rule as the update path: naming the workspace mode at CREATE
+      // pins it just as durably, so the two entry points cannot disagree
+      // about what authority that field takes (#2144 slice 2).
+      const isolationRefusal = refuseUnscopedWorkspaceIsolationWrite(c, body);
+      if (isolationRefusal) {
+        return c.json({ success: false, error: isolationRefusal }, 403);
       }
       const project = await projectService.createProject(body);
       projectOps.add(1, { op: 'create' });
@@ -671,6 +778,10 @@ export function createProjectRoutes(
       const anchorRefusal = refuseInvalidRepoAnchors(slug, body);
       if (anchorRefusal) {
         return c.json({ success: false, error: anchorRefusal }, 400);
+      }
+      const isolationRefusal = refuseUnscopedWorkspaceIsolationWrite(c, body);
+      if (isolationRefusal) {
+        return c.json({ success: false, error: isolationRefusal }, 403);
       }
       const updated = await projectService.updateProject(slug, body);
       projectOps.add(1, { op: 'update' });
@@ -922,7 +1033,22 @@ export function createProjectRoutes(
       // never exposed a working directory (stale or derived) and adding one
       // would change the response shape rather than correct it.
       const layouts = storageAdapter.listLayouts(slug);
-      return c.json({ success: true, data: layouts });
+      // #2103 — each row carries the stored `config.plugin`. Withholding that
+      // name on the DETAIL read while handing it over here in one request
+      // would make the detail route's withholding theatre, so the same
+      // predicate answers both. `tabCount` stays: it is a fact about the
+      // project's own record, and it is what the picker reads.
+      const canSee = viewerPluginSight(c);
+      return c.json({
+        success: true,
+        data: canSee
+          ? layouts.map((layout) =>
+              layout.plugin !== undefined && !canSee(layout.plugin)
+                ? { ...layout, plugin: undefined }
+                : layout,
+            )
+          : layouts,
+      });
     } catch (error: unknown) {
       const message = errorMessage(error);
       return c.json(
@@ -982,6 +1108,13 @@ export function createProjectRoutes(
                     1,
                     workspacePaneAvailabilityMetricAttributes(event),
                   ),
+                ...(deps.canSeePlugin
+                  ? {
+                      canSeePlugin: (pluginId: string) =>
+                        // Non-null is sound: guarded by the spread above.
+                        deps.canSeePlugin!(c, pluginId),
+                    }
+                  : {}),
               },
               deps.kitObservabilityRegistry?.list(),
               {
@@ -1036,28 +1169,25 @@ export function createProjectRoutes(
       assertSafeLayoutPathSegment('layout slug', body.slug);
       const projectRevision = storageAdapter.projectRevision(slug);
       const project = projectRevision.value;
-      const knownAgents = await readKnownAgents();
-      if (knownAgents) {
-        const diagnostics = validateLayoutAgentReferences(project, body, {
-          knownAgents,
-        });
-        if (diagnostics.length > 0) {
-          return c.json(integrityError(diagnostics), 400);
-        }
-      }
 
       // archive#1497 — a coding layout's working directory is derived from its
       // owning project, so it is never persisted into the layout's own config.
       // Read the project BEFORE any write, so a request that names a different
       // directory is refused without having already created the layout.
       const derived = await derivedLayoutWorkingDirectory(slug, body, project);
-      const conflict = conflictingWorkingDirectory(
-        slug,
-        body.type,
-        body,
-        derived,
-      );
-      if (conflict) return c.json({ success: false, error: conflict }, 400);
+      // #2062 BLOCKING-2 — the two refusals below used to be written out here,
+      // and promote published a project Layout past both of them. They now
+      // come from `admitProjectLayoutWrite`, which promote also calls, so the
+      // equality is derived rather than asserted. Refusal shapes are unchanged:
+      // the module reproduces `integrityError`'s body and the working-directory
+      // message verbatim.
+      const admission = admitProjectLayoutWrite({
+        project,
+        layout: body,
+        knownAgents: await readKnownAgents(),
+        derivedWorkingDirectory: derived,
+      });
+      if (!admission.ok) return c.json(admission.body, 400);
 
       // `LayoutConfig.config` is required by the contract, and `listLayouts`
       // dereferences it. Before this change the coding path happened to
@@ -1067,7 +1197,7 @@ export function createProjectRoutes(
       // the list read.
       const now = new Date().toISOString();
       const persisted = withoutPersistedWorkingDirectory({
-        ...withoutClientCatalogContribution(body),
+        ...withoutClientLayoutOwner(withoutClientCatalogContribution(body)),
         id: randomUUID(),
         projectSlug: slug,
         slug: body.slug,
@@ -1108,8 +1238,25 @@ export function createProjectRoutes(
       assertSafeLayoutPathSegment('layout slug', layoutSlug);
       let layout = storageAdapter.getLayout(slug, layoutSlug);
 
+      // #2103 — this route was an enumeration oracle: `config` is
+      // `z.record(z.unknown())` and create strips only `owner` and
+      // `catalogContribution`, so ANY project member could write
+      // `{config: {plugin: 'a-guess'}}` and read back — from the live merge
+      // below and the catalog backfill after it — whether that plugin is
+      // installed, with its tabs, its version and its `plugins/<name>`
+      // source. Both reads are skipped for a caller who cannot see the
+      // owning plugin, and the two fields naming it are withheld, so a
+      // hidden plugin and a name nobody ever installed answer identically.
+      const canSee = viewerPluginSight(c);
+      const withheld = layoutPluginBindingWithheld(layout, {
+        canSeePlugin: canSee,
+      });
+      const paneReferences = resolveLayoutPaneReferences(layout, {
+        canSeePlugin: canSee,
+      });
+
       // Dynamic resolution: if layout references a plugin, merge fresh layout data
-      const pluginName = (layout.config as any)?.plugin;
+      const pluginName = withheld ? undefined : (layout.config as any)?.plugin;
       if (pluginName && projectHomeDir) {
         const ws = readPluginLayout(projectHomeDir, pluginName);
         if (ws) {
@@ -1141,6 +1288,8 @@ export function createProjectRoutes(
         }
       }
 
+      if (withheld) layout = withoutPluginBinding(layout);
+
       // archive#1497 — derive the working directory from the owning project
       // rather than backfilling only when absent. A copy persisted before this
       // change is discarded here, which is what makes it inert on upgrade
@@ -1161,13 +1310,24 @@ export function createProjectRoutes(
             },
           )
         : [];
-      return c.json({
-        success: true,
-        data:
-          diagnostics.length > 0
-            ? { ...derived, _integrityDiagnostics: diagnostics }
-            : derived,
-      });
+      // Typed against the contract, and ASSIGNED rather than spread, so the
+      // wire key is really checked (#2090 review). Naming the extra member
+      // instead of an index signature was not enough on its own: TypeScript
+      // does not excess-property-check spread-originated properties, so
+      // `...(x ? { paneReferencess: x } : {})` typechecked clean and the
+      // field simply vanished from the response. A direct assignment to a
+      // typed binding does error (probed: TS2551).
+      const data: LayoutReadView & { _integrityDiagnostics?: unknown } = {
+        ...derived,
+      };
+      if (diagnostics.length > 0) data._integrityDiagnostics = diagnostics;
+      // #2090. Response-only, and absent unless something really is
+      // withheld — `PUT` strips it back off for the same reason the derived
+      // working directory is stripped: the storage schema is `.strict()`, so
+      // a client that read this record and PUT it back would otherwise be
+      // refused by storage.
+      if (paneReferences) data.paneReferences = paneReferences;
+      return c.json({ success: true, data });
     } catch (error: unknown) {
       // An author's retired key is a 400 they can act on, not the storage
       // failure the generic arm below would report it as.
@@ -1211,12 +1371,37 @@ export function createProjectRoutes(
             409,
           );
         }
+        // #2090/#2103 — the GET withholds this caller's view of the owning
+        // plugin, so the write path has to put both halves back:
+        //
+        //  - `paneReferences` is response-only and the storage schema is
+        //    `.strict()`, so a GET→PUT round trip would be a hard storage
+        //    rejection. Stripped here exactly as the derived working
+        //    directory is, and for the same recorded reason.
+        //  - every `config` key the read REMOVED is missing from what this
+        //    caller read back, and `config` is replaced wholesale here, so
+        //    an ordinary rename would destroy them. Restored by
+        //    `withPluginBindingRestored`, which shares its key list with the
+        //    strip — the first version of this restored `plugin` and lost
+        //    `actions` and `globalSkills`, and nothing re-derives `actions`.
+        //
+        // DISCLOSED ORDERING (#2090 review): the agent-reference validation
+        // below runs on the PRE-restore config, so a withheld caller's write
+        // is not validated over the keys the restore puts back. There is no
+        // loss and no leak — those values are the stored ones, which were
+        // validated when they were written — but a visible caller gets a 400
+        // where a withheld one gets a 200 for the same stored content.
+        const withheld = layoutPluginBindingWithheld(existing, {
+          canSeePlugin: viewerPluginSight(c),
+        });
         // id, projectSlug, slug, and createdAt are immutable record identity.
         // updatedAt is server-owned. Only mutable fields replace their stored
         // values, so a partial rename cannot erase the saved LayoutDefinition.
         const layout = {
           ...existing,
-          ...withoutClientCatalogContribution(body),
+          ...withoutClientLayoutOwner(
+            withoutClientCatalogContribution(withoutPaneReferences(body)),
+          ),
           id: existing.id,
           projectSlug: slug,
           slug: layoutSlug,
@@ -1263,15 +1448,28 @@ export function createProjectRoutes(
           derived,
         );
         if (conflict) return c.json({ success: false, error: conflict }, 400);
-        const persisted = withoutPersistedWorkingDirectory({
-          ...layout,
-          config: layout.config ?? {},
-        });
+        const merged = { ...layout, config: layout.config ?? {} };
+        const persisted = withoutPersistedWorkingDirectory(
+          withheld ? withPluginBindingRestored(merged, existing) : merged,
+        );
         await revision.replace(persisted);
-        return c.json({
-          success: true,
-          data: withDerivedWorkingDirectory(persisted, derived),
+        // The write's own answer is projected exactly as the read is: a
+        // response that handed back the plugin name the GET withheld would
+        // reopen the same oracle one verb over.
+        const canSee = viewerPluginSight(c);
+        const paneReferences = resolveLayoutPaneReferences(persisted, {
+          canSeePlugin: canSee,
         });
+        const answered = layoutPluginBindingWithheld(persisted, {
+          canSeePlugin: canSee,
+        })
+          ? withoutPluginBinding(persisted)
+          : persisted;
+        const data: LayoutReadView = {
+          ...withDerivedWorkingDirectory(answered, derived),
+        };
+        if (paneReferences) data.paneReferences = paneReferences;
+        return c.json({ success: true, data });
       } catch (error: unknown) {
         const message = errorMessage(error);
         return c.json(
@@ -1305,16 +1503,69 @@ export function createProjectRoutes(
 
   // ── Available layout sources (plugins + built-in types) ──
 
+  // #2067: projected. This returned `listLayouts()` raw with no principal
+  // resolved at all — the picker a project applies a layout from, carrying
+  // every plugin's name and `plugins/<name>` source. Narrowed rather than
+  // refused: choosing a layout is a composition act, not maintenance.
   app.get('/layouts/available', (c) => {
     try {
-      return c.json({ success: true, data: layoutCatalog.listLayouts() });
+      return c.json({
+        success: true,
+        data: projectLayoutCatalogItems(
+          layoutCatalog.listLayouts(),
+          deps.canSeePlugin
+            ? (pluginId: string) => deps.canSeePlugin!(c, pluginId)
+            : undefined,
+        ),
+      });
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 500);
     }
   });
 
-  async function applyCatalogLayout(slug: string, layoutId: string) {
+  async function applyCatalogLayout(
+    slug: string,
+    layoutId: string,
+    canSeePlugin?: (pluginId: string) => boolean,
+  ) {
     assertSafeLayoutPathSegment('project slug', slug);
+    // #2103 — apply had no visibility check at all, so a member could apply a
+    // hidden plugin's layout into a shared project (and learn it exists from
+    // the 201).
+    //
+    // The check runs BEFORE `resolveForApply`, deliberately. `resolveForApply`
+    // is `resolveForCatalog` plus an installed-and-enabled check, and those
+    // two refusals carry DIFFERENT messages — so checking visibility after it
+    // would let a caller guessing catalog ids tell "exists here, disabled"
+    // from "does not exist". `resolveForCatalog` answers the same way for an
+    // unknown id and an uninstalled one, so a refusal issued here is the
+    // message an id nobody has already gets, verbatim.
+    //
+    // Guarded on `canSeePlugin` rather than run unconditionally, so a
+    // composition with no projection makes no extra catalog call at all —
+    // absence changes nothing, including which methods this path requires.
+    if (canSeePlugin) {
+      const forVisibility = layoutCatalog.resolveForCatalog(layoutId);
+      // The SAME derivation the read routes use, called rather than
+      // restated. An earlier version inlined the identity set here; it
+      // agreed with the helper on the day it was written, which is exactly
+      // the shape `runtime-routes.ts` records as "a second reader of an
+      // authorized store eventually gets the authorization wrong". A catalog
+      // item is shaped into the layout the helper reads: its `pluginName` is
+      // this path's merge key, and its contribution is the same field a
+      // stored layout carries.
+      const asStoredLayout = {
+        config: forVisibility.pluginName
+          ? { plugin: forVisibility.pluginName }
+          : {},
+        ...(forVisibility.item.contribution
+          ? { catalogContribution: forVisibility.item.contribution }
+          : {}),
+      };
+      if (layoutPluginBindingWithheld(asStoredLayout, { canSeePlugin })) {
+        throw new Error('Layout is not a known installed contribution');
+      }
+    }
     const resolved = layoutCatalog.resolveForApply(layoutId);
     const pluginManifest = resolved.pluginName
       ? layoutCatalog.getPluginManifest(resolved.pluginName)
@@ -1393,6 +1644,7 @@ export function createProjectRoutes(
         const layout = await applyCatalogLayout(
           param(c, 'slug'),
           getBody(c).layoutId,
+          viewerPluginSight(c),
         );
         return c.json({ success: true, data: layout }, 201);
       } catch (error: unknown) {
@@ -1417,18 +1669,29 @@ export function createProjectRoutes(
     async (c) => {
       try {
         const pluginName = getBody(c).plugin;
-        const item = layoutCatalog
-          .listLayouts()
-          .find(
-            (candidate) =>
-              candidate.source === 'plugin' && candidate.plugin === pluginName,
-          );
+        const canSee = viewerPluginSight(c);
+        // #2103 — this searched `listLayouts()` unprojected and answered
+        // 404-by-name, which is an existence oracle for anybody guessing
+        // names. Projected through the same helper `GET /layouts/available`
+        // uses, so a hidden plugin misses the lookup and gets the identical
+        // 404 an uninstalled name gets.
+        const item = projectLayoutCatalogItems(
+          layoutCatalog.listLayouts(),
+          canSee,
+        ).find(
+          (candidate) =>
+            candidate.source === 'plugin' && candidate.plugin === pluginName,
+        );
         if (!item)
           return c.json(
             { success: false, error: `Plugin '${pluginName}' has no layout` },
             404,
           );
-        const layout = await applyCatalogLayout(param(c, 'slug'), item.id);
+        const layout = await applyCatalogLayout(
+          param(c, 'slug'),
+          item.id,
+          canSee,
+        );
         return c.json({ success: true, data: layout }, 201);
       } catch (error: unknown) {
         return c.json(
@@ -1442,6 +1705,33 @@ export function createProjectRoutes(
   return app;
 }
 
+/**
+ * A Layout reached through `/:slug/layouts` is owned by that route's project,
+ * always. Ownership is issued by the route, never accepted from the body —
+ * the same rule catalog attribution follows below, and the reason a request
+ * cannot relocate somebody's Layout under a principal by naming one (#2060).
+ */
+function withoutClientLayoutOwner<T extends Record<string, unknown>>(
+  value: T,
+): Omit<T, 'owner'> {
+  const { owner: _owner, ...withoutOwner } = value;
+  return withoutOwner;
+}
+
+/**
+ * #2090 — `paneReferences` is a READ verdict about the calling principal. It
+ * is never storage, and the storage schema is `.strict()`, so a client that
+ * PUT back a record it had read would otherwise be refused by the store
+ * rather than by anything that could explain itself. Stripped for the same
+ * reason and in the same place as the derived working directory.
+ */
+function withoutPaneReferences<T extends Record<string, unknown>>(
+  value: T,
+): Omit<T, 'paneReferences'> {
+  const { paneReferences: _paneReferences, ...rest } = value;
+  return rest;
+}
+
 /** Catalog attribution is issued only by the catalog-apply path. */
 function withoutClientCatalogContribution<T extends Record<string, unknown>>(
   value: T,
@@ -1452,10 +1742,11 @@ function withoutClientCatalogContribution<T extends Record<string, unknown>>(
 }
 
 function layoutImmutableMismatch(
+  // Narrowed to exactly the two fields this reads: the route supplies the
+  // project and layout slugs it compares against, so widening the parameter
+  // to the whole record only invites a second reader of ownership.
   existing: {
     id: string;
-    projectSlug: string;
-    slug: string;
     createdAt: string;
   },
   projectSlug: string,

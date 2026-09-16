@@ -89,6 +89,10 @@ import {
   builtinStationAgentSpec,
   createSessionAgentResolver,
 } from '../../services/orchestration/session-agent-resolution.js';
+import type {
+  RegistryTrustPolicyApplication,
+  RegistryTrustPolicyAuthority,
+} from '../../services/plugins/registry-trust-policy.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import { observeCwdShadow } from '../../services/projects/project-resource-shadow.js';
 import { createProjectSessionDirectoryResolver } from '../../services/projects/project-session-directory.js';
@@ -254,6 +258,7 @@ export interface InitializeRuntimeDeps {
     appConfig: number;
     selectedPackageFingerprint?: string;
   };
+  registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   onAgentConfigurationReady?: (revisions: {
     provider: number;
     appConfig: number;
@@ -286,6 +291,7 @@ export interface InitializeRuntimeDeps {
 }
 
 interface InitializeRuntimeResult {
+  registryPolicyApplication?: RegistryTrustPolicyApplication;
   appConfig: AppConfig;
   framework: RuntimeFramework;
   orchestrationService: OrchestrationService;
@@ -593,6 +599,10 @@ export async function initializeRuntime(
       configLoader.getProjectHomeDir(),
       storageAdapter,
     ),
+    // #2144 slice 2. Loaded per call, not captured: the operator's edit to
+    // this Station's default applies to the next chat, not the next restart.
+    resolveStationDefaultWorkspaceIsolation: async () =>
+      (await configLoader.loadAppConfig()).defaultWorkspaceIsolation,
     nativeDeclaredPullRequestResolver,
     // archive#1501: shadow `resolveProjectResource` against the
     // session-cwd seam over REAL traffic before slice 3c flips it. Dispatched
@@ -820,6 +830,8 @@ export async function initializeRuntime(
   // inputs is the archive#1588/#3063 reload-loop anti-pattern.
   await materializeBuiltinIntegrations(deps.configLoader);
 
+  const registryPolicyApplication =
+    await deps.registryTrustPolicyAuthority?.captureApplication();
   const configurationBefore = deps.captureAgentConfigurationRevisions?.();
   const agents = await initializeRuntimeAgents({
     configLoader: deps.configLoader as any,
@@ -1063,6 +1075,7 @@ export async function initializeRuntime(
   logger.debug('Station Runtime initialized', { port });
 
   return {
+    registryPolicyApplication,
     appConfig,
     framework,
     orchestrationService,

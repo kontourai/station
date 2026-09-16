@@ -4,6 +4,7 @@ import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
   executeOwnedProcess,
+  runWindowsTaskkill,
   terminateSuiteExecution,
   waitForOwnedOutputEOF,
 } from '../lib/owned-process.mjs';
@@ -128,6 +129,10 @@ describe('owned process lifecycle', () => {
 
     child.emit('message', { type: 'owned-command-tree-settled' });
     await expect(settlement).resolves.toBeUndefined();
+    expect(execution.settlementEvidence().barriers).toMatchObject({
+      treeSettlementAcknowledged: true,
+      settlementProven: true,
+    });
     child.emit('close', 0, null);
     await execution.launcherCompletion;
     expect(execution.isAlive()).toBe(false);
@@ -152,6 +157,16 @@ describe('owned process lifecycle', () => {
       { platform: 'win32' },
     );
     await expect(execution.terminate()).rejects.toThrow(/did not acknowledge/);
+    expect(execution.settlementEvidence().barriers).toMatchObject({
+      treeSettlementAcknowledged: false,
+      settlementProven: false,
+    });
+    expect(execution.settlementEvidence()).toMatchObject({
+      barriers: {
+        treeSettlementAcknowledged: false,
+        settlementProven: false,
+      },
+    });
     child.emit('close', 0, null);
     await execution.launcherCompletion;
     expect(execution.isAlive()).toBe(true);
@@ -413,11 +428,169 @@ describe('owned process lifecycle', () => {
     await expect(barrier).rejects.toThrow(/did not reach EOF/);
   });
 
+  test('retains exact Windows identities and missing receiver EOF evidence', async () => {
+    const coordinatorStart = '2026-09-06T23:17:13.4057000Z';
+    const targetStart = '2026-09-06T23:17:14.0000000Z';
+    const guardStart = '2026-09-06T23:17:13.9000000Z';
+    const child = Object.assign(mockChild(), {
+      pid: 4242,
+      connected: true,
+      kill: () => true,
+      send: () => true,
+    });
+    const execution = executeOwnedCommand(
+      'phase.exe',
+      [],
+      (() => child) as never,
+      'fixture',
+      {
+        resolveParentIdentity: () => ({
+          pid: 99,
+          start: coordinatorStart,
+          env: 'ghp_parent-secret-must-not-persist',
+        }),
+        outputEofTimeoutMs: 1,
+      },
+      { platform: 'win32' },
+    );
+    child.emit('message', {
+      type: 'owned-command-bound',
+      pid: 5151,
+      processStart: targetStart,
+      guard: {
+        pid: 5152,
+        start: guardStart,
+        argv: 'ghp_guard-secret-must-not-persist',
+      },
+      command: 'ghp_target-secret-must-not-persist',
+      jobBound: true,
+    });
+    child.emit('message', {
+      type: 'owned-command-settlement-state',
+      state: {
+        complete: true,
+        completeStatus: 0,
+        guardClosed: true,
+        guardCloseOk: true,
+        stdoutEof: true,
+        stderrEof: false,
+        stdoutDrained: true,
+        stderrDrained: true,
+        acknowledged: false,
+        aborted: false,
+      },
+    });
+    child.emit('message', { type: 'owned-command-complete', status: 0 });
+    child.stdout.emit('end');
+
+    await expect(execution.promise).resolves.toMatchObject({ status: null });
+    const evidence = execution.settlementEvidence();
+    expect(evidence.identities).toEqual({
+      coordinator: { pid: 99, start: coordinatorStart },
+      wrapper: { pid: 4242, start: null },
+      target: { pid: 5151, start: targetStart },
+      guard: { pid: 5152, start: guardStart },
+    });
+    expect(evidence).toMatchObject({
+      stateMessagesObserved: 1,
+      barriers: {
+        complete: true,
+        guardClosed: true,
+        stdoutEof: true,
+        stderrEof: false,
+        stdoutDrained: true,
+        stderrDrained: true,
+        acknowledged: false,
+        receiverOutputEof: false,
+        settlementProven: false,
+      },
+    });
+    child.emit('message', {
+      type: 'owned-command-bound',
+      pid: 6161,
+      processStart: 'x'.repeat(10_000),
+      guard: { pid: 6162, start: 'y'.repeat(10_000) },
+      jobBound: true,
+    });
+    expect(execution.settlementEvidence().identities).toMatchObject({
+      target: null,
+      guard: null,
+    });
+  });
+
+  test('leaves drain flags unknown and counts zero observations when no state message arrives', async () => {
+    const child = Object.assign(mockChild(), {
+      pid: 4242,
+      connected: true,
+      kill: () => true,
+      send: () => true,
+    });
+    const execution = executeOwnedCommand(
+      'phase.exe',
+      [],
+      (() => child) as never,
+      'fixture',
+      {
+        resolveParentIdentity: () => ({ pid: 99, start: 'parent-birth' }),
+        outputEofTimeoutMs: 1,
+      },
+      { platform: 'win32' },
+    );
+    // The launcher dies (or IPC breaks) before it ever publishes a state
+    // message: only the wrapper close and a missing receiver EOF are seen.
+    child.emit('close', 1, null);
+
+    await expect(execution.promise).resolves.toMatchObject({ status: null });
+    const evidence = execution.settlementEvidence();
+    expect(evidence.stateMessagesObserved).toBe(0);
+    expect(evidence.barriers).toMatchObject({
+      complete: false,
+      guardClosed: false,
+      stdoutEof: false,
+      stderrEof: false,
+      acknowledged: false,
+      settlementProven: false,
+    });
+    // `null`, not `true`: nothing observed a drain, so the record must not
+    // read as a drained snapshot.
+    expect(evidence.barriers.stdoutDrained).toBeNull();
+    expect(evidence.barriers.stderrDrained).toBeNull();
+    // A malformed state message is not an observation either.
+    child.emit('message', {
+      type: 'owned-command-settlement-state',
+      state: { stdoutDrained: true },
+    });
+    expect(execution.settlementEvidence().stateMessagesObserved).toBe(0);
+    expect(execution.settlementEvidence().barriers.stdoutDrained).toBeNull();
+  });
+
   test('fails closed when a receiver output stream errors before EOF', async () => {
     const child = mockChild();
     const barrier = waitForOwnedOutputEOF(child, 1);
     child.stdout.emit('error', new Error('raw output failure'));
     await expect(barrier).rejects.toThrow(/raw output failure/);
+  });
+
+  test('does not coerce an object into a diagnostic start identity', () => {
+    const child = Object.assign(mockChild(), { pid: 4242 });
+    const execution = executeOwnedCommand(
+      'phase.exe',
+      [],
+      (() => child) as never,
+      'fixture',
+      {
+        resolveParentIdentity: () => ({
+          pid: 99,
+          start: {
+            secret: 'ghp_coerced-start-secret-must-not-persist',
+            toString: () => '2026-09-06T23:17:13.4057000Z',
+          },
+        }),
+      },
+      { platform: 'win32' },
+    );
+
+    expect(execution.settlementEvidence().identities.coordinator).toBeNull();
   });
 
   test('records an output EOF failure before command completion without an unhandled rejection', async () => {
@@ -797,5 +970,189 @@ describe('owned process lifecycle', () => {
     child.emit('close', 0, null);
     await proven.completion;
     expect(proven.isAlive()).toBe(false);
+  });
+});
+
+/**
+ * #2133: every other test in this file passes `platform: 'win32'`, so the
+ * POSIX signal path had no coverage at all — which is how it came to treat a
+ * process that had already exited as a failure to terminate it.
+ *
+ * `terminateSuiteExecution` checks `isAlive()` and signals afterwards. A child
+ * that ends on its own in that window makes the group kill throw ESRCH and
+ * `child.kill()` return false, and the helper reported that as a SIGTERM
+ * error. The full-regression corpus hit it on
+ * `local-collaboration-lab.test.ts`, whose teardown asserts
+ * `stopped.errors` is empty: the process was gone, `settled` was true, and the
+ * run still failed.
+ */
+describe('terminating a POSIX process tree', () => {
+  const esrch = () =>
+    Object.assign(new Error('no such process'), { code: 'ESRCH' });
+  const eperm = () =>
+    Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+
+  function posixExecution(input: {
+    childKill: () => boolean;
+    kill: (pid: number, signal: string | number) => void;
+  }) {
+    const child = Object.assign(mockChild(), {
+      pid: 4242,
+      kill: input.childKill,
+    });
+    return executeOwnedProcess(
+      'lab',
+      [],
+      (() => child) as never,
+      'local collaboration test',
+      {},
+      { platform: 'darwin', kill: input.kill } as never,
+    );
+  }
+
+  test('a child that exited before the signal landed is not a failure', async () => {
+    const attempts: Array<[number, string | number]> = [];
+    const execution = posixExecution({
+      childKill: () => false,
+      kill: (pid, signal) => {
+        attempts.push([pid, signal]);
+        throw esrch();
+      },
+    });
+
+    await expect(execution.terminate()).resolves.toBeUndefined();
+    // The group kill, then the existence probe — signal 0 asks the OS about
+    // the process itself rather than trusting Node's not-yet-reaped state.
+    expect(attempts).toEqual([
+      [-4242, 'SIGTERM'],
+      [4242, 0],
+    ]);
+  });
+
+  test('a child that is alive but unsignalable is still a failure', async () => {
+    const execution = posixExecution({
+      childKill: () => false,
+      // The group is gone, but the process itself answers the probe: it
+      // exists, and something really did fail to signal it.
+      kill: (_pid, signal) => {
+        if (signal === 0) return;
+        throw esrch();
+      },
+    });
+
+    await expect(execution.terminate()).rejects.toThrow(
+      'failed to signal local collaboration test with SIGTERM',
+    );
+  });
+
+  test('EPERM on the probe is not treated as gone', async () => {
+    const execution = posixExecution({
+      childKill: () => false,
+      kill: (_pid, signal) => {
+        if (signal === 0) throw eperm();
+        throw esrch();
+      },
+    });
+
+    // EPERM means the process exists and belongs to somebody else. Only ESRCH
+    // means gone, and conflating them would turn a genuine inability to
+    // terminate a live process into a silent success.
+    await expect(execution.terminate()).rejects.toThrow('failed to signal');
+  });
+
+  test('a deliverable group signal never reaches the fallback', async () => {
+    let childKills = 0;
+    const attempts: Array<[number, string | number]> = [];
+    const execution = posixExecution({
+      childKill: () => {
+        childKills += 1;
+        return true;
+      },
+      kill: (pid, signal) => {
+        attempts.push([pid, signal]);
+      },
+    });
+
+    await expect(execution.terminate()).resolves.toBeUndefined();
+    expect(attempts).toEqual([[-4242, 'SIGTERM']]);
+    expect(childKills).toBe(0);
+  });
+
+  test('a settled teardown of an exited child reports no errors', async () => {
+    const execution = posixExecution({
+      childKill: () => false,
+      kill: () => {
+        throw esrch();
+      },
+    });
+
+    // The exact shape the corpus produced: the process is gone, so settlement
+    // succeeds. Before the fix this returned `settled: true` alongside a
+    // SIGTERM error, and the lab suite's `expect(stopped.errors).toEqual([])`
+    // turned a completed teardown into a red full-regression run.
+    const outcome = await terminateSuiteExecution(execution, {
+      processLabel: 'local collaboration test',
+      terminationGraceMs: 2000,
+      terminationForceMs: 3000,
+      waitForSuiteSettlement: async () => true,
+    });
+
+    expect(outcome).toMatchObject({ settled: true, escalated: false });
+    expect(outcome.errors).toEqual([]);
+  });
+});
+
+/**
+ * The Windows half of #2133.
+ *
+ * `terminateSuiteExecution` checks `isAlive()` and signals afterwards, so a
+ * child that ends on its own in between is signalled after it is gone. On
+ * POSIX that surfaced as ESRCH; on Windows `taskkill` exits 128 — "there is no
+ * running instance of the task" — and every non-zero status was an error, so
+ * the same benign race produced the same false termination failure.
+ *
+ * The real `runWindowsTaskkill` had no direct coverage: every other test in
+ * this file injects a fake through `runtime.runWindowsTaskkill`, so its exit
+ * handling ran nowhere.
+ */
+describe('runWindowsTaskkill exit handling', () => {
+  function taskkillExiting(code: number | null) {
+    return () => {
+      const child = new EventEmitter() as EventEmitter & {
+        kill: (signal?: string) => boolean;
+      };
+      child.kill = () => true;
+      queueMicrotask(() => child.emit('close', code));
+      return child as never;
+    };
+  }
+
+  test('a pid taskkill cannot find is not a termination failure', async () => {
+    // 128 is the whole point: the process is already gone, which is what
+    // termination wanted.
+    await expect(
+      runWindowsTaskkill(4242, false, taskkillExiting(128)),
+    ).resolves.toBeUndefined();
+  });
+
+  test('a successful kill resolves', async () => {
+    await expect(
+      runWindowsTaskkill(4242, true, taskkillExiting(0)),
+    ).resolves.toBeUndefined();
+  });
+
+  test('any other non-zero status is still a failure', async () => {
+    // 1 is access-denied — a genuine inability to terminate a LIVE process.
+    // Swallowing it would turn "I could not kill this" into a silent success,
+    // which is the opposite of the fix above.
+    await expect(
+      runWindowsTaskkill(4242, false, taskkillExiting(1)),
+    ).rejects.toThrow('taskkill exited with status 1');
+  });
+
+  test('a close with no status is a failure, named as unknown', async () => {
+    await expect(
+      runWindowsTaskkill(4242, false, taskkillExiting(null)),
+    ).rejects.toThrow('taskkill exited with status unknown');
   });
 });

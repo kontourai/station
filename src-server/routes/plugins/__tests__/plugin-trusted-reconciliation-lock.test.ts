@@ -9,6 +9,7 @@ import { ConsentChannelService } from '../../../services/consent/consent-channel
 import { withPluginContentLock } from '../../../services/plugins/plugin-content-integrity.js';
 import type { Logger } from '../../../utils/logger.js';
 import { createPluginRoutes } from '../plugins.js';
+import { operatorPluginVisibility } from './plugin-visibility-test-support.js';
 
 test('trusted approval retains an independent content lease through a real delayed provider import', async () => {
   const root = mkdtempSync(join(tmpdir(), 'station-trusted-provider-lease-'));
@@ -71,6 +72,7 @@ test('trusted approval retains an independent content lease through a real delay
     } as unknown as Logger,
     undefined,
     {
+      visibility: operatorPluginVisibility(root),
       consentChannel: channel,
       applyConfigurationMutation: async (operation) =>
         operation(() => {}, { status: 'applied' }),

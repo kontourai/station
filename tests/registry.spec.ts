@@ -277,10 +277,46 @@ test.describe('Registry page', () => {
     await expect(detail.getByRole('button', { name: 'Use' })).toBeVisible();
   });
 
-  test('sidebar shows Registry nav item', async ({ page }) => {
-    await expect(page.getByRole('button', { name: 'Registry' })).toBeVisible({
-      timeout: 5_000,
+  // #2059: Registry is configuration, so it left the left panel for Settings.
+  // #2144 decision 4 then FOLDED it into Plugins: browsing the catalogue and
+  // managing what it installed are one errand, so Settings offers one row for
+  // both and the Plugins surface carries the step to the catalogue.
+  //
+  // The guarantee is unchanged — an advertised control someone can press
+  // reaches this surface — and the whole path is walked by pressing, because a
+  // fold is exactly the shape that can drop a surface while every individual
+  // list still looks complete.
+  test('Settings reaches Registry through the Plugins entry it folds into', async ({
+    page,
+  }) => {
+    await expect(
+      page.getByRole('navigation', { name: 'Primary navigation' }),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Primary navigation' })
+        .getByRole('button', { name: 'Registry', exact: true }),
+    ).toHaveCount(0);
+
+    await page
+      .getByRole('navigation', { name: 'Primary navigation' })
+      .getByRole('button', { name: 'Settings', exact: true })
+      .click();
+    const sections = page.getByRole('navigation', {
+      name: 'Settings sections',
     });
+    await expect(sections).toBeVisible({ timeout: 10_000 });
+    // The fold is a real fold: Registry has no row of its own to press.
+    await expect(
+      sections.getByRole('link', { name: 'Registry', exact: true }),
+    ).toHaveCount(0);
+
+    await sections.getByRole('link', { name: 'Plugins', exact: true }).click();
+    await expect(page).toHaveURL(/\/plugins$/);
+    await page
+      .getByRole('button', { name: 'Browse Registry', exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/registry/);
   });
 
   test('skill cards open preview details before explicit install', async ({

@@ -268,6 +268,12 @@ export function createRuntimeServiceBundle(
       // `workingDirectory`-only path shrinks monotonically instead of becoming
       // a permanent second mode (portable-project-identity.md §5).
       new ProjectManifestStore(context.projectHomeDir, storageAdapter),
+      // #2144 slice 2: the worktree directory preflights judge the mode a
+      // chat will actually start in, so they need this Station's default.
+      // Loaded per call, not captured, for the same reason the resolver's
+      // wiring is: an operator's edit applies to the next save.
+      async () =>
+        (await context.configLoader.loadAppConfig()).defaultWorkspaceIsolation,
     );
 
   const providerService =

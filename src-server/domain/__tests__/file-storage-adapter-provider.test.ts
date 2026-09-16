@@ -122,7 +122,11 @@ describe('FileStorageAdapter provider updates', () => {
       config: { defaultAgent: 'claude' },
     });
     expect(adapter.findLayoutsUsingAgent('claude')).toEqual([
-      { projectSlug: 'proj', layoutSlug: 'coding' },
+      {
+        owner: { kind: 'project', projectSlug: 'proj' },
+        projectSlug: 'proj',
+        layoutSlug: 'coding',
+      },
     ]);
 
     expect(adapter.findLayoutsUsingAgent('codex')).toEqual([]);

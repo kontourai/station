@@ -67,10 +67,10 @@ function fixture() {
   };
   commit();
   const base = git('rev-parse', 'HEAD');
-  const run = () => {
+  const run = (ref = base) => {
     const result = spawnSync(
       process.execPath,
-      [join(repo, 'scripts/code-health-gate.mjs'), `--base=${base}`],
+      [join(repo, 'scripts/code-health-gate.mjs'), `--base=${ref}`],
       {
         cwd: root,
         encoding: 'utf8',
@@ -138,6 +138,28 @@ test('the real gate permits inherited findings but catches a new unused export e
   );
   commit();
   expect(run().status).toBe(0);
+}, 90_000);
+
+/**
+ * #2094, reproduced end to end rather than asserted about: the analyzer is
+ * asked for everything changed since the commit it is standing on, finds no
+ * changed file, and emits no `dead_code` section at all. The gate used to
+ * refuse that shape with `Missing unused_exports findings` -- a message two
+ * steps from its cause, and the reason a CI dispatch on `main` could never be
+ * all-green.
+ */
+test('a base that is the head reports an empty comparison, not a missing finding', () => {
+  const { run } = fixture();
+
+  const degenerate = run('HEAD');
+
+  expect(degenerate.status).toBe(0);
+  expect(degenerate.output).toContain(
+    'no changed file, so nothing was analyzed',
+  );
+  // The zeroes must not be read as a verdict on the tree.
+  expect(degenerate.output).toContain("not a statement about the tree's");
+  expect(degenerate.output).not.toContain('Missing unused_exports findings');
 }, 90_000);
 
 const base = 'a'.repeat(40);
@@ -240,4 +262,47 @@ test.each([
     value.attribution.complexity_introduced = 0;
   if (kind === 'missing-key') delete value.complexity.findings[0].exceeded;
   expect(() => evaluateCodeHealthAudit(value, base, head)).toThrow();
+});
+
+/**
+ * The pair the old message could not tell apart. Only `changed_files_count`
+ * differs between these two: an absent `dead_code` section is a report about
+ * nothing when the comparison was empty, and a fault when it was not.
+ */
+test('an absent dead_code section is a fault only when something did change', () => {
+  const empty: any = report();
+  delete empty.dead_code;
+  delete empty.complexity;
+  empty.changed_files_count = 0;
+  empty.summary.complexity_findings = 0;
+  empty.attribution.complexity_introduced = 0;
+
+  expect(evaluateCodeHealthAudit(empty, base, head)).toMatchObject({
+    passed: true,
+    emptyComparison: true,
+  });
+
+  const changed = { ...empty, changed_files_count: 1 };
+  expect(() => evaluateCodeHealthAudit(changed, base, head)).toThrow(
+    'Code-health report has no unused_exports attribution for 1 changed file(s)',
+  );
+});
+
+/**
+ * A report cannot buy the empty-comparison exemption by claiming no changed
+ * file while also claiming findings; that combination is malformed, and
+ * accepting it would turn a real analysis into a silent pass.
+ */
+test('claiming findings while reporting no changed file is still refused', () => {
+  const value: any = report();
+  delete value.dead_code;
+  value.changed_files_count = 0;
+  expect(() => evaluateCodeHealthAudit(value, base, head)).toThrow();
+});
+
+/** A normal comparison still reports that it compared something. */
+test('a comparison with changed files is not an empty comparison', () => {
+  expect(evaluateCodeHealthAudit(report(), base, head).emptyComparison).toBe(
+    false,
+  );
 });

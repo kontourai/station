@@ -48,58 +48,316 @@ export function surfaceDockShell(page: Page, title: string): Locator {
 }
 
 /**
- * Places a surface through the header's Layout picker — the shell's public
- * placement route on a fine pointer since #1552 D2 (`RegionToolbarControls`,
- * `useRegionSurfaceMenu`): one `role="group"` panel of per-surface
- * `radiogroup` rows, each row a segmented choice over the regions that
- * surface declares plus `Hidden`.
+ * The region's TAB STRIP as the reader sees it: which panes it holds, in tab
+ * order, and which one is pressed (#2046 2b, `RegionChromeBar`).
  *
- * The post-condition is read after REOPENING the panel, because choosing a
- * segment closes it: the assertion then sees a segment whose pressed state
- * was freshly derived from the arrangement, not the DOM it just clicked. A
- * segment's accessible name is just the region label — the displacement note
- * beside it is a `hidden` span reached through `aria-describedby`, which the
- * name computation excludes — so `exact` matching is safe.
+ * This is how a journey observes a pane SET, because a shell no longer names
+ * one: since #2046 2a a dock placement joins the region's panes instead of
+ * displacing its occupant, so a region holding Chat and Activity is a single
+ * `#chat-dock` shell labelled "Dock" whichever tab is selected (D3), and
+ * `surfaceDockShell` finds nothing for the pane that joined it.
+ *
+ * The strip renders only for a region holding two or more panes, on a fine
+ * pointer, with the region open (`RegionChromeBar`'s `showStrip`, D1/D2) — so
+ * asserting through it also pins that the region is expanded and that the
+ * device is not folded.
  */
-export async function placeSurfaceThroughLayoutPicker(
+export async function expectRegionTabs(
+  page: Page,
+  titles: readonly string[],
+  selected: string,
+): Promise<void> {
+  const strip = page.getByRole('tablist', { name: 'Region panes' });
+  await expect(
+    strip.getByRole('tab'),
+    `the region must hold ${titles.join(' and ')}, in that tab order`,
+  ).toHaveText([...titles]);
+  await expect(
+    strip.getByRole('tab', { name: selected, exact: true }),
+    `${selected} must be the pane the region shows`,
+  ).toHaveAttribute('aria-selected', 'true');
+}
+
+/**
+ * The header's per-region toggle (#2143): `aria-pressed` is the region's
+ * visibility from the model. Presses it and reads the flipped state back off
+ * the SAME control — the model re-derives it, so the assertion sees the
+ * arrangement rather than the DOM it just clicked. Refuses to prove a
+ * no-op: the precondition pins the state it expects to flip FROM.
+ */
+export async function toggleRegionThroughToolbar(
+  page: Page,
+  regionLabel: 'Left' | 'Bottom' | 'Right',
+  from: 'shown' | 'hidden',
+): Promise<void> {
+  const toggle = page.getByRole('button', {
+    name: `${regionLabel} region`,
+    exact: true,
+  });
+  const before = from === 'shown' ? 'true' : 'false';
+  await expect(
+    toggle,
+    `${regionLabel} region must be ${from} before the toggle, or this proves nothing`,
+  ).toHaveAttribute('aria-pressed', before);
+  await toggle.click();
+  await expect(
+    toggle,
+    `${regionLabel} region did not flip from ${from}`,
+  ).toHaveAttribute('aria-pressed', before === 'true' ? 'false' : 'true');
+}
+
+/**
+ * Shows a surface in a HIDDEN, EMPTY region — the journey a user makes in two
+ * acts since #2155, through the two controls that own them. The toolbar's
+ * toggle opens the region (it only shows and hides now; #2143's offer menu
+ * is retired), and the region's own body is the chooser that fills it
+ * (#2154). The name and signature are the same as the toolbar-menu version
+ * this replaces, so both callers describe the same outcome.
+ *
+ * The post-condition is the toggle reading pressed AND the surface owning
+ * that region's shell — the first says the region opened, the second that
+ * the pane landed in it.
+ *
+ * NOT for Chat: a region holding Chat takes the landmark `Dock` rather than
+ * the surface's own title (`DockShell`), so the shell assertion below would
+ * never find it. `orchestration.ts` drives Chat's own route.
+ */
+export async function showSurfaceInEmptyRegion(
   page: Page,
   surfaceTitle: string,
-  regionLabel: string,
+  regionLabel: 'Left' | 'Bottom' | 'Right',
 ): Promise<void> {
-  const openPicker = async () => {
-    await page
-      .getByRole('button', { name: 'Layout regions', exact: true })
-      .click();
-    const picker = page.getByRole('group', { name: 'Layout regions' });
-    await expect(picker).toBeVisible();
-    return picker;
-  };
-  const segment = (picker: Locator) =>
-    picker
-      .getByRole('radiogroup', { name: `${surfaceTitle} placement` })
-      .getByRole('radio', { name: regionLabel, exact: true });
+  const control = page.getByRole('button', {
+    name: `${regionLabel} region`,
+    exact: true,
+  });
+  await expect(
+    control,
+    `${regionLabel} region is already shown, so this is not the empty-region journey`,
+  ).toHaveAttribute('aria-pressed', 'false');
+  await control.click();
+  await expect(
+    control,
+    `${regionLabel} region did not open, so there is no chooser to fill it from`,
+  ).toHaveAttribute('aria-pressed', 'true');
+  await chooseSurfaceInEmptyRegion(page, surfaceTitle, regionLabel);
+  await expect(
+    control,
+    `${regionLabel} region closed again, so ${surfaceTitle} did not land there`,
+  ).toHaveAttribute('aria-pressed', 'true');
+}
 
-  const opened = await openPicker();
-  // The segment must not already be pressed. Without this the helper proves
-  // only a post-state, which a surface that was ALREADY there satisfies
-  // without anything having been placed — so a journey could assert a move
-  // that never happened. Callers that merely want a surface shown where it
-  // may already be must check first and skip the click (see
-  // `openChatThroughRegionControl` in orchestration.ts).
+/**
+ * Opens #2154's chooser from a region's TOOLBAR toggle (#2155): a hold, which
+ * on a coarse pointer is the only route to it, and on a fine one sits beside
+ * the right-click. Held past the control's 500ms threshold with room to
+ * spare, because a hold measured to the millisecond is a flake.
+ *
+ * THE PANEL IS ASSERTED WHILE THE POINTER IS STILL DOWN, and then again after
+ * the release. That ordering is the whole point of driving this from a
+ * browser at all (#2155 review B1): the hold opens the panel from a timer
+ * mid-gesture, so the panel's full-viewport dismiss backdrop is on screen
+ * before the release — and a backdrop that dismissed on any release, or a
+ * control that let the release go to it, would eat the gesture that opened
+ * it. Waiting for the panel BEFORE the release is also what stops this being
+ * a race: without it, a release that beat a cold lazy chunk's fetch would
+ * pass for the same reason a broken build would.
+ *
+ * The toggle's ordinary click shows or hides the region, so a press that
+ * lands short opens nothing and toggles the region instead — which the
+ * caller's `aria-pressed` assertion around this catches.
+ *
+ * WHAT THIS CAN AND CANNOT SEE, measured by injection rather than assumed.
+ * It reds when the pointer capture is removed (the hold is then cancelled by
+ * a boundary event the settling layout produces under the stationary cursor),
+ * and it reds on the backdrop's own guard once capture is out of the way —
+ * with the message above. It does NOT red on that guard alone, because with
+ * capture in place a MOUSE release never reaches the backdrop; the guard's
+ * remaining job is the touch path's compatibility `click`, which Playwright's
+ * mouse cannot produce. That case is driven in jsdom, both routes explicitly
+ * (`RegionToolbarControls.test.tsx`).
+ */
+export async function openChooserFromToggle(
+  page: Page,
+  regionLabel: 'Left' | 'Bottom' | 'Right',
+): Promise<Locator> {
+  const control = page.getByRole('button', {
+    name: `${regionLabel} region`,
+    exact: true,
+  });
+  const box = await control.boundingBox();
+  expect(
+    box,
+    `${regionLabel} region's toggle must have a rendered box`,
+  ).not.toBeNull();
+  const menu = page.getByRole('menu', { name: `Add to ${regionLabel} region` });
+  await page.mouse.move(
+    (box?.x ?? 0) + (box?.width ?? 0) / 2,
+    (box?.y ?? 0) + (box?.height ?? 0) / 2,
+  );
+  await page.mouse.down();
+  await page.waitForTimeout(600);
   await expect(
-    segment(opened),
-    `${surfaceTitle} already holds ${regionLabel}, so clicking it would prove no placement`,
-  ).toHaveAttribute('aria-checked', 'false');
-  await segment(opened).click();
-  const reopened = await openPicker();
+    menu,
+    `the hold on ${regionLabel} region's toggle opened no chooser`,
+  ).toBeVisible();
+  await page.mouse.up();
   await expect(
-    segment(reopened),
-    `${surfaceTitle}'s ${regionLabel} segment is not pressed after choosing it, so the shell did not place it there`,
-  ).toHaveAttribute('aria-checked', 'true');
-  // Leave the shell as it was found: the panel is portalled over the app and
-  // its dismiss backdrop covers the viewport.
-  await page.keyboard.press('Escape');
-  await expect(reopened).toBeHidden();
+    menu,
+    `the release that ended the hold on ${regionLabel} region's toggle dismissed the panel it had just opened`,
+  ).toBeVisible();
+  return menu;
+}
+
+/**
+ * Fills an EMPTY, VISIBLE region from its own body (#2154): the region's
+ * host renders a chooser — a list named "Add to <Region> region" of every
+ * registry surface declaring that region — and a row's press is the model's
+ * `openSurfaceInRegion(id, { region })`. A row for a surface held elsewhere
+ * reads "<title> Move here from <Region>" and is a move; this helper presses
+ * the row by its title whichever it is. The post-condition is the region's
+ * shell carrying the surface's own landmark, which only a placed pane
+ * produces. `showSurfaceInEmptyRegion` is the toolbar route to the same
+ * placement; this is the in-region one.
+ */
+export async function chooseSurfaceInEmptyRegion(
+  page: Page,
+  surfaceTitle: string,
+  regionLabel: 'Left' | 'Bottom' | 'Right',
+): Promise<void> {
+  const list = page.getByRole('list', {
+    name: `Add to ${regionLabel} region`,
+  });
+  await expect(
+    list,
+    `${regionLabel} region shows no chooser, so it is not empty and visible`,
+  ).toBeVisible();
+  await list
+    .getByRole('button', { name: new RegExp(`^${surfaceTitle}( |$)`) })
+    .click();
+  await expect(list).toBeHidden();
+  await expect(
+    surfaceDockShell(page, surfaceTitle),
+    `${surfaceTitle} did not become ${regionLabel}'s shell, so it was not placed there`,
+  ).toHaveClass(new RegExp(`chat-dock--${regionLabel.toLowerCase()}`));
+}
+
+/**
+ * Moves ONE pane to another region through its tab's own menu (#2143): a
+ * right-click on the tab opens "Move <title>", whose rows are the regions the
+ * pane declares on this device minus the one it is in. `Main` hands the pane
+ * the primary area. The tab strip renders only for a region holding two or
+ * more panes; a LONE pane reaches the same menu from the region bar's Move
+ * button — `moveLonePaneToRegion` below (#2160).
+ */
+export async function moveTabToRegion(
+  page: Page,
+  surfaceTitle: string,
+  regionLabel: 'Left' | 'Bottom' | 'Right' | 'Main',
+): Promise<void> {
+  const strip = page.getByRole('tablist', { name: 'Region panes' });
+  await strip
+    .getByRole('tab', { name: surfaceTitle, exact: true })
+    .click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: `Move ${surfaceTitle}` });
+  await expect(menu).toBeVisible();
+  await menu
+    .getByRole('menuitem', { name: `Move to ${regionLabel}`, exact: true })
+    .click();
+  await expect(menu).toBeHidden();
+}
+
+/**
+ * Moves a LONE pane — the only one its region holds, so there is no tab strip
+ * — through the region bar's own "Move <title>" button (#2160). It opens the
+ * SAME menu `moveTabToRegion` drives from a tab, for the pane the region
+ * shows, so this route reaches `main` where the bar's ⋮⋮ grab (whole region,
+ * dock edges only) cannot.
+ *
+ * Asserting the strip is absent first is what keeps this a drive of the lone
+ * pane's route rather than of a tab that happened to be on screen.
+ */
+export async function moveLonePaneToRegion(
+  page: Page,
+  surfaceTitle: string,
+  regionLabel: 'Left' | 'Bottom' | 'Right' | 'Main',
+): Promise<void> {
+  // Scoped to the surface's OWN shell: another region on the page may hold
+  // two panes and render a strip of its own, which says nothing about this
+  // one.
+  await expect(
+    surfaceDockShell(page, surfaceTitle).getByRole('tablist', {
+      name: 'Region panes',
+    }),
+    `${surfaceTitle}'s region renders a tab strip, so it is not alone there and this is not the lone pane's route`,
+  ).toHaveCount(0);
+  const button = page.getByRole('button', {
+    name: `Move ${surfaceTitle}`,
+    exact: true,
+  });
+  await expect(button).toHaveAttribute('aria-expanded', 'false');
+  await button.click();
+  const menu = page.getByRole('menu', { name: `Move ${surfaceTitle}` });
+  await expect(menu).toBeVisible();
+  await menu
+    .getByRole('menuitem', { name: `Move to ${regionLabel}`, exact: true })
+    .click();
+  await expect(menu).toBeHidden();
+}
+
+/**
+ * Moves a whole REGION — every pane, in order, with its selection — through
+ * the region bar's ⋮⋮ grab (`moveRegionPanes`, #2046 2b). The grab is
+ * revealed by hovering the bar (#1552 D3: hidden until the row is engaged),
+ * so the hover is part of the gesture, not a workaround.
+ */
+export async function moveRegionThroughGrab(
+  page: Page,
+  shell: Locator,
+  regionLabel: 'Left' | 'Bottom' | 'Right',
+): Promise<void> {
+  await shell.locator('.chat-dock__header').hover();
+  await shell
+    .getByRole('button', { name: 'Move the dock', exact: true })
+    .click();
+  const menu = page.getByRole('menu', { name: 'Dock placement' });
+  await expect(menu).toBeVisible();
+  await menu
+    .getByRole('menuitemradio', { name: regionLabel, exact: true })
+    .click();
+  await expect(menu).toBeHidden();
+}
+
+/**
+ * Opens a SIDEBAR PILL — a Boards row or a project's Layout chip — into a dock
+ * region through its context menu (#2158).
+ *
+ * The gesture is a real right-click on the pill, which is the route every
+ * device gets and the only one a keyboard reaches; the drag is #2175. The
+ * menu is the pill's own, named for it, so this asserts the menu that opened
+ * belongs to the pill that was clicked rather than to whatever menu happens to
+ * be on screen — the rail holds a Boards row menu with the same row labels.
+ *
+ * A pill whose Layout id is not a lowercase UUID renders NO placement rows at
+ * all, so for those pills the menu this helper waits for never opens and it
+ * fails loudly rather than silently proving nothing. A device whose dock folds
+ * to one region is different: it opens the menu with exactly `Open in Bottom`,
+ * so ask for that region there — a request for Left or Right fails on the
+ * missing row, which is the honest answer.
+ */
+export async function openPillInRegionThroughMenu(
+  page: Page,
+  pill: Locator,
+  pillName: string,
+  regionLabel: 'Left' | 'Bottom' | 'Right',
+): Promise<void> {
+  await pill.click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: `${pillName} actions` });
+  await expect(menu).toBeVisible();
+  await menu
+    .getByRole('menuitem', { name: `Open in ${regionLabel}`, exact: true })
+    .click();
+  await expect(menu).toBeHidden();
 }
 
 /**

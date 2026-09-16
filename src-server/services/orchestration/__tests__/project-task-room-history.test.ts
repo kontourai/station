@@ -14,6 +14,10 @@ import {
   executeOwnedProcess,
 } from '../../../../scripts/lib/owned-process.mjs';
 import { EventStore } from '../event-store.js';
+import {
+  plannedHomeAdmissionIdentifier,
+  readPlannedHomeAdmissionJournal,
+} from '../planned-home-admission-schema.js';
 import { createPlannedHomeAdmissionStore } from '../planned-home-admission-store.js';
 import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
 import {
@@ -22,6 +26,7 @@ import {
   type ProjectTaskRoomCapabilityAuthority,
   type ProjectTaskRoomWriteAdmissionPort,
   projectTaskRoomChannelId,
+  sqliteLockWaitMs,
 } from '../project-task-room-history.js';
 import { createProjectTaskRoomWorkingState } from '../project-task-room-working-state.js';
 import { SessionExecutionCoordinator } from '../session-execution-coordinator.js';
@@ -552,6 +557,230 @@ describe('ProjectTaskRoomHistory v2', () => {
       await reopened.close();
     });
 
+    it('a record written before the port exists stays retryable once a port is attached', async () => {
+      const path = databasePath();
+      let beginCalls = 0;
+      let finishCalls = 0;
+
+      // The room writes this record with NO port. Nothing mints an admission
+      // for it, because there is nothing to ask.
+      const unmanaged = history(path);
+      await unmanaged.open({ grant: grant('discover') });
+      await expect(
+        unmanaged.append(message('predates-the-port')),
+      ).resolves.toMatchObject({ kind: 'committed' });
+      await unmanaged.close();
+
+      // A home is adopted later and a port appears. `bind` requires only an
+      // owner row — nothing requires the room to be empty, and adopting an
+      // existing room's home is the point of a transfer. So a client's
+      // idempotent retry of the pre-adoption proposal now reaches the
+      // settlement path for an admission that was never begun.
+      const port: ProjectTaskRoomWriteAdmissionPort = {
+        async begin() {
+          beginCalls += 1;
+          return { kind: 'admitted' };
+        },
+        async finish() {
+          finishCalls += 1;
+          return { kind: 'nothing-to-settle' };
+        },
+      };
+      const adopted = history(path, { roomWriteAdmissions: port });
+      await adopted.open({ grant: grant('discover') });
+      for (const attempt of [1, 2, 3]) {
+        // The record is durably present, so every retry must keep reporting
+        // the duplicate. Reporting `unavailable` would make an existing
+        // record permanently unretryable — the opposite of what a write
+        // fence is for — and no later call could ever change that answer.
+        await expect(
+          adopted.append(message('predates-the-port')),
+          `attempt ${attempt}`,
+        ).resolves.toMatchObject({
+          kind: 'duplicate',
+          receipt: { proposalId: 'predates-the-port' },
+        });
+      }
+      // The duplicate short-circuit runs before the admit phase, so the port
+      // is asked to settle and never asked to admit.
+      expect(beginCalls).toBe(0);
+      expect(finishCalls).toBe(3);
+      await adopted.close();
+    });
+
+    it('a committed write whose admission vanished is unavailable, not settled', async () => {
+      const path = databasePath();
+      let finishCalls = 0;
+      const port: ProjectTaskRoomWriteAdmissionPort = {
+        async begin() {
+          return { kind: 'admitted' };
+        },
+        async finish() {
+          finishCalls += 1;
+          return { kind: 'nothing-to-settle' };
+        },
+      };
+      const room = history(path, { roomWriteAdmissions: port });
+      await room.open({ grant: grant('discover') });
+
+      // This append DID begin an admission — it is not a duplicate — so the
+      // controller reporting that it holds none is a real inconsistency, not
+      // a record predating the port. Widening the duplicate-only branch to
+      // cover `committed` would make this read as a clean write, which is
+      // what the branch's comment claims it refuses to do. Nothing else in
+      // the suite holds that scoping in place.
+      await expect(room.append(message('admitted-then-lost'))).resolves.toEqual(
+        { kind: 'unavailable' },
+      );
+      expect(finishCalls).toBe(1);
+      await room.close();
+    });
+
+    it.each([
+      ['newline', 'line\nbreak'],
+      ['tab', 'tab\there'],
+      ['nul', 'nul\u0000byte'],
+      ['delete', 'del\u007fchar'],
+    ])(
+      'refuses a %s in a proposal id whether or not a port is attached',
+      async (_label, proposalId) => {
+        // The controller's admission validator refuses these code points, so
+        // accepting them locally would make the legal alphabet depend on
+        // whether a room happens to be controlled.
+        expect(plannedHomeAdmissionIdentifier(proposalId)).toBe(false);
+        const local = history();
+        await local.open({ grant: grant('discover') });
+        await expect(local.append(message(proposalId))).resolves.toEqual({
+          kind: 'rejected',
+          reason: 'malformed',
+        });
+        await local.close();
+
+        let beginCalls = 0;
+        const controlled = history(databasePath(), {
+          roomWriteAdmissions: {
+            async begin() {
+              beginCalls += 1;
+              return { kind: 'admitted' };
+            },
+            finish: vi.fn(async () => ({ kind: 'finished' as const })),
+          },
+        });
+        await controlled.open({ grant: grant('discover') });
+        await expect(controlled.append(message(proposalId))).resolves.toEqual({
+          kind: 'rejected',
+          reason: 'malformed',
+        });
+        expect(beginCalls).toBe(0);
+        await controlled.close();
+      },
+    );
+
+    it('accepts no room identifier the controller validator would refuse', async () => {
+      // Containment, derived rather than asserted in prose: every string this
+      // room accepts as a proposal id must also pass
+      // plannedHomeAdmissionIdentifier, or an append that is legal on an
+      // uncontrolled room becomes denied the moment a port is attached. The
+      // acceptance side is read from a real append, not from a copy of the
+      // predicate, so the two cannot drift apart.
+      const candidates = [
+        'plain',
+        'task-a',
+        'a'.repeat(256),
+        'a'.repeat(257),
+        '',
+        'line\nbreak',
+        'tab\there',
+        'nul\u0000byte',
+        'del\u007fchar',
+        'esc\u001bseq',
+        'unit\u001fsep',
+        'space here',
+        'emoji-\u{1f600}',
+        'accent-é',
+        'lone-surrogate-\ud800',
+        `${'x'.repeat(200)}${'\u{1f600}'.repeat(20)}`,
+      ];
+      const room = history();
+      await room.open({ grant: grant('discover') });
+      const accepted: string[] = [];
+      for (const candidate of candidates) {
+        const outcome = await room.append(message(candidate, 'body'));
+        const malformed =
+          outcome.kind === 'rejected' && outcome.reason === 'malformed';
+        if (!malformed) accepted.push(candidate);
+      }
+      await room.close();
+      // The containment itself, asserted before any spot check so that it is
+      // what fails when the two predicates drift apart.
+      for (const identifier of accepted)
+        expect([
+          identifier,
+          plannedHomeAdmissionIdentifier(identifier),
+        ]).toEqual([identifier, true]);
+      // Containment would also hold if the room accepted nothing at all.
+      expect(accepted).toContain('plain');
+      expect(accepted).toContain('emoji-\u{1f600}');
+      expect(accepted).not.toContain('line\nbreak');
+    });
+
+    it('asks for no admission when the transaction cannot reach its first write', async () => {
+      const authority = new DatabaseSync(databasePath());
+      authority.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL');
+      const transfers = createSqlitePlannedHomeTransferStore(authority);
+      const admissions = createPlannedHomeAdmissionStore(authority, () => true);
+      const owner = {
+        tenantId: 'personal-controller:test',
+        channelId: projectTaskRoomChannelId(scope),
+        homeRef: 'paired:source',
+        policyRevision: 'policy-1',
+        revision: 0,
+      };
+      expect(transfers.initialize(owner).kind).toBe('stored');
+      let beginCalls = 0;
+      const port: ProjectTaskRoomWriteAdmissionPort = {
+        async begin(input) {
+          beginCalls += 1;
+          const result = admissions.begin({
+            tenantId: owner.tenantId,
+            channelId: input.channelId,
+            admissionId: input.proposalId,
+            ownerRevision: owner.revision,
+            homeRef: owner.homeRef,
+            kind: 'room-write',
+            intentDigest: input.intentDigest,
+          });
+          return result.kind === 'stored' && result.value.state === 'unresolved'
+            ? { kind: 'admitted' }
+            : { kind: 'denied' };
+        },
+        finish: vi.fn(async () => ({ kind: 'finished' as const })),
+      };
+      const path = databasePath();
+      const room = history(path, { roomWriteAdmissions: port });
+      await room.open({ grant: grant('discover') });
+      // A non-null head envelope digest at head_seq 0 makes the first append's
+      // envelope a genesis envelope that links to something, which
+      // validateChannelSequencingEnvelope refuses by name. The refusal is
+      // deterministic, happens inside BEGIN IMMEDIATE, and rolls back — the
+      // shape of failure that used to mint an admission nothing could clear.
+      const corrupt = new DatabaseSync(path);
+      corrupt
+        .prepare('UPDATE project_task_room_heads SET head_envelope_digest=?')
+        .run('f'.repeat(64));
+      corrupt.close();
+      await expect(room.append(message('unwritable'))).resolves.toEqual({
+        kind: 'unavailable',
+      });
+      expect(beginCalls).toBe(0);
+      expect(readPlannedHomeAdmissionJournal(authority)).toEqual([]);
+      // The consequence the empty journal stands for: ownership commit is not
+      // held by an admission for a write that never happened.
+      expect(port.finish).not.toHaveBeenCalled();
+      await room.close();
+      authority.close();
+    });
+
     it('rejects null and malformed configured ports at construction', () => {
       expect(() =>
         history(databasePath(), {
@@ -602,6 +831,14 @@ describe('ProjectTaskRoomHistory v2', () => {
       });
       await new Promise<void>((resolve) => setTimeout(resolve, 200));
       const database = new DatabaseSync(path);
+      // The room is still open, so its worker may hold the file when this
+      // second connection reads. The 200ms above is a settle, not a lock
+      // release, and on a slower runner SQLite answers `database is locked`
+      // immediately rather than waiting — which surfaced as this test failing
+      // on CI while passing locally. Wait for the lock instead of racing it:
+      // the assertion is about what the worker recorded, not about who holds
+      // the file at this instant.
+      database.exec('PRAGMA busy_timeout = 5000');
       expect(
         database
           .prepare(
@@ -613,17 +850,21 @@ describe('ProjectTaskRoomHistory v2', () => {
       await room.close();
     }, 10_000);
 
-    it('refuses the same proposal identity with a changed intent digest', async () => {
-      let retainedDigest: string | undefined;
+    // Named for what it proves: the refusal is local. The worker's identity
+    // read short-circuits a known proposal id before the admission phase, so
+    // the port is asked exactly once across both appends and never sees the
+    // changed digest at all. A fixture branch that refused a changed digest
+    // centrally used to sit here and was never reached; asserting beginCalls
+    // is what actually pins the behavior.
+    it('refuses a changed intent digest locally without re-asking the port', async () => {
       let beginCalls = 0;
+      const observedDigests: string[] = [];
       const finish = vi.fn(async () => ({ kind: 'finished' as const }));
       const room = history(databasePath(), {
         roomWriteAdmissions: {
           async begin(input) {
             beginCalls += 1;
-            if (retainedDigest && retainedDigest !== input.intentDigest)
-              return { kind: 'conflict' };
-            retainedDigest = input.intentDigest;
+            observedDigests.push(input.intentDigest);
             return { kind: 'admitted' };
           },
           finish,
@@ -638,6 +879,7 @@ describe('ProjectTaskRoomHistory v2', () => {
         reason: 'idempotency-conflict',
       });
       expect(beginCalls).toBe(1);
+      expect(observedDigests).toHaveLength(1);
       expect(finish).toHaveBeenCalledOnce();
       await room.close();
     });
@@ -1951,6 +2193,85 @@ it('source seal serializes behind an admitted transaction and closes at its comm
     });
     expect(await source.append(message('after-race'))).toEqual({
       kind: 'denied',
+    });
+  } finally {
+    release();
+    await source.close();
+    await sealer.close();
+  }
+});
+
+/**
+ * #1531: the lock wait is a derivation of the admission deadline, not a
+ * literal. Pinned as arithmetic so a future edit that shortens the hold an
+ * admitted write may take must also shorten what a competing connection
+ * is willing to wait, and vice versa.
+ */
+it('a competing connection waits at least as long as an admitted write may hold the lock', () => {
+  // Default admission deadline: two bounded phases plus resolver slack.
+  expect(sqliteLockWaitMs(1_000)).toBe(2_250);
+  // The old literal was 175 ms, which is below the floor now.
+  expect(sqliteLockWaitMs(1_000)).toBeGreaterThan(175);
+  // Bounded above by the worker response budget so a contention cannot
+  // become a terminated worker.
+  expect(sqliteLockWaitMs(10_000)).toBe(
+    PROJECT_TASK_ROOM_LIMITS.workerResponseMs - 1_000,
+  );
+  // A test adapter with a tiny admission deadline still keeps a floor.
+  expect(sqliteLockWaitMs(10)).toBe(270);
+  expect(sqliteLockWaitMs(1)).toBeGreaterThanOrEqual(250);
+});
+
+/**
+ * #1531, the nightly's actual failure: an admitted append holds
+ * `BEGIN IMMEDIATE` across its authorization round trip, and the seal that
+ * must serialize behind it used to give up after 175 ms and report the room
+ * `unavailable`. On a loaded runner the round trip alone outran that. The
+ * hold here is longer than the old wait and shorter than the derived one, so
+ * this reddens on the literal and passes on the derivation.
+ */
+it('the seal waits through an admitted write that holds the lock past the old 175 ms wait', async () => {
+  const path = databasePath();
+  let entered!: () => void;
+  let release!: () => void;
+  const atCommit = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const proceed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let checks = 0;
+  const source = history(path, {
+    capabilities: {
+      resolve: async (input) => {
+        if (input.required === 'message-write' && ++checks === 3) {
+          entered();
+          await proceed;
+        }
+        return capabilities.resolve(input);
+      },
+    },
+  });
+  const sealer = history(path);
+  try {
+    await source.open({ grant: grant('discover') });
+    await sealer.open({ grant: grant('discover') });
+    const append = source.append(message('held-past-old-wait'));
+    await atCommit;
+    const sealing = sealer.sealSource({
+      grant: grant('home-transfer'),
+      ...sealIntent,
+    });
+    // Hold the admitted write's lock for longer than the retired literal
+    // and well inside what the derivation is willing to wait.
+    await new Promise<void>((resolve) => setTimeout(resolve, 600));
+    release();
+    const committed = await append;
+    expect(committed.kind).toBe('committed');
+    if (committed.kind !== 'committed') throw new Error('Expected real commit');
+    expect(await sealing).toMatchObject({
+      kind: 'sealed',
+      seal: { checkpoint: committed.receipt.checkpoint },
     });
   } finally {
     release();

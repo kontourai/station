@@ -6,13 +6,16 @@ import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * The Review chunk, held open until the test lets it arrive — the deferred
+ * The Agents chunk, held open until the test lets it arrive — the deferred
  * lazy import that makes "cold" and "warm" two states of the same route rather
- * than two different fixtures. The FIRST render of `review-queue` suspends on
+ * than two different fixtures. The FIRST render of `agents` suspends on
  * this promise; every later one resolves synchronously from React's own lazy
  * cache, which is exactly what a warm transition is in the running app.
+ *
+ * It was the Review chunk until #2065 retired that route; any lazily-imported
+ * split-pane destination serves, and Agents is one.
  */
-const reviewChunk = vi.hoisted(() => {
+const agentsChunk = vi.hoisted(() => {
   let release!: () => void;
   const arrived = new Promise<void>((resolve) => {
     release = resolve;
@@ -20,10 +23,10 @@ const reviewChunk = vi.hoisted(() => {
   return { arrived, release: () => release() };
 });
 
-vi.mock('../../views/ReviewQueueView', async () => {
-  await reviewChunk.arrived;
+vi.mock('../../views/AgentsView', async () => {
+  await agentsChunk.arrived;
   return {
-    ReviewQueueView: () => <div>Review queue detail</div>,
+    AgentsView: () => <div>Agents detail</div>,
   };
 });
 
@@ -154,8 +157,7 @@ describe('routePendingShape — read off the destination’s own frame', () => {
 
   test('a split-pane route’s placeholder is a split pane', () => {
     // Asserted through the REAL route table, not a hand-written spec: the
-    // claim is about what Review, Plugins and Agents are declared to be.
-    expect(shapeOf({ type: 'review-queue' })).toBe('split-pane');
+    // claim is about what Plugins and Agents are declared to be.
     expect(shapeOf({ type: 'plugins' })).toBe('split-pane');
     expect(shapeOf({ type: 'agents' })).toBe('split-pane');
   });
@@ -227,7 +229,6 @@ describe('routePendingShape — read off the destination’s own frame', () => {
     test('a route that names none opens on its list', () => {
       expect(shapeOf({ type: 'agents' }, true)).toBe('split-pane');
       expect(shapeOf({ type: 'plugins' }, true)).toBe('split-pane');
-      expect(shapeOf({ type: 'review-queue' }, true)).toBe('split-pane');
       expect(shapeOf({ type: 'connections-models' }, true)).toBe('split-pane');
     });
 
@@ -266,9 +267,9 @@ describe('routePendingShape — read off the destination’s own frame', () => {
     test('one pane’s collapse says nothing about another’s', () => {
       persistCollapsed('agents');
       expect(shapeOf({ type: 'connections-models' })).toBe('split-pane');
-      // Review persists nothing at all — it mounts its pane without an id, so
-      // it always starts expanded.
-      expect(shapeOf({ type: 'review-queue' })).toBe('split-pane');
+      // Plugins persists nothing at all — it mounts its pane without an id,
+      // so it always starts expanded.
+      expect(shapeOf({ type: 'plugins' })).toBe('split-pane');
     });
 
     test('an expanded or unreadable entry is not a collapse', () => {
@@ -431,20 +432,20 @@ describe('the body while a route chunk is in flight (#3660)', () => {
     unsubscribe();
   });
 
-  test('cold: the header names Review, and the body holds Review’s shape — not the Plugins list', async () => {
+  test('cold: the header names Agents, and the body holds Agents’ shape — not the Plugins list', async () => {
     const { container, rerender } = render(
       <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
     );
     expect(await screen.findByText('Installed plugins list')).toBeTruthy();
 
     rerender(
-      <AppViewContent {...baseProps} currentView={{ type: 'review-queue' }} />,
+      <AppViewContent {...baseProps} currentView={{ type: 'agents' }} />,
     );
 
     // The header already names the arriving route (that is archive#3659, and it is
     // the half that made the body's disagreement visible).
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
-      'Review',
+      'Agents',
     );
 
     // The departing page is off screen. It is still in the DOM — React hid it
@@ -452,7 +453,7 @@ describe('the body while a route chunk is in flight (#3660)', () => {
     expect(container.textContent).toContain('Installed plugins list');
     expect(visibleText(container)).not.toContain('Installed plugins list');
 
-    //.and what replaced it holds the shape Review will arrive in: a list
+    //.and what replaced it holds the shape Agents will arrive in: a list
     // rail beside a detail pane, not a generic full-width row list.
     const placeholder = container.querySelector('.route-pending--split-pane');
     expect(placeholder).not.toBeNull();
@@ -472,11 +473,11 @@ describe('the body while a route chunk is in flight (#3660)', () => {
     expect(published.filter(Boolean)).not.toHaveLength(0);
 
     await act(async () => {
-      reviewChunk.release();
-      await reviewChunk.arrived;
+      agentsChunk.release();
+      await agentsChunk.arrived;
     });
 
-    expect(await screen.findByText('Review queue detail')).toBeTruthy();
+    expect(await screen.findByText('Agents detail')).toBeTruthy();
     expect(container.querySelector('.route-pending')).toBeNull();
     expect(routeTransitionStore.getSnapshot()).toBeNull();
   });
@@ -487,13 +488,13 @@ describe('the body while a route chunk is in flight (#3660)', () => {
     // `lazy` for the life of the module, so this really is the warm path,
     // and the test still is one when run on its own.
     const warmUp = render(
-      <AppViewContent {...baseProps} currentView={{ type: 'review-queue' }} />,
+      <AppViewContent {...baseProps} currentView={{ type: 'agents' }} />,
     );
     await act(async () => {
-      reviewChunk.release();
-      await reviewChunk.arrived;
+      agentsChunk.release();
+      await agentsChunk.arrived;
     });
-    expect(await screen.findByText('Review queue detail')).toBeTruthy();
+    expect(await screen.findByText('Agents detail')).toBeTruthy();
     warmUp.unmount();
 
     const { container, rerender } = render(
@@ -503,10 +504,10 @@ describe('the body while a route chunk is in flight (#3660)', () => {
     published.length = 0;
 
     rerender(
-      <AppViewContent {...baseProps} currentView={{ type: 'review-queue' }} />,
+      <AppViewContent {...baseProps} currentView={{ type: 'agents' }} />,
     );
 
-    expect(screen.getByText('Review queue detail')).toBeTruthy();
+    expect(screen.getByText('Agents detail')).toBeTruthy();
     expect(visibleText(container)).not.toContain('Installed plugins list');
     // No skeleton flashed. The fallback publishes on mount, so an empty
     // publication log is the same fact as an absent placeholder, observed a
