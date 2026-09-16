@@ -17,9 +17,13 @@
  * at all otherwise, and neither `.app` nor `.app__main` opens a stacking
  * context above them. `index.css` states it in prose. Raise the toolbar past
  * 9349, drop a backdrop, or give an ancestor of the toolbar a stacking context
- * that OUTRANKS 9349, and four consumers silently reacquire #2081's defect —
- * `RegionToolbarControls` worse than the rest, since its `onClick` only ever
- * OPENS, so a reachable trigger there is inert rather than merely re-toggling.
+ * that OUTRANKS 9349, and four consumers silently reacquire #2081's defect.
+ * `RegionToolbarControls` now opens TWO panels, and both are measured: the
+ * folded device's flat Regions menu, which is what is left of the
+ * `ToolbarMenuSurface` backdrop the original ruling was about, and — since
+ * #2155 — #2154's chooser, which every per-region toggle opens on a hold or a
+ * right-click. A reachable trigger under the chooser would take the user's
+ * dismissing press as a show/hide of the very region the panel is about.
  *
  * "Outranks" is load-bearing in that sentence, and #2112's own wording ("give
  * an ancestor of the toolbar a stacking context") is looser than the mechanism.
@@ -135,6 +139,22 @@ vi.mock('../contexts/RegionModelContext', async (importOriginal) => {
     useRegionModel: () => model,
   };
 });
+
+// The chooser a region toggle opens carries the dock's project read
+// (`RegionChooserPanel` → `useDockProject`). No project here: the rows that
+// need one list disabled with the reason, which changes none of the geometry
+// this file measures.
+vi.mock('../contexts/DeviceSettingsContext', () => ({
+  useDeviceSettings: () => ({ chatDockProjectSlug: null }),
+}));
+
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProject: () => ({ project: undefined, isLoading: false }),
+}));
+
+vi.mock('../hooks/useActiveProject', () => ({
+  useActiveProject: () => ({ projectSlug: null }),
+}));
 
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useKeyboardShortcut: () => {},
@@ -270,6 +290,7 @@ function tabMoveChrome(): DockShellChrome {
     selectRegionPane: noop,
     ownsMaximizeShortcut: true,
     applyDockSnap: noop,
+    setRegionOpen: noop,
     commitDesktopBottomHeight: noop,
     commitDockPlacement: noop,
     restoreDockToDocked: noop,
@@ -289,12 +310,20 @@ const HEADER_MENU_CSS_PATH = resolve(
   HERE,
   '../components/header/HeaderMenu.css',
 );
+// #2155: the panel a region toggle opens is #2154's chooser, whose own frame
+// and anchoring live here. Without it the panel has no `position: fixed` and
+// lands in normal flow, where it covers nothing and proves nothing.
+const REGION_CHOOSER_CSS_PATH = resolve(
+  HERE,
+  '../workspace-panes/RegionEmptyChooser.css',
+);
 
 type MenuId =
   | 'overflow'
   | 'profile'
   | 'help'
   | 'region'
+  | 'folded-regions'
   | 'dock-more'
   | 'tab-move'
   | 'bar-move';
@@ -304,7 +333,15 @@ interface Shape {
   readonly name: string;
   readonly menu: MenuId;
   readonly viewport: { width: number; height: number };
-  readonly device: 'phone' | 'desktop';
+  /**
+   * Which chrome this shape's toolbar draws. `tablet` is a COARSE pointer
+   * wide enough to escape the mobile media query (#917): `availablePlacements`
+   * folds it to one dock, so the toolbar renders the folded "Regions" menu —
+   * the surviving `ToolbarMenuSurface` consumer since #2155 moved the
+   * per-region control's panel to the chooser, and a menu this file must
+   * still measure (review M6).
+   */
+  readonly device: 'phone' | 'desktop' | 'tablet';
   /** The backdrop this menu renders, by accessible name. */
   readonly backdropLabel: string;
   /**
@@ -357,16 +394,30 @@ const SHAPES: readonly Shape[] = [
     openerLabel: null,
   },
   {
-    name: 'the header’s empty-region menu on a desktop, where its trigger exists',
+    name: 'the region toggle’s chooser on a desktop, where its trigger exists',
     menu: 'region',
     viewport: DESKTOP,
     device: 'desktop',
-    backdropLabel: 'Close region menu',
+    backdropLabel: 'Close the Add to Left region menu',
     // On a phone `commandsInOverflowMenu` renders no region control at all —
     // the commands move into the ⋯ menu — so this control is desktop-only.
-    // The fixture's `left` region is empty, so its control opens a menu
-    // (#2143); an occupied region's is a toggle and opens nothing.
+    // Since #2155 every region toggle opens #2154's chooser on a hold or a
+    // right-click, whatever the region holds; the fixture opens `left`'s.
     openerLabel: 'Left region',
+  },
+  {
+    // The folded "Regions" menu, and the reason it is a shape of its own
+    // (#2155 review M6): it is the last consumer of `ToolbarMenuSurface`,
+    // whose backdrop is the one the region shape above used to measure. A
+    // coarse pointer at 1180x820 — a tablet in landscape — is the device
+    // that draws it: bottom-only by `availablePlacements`, but too wide for
+    // the mobile query that would move its commands into the `⋯` menu.
+    name: 'the toolbar’s folded Regions menu on a coarse, wide device',
+    menu: 'folded-regions',
+    viewport: { width: 1180, height: 820 },
+    device: 'tablet',
+    backdropLabel: 'Close regions menu',
+    openerLabel: 'Regions',
   },
   {
     // #2143: a tab's move menu, opened from the region bar's strip. Desktop
@@ -413,6 +464,7 @@ function buildFixtureCss(): string {
     resolveCssImports(INDEX_CSS_PATH),
     resolveCssImports(CHAT_CSS_PATH),
     resolveCssImports(HEADER_MENU_CSS_PATH),
+    resolveCssImports(REGION_CHOOSER_CSS_PATH),
   ].join('\n');
   assertNoImportsSurvive(css);
   return css;
@@ -445,7 +497,10 @@ async function renderShellMarkup(
   geometry: TriggerGeometry | null,
 ): Promise<string> {
   harness.isMobile = shape.device === 'phone';
-  harness.bottomOnly = shape.device === 'phone';
+  // Coarse: a phone, and a tablet too. Only the phone matches the mobile
+  // media query, which is what decides whether the region commands move into
+  // the `⋯` menu or stay in the toolbar as the folded control.
+  harness.bottomOnly = shape.device !== 'desktop';
   viewModel.showHelp = geometry !== null && shape.menu === 'help';
   viewModel.showOverflow = geometry !== null && shape.menu === 'overflow';
   viewModel.showProfileMenu = geometry !== null && shape.menu === 'profile';
@@ -537,16 +592,24 @@ async function renderShellMarkup(
       opener.getBoundingClientRect = () => geometry.rect as DOMRect;
       if (shape.menu === 'tab-move') fireEvent.contextMenu(opener);
       else fireEvent.click(opener);
-    } else if (shape.menu === 'region' || shape.menu === 'dock-more') {
+    } else if (
+      shape.menu === 'region' ||
+      shape.menu === 'folded-regions' ||
+      shape.menu === 'dock-more'
+    ) {
       const opener = screen.getByLabelText(shape.openerLabel as string, {
         exact: false,
       });
-      // Both components read the trigger's rect in their own `onClick`. jsdom
-      // reports zeros for it, which would put the panel somewhere no product
-      // state does; pass 1's real measurement is what makes the panel land
-      // where Chromium would actually draw it.
+      // Both components read the trigger's rect at the moment they open.
+      // jsdom reports zeros for it, which would put the panel somewhere no
+      // product state does; pass 1's real measurement is what makes the panel
+      // land where Chromium would actually draw it.
       opener.getBoundingClientRect = () => geometry.rect as DOMRect;
-      fireEvent.click(opener);
+      // A region toggle's CLICK shows or hides the region (#2155); the panel
+      // is behind the hold and its pointer-independent twin, `contextmenu` —
+      // the one a test can dispatch without a 500ms clock.
+      if (shape.menu === 'region') fireEvent.contextMenu(opener);
+      else fireEvent.click(opener);
     }
     // The three header menus are behind `LazyBoundary`, so the portal does not
     // exist on the render that flips their flag. Awaiting the backdrop by name

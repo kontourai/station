@@ -77,7 +77,12 @@
 .app-toolbar__regions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  /* 4px, not 2px (#2155). Three toggles packed at 2px read as one segmented
+     control — three states of one thing — and they are three independent
+     controls, each with its own pressed state. The row can afford it: the
+     fieldset is `flex-shrink: 0` and the toggles grew 2px each, so this
+     block's whole contribution to the row is 10px wider than #2143's. */
+  gap: 4px;
   /* Fixed-size controls: the fieldset must not pack below their sum, or the
      last control lands under the first connection action (#917). At the coarse
      widths where that happened, `.app-toolbar__brand` is the shrinking member
@@ -105,8 +110,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  /* 32px (#2155). The toggles are now the only per-region control in the row
+     and they carry three states rather than two, so the glyph is drawn at its
+     natural 20×16 rather than scaled down to 18×14 inside a 30px box. Still
+     under the 44px touch floor, which the mobile block below supplies where a
+     finger is what presses them. */
+  width: 32px;
+  height: 32px;
   padding: 6px;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -121,11 +131,14 @@
 }
 
 .app-toolbar__region-btn svg {
-  width: 18px;
-  height: 14px;
+  width: 20px;
+  height: 16px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.5;
+  /* 1.75 (#2155): at 20px the 1.5 frame reads thin beside the toolbar's other
+     glyphs, and the hidden-but-holding state paints its edge in outline at
+     this same weight — a stroke that has to carry a state needs to be seen. */
+  stroke-width: 1.75;
 }
 
 /* #1536 F: the folded region control a bottom-only device keeps (one dock, one
@@ -149,6 +162,19 @@
 
 .app-toolbar__region-toggle[aria-pressed="true"]:hover {
   color: var(--accent-primary);
+}
+
+/* #2155's third state: HIDDEN, but the region holds panes — there is
+   something to bring back. Distinct from hidden-and-empty, which #2143 could
+   not tell it from, and distinct from pressed: no background, because the
+   region is not on screen, and the primary text colour instead of the
+   secondary one, because it is not nothing either. The glyph carries the rest
+   (its edge is outlined rather than filled or absent), and both come from the
+   one fact — the toggle's `paneTitles`. There is no `aria-*` attribute for
+   "hidden and holding": `aria-pressed` reports the visibility a press
+   changes, and what the region holds is the tooltip's. */
+.app-toolbar__region-toggle.is-holding {
+  color: var(--text-primary);
 }
 
 /* #1552 D2's per-surface placement picker (`.region-placement*`) was retired

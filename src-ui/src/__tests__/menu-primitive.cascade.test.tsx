@@ -9,7 +9,7 @@
  * the #2113 note at the foot of this block): the dock's placement menu
  * and its More menu (6px radius, 2px padding, 32px rows, no label inset), the
  * header's `⋯` overflow menu (8px radius, no padding, 44px rows, a hairline
- * between EVERY row), the region Layout menu (that surface again, plus ruled
+ * between EVERY row), the folded Regions menu (that surface again, plus ruled
  * `fieldset` groups), the breadcrumb's layout switcher (a 6px radius over
  * `6px 10px` rows with an accent-tinted active row), and the header's help menu,
  * which had no class at all — every rule of it was an inline style, including its own
@@ -306,15 +306,23 @@ const MENUS: readonly {
   open: () => void;
 }[] = [
   {
-    name: 'the header’s empty-region offer menu',
+    // #2143's empty-region OFFER menu, retired by #2155 — the toolbar's
+    // per-region toggles only show and hide now, and what goes in a region is
+    // #2154's chooser, whose two-line rows are not this family's (they carry
+    // no direct label text node, which is what this file measures). The one
+    // panel the toolbar still opens through `ToolbarMenuSurface` is the folded
+    // device's flat Show/Hide menu, under the same `.app-toolbar__region-menu`
+    // class, so the surface this shape has always measured is still measured.
+    name: 'the header’s folded Regions menu',
     selector: '.app-toolbar__region-menu',
-    // Chat and Activity, the shell surfaces declaring `left` (#2143).
+    // Chat (held by `bottom`) and Activity (unplaced): the folded rows.
     rowCount: 2,
     open: () => {
-      harness.bottomOnly = false;
+      // The folded branch, which is the only one that renders this control.
+      harness.bottomOnly = true;
       harness.isMobile = false;
       render(<RegionToolbarControls />);
-      fireEvent.click(screen.getByRole('button', { name: 'Left region' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
     },
   },
   {
@@ -493,6 +501,7 @@ function moveMenuChrome(): DockShellChrome {
     selectRegionPane: noop,
     ownsMaximizeShortcut: true,
     applyDockSnap: noop,
+    setRegionOpen: noop,
     commitDesktopBottomHeight: noop,
     commitDockPlacement: noop,
     restoreDockToDocked: noop,

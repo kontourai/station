@@ -30,6 +30,7 @@ import {
   regionLabel,
   resolveRegionSurface,
 } from '../regions/region-model';
+import { registerRegionVisibilityApplier } from '../regions/region-visibility-appliers';
 import type { DockMode } from '../types';
 import {
   type DockSlotGeometry,
@@ -145,6 +146,19 @@ export interface DockShellChrome {
    */
   ownsMaximizeShortcut: boolean;
   applyDockSnap: (next: DockSnap) => void;
+  /**
+   * Show or hide this shell's region — what the region bar's chevron presses,
+   * and, since #2155, what the toolbar's toggle for the same region presses
+   * too. ONE derivation with two callers rather than a copy each: hiding is
+   * `applyDockSnap('collapsed')` (which records the snap and clears
+   * `maximized`), and showing reopens at the shell's OWN snap, so a region
+   * collapsed from Full comes back Full and one collapsed from Half comes
+   * back Half, whichever control was pressed.
+   *
+   * The toolbar reaches it through `region-visibility-appliers.ts`, which
+   * this hook publishes into for the region it renders.
+   */
+  setRegionOpen: (open: boolean) => void;
   commitDesktopBottomHeight: (height: number) => void;
   commitDockPlacement: (mode: DockMode) => void;
   /**
@@ -494,6 +508,36 @@ export function useDockShellChrome({
     ],
   );
 
+  // The chevron's own expression, named (#2155). `canMaximize` is inlined as
+  // `shellOccupant !== null` because the returned `canMaximize` is derived at
+  // the return statement below; both read the one fact.
+  const setRegionOpen = useCallback(
+    (open: boolean) => {
+      applyDockSnap(
+        !open
+          ? 'collapsed'
+          : shellOccupant !== null && dockSnap === 'full'
+            ? 'full'
+            : 'half',
+      );
+    },
+    [applyDockSnap, dockSnap, shellOccupant],
+  );
+
+  // Published for the toolbar's toggle (#2155), for the region this shell
+  // RENDERS, and only from the ambient per-region host: a fullscreen Chat
+  // pane's local chrome instance reads Chat's region without rendering it
+  // (`publishesDockSlotClearance: false`), and letting it publish would give
+  // one region two appliers whose unmount order decides which survives.
+  const publishesRegionVisibility =
+    publishesDockSlotClearance &&
+    regionModel !== null &&
+    regionId !== undefined;
+  useEffect(() => {
+    if (!publishesRegionVisibility || !regionId) return;
+    return registerRegionVisibilityApplier(regionId, setRegionOpen);
+  }, [publishesRegionVisibility, regionId, setRegionOpen]);
+
   const commitDesktopBottomHeight = useCallback(
     (height: number) => {
       setDockHeight(height);
@@ -811,6 +855,7 @@ export function useDockShellChrome({
     selectRegionPane,
     ownsMaximizeShortcut: registersDockShortcuts,
     applyDockSnap,
+    setRegionOpen,
     commitDesktopBottomHeight,
     commitDockPlacement,
     restoreDockToDocked,

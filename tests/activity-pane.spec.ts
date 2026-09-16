@@ -33,6 +33,7 @@ import {
   expectBoxWithinViewport,
   FIRST_RENDER_TIMEOUT_MS,
   moveLonePaneToRegion,
+  openChooserFromToggle,
   showSurfaceInEmptyRegion,
   surfaceDockShell,
 } from './helpers/region-placement';
@@ -126,8 +127,9 @@ test.describe('Activity surface deep link', () => {
       timeout: FIRST_RENDER_TIMEOUT_MS,
     });
 
-    // The way back from `main` is the empty Right region's own control,
-    // which offers Activity because it declares that region (#2143).
+    // The way back from `main` is the empty Right region: its toolbar toggle
+    // opens the region, and the chooser in its body offers Activity because
+    // it declares that region (#2143, #2154, #2155).
     await showSurfaceInEmptyRegion(page, 'Activity', 'Right');
 
     await expect(
@@ -153,6 +155,53 @@ test.describe('An empty region is a chooser', () => {
    * the way a returning device's is: through the `regionArrangement` device
    * setting, the record the model reads on boot (#2153 pins the shape).
    */
+  /**
+   * #2155: the chooser's other route — a HOLD on the region's toolbar toggle,
+   * which is the only route a coarse pointer has to it.
+   *
+   * THE SECOND HOLD IS THE TEST (review B1). A hold opens the panel from a
+   * timer while the pointer is still DOWN, so the panel's dismiss backdrop is
+   * on screen before the release — and a backdrop that dismissed on any
+   * release would eat the gesture that opened it. On the FIRST hold the lazy
+   * chunk's fetch hides that: the panel arrives late enough that the release
+   * beats it. Once the module registry is warm the backdrop is up within a
+   * frame of the 500ms mark, which is the real ordering and the one this
+   * asserts.
+   */
+  test('a hold on the Right toggle opens the chooser, and again with the module warm', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/, {
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
+    const toggle = page.getByRole('button', {
+      name: 'Right region',
+      exact: true,
+    });
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+    // Cold chunk.
+    const first = await openChooserFromToggle(page, 'Right');
+    await expect(
+      first.getByRole('menuitem', { name: /^Activity/ }),
+    ).toBeVisible();
+    // The hold must not ALSO have toggled the region under its own panel.
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await page.keyboard.press('Escape');
+    await expect(first).toBeHidden();
+
+    // Warm chunk: the panel is up before the release lands.
+    const second = await openChooserFromToggle(page, 'Right');
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await second.getByRole('menuitem', { name: /^Activity/ }).click();
+    await expect(second).toBeHidden();
+    await expect(
+      surfaceDockShell(page, 'Activity'),
+      'choosing through the held-open panel must place Activity in Right',
+    ).toHaveClass(/chat-dock--right/);
+  });
+
   test('a visible empty Right region lists what can go there and places Activity on choice', async ({
     page,
   }) => {
