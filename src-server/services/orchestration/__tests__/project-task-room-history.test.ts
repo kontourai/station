@@ -14,10 +14,15 @@ import {
   executeOwnedProcess,
 } from '../../../../scripts/lib/owned-process.mjs';
 import { EventStore } from '../event-store.js';
+import { createPlannedHomeAdmissionStore } from '../planned-home-admission-store.js';
+import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
 import {
   createProjectTaskRoomHistoryForTest,
   PROJECT_TASK_ROOM_LIMITS,
   type ProjectTaskRoomCapabilityAuthority,
+  type ProjectTaskRoomWriteAdmissionPort,
+  projectTaskRoomChannelId,
+  sqliteLockWaitMs,
 } from '../project-task-room-history.js';
 import { createProjectTaskRoomWorkingState } from '../project-task-room-working-state.js';
 import { SessionExecutionCoordinator } from '../session-execution-coordinator.js';
@@ -47,6 +52,7 @@ const { DatabaseSync } = require('node:sqlite') as {
     prepare(sql: string): {
       run(...args: unknown[]): unknown;
       get(...args: unknown[]): unknown;
+      all(...args: unknown[]): unknown[];
     };
     close(): void;
   };
@@ -372,6 +378,270 @@ describe('ProjectTaskRoomHistory v2', () => {
     if (duplicate.kind === 'duplicate' && afterRestart.kind === 'duplicate')
       expect(afterRestart.receipt).toEqual(duplicate.receipt);
     await restarted.close();
+  });
+
+  describe('controller-backed room write admissions', () => {
+    it('preserves absent-port behavior and passes the port through EventStore composition', async () => {
+      const local = history();
+      await local.open({ grant: grant('discover') });
+      await expect(local.append(message('local-only'))).resolves.toMatchObject({
+        kind: 'committed',
+      });
+      await local.close();
+
+      const path = databasePath();
+      const calls: string[] = [];
+      const observed: unknown[] = [];
+      const orderedCapabilities: ProjectTaskRoomCapabilityAuthority = {
+        async resolve(input) {
+          calls.push('grant');
+          return capabilities.resolve(input);
+        },
+      };
+      const port: ProjectTaskRoomWriteAdmissionPort = {
+        async begin(identity) {
+          calls.push('begin');
+          observed.push(identity);
+          return { kind: 'admitted' };
+        },
+        async finish(input) {
+          calls.push('finish');
+          observed.push(input);
+          return { kind: 'finished' };
+        },
+      };
+      const store = new EventStore(path);
+      const room = store.createProjectTaskRoomHistory({
+        capabilities: orderedCapabilities,
+        roomWriteAdmissions: port,
+      });
+      port.begin = async () => ({ kind: 'denied' });
+      port.finish = async () => ({ kind: 'denied' });
+      await room.open({ grant: grant('discover') });
+      calls.length = 0;
+      await expect(room.append(message('controlled'))).resolves.toMatchObject({
+        kind: 'committed',
+      });
+      expect(calls).toEqual([
+        'grant',
+        'grant',
+        'grant',
+        'grant',
+        'begin',
+        'grant',
+        'finish',
+      ]);
+      expect(observed[0]).toMatchObject({
+        scope,
+        proposalId: 'controlled',
+        intentDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      });
+      expect(observed[1]).toMatchObject({
+        proposalId: 'controlled',
+        receiptDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      });
+      expect(Object.isFrozen(observed[0])).toBe(true);
+      expect(Object.isFrozen((observed[0] as { scope: object }).scope)).toBe(
+        true,
+      );
+      expect(Object.isFrozen(observed[1])).toBe(true);
+      await room.close();
+      expect(store.close()).toEqual({ kind: 'closed' });
+    });
+
+    it.each(['denied', 'unavailable'] as const)(
+      'does not append when begin returns %s',
+      async (kind) => {
+        const room = history(databasePath(), {
+          roomWriteAdmissions: {
+            begin: async () => ({ kind }),
+            finish: vi.fn(async () => ({ kind: 'finished' as const })),
+          },
+        });
+        await room.open({ grant: grant('discover') });
+        await expect(room.append(message(`begin-${kind}`))).resolves.toEqual({
+          kind,
+        });
+        await expect(
+          room.read({ grant: grant('history-read') }),
+        ).resolves.toMatchObject({ kind: 'available', records: [] });
+        await room.close();
+      },
+    );
+
+    it('times out a late begin and rechecks local authority after an admitted begin', async () => {
+      const late = history(databasePath(), {
+        roomWriteAdmissionMs: 10,
+        roomWriteAdmissions: {
+          begin: () =>
+            new Promise((resolve) =>
+              setTimeout(() => resolve({ kind: 'admitted' }), 50),
+            ),
+          finish: vi.fn(async () => ({ kind: 'finished' as const })),
+        },
+      });
+      await late.open({ grant: grant('discover') });
+      await expect(late.append(message('late-begin'))).resolves.toEqual({
+        kind: 'unavailable',
+      });
+      await late.close();
+
+      let revoked = false;
+      const authority: ProjectTaskRoomCapabilityAuthority = {
+        async resolve({ grant: presented, required }) {
+          if (revoked) return { kind: 'revoked' };
+          return capabilities.resolve({ grant: presented, required });
+        },
+      };
+      const room = history(databasePath(), {
+        capabilities: authority,
+        roomWriteAdmissions: {
+          async begin() {
+            revoked = true;
+            return { kind: 'admitted' };
+          },
+          finish: vi.fn(async () => ({ kind: 'finished' as const })),
+        },
+      });
+      await room.open({ grant: grant('discover') });
+      await expect(
+        room.append(message('revoked-after-begin')),
+      ).resolves.toEqual({ kind: 'denied' });
+      revoked = false;
+      await expect(
+        room.read({ grant: grant('history-read') }),
+      ).resolves.toMatchObject({ kind: 'available', records: [] });
+      await room.close();
+    });
+
+    it('settles a durable duplicate after a lost finish acknowledgement', async () => {
+      const path = databasePath();
+      let beginCalls = 0;
+      let finishCalls = 0;
+      let centralFinished = false;
+      let retainedReceiptDigest: string | undefined;
+      const port: ProjectTaskRoomWriteAdmissionPort = {
+        async begin() {
+          beginCalls += 1;
+          return centralFinished ? { kind: 'denied' } : { kind: 'admitted' };
+        },
+        async finish(input) {
+          finishCalls += 1;
+          retainedReceiptDigest ??= input.receiptDigest;
+          expect(input.receiptDigest).toBe(retainedReceiptDigest);
+          centralFinished = true;
+          return finishCalls === 1
+            ? { kind: 'unavailable' }
+            : { kind: 'finished' };
+        },
+      };
+      const room = history(path, { roomWriteAdmissions: port });
+      await room.open({ grant: grant('discover') });
+      await expect(room.append(message('finish-replay'))).resolves.toEqual({
+        kind: 'unavailable',
+      });
+      await room.close();
+      const reopened = history(path, { roomWriteAdmissions: port });
+      await expect(
+        reopened.append(message('finish-replay')),
+      ).resolves.toMatchObject({
+        kind: 'duplicate',
+        receipt: { proposalId: 'finish-replay' },
+      });
+      expect(beginCalls).toBe(1);
+      expect(finishCalls).toBe(2);
+      await reopened.close();
+    });
+
+    it('rejects null and malformed configured ports at construction', () => {
+      expect(() =>
+        history(databasePath(), {
+          roomWriteAdmissions:
+            null as unknown as ProjectTaskRoomWriteAdmissionPort,
+        }),
+      ).toThrow('write admission port is invalid');
+      expect(() =>
+        history(databasePath(), {
+          roomWriteAdmissions: {
+            begin: async () => ({ kind: 'admitted' }),
+          } as unknown as ProjectTaskRoomWriteAdmissionPort,
+        }),
+      ).toThrow('write admission port is invalid');
+    });
+
+    // The worker's frozen five-second request budget terminates the worker
+    // before the delayed post-admission authority check resolves, so the late
+    // grant meets a terminal storage and no identity is recorded. The
+    // `pending.get(id) !== entry` guard in `respond` is not what stops it:
+    // every path that drops a pending entry sets `terminal` or `closed` first,
+    // and the worker serializes requests, so a result never races its own
+    // authorize callback. Removing that guard leaves this test green. The
+    // ~5s cost is the budget itself; `workerResponseMs` is not configurable.
+    it('terminates the worker before a late post-admission grant can record an identity', async () => {
+      let delayPostAdmission = false;
+      const authority: ProjectTaskRoomCapabilityAuthority = {
+        async resolve(input) {
+          if (delayPostAdmission)
+            await new Promise<void>((resolve) => setTimeout(resolve, 5_100));
+          return capabilities.resolve(input);
+        },
+      };
+      const path = databasePath();
+      const room = history(path, {
+        capabilities: authority,
+        roomWriteAdmissions: {
+          async begin() {
+            delayPostAdmission = true;
+            return { kind: 'admitted' };
+          },
+          finish: vi.fn(async () => ({ kind: 'finished' as const })),
+        },
+      });
+      await room.open({ grant: grant('discover') });
+      await expect(room.append(message('late-local-grant'))).resolves.toEqual({
+        kind: 'unavailable',
+      });
+      await new Promise<void>((resolve) => setTimeout(resolve, 200));
+      const database = new DatabaseSync(path);
+      expect(
+        database
+          .prepare(
+            'SELECT count(*) AS count FROM project_task_room_identities WHERE proposal_id=?',
+          )
+          .get('late-local-grant'),
+      ).toEqual({ count: 0 });
+      database.close();
+      await room.close();
+    }, 10_000);
+
+    it('refuses the same proposal identity with a changed intent digest', async () => {
+      let retainedDigest: string | undefined;
+      let beginCalls = 0;
+      const finish = vi.fn(async () => ({ kind: 'finished' as const }));
+      const room = history(databasePath(), {
+        roomWriteAdmissions: {
+          async begin(input) {
+            beginCalls += 1;
+            if (retainedDigest && retainedDigest !== input.intentDigest)
+              return { kind: 'conflict' };
+            retainedDigest = input.intentDigest;
+            return { kind: 'admitted' };
+          },
+          finish,
+        },
+      });
+      await room.open({ grant: grant('discover') });
+      await expect(
+        room.append(message('changed', 'first')),
+      ).resolves.toMatchObject({ kind: 'committed' });
+      await expect(room.append(message('changed', 'second'))).resolves.toEqual({
+        kind: 'rejected',
+        reason: 'idempotency-conflict',
+      });
+      expect(beginCalls).toBe(1);
+      expect(finish).toHaveBeenCalledOnce();
+      await room.close();
+    });
   });
 
   it('returns committed after an injected post-commit fault by exact identity readback', async () => {
@@ -1690,6 +1960,85 @@ it('source seal serializes behind an admitted transaction and closes at its comm
   }
 });
 
+/**
+ * #1531: the lock wait is a derivation of the admission deadline, not a
+ * literal. Pinned as arithmetic so a future edit that shortens the hold an
+ * admitted write may take must also shorten what a competing connection
+ * is willing to wait, and vice versa.
+ */
+it('a competing connection waits at least as long as an admitted write may hold the lock', () => {
+  // Default admission deadline: two bounded phases plus resolver slack.
+  expect(sqliteLockWaitMs(1_000)).toBe(2_250);
+  // The old literal was 175 ms, which is below the floor now.
+  expect(sqliteLockWaitMs(1_000)).toBeGreaterThan(175);
+  // Bounded above by the worker response budget so a contention cannot
+  // become a terminated worker.
+  expect(sqliteLockWaitMs(10_000)).toBe(
+    PROJECT_TASK_ROOM_LIMITS.workerResponseMs - 1_000,
+  );
+  // A test adapter with a tiny admission deadline still keeps a floor.
+  expect(sqliteLockWaitMs(10)).toBe(270);
+  expect(sqliteLockWaitMs(1)).toBeGreaterThanOrEqual(250);
+});
+
+/**
+ * #1531, the nightly's actual failure: an admitted append holds
+ * `BEGIN IMMEDIATE` across its authorization round trip, and the seal that
+ * must serialize behind it used to give up after 175 ms and report the room
+ * `unavailable`. On a loaded runner the round trip alone outran that. The
+ * hold here is longer than the old wait and shorter than the derived one, so
+ * this reddens on the literal and passes on the derivation.
+ */
+it('the seal waits through an admitted write that holds the lock past the old 175 ms wait', async () => {
+  const path = databasePath();
+  let entered!: () => void;
+  let release!: () => void;
+  const atCommit = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const proceed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let checks = 0;
+  const source = history(path, {
+    capabilities: {
+      resolve: async (input) => {
+        if (input.required === 'message-write' && ++checks === 3) {
+          entered();
+          await proceed;
+        }
+        return capabilities.resolve(input);
+      },
+    },
+  });
+  const sealer = history(path);
+  try {
+    await source.open({ grant: grant('discover') });
+    await sealer.open({ grant: grant('discover') });
+    const append = source.append(message('held-past-old-wait'));
+    await atCommit;
+    const sealing = sealer.sealSource({
+      grant: grant('home-transfer'),
+      ...sealIntent,
+    });
+    // Hold the admitted write's lock for longer than the retired literal
+    // and well inside what the derivation is willing to wait.
+    await new Promise<void>((resolve) => setTimeout(resolve, 600));
+    release();
+    const committed = await append;
+    expect(committed.kind).toBe('committed');
+    if (committed.kind !== 'committed') throw new Error('Expected real commit');
+    expect(await sealing).toMatchObject({
+      kind: 'sealed',
+      seal: { checkpoint: committed.receipt.checkpoint },
+    });
+  } finally {
+    release();
+    await source.close();
+    await sealer.close();
+  }
+});
+
 it('dispatch binding yields while a room worker awaits main-thread authorization', async () => {
   const events = new EventStore(databasePath());
   let calls = 0;
@@ -2086,5 +2435,126 @@ it('does not invent document integrity evidence for an older source seal', async
     });
   } finally {
     await source.close();
+  }
+});
+
+it('holds real controller ownership until a durable room receipt settles after restart', async () => {
+  const database = new DatabaseSync(databasePath());
+  database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL');
+  const transfers = createSqlitePlannedHomeTransferStore(database);
+  const admissions = createPlannedHomeAdmissionStore(database, () => true);
+  const owner = {
+    tenantId: 'personal-controller:test',
+    channelId: projectTaskRoomChannelId(scope),
+    homeRef: 'paired:source',
+    policyRevision: 'policy-1',
+    revision: 0,
+  };
+  expect(transfers.initialize(owner).kind).toBe('stored');
+  let acknowledgeReceipt = false;
+  let beginCalls = 0;
+  // Trusted fixture composition only; production needs a separate control session.
+  const identity = (
+    input: Parameters<ProjectTaskRoomWriteAdmissionPort['begin']>[0],
+  ) => ({
+    tenantId: owner.tenantId,
+    channelId: input.channelId,
+    admissionId: input.proposalId,
+    ownerRevision: owner.revision,
+    homeRef: owner.homeRef,
+    kind: 'room-write' as const,
+    intentDigest: input.intentDigest,
+  });
+  const port: ProjectTaskRoomWriteAdmissionPort = {
+    async begin(input) {
+      beginCalls += 1;
+      const result = admissions.begin(identity(input));
+      return result.kind === 'stored' && result.value.state === 'unresolved'
+        ? { kind: 'admitted' }
+        : { kind: 'denied' };
+    },
+    async finish(input) {
+      if (!acknowledgeReceipt) return { kind: 'unavailable' };
+      const result = admissions.finish({
+        ...identity(input),
+        receiptDigest: input.receiptDigest,
+      });
+      return result.kind === 'stored' && result.value.state === 'finished'
+        ? { kind: 'finished' }
+        : { kind: 'unavailable' };
+    },
+  };
+  const path = databasePath();
+  let room = history(path, { roomWriteAdmissions: port });
+  try {
+    await room.open({ grant: grant('discover') });
+    expect(await room.append(message('durable-write'))).toEqual({
+      kind: 'unavailable',
+    });
+    const intent = {
+      tenantId: owner.tenantId,
+      channelId: owner.channelId,
+      operationId: 'move',
+      sourceHomeRef: owner.homeRef,
+      targetHomeRef: 'paired:target',
+      policyRevision: owner.policyRevision,
+      expectedRevision: owner.revision,
+    };
+    expect(transfers.prepare(intent).kind).toBe('stored');
+    expect(await room.append(message('after-prepare'))).toEqual({
+      kind: 'denied',
+    });
+    const sealed = await room.sealSource({
+      grant: grant('home-transfer'),
+      operationId: intent.operationId,
+      sourceHomeRef: intent.sourceHomeRef,
+      targetHomeRef: intent.targetHomeRef,
+    });
+    expect(sealed.kind).toBe('sealed');
+    if (sealed.kind !== 'sealed') throw new Error('Missing actual source seal');
+    const closed = transfers.recordClosure(
+      owner.tenantId,
+      intent.operationId,
+      sealed.seal,
+    );
+    if (closed.kind !== 'stored' || !closed.value.closureDigest)
+      throw new Error('Missing closure');
+    expect(
+      transfers.recordReady(
+        owner.tenantId,
+        intent.operationId,
+        intent.targetHomeRef,
+        closed.value.closureDigest,
+      ).kind,
+    ).toBe('stored');
+    expect(transfers.commit(owner.tenantId, intent.operationId)).toEqual({
+      kind: 'admission-pending',
+    });
+    await room.close();
+    room = history(path, { roomWriteAdmissions: port });
+    acknowledgeReceipt = true;
+    const attemptsBeforeReplay = beginCalls;
+    expect(await room.append(message('durable-write'))).toMatchObject({
+      kind: 'duplicate',
+    });
+    expect(beginCalls).toBe(attemptsBeforeReplay);
+    expect(transfers.commit(owner.tenantId, intent.operationId)).toMatchObject({
+      kind: 'stored',
+      value: { phase: 'committed' },
+    });
+    expect(await room.append(message('old-source-after-transfer'))).toEqual({
+      kind: 'denied',
+    });
+    const contents = await room.read({ grant: grant('history-read') });
+    expect(contents).toMatchObject({
+      kind: 'available',
+      records: expect.arrayContaining([expect.any(Object)]),
+    });
+    if (contents.kind !== 'available')
+      throw new Error('Missing durable room history');
+    expect(contents.records).toHaveLength(1);
+  } finally {
+    await room.close();
+    database.close();
   }
 });

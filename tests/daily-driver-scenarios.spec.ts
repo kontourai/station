@@ -824,19 +824,19 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
       }
 
       const transcript = transcriptLocator(page);
-      const paged = await pageEarlierBeyondCap(page, maxMountedRows);
-      const loadedRows = paged.loadedRows;
-      maxMountedRows = paged.maxMountedRows;
 
-      expect(
-        loadedRows,
-        `transcript-stability (${path.profile}): the restored transcript must hold more rows than the ${MOUNTED_ROW_CAP}-row mounted budget, or the budget assertion proves nothing; loaded ${loadedRows}`,
-      ).toBeGreaterThan(MOUNTED_ROW_CAP);
-      expect(
-        maxMountedRows,
-        `transcript-stability (${path.profile}): mounted transcript rows must stay at or under the documented ${MOUNTED_ROW_CAP}-row budget for a 10,000-turn restore; observed ${maxMountedRows} mounted of ${loadedRows} loaded`,
-      ).toBeLessThanOrEqual(MOUNTED_ROW_CAP);
-
+      // #2111: these two are claims about the RESTORE, so they are measured on
+      // the restored transcript — before `pageEarlierBeyondCap` walks the
+      // reader backwards through it.
+      //
+      // They used to run after that walk and failed deterministically,
+      // reporting `{"prompt":-1,"reply":-1}`: "Earlier messages" prepends
+      // older rows and leaves the reader among them, which is what the control
+      // is for, and a mounted-row budget then evicts the tail. Measured here:
+      // before paging `hasTail: true` at `tailDistance: 0`; after 40 pages,
+      // `hasTail: false` at `tailDistance: 21611`. So the old placement asked
+      // the transcript to have paged earlier and still be showing its tail,
+      // and a red there named neither of the things this test is about.
       const order = await transcript.evaluate((element, marker) => {
         const text = element.textContent ?? '';
         return {
@@ -858,6 +858,22 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
           element.scrollHeight - element.scrollTop - element.clientHeight,
       );
       const tailBound = tailDistance <= 400;
+
+      // Paging earlier exists only to prove the loaded row count outgrows the
+      // mounted budget; without it the budget assertion below compares two
+      // numbers that were never in tension.
+      const paged = await pageEarlierBeyondCap(page, maxMountedRows);
+      const loadedRows = paged.loadedRows;
+      maxMountedRows = paged.maxMountedRows;
+
+      expect(
+        loadedRows,
+        `transcript-stability (${path.profile}): the restored transcript must hold more rows than the ${MOUNTED_ROW_CAP}-row mounted budget, or the budget assertion proves nothing; loaded ${loadedRows}`,
+      ).toBeGreaterThan(MOUNTED_ROW_CAP);
+      expect(
+        maxMountedRows,
+        `transcript-stability (${path.profile}): mounted transcript rows must stay at or under the documented ${MOUNTED_ROW_CAP}-row budget for a 10,000-turn restore; observed ${maxMountedRows} mounted of ${loadedRows} loaded`,
+      ).toBeLessThanOrEqual(MOUNTED_ROW_CAP);
 
       await attachScenarioObservation(
         testInfo,

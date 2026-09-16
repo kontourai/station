@@ -2,6 +2,10 @@ import {
   type ApprovalMode,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
+import {
+  EXECUTION_MODE,
+  type ExecutionMode,
+} from '@kontourai/station-contracts/tool';
 
 export type { ApprovalMode } from '@kontourai/station-contracts/provider';
 
@@ -137,6 +141,7 @@ export function approvalModeChipLabel(mode: ApprovalMode): string {
 type ApprovalModeSource =
   | 'session override'
   | 'connection default'
+  | 'station default'
   | 'adapter default';
 
 interface EffectiveApprovalMode {
@@ -147,8 +152,9 @@ interface EffectiveApprovalMode {
 
 /**
  * The effective approval mode for a session, in priority order: a concrete
- * session override, then the engine connection's configured default,
- * then the adapter's own built-in default. `'connection-default'` is only
+ * session override, then the engine connection's configured default, then
+ * this Station's `AppConfig.defaultApprovalMode` (#2144 slice 6), then the
+ * adapter's own built-in default. `'connection-default'` is only
  * ever a *selectable* value meaning "clear my override" — it is never
  * itself displayed as a resolved posture when a concrete adapter default
  * is known (archive#727).
@@ -161,10 +167,17 @@ export function resolveEffectiveApprovalMode({
   engineConnectionId,
   sessionOverride,
   connectionDefault,
+  stationDefault,
 }: {
   engineConnectionId?: string | null;
   sessionOverride?: unknown;
   connectionDefault?: unknown;
+  /**
+   * This Station's `AppConfig.defaultApprovalMode`. Applies only to an
+   * engine whose adapter reads the knob at all — passing it for any other
+   * engine would report a posture nothing enforces.
+   */
+  stationDefault?: unknown;
 }): EffectiveApprovalMode {
   const override = isApprovalMode(sessionOverride)
     ? sessionOverride
@@ -190,6 +203,25 @@ export function resolveEffectiveApprovalMode({
     };
   }
 
+  // #2144 slice 6. Gated on `approvalModeKnobSupported`: an engine whose
+  // adapter never reads `approvalMode` would otherwise display a Station
+  // posture as its resolved one, which is a claim nothing applies. The
+  // Settings row's own copy says so too, but the gate is here because this
+  // is what every surface reads.
+  const stationDefaultMode =
+    approvalModeKnobSupported(engineConnectionId) &&
+    isApprovalMode(stationDefault) &&
+    stationDefault !== 'connection-default'
+      ? stationDefault
+      : undefined;
+  if (stationDefaultMode) {
+    return {
+      mode: stationDefaultMode,
+      label: `${approvalModeLabel(stationDefaultMode)} — default`,
+      source: 'station default',
+    };
+  }
+
   const adapterDefault = adapterDefaultApprovalMode(engineConnectionId);
   if (adapterDefault) {
     return {
@@ -207,4 +239,62 @@ export function resolveEffectiveApprovalMode({
     label: approvalModeLabel('connection-default'),
     source: 'adapter default',
   };
+}
+
+/**
+ * The approval mode this send must put ON THE WIRE, or `undefined` for "send
+ * nothing and let the engine keep whatever it already does".
+ *
+ * `resolveEffectiveApprovalMode` answers what to DISPLAY. This answers what
+ * to ENFORCE, and the two have to agree or the chip narrates a posture
+ * nothing applies (#2144 slice 6 fix round 1: both the Station default and
+ * the connection default were display-only — the only value that reached
+ * `modelOptions.approvalMode`, which is the single thing the server reads
+ * (`readApprovalMode`, provider.ts), was the session override).
+ *
+ * Returns `undefined` when:
+ * - the engine's adapter has no approval knob (`approvalModeKnobSupported`) —
+ *   sending a posture there would be a request nothing can honour;
+ * - the chat does not run in `external` execution mode. A provider-managed
+ *   Station-mode chat keeps a knob-capable `agentConnectionId` (its model
+ *   provider), and `ChatInputArea` renders no approval control for it, so a
+ *   posture on the wire would be one no surface offered (round 2 M2);
+ * - this chat's session is LIVE (`chatSessionIsLive`, utils/execution.ts —
+ *   round 3 F1 replaced "an id exists" with a liveness derivation, because a
+ *   `currentSessionId` outlives its session and a reopened conversation is
+ *   marked started while merely continuable). The default is the posture a
+ *   session STARTS in: re-requesting it on a warm session would let a
+ *   mid-life edit of the Station setting reconfigure a running chat, and
+ *   Claude refuses an escalation to `'never'` on a session that was not
+ *   spawned with its bypass flag — with a `runtime.warning` banner on every
+ *   later turn (claude-adapter.ts). A session override is the only thing
+ *   that may change a live session's posture, and it travels on its own
+ *   (round 2 M3). The queued-follow-up drain (`queueDrain.ts`) passes no
+ *   fallback at all and is deliberately left that way: a queued message is
+ *   never the message that starts a session;
+ * - the resolution came from that session override, which the dispatcher
+ *   already carries in `requestedProviderOptions`;
+ * - nothing concrete resolved (`'connection-default'`), which is Station
+ *   deliberately stating no posture.
+ */
+export function approvalModeForDispatch(input: {
+  engineConnectionId?: string | null;
+  /** The chat's execution mode; only `external` reaches an engine adapter. */
+  executionMode?: ExecutionMode;
+  /**
+   * Whether this chat already has a live orchestration session. `true`
+   * suppresses the fold entirely — see above.
+   */
+  sessionAlreadyStarted?: boolean;
+  sessionOverride?: unknown;
+  connectionDefault?: unknown;
+  stationDefault?: unknown;
+}): ApprovalMode | undefined {
+  if (input.executionMode !== EXECUTION_MODE.EXTERNAL) return undefined;
+  if (input.sessionAlreadyStarted) return undefined;
+  if (!approvalModeKnobSupported(input.engineConnectionId)) return undefined;
+  const resolved = resolveEffectiveApprovalMode(input);
+  if (resolved.source === 'session override') return undefined;
+  if (resolved.mode === 'connection-default') return undefined;
+  return resolved.mode;
 }

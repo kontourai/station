@@ -183,6 +183,7 @@ import {
   type ProjectTaskRoomCapabilityAuthority,
   type ProjectTaskRoomHistory,
   type ProjectTaskRoomLinkAuthority,
+  type ProjectTaskRoomWriteAdmissionPort,
 } from './project-task-room-history.js';
 import {
   bindProjectTaskRoomExecution,
@@ -2273,6 +2274,7 @@ export class EventStore {
     capabilities: ProjectTaskRoomCapabilityAuthority;
     links?: ProjectTaskRoomLinkAuthority;
     agents?: ProjectTaskRoomAgentGrantAuthority;
+    roomWriteAdmissions?: ProjectTaskRoomWriteAdmissionPort;
     /** Test-only response-loss seam for sequential-instance recovery proof. */
     unavailableAfterCommitOnce?: boolean;
   }): ProjectTaskRoomHistory {

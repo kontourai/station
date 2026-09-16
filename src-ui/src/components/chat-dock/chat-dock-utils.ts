@@ -49,6 +49,38 @@ export function shouldOpenDockForFirstRun(): boolean {
   }
 }
 
+/**
+ * What the first-run nudge should do this render (#2151). Pure, so the
+ * decision is testable without mounting the dock; `ChatDock` applies it.
+ *
+ * - `wait`: the inbox read is still pending. Nothing is consumed -- the
+ *   one-shot flag stays unset so a slow first fetch still nudges once it
+ *   settles.
+ * - `skip`: the nudge has already happened, this is a fullscreen placement,
+ *   or the read failed. A failed read leaves the dock where it is rather
+ *   than guessing.
+ * - `settle`: the inbox is known and EMPTY. The flag is consumed and the
+ *   dock is left collapsed -- opening it spent a third of the screen on two
+ *   empties side by side, and the collapsed bar keeps the entry point.
+ * - `open`: the inbox is known and holds something. The flag is consumed
+ *   and the dock opens.
+ *
+ * This only ever moves the dock TOWARD open: a dock the user opened
+ * (`dock=open`) is never closed here.
+ */
+export function firstRunDockNudge(input: {
+  isFullscreenPlacement: boolean;
+  sessionsStatus: 'pending' | 'success' | 'error';
+  sessionCount: number;
+  firstRunPending: boolean;
+}): 'wait' | 'skip' | 'settle' | 'open' {
+  if (input.isFullscreenPlacement) return 'skip';
+  if (input.sessionsStatus === 'pending') return 'wait';
+  if (!input.firstRunPending) return 'skip';
+  if (input.sessionsStatus !== 'success') return 'skip';
+  return input.sessionCount > 0 ? 'open' : 'settle';
+}
+
 export function markDockFirstRunSeen(): void {
   if (typeof window === 'undefined') return;
   try {

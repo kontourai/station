@@ -305,7 +305,7 @@
 }
 
 .branch-toolbar__error {
-  color: var(--color-danger, #d33);
+  color: var(--error-text);
   font-size: var(--text-sm);
   flex-basis: 100%;
 }

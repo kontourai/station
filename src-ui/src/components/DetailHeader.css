@@ -141,17 +141,17 @@
 }
 
 .detail-header__badge--success {
-  background: rgba(52, 211, 153, 0.12);
-  color: #34d399;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .detail-header__badge--warning {
-  background: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .detail-header__badge--info {
-  background: rgba(74, 158, 255, 0.1);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
   color: var(--accent-primary);
 }
 

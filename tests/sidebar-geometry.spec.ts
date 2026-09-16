@@ -1,101 +1,143 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 import {
   dismissSetupLauncher,
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
 
-// Chevron centering (archive#1629): the chevron's containing block used to be
-// `.sidebar__project-row`, which also held the Chats pill and the expanded
-// `.sidebar__layouts` list as siblings — either one inflated the row's height
-// and pushed the chevron (`position: absolute; top: 50%`) off-center from the
-// project button it belongs to. The fix scopes the chevron's containing block
-// to a new `.sidebar__project-row-main` wrapper around only the button +
-// chevron. jsdom cannot compute real layout, so this positioning claim can
-// only be proven here, in a real browser, via getBoundingClientRect() reads.
-const PROJECT_BTN = '.sidebar__project-row-main .sidebar__project-btn';
-const CHEVRON = '.sidebar__project-row-main .sidebar__chevron';
+// #2063 replaced the nested layout tree with a chip row and retired the
+// expand/collapse chevron with it. The chevron-centering tests archive#1629
+// left here went with the control they measured; what replaces them are the
+// claims a chip row makes that jsdom cannot answer — chips WRAP rather than
+// widen the rail, arrow keys really move focus in a browser, and each chip
+// reaches the 44px touch floor in the phone drawer.
 const CENTER_TOLERANCE_PX = 2;
+const CHIP_ROW = '.sidebar__layout-chips';
+const CHIP = '.sidebar__layout-chips .sidebar__layout-chip';
 
-async function chevronOffsetFromButtonCenter(
-  page: import('@playwright/test').Page,
-) {
-  const chevronBox = await page.locator(CHEVRON).boundingBox();
-  const btnBox = await page.locator(PROJECT_BTN).boundingBox();
-  if (!chevronBox || !btnBox) {
-    throw new Error('sidebar project row did not render a bounding box');
-  }
-  const chevronCenter = chevronBox.y + chevronBox.height / 2;
-  const btnCenter = btnBox.y + btnBox.height / 2;
-  return Math.abs(chevronCenter - btnCenter);
+/**
+ * Enough layouts, with real-length names, that a ~250px rail cannot hold them
+ * on one line. Registered after `seedOrchestrationRoutes` so it wins: a later
+ * `page.route` handles before an earlier one.
+ */
+async function seedManyLayouts(page: Page) {
+  const layouts = [
+    { slug: 'code', name: 'Coding', type: 'coding' },
+    { slug: 'tasks', name: 'Tasks', type: 'tasks' },
+    { slug: 'chat', name: 'Chat', type: 'chat' },
+    { slug: 'knowledge', name: 'Knowledge', type: 'custom' },
+    { slug: 'release-review', name: 'Release review', type: 'custom' },
+  ].map((layout, index) => ({
+    id: `l${index}`,
+    projectSlug: 'dev',
+    icon: '🧩',
+    ...layout,
+  }));
+  await page.route('**/api/projects/dev/layouts', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, data: layouts }),
+    }),
+  );
 }
 
-test.describe('Sidebar chevron and header lockup geometry (#1629)', () => {
+async function openDevProject(page: Page) {
+  await seedManyLayouts(page);
+  // The chips belong to the SELECTED project, so the route is what puts them
+  // on screen — there is no expand control to click any more.
+  await page.goto('/projects/dev');
+  await dismissSetupLauncher(page);
+  await expect(page.locator(CHIP).first()).toBeVisible();
+}
+
+test.describe('Sidebar layout chips and header lockup geometry (#2063)', () => {
   test.beforeEach(async ({ page }) => {
     await seedOrchestrationRoutes(page);
   });
 
-  test('chevron centers on the project button in the default (non-expanded) row', async ({
+  test('chips wrap inside the rail instead of widening or overflowing it', async ({
     page,
   }) => {
-    // A route with no active project keeps the "Dev" row's `expanded` state
-    // at its default (false) — proving the collapsed-by-default case
-    // separately from the expanded case below.
-    await page.goto('/agents');
-    await dismissSetupLauncher(page);
+    await openDevProject(page);
 
-    const chevron = page.locator(CHEVRON);
-    await expect(chevron).toBeVisible();
-    await expect(chevron).not.toHaveClass(/sidebar__chevron--open/);
+    const row = await page.locator(CHIP_ROW).boundingBox();
+    const boxes = await page.locator(CHIP).evaluateAll((elements) =>
+      elements.map((element) => {
+        const rect = element.getBoundingClientRect();
+        return { top: rect.top, right: rect.right, left: rect.left };
+      }),
+    );
+    if (!row) throw new Error('the chip row did not render a bounding box');
+    expect(boxes.length).toBe(5);
 
-    expect(await chevronOffsetFromButtonCenter(page)).toBeLessThanOrEqual(
-      CENTER_TOLERANCE_PX,
+    // Not vacuous as a wrap claim: five chips this wide cannot fit one line,
+    // so more than one distinct top means the row really wrapped.
+    expect(
+      new Set(boxes.map((box) => Math.round(box.top))).size,
+    ).toBeGreaterThan(1);
+    for (const box of boxes) {
+      expect(box.right).toBeLessThanOrEqual(row.x + row.width + 1);
+      expect(box.left).toBeGreaterThanOrEqual(row.x - 1);
+    }
+
+    // And the rail itself did not grow to accommodate them.
+    const sidebar = await page.locator('.sidebar').boundingBox();
+    if (!sidebar) throw new Error('the sidebar did not render a bounding box');
+    expect(row.x + row.width).toBeLessThanOrEqual(
+      sidebar.x + sidebar.width + 1,
     );
   });
 
-  test('chevron still centers on the project button when the row is expanded to show layouts', async ({
+  test('the chip row is one tab stop whose arrow keys move focus between chips', async ({
     page,
   }) => {
-    await page.goto('/agents');
-    await dismissSetupLauncher(page);
+    await openDevProject(page);
 
-    await page.getByRole('button', { name: 'Expand Dev layouts' }).click();
-    await expect(page.locator('.sidebar__layouts')).toBeVisible();
-    await expect(
-      page.locator('.sidebar__layouts .sidebar__layout-btn').first(),
-    ).toBeVisible();
+    const names = async () =>
+      page.locator(CHIP).evaluateAll((elements) =>
+        elements.map((element) => ({
+          text: element.textContent,
+          tabIndex: (element as HTMLElement).tabIndex,
+        })),
+      );
 
-    expect(await chevronOffsetFromButtonCenter(page)).toBeLessThanOrEqual(
-      CENTER_TOLERANCE_PX,
+    // One tab stop: a keyboard reader passes the whole row in one Tab, rather
+    // than the one-Tab-per-layout the nested tree charged.
+    expect((await names()).filter((chip) => chip.tabIndex === 0).length).toBe(
+      1,
+    );
+
+    await page.locator(CHIP).first().focus();
+    const focused = () =>
+      page.evaluate(() => document.activeElement?.textContent ?? null);
+    expect(await focused()).toBe('Coding');
+
+    await page.keyboard.press('ArrowRight');
+    expect(await focused()).toBe('Tasks');
+    await page.keyboard.press('ArrowRight');
+    expect(await focused()).toBe('Chat');
+    await page.keyboard.press('ArrowLeft');
+    expect(await focused()).toBe('Tasks');
+    await page.keyboard.press('End');
+    expect(await focused()).toBe('Release review');
+    await page.keyboard.press('Home');
+    expect(await focused()).toBe('Coding');
+
+    // The tab stop followed the focus, so Tab re-enters where the reader left.
+    expect((await names()).filter((chip) => chip.tabIndex === 0).length).toBe(
+      1,
     );
   });
 
-  test('chevron centering holds on the mobile sheet in both default and expanded states', async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/agents');
-    await dismissSetupLauncher(page);
-
-    await page.getByRole('button', { name: 'Toggle menu' }).click();
-    await expect(page.locator(CHEVRON)).toBeVisible();
-
-    expect(await chevronOffsetFromButtonCenter(page)).toBeLessThanOrEqual(
-      CENTER_TOLERANCE_PX,
-    );
-
-    await page.getByRole('button', { name: 'Expand Dev layouts' }).click();
-    await expect(page.locator('.sidebar__layouts')).toBeVisible();
-
-    expect(await chevronOffsetFromButtonCenter(page)).toBeLessThanOrEqual(
-      CENTER_TOLERANCE_PX,
-    );
-  });
+  // The phone drawer's own chip geometry — the 44px floor and the wrap that
+  // keeps it from widening the drawer — is swept against a REAL seeded project
+  // in `mobile-surface-sweep.spec.ts`, beside the other phone floors.
 
   test('keeps the collapsed-rail project accent stripe anchored after the row-main wrapper', async ({
     page,
   }) => {
-    // Plan stop-short risk (archive#1629): the new `.sidebar__project-row-main`
-    // wrapper becomes the nearest `position: relative` ancestor for the
+    // Plan stop-short risk (archive#1629): the `.sidebar__project-row-main`
+    // wrapper is the nearest `position: relative` ancestor for the
     // collapsed-rail accent stripe (`.sidebar--collapsed
     // .sidebar__project-accent { position: absolute; left: 2px; }`) instead
     // of `.sidebar__project-row` itself. Neither wrapper carries

@@ -40,8 +40,14 @@ const highlightCode = vi.fn((code: string, lang: string) =>
 );
 vi.mock('../highlight/highlight-client', () => ({ highlightCode }));
 
+// `MarkdownRenderer` renders chat anchors through `ChatMarkdownAnchor`
+// (#2049), whose region-model import reaches `DeviceSettingsContext`, which
+// calls `setHapticsUserEnabled` at module load. Both exports must exist on the
+// double or the renderer fails to import and every case below reds for a
+// reason unrelated to highlighting.
 vi.mock('../platform/native/haptics', () => ({
   triggerHaptic: () => {},
+  setHapticsUserEnabled: () => {},
 }));
 
 /**

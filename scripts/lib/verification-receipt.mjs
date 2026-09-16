@@ -584,3 +584,42 @@ export function assertReceiptSemantics(receipt) {
   }
   return receipt;
 }
+
+/**
+ * The text a receipt should carry for a thrown value, losing neither the
+ * message nor the stack.
+ *
+ * WHY `error.stack` ALONE IS NOT SAFE. A stack is conventionally
+ * `${name}: ${message}` followed by frames, which is why preferring it reads as
+ * strictly more information. Vitest breaks that convention for the one failure
+ * a receipt most needs to name. `makeTimeoutError`
+ * (`@vitest/runner`) builds a fresh `Error` carrying
+ * `Test timed out in 30000ms.` and then overwrites its stack with a DONOR
+ * stack captured at the test's definition site, so the frames point at the
+ * right source line:
+ *
+ *   error.stack = stackTraceError.stack.replace(error.message, stackTraceError.message)
+ *
+ * That `.replace()` is a no-op — it searches the DONOR's stack for the TIMEOUT
+ * message, which was never in it — so the donor's own headline survives intact
+ * and `error.stack` begins `Error: STACK_TRACE_ERROR`. The duration, the word
+ * "timed out", and the distinction between a test and a hook live ONLY in
+ * `.message`. A consumer preferring `.stack` therefore records an unreadable
+ * placeholder for a real, actionable, perfectly well-formed timeout, and the
+ * reader has no way back to what happened. Vitest's own default reporter
+ * prints `.message` and is unaffected, which is why this survived: the terminal
+ * was honest while the receipt was not.
+ *
+ * So: emit the stack when it already carries the message (the ordinary case,
+ * with no duplication), emit the message when there is no stack, and emit BOTH
+ * when they disagree — which is exactly the vitest-timeout case and any other
+ * error whose stack was reassigned from a donor.
+ */
+export function receiptErrorText(error) {
+  if (error === null || typeof error !== 'object') return String(error);
+  const message = typeof error.message === 'string' ? error.message : '';
+  const stack = typeof error.stack === 'string' ? error.stack : '';
+  if (stack === '') return message === '' ? String(error) : message;
+  if (message === '' || stack.includes(message)) return stack;
+  return `${message}\n${stack}`;
+}

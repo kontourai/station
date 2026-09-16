@@ -46,6 +46,61 @@ export const PROJECT_TASK_ROOM_LIMITS = Object.freeze({
   maxIdentities: 50_000,
   workerResponseMs: 5_000,
 });
+const ROOM_WRITE_ADMISSION_MS = 1_000;
+
+/**
+ * How long the room worker waits for SQLite's write lock before a request
+ * reads as `unavailable` (#1531).
+ *
+ * An admitted write holds `BEGIN IMMEDIATE` across a main-thread round trip:
+ * the authorize phase, then the admit-new-write phase whose controller call
+ * is bounded by `roomWriteAdmissionMs`. A second connection -- a seal from a
+ * home transfer, a peer append -- that must "serialize behind an admitted
+ * transaction" therefore has to be willing to wait at least as long as that
+ * hold can legitimately last. The worker used to open with a fixed 175 ms,
+ * a number related to nothing; under runner load the authorization round
+ * trip alone outran it, the seal's `BEGIN IMMEDIATE` threw, and the catch
+ * reported the room `unavailable` while its history was fine.
+ *
+ * Two phases plus slack for the resolver hops between them, capped so the
+ * wait plus the request's own work stays inside the worker response budget
+ * -- a worker that answers nothing for `workerResponseMs` is terminated,
+ * and a lock wait that consumed that whole budget would turn every
+ * contention into a dead worker.
+ */
+const SQLITE_LOCK_WAIT_SLACK_MS = 250;
+export function sqliteLockWaitMs(
+  roomWriteAdmissionMs: number,
+  workerResponseMs: number = PROJECT_TASK_ROOM_LIMITS.workerResponseMs,
+): number {
+  const admissionHold = 2 * roomWriteAdmissionMs + SQLITE_LOCK_WAIT_SLACK_MS;
+  const ceiling = workerResponseMs - 4 * SQLITE_LOCK_WAIT_SLACK_MS;
+  return Math.max(SQLITE_LOCK_WAIT_SLACK_MS, Math.min(admissionHold, ceiling));
+}
+
+export interface ProjectTaskRoomWriteAdmissionIdentity {
+  readonly scope: ProjectTaskRoomScope;
+  readonly channelId: string;
+  readonly proposalId: string;
+  readonly intentDigest: string;
+}
+
+export interface ProjectTaskRoomWriteAdmissionPort {
+  begin(
+    identity: ProjectTaskRoomWriteAdmissionIdentity,
+  ): Promise<
+    | { readonly kind: 'admitted' }
+    | { readonly kind: 'conflict' | 'denied' | 'unavailable' }
+  >;
+  finish(
+    input: ProjectTaskRoomWriteAdmissionIdentity & {
+      readonly receiptDigest: string;
+    },
+  ): Promise<
+    | { readonly kind: 'finished' }
+    | { readonly kind: 'conflict' | 'denied' | 'unavailable' }
+  >;
+}
 
 interface ProjectTaskRoomCapabilityReceipt {
   receiptId: string;
@@ -88,10 +143,14 @@ export interface ProjectTaskRoomAgentGrantAuthority {
 interface StorageAdapter {
   request(
     value: unknown,
-    beforeCommit?: () => Promise<boolean>,
+    beforeCommit?: (
+      phase: StorageCommitPhase,
+    ) => Promise<StorageCommitDisposition>,
   ): Promise<unknown>;
   close(): Promise<ProjectTaskRoomCloseOutcome>;
 }
+type StorageCommitPhase = 'authorize' | 'admit-new-write';
+type StorageCommitDisposition = 'admitted' | 'denied' | 'unavailable';
 export interface ProjectTaskRoomHistory extends ProjectTaskRoomAuthority {
   readSourceSeal(input: {
     grant: ProjectTaskRoomGrant<'history-read'>;
@@ -131,6 +190,8 @@ interface ProjectTaskRoomHistoryInput {
   capabilities: ProjectTaskRoomCapabilityAuthority;
   links?: ProjectTaskRoomLinkAuthority;
   agents?: ProjectTaskRoomAgentGrantAuthority;
+  /** Private controller-backed write fence. Absence preserves local-only rooms. */
+  roomWriteAdmissions?: ProjectTaskRoomWriteAdmissionPort;
   /** Test-only response-loss seam after a durable append. */
   unavailableAfterCommitOnce?: boolean;
 }
@@ -145,6 +206,8 @@ interface ProjectTaskRoomHistoryTestInput extends ProjectTaskRoomHistoryInput {
     retentionBytes: number;
     maxIdentities: number;
   };
+  /** Test-only deadline; production stays below the worker response budget. */
+  roomWriteAdmissionMs?: number;
 }
 
 export function createProjectTaskRoomHistory(
@@ -163,11 +226,27 @@ export function createProjectTaskRoomHistoryForTest(
 function createProjectTaskRoomHistoryInternal(
   input: ProjectTaskRoomHistoryTestInput,
 ): ProjectTaskRoomHistory {
+  const roomWriteAdmissions = input.roomWriteAdmissions;
+  const beginAdmission = roomWriteAdmissions?.begin;
+  const finishAdmission = roomWriteAdmissions?.finish;
+  if (
+    roomWriteAdmissions !== undefined &&
+    (roomWriteAdmissions === null ||
+      (typeof roomWriteAdmissions !== 'object' &&
+        typeof roomWriteAdmissions !== 'function') ||
+      typeof beginAdmission !== 'function' ||
+      typeof finishAdmission !== 'function')
+  )
+    throw new Error('Project Task room write admission port is invalid');
+  const beginRoomWriteAdmission = beginAdmission?.bind(roomWriteAdmissions);
+  const finishRoomWriteAdmission = finishAdmission?.bind(roomWriteAdmissions);
   const storageLimits = input.limits ?? {
     retentionRecords: PROJECT_TASK_ROOM_LIMITS.retentionRecords,
     retentionBytes: PROJECT_TASK_ROOM_LIMITS.retentionBytes,
     maxIdentities: PROJECT_TASK_ROOM_LIMITS.maxIdentities,
   };
+  const roomWriteAdmissionMs =
+    input.roomWriteAdmissionMs ?? ROOM_WRITE_ADMISSION_MS;
   const storage =
     input.storage ??
     createWorkerStorage(
@@ -176,7 +255,9 @@ function createProjectTaskRoomHistoryInternal(
       input.unavailableAfterCommitOnce,
       input.workerSourceUrl,
       storageLimits,
+      sqliteLockWaitMs(roomWriteAdmissionMs),
     );
+  const writeAdmissionRequired = roomWriteAdmissions !== undefined;
   let closed = false;
   let generation = 0;
   let closeSettlement: Promise<ProjectTaskRoomCloseOutcome> | undefined;
@@ -269,13 +350,13 @@ function createProjectTaskRoomHistoryInternal(
             authorizationId: finalAuthorization.receipt.receiptId,
           },
           async () => {
-            if (!active(operationGeneration)) return false;
+            if (!active(operationGeneration)) return 'unavailable';
             const commitAuthorization = await resolveAuthorized(
               grant,
               'discover',
               finalAuthorization.receipt,
             );
-            return commitAuthorization.kind === 'granted';
+            return authorizationDisposition(commitAuthorization);
           },
         );
         if (!active(operationGeneration)) {
@@ -385,6 +466,12 @@ function createProjectTaskRoomHistoryInternal(
               grantReceipt: finalAuthorization.receipt,
             };
             const proposalDigest = sha(canonical(semantic));
+            const writeAdmission = deepCloneFreeze({
+              scope: finalAuthorization.receipt.scope,
+              channelId: semantic.channelId,
+              proposalId: intent.proposalId,
+              intentDigest: proposalDigest,
+            });
             const stored = await totalStorage(
               storage,
               {
@@ -405,15 +492,38 @@ function createProjectTaskRoomHistoryInternal(
                 body: body.body,
                 grantReceipt: finalAuthorization.receipt,
                 authorizationId: finalAuthorization.receipt.receiptId,
+                writeAdmissionRequired,
               },
-              async () => {
-                if (!active(operationGeneration)) return false;
+              async (phase) => {
+                if (!active(operationGeneration)) return 'unavailable';
                 const commitAuthorization = await resolveAuthorized(
                   grant,
                   required,
                   finalAuthorization.receipt,
                 );
-                return commitAuthorization.kind === 'granted';
+                const local = authorizationDisposition(commitAuthorization);
+                if (phase === 'authorize' || local !== 'admitted') return local;
+                if (!beginRoomWriteAdmission) return 'admitted';
+                const admission = await boundedAdmissionCall(
+                  () => beginRoomWriteAdmission(writeAdmission),
+                  roomWriteAdmissionMs,
+                );
+                if (!active(operationGeneration)) return 'unavailable';
+                const postAdmissionAuthorization = await resolveAuthorized(
+                  grant,
+                  required,
+                  finalAuthorization.receipt,
+                );
+                if (!active(operationGeneration)) return 'unavailable';
+                const postLocal = authorizationDisposition(
+                  postAdmissionAuthorization,
+                );
+                if (postLocal !== 'admitted') return postLocal;
+                if (isKind(admission, 'admitted')) return 'admitted';
+                return isKind(admission, 'denied') ||
+                  isKind(admission, 'conflict')
+                  ? 'denied'
+                  : 'unavailable';
               },
             );
             if (!active(operationGeneration)) {
@@ -426,17 +536,41 @@ function createProjectTaskRoomHistoryInternal(
                 proposalDigest,
                 channelId: semantic.channelId,
               })
-            )
-              outcome =
-                stored.kind === 'conflict'
-                  ? { kind: 'rejected', reason: 'idempotency-conflict' }
-                  : stored.kind === 'capacity'
-                    ? { kind: 'rejected', reason: 'capacity' }
-                    : stored.kind === 'denied'
-                      ? { kind: 'denied' }
-                      : stored.kind === 'unavailable'
-                        ? { kind: 'unavailable' }
-                        : stored;
+            ) {
+              if (
+                finishRoomWriteAdmission &&
+                (stored.kind === 'committed' || stored.kind === 'duplicate')
+              ) {
+                const finished = await boundedAdmissionCall(
+                  () =>
+                    finishRoomWriteAdmission(
+                      deepCloneFreeze({
+                        ...writeAdmission,
+                        receiptDigest: sha(canonical(stored.receipt)),
+                      }),
+                    ),
+                  roomWriteAdmissionMs,
+                );
+                if (
+                  !active(operationGeneration) ||
+                  !isKind(finished, 'finished')
+                ) {
+                  outcome = { kind: 'unavailable' };
+                } else {
+                  outcome = stored;
+                }
+              } else
+                outcome =
+                  stored.kind === 'conflict'
+                    ? { kind: 'rejected', reason: 'idempotency-conflict' }
+                    : stored.kind === 'capacity'
+                      ? { kind: 'rejected', reason: 'capacity' }
+                      : stored.kind === 'denied'
+                        ? { kind: 'denied' }
+                        : stored.kind === 'unavailable'
+                          ? { kind: 'unavailable' }
+                          : stored;
+            }
           }
         }
       }
@@ -624,10 +758,12 @@ function createProjectTaskRoomHistoryInternal(
         sourceHomeRef,
         targetHomeRef,
       },
-      async () =>
-        active(operationGeneration) &&
-        (await resolveAuthorized(grant, 'home-transfer', resolved.receipt))
-          .kind === 'granted',
+      async () => {
+        if (!active(operationGeneration)) return 'unavailable';
+        return authorizationDisposition(
+          await resolveAuthorized(grant, 'home-transfer', resolved.receipt),
+        );
+      },
     );
     if (!active(operationGeneration)) return { kind: 'unavailable' };
     if (
@@ -768,6 +904,7 @@ function createWorkerStorage(
     retentionBytes: PROJECT_TASK_ROOM_LIMITS.retentionBytes,
     maxIdentities: PROJECT_TASK_ROOM_LIMITS.maxIdentities,
   },
+  lockWaitMs: number = sqliteLockWaitMs(ROOM_WRITE_ADMISSION_MS),
 ): StorageAdapter {
   const sourceUrl =
     workerSourceUrl ??
@@ -781,6 +918,7 @@ function createWorkerStorage(
     workerData: {
       databasePath,
       ...limits,
+      lockWaitMs,
       faultAfterCommitOnce,
       unavailableAfterCommitOnce,
     },
@@ -796,7 +934,9 @@ function createWorkerStorage(
     {
       resolve: (value: unknown) => void;
       timer: ReturnType<typeof setTimeout>;
-      beforeCommit?: () => Promise<boolean>;
+      beforeCommit?: (
+        phase: StorageCommitPhase,
+      ) => Promise<StorageCommitDisposition>;
     }
   >();
   const failAll = () => {
@@ -808,24 +948,42 @@ function createWorkerStorage(
     pending.clear();
   };
   worker.on('message', (message: unknown) => {
-    if (isPlainOwn(message, ['type', 'id', 'authorizationId'])) {
-      if (message.type !== 'authorize' || !Number.isSafeInteger(message.id))
+    if (isPlainOwn(message, ['type', 'id', 'authorizationId', 'phase'])) {
+      if (
+        message.type !== 'authorize' ||
+        !Number.isSafeInteger(message.id) ||
+        (message.phase !== 'authorize' && message.phase !== 'admit-new-write')
+      ) {
+        failAll();
+        void worker.terminate();
         return;
+      }
       const entry = pending.get(message.id as number);
-      const respond = (granted: boolean) => {
+      const respond = (disposition: StorageCommitDisposition) => {
+        if (
+          closed ||
+          terminal ||
+          !entry ||
+          pending.get(message.id as number) !== entry
+        )
+          return;
         try {
           worker.postMessage({
             type: 'authorization',
             id: message.id,
             authorizationId: message.authorizationId,
-            granted,
+            phase: message.phase,
+            disposition,
           });
         } catch {
           failAll();
         }
       };
-      if (!entry?.beforeCommit) respond(false);
-      else void entry.beforeCommit().then(respond, () => respond(false));
+      if (!entry?.beforeCommit) respond('denied');
+      else
+        void entry
+          .beforeCommit(message.phase as StorageCommitPhase)
+          .then(respond, () => respond('unavailable'));
       return;
     }
     if (!isPlainOwn(message, ['id', 'result'])) {
@@ -843,7 +1001,12 @@ function createWorkerStorage(
   });
   worker.on('error', failAll);
   worker.on('exit', failAll);
-  const request = (value: unknown, beforeCommit?: () => Promise<boolean>) =>
+  const request = (
+    value: unknown,
+    beforeCommit?: (
+      phase: StorageCommitPhase,
+    ) => Promise<StorageCommitDisposition>,
+  ) =>
     new Promise<unknown>((resolve) => {
       if (closed || terminal) {
         resolve({ kind: 'unavailable' });
@@ -883,12 +1046,49 @@ function createWorkerStorage(
 async function totalStorage(
   storage: StorageAdapter,
   value: unknown,
-  beforeCommit?: () => Promise<boolean>,
+  beforeCommit?: (
+    phase: StorageCommitPhase,
+  ) => Promise<StorageCommitDisposition>,
 ) {
   try {
     return await storage.request(value, beforeCommit);
   } catch {
     return { kind: 'unavailable' };
+  }
+}
+function authorizationDisposition(
+  resolution: ProjectTaskRoomCapabilityResolution,
+): StorageCommitDisposition {
+  return resolution.kind === 'granted'
+    ? 'admitted'
+    : resolution.kind === 'unavailable'
+      ? 'unavailable'
+      : 'denied';
+}
+const ADMISSION_TIMEOUT = Symbol('room-write-admission-timeout');
+async function boundedAdmissionCall<T>(
+  operation: () => Promise<T>,
+  timeoutMs: number,
+): Promise<T | undefined> {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) return undefined;
+  const started = performance.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<typeof ADMISSION_TIMEOUT>((resolve) => {
+      timer = setTimeout(() => resolve(ADMISSION_TIMEOUT), timeoutMs);
+    });
+    const result = await Promise.race([
+      Promise.resolve().then(operation),
+      timeout,
+    ]);
+    return result === ADMISSION_TIMEOUT ||
+      performance.now() - started >= timeoutMs
+      ? undefined
+      : result;
+  } catch {
+    return undefined;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 function capabilityFor(

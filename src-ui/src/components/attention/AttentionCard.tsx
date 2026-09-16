@@ -5,8 +5,10 @@ import type {
   DevicePairingAttentionItem,
   GateBlockedAttentionItem,
   GateExceptionAttentionItem,
+  GateReviewAttentionItem,
   GateRouteBackAttentionItem,
   NeedsInputAttentionItem,
+  ProposedChangeAttentionItem,
   ReviewPendingAttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
@@ -44,10 +46,14 @@ import { formatNotificationTime } from '../../utils/notifications';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonList } from '../state';
 import './AttentionCard.css';
+import { useProposedChangeDecision } from '../review/proposedChangeDecision';
 import {
   ACKNOWLEDGE_ATTENTION_ACTION,
   DISMISS_NOTIFICATION_ACTION,
 } from './notificationRowActions';
+
+/** Recorded on a decision taken from the inbox. See `proposedChangeDecision`. */
+const INBOX_DECISION_SURFACE = 'notifications';
 
 const loadNeedsInputReply = () =>
   import('./NeedsInputReply').then((module) => ({
@@ -165,6 +171,11 @@ function AttentionAction({ item }: { item: AttentionItem }) {
       return <GateExceptionAction item={item} />;
     case 'device-pairing':
       return <DevicePairingActions item={item} />;
+    // #2064 D4: the two kinds that moved in from Review.
+    case 'proposed-change':
+      return <ProposedChangeActions item={item} />;
+    case 'gate-review':
+      return <GateReviewAction item={item} />;
     // #1536 D8: the requirement's own route out. No secondary action —
     // the item resolves by configuring a connection, not by answering here.
     case 'setup-incomplete':
@@ -337,6 +348,82 @@ function describePairingActionError(
   }
   return new Error(
     `This Station could not ${action} that access request. Try again.`,
+  );
+}
+
+/**
+ * #2064 (D4): decide a proposed change from the inbox.
+ *
+ * The decision goes through `useProposedChangeDecision`, the module
+ * `ReviewQueueView` also calls, so both surfaces POST to
+ * `/api/proposed-changes/:id/approve|reject` with the same payload shape and
+ * invalidate the same key. What differs is the recorded surface name, which
+ * is the point: the change's decision record says where a human decided it.
+ *
+ * No bulk affordance here, deliberately (#2064): "Approve all" over a list
+ * whose rows the reader has not opened is a decision made by a button, and
+ * the inbox is where individual asks land. Bulk stays on Review.
+ */
+function ProposedChangeActions({
+  item,
+}: {
+  item: ProposedChangeAttentionItem;
+}) {
+  const decision = useProposedChangeDecision(INBOX_DECISION_SURFACE);
+  return (
+    <>
+      <div className="attention-item__actions">
+        <button
+          type="button"
+          className="attention-item__action attention-item__action--primary"
+          disabled={decision.pending}
+          onClick={() =>
+            decision.decide(item.source.proposedChangeId, 'approve')
+          }
+        >
+          Approve
+        </button>
+        <button
+          type="button"
+          className="attention-item__action attention-item__action--danger"
+          disabled={decision.pending}
+          onClick={() =>
+            decision.decide(item.source.proposedChangeId, 'reject')
+          }
+        >
+          Reject
+        </button>
+      </div>
+      {/* The diff itself is not in the inbox; deciding blind is not the only
+          option offered. */}
+      <a
+        className="attention-item__action attention-item__action--secondary"
+        href={item.openHref}
+      >
+        Open in Review
+      </a>
+      <MutationError error={decision.error} />
+    </>
+  );
+}
+
+/**
+ * #2064 (D4): a paused gate review's only affordance is to go read it.
+ *
+ * There is nothing to decide from a row: the Review page makes no mutation
+ * for these sessions either, and the continuation endpoint is driven from the
+ * review workbench with the reviewer's own resolutions attached. An
+ * Approve-shaped button here would claim an authority this surface does not
+ * have.
+ */
+function GateReviewAction({ item }: { item: GateReviewAttentionItem }) {
+  return (
+    <a
+      className="attention-item__action attention-item__action--secondary"
+      href={item.openHref}
+    >
+      Open review
+    </a>
   );
 }
 

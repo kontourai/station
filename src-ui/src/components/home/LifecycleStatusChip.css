@@ -22,8 +22,8 @@
 
 /* act-now */
 .lifecycle-chip--warning {
-  background: color-mix(in srgb, var(--warning, #d97706) 16%, transparent);
-  color: var(--warning, #d97706);
+  background: color-mix(in srgb, var(--warning-text) 16%, transparent);
+  color: var(--warning-text);
 }
 
 /* neutral resting state — deliberately not a fourth color meaning */
@@ -42,5 +42,5 @@
 .lifecycle-chip--idle {
   background: transparent;
   color: var(--text-muted);
-  box-shadow: inset 0 0 0 1px var(--border-subtle, var(--bg-tertiary));
+  box-shadow: inset 0 0 0 1px var(--border-primary);
 }

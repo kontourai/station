@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CANONICAL_PLUGIN_ID_PATTERN } from '@kontourai/station-contracts/plugin';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { isReservedObjectKey } from '../../../utils/reserved-object-keys.js';
 import { ContextSafetyError } from '../../orchestration/context-safety.js';
 import { DistributionProfileService } from '../distribution-profile-service.js';
 import {
@@ -239,6 +240,67 @@ describe('plugin-manifest-loader', () => {
         );
       },
     );
+
+    test('rejects an event-sentinel name (#2067)', async () => {
+      // `workspace-home-role` is what Station emits as the `name` on the
+      // Home-role `plugins:grants-changed` frame, which the SSE relay
+      // exempts from the per-principal projection. Guard the premise: it
+      // passes BOTH other axes, so before this rule a plugin could take it
+      // and have its own frames — including the settings channel, which
+      // carries non-secret setting VALUES — ride that exemption.
+      expect(CANONICAL_PLUGIN_ID_PATTERN.test('workspace-home-role')).toBe(
+        true,
+      );
+      expect(isReservedObjectKey('workspace-home-role')).toBe(false);
+      await expect(loadName('workspace-home-role')).rejects.toThrow(
+        /reserved: Station emits it as a sentinel/,
+      );
+    });
+
+    test('rejects an event-sentinel name in the AGENT PLUGINS format too', async () => {
+      // The reservation used to live only in the legacy parser, while
+      // `readAgentPluginManifest` returns from two places that never reach
+      // it — the no-extension branch and the normalization catch. A manifest
+      // in the forward format with the sentinel name LOADED, so the axis
+      // certified a rule the other format skipped. Both inputs here exit
+      // through the no-extension branch: `parseAgentPluginManifest` leaves
+      // `stationExtension` undefined for a schema-invalid extension rather
+      // than throwing, so the normalization catch is not reachable this way.
+      // The assertion runs before every exit, so both are covered regardless.
+      const manifestPath = join(dir, 'plugin.json');
+      for (const extra of [
+        {},
+        { 'io.kontourai.station': { settings: [{ not: 'a field' }] } },
+      ]) {
+        writeFileSync(
+          manifestPath,
+          JSON.stringify({
+            $schema:
+              'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+            name: 'workspace-home-role',
+            ...extra,
+          }),
+        );
+        await expect(readPluginManifestFile(manifestPath)).rejects.toThrow(
+          /reserved: Station emits it as a sentinel/,
+        );
+      }
+    });
+
+    test('an ordinary agent-format name still loads', async () => {
+      // The control: the rejection above must be the NAME, not the format.
+      const manifestPath = join(dir, 'plugin.json');
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+          name: 'ordinary.example',
+        }),
+      );
+      await expect(readPluginManifestFile(manifestPath)).resolves.toMatchObject(
+        { name: 'ordinary.example' },
+      );
+    });
 
     test.each(['Name With Spaces', 'Upper-Case', 'has_underscore', '../evil'])(
       'rejects the non-canonical name %s',

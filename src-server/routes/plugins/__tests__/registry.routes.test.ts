@@ -9,6 +9,7 @@ import {
   saveIntegrationConfig,
 } from '../../../domain/config-loader-storage.js';
 import type { AgentConfigurationMutationRunner } from '../../../runtime/types.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { PluginContentLockCycleError } from '../../../services/plugins/plugin-content-integrity.js';
 import { PluginConsentRefusedError } from '../../../services/plugins/plugin-install-consent.js';
 
@@ -135,6 +136,17 @@ function setup(
     reloadSkills,
     skillService as any,
     {
+      // #2067: the registry's plugin catalog faces are operator-only. This
+      // file's subject is the registry, so it states the caller rather than
+      // leaving it unresolved; the refusal is proved in
+      // plugin-identity-enumeration.test.ts.
+      visibility: {
+        resolvePrincipal: () => ({
+          id: LOCAL_OPERATOR_PRINCIPAL_ID,
+          kind: 'human' as const,
+          display: 'Operator',
+        }),
+      },
       kitObservabilityRegistry,
       approveKitOperatorAction,
       applyConfigurationMutation,

@@ -345,6 +345,7 @@ describe('noun-consistency:gate rejects its known-bad tree', {
   const LIBS = ['gate-scope.mjs', 'ratchet-utils.mjs'];
   const GATE = 'noun-consistency';
   const REGISTRY = 'packages/contracts/src/settings-registry.ts';
+  const DEVICE_REGISTRY = 'packages/contracts/src/device-settings.ts';
 
   function cleanFiles(): Record<string, string> {
     const files: Record<string, string> = {
@@ -353,6 +354,10 @@ describe('noun-consistency:gate rejects its known-bad tree', {
       'src-ui/src/main.tsx': fixture(GATE, 'main.tsx.fixture'),
       'src-ui/src/views/CleanView.tsx': fixture(GATE, 'clean-view.tsx.fixture'),
       [REGISTRY]: fixture(GATE, 'settings-registry.ts.fixture'),
+      // Its own fixture, not the generic pinned-path filler: the filler is a
+      // .tsx view with no `defineDeviceSetting(` blocks, and a registered copy
+      // source the scanner reads nothing from is a hard failure by design.
+      [DEVICE_REGISTRY]: fixture(GATE, 'device-settings.ts.fixture'),
     };
     // The gate pins its scope inventory (station#1559/#1543 and review L's
     // out-of-src-ui finding), and a pinned path missing from the fixture tree
@@ -375,6 +380,24 @@ describe('noun-consistency:gate rejects its known-bad tree', {
     const result = runGuardrail(dir, SCRIPT);
     expect(result.output).not.toContain('FAIL:');
     expect(result.status).toBe(0);
+  });
+
+  it('rejects retired vocabulary in the DEVICE registry, through its own factory name', () => {
+    const dir = scratchRepo({
+      script: SCRIPT,
+      libs: LIBS,
+      files: {
+        ...cleanFiles(),
+        [DEVICE_REGISTRY]: fixture(GATE, 'device-settings.ts.fixture').replace(
+          'this color scheme',
+          'this runtime color scheme',
+        ),
+      },
+    });
+    const result = runGuardrail(dir, SCRIPT);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain(DEVICE_REGISTRY);
+    expect(result.output).toContain('this runtime color scheme');
   });
 
   it('rejects retired vocabulary in a scanned attribute and in a JSX text node', () => {

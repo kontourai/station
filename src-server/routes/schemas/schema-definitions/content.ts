@@ -190,6 +190,23 @@ export const projectCreateSchema = z
     workingDirectory: z.string().optional(),
     description: z.string().optional(),
     defaultEnvironment: projectEnvironmentRefSchema.optional(),
+    // #2144 slice 2 — the three Station settings a project may override
+    // (`PROJECT_OVERRIDABLE_APP_SETTING_KEYS`), spelled as the project
+    // record spells them. Declared explicitly rather than left to
+    // `passthrough()`: these are settings now, and a settings write path
+    // that accepts any shape is one AJV rejects later, from the file layer,
+    // with a message about a document the caller never saw.
+    //
+    // `null` is ACCEPTED and means "drop this override" — see
+    // `updateProject`. It is not a stored value: the project file schema has
+    // no null for any of them, so storing one would make the record
+    // unloadable.
+    defaultWorkspaceIsolation: z
+      .enum(['shared', 'worktree'])
+      .nullable()
+      .optional(),
+    defaultModel: z.string().nullable().optional(),
+    defaultProviderId: z.string().nullable().optional(),
   })
   .passthrough();
 
@@ -273,6 +290,59 @@ export const projectLayoutCreateSchema = z
 export const projectLayoutUpdateSchema = projectLayoutCreateSchema
   .partial()
   .passthrough();
+
+/**
+ * `POST /api/me/layouts` (#2061). Strict where the project-layout schemas are
+ * `.passthrough()`: a Board's owner is not a field a request may name at all,
+ * so an `owner`/`principal`/`projectSlug` key is REFUSED rather than accepted
+ * and then quietly dropped. The project routes strip instead because their
+ * bodies carry pane/catalog keys those handlers still forward; this family has
+ * no such caller and can afford the louder answer.
+ */
+export const personalLayoutCreateSchema = z
+  .object({
+    slug: z.string().min(1),
+    name: z.string().min(1),
+    type: z.string().optional(),
+    icon: z.string().optional(),
+    description: z.string().optional(),
+    config: layoutConfigSchema.optional(),
+  })
+  .strict();
+
+/**
+ * `PUT /api/me/layouts/:layoutSlug` — the slug is the address, not a field.
+ *
+ * `paneReferences` is the ONE key this family accepts and discards (#2090).
+ * It is a read verdict the GET attaches about the calling principal, never
+ * storage, and the storage schema is `.strict()`, so accepting it into the
+ * record would be a hard rejection one layer down — which is why the handler
+ * drops it, and that half is load-bearing.
+ *
+ * The tolerance itself is narrower than it first looks, and the earlier
+ * rationale here overstated it. A FULL read-modify-write of the GET response
+ * is refused by this schema anyway, on `id`, `slug`, `projectSlug`/`owner`,
+ * `createdAt` and `updatedAt`. So tolerating this key only helps a client
+ * that already strips those and keeps this one. It is kept because that
+ * client is the reasonable one — it round-trips the fields this family says
+ * are writable plus whatever the read added — and because a 400 naming a
+ * key the server itself attached is a bad answer to give it.
+ */
+export const personalLayoutUpdateSchema = personalLayoutCreateSchema
+  .omit({ slug: true })
+  .partial()
+  .extend({ paneReferences: z.unknown().optional() })
+  .strict();
+
+/**
+ * `POST /api/me/layouts/:layoutSlug/promote` (#2062). The destination project
+ * is the ONLY thing a promote decides; everything else about the record moves
+ * verbatim, so `.strict()` keeps a caller from smuggling a rename, a new id,
+ * or an owner into the one request that changes which scope a Layout lives in.
+ */
+export const personalLayoutPromoteSchema = z
+  .object({ projectSlug: z.string().min(1) })
+  .strict();
 
 export const projectLayoutFromPluginSchema = z.object({
   plugin: z.string().min(1),

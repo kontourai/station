@@ -33,7 +33,6 @@ import {
 function renderHeader(sessions: ChatDockHeaderChatControls['sessions']) {
   return render(
     <ChatDockHeader
-      surfaceTitle="Chat"
       chatControls={{
         sessions,
         unreadCount: 0,
@@ -41,13 +40,7 @@ function renderHeader(sessions: ChatDockHeaderChatControls['sessions']) {
         onNewChat: vi.fn(),
         setShowChatSettings: vi.fn(),
       }}
-      isDragging={false}
-      onDockSnap={vi.fn()}
-      availableDockSlotPlacements={['left', 'bottom', 'right']}
-      effectiveDockSlotPlacement="bottom"
-      onDockPlacementChange={vi.fn()}
       regionVisible={true}
-      shellMaximized={false}
     />,
   );
 }

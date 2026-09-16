@@ -31,6 +31,14 @@ export interface ChatDockMobileOverflowActions {
   onRestoreDock: () => void;
   isDockMaximized: boolean;
   dockControls?: boolean;
+  /**
+   * The panes of the region this dock renders, in tab order, the selected
+   * one marked (#2046 2b, `DockShellChrome.regionPanes`). The sheet lists
+   * every OTHER pane as a switch row — the coarse device's stand-in for the
+   * tab strip. Absent or one pane: no rows.
+   */
+  regionPanes?: readonly { id: string; title: string; selected: boolean }[];
+  onSelectRegionPane?: (surfaceId: string) => void;
 }
 
 export interface ChatDockMobileProjectSwitcher {

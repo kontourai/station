@@ -1,9 +1,14 @@
 import { CLEAN_ID_PATTERN } from '@kontourai/station-contracts/agent-identity';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
-import type {
-  LayoutConfig,
-  LayoutTemplate,
+import {
+  type LayoutConfig,
+  type LayoutTemplate,
+  layoutOwner,
 } from '@kontourai/station-contracts/layout';
+import {
+  isPrincipalRef,
+  type PrincipalRef,
+} from '@kontourai/station-contracts/principal';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { z } from 'zod';
 import type { ConversationRecord, DocumentRecord } from './storage-adapter.js';
@@ -82,10 +87,35 @@ const contributionProvenanceSchema = z
   })
   .strict();
 
+/**
+ * Ownership as persisted. `projectSlug` stays required-in-practice for a
+ * project-owned record and `owner` is absent from it, so every Layout written
+ * before Boards parses byte-identically; only a principal- or instance-owned
+ * record persists `owner`. The contradiction rule ("owned by one or the other,
+ * never both") is NOT re-encoded here — `layoutOwner` owns it, and this schema
+ * calls it, so the storage parser and every reader answer ownership the same
+ * way.
+ */
+const layoutOwnerSchema = z.discriminatedUnion('kind', [
+  z
+    .object({ kind: z.literal('project'), projectSlug: nonEmptyString })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('principal'),
+      principal: z.custom<PrincipalRef>(isPrincipalRef, {
+        message: 'expected a well-formed PrincipalRef',
+      }),
+    })
+    .strict(),
+  z.object({ kind: z.literal('instance') }).strict(),
+]);
+
 const layoutSchema = z
   .object({
     id: nonEmptyString,
-    projectSlug: nonEmptyString,
+    projectSlug: nonEmptyString.optional(),
+    owner: layoutOwnerSchema.optional(),
     type: nonEmptyString,
     name: nonEmptyString,
     slug: nonEmptyString,
@@ -106,7 +136,18 @@ const layoutSchema = z
     createdAt: timestamp,
     updatedAt: timestamp,
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    try {
+      layoutOwner(value);
+    } catch (error) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          error instanceof Error ? error.message : 'invalid layout owner',
+      });
+    }
+  });
 
 const conversationSchema = z
   .object({

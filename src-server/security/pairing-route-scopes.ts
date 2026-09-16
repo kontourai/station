@@ -144,6 +144,11 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // Personal spatial-board reads need read; every revisioned mutation needs
   // operate. Hosted execution does not mount this family.
   '/api/spatial-board',
+  // #2061: the caller's OWN personal-scope records (Boards). Every path under
+  // it is scoped to the resolved request principal, so the read tier discloses
+  // only what that credential's own person stored and the mutate tier changes
+  // only their own records — no leaf here reaches another principal.
+  '/api/me',
   '/api/mobile-devices',
   '/api/orchestration',
   // archive#3677 PR 3: the native consent broker. The FAMILY sits on the
@@ -189,6 +194,11 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   '/api/diff-comments',
   '/api/knowledge',
   '/api/feature-previews',
+  // #2144 slice 5: the settings deep-link registry. A separate top-level
+  // family from `/config` on purpose — it enumerates which controls EXIST
+  // and where they are, and carries no stored value, so it does not belong
+  // on the tier that reads and writes configuration.
+  '/api/settings',
   '/api/coding',
   '/api/templates',
   '/config',
@@ -1836,6 +1846,33 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // connected is a strict subset of what that same credential already
     // reads, so this takes the family default rather than a raised tier.
     { method: 'GET', path: '/api/orchestration/presence/summary' },
+    // #2061 Boards: the family read/mutate split is exactly right here —
+    // every leaf resolves its owner from the request principal and can reach
+    // no other principal's records, so none is more sensitive than the family.
+    { method: 'GET', path: '/api/me/layouts' },
+    { method: 'POST', path: '/api/me/layouts' },
+    { method: 'GET', path: '/api/me/layouts/:layoutSlug' },
+    { method: 'PUT', path: '/api/me/layouts/:layoutSlug' },
+    { method: 'DELETE', path: '/api/me/layouts/:layoutSlug' },
+    // #2062 promote is the one leaf in this family that writes OUTSIDE the
+    // caller's own records — it publishes the Board as a project's Layout.
+    // It takes the family default anyway, and deliberately: it writes through
+    // the same project transaction `POST /api/projects/:slug/layouts` uses,
+    // and that leaf resolves to the same `orchestration:operate` tier, so a
+    // raised tier here would refuse a caller who can already perform the
+    // identical write by addressing the project directly. The scope equality
+    // is asserted in `pairing-route-scopes.test.ts`, not just stated here.
+    //
+    // SHARPENED (#2062 review BLOCKING-2): "the identical write" is a claim
+    // about ADMISSION, and it was false when this comment was written —
+    // promote skipped the agent-reference and working-directory refusals the
+    // project route applies, so it accepted bodies that route rejected. Both
+    // now derive their answer from `admitProjectLayoutWrite`. Two distinctions
+    // worth keeping straight, because conflating them is what produced the
+    // false claim: equal SCOPE is about who may call, equal ADMISSION is about
+    // what a call may contain, and neither implies the other. This entry
+    // records the first; `project-layout-admission.ts` owns the second.
+    { method: 'POST', path: '/api/me/layouts/:layoutSlug/promote' },
     // Personal task-room reads disclose only the already-paired operator's
     // own task projection. Mutations are closed room commands and inherit
     // orchestration:operate from /api/tasks.
@@ -2726,6 +2763,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/voice/sessions' },
     { method: 'DELETE', path: '/api/voice/sessions/:id' },
     { method: 'GET', path: '/api/voice/status' },
+    // #2144 slice 5: agent-facing enumeration of settings deep links;
+    // read-only, no secrets. The body is a checked-in generated artifact of
+    // labels, help sentences, scope names, section ids and URL paths — it
+    // discloses strictly less than the `/config/app` read already at this
+    // same tier, which returns the stored values themselves.
+    { method: 'GET', path: '/api/settings/registry' },
     { method: 'GET', path: '/api/feature-previews' },
     { method: 'PUT', path: '/api/feature-previews/:id' },
     { method: 'GET', path: '/bedrock/models' },
@@ -2800,8 +2843,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // status poll live under `/api/plugins/home-role/requests` and carry the
     // explicit `access:manage` override above — creating a request returns
     // the transaction-bound decision cookie, so it is authority-bearing.
-    // Candidates is a read-only eligibility listing (no authority minted,
-    // reveals no more than the plugin list) on the family GET tier.
+    // Candidates is a read-only eligibility listing (no authority minted) on
+    // the family GET tier.
+    //
+    // #2067 CORRECTION: "reveals no more than the plugin list" used to be the
+    // whole justification, and it was true while the plugin list was an
+    // unprojected instance inventory. It is now false as a justification and
+    // true as a requirement: the plugin list is a per-principal projection,
+    // so parity with it means this route must be projected too, which it now
+    // is (`plugin-home-role-routes.ts` filters candidates through
+    // `projectVisiblePlugins`). A wire scope is not what keeps this honest —
+    // the projection in the handler is. See `PLUGIN_IDENTITY_ROUTES` for the
+    // whole family and its dispositions.
     { method: 'GET', path: '/api/plugins/home-role' },
     { method: 'DELETE', path: '/api/plugins/home-role' },
     { method: 'GET', path: '/api/plugins/home-role/candidates' },
@@ -2859,6 +2912,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // fetch — a subset of `update`'s mutation surface, so the family's
     // ordinary mutate tier is the consistent call. None returns another
     // environment's or another Station's data.
+    // #2067: per-principal plugin visibility. The scope tier is the family
+    // default DELIBERATELY, because a wire scope is not what authorizes
+    // these: every handler re-resolves the request's own principal and
+    // refuses a non-operator in-handler
+    // (`routes/plugins/plugin-visibility-routes.ts`), the same shape as the
+    // locality-gated consent leaves above. `GET /visibility` discloses which
+    // principals this instance has a pairing record of and which plugins
+    // each has been granted — operator-only for that reason, never inherited
+    // from a read tier alone.
+    { method: 'GET', path: '/api/plugins/visibility' },
+    { method: 'POST', path: '/api/plugins/visibility/grants' },
+    { method: 'DELETE', path: '/api/plugins/visibility/grants' },
     { method: 'GET', path: '/api/plugins/:name/retained-generations' },
     { method: 'GET', path: '/api/plugins/:name/recovery-preview' },
     { method: 'POST', path: '/api/plugins/:name/recover' },

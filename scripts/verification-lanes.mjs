@@ -297,7 +297,7 @@ export const LANES = Object.freeze([
     trigger: 'per-push / bounded feedback',
     scope: 'base-pinned affected Vitest tests + fixed static invariants (≤12m)',
     description:
-      'Bounded fast feedback (trigger: per-push). Scope: the affected Vitest selection against STATION_CI_FAST_BASE (origin/main by default) followed by fixed runtime, lockfile, workflow, and verification-policy invariants. Its 20-unit weight is reserved alongside the 80-unit full-regression test phase, so completion work yields admission headroom for feedback. Full static gates and the full Vitest corpus belong only to full-regression. Evidence: diagnostic only; a deferred selector intentionally requires the full-regression completion gate. Invalidation: test-impact manifest plus the request workspace/HEAD/dependency/toolchain and STATION_CI_FAST_BASE environment identity.',
+      'Bounded fast feedback (trigger: per-push). Scope: the affected Vitest selection against STATION_CI_FAST_BASE (origin/main by default) followed by fixed runtime, lockfile, workflow, verification-policy, typecheck, lint, and governance invariants. Its 20-unit weight is reserved alongside the 80-unit full-regression test phase, so completion work yields admission headroom for feedback. Full static gates and the full Vitest corpus belong only to full-regression. Evidence: diagnostic only; a deferred selector intentionally requires the full-regression completion gate. Invalidation: test-impact manifest plus the request workspace/HEAD/dependency/toolchain and STATION_CI_FAST_BASE environment identity.',
   }),
   Object.freeze({
     id: 'test-changed',

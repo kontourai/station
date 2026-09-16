@@ -115,6 +115,88 @@ describe('resolveExecutionTarget', () => {
     });
   });
 
+  // #2144 slice 2: the fall-through is project -> Station -> shared.
+  test('falls through to the Station default when the project names no workspace mode', async () => {
+    const result = await resolveExecutionTarget(
+      {
+        environment: { kind: 'current' },
+        agent: agentId('station'),
+        workspace: { kind: 'project', projectSlug: 'station' },
+      },
+      dependencies({
+        getProject: async () => ({ workingDirectory: '/work/station' }),
+        getStationDefaultWorkspaceIsolation: async () => 'worktree',
+      }),
+    );
+
+    expect(result.workspace).toMatchObject({
+      workspaceIsolation: { mode: 'worktree' },
+    });
+  });
+
+  test('a project workspace mode wins over the Station default', async () => {
+    const result = await resolveExecutionTarget(
+      {
+        environment: { kind: 'current' },
+        agent: agentId('station'),
+        workspace: { kind: 'project', projectSlug: 'station' },
+      },
+      dependencies({
+        getProject: async () => ({
+          workingDirectory: '/work/station',
+          defaultWorkspaceIsolation: 'shared',
+        }),
+        getStationDefaultWorkspaceIsolation: async () => 'worktree',
+      }),
+    );
+
+    expect(result.workspace).toMatchObject({
+      workspaceIsolation: { mode: 'shared' },
+    });
+  });
+
+  test('an unset Station default leaves an unset project on the shared checkout', async () => {
+    const result = await resolveExecutionTarget(
+      {
+        environment: { kind: 'current' },
+        agent: agentId('station'),
+        workspace: { kind: 'project', projectSlug: 'station' },
+      },
+      dependencies({
+        getProject: async () => ({ workingDirectory: '/work/station' }),
+        getStationDefaultWorkspaceIsolation: async () => undefined,
+      }),
+    );
+
+    expect(result.workspace).toMatchObject({
+      workspaceIsolation: { mode: 'shared' },
+    });
+  });
+
+  // The Station default must not outrank a thread's explicit request, for the
+  // same reason the project default does not: the caller named a mode.
+  test('an explicit thread workspace mode wins over the Station default', async () => {
+    const result = await resolveExecutionTarget(
+      {
+        environment: { kind: 'current' },
+        agent: agentId('station'),
+        workspace: {
+          kind: 'project',
+          projectSlug: 'station',
+          workspaceIsolation: { mode: 'shared' },
+        },
+      },
+      dependencies({
+        getProject: async () => ({ workingDirectory: '/work/station' }),
+        getStationDefaultWorkspaceIsolation: async () => 'worktree',
+      }),
+    );
+
+    expect(result.workspace).toMatchObject({
+      workspaceIsolation: { mode: 'shared' },
+    });
+  });
+
   test('keeps an explicit thread workspace isolation over the project default', async () => {
     const result = await resolveExecutionTarget(
       {

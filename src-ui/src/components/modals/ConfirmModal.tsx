@@ -9,6 +9,12 @@ export interface ConfirmModalProps {
   title: string;
   message: string;
   confirmLabel?: string;
+  /**
+   * Refuse the confirm when the action would change nothing. The dialog stays
+   * readable — it is what explains why there is nothing to do — instead of
+   * offering a button whose request the server would answer with a no-op.
+   */
+  confirmDisabled?: boolean;
   cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
@@ -50,6 +56,7 @@ export function ConfirmModal({
   title,
   message,
   confirmLabel = 'Confirm',
+  confirmDisabled = false,
   cancelLabel = 'Cancel',
   onConfirm,
   onCancel,
@@ -117,6 +124,7 @@ export function ConfirmModal({
             </Button>
             <Button
               variant={variant === 'danger' ? 'danger' : 'primary'}
+              disabled={confirmDisabled}
               pending={pending}
               pendingLabel={`${confirmLabel}…`}
               onClick={(event) => {

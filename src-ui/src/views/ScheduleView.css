@@ -877,7 +877,10 @@
 }
 .cron-editor__input:focus {
   border-bottom-color: var(--accent-primary);
-  color: #fff;
+  /* Was `#fff`: white text on the light page the moment the field took
+     focus. The input reads --text-primary at rest and focus should not
+     recolour it; the underline is the focus signal. */
+  color: var(--text-primary);
 }
 .cron-editor__input--error {
   color: var(--error-text);

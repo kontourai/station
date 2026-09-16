@@ -9,6 +9,7 @@ export type SettingsSectionId =
   | 'system'
   | 'feature-previews'
   | 'answer-shares'
+  | 'plugin-visibility'
   | 'host-runtime'
   | 'diagnostics'
   | 'agent-defaults'
@@ -36,8 +37,17 @@ export interface SettingsCatalogEntry {
     | 'mixed'
     | 'temporary'
     | 'informational';
-  /** The target exists only for the named runtime condition. */
-  conditional?: 'mobile' | 'desktop';
+  /**
+   * The target exists only for the named runtime condition.
+   *
+   * `operator` (#2067) is not a device fact like the other two: the section
+   * renders only when the SERVER agrees the caller is the instance operator,
+   * which this module cannot know. It is therefore treated as false unless a
+   * caller positively supplies `isOperator`, so a collaborator's settings
+   * search cannot offer a jump to a section that will not be there. A caller
+   * that does know may pass it and get the entry back.
+   */
+  conditional?: 'mobile' | 'desktop' | 'operator';
 }
 
 export const SETTINGS_SECTIONS = [
@@ -47,6 +57,10 @@ export const SETTINGS_SECTIONS = [
   // as a Station-scope section (previews persist on the Station).
   { id: 'feature-previews', title: 'Feature previews', group: 'Station' },
   { id: 'answer-shares', title: 'Shared answers', group: 'Station' },
+  // #2067: which installed plugins each paired person can see. Station scope
+  // because the grants live on this Station; operator-only, gated by the
+  // route, the same way 'answer-shares' is gated by its own scope tier.
+  { id: 'plugin-visibility', title: 'Plugin visibility', group: 'Station' },
   { id: 'host-runtime', title: 'Station host', group: 'Station' },
   { id: 'diagnostics', title: 'Diagnostics', group: 'Station' },
   { id: 'agent-defaults', title: 'Defaults', group: 'Defaults' },
@@ -82,6 +96,12 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['telemetryEnabled'],
   },
   {
+    id: 'telemetry-destination',
+    title: 'Telemetry destination',
+    section: 'station-config',
+    keywords: ['endpoint', 'where telemetry goes', 'otel'],
+  },
+  {
     id: 'default-max-turns',
     title: 'Default max turns',
     section: 'station-config',
@@ -92,6 +112,12 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Default max output tokens',
     section: 'station-config',
     configKeys: ['defaultMaxOutputTokens'],
+  },
+  {
+    id: 'default-chat-font-size',
+    title: 'Default chat font size',
+    section: 'station-config',
+    configKeys: ['defaultChatFontSize'],
   },
   {
     id: 'terminal-shell',
@@ -112,16 +138,29 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['surfaceTrustFromVeritasEvidence'],
   },
   {
-    id: 'knowledge-stores-preview',
-    title: 'Knowledge stores (preview)',
-    section: 'station-config',
-    configKeys: ['knowledgeStores'],
-  },
-  {
     id: 'default-skill-registries',
     title: 'Disable default skill registries',
     section: 'station-config',
     configKeys: ['disableDefaultSkillRegistries'],
+  },
+  {
+    id: 'workspace-checkpoints',
+    title: 'Workspace checkpoints',
+    section: 'station-config',
+    configKeys: ['workspaceCheckpoints'],
+  },
+  {
+    id: 'default-workspace-isolation',
+    title: 'New chat workspace',
+    section: 'station-config',
+    configKeys: ['defaultWorkspaceIsolation'],
+  },
+  {
+    id: 'default-approval-mode',
+    title: 'Default approval mode',
+    section: 'station-config',
+    keywords: ['approval', 'permissions', 'auto approve', 'ask first'],
+    configKeys: ['defaultApprovalMode'],
   },
   {
     id: 'registry-url',
@@ -174,9 +213,15 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   {
     id: 'reset-defaults',
-    title: 'Reset to Defaults',
+    title: 'Reset Station settings',
     section: 'system',
-    keywords: ['factory reset'],
+    keywords: ['factory reset', 'reset to defaults'],
+  },
+  {
+    id: 'reset-device-defaults',
+    title: 'Restore device defaults',
+    section: 'system',
+    keywords: ['reset this device', 'device defaults', 'restore'],
   },
   {
     id: 'feature-previews',
@@ -195,6 +240,13 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Shared answers',
     section: 'answer-shares',
     keywords: ['permalink revoke expire'],
+  },
+  {
+    id: 'plugin-visibility',
+    title: 'Plugin visibility',
+    section: 'plugin-visibility',
+    keywords: ['plugins share grant collaborator board panes'],
+    conditional: 'operator',
   },
   {
     id: 'host-runtime',
@@ -236,13 +288,19 @@ const SETTINGS_CATALOG_SOURCE = [
     id: 'chat-font-size',
     title: 'Chat font size',
     section: 'appearance',
-    configKeys: ['defaultChatFontSize', 'chatFontSize'],
+    // Device key only: this slider writes `chatFontSize` through the
+    // device-settings store. The Station default (`defaultChatFontSize`) is
+    // its own row under Station configuration.
+    configKeys: ['chatFontSize'],
   },
   {
+    // The id is the stable URL/palette identity and stays as minted even
+    // though the title no longer matches it (#2144 slice 6 item B) — a
+    // rename would break every deep link and every recorded highlight.
     id: 'smooth-answer-reveal',
-    title: 'Smooth answer reveal',
+    title: 'Answer delivery',
     section: 'appearance',
-    keywords: ['chat streaming steady cadence'],
+    keywords: ['chat streaming steady cadence', 'smooth reveal'],
     configKeys: ['featureSettings'],
   },
   { id: 'theme', title: 'Theme', section: 'appearance', configKeys: ['theme'] },
@@ -259,6 +317,13 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'appearance',
     configKeys: ['hapticsEnabled'],
     conditional: 'mobile',
+  },
+  {
+    id: 'confirm-conversation-delete',
+    title: 'Ask before deleting a conversation',
+    section: 'appearance',
+    keywords: ['confirm', 'confirmation', 'delete', 'undo', 'destructive'],
+    configKeys: ['confirmConversationDelete'],
   },
   {
     id: 'accent-color',
@@ -377,6 +442,12 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   Partial<Record<SettingsCatalogId, NonNullable<SettingsCatalogEntry['scope']>>>
 > = {
   'backup-restore': 'mixed',
+  // #2144 slice 6 item F: in the Station's System section, but it writes
+  // this device's store and nothing on the Station.
+  'reset-device-defaults': 'device',
+  // #2144 slice 6 item D: a derived status line with no writer, inside a
+  // section whose other rows are all Station-scope writes.
+  'telemetry-destination': 'informational',
   'deployed-build': 'informational',
   'message-context': 'temporary',
 };
@@ -435,6 +506,19 @@ const REGISTRY_BY_KEY = new Map(
   ]),
 );
 
+/**
+ * The registry definitions a catalog entry's config keys resolve to, in key
+ * order. One lookup, two consumers: `matchingSettingsRows` (the Settings
+ * search corpus) and `settingsPaletteCommands` (the palette's keywords). A
+ * key with no definition yields nothing here; the key itself is still
+ * searchable through each caller's own key list.
+ */
+function registryDefinitionsFor(entry: SettingsCatalogEntry) {
+  return (entry.configKeys ?? [])
+    .map((key) => REGISTRY_BY_KEY.get(key))
+    .filter((definition) => definition !== undefined);
+}
+
 export function settingsRow(id: string) {
   const entry = CATALOG_BY_ID.get(id);
   return {
@@ -448,22 +532,48 @@ export function settingsCatalogEntryForConfigKey(key: string) {
   return SETTINGS_CATALOG.find((entry) => entry.configKeys?.includes(key));
 }
 
+/**
+ * Sections gated on the caller being the instance operator (#2067), derived
+ * from the catalog rather than listed by hand so a second one is covered the
+ * day it is added.
+ */
+export const OPERATOR_ONLY_SECTION_IDS: ReadonlySet<string> = new Set(
+  SETTINGS_CATALOG.filter((entry) => entry.conditional === 'operator').map(
+    (entry) => entry.section,
+  ),
+);
+
 export function matchingSettingsRows(
   query: string,
+  /**
+   * Whether this caller is known to be the instance operator (#2067).
+   * Absent reads as "not known to be" — the fail-closed direction — so a
+   * collaborator's Settings search cannot offer a jump to a section the
+   * server will refuse to populate.
+   */
+  options: { isOperator?: boolean } = {},
 ): readonly SettingsCatalogEntry[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return [];
   return SETTINGS_CATALOG.filter((entry) => {
-    const registryText = (entry.configKeys ?? []).flatMap((key) => {
-      const definition = REGISTRY_BY_KEY.get(key);
-      return definition
-        ? [definition.label, definition.description, key]
-        : [key];
-    });
+    if (entry.conditional === 'operator' && options.isOperator !== true) {
+      return false;
+    }
+    // `help` is the sentence the row renders beside its control, so it is the
+    // phrasing somebody who remembers the CONSEQUENCE rather than the name
+    // will type ("agent run steps", not "defaultMaxTurns"). Searching the
+    // label and description but not the help text made the one sentence the
+    // UI actually shows the one sentence search could not find.
+    const registryText = registryDefinitionsFor(entry).flatMap((definition) => [
+      definition.label,
+      definition.description,
+      definition.help,
+    ]);
     return [
       entry.title,
       ...(entry.keywords ?? []),
       ...(entry.searchKeywords ?? []),
+      ...(entry.configKeys ?? []),
       ...registryText,
     ]
       .join(' ')
@@ -475,10 +585,13 @@ export function matchingSettingsRows(
 export function visibleCatalogIds(options: {
   isMobile: boolean;
   isDesktop: boolean;
+  /** Absent reads as "not the operator" — the fail-closed direction (#2067). */
+  isOperator?: boolean;
 }) {
   return SETTINGS_CATALOG.filter((entry) => {
     if (entry.conditional === 'mobile') return options.isMobile;
     if (entry.conditional === 'desktop') return options.isDesktop;
+    if (entry.conditional === 'operator') return options.isOperator === true;
     return true;
   }).map((entry) => entry.id);
 }
@@ -492,6 +605,18 @@ export function settingsPaletteCommands(options: {
   isMobile: boolean;
   isDesktop: boolean;
 }): readonly SettingsPaletteCommand[] {
+  // #2067: deliberately NOT filtered by `conditional: 'operator'` here.
+  //
+  // The palette holds no operator fact — it lazily imports this module when
+  // somebody types — and acquiring one would fire a server request per
+  // search. Filtering on an absent fact removed the entry for EVERYONE
+  // including the operator, which is a capability removal dressed as a fix.
+  //
+  // So the palette offers it, exactly as it offers `answer-shares`, which is
+  // credential-gated in the same way. DISCLOSED RESIDUAL: a collaborator who
+  // reaches it through the PALETTE (not the Settings search, which IS
+  // filtered — `matchingSettingsRows`) lands on Settings with a highlight
+  // that finds nothing. A cosmetic no-op carrying no plugin data.
   return SETTINGS_CATALOG.map((entry) => {
     const unavailable =
       entry.conditional === 'mobile' && !options.isMobile
@@ -509,6 +634,12 @@ export function settingsPaletteCommands(options: {
         ...(entry.keywords ?? []),
         ...(entry.searchKeywords ?? []),
         ...(entry.configKeys ?? []),
+        // The same consequence sentences the Settings search matches on, so
+        // the two entry points answer the same query. Labels/descriptions are
+        // deliberately NOT lifted here: the palette already carries
+        // `entry.title` and the config keys, and the registry label is
+        // usually the title restated.
+        ...registryDefinitionsFor(entry).map((definition) => definition.help),
       ],
       ...(unavailable
         ? { unavailable: true, unavailableReason: unavailable }

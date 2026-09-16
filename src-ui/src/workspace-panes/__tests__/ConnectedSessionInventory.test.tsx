@@ -12,6 +12,7 @@ import {
   chromiumIsInstalled,
   resolveCssImports,
 } from '../../../../tests/helpers/css-cascade-fixture';
+import { MIN_TOUCH_TARGET_PX } from '../../../../tests/helpers/touch-target';
 import { commitSessionInventorySelection } from '../sessionInventorySelection';
 
 const hooks = vi.hoisted(() => ({
@@ -652,7 +653,12 @@ describe.skipIf(!chromiumAvailable)(
         const phoneAction = await page
           .getByRole('link', { name: /Open work item/ })
           .boundingBox();
-        expect(selectBox?.height).toBeGreaterThanOrEqual(44);
+        // The shared floor constant, not a bare `44`: this is a raw
+        // `boundingBox()` float, and an exact-integer comparison is not a
+        // faithful encoding of "meets the 44px touch floor" under float
+        // layout — a sibling suite measured 43.99999237060547 for a control
+        // styled to exactly 44 and red on it (#2086).
+        expect(selectBox?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
         expect(phoneDetail).not.toBeNull();
         expect(phoneItem).not.toBeNull();
         expect(phoneAction).not.toBeNull();

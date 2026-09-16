@@ -1077,6 +1077,27 @@ describe('FilePreviewPane', () => {
     expect(container.textContent).toBe('const value = "<script>";');
   });
 
+  test('colours every token through a theme rung, never a pigment (#2140)', () => {
+    // The rungs used to be github-dark literals in `style={}`, which the
+    // theme cannot reach: on light the string rung measured 1.54:1 against
+    // the pane. What is pinned is that each token NAMES a rung -- the pigment
+    // is the theme's decision, and `theme-rung-contrast.test.ts` measures it.
+    const { container } = render(
+      <code>{highlightFilePreviewLine('const n = 42; // "s"', true)}</code>,
+    );
+    const colours = [...container.querySelectorAll('[data-file-preview-token]')]
+      .map((node) => (node as HTMLElement).style.color)
+      .filter(Boolean);
+    expect(colours.length).toBeGreaterThan(0);
+    for (const colour of colours) {
+      expect(colour, `a token was painted with "${colour}"`).toMatch(
+        /^var\(--(syntax-(keyword|number|string)|text-muted)\)$/,
+      );
+    }
+    expect(colours).toContain('var(--syntax-keyword)');
+    expect(colours).toContain('var(--syntax-number)');
+  });
+
   test('falls back to one inert text payload before token-dense content exceeds the total React-node budget', () => {
     const dense = 'const value = 1;'.repeat(32_768);
     const lines = [{ number: 1, text: dense, requested: false }] as const;

@@ -24,9 +24,10 @@ describe('Activity rename sweep', () => {
     expect(destination!.label()).toBe('Activity');
     // SHELL-08 / lane 7's open question, decided yes: Home's lanes were the
     // only advertised way in, and Activity was one of five surfaces that
-    // resolved but appeared in no navigation at all. It now leads the
-    // sidebar's flat `primary` band with Agents and Connections.
-    expect(destination!.sidebar).toEqual({ section: 'primary', order: 30 });
+    // resolved but appeared in no navigation at all. #2059 (D3): it is now
+    // the panel's only destination row, directly under Home — the panel
+    // lists places, and Activity is one.
+    expect(destination!.sidebar).toEqual({ order: 10 });
     expect(
       APP_DESTINATION_REGISTRY.getSidebar().map((entry) => entry.label()),
     ).toContain('Activity');

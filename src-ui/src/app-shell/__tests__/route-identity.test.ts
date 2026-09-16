@@ -156,7 +156,6 @@ describe('routeIdentity', () => {
       { type: 'connections-tools' },
       { type: 'connections-knowledge' },
       { type: 'plugins' },
-      { type: 'review-queue' },
       { type: 'profile' },
       { type: 'notifications' },
       { type: 'project-new' },

@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   decideStaticGateScope,
@@ -131,6 +132,62 @@ describe('the gate list', () => {
     expect(PREPUSH_STATIC_GATES).toContain('mobile-css-ratchet');
     // a11y is ~5s (its own biome pass); everything else is under 500ms.
     expect(PREPUSH_STATIC_GATES.at(-1)).toBe('a11y-ratchet');
+  });
+
+  /**
+   * #2096. `gate:ui-contracts` is what CI's Windows portable floor runs, and
+   * this list is what a lane can run before pushing. They were two lists with
+   * no reconciliation, so seven gates were enforced and not runnable locally —
+   * a lane could read a clean result here and still be refused. Epic #2058
+   * paid for that twice: accent-foreground refused #2080 and
+   * stored-path-expansion refused #2095, both after every local gate passed,
+   * and both were real findings.
+   *
+   * This derives the CI chain from package.json rather than restating it, so
+   * a gate added to that chain and not to this list fails HERE, on the change
+   * that added it, rather than on whoever pushes next.
+   *
+   * It is deliberately one-directional. This list is allowed to be a superset:
+   * the content gates below have no place in a UI-contract chain, and
+   * requiring equality would either drag them into CI's UI job or push them
+   * out of the pre-push set.
+   */
+  it('covers every gate the CI UI-contract chain runs', () => {
+    // The sibling spawns above run `scripts/<name>.mjs` relative, so the
+    // suite's cwd is the repository root.
+    const manifest = JSON.parse(readFileSync('package.json', 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    const chain = manifest.scripts['gate:ui-contracts'];
+    expect(chain, 'gate:ui-contracts is the chain CI runs').toBeTruthy();
+
+    // Resolve each `npm run X` through package.json to the script file it
+    // actually executes, rather than transforming the name — a task whose
+    // name and file diverge would otherwise read as covered.
+    const scriptFile = (command: string): string | undefined =>
+      /node scripts\/([a-z0-9-]+)\.mjs/.exec(command)?.[1];
+    const ciGates = new Set<string>();
+    for (const [, task] of chain.matchAll(/npm run ([a-z0-9:-]+)/g)) {
+      const resolved = scriptFile(manifest.scripts[task!] ?? '');
+      if (resolved) ciGates.add(resolved);
+    }
+    for (const direct of chain.matchAll(/node scripts\/([a-z0-9-]+)\.mjs/g)) {
+      ciGates.add(direct[1]!);
+    }
+
+    // The chain has to have been read: an empty set would satisfy the
+    // subset assertion by comparing nothing.
+    expect(ciGates.size).toBeGreaterThan(10);
+
+    const missing = [...ciGates]
+      .filter((gate) => !PREPUSH_STATIC_GATES.includes(gate))
+      .sort();
+    expect(
+      missing,
+      'these gates are enforced by CI and cannot be run by the pre-push gate, ' +
+        'so a lane can read a clean local result and still be refused. Add ' +
+        'them to PREPUSH_STATIC_GATES, or remove them from gate:ui-contracts.',
+    ).toEqual([]);
   });
 
   /**

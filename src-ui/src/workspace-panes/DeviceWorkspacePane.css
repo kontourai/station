@@ -1,0 +1,149 @@
+/*
+ * The Device pane's own chrome (#1969). Co-located with the lazy component so
+ * it rides that chunk rather than the eagerly loaded `index.css` — the global
+ * mobile wrap/44px/focus-order floor lives there and applies to everything
+ * here; this file owns only what is particular to a device frame.
+ */
+
+.device-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  height: 100%;
+  min-height: 0;
+  padding: var(--space-3, 12px);
+}
+
+.device-pane__toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  flex: 0 0 auto;
+}
+
+.device-pane__picker {
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  margin: 0;
+  padding: 0;
+}
+
+.device-pane__picker-legend {
+  font-size: 0.75rem;
+  opacity: 0.75;
+  padding: 0;
+}
+
+.device-pane__choice {
+  align-items: center;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-2, 8px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  /* The shared 44px target floor, spelled here because a label is not a
+     control the global button rules reach. */
+  min-height: 44px;
+  padding: var(--space-2, 8px);
+}
+
+.device-pane__choice:has(input:disabled) {
+  opacity: 0.6;
+}
+
+.device-pane__choice:has(input:focus-visible) {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.device-pane__choice-meta,
+.device-pane__choice-reason {
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.device-pane__choice-reason {
+  flex-basis: 100%;
+}
+
+.device-pane__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+
+.device-pane__view-only,
+.device-pane__note {
+  font-size: 0.75rem;
+  margin: 0;
+  opacity: 0.8;
+}
+
+.device-pane__stage {
+  align-items: center;
+  display: flex;
+  /* Column because a refused re-capture renders the refusal AND the frame the
+     reader already had, stacked. With one child this is identical to a row:
+     both axes are centred either way. */
+  flex-direction: column;
+  flex: 1 1 auto;
+  gap: var(--space-2, 8px);
+  justify-content: center;
+  min-height: 0;
+  overflow: auto;
+}
+
+.device-pane__figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  margin: 0;
+  max-height: 100%;
+  min-height: 0;
+}
+
+.device-pane__frame {
+  /* Set inline from the capture's own width and height. The fallback is a
+     square rather than a phone ratio: an invented portrait shape would be a
+     claim about a device nobody measured. */
+  aspect-ratio: var(--device-frame-ratio, 1 / 1);
+  /* A defined token with no literal fallback, here and on the border above
+     and on the picker rows. The names this file first reached for are
+     defined in no theme root, so their colour fallbacks were what would
+     always paint: a fixed 5% black behind the letterbox bars
+     `object-fit: contain` leaves, and a fixed 15% black hairline, both of
+     which disappear on a dark theme. (The scanner behind
+     undefined-css-custom-properties.test.ts reads comments too, so this one
+     names no var expression.) */
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-2, 8px);
+  margin: auto;
+  max-height: 100%;
+  max-width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.device-pane__image {
+  display: block;
+  height: 100%;
+  /* Never `cover`: cropping a device screen hides UI, which is the one thing
+     this pane exists to show. */
+  object-fit: contain;
+  /* The frame is not an input surface. The absence of handlers is what makes
+     that true; this only stops a drag from reading as one. */
+  pointer-events: none;
+  width: 100%;
+}
+
+.device-pane__caption {
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.device-pane__stale {
+  font-weight: 600;
+}

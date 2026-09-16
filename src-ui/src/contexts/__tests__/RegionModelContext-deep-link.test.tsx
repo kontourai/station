@@ -3,9 +3,16 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { ActivityRegionShell } from '../../app-shell/ActivityRegionShell';
+import { ActivityDockPane } from '../../app-shell/ActivityRegionShell';
 import { RegionShells } from '../../app-shell/RegionShells';
+import { DockShell } from '../../components/chat-dock/DockShell';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
+import { toRegionArrangementRecord } from '../../regions/region-arrangement-record';
+import {
+  DEFAULT_DEVICE_REGION_ARRANGEMENT,
+  placeSurface,
+  updateRegion,
+} from '../../regions/region-model';
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
 import { navigationStore } from '../navigation-store';
@@ -24,10 +31,13 @@ vi.mock('../../views/SessionsView', () => ({
     return <div data-testid="sessions-view" />;
   },
 }));
-// The Chat shell would mount the whole chat data stack; `RegionShells` is
-// here as the region surface HOST, not for what it renders inside.
+// Chat's pane would mount the whole chat data stack; `RegionShells` is here
+// as the region surface HOST, not for what it renders inside. Since #2045
+// the host renders Chat through `renderAmbientChatPane`, so that is the
+// seam stubbed; `ChatDock` is the model-less mount this harness never takes.
 vi.mock('../../components/chat-dock/ChatDock', () => ({
   ChatDock: () => <div data-testid="chat-shell" />,
+  renderAmbientChatPane: () => <div data-testid="chat-shell" />,
 }));
 vi.mock('../ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
@@ -38,9 +48,15 @@ vi.mock('../ProjectsContext', () => ({
     isLoading: false,
     isConfirmedLoaded: true,
   }),
+  // #2047: the region host resolves the dock's project through this read;
+  // no project here, so the panes that need one derive none.
+  useProject: () => ({ project: undefined, isLoading: false }),
 }));
 
 let model: ReturnType<typeof useRegionModel> | null = null;
+
+/** The live provider's model, past TypeScript's narrowing of a reset `model`. */
+const liveModel = () => model as ReturnType<typeof useRegionModel> | null;
 
 function Probe() {
   const value = useRegionModel();
@@ -76,7 +92,11 @@ function Harness({
         <RegionModelProvider>
           <Probe />
           <CommandProbe />
-          {shell ? <ActivityRegionShell regionId="right" /> : null}
+          {shell ? (
+            // Activity as a dock pane, in the shell the region host would
+            // mount around it (#2045): the pane takes the intent.
+            <DockShell regionId="right">{() => <ActivityDockPane />}</DockShell>
+          ) : null}
           {host ? <RegionShells /> : null}
         </RegionModelProvider>
       </NavigationProvider>
@@ -269,6 +289,7 @@ describe('RegionModelProvider surface deep-link adoption', () => {
     const desktop = render(<Harness />);
     await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
     expect(model?.regions.bottom).toMatchObject({
+      panes: ['chat'],
       occupant: 'chat',
       visible: true,
     });
@@ -394,6 +415,146 @@ describe('RegionModelProvider surface deep-link adoption', () => {
  * that knows the placement landed in `main` — navigates to `/` after the
  * state write, through the store call `useShowSurface` makes.
  */
+/**
+ * 2a review (MEDIUM): Chat's inbound links act on Chat's region and used to
+ * leave another pane's tab selected there. Each seeds the persisted record
+ * with Chat BEHIND Activity's tab in `bottom` (the 2a join), then arrives by
+ * the link. The URL's Chat params also persist across reloads, so a param
+ * that merely repeats what the record holds is a reload, not a link, and
+ * the record's selection — the user's last tab choice — stands.
+ * Reverting the `selectRegionPane`/`occupant: 'chat'` writes in
+ * `initialRegionPlacement`, `initialRegionArrangement` and the inbound
+ * navigation effect fails the matching `occupant: 'chat'` assertion;
+ * selecting Chat unconditionally fails the `occupant: 'activity'` ones.
+ */
+describe('Chat’s inbound links select Chat’s tab (#2046 2b)', () => {
+  function seedChatBehindActivity(patch: {
+    visible: boolean;
+    maximized?: boolean;
+  }) {
+    const arrangement = updateRegion(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'bottom'),
+      'bottom',
+      patch,
+    );
+    expect(arrangement.bottom).toMatchObject({
+      panes: ['chat', 'activity'],
+      occupant: 'activity',
+      ...patch,
+    });
+    deviceSettingsStore.set(
+      'regionArrangement',
+      toRegionArrangementRecord(arrangement),
+    );
+  }
+
+  test('?dockSlotPlacement= that moves Chat selects its tab; one that names where Chat already is leaves the record’s tab', async () => {
+    seedChatBehindActivity({ visible: true });
+    setUrl('/?dockSlotPlacement=right');
+    const moved = render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(liveModel()?.regions.right).toMatchObject({
+      panes: ['chat'],
+      occupant: 'chat',
+    });
+    expect(liveModel()?.regions.bottom).toMatchObject({
+      panes: ['activity'],
+      occupant: 'activity',
+    });
+    moved.unmount();
+    model = null;
+
+    // The reload shape: the URL remembers `bottom`, which the record holds.
+    seedChatBehindActivity({ visible: true });
+    setUrl('/?dockSlotPlacement=bottom&dock=open');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(liveModel()?.regions.bottom).toMatchObject({
+      panes: ['chat', 'activity'],
+      occupant: 'activity',
+      visible: true,
+    });
+  });
+
+  test('dock=open at load shows Chat’s tab only when it shows the region', async () => {
+    seedChatBehindActivity({ visible: false });
+    setUrl('/?dock=open');
+    const opened = render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(liveModel()?.regions.bottom).toMatchObject({
+      occupant: 'chat',
+      visible: true,
+    });
+    opened.unmount();
+    model = null;
+
+    seedChatBehindActivity({ visible: true });
+    setUrl('/?dock=open');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(liveModel()?.regions.bottom).toMatchObject({
+      occupant: 'activity',
+      visible: true,
+    });
+  });
+
+  test('?maximize=true selects Chat’s tab when it is the URL’s maximize, not the record’s', async () => {
+    seedChatBehindActivity({ visible: true });
+    setUrl('/?dock=open&maximize=true');
+    const maximized = render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(liveModel()?.regions.bottom).toMatchObject({
+      occupant: 'chat',
+      maximized: true,
+      visible: true,
+    });
+    maximized.unmount();
+    model = null;
+
+    seedChatBehindActivity({ visible: true, maximized: true });
+    setUrl('/?dock=open&maximize=true');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(liveModel()?.regions.bottom).toMatchObject({
+      occupant: 'activity',
+      maximized: true,
+    });
+  });
+
+  test('an inbound dock=open (a focusSession reveal) shows Chat’s tab, and a later maximize keeps it', async () => {
+    seedChatBehindActivity({ visible: false });
+    setUrl('/');
+    render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(liveModel()?.regions.bottom).toMatchObject({
+      occupant: 'activity',
+      visible: false,
+    });
+
+    act(() => navigationStore.setDockState(true, false));
+    await waitFor(() =>
+      expect(liveModel()?.regions.bottom).toMatchObject({
+        occupant: 'chat',
+        visible: true,
+      }),
+    );
+
+    // Activity's tab again, then a maximize arriving through navigation:
+    // Chat's tab, since the maximize is Chat's.
+    act(() => liveModel()?.selectPane('bottom', 'activity'));
+    await waitFor(() =>
+      expect(liveModel()?.regions.bottom.occupant).toBe('activity'),
+    );
+    act(() => navigationStore.setDockState(true, true));
+    await waitFor(() =>
+      expect(liveModel()?.regions.bottom).toMatchObject({
+        occupant: 'chat',
+        maximized: true,
+      }),
+    );
+  });
+});
+
 describe('a placement into main navigates to the route outlet', () => {
   test('showSurface(home) from another route places Home in main and navigates to /', async () => {
     setUrl('/settings');
@@ -596,7 +757,9 @@ describe('a delivered surface intent is never delivered a second time', () => {
     act(() => revealSurface?.('chat'));
     await waitFor(() => expect(activityShellLandmark()).toBeNull());
     expect(screen.queryByTestId('sessions-view')).toBeNull();
-    expect(screen.getByTestId('chat-shell')).toBeTruthy();
+    // `findBy`: since #2045 Chat's pane renders through the region host's
+    // lazy boundary rather than an eagerly stubbed shell.
+    expect(await screen.findByTestId('chat-shell')).toBeTruthy();
 
     sessionsProps.mockReset();
 

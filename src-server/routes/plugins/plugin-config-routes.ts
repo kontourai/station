@@ -45,9 +45,13 @@ interface PluginConfigRouteDeps {
 /**
  * archive#3576: `field.secret` is manifest-author-controlled, so a plugin
  * author who declares a genuinely sensitive setting and forgets
- * `"secret": true` would otherwise have its value broadcast to every
- * connected client on `PLUGINS_SETTINGS_CHANGED` (correctly tagged
- * `broadcast` — the channel itself is host-global config). This is a
+ * `"secret": true` would otherwise have its value sent to every client that
+ * receives `PLUGINS_SETTINGS_CHANGED`. That channel was `broadcast` — every
+ * connected client, unconditionally — and is `scoped` since #2067, reaching
+ * only subscribers whose plugin projection includes the named plugin. This
+ * defense is unchanged and still load-bearing: the projection decides WHO
+ * may hear about a plugin, never which of its fields are safe to send. It
+ * is a
  * second, independent line of defense on top of the manifest declaration,
  * on two axes reused from `@kontourai/station-shared/redaction` rather than
  * minting a new pattern set:
@@ -100,14 +104,14 @@ export function emittedPluginSettings(
 
     if (isSecretField(field.key)) {
       logger.warn(
-        `Plugin '${pluginName}' setting '${field.key}' is not declared secret but its key name matches a known secret-field name; withholding it from the broadcast plugins:settings-changed event.`,
+        `Plugin '${pluginName}' setting '${field.key}' is not declared secret but its key name matches a known secret-field name; withholding it from the plugins:settings-changed event.`,
       );
       continue;
     }
 
     if (typeof value === 'string' && value && redactSecrets(value) !== value) {
       logger.warn(
-        `Plugin '${pluginName}' setting '${field.key}' is not declared secret but its value matched a secret-shaped pattern during redaction; emitting it as-is on the broadcast plugins:settings-changed event because a value-only match is not reliable enough to withhold (this may be a false positive, e.g. a "Basic"/"Bearer"-prefixed non-credential string).`,
+        `Plugin '${pluginName}' setting '${field.key}' is not declared secret but its value matched a secret-shaped pattern during redaction; emitting it as-is on the plugins:settings-changed event because a value-only match is not reliable enough to withhold (this may be a false positive, e.g. a "Basic"/"Bearer"-prefixed non-credential string).`,
       );
     }
 

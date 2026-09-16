@@ -925,14 +925,20 @@ function spawnCodexProcess(
   // file and never touching the user's real `~/.codex/config.toml` (see
   // that module's header comment for why this is the wire-safe channel).
   //
-  // archive#1908: `TMPDIR` is merged into `extraEnv` HERE, at the one real
-  // spawn call site, rather than inside `codexSpawnEnv` itself -- every
+  // archive#1908: `TMPDIR` is merged into the spawn env HERE, at the one
+  // real spawn call site, rather than inside `codexSpawnEnv` itself — every
   // real Codex `app-server` child still gets a Station-owned tmp dir
   // Station reaps on a schedule (see `reapEngineSpawnTmpDir`). Boot-internal
   // secrets are scrubbed by `codexSpawnEnv`.
+  //
+  // station#2072: `extraEnv` now carries per-connection env overrides, so
+  // TMPDIR is merged LAST — matching the claude seam's documented "TMPDIR
+  // is final" invariant. The sanitizer refuses a configured TMPDIR
+  // outright; this ordering is the backstop that keeps Station's engine
+  // spawn tmp dir authoritative even if one arrives anyway.
   return spawn(binary, ['app-server', ...(extraArgs ?? [])], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: codexSpawnEnv({ TMPDIR: ensureEngineSpawnTmpDir(), ...extraEnv }),
+    env: codexSpawnEnv({ ...extraEnv, TMPDIR: ensureEngineSpawnTmpDir() }),
     windowsHide: true,
     detached: true,
   });

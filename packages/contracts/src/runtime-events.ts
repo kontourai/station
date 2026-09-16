@@ -181,9 +181,17 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // `{threadId}` names one session, so this follows the same ownership gate
   // as canonical orchestration events on the dedicated stream.
   [SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED]: 'scoped',
-  [SERVER_EVENTS.PLUGINS_INSTALLED]: 'broadcast',
-  [SERVER_EVENTS.PLUGINS_REMOVED]: 'broadcast',
-  [SERVER_EVENTS.PLUGINS_UPDATED]: 'broadcast',
+  // #2067: these six were 'broadcast', which in the SSE relay means relayed
+  // to EVERY listener unconditionally. Each payload names a plugin, so a
+  // collaborator who merely held the stream open watched the instance's
+  // plugin inventory change by name — the same enumeration
+  // `GET /api/plugins` was projected to withhold, spread over time instead of
+  // returned in one response. 'scoped' means DENIED unless a named gate in
+  // `routes/orchestration/events.ts` recognizes the channel; that gate is the
+  // per-principal plugin projection.
+  [SERVER_EVENTS.PLUGINS_INSTALLED]: 'scoped',
+  [SERVER_EVENTS.PLUGINS_REMOVED]: 'scoped',
+  [SERVER_EVENTS.PLUGINS_UPDATED]: 'scoped',
   // Settings payload deliberately excludes every field the plugin manifest
   // marks `secret` (see the emit site) — what remains is meant to be
   // non-secret configuration, not per-user content. `field.secret` is
@@ -197,9 +205,9 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // function's docblock); a field whose VALUE merely looks credential-shaped
   // under a non-secret name is logged but still emitted, since that signal
   // alone is too unreliable to justify a silent drop.
-  [SERVER_EVENTS.PLUGINS_SETTINGS_CHANGED]: 'broadcast',
-  [SERVER_EVENTS.PLUGINS_GRANTS_CHANGED]: 'broadcast',
-  [SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE]: 'broadcast',
+  [SERVER_EVENTS.PLUGINS_SETTINGS_CHANGED]: 'scoped',
+  [SERVER_EVENTS.PLUGINS_GRANTS_CHANGED]: 'scoped',
+  [SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE]: 'scoped',
   [SERVER_EVENTS.RUNTIME_HEALTH_CHANGED]: 'broadcast',
   [SERVER_EVENTS.SYSTEM_STATUS_CHANGED]: 'broadcast',
   // `{ path: string }` — not identity-carrying content by itself, but every

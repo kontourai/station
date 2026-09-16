@@ -157,14 +157,67 @@ export function readCurrentWorkspacePaneCatalog(
   const inputs = [];
   const contributions: WorkspacePaneCatalogContribution[] = [];
   const listedLayouts = layoutCatalog.listLayouts();
-  const directPluginPanes =
+  const allDirectPluginPanes =
     layoutCatalog.listPluginWorkspacePaneContributions?.() ?? [];
   assertSafeCatalogIngressData(listedLayouts);
-  assertSafeCatalogIngressData(directPluginPanes);
+  assertSafeCatalogIngressData(allDirectPluginPanes);
+  /**
+   * Per-principal plugin visibility (#2067), applied as ABSENCE at the source.
+   *
+   * This catalogue IS an enumeration of the instance's installed plugins: a
+   * contribution carries the plugin's name, version, on-disk `plugins/<name>`
+   * source and lifecycle state. Filtering only the availability array would
+   * leave every one of those facts in the same response that claims the
+   * caller may not see the plugin — which is precisely what
+   * `packages/contracts/src/workspace-pane-availability.ts` promises the
+   * refusal withholds. So a plugin outside the caller's projection is dropped
+   * before it becomes a contribution, a descriptor, an instance, or an
+   * availability entry, exactly as `GET /api/plugins` drops it from the list
+   * and for the same reason.
+   *
+   * ## One path, and the other one is NOT implemented here
+   *
+   * This is DISCOVERY — "what could I add?" — and absence is the whole
+   * answer. The REFERENCE case (a layout that already names a pane the
+   * viewer cannot see, which should render a placeholder rather than a blank
+   * region) is issue #2067's second acceptance criterion and is NOT
+   * satisfied on this branch. See the note on
+   * `WorkspacePaneAvailabilityInput.pluginVisibility` for why it was removed
+   * rather than shipped a third time, and what a real implementation needs.
+   */
+  const hidesPlugin = (pluginId: string | undefined): boolean =>
+    pluginId !== undefined &&
+    availabilityOptions?.canSeePlugin !== undefined &&
+    !availabilityOptions.canSeePlugin(pluginId);
+  const directPluginPanes = allDirectPluginPanes.filter(
+    (entry) =>
+      // The manifest loader REFUSES a manifest whose pane provenance names
+      // anything but the manifest's own name
+      // (`plugin-manifest-loader.ts:396-398`), so this id is the same string
+      // `GET /api/plugins` reports and the same string an operator grants.
+      //
+      // And a directory whose name diverges from `manifest.name` cannot
+      // produce a colliding id either: `plugin-catalog-installation.ts:45`
+      // returns null for that pair, so the plugin yields no catalog
+      // installation at all and is invisible to this catalogue for EVERYONE,
+      // the operator included. There is no collision to hunt here.
+      !hidesPlugin(entry.descriptor.provenance.pluginId),
+  );
   for (const item of listedLayouts) {
     if (
       item.lifecycle.state !== 'installed' &&
       item.lifecycle.state !== 'disabled'
+    )
+      continue;
+    // #2067, same absence: a layout contributed by a plugin this caller
+    // cannot see never becomes a listed contribution. Its provenance is the
+    // installed plugin's own catalog identity, which the adapter requires to
+    // equal the descriptor provenance it derives
+    // (`contributionMatchesDescriptorProvenance`), so one check covers the
+    // contribution row and every Pane the layout adapts into.
+    if (
+      item.contribution.provenance.origin === 'plugin' &&
+      hidesPlugin(item.contribution.provenance.pluginId)
     )
       continue;
     // This descriptor resolver is intentionally non-authorizing. It may read
@@ -279,6 +332,46 @@ export function readCurrentWorkspacePaneCatalog(
       declaration,
     ]),
   );
+  /**
+   * #2067, the Kit exemption.
+   *
+   * A portable Kit pane carries `origin: 'plugin'` with `pluginId` set to the
+   * Kit's contribution ref (`portable-kit-workspace-panes.ts`), because the
+   * provenance union has no Kit origin to name. That ref is NOT an installed
+   * plugin: it has no `plugins/<name>` directory, it never appears in
+   * `GET /api/plugins`, and an operator has no way to grant it. Handing it to
+   * the projection unchanged would hide every Kit pane from every
+   * non-operator permanently, with no grantable name — a silent behaviour
+   * change for panes this slice was never about.
+   *
+   * So the projection is consulted only for ids this catalogue built from an
+   * INSTALLED PLUGIN. Kit visibility is a real question and a separate one;
+   * it belongs to the Kit lifecycle record, not to the plugin grant record.
+   */
+  const installedPluginIds = new Set<string>([
+    ...allDirectPluginPanes.flatMap((entry) =>
+      entry.descriptor.provenance.origin === 'plugin' &&
+      entry.descriptor.provenance.pluginId !== undefined
+        ? [entry.descriptor.provenance.pluginId]
+        : [],
+    ),
+    ...listedLayouts.flatMap((item) =>
+      item.contribution.provenance.origin === 'plugin' &&
+      item.contribution.provenance.pluginId !== undefined
+        ? [item.contribution.provenance.pluginId]
+        : [],
+    ),
+  ]);
+  const catalogAvailabilityOptions: WorkspacePaneCatalogAvailabilityOptions =
+    availabilityOptions?.canSeePlugin
+      ? {
+          ...availabilityOptions,
+          canSeePlugin: (pluginId) =>
+            installedPluginIds.has(pluginId)
+              ? availabilityOptions.canSeePlugin!(pluginId)
+              : undefined,
+        }
+      : (availabilityOptions ?? {});
   return {
     version: '1.0',
     projectId,
@@ -334,7 +427,7 @@ export function readCurrentWorkspacePaneCatalog(
           }));
         },
       ),
-      availabilityOptions,
+      catalogAvailabilityOptions,
     ),
   };
 }

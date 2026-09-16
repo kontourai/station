@@ -2016,6 +2016,20 @@ async function main() {
               // provider.
               env: {
                 ...process.env,
+                // Scrubbed, not merely assumed absent (#2091).
+                // `tests/device-pane.spec.ts` asserts that an UNCONFIGURED
+                // Station renders its setup card through the real route and
+                // the real `LocalMobileDeviceHost`, which only answers
+                // `not-configured` while this variable is unset. Nothing was
+                // unsetting it: a developer or a runner that exports it (the
+                // setup guide tells you to) turned that assertion into a
+                // product-shaped failure for an environmental reason.
+                // `undefined` is the erasure -- Node's `spawn` omits any key
+                // whose value is `undefined`, the same mechanism the
+                // STATION_E2E_SCREENS key below relies on -- and it sits
+                // BEFORE the two spreads so a suite that ever does want a
+                // device helper can still name one explicitly.
+                STATION_MOBILE_DEVICE_HUB_URL: undefined,
                 ...stationE2EEnv,
                 ...e2eProviderConfigEnv(suite, {
                   claude: claudeConfigDir,

@@ -46,11 +46,16 @@ export const FIRST_RUN_ANCHOR_ATTRIBUTE = 'data-first-run-anchor';
 
 export const FIRST_RUN_TOUR_STEPS = [
   {
-    id: 'review-queue',
+    // #2065 retired the global review queue: Review is a layout kind a
+    // Project places, so there is no cross-Project decision page left for a
+    // tour that cannot know which Project to open. The attention inbox is
+    // where a decision is now made — it carries Approve/Reject itself (#2064)
+    // — so the step teaches the surface that still holds the whole claim.
+    id: 'decisions',
     title: 'Decisions are part of the record',
     body: 'Work that needs your approval stops here, and the decision you make is kept with the run that asked for it — so later you can see not just what happened, but who let it.',
-    view: { type: 'review-queue' },
-    anchor: 'review-queue',
+    view: { type: 'notifications' },
+    anchor: 'notifications',
   },
   {
     id: 'activity',

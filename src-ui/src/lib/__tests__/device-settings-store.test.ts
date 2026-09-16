@@ -498,6 +498,43 @@ describe('device-settings-store', () => {
     ).toBe(false);
   });
 
+  test('resetMany() clears the whole set in one write and one notify', async () => {
+    const { deviceSettingsStore } = await freshStore();
+
+    deviceSettingsStore.set('diffWrap', true);
+    deviceSettingsStore.set('diffStyle', 'split');
+    deviceSettingsStore.set('chatFontSize', 20);
+    const listener = vi.fn();
+    deviceSettingsStore.subscribe(listener);
+
+    deviceSettingsStore.resetMany(['diffWrap', 'diffStyle']);
+
+    expect(deviceSettingsStore.get('diffWrap')).toBe(false);
+    expect(deviceSettingsStore.get('diffStyle')).toBe('unified');
+    // Untouched keys keep their overrides: this restores a plan, not the
+    // whole device.
+    expect(deviceSettingsStore.get('chatFontSize')).toBe(20);
+    // The point of the method: subscribers never observe a partly-restored
+    // device.
+    expect(listener).toHaveBeenCalledTimes(1);
+    const persisted = JSON.parse(localStorage.getItem(ENVELOPE_KEY) as string);
+    expect(Object.hasOwn(persisted.values, 'diffWrap')).toBe(false);
+    expect(Object.hasOwn(persisted.values, 'diffStyle')).toBe(false);
+  });
+
+  test('resetMany() with nothing stored is a true no-op', async () => {
+    const { deviceSettingsStore } = await freshStore();
+
+    const before = deviceSettingsStore.getSnapshot();
+    const listener = vi.fn();
+    deviceSettingsStore.subscribe(listener);
+
+    deviceSettingsStore.resetMany(['diffWrap', 'diffStyle']);
+
+    expect(deviceSettingsStore.getSnapshot()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   test('merge() applies several values at once', async () => {
     const { deviceSettingsStore } = await freshStore();
 
