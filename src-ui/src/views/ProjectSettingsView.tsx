@@ -1,5 +1,9 @@
 import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
+  resolveWorkspaceIsolationMode,
+  type WorkspaceIsolationMode,
+} from '@kontourai/station-contracts/workspace-isolation';
+import {
   useDeleteProjectMutation,
   useModelConnectionsQuery,
   useProjectQuery,
@@ -20,6 +24,7 @@ import { PageSection } from '../components/PageSection';
 import { PathAutocomplete } from '../components/PathAutocomplete';
 import { SectionNav } from '../components/SectionNav';
 import { ErrorState, Skeleton } from '../components/state';
+import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import type { ProjectConfig } from '../contexts/ProjectsContext';
 import { useShowSurface } from '../contexts/useShowSurface';
@@ -53,6 +58,34 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['knowledge', 'Project knowledge'],
   ['danger', 'Danger zone'],
 ] as const;
+
+/** How each stored workspace mode reads in this picker. */
+const WORKSPACE_MODE_LABELS: Record<WorkspaceIsolationMode, string> = {
+  worktree: 'a fresh git worktree',
+  shared: 'the current checkout',
+};
+
+/**
+ * The inherit option's label, naming the mode it currently resolves to when —
+ * and only when — the Station config has actually been read.
+ *
+ * `useConfig()` returns `null` while the read is in flight or has failed, and
+ * "currently: the current checkout" is a claim about a value nobody has
+ * looked at yet: `shared` is the resolver's fallback, so an unloaded config
+ * and a Station that really is on `shared` produce the same string from
+ * different amounts of knowledge. The bare label is what we can say then.
+ */
+function inheritOptionLabel(
+  stationDefault: WorkspaceIsolationMode | undefined,
+  configLoaded: boolean,
+): string {
+  if (!configLoaded) return 'Follow the Station default';
+  return `Use the Station default (currently: ${
+    WORKSPACE_MODE_LABELS[
+      resolveWorkspaceIsolationMode(undefined, stationDefault)
+    ]
+  })`;
+}
 
 /** A connection's own catalog, in the shape `ModelSelector` takes. */
 function connectionModelOptions(
@@ -111,6 +144,7 @@ function connectionInitialModelId(
 }
 
 export function ProjectSettingsView({ slug }: { slug: string }) {
+  const stationConfig = useConfig();
   const { navigate } = useNavigation();
   const showSurface = useShowSurface();
 
@@ -534,7 +568,12 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                   )
                 }
               >
-                <option value="inherit">Use the Station default</option>
+                <option value="inherit">
+                  {inheritOptionLabel(
+                    stationConfig?.defaultWorkspaceIsolation,
+                    stationConfig !== null,
+                  )}
+                </option>
                 <option value="worktree">Use a fresh git worktree</option>
                 <option value="shared">Use the current checkout</option>
               </select>

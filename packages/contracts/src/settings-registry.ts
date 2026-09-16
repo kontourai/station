@@ -156,8 +156,13 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'defaults',
     descriptor: { kind: 'string' },
     label: 'Default model',
-    help: 'Bedrock agents and the Station-level fallback use this model when nothing more specific names one.',
-    description: 'Default Bedrock model ID for new agents.',
+    help: 'The Station-level fallback uses this model when neither the agent, the project, nor the model connection names one.',
+    // Was "Default Bedrock model ID for new agents", which named one engine
+    // family and one moment. `ProviderService.resolveProviderAndModel` reads
+    // this as the LAST step of a chain every managed turn walks, whatever the
+    // engine, and `resolveDefaultManagedModelHint` reads it again.
+    description:
+      'The last step of the model chain: the agent, then the project, then the model connection’s own default, then this. Every managed turn that gets this far uses it.',
     required: true,
   }),
   defineSetting({

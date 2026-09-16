@@ -16,7 +16,15 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   configOps: { add: vi.fn() },
 }));
 
-const { createConfigRoutes } = await import('../config.js');
+const { createConfigProjectReader, createConfigRoutes } = await import(
+  '../config.js'
+);
+const { FileStorageNotFoundError, FileStorageUnavailableError } = await import(
+  '../../../domain/project-file-transactions.js'
+);
+const { InvalidPathSegmentError } = await import(
+  '../../../knowledge-index/path-safety.js'
+);
 const { ConfigLoader } = await import('../../../domain/config-loader.js');
 const { defaultTerminalShell } = await import(
   '../../../services/terminal/terminal-shells.js'
@@ -541,6 +549,79 @@ describe('Config Routes', () => {
         scope: 'project',
       });
     }
+  });
+
+  /**
+   * The REAL wrapper (`createConfigProjectReader`) over a stub adapter, so
+   * the three outcomes are proved through the production join rather than a
+   * test-local lambda that happens to behave the same way. The distinction
+   * matters: before this round the wrapper matched the adapter's not-found
+   * MESSAGE, which reported "no such project" for any error whose text
+   * happened to contain those words.
+   */
+  describe('the project reader tells absence from failure', () => {
+    const routesFor = (getProject: (slug: string) => never | any) =>
+      createConfigRoutes(
+        createMockConfigLoader() as any,
+        mockLogger,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        createConfigProjectReader({ getProject } as never),
+      );
+
+    test('a slug with no record is absent — 404', async () => {
+      const app = routesFor(() => {
+        throw new FileStorageNotFoundError("Project 'ghost' not found");
+      });
+      const res = await app.request('/app?project=ghost');
+      expect(res.status).toBe(404);
+    });
+
+    test('a slug that is not a path segment is a bad request — 400, and the slug is not echoed', async () => {
+      const app = routesFor((slug) => {
+        throw new InvalidPathSegmentError('project slug', slug);
+      });
+      const res = await app.request(
+        `/app?project=${encodeURIComponent('../../etc/passwd')}`,
+      );
+      expect(res.status).toBe(400);
+      const body = await json(res);
+      expect(body.success).toBe(false);
+      // The error class's own message quotes the value back; this one reaches
+      // a caller who chose it, so it must not.
+      expect(body.error).not.toContain('passwd');
+      expect(body.error).not.toContain('..');
+      expect(body.error).toBe(
+        'The project query parameter must be a single project slug; no provenance was reported.',
+      );
+    });
+
+    test('an unreadable store is a server fault — 500, not a missing project', async () => {
+      const app = routesFor(() => {
+        throw new FileStorageUnavailableError('Project storage is unavailable');
+      });
+      const res = await app.request('/app?project=atlas');
+      expect(res.status).toBe(500);
+      expect((await json(res)).success).toBe(false);
+    });
+
+    /**
+     * The message-matching join this replaced: a storage FAILURE whose text
+     * contains "not found" was reported as an absent project. Pinned so the
+     * typed join cannot quietly regress to a substring test.
+     */
+    test('a read failure that merely mentions "not found" is still a failure', async () => {
+      const app = routesFor(() => {
+        throw new FileStorageUnavailableError(
+          'Project storage is unavailable: mount point not found',
+        );
+      });
+      expect((await app.request('/app?project=atlas')).status).toBe(500);
+    });
   });
 
   test('GET /app?project= answers 404 for a slug this Station does not have', async () => {

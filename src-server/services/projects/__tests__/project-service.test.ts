@@ -535,6 +535,90 @@ describe('ProjectService', () => {
     ).not.toHaveBeenCalled();
   });
 
+  /**
+   * The `workingDirectory` trigger, against a project that names no mode.
+   * Both directions, because only the pair discriminates: a repository
+   * accepted and a non-repository refused shows the preflight is reading the
+   * Station default AND still judging the new directory, rather than passing
+   * everything or refusing everything.
+   */
+  test('moving a mode-less project to a non-repository is refused under a Station default of worktree', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-project-move-bad-'));
+    tmpHomes.push(directory);
+    const adapter = createMockStorageAdapter();
+    adapter.getProject.mockReturnValue({
+      id: 'project-test',
+      slug: 'test',
+      name: 'Test',
+      workingDirectory: directory,
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+    });
+    const svc = new ProjectService(
+      adapter as any,
+      undefined,
+      async () => 'worktree',
+    );
+
+    await expect(
+      svc.updateProject('test', { workingDirectory: directory }),
+    ).rejects.toMatchObject({
+      code: 'project_worktree_directory_invalid',
+    });
+  });
+
+  test('moving a mode-less project to a repository is accepted under the same Station default', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-project-move-ok-'));
+    tmpHomes.push(directory);
+    execGitSync(['init'], { cwd: directory, stdio: 'pipe' });
+    const adapter = createMockStorageAdapter();
+    adapter.getProject.mockReturnValue({
+      id: 'project-test',
+      slug: 'test',
+      name: 'Test',
+      workingDirectory: '/somewhere/else',
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+    });
+    const svc = new ProjectService(
+      adapter as any,
+      undefined,
+      async () => 'worktree',
+    );
+
+    await expect(
+      svc.updateProject('test', { workingDirectory: directory }),
+    ).resolves.toMatchObject({ workingDirectory: directory });
+  });
+
+  /**
+   * And the control: the SAME move, on the same non-repository, is accepted
+   * when the Station names no default — so the refusal above is attributable
+   * to the Station default and not to the move alone.
+   */
+  test('the same move is accepted when the Station names no default', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-project-move-ctl-'));
+    tmpHomes.push(directory);
+    const adapter = createMockStorageAdapter();
+    adapter.getProject.mockReturnValue({
+      id: 'project-test',
+      slug: 'test',
+      name: 'Test',
+      workingDirectory: directory,
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+    });
+    const svc = new ProjectService(
+      adapter as any,
+      undefined,
+      async () => undefined,
+    );
+
+    await expect(
+      svc.updateProject('test', { workingDirectory: directory }),
+    ).resolves.toMatchObject({ workingDirectory: directory });
+  });
+
   test('an unrelated update does not arm the preflight, Station default or not', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'station-project-unrelated-'));
     tmpHomes.push(directory);

@@ -75,10 +75,11 @@ void _assertOverridesCoverTheList;
  * (`src-server/services/connections/provider-service.ts:283-320`) reads the
  * project's `defaultProviderId`/`defaultModel` pair first and
  * `AppConfig.defaultLLMProvider`/`AppConfig.defaultModel` as its own
- * fallback, in one resolver. (The Bedrock read at
- * `src-server/routes/connections/bedrock.ts` is a second consumer of the Station
- * value, not the only one — recorded here so the next reader does not repeat
- * the search that makes it look like two unrelated fields.)
+ * fallback, in one resolver. (`resolveDefaultManagedModelHint` at
+ * `src-server/runtime/plugins/runtime-provider-resolution.ts:386-405` reads
+ * the same Station pair as a second consumer — recorded here so the next
+ * reader does not repeat the search that makes it look like two unrelated
+ * fields.)
  */
 export const PROJECT_OVERRIDE_FIELD_ALIASES = {
   defaultModel: 'defaultModel',
@@ -105,7 +106,10 @@ export const PROJECT_OVERRIDE_FIELD_ALIASES = {
  * on its own (`resolveWorkspaceIsolationMode`) and has nothing to be atomic
  * with.
  */
-const ATOMIC_MODEL_PAIR = ['defaultModel', 'defaultLLMProvider'] as const;
+const ATOMIC_MODEL_PAIR = [
+  'defaultModel',
+  'defaultLLMProvider',
+] as const satisfies readonly ProjectOverridableAppSettingKey[];
 
 /**
  * The overrides a project record actually carries, keyed by SETTING key.

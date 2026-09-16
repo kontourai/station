@@ -22,10 +22,13 @@ import { readProjectOverrides } from '@kontourai/station-contracts/project-setti
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import type { ConfigLoader } from '../../domain/config-loader.js';
+import { FileStorageNotFoundError } from '../../domain/project-file-transactions.js';
 import {
   buildAppConfigProvenance,
   sanitizeAppConfigUpdate,
 } from '../../domain/settings-registry-server.js';
+import type { IStorageAdapter } from '../../domain/storage-adapter.js';
+import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import {
   grantedPairingScope,
@@ -71,6 +74,34 @@ function projectPublicAppConfig(config: Record<string, any>) {
         },
       ),
     ),
+  };
+}
+
+/**
+ * Reads one project record for `GET /config/app?project=<slug>` (#2144
+ * slice 2), turning only ABSENCE into a value the route can answer 404 with.
+ *
+ * `FileStorageNotFoundError` is a typed error the storage layer throws for a
+ * slug with no record (`domain/project-file-transactions.ts`), so "this
+ * project does not exist" is told apart from "reading it failed" by the
+ * error's own type — the same `instanceof` join
+ * `projectMutationStatus` in `routes/projects/projects.ts` already uses.
+ *
+ * Everything else rethrows. A corrupt `project.json`, an unreadable home, or
+ * a slug that is not a safe path segment are not "no such project": reporting
+ * them as one would send the operator to check a NAME while the disk, or
+ * their own request, is the problem.
+ */
+export function createConfigProjectReader(
+  projects: Pick<IStorageAdapter, 'getProject'>,
+): (slug: string) => ProjectConfig | undefined {
+  return (slug) => {
+    try {
+      return projects.getProject(slug);
+    } catch (error) {
+      if (error instanceof FileStorageNotFoundError) return undefined;
+      throw error;
+    }
   };
 }
 
@@ -165,8 +196,9 @@ export function createConfigRoutes(
   // which reports the per-field provenance a project's overrides produce.
   // Returns `undefined` for a slug this Station does not have (the route
   // answers 404 rather than reporting Station-only provenance under a name
-  // that does not exist). Optional so callers and tests that never ask about
-  // a project see no behavior change.
+  // that does not exist), and THROWS for every other failure. Production
+  // supplies `createConfigProjectReader` above. Optional so callers and tests
+  // that never ask about a project see no behavior change.
   readProject?: (slug: string) => ProjectConfig | undefined,
 ) {
   const app = new Hono();
@@ -259,7 +291,24 @@ export function createConfigRoutes(
       const projectSlug = c.req.query('project')?.trim();
       let project: ProjectConfig | undefined;
       if (projectSlug) {
-        project = readProject?.(projectSlug);
+        try {
+          project = readProject?.(projectSlug);
+        } catch (error) {
+          if (!(error instanceof InvalidPathSegmentError)) throw error;
+          // A slug that is not a path segment is a malformed REQUEST, not a
+          // missing project and not a server fault. The message is FIXED:
+          // `InvalidPathSegmentError`'s own text quotes the value back, and
+          // this one reaches a caller who chose it.
+          configOps.add(1, { op: 'get_app_project_slug_invalid' });
+          return c.json(
+            {
+              success: false,
+              error:
+                'The project query parameter must be a single project slug; no provenance was reported.',
+            },
+            400,
+          );
+        }
         if (!project) {
           return c.json(
             {
