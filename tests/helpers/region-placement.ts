@@ -166,6 +166,16 @@ export async function showSurfaceInEmptyRegion(
  * The toggle's ordinary click shows or hides the region, so a press that
  * lands short opens nothing and toggles the region instead — which the
  * caller's `aria-pressed` assertion around this catches.
+ *
+ * WHAT THIS CAN AND CANNOT SEE, measured by injection rather than assumed.
+ * It reds when the pointer capture is removed (the hold is then cancelled by
+ * a boundary event the settling layout produces under the stationary cursor),
+ * and it reds on the backdrop's own guard once capture is out of the way —
+ * with the message above. It does NOT red on that guard alone, because with
+ * capture in place a MOUSE release never reaches the backdrop; the guard's
+ * remaining job is the touch path's compatibility `click`, which Playwright's
+ * mouse cannot produce. That case is driven in jsdom, both routes explicitly
+ * (`RegionToolbarControls.test.tsx`).
  */
 export async function openChooserFromToggle(
   page: Page,

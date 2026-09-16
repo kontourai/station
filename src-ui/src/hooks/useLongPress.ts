@@ -149,6 +149,16 @@ export function useLongPress({
     // above has already cancelled by then). This is the no-capture engine's
     // "the press was dragged off the control" — the case `pointermove`
     // cannot see, because it stops arriving at the element the pointer left.
+    //
+    // It is a blunter instrument than capture, and the difference is
+    // MEASURED: with capture removed in a real browser, a hold over a
+    // settling layout is cancelled before its threshold, because content
+    // moving under a STATIONARY pointer produces a boundary event just as a
+    // moving pointer does. Kept anyway, and the trade is the safer one: on
+    // such an engine a hold that does nothing is a gesture the user repeats,
+    // while a hold that opens a panel after the finger was dragged away is a
+    // panel nobody asked for. Every engine that grants the capture above
+    // never reaches this at all.
     onPointerLeave: cancel,
     // The engine took the capture away mid-press (a system gesture, a
     // navigation). No release is coming to this element, so the pending hold
