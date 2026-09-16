@@ -8,6 +8,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -61,7 +62,19 @@ vi.mock('@kontourai/station-sdk', () => ({
   useSetPluginVisibilityMutation: () => ({ mutate: vi.fn(), isError: false }),
   isPluginVisibilityForbidden: () => false,
   useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
-  useConfigProvenanceQuery: () => ({ data: configProvenance }),
+  // #2144 slice 3: the hook takes the selected project's slug, and the
+  // server reports DIFFERENT provenance for a scoped read (`scope: 'project'`
+  // on whatever the project overrides). The mock keys on the slug for the
+  // same reason the cache does — serving the Station answer for a project
+  // read is the exact confusion the key exists to prevent.
+  useConfigProvenanceQuery: (slug?: string) => ({
+    data: slug ? projectProvenance : configProvenance,
+  }),
+  useProjectsQuery: () => ({ data: projectList }),
+  useProjectQuery: (slug: string) => ({
+    data: slug ? projectRecord : undefined,
+  }),
+  useUpdateProjectMutation: () => ({ mutateAsync: updateProjectAsync }),
   // Settings mounts `UsageTelemetryDisclosure`, and #1608 made its decision
   // hook read the shared `['config']` query and its write path so the offered
   // choice cannot contradict a setting changed since the inventory was
@@ -132,6 +145,13 @@ const INITIAL_CONFIG = { logLevel: 'info', templateVariables: [] };
 // Per-field provenance. Mutable because "which settings are stored" is what
 // decides what a reset clears, and it has to differ between tests.
 let configProvenance: Record<string, { source: string }> = {};
+// #2144 slice 3: what a `?project=<slug>` read reports, and the project the
+// selector offers. Mutable for the same reason `configProvenance` is — which
+// keys a project overrides is what every assertion below varies.
+let projectProvenance: Record<string, { source: string; scope?: string }> = {};
+let projectList: { slug: string; name?: string }[] = [];
+let projectRecord: Record<string, unknown> | undefined;
+const updateProjectAsync = vi.fn(async () => ({}));
 // The reconciliation effect reads the fetch generation, not just the values, so
 // tests drive both: `config` is what the server last returned and
 // `dataUpdatedAt` is when that fetch succeeded.
@@ -243,6 +263,10 @@ describe('settings catalog completeness', () => {
     updateAppLogLevel.mockReset();
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
     configProvenance = {};
+    projectProvenance = {};
+    projectList = [{ slug: 'atlas', name: 'Atlas' }];
+    projectRecord = undefined;
+    updateProjectAsync.mockClear();
     deviceChatFontSize = 14;
     setDeviceSetting.mockClear();
     resetDeviceSetting.mockClear();
@@ -1143,6 +1167,148 @@ describe('settings catalog completeness', () => {
       expect(resetDeviceSetting).toHaveBeenCalledTimes(1);
       expect(resetDeviceSetting).toHaveBeenCalledWith('chatFontSize');
       expect(setDeviceSetting).not.toHaveBeenCalled();
+    });
+  });
+
+
+  /**
+   * #2144 slice 3 — the project scope selector and the override draft it
+   * owns. `defaultWorkspaceIsolation` is the exercised row because it is the
+   * one overridable key that renders through the generic registry row; the
+   * setting-key-to-record-field mapping the other two need is proven in
+   * `project-override-draft.test.ts`, which is where that rule lives.
+   */
+  describe('project scope', () => {
+    const WORKSPACE_ROW = 'New chat workspace';
+
+    function selectAtlas() {
+      fireEvent.change(screen.getByLabelText('Show settings for:'), {
+        target: { value: 'atlas' },
+      });
+    }
+
+    test('changing the selector with a dirty Station draft asks before discarding', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, registryUrl: 'https://one.test' },
+        dataUpdatedAt: 1,
+      };
+      await renderSettings();
+
+      const registry = screen.getByLabelText('Registry URL');
+      fireEvent.change(registry, { target: { value: 'https://two.test' } });
+      expect(screen.getByText('Unsaved changes')).toBeTruthy();
+
+      selectAtlas();
+      // The selector is a LOCAL state change, so it arbitrates through the
+      // guard's explicit callback rather than the navigation store.
+      expect(screen.getByText('Unsaved Changes')).toBeTruthy();
+      expect(
+        (screen.getByLabelText('Show settings for:') as HTMLSelectElement)
+          .value,
+      ).toBe('');
+
+      // The page's save pill also offers "Discard"; this one is the modal's.
+      fireEvent.click(
+        within(screen.getByRole('dialog')).getByRole('button', {
+          name: 'Discard',
+        }),
+      );
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText('Show settings for:') as HTMLSelectElement)
+            .value,
+        ).toBe('atlas'),
+      );
+      expect((registry as HTMLInputElement).value).toBe('https://one.test');
+    });
+
+    test('an overridden row reads the project’s value and says the project owns it', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas', defaultWorkspaceIsolation: 'worktree' };
+      projectProvenance = {
+        defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
+        registryUrl: { source: 'file', scope: 'station' },
+      };
+      await renderSettings();
+
+      const workspace = screen.getByLabelText(
+        WORKSPACE_ROW,
+      ) as HTMLSelectElement;
+      expect(workspace.value).toBe('shared');
+
+      selectAtlas();
+
+      await waitFor(() => expect(workspace.value).toBe('worktree'));
+      const row = workspace.closest('.page-row')!;
+      expect(row.querySelector('.setting-row-status')!.textContent).toContain(
+        'Project',
+      );
+      const stationRow = screen
+        .getByLabelText('Registry URL')
+        .closest('.page-row')!;
+      expect(
+        stationRow.querySelector('.setting-row-status')!.textContent,
+      ).toContain('Station');
+    });
+
+    test('an override edit saves to the project, not to the Station config', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas' };
+      projectProvenance = {};
+      await renderSettings();
+
+      selectAtlas();
+      fireEvent.change(screen.getByLabelText(WORKSPACE_ROW), {
+        target: { value: 'worktree' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(updateProjectAsync).toHaveBeenCalledTimes(1));
+      expect(updateProjectAsync).toHaveBeenCalledWith({
+        slug: 'atlas',
+        defaultWorkspaceIsolation: 'worktree',
+      });
+      // The Station document is untouched: the edit was the project's.
+      expect(updateConfig).not.toHaveBeenCalled();
+    });
+
+    test('reset to inherited sends null, which is what drops the override', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas', defaultWorkspaceIsolation: 'worktree' };
+      projectProvenance = {
+        defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
+      };
+      await renderSettings();
+
+      selectAtlas();
+      const resets = await screen.findAllByRole('button', {
+        name: 'Reset to inherited',
+      });
+      expect(resets).toHaveLength(1);
+      fireEvent.click(resets[0]);
+      // Pending, not applied: the row falls back to the Station value and the
+      // save pill arms.
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText(WORKSPACE_ROW) as HTMLSelectElement).value,
+        ).toBe('shared'),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(updateProjectAsync).toHaveBeenCalledTimes(1));
+      expect(updateProjectAsync).toHaveBeenCalledWith({
+        slug: 'atlas',
+        defaultWorkspaceIsolation: null,
+      });
     });
   });
 
