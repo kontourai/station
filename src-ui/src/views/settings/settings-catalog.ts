@@ -5,12 +5,20 @@ import { interpolate } from '../../i18n/LocaleContext';
 import { pseudoLocalize } from '../../i18n/pseudo';
 
 export type SettingsSectionId =
-  | 'station-config'
+  // #2182 dissolved 'station-config'. It was a card named after a FILE
+  // FORMAT that had collected sixteen unrelated controls — a permission
+  // screener beside a shell path beside a telemetry switch — and nobody
+  // could have guessed which of them lived there. Its rows moved to the
+  // sections named for what they decide; the id is gone, and a stale
+  // `?view=station-config` heals whenever the link carries a highlight.
   | 'system'
   | 'feature-previews'
   | 'answer-shares'
   | 'plugin-visibility'
   | 'host-runtime'
+  | 'sources'
+  | 'telemetry'
+  | 'permissions'
   | 'diagnostics'
   // #2182: renamed from 'agent-defaults'. "Defaults" named a precedence
   // rule and said nothing about what the rule applies TO; these are the
@@ -74,11 +82,6 @@ export interface SettingsCatalogEntry {
 export type SettingsNavGroup = 'this-station' | 'control' | 'you' | 'knowledge';
 
 export const SETTINGS_SECTIONS = [
-  {
-    id: 'station-config',
-    title: 'Station configuration',
-    group: 'this-station',
-  },
   { id: 'system', title: 'System', group: 'this-station' },
   // archive#3313 (IA option A): the retired standalone Feature Previews view,
   // as a Station-scope section (previews persist on the Station).
@@ -93,7 +96,18 @@ export const SETTINGS_SECTIONS = [
     group: 'this-station',
   },
   { id: 'host-runtime', title: 'Station host', group: 'this-station' },
+  // #2182: where this Station gets agents, skills, plugins and layouts from.
+  { id: 'sources', title: 'Sources', group: 'this-station' },
+  // #2182: whether anything is sent, and whether there is anywhere to send
+  // it. The disclosure card that lists what a payload contains moved here
+  // with the toggle that decides it.
+  { id: 'telemetry', title: 'Usage telemetry', group: 'this-station' },
   { id: 'diagnostics', title: 'Diagnostics', group: 'this-station' },
+  // #2182: what agents may do without asking. Two rows, and that is the
+  // whole of it today — the epic's other permissions ideas have no consumer
+  // yet, and a section padded to look substantial would be the same lie as
+  // the card this one came out of.
+  { id: 'permissions', title: 'Permissions', group: 'control' },
   { id: 'agent-runs', title: 'Agent runs', group: 'control' },
   { id: 'appearance', title: 'Appearance', group: 'you' },
   // #2144 decision 2: chat behaviour is per-device, so it sits beside the
@@ -118,103 +132,6 @@ export const SETTINGS_SECTIONS = [
 }[];
 
 const SETTINGS_CATALOG_SOURCE = [
-  {
-    id: 'approval-guardian',
-    title: 'Approval guardian',
-    section: 'station-config',
-    configKeys: ['approvalGuardian'],
-  },
-  {
-    id: 'usage-telemetry',
-    title: 'Usage telemetry',
-    section: 'station-config',
-    configKeys: ['telemetryEnabled'],
-  },
-  {
-    id: 'telemetry-destination',
-    title: 'Telemetry destination',
-    section: 'station-config',
-    keywords: ['endpoint', 'where telemetry goes', 'otel'],
-  },
-  {
-    id: 'default-max-turns',
-    title: 'Default max turns',
-    section: 'station-config',
-    configKeys: ['defaultMaxTurns'],
-  },
-  {
-    id: 'default-max-output-tokens',
-    title: 'Default max output tokens',
-    section: 'station-config',
-    configKeys: ['defaultMaxOutputTokens'],
-  },
-  {
-    id: 'default-chat-font-size',
-    title: 'Default chat font size',
-    section: 'station-config',
-    configKeys: ['defaultChatFontSize'],
-  },
-  {
-    id: 'terminal-shell',
-    title: 'Terminal shell',
-    section: 'station-config',
-    configKeys: ['terminalShell'],
-  },
-  {
-    id: 'mcp-ui-host',
-    title: 'MCP UI host',
-    section: 'station-config',
-    configKeys: ['mcpUiHost'],
-  },
-  {
-    id: 'surface-trust',
-    title: 'Surface trust from Veritas evidence',
-    section: 'station-config',
-    configKeys: ['surfaceTrustFromVeritasEvidence'],
-  },
-  {
-    id: 'default-skill-registries',
-    title: 'Disable default skill registries',
-    section: 'station-config',
-    configKeys: ['disableDefaultSkillRegistries'],
-  },
-  {
-    id: 'workspace-checkpoints',
-    title: 'Workspace checkpoints',
-    section: 'station-config',
-    configKeys: ['workspaceCheckpoints'],
-  },
-  {
-    id: 'default-workspace-isolation',
-    title: 'New chat workspace',
-    section: 'station-config',
-    configKeys: ['defaultWorkspaceIsolation'],
-  },
-  {
-    id: 'default-approval-mode',
-    title: 'Default approval mode',
-    section: 'station-config',
-    keywords: ['approval', 'permissions', 'auto approve', 'ask first'],
-    configKeys: ['defaultApprovalMode'],
-  },
-  {
-    id: 'registry-url',
-    title: 'Registry URL',
-    section: 'station-config',
-    configKeys: ['registryUrl'],
-  },
-  {
-    id: 'distribution-profile',
-    title: 'Layout sources',
-    section: 'station-config',
-    configKeys: ['distributionProfile'],
-  },
-  {
-    id: 'builtin-agent-engine',
-    title: 'Built-in agent engine',
-    section: 'station-config',
-    configKeys: ['builtinAgentEngineConnectionId'],
-  },
   {
     id: 'desktop-app-updates',
     title: 'Desktop app updates',
@@ -289,11 +206,89 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'host-runtime',
     keywords: ['environment prerequisites detected software'],
   },
+  // ── Station host (#2182) ────────────────────────────────────────────────
+  // Three settings whose subject is the machine: which shell a terminal
+  // starts, which origin an MCP UI may be served from, and whether Veritas
+  // evidence is allowed to raise a surface's trust on it. The shell's own
+  // default is a HOST reading (`HOST_DERIVED_DEFAULTS`), which is the clearest
+  // statement that these belong beside the prerequisite report rather than in
+  // a general configuration bin.
+  {
+    id: 'terminal-shell',
+    title: 'Terminal shell',
+    section: 'host-runtime',
+    configKeys: ['terminalShell'],
+  },
+  {
+    id: 'mcp-ui-host',
+    title: 'MCP UI host',
+    section: 'host-runtime',
+    configKeys: ['mcpUiHost'],
+  },
+  {
+    id: 'surface-trust',
+    title: 'Surface trust from Veritas evidence',
+    section: 'host-runtime',
+    configKeys: ['surfaceTrustFromVeritasEvidence'],
+  },
+  // ── Sources (#2182) ─────────────────────────────────────────────────────
+  // Where this Station gets agents, skills, plugins and layouts from. All
+  // three were previously scattered through one undifferentiated card, so
+  // nothing said they answer the same question.
+  {
+    id: 'registry-url',
+    title: 'Registry URL',
+    section: 'sources',
+    configKeys: ['registryUrl'],
+  },
+  {
+    id: 'default-skill-registries',
+    title: 'Disable default skill registries',
+    section: 'sources',
+    configKeys: ['disableDefaultSkillRegistries'],
+  },
+  {
+    id: 'distribution-profile',
+    title: 'Layout sources',
+    section: 'sources',
+    configKeys: ['distributionProfile'],
+  },
+  // ── Usage telemetry (#2182) ─────────────────────────────────────────────
+  // Whether anything is sent, and whether there is anywhere to send it.
+  {
+    id: 'usage-telemetry',
+    title: 'Usage telemetry',
+    section: 'telemetry',
+    configKeys: ['telemetryEnabled'],
+  },
+  {
+    id: 'telemetry-destination',
+    title: 'Telemetry destination',
+    section: 'telemetry',
+    keywords: ['endpoint', 'where telemetry goes', 'otel'],
+  },
   {
     id: 'diagnostics-bundle',
     title: 'Diagnostics bundle',
     section: 'diagnostics',
     keywords: ['health logs download'],
+  },
+  // ── Permissions (#2182) ─────────────────────────────────────────────────
+  // What agents may do without asking. `approval-guardian` is an always-on
+  // screener rather than a fallback, which is why the Control group's caption
+  // has to name both kinds of rule.
+  {
+    id: 'approval-guardian',
+    title: 'Approval guardian',
+    section: 'permissions',
+    configKeys: ['approvalGuardian'],
+  },
+  {
+    id: 'default-approval-mode',
+    title: 'Default approval mode',
+    section: 'permissions',
+    keywords: ['approval', 'permissions', 'auto approve', 'ask first'],
+    configKeys: ['defaultApprovalMode'],
   },
   {
     id: 'default-model',
@@ -319,6 +314,43 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'agent-runs',
     configKeys: ['templateVariables'],
   },
+  // The five below moved here from the dissolved `station-config` card
+  // (#2182). Every one of them bounds or equips a RUN — which engine carries
+  // the built-in agent, how many steps and output tokens a run may take, the
+  // workspace a new chat gets, and whether that workspace is checkpointed —
+  // so they belong with the values a run starts from, not in a card named
+  // after a config file. Their `scope` stays `station`: it is read from each
+  // key's own registry definition, not from this section (`scopeForEntry`).
+  {
+    id: 'builtin-agent-engine',
+    title: 'Built-in agent engine',
+    section: 'agent-runs',
+    configKeys: ['builtinAgentEngineConnectionId'],
+  },
+  {
+    id: 'default-max-turns',
+    title: 'Default max turns',
+    section: 'agent-runs',
+    configKeys: ['defaultMaxTurns'],
+  },
+  {
+    id: 'default-max-output-tokens',
+    title: 'Default max output tokens',
+    section: 'agent-runs',
+    configKeys: ['defaultMaxOutputTokens'],
+  },
+  {
+    id: 'default-workspace-isolation',
+    title: 'New chat workspace',
+    section: 'agent-runs',
+    configKeys: ['defaultWorkspaceIsolation'],
+  },
+  {
+    id: 'workspace-checkpoints',
+    title: 'Workspace checkpoints',
+    section: 'agent-runs',
+    configKeys: ['workspaceCheckpoints'],
+  },
   // ── Chat (#2144 decision 2) ──────────────────────────────────────────────
   // These two MOVED here from 'appearance'. Their ids are unchanged, so every
   // `highlight=` deep link and every recorded highlight still resolves; what
@@ -332,8 +364,20 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'chat',
     // Device key only: this slider writes `chatFontSize` through the
     // device-settings store. The Station default (`defaultChatFontSize`) is
-    // its own row under Station configuration.
+    // its own row, immediately below.
     configKeys: ['chatFontSize'],
+  },
+  // The Station default this device's slider falls back to (#2182). It is a
+  // STATION-scope row inside the device box, which is exactly the case the
+  // scope chip exists for: `containerScope="device"` makes it print a
+  // "Station" chip that the device rows around it do not get. It sits here
+  // rather than in a Station card because the question it answers —
+  // "how big is chat text" — is the one the reader came to this card with.
+  {
+    id: 'default-chat-font-size',
+    title: 'Default chat font size',
+    section: 'chat',
+    configKeys: ['defaultChatFontSize'],
   },
   {
     // The id is the stable URL/palette identity and stays as minted even

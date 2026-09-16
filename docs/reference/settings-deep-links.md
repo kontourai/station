@@ -50,7 +50,11 @@ Moves so far:
   controls that previously had no Settings row at all
   (`chat-show-reasoning`, `chat-show-tool-details`, `chat-dock-auto-hide`,
   `diff-style`, `diff-wrap`).
-- #2182: `agent-defaults` is now `agent-runs`.
+- #2182: `agent-defaults` is now `agent-runs`, and `station-config` is gone
+  entirely — its sixteen controls moved to `host-runtime`, `sources` (new),
+  `telemetry` (new), `permissions` (new), `agent-runs` and `chat`. The retired
+  `/developer/config` path now redirects to `/settings` with no `view` at all,
+  because a redirect cannot choose one of six.
 
 ## `GET /api/settings/registry`
 
@@ -72,8 +76,8 @@ Read `GET /config/app` for values.
         "label": "Default max turns",
         "help": "Station stops an agent run once it has taken this many steps.",
         "scope": "station",
-        "section": "station-config",
-        "route": "/settings?view=station-config&highlight=default-max-turns",
+        "section": "agent-runs",
+        "route": "/settings?view=agent-runs&highlight=default-max-turns",
         "configKey": "defaultMaxTurns"
       }
     ]

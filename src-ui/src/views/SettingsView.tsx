@@ -108,15 +108,17 @@ import {
  * Station, Defaults, This device. Leaf section DOM ids are
  * unchanged from pre-slice-3 (`useSectionNavigation` deep links and
  * existing tests key off them); only the top-level nav/page grouping
- * restructures. `station-config` is the one new leaf (the previously
- * hidden Station fields — see StationConfigSection.tsx). "My knowledge
+ * restructures. #2182 then dissolved `station-config` — the card those
+ * hidden Station fields landed in — into the sections named for what each
+ * row decides; `StationConfigSection.tsx` is now the shared renderer for
+ * those registry-driven rows rather than a section of its own. "My knowledge
  * store" (archive#settings-revamp: renamed from "Knowledge Store" to
  * disambiguate from the project-scoped and infrastructure-scoped Knowledge
  * surfaces, docs/design/settings-architecture.md §3) stays its own
  * top-level card outside every scope group.
  */
 // Ordered by what a person came here to do (archive#1826): the sections with
-// controls first (Station configuration, System, Shared answers), then the
+// controls first (Sources, Usage telemetry, System, Shared answers), then the
 // read-mostly surfaces (Station host status, the Diagnostics bundle). A
 // settings page should open with what you change, not what an engineer
 // collects.
@@ -916,14 +918,42 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 Saved to this Station — every client sees the same values.
               </p>
 
-              {sectionVisible('station-config') && (
-                <>
+              {/* #2182: the dissolved "Station configuration" card's rows now
+              render under the sections named for what they decide. Sources
+              and Usage telemetry are new cards here; the three host settings
+              join the host report below; Permissions and Agent runs are in
+              Control; the Station chat-font-size default is in Chat. */}
+              {sectionVisible('sources') && (
+                <StationConfigSection
+                  section="sources"
+                  icon="⚙"
+                  config={config}
+                  provenance={provenance}
+                  onChange={setConfig}
+                  // This box's caption is "Saved to this Station"; a plain
+                  // Station row inside it says nothing more.
+                  containerScope="station"
+                  projectOverride={projectOverride}
+                />
+              )}
+
+              {/* Glyphs already on `ui-glyph-coverage-allowlist.json`, not
+              new ones: that list is recorded debt (#1704 is shrinking it),
+              and a section arriving with its own pictogram would grow it for
+              decoration. ⚙ is the dissolved card's own glyph, kept for
+              Sources; ◉ and ◆ were already carried. */}
+              {sectionVisible('telemetry') && (
+                <Section
+                  icon="◉"
+                  title="Usage telemetry"
+                  id="section-telemetry"
+                >
                   <StationConfigSection
+                    section="telemetry"
+                    embedded
                     config={config}
                     provenance={provenance}
                     onChange={setConfig}
-                    // This box's caption is "Saved to this Station"; a plain
-                    // Station row inside it says nothing more.
                     containerScope="station"
                     projectOverride={projectOverride}
                   />
@@ -952,8 +982,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     })()}
                   />
                   <UsageTelemetryDisclosure />
-                  <LocalAccountsSection />
-                </>
+                </Section>
               )}
 
               {sectionVisible('system') && (
@@ -968,6 +997,13 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     hasUnsavedChanges={hasChanges}
                   />
                   <ExistingSetupImportStepper />
+                  {/* #2182: who may sign in to this Station. It has no
+                  catalog row of its own (giving it one is out of scope —
+                  see the epic), so it had to be placed by hand when the card
+                  it used to sit in was dissolved. System is where this page
+                  already keeps Station administration: updates, log level,
+                  export and import, and the two resets. */}
+                  <LocalAccountsSection />
                 </>
               )}
 
@@ -987,7 +1023,21 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 <PluginVisibilitySection />
               )}
               {sectionVisible('host-runtime') && (
-                <EnvironmentStatus apiBase={currentApiBase} />
+                <EnvironmentStatus apiBase={currentApiBase}>
+                  {/* #2182: three settings whose subject is the machine,
+                  inside the card that reports on it. Embedded rather than a
+                  second card, because `section-host-runtime` is one anchor
+                  and one heading. */}
+                  <StationConfigSection
+                    section="host-runtime"
+                    embedded
+                    config={config}
+                    provenance={provenance}
+                    onChange={setConfig}
+                    containerScope="station"
+                    projectOverride={projectOverride}
+                  />
+                </EnvironmentStatus>
               )}
 
               {sectionVisible('diagnostics') && (
@@ -1041,10 +1091,30 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               aria-label="Control settings"
               className="settings__scope-group"
             >
+              {/* #2182 widened this. `approval-guardian` is an always-on
+              screener, not a fallback, so "used when a chat, project, or
+              agent doesn't set its own value" was about to become a false
+              sentence printed over it. The caption now names both kinds of
+              rule this box holds, and `device` joins the list of things that
+              can set its own — the Station chat-font-size default is
+              overridden per device, not per chat. */}
               <p className="settings__scope-caption">
-                Saved to this Station — used when a chat, project, or agent
-                doesn’t set its own value.
+                Saved to this Station — what agents may do without asking, and
+                the values used when a chat, project, agent or device does not
+                set its own.
               </p>
+
+              {sectionVisible('permissions') && (
+                <StationConfigSection
+                  section="permissions"
+                  icon="◆"
+                  config={config}
+                  provenance={provenance}
+                  onChange={setConfig}
+                  containerScope="station"
+                  projectOverride={projectOverride}
+                />
+              )}
 
               {sectionVisible('agent-runs') && (
                 <AgentDefaultsSection
@@ -1059,7 +1129,21 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   onRegionChange={(value) =>
                     setConfig({ ...config, region: value })
                   }
-                />
+                >
+                  {/* #2182: what a run starts with and what bounds it —
+                  which engine carries the built-in agent, its step and
+                  output-token ceilings, the workspace a new chat gets and
+                  whether it is checkpointed. */}
+                  <StationConfigSection
+                    section="agent-runs"
+                    embedded
+                    config={config}
+                    provenance={provenance}
+                    onChange={setConfig}
+                    containerScope="station"
+                    projectOverride={projectOverride}
+                  />
+                </AgentDefaultsSection>
               )}
             </section>
 
@@ -1181,7 +1265,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 <Section icon="◇" title="Chat" id="section-chat">
                   {/* This slider writes the DEVICE key only. The Station
                   default it falls back to (`defaultChatFontSize`) has its own
-                  row under Station configuration — the catalog entry used to
+                  row, immediately below — the catalog entry used to
                   claim both keys while nothing here wrote the Station one. */}
                   <PageRow
                     {...settingsRow('chat-font-size')}
@@ -1226,6 +1310,21 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                         )}
                       </div>
                     }
+                  />
+                  {/* #2182: the Station default the slider above falls back
+                  to, beside it rather than in a Station card a reader would
+                  have to know to look in. It is the one STATION-scope row in
+                  a device box, so `containerScope="device"` makes it print a
+                  "Station" chip — the chip is a DIFFERENCE from the group's
+                  caption, and this is the first row that actually differs. */}
+                  <StationConfigSection
+                    section="chat"
+                    embedded
+                    config={config}
+                    provenance={provenance}
+                    onChange={setConfig}
+                    containerScope="device"
+                    projectOverride={projectOverride}
                   />
                   {/* #585 / #2144 slice 6 item B: one control naming BOTH
                   outcomes, over the same `featureSettings.smoothReveal`

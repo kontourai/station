@@ -63,7 +63,7 @@ const SEPARATELY_WRITTEN_KEYS: ReadonlySet<keyof AppConfig> = new Set([
  * `telemetryEnabled` defaults to `true`. A stored `false` is the only
  * artifact of someone turning telemetry off, and clearing it would turn it
  * back on — a reset silently widening what leaves this Station. The toggle
- * stays where it is (Station configuration, and the telemetry disclosure);
+ * stays where it is (the Usage telemetry section, beside the disclosure);
  * the dialog says a reset does not touch it.
  */
 const PRIVACY_PRESERVED_KEYS: ReadonlySet<keyof AppConfig> = new Set([

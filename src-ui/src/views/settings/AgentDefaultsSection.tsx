@@ -1,6 +1,7 @@
 import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
+import type { ReactNode } from 'react';
 import { CloseGlyph } from '../../components/icons/Glyph';
 import { ModelSelector } from '../../components/ModelSelector';
 import { ProvenanceBadge } from '../../components/ProvenanceBadge';
@@ -33,6 +34,7 @@ export function AgentDefaultsSection({
   regionProvenance,
   showRegion,
   onRegionChange,
+  children,
 }: {
   config: AppConfig;
   validationErrors: Record<string, string>;
@@ -44,6 +46,12 @@ export function AgentDefaultsSection({
   regionProvenance?: SettingProvenanceEntry;
   showRegion: boolean;
   onRegionChange: (value: string) => void;
+  /**
+   * Rows that belong to this section but are registry-driven (#2182: the five
+   * Station settings that bound or equip a run). They render at the end of
+   * this card, after the four fields with bespoke controls.
+   */
+  children?: ReactNode;
 }) {
   const { navigate } = useNavigation();
   const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
@@ -311,6 +319,7 @@ export function AgentDefaultsSection({
             </ul>
           </div>
         </div>
+        {children}
       </div>
     </SettingsSection>
   );

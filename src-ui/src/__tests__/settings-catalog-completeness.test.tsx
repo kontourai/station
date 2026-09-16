@@ -473,6 +473,37 @@ describe('settings catalog completeness', () => {
     expect(SETTINGS_CATALOG).toHaveLength(54);
   });
 
+  /**
+   * #2182. The Station default for chat font size now renders inside the
+   * "This device" box, beside the device slider that falls back to it. That
+   * makes it the first row on the page whose own scope DIFFERS from its
+   * container's caption, which is the entire reason `containerScope` exists
+   * (#2144 slice 7): the chip is a difference, not a label printed on every
+   * line. Both directions are asserted, because a chip that appeared on
+   * everything would satisfy the first half alone.
+   */
+  test('a Station row inside the device box prints a Station chip, and its device neighbours print none', async () => {
+    await renderSettings();
+
+    const stationDefault = screen
+      .getByLabelText('Default chat font size')
+      .closest('.page-row');
+    expect(stationDefault).toBeTruthy();
+    expect(
+      stationDefault?.querySelector('.setting-row-status')?.textContent,
+    ).toContain('Station');
+
+    // Its neighbour in the same card writes this device's store, which is
+    // exactly what the box's caption already promised, so it says nothing.
+    const deviceNeighbour = screen
+      .getByLabelText('Chat font size')
+      .closest('.page-row');
+    expect(deviceNeighbour).toBeTruthy();
+    expect(
+      deviceNeighbour?.querySelector('.setting-row-status')?.textContent ?? '',
+    ).not.toContain('Station');
+  });
+
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
     isMobile = true;
     const rendered = await renderedCatalogIds();
@@ -1279,11 +1310,11 @@ describe('settings catalog completeness', () => {
     window.history.pushState(
       {},
       '',
-      '/settings?view=station-config&highlight=default-max-turns',
+      '/settings?view=agent-runs&highlight=default-max-turns',
     );
     fireEvent(window, new PopStateEvent('popstate'));
     await waitFor(() =>
-      expect(window.location.search).toBe('?view=station-config'),
+      expect(window.location.search).toBe('?view=agent-runs'),
     );
     // Simulate the browser restoring the previous same-page history entry.
     // The Settings instance remains mounted, so its draft must remain local.

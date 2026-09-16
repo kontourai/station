@@ -222,7 +222,9 @@ test.describe('Settings', () => {
       'My knowledge store',
       'Diagnostics',
       'System',
-      'Station configuration',
+      'Sources',
+      'Usage telemetry',
+      'Permissions',
       'Agent runs',
     ]) {
       await expect(
@@ -236,7 +238,7 @@ test.describe('Settings', () => {
   }) => {
     const nav = page.getByRole('navigation', { name: 'Settings sections' });
     await expect(
-      nav.getByRole('link', { name: 'Station configuration', exact: true }),
+      nav.getByRole('link', { name: 'Sources', exact: true }),
     ).toBeVisible();
     await expect(
       nav.getByRole('link', { name: 'Agent runs', exact: true }),
@@ -251,7 +253,7 @@ test.describe('Settings', () => {
     ).toBeVisible();
     await expect(
       page.getByText(
-        'Saved to this Station — used when a chat, project, or agent doesn’t set its own value.',
+        'Saved to this Station — what agents may do without asking, and the values used when a chat, project, agent or device does not set its own.',
       ),
     ).toBeVisible();
     await expect(

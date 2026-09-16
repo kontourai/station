@@ -151,7 +151,10 @@ export function AgentEditorEngineSelection({
             onClick={() =>
               navigationStore.navigate(
                 settingsDeepLinkUrl({
-                  view: 'station-config',
+                  // #2182: the row moved to Agent runs. The highlight is what
+                  // makes this link self-healing, but the view is stated
+                  // correctly anyway — a bare stale view is NOT healed.
+                  view: 'agent-runs',
                   highlight: 'builtin-agent-engine',
                 }),
               )

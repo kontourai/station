@@ -128,31 +128,56 @@ describe('buildStationResetPlan', () => {
     // the only thing that can see that, because "derived" keeps reading as
     // derived while the thing it derives from shrinks.
     //
-    // Order is render order, which is catalog order. (It differs from the
-    // pre-#2182 pin in one place: `region` renders above the default agent
-    // instructions in `AgentDefaultsSection`, and the hand-written list this
-    // replaces had them the other way round while claiming render order.)
+    // Order is render order, which is catalog order — so it moved when
+    // #2182 redistributed the rows across six sections. The SET is asserted
+    // separately below and is unchanged; that is the property a reset
+    // depends on.
     expect([...RESETTABLE_STATION_SETTING_KEYS]).toEqual([
-      'approvalGuardian',
-      'defaultMaxTurns',
-      'defaultMaxOutputTokens',
-      'defaultChatFontSize',
+      // Station host
       'terminalShell',
       'mcpUiHost',
       'surfaceTrustFromVeritasEvidence',
-      'disableDefaultSkillRegistries',
-      'workspaceCheckpoints',
-      // #2144 slice 2 — the new Station-scope row; a reset clears it back to
-      // the registry default, which is the shared checkout.
-      'defaultWorkspaceIsolation',
-      // #2144 slice 6: a clearable Station-scope enum.
-      'defaultApprovalMode',
+      // Sources
       'registryUrl',
+      'disableDefaultSkillRegistries',
       'distributionProfile',
+      // Permissions
+      'approvalGuardian',
+      'defaultApprovalMode',
+      // Agent runs
       'region',
       'systemPrompt',
       'templateVariables',
+      'defaultMaxTurns',
+      'defaultMaxOutputTokens',
+      'defaultWorkspaceIsolation',
+      'workspaceCheckpoints',
+      // Chat
+      'defaultChatFontSize',
     ]);
+    // The SET is what a reset actually clears, and #2182 must not have
+    // changed it. Sixteen keys before the split across six sections,
+    // sixteen after; only the order follows the page.
+    expect([...RESETTABLE_STATION_SETTING_KEYS].sort()).toEqual(
+      [
+        'approvalGuardian',
+        'defaultApprovalMode',
+        'defaultChatFontSize',
+        'defaultMaxOutputTokens',
+        'defaultMaxTurns',
+        'defaultWorkspaceIsolation',
+        'disableDefaultSkillRegistries',
+        'distributionProfile',
+        'mcpUiHost',
+        'region',
+        'registryUrl',
+        'surfaceTrustFromVeritasEvidence',
+        'systemPrompt',
+        'templateVariables',
+        'terminalShell',
+        'workspaceCheckpoints',
+      ].sort(),
+    );
   });
 });
 

@@ -1485,7 +1485,7 @@ const SCREENS: Screen[] = [
   {
     name: 'settings-info-tip',
     title: 'Settings — Approval guardian explanation',
-    path: '/settings?view=station-config',
+    path: '/settings?view=permissions',
     viewport: DESKTOP,
     afterGoto: async (page) => {
       await page
