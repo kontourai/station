@@ -177,9 +177,17 @@ export const PAIRING_SCOPE_CONSENT_DECIDE = 'consent:decide' as const;
  * pairing/device access. It is deliberately absent from
  * {@link DEFAULT_GRANT_PAIRING_SCOPE}; it must be granted explicitly. The dedicated
  * `home-transfer` preset supplies exactly this permission. The current runtime
- * exposes an enrollment observation only; no transfer mutations are available.
+ * exposes identity/checkpoint observations and authorized metadata-decision
+ * participation. It still grants no execution, target activation, or home move.
  */
 export const PAIRING_SCOPE_HOME_TRANSFER = 'home:transfer' as const;
+/**
+ * Participate in a private home control session. This is a continuity fence,
+ * never room-write or execution authority. It can only be added by an
+ * operator to an already-paired device and is absent from every preset and
+ * the frozen default grant.
+ */
+export const PAIRING_SCOPE_HOME_CONTROL = 'home:control' as const;
 
 /**
  * Start, read and cancel a device-code login for an engine credential profile
@@ -218,6 +226,7 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_HOME_TRANSFER,
+  PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPE_ENGINE_LOGIN,
 ] as const;
 
@@ -384,6 +393,7 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   // token (see the PAIRING_SCOPE_CONSENT_DECIDE doc block).
   [PAIRING_SCOPE_CONSENT_DECIDE]: ['operator-promotion'],
   [PAIRING_SCOPE_HOME_TRANSFER]: ['preset'],
+  [PAIRING_SCOPE_HOME_CONTROL]: ['operator-promotion'],
   // Operator promotion only, for the same reason as the two tokens above --
   // and for one more that is specific to adding a token to a preset at all:
   // `parsePairingScope` refuses a WHOLE scope string containing one unknown
