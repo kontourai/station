@@ -142,7 +142,18 @@ export function StationConfigSection({
                 projectName: projectOverride.name,
                 projectValue: overrideValue,
                 stationValue: config[key],
-                onResetToInherited: () => projectOverride.onReset(overrideKey),
+                // Offered only while there is an override left to give back.
+                // `undefined` here means the draft ALREADY resets this key
+                // (or the project never overrode it), and a second click
+                // would write the same `null` twice while the row already
+                // shows the inherited value — a control that reports an
+                // action it has no work to do.
+                ...(overrideValue !== undefined
+                  ? {
+                      onResetToInherited: () =>
+                        projectOverride.onReset(overrideKey),
+                    }
+                  : {}),
               }
             : {}),
           // `value` is passed through verbatim (never coerced to

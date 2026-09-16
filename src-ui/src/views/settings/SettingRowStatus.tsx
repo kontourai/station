@@ -122,7 +122,7 @@ export function SettingRowStatus({
           <button
             type="button"
             className="setting-row-status__inheritance-trigger"
-            aria-label="Where this value comes from"
+            aria-label={`Where ${definition.label} comes from`}
           >
             <InfoGlyph />
           </button>

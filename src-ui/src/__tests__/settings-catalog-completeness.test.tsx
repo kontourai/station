@@ -1309,6 +1309,159 @@ describe('settings catalog completeness', () => {
         defaultWorkspaceIsolation: null,
       });
     });
+
+    test('a Station reset never offers a project override as a stored Station value', async () => {
+      // The Station stores NOTHING for the workspace key; the project
+      // overrides it. A scoped provenance read reports that override as
+      // `{ source: 'file' }` for the same key, so a reset plan built from it
+      // would list a Station setting nobody stored and send `null` for it to
+      // the Station document.
+      configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
+      configProvenance = { terminalShell: { source: 'file' } };
+      projectProvenance = {
+        terminalShell: { source: 'file', scope: 'station' },
+        defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
+      };
+      projectRecord = { slug: 'atlas', defaultWorkspaceIsolation: 'worktree' };
+      updateConfig.mockResolvedValueOnce({ data: {} });
+      await renderSettings();
+
+      selectAtlas();
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText(WORKSPACE_ROW) as HTMLSelectElement).value,
+        ).toBe('worktree'),
+      );
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset Station settings' }),
+      );
+      const dialog = screen.getByRole('dialog');
+      expect(dialog.textContent).not.toContain(WORKSPACE_ROW);
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+      await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
+      expect(updateConfig).toHaveBeenCalledWith({ terminalShell: null });
+    });
+
+    test('Discard clears the project draft as well as the Station draft', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas', defaultWorkspaceIsolation: 'worktree' };
+      projectProvenance = {
+        defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
+      };
+      await renderSettings();
+
+      selectAtlas();
+      const workspace = screen.getByLabelText(
+        WORKSPACE_ROW,
+      ) as HTMLSelectElement;
+      await waitFor(() => expect(workspace.value).toBe('worktree'));
+      fireEvent.change(workspace, { target: { value: 'shared' } });
+      expect(screen.getByText('Unsaved changes')).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+
+      // Back to the project's SAVED override, and the pill is gone — the
+      // override draft is empty, not merely invisible.
+      await waitFor(() => expect(workspace.value).toBe('worktree'));
+      expect(screen.queryByText('Unsaved changes')).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset Station settings' }),
+      );
+      expect(
+        (screen.getByRole('button', { name: 'Reset' }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+    });
+
+    test('a refused project write keeps its draft while the Station write still lands', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas' };
+      updateConfig.mockResolvedValueOnce({ data: {} });
+      updateProjectAsync.mockRejectedValueOnce(
+        new Error('project write failed'),
+      );
+      await renderSettings();
+
+      selectAtlas();
+      fireEvent.change(screen.getByLabelText(WORKSPACE_ROW), {
+        target: { value: 'worktree' },
+      });
+      fireEvent.change(screen.getByLabelText('Registry URL'), {
+        target: { value: 'https://two.test' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() =>
+        expect(
+          screen.getByText(
+            "This project's overrides could not be saved. Your changes to them are kept here until you retry.",
+          ),
+        ).toBeTruthy(),
+      );
+      // The Station document was written; only the project's was refused.
+      expect(updateConfig).toHaveBeenCalledWith({
+        registryUrl: 'https://two.test',
+      });
+      // And the refused edit is still here to retry, not silently dropped.
+      expect(
+        (screen.getByLabelText(WORKSPACE_ROW) as HTMLSelectElement).value,
+      ).toBe('worktree');
+      expect(screen.getByText('Unsaved changes')).toBeTruthy();
+    });
+
+    test('reset to inherited disappears once the draft already resets the key', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas', defaultWorkspaceIsolation: 'worktree' };
+      projectProvenance = {
+        defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
+      };
+      await renderSettings();
+
+      selectAtlas();
+      const reset = await screen.findByRole('button', {
+        name: 'Reset to inherited',
+      });
+      fireEvent.click(reset);
+
+      // The row already shows the inherited value; a second click would write
+      // the same `null` again and report an action with no work to do.
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: 'Reset to inherited' }),
+        ).toBeNull(),
+      );
+    });
+
+    test('an unsettled project read never becomes "this project overrides nothing"', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      // The record has not arrived. `savedOverrides` is derived from it, so
+      // writing now would compare a real draft against an empty baseline.
+      projectRecord = undefined;
+      await renderSettings();
+
+      selectAtlas();
+      fireEvent.change(screen.getByLabelText(WORKSPACE_ROW), {
+        target: { value: 'worktree' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(screen.queryByText('Saving…')).toBeNull());
+      expect(updateProjectAsync).not.toHaveBeenCalled();
+    });
   });
 
   test('falls back to the labeled Backup and Reset rows, never hidden or destructive controls', async () => {

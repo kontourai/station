@@ -199,10 +199,14 @@ export function useInvalidateQuery() {
   // station#3796: this is a dependency of consumers' `useCallback`s (and,
   // through them, of context values), so a fresh arrow per render made every
   // memo downstream inert. The client is context-stable, so the identity is.
+  // Returns the invalidation's own promise rather than discarding it, so a
+  // caller that must not act until the refetch has settled can await it
+  // (#2144 slice 3: clearing an override draft before its project record is
+  // re-read flashes the pre-save value). Every existing caller ignores the
+  // result and is unaffected.
   return useCallback(
-    (queryKey: (string | number | object)[]) => {
-      queryClient.invalidateQueries({ queryKey });
-    },
+    (queryKey: (string | number | object)[]): Promise<void> =>
+      queryClient.invalidateQueries({ queryKey }),
     [queryClient],
   );
 }

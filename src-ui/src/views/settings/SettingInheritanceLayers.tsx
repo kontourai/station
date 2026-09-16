@@ -102,6 +102,18 @@ export function inheritanceLayers({
       value: describeValue(stationValue),
       inEffect: true,
     });
+  } else if (fromProject) {
+    // The Station's value IS known — the page holds it — so show it as the
+    // layer the override sits on top of. What the provenance cannot say is
+    // whether that value is stored or is the registry default, because the
+    // scoped read replaced this key's entry with the project's; the note
+    // below says exactly that and nothing more.
+    layers.push({
+      id: 'station',
+      label: 'This Station',
+      value: describeValue(stationValue),
+      inEffect: false,
+    });
   }
   if (fromEnv) {
     layers.push({
@@ -160,14 +172,15 @@ export function SettingInheritanceLayers(props: SettingInheritanceLayersProps) {
         ))}
       </ul>
       {overriddenByProject && (
-        // Said rather than guessed: `GET /config/app?project=<slug>` replaces
-        // the entry for an overridden key with the project's, so this page
-        // genuinely does not know whether the Station also stores one. The
-        // alternative — reading the raw Station draft and calling it a layer
-        // — would be the re-derivation this module refuses to do.
+        // Narrowed to what is actually unknown: the page HAS the Station's
+        // value (rendered as the layer above), and `GET /config/app?project=
+        // <slug>` replaces this key's entry with the project's, so what the
+        // page cannot say is which SOURCE that value came from. Claiming the
+        // value itself was unavailable was false, and dropping a layer the
+        // caller had already supplied made the list less true, not safer.
         <p className="setting-inheritance__note">
-          What this Station stores for it is not reported while a project
-          override is in effect.
+          Whether this Station stores that value or falls back to the default is
+          not reported while an override is in effect.
         </p>
       )}
     </div>

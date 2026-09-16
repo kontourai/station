@@ -81,6 +81,45 @@ describe('inheritance layers', () => {
     expect(layers.find((layer) => layer.id === 'default')?.value).toBe('none');
   });
 
+  test('a project override still shows the Station value it sits on top of', () => {
+    render(
+      <SettingInheritanceLayers
+        definition={definition}
+        provenance={{ source: 'file', scope: 'project' }}
+        projectName="Atlas"
+        projectValue="worktree"
+        stationValue="shared"
+      />,
+    );
+    // The page HAS the Station value; dropping it and saying it could not be
+    // shown was a claim the props contradicted.
+    const station = screen.getByText('This Station').closest('li')!;
+    expect(station.textContent).toContain('shared');
+    expect(station.className).not.toContain('--in-effect');
+    // What is genuinely unreported is the SOURCE, and the note says only that.
+    expect(
+      screen.getByText(
+        'Whether this Station stores that value or falls back to the default is not reported while an override is in effect.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('exactly one layer stays in effect once the Station layer is shown beside a project override', () => {
+    const layers = inheritanceLayers({
+      definition,
+      provenance: { source: 'file', scope: 'project' },
+      projectValue: 'worktree',
+      stationValue: 'shared',
+    });
+    expect(layers.map((layer) => layer.id)).toEqual([
+      'project',
+      'station',
+      'default',
+    ]);
+    expect(layers.filter((layer) => layer.inEffect)).toHaveLength(1);
+    expect(layers.find((layer) => layer.inEffect)?.id).toBe('project');
+  });
+
   test('the layer list leads with the definition’s help sentence', () => {
     render(
       <SettingInheritanceLayers
@@ -126,7 +165,7 @@ describe('SettingRowStatus', () => {
       />,
     );
     const trigger = screen.getByRole('button', {
-      name: 'Where this value comes from',
+      name: 'Where New chat workspace comes from',
     });
     // Closed: the body is not in the tree at all, so nothing has loaded it.
     expect(screen.queryByText(definition.help!)).toBeNull();

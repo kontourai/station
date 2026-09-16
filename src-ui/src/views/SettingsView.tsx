@@ -157,6 +157,18 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const { data: provenance } = useConfigProvenanceQuery(
     selectedProjectSlug ?? undefined,
   );
+  // The SAME route read WITHOUT a project, for the Station reset plan only.
+  //
+  // A scoped read replaces an overridden key's entry with the project's
+  // (`{ source: 'file', scope: 'project' }`), which `buildStationResetPlan`
+  // reads as an ordinary stored Station value. With a project selected that
+  // made the dialog offer to clear a Station setting nobody had stored and
+  // send `null` for it to the STATION document — a write against the wrong
+  // authority, decided by which project happened to be selected. Reset is a
+  // Station action and must read Station provenance, so it gets its own
+  // query; React Query keys them apart (`['config','provenance', null]` vs
+  // the slug) and dedupes the unscoped one with every other unscoped caller.
+  const { data: stationProvenance } = useConfigProvenanceQuery();
   const {
     chatFontSize,
     featureSettings,
@@ -547,13 +559,23 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     // A third independent write rather than a third key in the config PUT —
     // `PUT /api/projects/:slug` is what accepts `null` as "drop this
     // override", and the Station config route has no way to express that.
-    const overrideWrite =
-      selectedProjectSlug && overrideDirty
-        ? updateProject.mutateAsync({
-            slug: selectedProjectSlug,
-            ...buildProjectOverrideUpdate(overrideDelta, savedOverrides),
-          })
+    // `selectedProject !== undefined` is a real precondition, not a
+    // convenience: `savedOverrides` is derived from that record, so an
+    // in-flight or failed read presents as "this project overrides nothing"
+    // — and `buildProjectOverrideUpdate` would then see a half-pair and null
+    // BOTH model fields on a project that had set them.
+    // Pinned once: the whole settle path below refers to the project this
+    // save was for, not to whatever the selector holds by the time it lands.
+    const overrideSlug =
+      selectedProjectSlug && overrideDirty && selectedProject !== undefined
+        ? selectedProjectSlug
         : undefined;
+    const overrideWrite = overrideSlug
+      ? updateProject.mutateAsync({
+          slug: overrideSlug,
+          ...buildProjectOverrideUpdate(overrideDelta, savedOverrides),
+        })
+      : undefined;
     if (!plainWrite && !logLevelWrite && !overrideWrite) return;
 
     saveInFlightRef.current = true;
@@ -613,10 +635,14 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       // The project write settles on its own: it is a different document on a
       // different route, so it succeeding or failing says nothing about the
       // Station config write and must not silence or absorb its message.
-      if (
-        overrideWrite !== undefined &&
-        overrideOutcome.status === 'fulfilled'
-      ) {
+      // Keyed on `overrideSlug`, which is defined exactly when
+      // `overrideWrite` is — and unlike it, still carries the project's name.
+      if (overrideSlug && overrideOutcome.status === 'fulfilled') {
+        // Await the project record's refetch BEFORE clearing the draft: the
+        // row falls back to `savedOverrides` the instant the draft goes, and
+        // that read is stale until this settles, so clearing first flashes the
+        // pre-save value back at the person who just changed it.
+        await invalidate(['projects', overrideSlug]);
         setOverrideDraft({});
         // The provenance the page renders is computed from the project record
         // that just changed, so the badges are stale until it is re-read.
@@ -654,7 +680,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   // already holds: only a `source: 'file'` key is stored, and only a stored
   // key changes when it is cleared. The dialog names these, and an empty plan
   // is a disabled confirm rather than a request that silently does nothing.
-  const resetPlan = buildStationResetPlan(provenance);
+  const resetPlan = buildStationResetPlan(stationProvenance);
 
   const resetToDefaults = async () => {
     setShowResetModal(false);
