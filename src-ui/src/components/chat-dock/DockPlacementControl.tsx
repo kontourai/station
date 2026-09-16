@@ -5,13 +5,12 @@ import {
   useRef,
   useState,
 } from 'react';
+import {
+  DockPlacementTargets,
+  usePlacementDrag,
+} from '../../regions/placement-drag';
+import { regionLabel } from '../../regions/region-model';
 import type { DockMode } from '../../types';
-
-const LABELS: Record<DockMode, string> = {
-  left: 'Left',
-  bottom: 'Bottom',
-  right: 'Right',
-};
 
 /** The one placement chooser shared by the pointer and keyboard paths. */
 function DockPlacementChoices({
@@ -38,7 +37,7 @@ function DockPlacementChoices({
           onClick={() => onSelect(placement)}
         >
           <span className="menu-row__glyph" aria-hidden="true" />
-          {LABELS[placement]}
+          {regionLabel(placement)}
         </button>
       ))}
     </>
@@ -60,11 +59,14 @@ export function DockPlacementControl({
   onPlacementChange: (placement: DockMode) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const [hoveredPlacement, setHoveredPlacement] = useState<DockMode | null>(
-    null,
-  );
-  const suppressClick = useRef(false);
+  // The drag is the shell's shared gesture (#2185); what stays here is the
+  // dock's own act for it — MOVE this dock — the menu, and the fold rule.
+  const { dragging, hovered, handlers } = usePlacementDrag({
+    placements: availablePlacements,
+    onDrop: onPlacementChange,
+    onClick: () => setMenuOpen((open) => !open),
+    onDragStart: () => setMenuOpen(false),
+  });
   const grabRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [menuPosition, setMenuPosition] = useState<CSSProperties>();
@@ -139,19 +141,6 @@ export function DockPlacementControl({
   // Follow S2's decision: a phone has one placement and therefore no control.
   if (availablePlacements.length <= 1) return null;
 
-  const placementAt = (x: number, y: number): DockMode | null => {
-    const element = document.elementFromPoint(x, y);
-    const value = element?.closest<HTMLElement>('[data-dock-placement-target]')
-      ?.dataset.dockPlacementTarget;
-    return value && availablePlacements.includes(value as DockMode)
-      ? (value as DockMode)
-      : null;
-  };
-  const finishDrag = () => {
-    setDragging(false);
-    setHoveredPlacement(null);
-  };
-
   return (
     <>
       <button
@@ -161,37 +150,7 @@ export function DockPlacementControl({
         aria-label="Move the dock"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        onClick={() => {
-          if (!suppressClick.current) setMenuOpen((open) => !open);
-        }}
-        onPointerDown={(event) => {
-          if (event.button !== 0) return;
-          event.currentTarget.setPointerCapture?.(event.pointerId);
-          setMenuOpen(false);
-          setDragging(true);
-        }}
-        onPointerMove={(event) => {
-          if (!dragging) return;
-          const target = placementAt(event.clientX, event.clientY);
-          setHoveredPlacement(target);
-          if (target !== null) suppressClick.current = true;
-        }}
-        onPointerUp={(event) => {
-          if (!dragging) return;
-          const target = placementAt(event.clientX, event.clientY);
-          if (target !== null) {
-            suppressClick.current = true;
-            onPlacementChange(target);
-          }
-          finishDrag();
-          requestAnimationFrame(() => {
-            suppressClick.current = false;
-          });
-        }}
-        onPointerCancel={finishDrag}
-        onLostPointerCapture={() => {
-          if (dragging) finishDrag();
-        }}
+        {...handlers}
       >
         <span aria-hidden="true">⋮⋮</span>
       </button>
@@ -218,25 +177,10 @@ export function DockPlacementControl({
         </div>
       ) : null}
       {dragging ? (
-        <div
-          className="dock-placement-targets"
-          data-testid="dock-placement-targets"
-          aria-hidden="true"
-        >
-          {availablePlacements.map((placement) => (
-            <div
-              key={placement}
-              className={`dock-placement-target dock-placement-target--${placement}${
-                hoveredPlacement === placement
-                  ? ' dock-placement-target--active'
-                  : ''
-              }`}
-              data-dock-placement-target={placement}
-            >
-              {LABELS[placement]}
-            </div>
-          ))}
-        </div>
+        <DockPlacementTargets
+          placements={availablePlacements}
+          active={hovered}
+        />
       ) : null}
     </>
   );
