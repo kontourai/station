@@ -49,6 +49,10 @@ const VALID: RegionArrangement = {
   },
 };
 
+/** Lowercase UUIDs, the form `workspaceLayoutPaneId` mints ids from (#2157). */
+const LAYOUT_UUID = '1d61ce22-7f4b-4282-86f0-019ef1bc223c';
+const PROJECT_UUID = 'f2e27d8e-dd81-4fe3-9d6e-9de369389b01';
+
 /** A record with one region's stored fields replaced. */
 function recordWith(
   region: (typeof REGION_IDS)[number],
@@ -890,6 +894,119 @@ describe('region arrangement record (#928 D)', () => {
           )!.right,
           id,
         ).toMatchObject({ panes: [], occupant: null });
+    });
+
+    /**
+     * #2159 slice A. The cross-region de-dup above is a SHELL rule now: an
+     * instance-keyed id (`isInstanceSurface`) is kept in every region that
+     * names it, one family at a time so no family stands in for another.
+     *
+     * Nothing in this build writes such a record — `placeSurface` still
+     * vacates the region a pane leaves — so this is the READ half of a
+     * read-before-write pair: the release that ships it can read what slice
+     * B will write, which is what makes slice B revertable for a release
+     * window. Reverting `if (!isInstanceSurface(pane))` in the parser's
+     * `seen` loop to an unconditional `seen.add(pane)` empties `bottom` for
+     * every family here.
+     */
+    test('an instance-keyed pane named by two regions is kept in both, per family', () => {
+      for (const id of [
+        'pr:github.com/kontourai/station#2159',
+        `file-preview:${'c'.repeat(32)}`,
+        `board:${LAYOUT_UUID}`,
+        `layout:${PROJECT_UUID}/${LAYOUT_UUID}`,
+      ]) {
+        const inTwoRegions: RegionArrangement = {
+          ...VALID,
+          right: {
+            visible: true,
+            size: 517,
+            // Beside a shell surface, which still de-dups: `activity` is
+            // `right`'s alone here, and the instance id is not.
+            panes: ['activity', id],
+            occupant: id,
+            maximized: false,
+          },
+          bottom: {
+            visible: true,
+            size: 320,
+            panes: [id],
+            occupant: id,
+            maximized: false,
+          },
+        };
+        const parsed = parseRegionArrangementRecord(
+          toRegionArrangementRecord(inTwoRegions),
+        );
+        // Both regions OCCUPIED, not merely both listing the id: the
+        // failure this guards against is `bottom` coming back visible and
+        // empty, which is a layout change the user did not make.
+        expect(parsed?.right, id).toMatchObject({
+          panes: ['activity', id],
+          occupant: id,
+        });
+        expect(parsed?.bottom, id).toMatchObject({
+          panes: [id],
+          occupant: id,
+        });
+        expect(parsed, id).toEqual(inTwoRegions);
+      }
+    });
+
+    /**
+     * The tolerance is about how many regions may hold a pane, not about
+     * WHICH regions may: every instance family declares the dock regions
+     * only, and `parseSurfaceEntry` still checks that per region. Removing
+     * its `.regions.includes(id)` test reds the first assertion.
+     */
+    test('main still refuses an instance-keyed id while two dock regions keep it', () => {
+      const id = 'pr:github.com/kontourai/station#2159';
+      const parsed = parseRegionArrangementRecord({
+        version: 1,
+        regions: {
+          main: { visible: true, size: 0, occupant: { kind: 'surface', id } },
+          left: { visible: true, size: 400, occupant: null },
+          right: {
+            visible: true,
+            size: 400,
+            occupant: { kind: 'surface', id },
+          },
+          bottom: {
+            visible: true,
+            size: 320,
+            occupant: { kind: 'surface', id },
+          },
+        },
+      });
+      expect(parsed?.main).toMatchObject({ panes: [], occupant: null });
+      expect(parsed?.right).toMatchObject({ panes: [id], occupant: id });
+      expect(parsed?.bottom).toMatchObject({ panes: [id], occupant: id });
+    });
+
+    /**
+     * The within-region rule is a different mechanism (`normalizeRegionPanes`)
+     * and was not relaxed: a region cannot hold one id twice, whatever kind
+     * it is, because a tab strip with two tabs for one pane has no answer for
+     * which one a close closes. Replacing that function's `new Set(panes)`
+     * de-dup with `panes` reds this.
+     */
+    test('an instance id repeated within ONE region is still collapsed', () => {
+      const id = `board:${LAYOUT_UUID}`;
+      expect(
+        parseRegionArrangementRecord(
+          recordWith('right', {
+            occupant: {
+              kind: 'pane-host',
+              panes: [
+                { kind: 'surface', id },
+                { kind: 'surface', id: 'activity' },
+                { kind: 'surface', id },
+              ],
+              selected: id,
+            },
+          }),
+        )?.right,
+      ).toMatchObject({ panes: [id, 'activity'], occupant: id });
     });
 
     test('a pane-host without an array of panes reads as empty; a documentId a 2a build wrote is ignored', () => {

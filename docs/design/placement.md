@@ -291,11 +291,24 @@ Two facts that follow from the map and are easy to get wrong:
   reads as empty for the `surface` form, the one pane for a `pane-host`,
   whose other panes are kept; a `pane-host` without an array of panes reads
   as empty, and a `selected` that is not one of the
-  kept panes falls back to the first; a surface named by two regions keeps
-  the first in `main`, `left`, `right`, `bottom` order and is dropped from
+  kept panes falls back to the first; a SHELL surface named by two regions
+  keeps the first in `main`, `left`, `right`, `bottom` order and is dropped from
   the later regions' panes, a region left with nothing reading as empty and
-  keeping the visibility the record stored (#2153); `main` reads at most one
-  pane, its selected one; `main` is always visible and never maximized, nor
+  keeping the visibility the record stored (#2153), while an
+  instance-keyed id (`isInstanceSurface`: a pull request, a file preview, a
+  Board, a Layout) is kept in every region that names it — a shape nothing in
+  this build writes, because `placeSurface` still vacates the region a pane
+  leaves, and which the parser accepts anyway so the release already deployed
+  can READ what the next one will write (#2159 slice A; slice B is the
+  placement change). That ordering is what makes slice B revertable for a
+  release window: reverting it leaves duplicates in records already on disk,
+  and this parser still reads both copies rather than dropping one and
+  leaving a visible, empty region. An id repeated within ONE region is
+  always collapsed, for either kind; `main` reads at most one
+  pane, its selected one, and refuses an instance-keyed id outright, because
+  every instance family declares the dock regions only and that region rule
+  is untouched — the tolerance did not widen where a pane may
+  live; `main` is always visible and never maximized, nor
   is a hidden or empty region, and a second maximized region reads as
   restored. Chat's placement, visibility, size and
   maximize are still mirrored to the
