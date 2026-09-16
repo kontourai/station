@@ -254,25 +254,13 @@
   margin-top: 0.5rem;
 }
 
-/* ── Agent defaults (de-emphasized fallback values) ── */
+/* ── Agent defaults (workspace-wide fallback values) ──
+   The disclosure these fields used to sit behind is gone, and with it the
+   `__disclosure` / `__summary` / `__summary-label` rules. The 0.8rem the
+   disclosure imposed went with them: the section is a top-level scope, not a
+   de-emphasized footnote, so it reads at the page's own size. */
 .agent-defaults__intro {
   margin-bottom: 0.75rem;
-}
-.agent-defaults__disclosure {
-  font-size: 0.8rem;
-}
-.agent-defaults__summary {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  padding: 0.4rem 0;
-  list-style: revert;
-  user-select: none;
-}
-.agent-defaults__summary-label {
-  font-weight: 600;
-  color: var(--text-primary);
 }
 .agent-defaults__panel {
   margin-top: 0.75rem;
@@ -438,6 +426,16 @@
 .settings__scope-caption {
   margin: 0 0 0.6rem;
   font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* A named group of rows INSIDE a section card (#2144 slice 6): the section
+   heading stays the card's, so this is a level below it. Deliberately not a
+   second section — navigation is owned by the section registry. */
+.settings__group-title {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 600;
   color: var(--text-muted);
 }
 
@@ -1292,4 +1290,22 @@
   border: 1px solid var(--border-primary);
   border-radius: 6px;
   padding: 0.5rem;
+}
+
+/* #2144 slice 3 — the project-scope selector. Page chrome, not a setting:
+   it changes which document the rows below are attributed to, and it is
+   deliberately outside every scope group's card. */
+.settings__project-scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-block: 0.75rem;
+}
+.settings__project-scope-label {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.settings__project-scope .settings__field-hint {
+  flex-basis: 100%;
 }

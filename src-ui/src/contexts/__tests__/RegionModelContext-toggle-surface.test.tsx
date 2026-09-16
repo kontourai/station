@@ -76,6 +76,79 @@ afterEach(() => {
   setUrl('/');
 });
 
+describe('RegionModelProvider pane selection (#2046 2a)', () => {
+  /**
+   * `showSurface` for a surface a region holds BEHIND another pane's tab
+   * selects that tab (and shows the region). Reverting `revealSurface` to a
+   * visibility-only write leaves `occupant` at `chat` and the first
+   * assertion reds; reverting `placeSurface`'s join leaves `panes` at
+   * `['chat']` and the precondition reds. (Chat is `bottom`'s default pane,
+   * so it is first in tab order; Activity joins behind it.)
+   */
+  test('showSurface selects the tab of a pane the region already holds', async () => {
+    await mount();
+    act(() => model?.placeSurface('activity', 'bottom'));
+    act(() => model?.placeSurface('chat', 'bottom'));
+    await waitFor(() =>
+      expect(model?.regions.bottom).toMatchObject({
+        panes: ['chat', 'activity'],
+        occupant: 'chat',
+        visible: true,
+      }),
+    );
+    act(() => model?.setRegion('bottom', { visible: false }));
+    await waitFor(() => expect(model?.regions.bottom.visible).toBe(false));
+
+    act(() => model?.showSurface('activity'));
+
+    await waitFor(() =>
+      expect(model?.regions.bottom).toMatchObject({
+        panes: ['chat', 'activity'],
+        occupant: 'activity',
+        visible: true,
+      }),
+    );
+    expect(model?.lastShownRegion).toBe('bottom');
+    // A select places nothing: Activity did not go to its default `right`.
+    expect(model?.regions.right.panes).toEqual([]);
+  });
+
+  test('selectPane selects a held pane, ignores one the region does not hold, and shows nothing', async () => {
+    await mount();
+    act(() => model?.placeSurface('activity', 'bottom'));
+    act(() => model?.placeSurface('chat', 'bottom'));
+    act(() => model?.setRegion('bottom', { visible: false }));
+    await waitFor(() => expect(model?.regions.bottom.visible).toBe(false));
+
+    act(() => model?.selectPane('bottom', 'activity'));
+    await waitFor(() =>
+      expect(model?.regions.bottom.occupant).toBe('activity'),
+    );
+    expect(model?.regions.bottom.visible).toBe(false);
+
+    act(() => model?.selectPane('right', 'chat'));
+    act(() => model?.selectPane('bottom', 'home'));
+    await act(async () => undefined);
+    expect(model?.regions.bottom).toMatchObject({
+      panes: ['chat', 'activity'],
+      occupant: 'activity',
+    });
+    expect(model?.regions.right.panes).toEqual([]);
+  });
+
+  test('placeSurface into a region already holding the surface selects it', async () => {
+    await mount();
+    act(() => model?.placeSurface('activity', 'bottom'));
+    await waitFor(() =>
+      expect(model?.regions.bottom.occupant).toBe('activity'),
+    );
+
+    act(() => model?.placeSurface('chat', 'bottom'));
+    await waitFor(() => expect(model?.regions.bottom.occupant).toBe('chat'));
+    expect(model?.regions.bottom.panes).toEqual(['chat', 'activity']);
+  });
+});
+
 describe('RegionModelProvider.toggleSurface', () => {
   test('a surface occupying main returns to its default dock region, visible, and main empties to Home', async () => {
     await mount();
@@ -86,6 +159,7 @@ describe('RegionModelProvider.toggleSurface', () => {
 
     await waitFor(() =>
       expect(model?.regions.right).toMatchObject({
+        panes: ['activity'],
         occupant: 'activity',
         visible: true,
       }),
@@ -94,6 +168,7 @@ describe('RegionModelProvider.toggleSurface', () => {
       visible: true,
       size: 0,
       maximized: false,
+      panes: [],
       occupant: null,
     });
     // The fold follows the region that just became visible.
@@ -119,6 +194,7 @@ describe('RegionModelProvider.toggleSurface', () => {
 
     await waitFor(() =>
       expect(model?.regions.right).toMatchObject({
+        panes: ['activity'],
         occupant: 'activity',
         visible: true,
       }),
@@ -150,6 +226,7 @@ describe('RegionModelProvider.toggleSurface', () => {
 
     await waitFor(() =>
       expect(model?.regions.right).toMatchObject({
+        panes: ['activity'],
         occupant: 'activity',
         visible: true,
       }),

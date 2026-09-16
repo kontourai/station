@@ -66,8 +66,26 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
+import {
+  operatorOnly,
+  type PluginPrincipalResolution,
+  projectLayoutCatalogItems,
+} from './plugin-identity-enumeration.js';
 
 interface RegistryRouteDeps {
+  /**
+   * Caller resolution for the operator-only plugin-catalog routes (#2067).
+   * Absent means this composition is not serving authenticated HTTP callers,
+   * and those routes refuse rather than enumerate.
+   */
+  visibility?: PluginPrincipalResolution;
+  /**
+   * Whether the request's caller may see a named plugin (#2067), for the
+   * PROJECTED members of this file (the layout catalog). Absent means this
+   * composition has no caller to project onto and nothing is narrowed — the
+   * same convention the Pane catalogue uses.
+   */
+  canSeePlugin?: (c: Context, pluginId: string) => boolean;
   installationHost?: PluginInstallationHost;
   registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
@@ -233,9 +251,24 @@ export function createRegistryRoutes(
   // ── Layout Catalog ─────────────────────────────────────
   // Listing is local-only. Registry sources are policy declarations and never
   // authorize a fetch, install, or plugin execution merely by being visible.
+  // #2067: projected. A plugin-contributed layout carries the plugin's name,
+  // its `plugins/<name>` source and its contribution provenance, so an
+  // unprojected catalog is the plugin inventory wearing a layout shape.
+  // Narrowed rather than refused because applying a layout is something a
+  // collaborator legitimately does.
+  const seeableLayouts = (c: Context) =>
+    deps?.canSeePlugin
+      ? (pluginId: string) => deps.canSeePlugin!(c, pluginId)
+      : undefined;
   app.get('/layouts', (c) => {
     registryOps.add(1, { operation: 'list-layouts', outcome: 'success' });
-    return c.json({ success: true, data: layoutCatalog.listLayouts() });
+    return c.json({
+      success: true,
+      data: projectLayoutCatalogItems(
+        layoutCatalog.listLayouts(),
+        seeableLayouts(c),
+      ),
+    });
   });
 
   app.get('/layouts/installed', (c) => {
@@ -245,7 +278,10 @@ export function createRegistryRoutes(
     });
     return c.json({
       success: true,
-      data: layoutCatalog.listInstalledLayouts(),
+      data: projectLayoutCatalogItems(
+        layoutCatalog.listInstalledLayouts(),
+        seeableLayouts(c),
+      ),
     });
   });
 
@@ -365,11 +401,19 @@ export function createRegistryRoutes(
     return c.json({ success: true, data: items });
   });
 
-  app.get('/agents/installed', async (c) => {
-    registryOps.add(1, { operation: 'list-agents-installed' });
-    const items = await getAgentRegistryProvider().listInstalled();
-    return c.json({ success: true, data: items });
-  });
+  // #2067: operator-only. Rows carry `installedPluginName` — the installed
+  // plugin inventory keyed by agent rather than by plugin.
+  app.get(
+    '/agents/installed',
+    operatorOnly(
+      deps?.visibility,
+      'list installed registry agents',
+    )(async (c) => {
+      registryOps.add(1, { operation: 'list-agents-installed' });
+      const items = await getAgentRegistryProvider().listInstalled();
+      return c.json({ success: true, data: items });
+    }),
+  );
 
   app.post(
     '/agents/install',
@@ -503,11 +547,18 @@ export function createRegistryRoutes(
     return c.json({ success: true, data: items });
   });
 
-  app.get('/integrations/installed', async (c) => {
-    registryOps.add(1, { operation: 'list-integrations-installed' });
-    const items = await getIntegrationRegistryProvider().listInstalled();
-    return c.json({ success: true, data: items });
-  });
+  // #2067: operator-only, same shape and same reason as the agent twin.
+  app.get(
+    '/integrations/installed',
+    operatorOnly(
+      deps?.visibility,
+      'list installed registry integrations',
+    )(async (c) => {
+      registryOps.add(1, { operation: 'list-integrations-installed' });
+      const items = await getIntegrationRegistryProvider().listInstalled();
+      return c.json({ success: true, data: items });
+    }),
+  );
 
   app.post(
     '/integrations/install',
@@ -655,21 +706,36 @@ export function createRegistryRoutes(
 
   // ── Plugin Registry ──────────────────────────────────────
 
-  app.get('/plugins', async (c) => {
-    registryOps.add(1, { operation: 'list-plugins' });
-    const items = await readRegistryPluginAvailability(
-      configLoader.getProjectHomeDir(),
-    );
-    return c.json({ success: true, data: items });
-  });
+  // #2067: both are operator-only. Each row carries an `installed` flag, so
+  // the catalog face is the instance's plugin inventory restated against a
+  // registry, and `/installed` is that inventory with nothing around it.
+  // Installing is operator work, so there is no projected half-answer worth
+  // giving — see PLUGIN_IDENTITY_ROUTES.
+  const asOperator = operatorOnly(
+    deps?.visibility,
+    'browse the plugin registry',
+  );
+  app.get(
+    '/plugins',
+    asOperator(async (c) => {
+      registryOps.add(1, { operation: 'list-plugins' });
+      const items = await readRegistryPluginAvailability(
+        configLoader.getProjectHomeDir(),
+      );
+      return c.json({ success: true, data: items });
+    }),
+  );
 
-  app.get('/plugins/installed', async (c) => {
-    registryOps.add(1, { operation: 'list-plugins-installed' });
-    const items = (
-      await readRegistryPluginAvailability(configLoader.getProjectHomeDir())
-    ).filter((item: any) => item.installed);
-    return c.json({ success: true, data: items });
-  });
+  app.get(
+    '/plugins/installed',
+    asOperator(async (c) => {
+      registryOps.add(1, { operation: 'list-plugins-installed' });
+      const items = (
+        await readRegistryPluginAvailability(configLoader.getProjectHomeDir())
+      ).filter((item: any) => item.installed);
+      return c.json({ success: true, data: items });
+    }),
+  );
 
   /**
    * The one registry install path for PLUGINS, whichever catalog face listed

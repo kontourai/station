@@ -1721,5 +1721,5 @@
 
 .fleet-routing__failure {
   font-size: 0.8125rem;
-  color: var(--color-danger, #c0392b);
+  color: var(--error-text);
 }

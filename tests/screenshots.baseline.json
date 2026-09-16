@@ -71,7 +71,7 @@
       "name": "home",
       "width": 1440,
       "height": 900,
-      "sha256": "49a98b660c39834a251ea187466bbc77c748f12d37b9621666f2607f7885fd39"
+      "sha256": "7f41ee91dd666c63b874fe4581c111e05e777ffe82900f59bb4088c69ec0da53"
     },
     {
       "name": "mobile-access-request-error-320",
@@ -230,12 +230,6 @@
       "sha256": "494c8a21db858452e11a2c9544a625f23e83b9950216a4406fc26f2a05b2ce30"
     },
     {
-      "name": "overlay-layout-picker",
-      "width": 1440,
-      "height": 900,
-      "sha256": "0750bcfccdc21930739db1b1a51a6b818460188c58e1b040f7264035be8343da"
-    },
-    {
       "name": "overlay-mobile-sheet",
       "width": 390,
       "height": 844,
@@ -258,6 +252,12 @@
       "width": 1440,
       "height": 900,
       "sha256": "c7645c67c69ad819390cc85f77d0bb04281e9062999139592a03b01e11399d1b"
+    },
+    {
+      "name": "overlay-region-offer-menu",
+      "width": 1440,
+      "height": 900,
+      "sha256": "74884acf6d0f45b7483759e941f9981aac6f3d93ea3ddeb03bd93aba7a365413"
     },
     {
       "name": "overlay-toast",
@@ -288,12 +288,6 @@
       "width": 1440,
       "height": 900,
       "sha256": "de7f0e0a62409cd84f09388c2208fd5f9381a90d2d66a96679a859f6e73da8a0"
-    },
-    {
-      "name": "review",
-      "width": 1440,
-      "height": 900,
-      "sha256": "06209b80888fca2ac9e4cf543641a0029af0d663ecde60c598ab51a0b8f9d734"
     },
     {
       "name": "schedule",

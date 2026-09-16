@@ -77,9 +77,20 @@ import {
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
+import {
+  operatorOnly,
+  type PluginPrincipalResolution,
+} from './plugin-identity-enumeration.js';
 import { loadPluginProviders } from './plugin-loader.js';
 
 interface PluginLifecycleRouteDeps {
+  /**
+   * Caller resolution for the operator-only members of this file (#2067).
+   * Absent means this composition is not serving authenticated HTTP callers,
+   * and those routes refuse rather than answer — see
+   * `plugin-identity-enumeration.ts`.
+   */
+  visibility?: PluginPrincipalResolution;
   installationHost?: PluginInstallationHost;
   registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
@@ -371,73 +382,85 @@ export function registerPluginLifecycleRoutes(
         )?.root ?? null)
       : resolveInstalledPluginRoot(pluginsDir, name);
 
-  app.get('/check-updates', async (c) => {
-    const updates: Array<{
-      name: string;
-      currentVersion: string;
-      latestVersion: string;
-      source: string;
-    }> = [];
-
-    try {
-      if (existsSync(pluginsDir)) {
-        const { readdirSync } = await import('node:fs');
-        const entries = readdirSync(pluginsDir, { withFileTypes: true });
-        for (const entry of entries) {
-          if (!entry.isDirectory()) continue;
-          const dir = join(pluginsDir, entry.name);
-          const gitDir = join(dir, '.git');
-          const manifestPath = join(dir, 'plugin.json');
-          if (!existsSync(gitDir) || !existsSync(manifestPath)) continue;
-
-          try {
-            await execGit(['fetch', '--quiet'], {
-              cwd: dir,
-              timeout: 10000,
-            });
-            const { stdout: behind } = await execGit(
-              ['rev-list', '--count', 'HEAD..@{u}'],
-              { cwd: dir, encoding: 'utf-8' },
-            );
-            if (parseInt(behind.trim(), 10) > 0) {
-              const manifest = readPluginManifestFileSync(manifestPath);
-              const commitsBehind = behind.trim();
-              updates.push({
-                name: entry.name,
-                currentVersion: manifest.version || 'unknown',
-                latestVersion: `${commitsBehind} commit${commitsBehind === '1' ? '' : 's'} behind`,
-                source: 'git',
-              });
-            }
-          } catch (error) {
-            logger.debug('Failed to check git updates for plugin', {
-              plugin: entry.name,
-              error,
-            });
-          }
-        }
-      }
+  app.get(
+    '/check-updates',
+    // #2067: operator-only. This readdirs `plugins/` and reports every
+    // installed plugin's name and version, and it runs `git fetch` in each
+    // one on the way. See PLUGIN_IDENTITY_ROUTES for why this family is
+    // refused rather than projected.
+    operatorOnly(
+      deps.visibility,
+      'check plugins for updates',
+    )(async (c) => {
+      const updates: Array<{
+        name: string;
+        currentVersion: string;
+        latestVersion: string;
+        source: string;
+      }> = [];
 
       try {
-        const registryUpdates = await listPluginRegistryUpdates();
-        for (const update of registryUpdates) {
-          if (updates.some((existing) => existing.name === update.name)) {
-            continue;
-          }
-          updates.push(update);
-        }
-      } catch (error) {
-        logger.debug('Failed to check registry for plugin updates', { error });
-      }
+        if (existsSync(pluginsDir)) {
+          const { readdirSync } = await import('node:fs');
+          const entries = readdirSync(pluginsDir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const dir = join(pluginsDir, entry.name);
+            const gitDir = join(dir, '.git');
+            const manifestPath = join(dir, 'plugin.json');
+            if (!existsSync(gitDir) || !existsSync(manifestPath)) continue;
 
-      return c.json({ updates });
-    } catch (error: unknown) {
-      logger.error('Failed to check for updates', {
-        error: errorMessage(error),
-      });
-      return c.json({ updates: [] });
-    }
-  });
+            try {
+              await execGit(['fetch', '--quiet'], {
+                cwd: dir,
+                timeout: 10000,
+              });
+              const { stdout: behind } = await execGit(
+                ['rev-list', '--count', 'HEAD..@{u}'],
+                { cwd: dir, encoding: 'utf-8' },
+              );
+              if (parseInt(behind.trim(), 10) > 0) {
+                const manifest = readPluginManifestFileSync(manifestPath);
+                const commitsBehind = behind.trim();
+                updates.push({
+                  name: entry.name,
+                  currentVersion: manifest.version || 'unknown',
+                  latestVersion: `${commitsBehind} commit${commitsBehind === '1' ? '' : 's'} behind`,
+                  source: 'git',
+                });
+              }
+            } catch (error) {
+              logger.debug('Failed to check git updates for plugin', {
+                plugin: entry.name,
+                error,
+              });
+            }
+          }
+        }
+
+        try {
+          const registryUpdates = await listPluginRegistryUpdates();
+          for (const update of registryUpdates) {
+            if (updates.some((existing) => existing.name === update.name)) {
+              continue;
+            }
+            updates.push(update);
+          }
+        } catch (error) {
+          logger.debug('Failed to check registry for plugin updates', {
+            error,
+          });
+        }
+
+        return c.json({ updates });
+      } catch (error: unknown) {
+        logger.error('Failed to check for updates', {
+          error: errorMessage(error),
+        });
+        return c.json({ updates: [] });
+      }
+    }),
+  );
 
   const captureUpdateTarget = (pluginName: string) => {
     const captured = deps.packageMcpJournal
@@ -1120,145 +1143,160 @@ export function registerPluginLifecycleRoutes(
     }
   });
 
-  app.post('/reload', async (c) => {
-    if (deps.installationHost || deps.packageMcpJournal) {
-      const projection = deps.installationHost
-        ? await deps.installationHost.reconcile()
-        : await reconcileLocalPluginInstallations(
-            pluginsDir,
-            deps.packageMcpJournal!,
+  app.post(
+    '/reload',
+    // #2067: operator-only. Reconciles the whole install directory and
+    // reports the loaded count and the pending plugin ids — the inventory.
+    // Reloading is a maintenance action a collaborator cannot take.
+    operatorOnly(
+      deps.visibility,
+      'reload plugins',
+    )(async (c) => {
+      if (deps.installationHost || deps.packageMcpJournal) {
+        const projection = deps.installationHost
+          ? await deps.installationHost.reconcile()
+          : await reconcileLocalPluginInstallations(
+              pluginsDir,
+              deps.packageMcpJournal!,
+            );
+        if (projection.status === 'pending')
+          return c.json(
+            {
+              success: false,
+              error:
+                'Plugin catalog projection remains pending; inspect retained generations.',
+              lifecycle: projection,
+            },
+            202,
           );
-      if (projection.status === 'pending')
+      }
+      const eventSubscriptionQuiescence =
+        await quiesceEventSubscriptions?.().catch((error) => {
+          logger.error(
+            'Plugin event subscription quiescence failed before reload',
+            {
+              error: errorMessage(error),
+            },
+          );
+          return null;
+        });
+      if (quiesceEventSubscriptions && !eventSubscriptionQuiescence) {
         return c.json(
           {
             success: false,
-            error:
-              'Plugin catalog projection remains pending; inspect retained generations.',
-            lifecycle: projection,
+            error: 'Plugin event subscription reload could not begin',
           },
-          202,
+          500,
         );
-    }
-    const eventSubscriptionQuiescence =
-      await quiesceEventSubscriptions?.().catch((error) => {
-        logger.error(
-          'Plugin event subscription quiescence failed before reload',
-          {
-            error: errorMessage(error),
-          },
-        );
-        return null;
-      });
-    if (quiesceEventSubscriptions && !eventSubscriptionQuiescence) {
-      return c.json(
-        {
-          success: false,
-          error: 'Plugin event subscription reload could not begin',
-        },
-        500,
-      );
-    }
-    const serverQuiescence = await quiesceAllPluginPublicServerModules().catch(
-      (error) => {
-        logger.error('Plugin server quiescence failed before reload', {
-          error: errorMessage(error),
-        });
-        return null;
-      },
-    );
-    if (!serverQuiescence) {
-      eventSubscriptionQuiescence?.release();
-      return c.json(
-        { success: false, error: 'Plugin server reload could not begin' },
-        500,
-      );
-    }
-    try {
-      const mutation = await captureConfigurationMutation(
-        applyConfigurationMutation,
-        async (beginMutation) => {
-          beginMutation();
-          const { resolvePluginProviders } = await import(
-            '../../providers/resolver.js'
-          );
-          const { ConfigLoader } = await import(
-            '../../domain/config-loader.js'
-          );
-
-          const configLoader = new ConfigLoader({ projectHomeDir });
-          const overrides = await configLoader.loadPluginOverrides();
-
-          const {
-            basis,
-            candidates: { resolved, conflicts },
-          } = await capturePluginProviderGeneration(projectHomeDir, () =>
-            existsSync(pluginsDir)
-              ? resolvePluginProviders(
-                  pluginsDir,
-                  overrides,
-                  (pluginName) =>
-                    hasGrant(projectHomeDir, pluginName, 'providers.register'),
-                  logger,
-                )
-              : { resolved: [], conflicts: [] },
-          );
-
-          for (const conflict of conflicts) {
-            logger.warn('Provider conflict on reload', {
-              type: conflict.type,
-              candidates: conflict.candidates,
-            });
-          }
-
-          const prepared = await preparePluginProviderGeneration(
-            pluginsDir,
-            resolved.map((entry) => ({
-              pluginName: entry.pluginName,
-              manifest: {
-                providers: [
-                  {
-                    type: entry.type,
-                    module: entry.module,
-                    layout: entry.layout,
-                  },
-                ],
-                displayName: entry.pluginName,
-              } as PluginManifest,
-            })),
-            logger,
-          );
-          const published = await publishPluginProviderGeneration(
-            basis,
-            prepared,
-          );
-          await settleProviderAdapterRetirements?.();
-          return { success: true as const, loaded: published.length };
-        },
-        { rediscoverSkills: true },
-      );
-      if (mutation.value.success) {
-        try {
-          refreshKitObservability?.();
-        } catch (error: unknown) {
-          logger.warn('Kit observability refresh failed after plugin reload', {
+      }
+      const serverQuiescence =
+        await quiesceAllPluginPublicServerModules().catch((error) => {
+          logger.error('Plugin server quiescence failed before reload', {
             error: errorMessage(error),
           });
-        }
+          return null;
+        });
+      if (!serverQuiescence) {
+        eventSubscriptionQuiescence?.release();
+        return c.json(
+          { success: false, error: 'Plugin server reload could not begin' },
+          500,
+        );
       }
+      try {
+        const mutation = await captureConfigurationMutation(
+          applyConfigurationMutation,
+          async (beginMutation) => {
+            beginMutation();
+            const { resolvePluginProviders } = await import(
+              '../../providers/resolver.js'
+            );
+            const { ConfigLoader } = await import(
+              '../../domain/config-loader.js'
+            );
 
-      return c.json(
-        {
-          ...mutation.value,
-          success: mutation.activation?.status !== 'pending',
-          ...configurationActivationPayload(mutation.activation),
-        },
-        configurationMutationStatus(mutation.activation, 200),
-      );
-    } catch (error: unknown) {
-      return c.json({ success: false, error: errorMessage(error) }, 500);
-    } finally {
-      serverQuiescence.release();
-      eventSubscriptionQuiescence?.release();
-    }
-  });
+            const configLoader = new ConfigLoader({ projectHomeDir });
+            const overrides = await configLoader.loadPluginOverrides();
+
+            const {
+              basis,
+              candidates: { resolved, conflicts },
+            } = await capturePluginProviderGeneration(projectHomeDir, () =>
+              existsSync(pluginsDir)
+                ? resolvePluginProviders(
+                    pluginsDir,
+                    overrides,
+                    (pluginName) =>
+                      hasGrant(
+                        projectHomeDir,
+                        pluginName,
+                        'providers.register',
+                      ),
+                    logger,
+                  )
+                : { resolved: [], conflicts: [] },
+            );
+
+            for (const conflict of conflicts) {
+              logger.warn('Provider conflict on reload', {
+                type: conflict.type,
+                candidates: conflict.candidates,
+              });
+            }
+
+            const prepared = await preparePluginProviderGeneration(
+              pluginsDir,
+              resolved.map((entry) => ({
+                pluginName: entry.pluginName,
+                manifest: {
+                  providers: [
+                    {
+                      type: entry.type,
+                      module: entry.module,
+                      layout: entry.layout,
+                    },
+                  ],
+                  displayName: entry.pluginName,
+                } as PluginManifest,
+              })),
+              logger,
+            );
+            const published = await publishPluginProviderGeneration(
+              basis,
+              prepared,
+            );
+            await settleProviderAdapterRetirements?.();
+            return { success: true as const, loaded: published.length };
+          },
+          { rediscoverSkills: true },
+        );
+        if (mutation.value.success) {
+          try {
+            refreshKitObservability?.();
+          } catch (error: unknown) {
+            logger.warn(
+              'Kit observability refresh failed after plugin reload',
+              {
+                error: errorMessage(error),
+              },
+            );
+          }
+        }
+
+        return c.json(
+          {
+            ...mutation.value,
+            success: mutation.activation?.status !== 'pending',
+            ...configurationActivationPayload(mutation.activation),
+          },
+          configurationMutationStatus(mutation.activation, 200),
+        );
+      } catch (error: unknown) {
+        return c.json({ success: false, error: errorMessage(error) }, 500);
+      } finally {
+        serverQuiescence.release();
+        eventSubscriptionQuiescence?.release();
+      }
+    }),
+  );
 }

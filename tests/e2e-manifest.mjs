@@ -375,12 +375,12 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/daily-driver-switching.spec.ts',
     'tests/coding-git-toolbar.spec.ts',
     'tests/diff-review-annotations.spec.ts',
-    'tests/review-queue-comments.spec.ts',
     'tests/first-run-zero-provider.spec.ts',
     'tests/knowledge-onboarding.spec.ts',
     'tests/root-route-restore.spec.ts',
     'tests/task-first-home.spec.ts',
     'tests/activity-pane.spec.ts',
+    'tests/device-pane.spec.ts',
     'tests/connections-sections.spec.ts',
     'tests/connections-computers-ssh.spec.ts',
   ],
@@ -777,6 +777,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/device-pane.spec.ts',
+    bucket: 'product',
+    surface: 'Device',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "#1969: the Device pane had five jsdom suites and no browser journey, so its aspect-ratio assertions read a CSS custom property off an inline style and NOTHING had observed the pane lay out — which is why docs/ui/responsive-action-surfaces.txt listed it as an exception. This is the render. The setup state is un-intercepted: the suite instance runs with STATION_MOBILE_DEVICE_HUB_URL unset, so the real LocalMobileDeviceHost answers not-configured through the real route and the pane's first-run card is the pane's own reading of it — asserted to offer no retry and to render no device list, so an unconfigured Station can never read as 'no devices'. The populated states need a booted simulator and a booted emulator no runner has, so they are supplied through page.route in the exact envelope mobile-device-host.ts emits (a UDID iOS row and an emulator-<n> Android row, the only spellings that host admits for booted devices) with REAL PNGs built in the spec — valid signature/IHDR/IEND, so the SDK client's base64 check and the host's own reader both accept them. Desktop: both native app targets selectable and captured in turn; the frame's ratio read from getBoundingClientRect rather than getComputedStyle, because the computed property is the declaration echoed back and only the laid out box can fail; a second iOS capture with swapped dimensions relayouts the frame from taller-than-wide to wider-than-tall; caption and image alt both carry 'Snapshot' and the browser's rendering of the capture's own capturedAt, stamped ten seconds in the past so a time taken from Date.now() would differ; switching devices drops the frame rather than hiding it. A 403 on capture renders the access-denied copy and leaves Capture ENABLED — the amended decision on the issue, because a changed sign-in is repairable in place and Capture is the retry — while adding no second button. 390x844 isMobile variant measures the picker rows and Capture against the 44px floor from their laid out boxes, with one hundredth of a pixel of slack because a composited min-height:44px row reports 43.99999237060547 (#2086) and an exact integer comparison would encode the compositor's rounding rather than the CSS. It reaches no device helper and proves nothing about expo-device-hub or the capture route's own authorization; tests/tauri-shell/device-pane.e2e.ts is the lane that drives the real service against a real hub.",
+    exceptions: [],
+  },
+  {
     path: 'tests/mcp-ui-layout.spec.ts',
     bucket: 'product',
     surface: 'Projects',
@@ -834,6 +844,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Proves one host action bar across direct and placed real Project Pane routes, keyboard Agent selection and 390px reflow. Provider transport is intercepted; server integration separately proves actual captured invocation.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/minimal-workspace-example.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Installs the actual portable minimal example, opens an explicit Project-bound Pane through the public SDK, proves local dock navigation without a chat mutation, and refuses the occurrence after uninstall.',
     exceptions: [],
   },
   {
@@ -1007,7 +1027,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Live bundled Registry install, persisted installed state, project Add Layout/use, unavailable-component recovery after uninstall, reinstall, and 390x844 overflow proof.',
+      'Live bundled Registry install through the UI, persisted installed state, project Add pane/use of the Minimal Workspace occurrence, pane withdrawal after uninstall, reinstall, and 390x844 overflow proof.',
     exceptions: [],
   },
   {
@@ -1547,16 +1567,15 @@ export const e2eManifest = [
       'Diff review annotations: DiffPanel renders a parsed diff, fetches project diff-comments, and renders a seeded comment inline via the @pierre/diffs annotation slot.',
     exceptions: [],
   },
-  {
-    path: 'tests/review-queue-comments.spec.ts',
-    bucket: 'product',
-    surface: 'Review Queue',
-    tierTarget: 'full',
-    primary: true,
-    rationale:
-      'Review queue surfaces diff comments: the queue fetches the cross-project /api/diff-comments feed, lists a seeded comment, and opens its detail with a Resolve action.',
-    exceptions: [],
-  },
+  // #2065: `tests/review-queue-comments.spec.ts` was retired with the global
+  // `/review-queue` page. Not retargeted, because its subject no longer
+  // exists anywhere: D4 dropped cross-project diff-comment DISCOVERY (a
+  // comment now resolves inside the diff it annotates), and with it the
+  // comment detail, its Resolve action, and its "Open in coding" jump. The
+  // one action that survived — deleting a comment — lives on the diff pane's
+  // own Delete and is pinned by "the diff pane deletes the comment its own
+  // Delete names, in its own Project" in src-ui/src/__tests__/DiffPanel.test.tsx.
+  // Inline comment rendering keeps its own spec (diff-review-annotations).
   {
     path: 'tests/core-update.spec.ts',
     bucket: 'extended',

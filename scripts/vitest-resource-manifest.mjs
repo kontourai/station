@@ -266,6 +266,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // its exit STATUS is asserted, not just its pure decision functions — a
   // rejection path that has never executed is unproven.
   'scripts/__tests__/prepush-ui-bundle.test.ts',
+  // Same shape one gate over: runs the pre-push typecheck scope guard as a
+  // real child process — once against a stub `npm` so its REFUSAL exit
+  // status is proven, once with an empty scope so the skip path's zero is
+  // proven. Two bounded single-shot children; the real 82s aggregate never
+  // starts.
+  'scripts/__tests__/prepush-typecheck.test.ts',
   // Asks git (`check-ignore`, `ls-files`) whether the generated Basis MCP app
   // bundles are ignored and untracked, because .gitignore's text cannot say
   // whether a rule still matches or a file was force-added. Two single-shot
@@ -370,6 +376,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture. Fix-forward: landed via #1478 without this classification; the
   // verification-policy gate caught it on the pull request.
   'src-ui/src/__tests__/placement-vocabulary.test.ts',
+  // #2144 slice 5: the `settingsRow` literal reverse guard enumerates its
+  // scan scope through one single-shot `git ls-files`, same shape and same
+  // reason as the placement ratchet above — a glob pathspec silently drops
+  // root-level files and a shrinking scope still reads clean.
+  'src-ui/src/__tests__/settings-row-literal-coverage.test.ts',
   // station#3549: drives a single `git grep -l` through `execFileSync` to
   // discover every file that calls `adapter.startSession(` — the same "real
   // git, not a fixture" shape as gate-scope.test.ts above. Fix-forward: this
@@ -432,6 +443,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // These tests start real children through the owned-process helper rather
   // than importing node:child_process directly.
   'scripts/__tests__/owned-process.test.ts',
+  // Forks the real Windows owned launcher with an IPC channel and a fake guard
+  // (node itself, exiting on a bad module path) to prove the production
+  // `onState` wiring delivers settlement-state messages to the coordinator.
+  // Bounded, single-shot, and disposed with SIGTERM.
+  'scripts/__tests__/windows-owned-launcher.test.ts',
   // Executes the Node UTC conversion used by the reusable fleet workflow;
   // retain the process boundary so a host-local offset cannot be mistaken for
   // the canonical portable-release timestamp contract.
@@ -817,6 +833,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fix tied on specificity with a rule 90 lines below it and lost on source
   // order while the declaration read correct.
   'src-ui/src/__tests__/menu-primitive.cascade.test.tsx',
+  // #2112: same shape again — launches a real Chromium to hit-test each header
+  // and dock menu's dismiss backdrop against the chrome control that opens it.
+  // jsdom returns nothing useful from `elementFromPoint`, and a computed-style
+  // read cannot see a stacking context introduced on an ancestor of the
+  // toolbar, which is one of the regressions this pins.
+  'src-ui/src/__tests__/menu-dismiss-backdrop.hit-test.test.tsx',
   // #1616: same shape again — launches a real Chromium to measure whether the
   // workspace pane picker's overlay is taken out of flow using only the entry
   // stylesheet every route loads. jsdom computes no layout and would report

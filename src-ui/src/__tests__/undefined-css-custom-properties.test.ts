@@ -342,21 +342,15 @@ const KNOWN_UNDEFINED: string[] = [];
  * both directions, exactly like the list above.
  */
 const UNTHEMED_FALLBACK: string[] = [
+  // The three that remain all live in `packages/sdk/.../KnowledgeRecall.css`,
+  // a published SDK stylesheet written against a host-supplied vocabulary
+  // (`--accent`, `--background`, `--border`) that Station does not define.
+  // Retheming it is the SDK's contract to change, not this app's stylesheet
+  // sweep. Everything else this list once held — twelve names across
+  // twenty-odd sites — now resolves to a real, per-theme token.
   '--accent',
-  '--accent-danger',
-  '--accent-primary-alpha',
   '--background',
-  '--bg-subtle',
   '--border',
-  '--border-color',
-  '--border-subtle',
-  '--color-danger',
-  '--color-negative',
-  '--overlay-scrim',
-  '--success',
-  '--surface-hover',
-  '--surface-raised',
-  '--warning',
 ];
 
 /**

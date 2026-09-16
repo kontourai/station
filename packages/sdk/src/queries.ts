@@ -425,6 +425,14 @@ export {
   waitForAgentHealth,
 } from './query-domains/plugins';
 export {
+  fetchPluginVisibility,
+  isPluginVisibilityForbidden,
+  PLUGIN_VISIBILITY_QUERY_KEY,
+  PluginVisibilityForbiddenError,
+  usePluginVisibilityQuery,
+  useSetPluginVisibilityMutation,
+} from './query-domains/pluginVisibility';
+export {
   useGitLogQuery,
   useGitStatusQuery,
   useKnowledgeBulkDeleteMutation,

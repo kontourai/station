@@ -124,14 +124,13 @@ describe('StarterInspectionCards', () => {
         id: 'same-id',
         projectSlug: 'bravo',
       },
-      href: '/review-queue?receipt=same-id&project=bravo',
+      href: '/projects/bravo/layouts/review?receipt=same-id',
       completion: { state: 'receipt-present' },
     });
     render(<StarterInspectionCards />);
     fireEvent.click(screen.getByRole('button', { name: 'Reopen receipt' }));
-    expect(navigate).toHaveBeenCalledWith('/review-queue', {
+    expect(navigate).toHaveBeenCalledWith('/projects/bravo/layouts/review', {
       receipt: 'same-id',
-      project: 'bravo',
     });
     expect(launch).not.toHaveBeenCalled();
   });

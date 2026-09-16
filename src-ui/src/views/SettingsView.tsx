@@ -1,9 +1,17 @@
 import './SettingsView.css';
 import {
+  PROJECT_OVERRIDABLE_APP_SETTING_KEYS,
+  type ProjectOverridableAppSettingKey,
+} from '@kontourai/station-contracts/project-settings-overrides';
+import {
   authenticatedFetch,
   StationReadOnlyError,
   useConfigProvenanceQuery,
   useInvalidateQuery,
+  usePluginVisibilityQuery,
+  useProjectQuery,
+  useProjectsQuery,
+  useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
 import { updateAppLogLevel } from '@kontourai/station-sdk/app-config';
 import { useMutation } from '@tanstack/react-query';
@@ -21,7 +29,11 @@ import {
   SkeletonBlock,
 } from '../components/state';
 import { Toggle } from '../components/Toggle';
-import { UsageTelemetryDisclosure } from '../components/UsageTelemetryDisclosure';
+import {
+  UsageTelemetryDisclosure,
+  usageTelemetryDestinationSummary,
+  useUsageTelemetryDisclosureState,
+} from '../components/UsageTelemetryDisclosure';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useConfigActions, useConfigSnapshot } from '../contexts/ConfigContext';
 import {
@@ -35,6 +47,12 @@ import { useLocale } from '../i18n/LocaleContext';
 import { DeviceSettingsImportVersionError } from '../lib/device-settings-store';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import type { AppConfig, NavigationView } from '../types';
+import {
+  ANSWER_DELIVERY_OPTIONS,
+  answerDeliveryModeOf,
+  isAnswerDeliveryMode,
+  smoothRevealForAnswerDelivery,
+} from '../utils/answerDelivery';
 import { AccentColorPicker } from './settings/AccentColorPicker';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
@@ -44,6 +62,16 @@ import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
 import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
+import { PluginVisibilitySection } from './settings/PluginVisibilitySection';
+import {
+  buildProjectOverrideUpdate,
+  effectiveOverrideValue,
+  type ProjectOverrideDraft,
+  pendingOverrideChanges,
+  projectOverrideDelta,
+  savedOverridesFor,
+} from './settings/project-override-draft';
+import { SettingsManageSection } from './settings/SettingsManageSection';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
 import { SystemSection } from './settings/SystemSection';
@@ -51,10 +79,12 @@ import {
   formatSettingsMessage,
   localizedSettingsTargetLabel,
   matchingSettingsRows,
+  OPERATOR_ONLY_SECTION_IDS,
   SETTINGS_CATALOG,
   SETTINGS_SECTIONS,
   settingsRow,
 } from './settings/settings-catalog';
+import { buildStationResetPlan } from './settings/station-reset';
 import {
   buildSettingsExportPayload,
   getSettingsValidation,
@@ -97,6 +127,29 @@ const ALL_SETTINGS_VIEWS = ['overview', ...ALL_LEAF_SECTION_IDS];
  */
 export const SETTINGS_SAVE_DEADLINE_MS = 30_000;
 
+/**
+ * How long the save path waits for the saved project's record to be re-read
+ * before clearing the override draft anyway.
+ *
+ * The write has already landed when this runs, so the wait only decides what
+ * the row shows next. It is its own, much shorter deadline rather than a
+ * second use of the save deadline above, and it must have one at all because
+ * it runs AFTER the save deadline's race has been decided — a refetch that
+ * never settles would otherwise leave `Save` spinning with nothing left to
+ * wait for.
+ *
+ * What the timeout costs, stated honestly: when the refetch is merely SLOW
+ * the draft clears against a record this page has not re-read, and the
+ * stale value shows until it lands. A FAILED refetch does not go through the
+ * timeout at all — `invalidateQueries` resolves once its refetches settle,
+ * errors included — but it leaves the same picture: the row goes on showing
+ * the pre-save value with no pill and no error, and this page will not say
+ * the save happened until something else refetches the project. That is
+ * still the better outcome against a Save button that never releases, but
+ * it is a real gap, not a flicker.
+ */
+const SETTINGS_OVERRIDE_REFETCH_DEADLINE_MS = 3_000;
+
 export interface SettingsViewProps {
   onBack: () => void;
   onSaved?: () => void;
@@ -113,16 +166,56 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   } = useConfigSnapshot();
   const { updateConfig, isSaving } = useConfigActions();
   const invalidate = useInvalidateQuery();
-  const { data: provenance } = useConfigProvenanceQuery();
+  // #2144 slice 3. The project the page is showing settings FOR. It lives
+  // OUTSIDE the Station draft on purpose: a project override is a different
+  // document with a different write path, and folding it into `config` would
+  // make one Save request carry two authorities' values.
+  const [selectedProjectSlug, setSelectedProjectSlug] = useState<string | null>(
+    null,
+  );
+  const [overrideDraft, setOverrideDraft] = useState<ProjectOverrideDraft>({});
+  const { data: projects } = useProjectsQuery();
+  const projectList: { slug: string; name?: string }[] = Array.isArray(projects)
+    ? projects
+    : [];
+  const { data: selectedProject } = useProjectQuery(selectedProjectSlug ?? '', {
+    enabled: Boolean(selectedProjectSlug),
+  });
+  const savedOverrides = savedOverridesFor(
+    selectedProjectSlug ? selectedProject : undefined,
+  );
+  const updateProject = useUpdateProjectMutation();
+  // Asking the SAME route for more provenance, not for different values: the
+  // response body stays this Station's config and only the attribution gains
+  // the project's scope (`GET /config/app?project=<slug>`, slice 2).
+  const { data: provenance } = useConfigProvenanceQuery(
+    selectedProjectSlug ?? undefined,
+  );
+  // The SAME route read WITHOUT a project, for the Station reset plan only.
+  //
+  // A scoped read replaces an overridden key's entry with the project's
+  // (`{ source: 'file', scope: 'project' }`), which `buildStationResetPlan`
+  // reads as an ordinary stored Station value. With a project selected that
+  // made the dialog offer to clear a Station setting nobody had stored and
+  // send `null` for it to the STATION document — a write against the wrong
+  // authority, decided by which project happened to be selected. Reset is a
+  // Station action and must read Station provenance, so it gets its own
+  // query; React Query keys them apart (`['config','provenance', null]` vs
+  // the slug) and dedupes the unscoped one with every other unscoped caller.
+  const { data: stationProvenance } = useConfigProvenanceQuery();
   const {
     chatFontSize,
     featureSettings,
     hapticsEnabled,
     developerToolsEnabled,
     sidebarSections,
+    confirmConversationDelete,
   } = useDeviceSettings();
-  const { setDeviceSetting } = useDeviceSettingsActions();
+  const { setDeviceSetting, resetDeviceSetting } = useDeviceSettingsActions();
   const { isMobile, isDesktop } = usePlatformProfile();
+  // #2144 slice 6 item D. The same query the disclosure card reads; React
+  // Query dedupes on its key so there is one request, not two answers.
+  const telemetryDisclosure = useUsageTelemetryDisclosureState();
   const { locale } = useLocale();
 
   const [config, setConfig] = useState<AppConfig>(
@@ -161,7 +254,45 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const configJson = JSON.stringify(config);
   const baselineJson = JSON.stringify(savedConfig);
   const hasChanges = configJson !== baselineJson;
-  const { DiscardModal } = useUnsavedGuard(hasChanges);
+  const overrideDelta = projectOverrideDelta(overrideDraft, savedOverrides);
+  const overrideDirty = Object.keys(overrideDelta).length > 0;
+  // ONE guard over both drafts. Two guards would ask twice for a single
+  // navigation and let either one discard while the other still holds an
+  // unsaved edit.
+  const { guard, DiscardModal } = useUnsavedGuard(hasChanges || overrideDirty);
+  const selectProject = (slug: string | null) => {
+    guard(() => {
+      setConfig(savedConfig);
+      setOverrideDraft({});
+      setSelectedProjectSlug(slug);
+    });
+  };
+  const projectOverride = selectedProjectSlug
+    ? {
+        name:
+          projectList.find((entry) => entry.slug === selectedProjectSlug)
+            ?.name ?? selectedProjectSlug,
+        values: Object.fromEntries(
+          PROJECT_OVERRIDABLE_APP_SETTING_KEYS.map((key) => [
+            key,
+            effectiveOverrideValue(key, overrideDraft, savedOverrides),
+          ]),
+        ),
+        // The set the SAVE will change, which is neither the raw draft nor
+        // the delta: a draft entry equal to the stored value is not a change
+        // at all, and the delta is too NARROW because the model pair is
+        // written whole — resetting one half drops the other. Both rules live
+        // in `pendingOverrideChanges`, which reads the request body itself.
+        pending: pendingOverrideChanges(overrideDraft, savedOverrides),
+        onChange: (key: ProjectOverridableAppSettingKey, value: unknown) =>
+          setOverrideDraft((current) => ({ ...current, [key]: value })),
+        // `null`, not a delete: the route reads `null` as "drop this
+        // override", and removing the key from the draft would only mean
+        // "never touched", which saves nothing.
+        onReset: (key: ProjectOverridableAppSettingKey) =>
+          setOverrideDraft((current) => ({ ...current, [key]: null })),
+      }
+    : undefined;
   const highlightNotice = highlightAnnouncement ? (
     <div
       className="settings__highlight-notice"
@@ -172,11 +303,26 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     </div>
   ) : null;
   const showRegion = true;
+  // #2067: the operator fact, from the query the plugin-visibility section
+  // already makes. React Query dedupes it, so this is the SAME request rather
+  // than a second one — and it is what stops the Settings search offering a
+  // collaborator a jump to a section the server will refuse to populate.
+  // `isOperator` false until the directory resolves is the fail-closed
+  // direction, and matches the section, which renders nothing until then.
+  const pluginVisibilityDirectory = usePluginVisibilityQuery();
+  const isOperator = pluginVisibilityDirectory.data !== undefined;
   const visibleSections = new Set(
     searchQuery.trim()
-      ? matchingSettingsRows(searchQuery).map((entry) => entry.section)
+      ? matchingSettingsRows(searchQuery, { isOperator }).map(
+          (entry) => entry.section,
+        )
       : activeSection === 'overview'
-        ? ALL_LEAF_SECTION_IDS
+        ? ALL_LEAF_SECTION_IDS.filter(
+            // Keyed on the CONDITIONAL, not on one section id: a second
+            // operator-conditional section would otherwise leak into the
+            // overview the day somebody adds it.
+            (section) => isOperator || !OPERATOR_ONLY_SECTION_IDS.has(section),
+          )
         : [activeSection],
   );
   const sectionVisible = (section: string) =>
@@ -281,8 +427,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       const target = document.getElementById(highlight);
       if (!target || done) return false;
       done = true;
-      // Defaults intentionally begins closed. A deep link owns revealing the
-      // declared target, not an arbitrary first button inside the section.
+      // Several Settings rows still live inside a closed <details> (keyboard
+      // shortcuts, update technical detail, host environment). A deep link
+      // owns revealing the declared target, not an arbitrary first button
+      // inside the section. (Defaults no longer needs this: its fields render
+      // directly.)
       target.closest('details')?.setAttribute('open', '');
       target.scrollIntoView?.({
         block: 'center',
@@ -450,7 +599,28 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       logLevel !== undefined
         ? updateAppLogLevel(currentApiBase, logLevel)
         : undefined;
-    if (!plainWrite && !logLevelWrite) return;
+    // #2144 slice 3: the project's own document, written by its own route.
+    // A third independent write rather than a third key in the config PUT —
+    // `PUT /api/projects/:slug` is what accepts `null` as "drop this
+    // override", and the Station config route has no way to express that.
+    // `selectedProject !== undefined` is a real precondition, not a
+    // convenience: `savedOverrides` is derived from that record, so an
+    // in-flight or failed read presents as "this project overrides nothing"
+    // — and `buildProjectOverrideUpdate` would then see a half-pair and null
+    // BOTH model fields on a project that had set them.
+    // Pinned once: the whole settle path below refers to the project this
+    // save was for, not to whatever the selector holds by the time it lands.
+    const overrideSlug =
+      selectedProjectSlug && overrideDirty && selectedProject !== undefined
+        ? selectedProjectSlug
+        : undefined;
+    const overrideWrite = overrideSlug
+      ? updateProject.mutateAsync({
+          slug: overrideSlug,
+          ...buildProjectOverrideUpdate(overrideDelta, savedOverrides),
+        })
+      : undefined;
+    if (!plainWrite && !logLevelWrite && !overrideWrite) return;
 
     saveInFlightRef.current = true;
     setIsSplitSaving(true);
@@ -461,6 +631,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         Promise.allSettled([
           plainWrite ?? Promise.resolve(),
           logLevelWrite ?? Promise.resolve(),
+          overrideWrite ?? Promise.resolve(),
         ]),
         new Promise<'deadline'>((resolve) => {
           deadlineTimer = setTimeout(
@@ -475,7 +646,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         );
         return;
       }
-      const [plainOutcome, logLevelOutcome] = settled;
+      const [plainOutcome, logLevelOutcome, overrideOutcome] = settled;
       const plainFailed =
         plainWrite !== undefined && plainOutcome.status === 'rejected';
       const logLevelFailed =
@@ -505,23 +676,57 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         invalidate(['config']);
         onSaved?.();
       }
-      if (plainFailed && logLevelFailed) {
-        setError(
-          'Log Level and other settings could not be saved. Your changes are kept here until you retry.',
-        );
-      } else if (logLevelFailed) {
-        setError(
-          plainOutcome.status === 'fulfilled'
-            ? 'Log Level could not be saved. Other settings were saved; your Log Level change is kept here until you retry.'
-            : 'Log Level could not be saved. Your change is kept here until you retry.',
-        );
-      } else if (plainFailed) {
-        setError(
-          plainOutcome.reason instanceof StationReadOnlyError
-            ? 'Save failed — Station is unreachable. Your changes are kept here until you retry; they are not saved yet.'
-            : 'Some settings could not be saved. Your changes are kept here until you retry.',
-        );
+      // The project write settles on its own: it is a different document on a
+      // different route, so it succeeding or failing says nothing about the
+      // Station config write and must not silence or absorb its message.
+      // Keyed on `overrideSlug`, which is defined exactly when
+      // `overrideWrite` is — and unlike it, still carries the project's name.
+      if (overrideSlug && overrideOutcome.status === 'fulfilled') {
+        // Await the project record's refetch BEFORE clearing the draft: the
+        // row falls back to `savedOverrides` the instant the draft goes, and
+        // that read is stale until this settles, so clearing first shows the
+        // pre-save value back at the person who just changed it. Bounded —
+        // see `SETTINGS_OVERRIDE_REFETCH_DEADLINE_MS` for what expiry costs.
+        let refetchTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            invalidate(['projects', overrideSlug]),
+            new Promise<void>((resolve) => {
+              refetchTimer = setTimeout(
+                resolve,
+                SETTINGS_OVERRIDE_REFETCH_DEADLINE_MS,
+              );
+            }),
+          ]);
+        } finally {
+          if (refetchTimer !== undefined) clearTimeout(refetchTimer);
+        }
+        setOverrideDraft({});
+        // The provenance the page renders is computed from the project record
+        // that just changed, so the badges are stale until it is re-read.
+        invalidate(['config']);
       }
+      const overrideFailed =
+        overrideWrite !== undefined && overrideOutcome.status === 'rejected';
+      const stationMessage =
+        plainFailed && logLevelFailed
+          ? 'Log Level and other settings could not be saved. Your changes are kept here until you retry.'
+          : logLevelFailed
+            ? plainOutcome.status === 'fulfilled'
+              ? 'Log Level could not be saved. Other settings were saved; your Log Level change is kept here until you retry.'
+              : 'Log Level could not be saved. Your change is kept here until you retry.'
+            : plainFailed
+              ? plainOutcome.reason instanceof StationReadOnlyError
+                ? 'Save failed — Station is unreachable. Your changes are kept here until you retry; they are not saved yet.'
+                : 'Some settings could not be saved. Your changes are kept here until you retry.'
+              : null;
+      const messages = [
+        stationMessage,
+        overrideFailed
+          ? "This project's overrides could not be saved. Your changes to them are kept here until you retry."
+          : null,
+      ].filter((message): message is string => message !== null);
+      if (messages.length > 0) setError(messages.join(' '));
     } finally {
       if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
       saveInFlightRef.current = false;
@@ -529,14 +734,33 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     }
   };
 
+  // What a reset would actually do, recomputed from the provenance the page
+  // already holds: only a `source: 'file'` key is stored, and only a stored
+  // key changes when it is cleared. The dialog names these, and an empty plan
+  // is a disabled confirm rather than a request that silently does nothing.
+  const resetPlan = buildStationResetPlan(stationProvenance);
+
   const resetToDefaults = async () => {
     setShowResetModal(false);
+    if (resetPlan.keys.length === 0) return;
     try {
       setError(null);
-      await updateConfig({});
+      const result = await updateConfig(resetPlan.delta);
+      const ignoredKeys = result?.ignoredKeys ?? [];
+      // A key the server declined comes back on a 2xx. Absorbing it here is
+      // exactly the failure this whole item exists to remove.
+      setError(
+        ignoredKeys.length > 0
+          ? `Station did not clear ${ignoredKeys
+              .map((entry) => entry.key)
+              .join(', ')}. Every other setting listed was reset.`
+          : null,
+      );
       invalidate(['config']);
       onSaved?.();
     } catch (err: any) {
+      // `updateAppConfig` throws the route's joined violation messages, so a
+      // refusal names the keys instead of disappearing.
       setError(err.message);
     }
   };
@@ -548,6 +772,12 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       // stay exactly as they are.
       <div className="settings">
         {highlightNotice}
+        {/* #2059: rendered in BOTH branches for the same reason the section
+            nav is — it is derived from the destination registry and the
+            device flags, so it never waits on `/api/config/app`. A failed or
+            slow config read must not be able to strand the only in-app way
+            back to Agents, Connections or Plugins. */}
+        <SettingsManageSection />
         <SettingsSectionNav
           activeSection={activeSection}
           hrefForSection={hrefForSection}
@@ -619,6 +849,41 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           navigateToSection={navigateToSection}
         />
 
+        {/* ── Manage (other surfaces, not sections of this page) ── */}
+        <SettingsManageSection />
+
+        {/* #2144 slice 3: which document the page is showing values for.
+            Outside every scope group because it re-attributes rows in more
+            than one of them, and the sentence beside it names exactly what a
+            project may override — the selector governs attribution for the
+            whole page, but only these settings are a project's to change. */}
+        <div className="settings__project-scope">
+          <label
+            className="settings__project-scope-label"
+            htmlFor="settings-project-scope"
+          >
+            Show settings for:
+          </label>
+          <select
+            id="settings-project-scope"
+            className="editor-select"
+            value={selectedProjectSlug ?? ''}
+            onChange={(event) => selectProject(event.target.value || null)}
+          >
+            <option value="">Station only</option>
+            {projectList.map((project) => (
+              <option key={project.slug} value={project.slug}>
+                {project.name ?? project.slug}
+              </option>
+            ))}
+          </select>
+          <span className="settings__field-hint">
+            A project can override its new-chat workspace and its default model
+            connection and model. Every other setting on this page belongs to
+            the Station.
+          </span>
+        </div>
+
         {/* ── Station scope ── */}
         <section
           aria-label="Station settings"
@@ -634,6 +899,31 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 config={config}
                 provenance={provenance}
                 onChange={setConfig}
+                projectOverride={projectOverride}
+              />
+              {/* #2144 slice 6 item D: whether anything CAN be sent, beside
+                  the toggle that decides whether it is. Derived from the
+                  boolean the disclosure query already holds — React Query
+                  dedupes on the key, so this is the same request the
+                  disclosure below makes, not a second one. The host is not
+                  exposed (see `usageTelemetryDestinationSummary`). */}
+              <PageRow
+                {...settingsRow('telemetry-destination')}
+                description="Usage telemetry has somewhere to go only when the operator has configured a destination for this Station. Station does not show where that is."
+                control={(() => {
+                  // `null` is the in-flight read: the row keeps its place
+                  // (and its catalog identity) while saying nothing, rather
+                  // than asserting the host reported nothing.
+                  const summary = usageTelemetryDestinationSummary({
+                    endpointConfigured:
+                      telemetryDisclosure.data?.endpointConfigured,
+                    settled: telemetryDisclosure.settled,
+                    isError: telemetryDisclosure.isError,
+                  });
+                  return summary === null ? null : (
+                    <span className="settings__field-hint">{summary}</span>
+                  );
+                })()}
               />
               <UsageTelemetryDisclosure />
               <LocalAccountsSection />
@@ -649,6 +939,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 onExport={exportSettings}
                 onImport={importSettings}
                 onResetToDefaults={() => setShowResetModal(true)}
+                hasUnsavedChanges={hasChanges}
               />
               <ExistingSetupImportStepper />
             </>
@@ -662,6 +953,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               scope because the shares live on this Station and every client
               of it sees the same list. */}
           {sectionVisible('answer-shares') && <AnswerSharesSection />}
+
+          {/* #2067: per-principal plugin visibility. Station scope — the
+              grants live on this Station — and the section renders nothing
+              for a caller the route refuses as a non-operator. */}
+          {sectionVisible('plugin-visibility') && <PluginVisibilitySection />}
           {sectionVisible('host-runtime') && (
             <EnvironmentStatus apiBase={currentApiBase} />
           )}
@@ -751,9 +1047,19 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
           {sectionVisible('appearance') && (
             <Section icon="◐" title="Appearance" id="section-appearance">
+              {/* This slider writes the DEVICE key only. The Station
+                  default it falls back to (`defaultChatFontSize`) has its own
+                  row under Station configuration — the catalog entry used to
+                  claim both keys while nothing here wrote the Station one. */}
               <PageRow
                 {...settingsRow('chat-font-size')}
-                description="Font size for chat messages (10–24px)."
+                // `savedConfig`, not `config`, in all three places below: this
+                // row reports what this device falls back to, which is the
+                // STORED Station default. An unsaved draft of
+                // `defaultChatFontSize` is not in force anywhere yet, so
+                // moving the slider with it would show a fallback no chat is
+                // using.
+                description={`Font size for chat messages on this device (10–24px). Leave at the Station default of ${savedConfig.defaultChatFontSize ?? 14}px unless you want this device to differ.`}
                 control={
                   <div className="settings__range-row">
                     <input
@@ -762,7 +1068,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       type="range"
                       min="10"
                       max="24"
-                      value={chatFontSize ?? config.defaultChatFontSize ?? 14}
+                      value={
+                        chatFontSize ?? savedConfig.defaultChatFontSize ?? 14
+                      }
                       onChange={(e) =>
                         setDeviceSetting(
                           'chatFontSize',
@@ -771,25 +1079,48 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       }
                     />
                     <span className="settings__range-value">
-                      {chatFontSize ?? config.defaultChatFontSize ?? 14}px
+                      {`${chatFontSize ?? savedConfig.defaultChatFontSize ?? 14}px`}
                     </span>
+                    {chatFontSize != null && (
+                      <button
+                        type="button"
+                        className="settings__secondary-btn"
+                        onClick={() => resetDeviceSetting('chatFontSize')}
+                      >
+                        Use Station default
+                      </button>
+                    )}
                   </div>
                 }
               />
+              {/* #585 / #2144 slice 6 item B: one control naming BOTH
+                  outcomes, over the same `featureSettings.smoothReveal`
+                  boolean the two "Smooth answer reveal" toggles wrote. The
+                  in-chat gear panel renders the same options from the same
+                  mapping module. */}
               <PageRow
                 {...settingsRow('smooth-answer-reveal')}
-                description="Reveal incoming answer text steadily instead of showing network bursts all at once."
+                description="How streamed answer text appears on this device. Either way the same text arrives at the same time; only its pacing on screen differs."
                 control={
-                  <Toggle
-                    checked={featureSettings?.smoothReveal ?? false}
-                    onChange={(checked) =>
+                  <select
+                    className="editor-select"
+                    aria-label={settingsRow('smooth-answer-reveal').title}
+                    value={answerDeliveryModeOf(featureSettings?.smoothReveal)}
+                    onChange={(event) => {
+                      const mode = event.target.value;
+                      if (!isAnswerDeliveryMode(mode)) return;
                       setDeviceSetting('featureSettings', {
                         ...featureSettings,
-                        smoothReveal: checked,
-                      })
-                    }
-                    label={settingsRow('smooth-answer-reveal').title}
-                  />
+                        smoothReveal: smoothRevealForAnswerDelivery(mode),
+                      });
+                    }}
+                  >
+                    {ANSWER_DELIVERY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 }
               />
               <PageRow
@@ -849,6 +1180,24 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 />
               )}
               <AccentColorPicker />
+              {/* #2144 slice 6 item E. A group, not a new section: slice 4
+                  owns the navigation, and only ONE destructive confirm has
+                  an action behind it today — archive and quit do not exist,
+                  and "Clear all conversations" deliberately keeps asking. */}
+              <h3 className="settings__group-title">Confirmations</h3>
+              <PageRow
+                {...settingsRow('confirm-conversation-delete')}
+                description="Deleting a conversation cannot be undone. Turn this off to delete immediately. Clearing all conversations always asks."
+                control={
+                  <Toggle
+                    checked={confirmConversationDelete}
+                    onChange={(checked) =>
+                      setDeviceSetting('confirmConversationDelete', checked)
+                    }
+                    label={settingsRow('confirm-conversation-delete').title}
+                  />
+                }
+              />
             </Section>
           )}
 
@@ -911,13 +1260,16 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         )}
       </div>
 
-      {hasChanges && (
+      {(hasChanges || overrideDirty) && (
         <div className="settings__save-pill" role="status" aria-live="polite">
           <span className="settings__save-pill-text">Unsaved changes</span>
           <button
             type="button"
             className="settings__save-pill-discard"
-            onClick={() => setConfig(savedConfig)}
+            onClick={() => {
+              setConfig(savedConfig);
+              setOverrideDraft({});
+            }}
           >
             Discard
           </button>
@@ -938,9 +1290,14 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
       <ConfirmModal
         isOpen={showResetModal}
-        title="Reset to Defaults"
-        message="Are you sure you want to reset all settings to factory defaults? This action cannot be undone."
+        title="Reset Station settings"
+        message={
+          resetPlan.keys.length === 0
+            ? 'No Station setting currently has a stored value, so there is nothing to reset. Settings on this device are not affected.'
+            : `This clears ${resetPlan.keys.length} stored Station setting${resetPlan.keys.length === 1 ? '' : 's'} and lets Station use its default again: ${resetPlan.labels.join(', ')}. The required model settings (Default model, Invoke model, Structure model) and the built-in agent engine choice are kept. Usage telemetry is not changed by a reset. Settings on this device are not affected. This cannot be undone.`
+        }
         confirmLabel="Reset"
+        confirmDisabled={resetPlan.keys.length === 0}
         cancelLabel="Cancel"
         variant="danger"
         onConfirm={resetToDefaults}

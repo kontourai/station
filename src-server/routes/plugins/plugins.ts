@@ -16,6 +16,7 @@ import {
 } from '../../providers/registries/registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
+import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { createPluginGrantReconciliationService } from '../../services/plugins/plugin-grant-reconciliation.js';
 import {
@@ -40,6 +41,10 @@ import { registerPluginInstallRoutes } from './plugin-install-routes.js';
 import { registerPluginLifecycleRoutes } from './plugin-lifecycle-routes.js';
 import { preparePluginProviders } from './plugin-loader.js';
 import { registerPluginPublicRoutes } from './plugin-public-routes.js';
+import {
+  type PluginVisibilityRouteDeps,
+  registerPluginVisibilityRoutes,
+} from './plugin-visibility-routes.js';
 
 export function createPluginRoutes(
   projectHomeDir: string,
@@ -51,6 +56,20 @@ export function createPluginRoutes(
     packageMcpJournal?: PackageMcpAdmissionJournal;
     /** archive#3677: the distinct-origin consent surface (host approvals). */
     consentChannel?: ConsentChannelService;
+    /**
+     * Per-principal plugin visibility (#2067). REQUIRED in production and
+     * REQUIRED here whenever `runtime` is supplied at all: `visibility` is the
+     * pair that decides whether `GET /api/plugins` enumerates this instance's
+     * inventory for the caller, so a composition may not half-supply it.
+     *
+     * `resolvePrincipal` reads the request's own authentication and never a
+     * body or header the caller wrote; `listKnownPrincipals` is the trusted
+     * device registry's own list, injected rather than re-derived.
+     */
+    visibility: Pick<
+      PluginVisibilityRouteDeps,
+      'service' | 'resolvePrincipal' | 'listKnownPrincipals'
+    >;
     applyConfigurationMutation: AgentConfigurationMutationRunner;
     refreshKitObservability?: () => void;
     settleProviderAdapterRetirements: () => Promise<void>;
@@ -69,6 +88,31 @@ export function createPluginRoutes(
 ) {
   const app = new Hono();
   const pluginsDir = join(projectHomeDir, 'plugins');
+  /**
+   * The projection `GET /` applies, and the ONE resolution path to it.
+   *
+   * When no `runtime` is supplied this composition is not serving
+   * authenticated HTTP callers (the layout-only route tests), and the
+   * resolver that would attribute a request does not exist. That case refuses
+   * rather than defaults: `PrincipalUnresolvedError` is what the caller gets,
+   * not the whole inventory. The operator's own projection is unaffected —
+   * production always supplies `runtime.visibility`.
+   */
+  const projectVisiblePlugins = (c: {
+    env: unknown;
+    req: { raw: Request; header(name: string): string | undefined };
+  }): ((installed: readonly string[]) => readonly string[]) => {
+    if (!runtime?.visibility) {
+      throw new PrincipalUnresolvedError(
+        'plugin visibility was not composed for this route',
+      );
+    }
+    const caller = runtime.visibility.resolvePrincipal(c);
+    const service = runtime.visibility.service;
+    return (installed) => service.visiblePlugins(caller, installed);
+  };
+  if (runtime?.visibility)
+    registerPluginVisibilityRoutes(app, runtime.visibility);
   const agentsDir = join(projectHomeDir, 'agents');
   const capture = (name: string) =>
     capturePluginRuntimeArtifact(pluginsDir, name, runtime?.packageMcpJournal);
@@ -219,9 +263,18 @@ export function createPluginRoutes(
     pluginsDir,
     projectHomeDir,
     consentChannel: runtime?.consentChannel,
+    // #2067: the candidate picker is projected, through the same resolution
+    // path and the same derivation as `GET /api/plugins`.
+    projectVisiblePlugins,
   });
   registerPluginLifecycleRoutes(app, {
     registryTrustPolicyAuthority: runtime?.registryTrustPolicyAuthority,
+    // #2067: `GET /check-updates` is operator-only; this is what refuses.
+    ...(runtime?.visibility
+      ? {
+          visibility: { resolvePrincipal: runtime.visibility.resolvePrincipal },
+        }
+      : {}),
     packageMcpJournal: runtime?.packageMcpJournal,
     installationHost: runtime?.installationHost,
     agentsDir,
@@ -261,6 +314,7 @@ export function createPluginRoutes(
     quiesceEventSubscriptions: runtime?.quiesceEventSubscriptions
       ? (plugin) => runtime.quiesceEventSubscriptions!(plugin)
       : undefined,
+    projectVisiblePlugins,
   });
   registerPluginHostApprovalRoutes(app, {
     packageMcpJournal: runtime?.packageMcpJournal,

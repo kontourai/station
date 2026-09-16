@@ -26,11 +26,25 @@ describe('the notification inbox is a destination', () => {
     );
   });
 
-  it('has a sidebar entry', () => {
+  it('is advertised where a person can find it without a notification', () => {
+    // #2059 (D3) moved it out of the sidebar's row list and into the panel
+    // footer's bell, which renders this destination and its badge by id
+    // (ProjectSidebarFooter.test.tsx drives that control). The registry's
+    // half of #872 is that it stays advertised at all: the palette entry is
+    // the one that survives on every device, including the collapsed rail
+    // and the mobile drawer.
     expect(
-      APP_DESTINATION_REGISTRY.getSidebar().some(
+      APP_DESTINATION_REGISTRY.getPalette().some(
         (surface) => surface.id === 'notifications',
       ),
     ).toBe(true);
+    // A footer control, not a panel row — and not a Manage entry either:
+    // attention is not configuration.
+    expect(
+      APP_DESTINATION_REGISTRY.get('notifications')?.sidebar,
+    ).toBeUndefined();
+    expect(
+      APP_DESTINATION_REGISTRY.get('notifications')?.management,
+    ).toBeUndefined();
   });
 });

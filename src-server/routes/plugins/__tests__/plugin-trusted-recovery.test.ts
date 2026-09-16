@@ -30,6 +30,7 @@ import {
   revokeGrants,
 } from '../../../services/plugins/plugin-permissions.js';
 import { createPluginRoutes } from '../plugins.js';
+import { operatorPluginVisibility } from './plugin-visibility-test-support.js';
 
 test('retained recovery reaches separate trusted approval without exposing pending or ungranted modules', {
   timeout: 20_000,
@@ -120,6 +121,7 @@ test('retained recovery reaches separate trusted approval without exposing pendi
     runtime.logger = logger;
     runtime.reloadConfigurationFromDisk = async () => {};
     const app = createPluginRoutes(home, logger, undefined, {
+      visibility: operatorPluginVisibility(home),
       applyConfigurationMutation: (operation, options) =>
         runtime.applyAgentConfigurationMutation(operation, options),
       packageMcpJournal: journal,

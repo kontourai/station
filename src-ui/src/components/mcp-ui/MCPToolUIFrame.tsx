@@ -56,7 +56,7 @@ import {
   apiRequest,
   unwrapApiData,
 } from '../../lib/apiClient';
-import { nativePlatformPromise } from '../../platform/native';
+import { openNativeExternalLink } from '../../platform/openExternalLink';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import './MCPToolUIFrame.css';
@@ -220,8 +220,12 @@ export interface MCPToolUIFrameProps {
 }
 
 async function semanticHostExternalLink(url: string): Promise<boolean> {
-  const native = await nativePlatformPromise;
-  if (native.platform === 'tauri') return native.openExternalLink(url);
+  // The native half is shared with the chat link handler (#2049): a Tauri
+  // webview follows a plain link by replacing the running application, so
+  // every surface that lets a user leave Station needs the same one route
+  // out. `null` means there is no native host to take it.
+  const native = await openNativeExternalLink(url);
+  if (native !== null) return native;
   // Top-level navigation is the web platform's semantic external navigation;
   // it retains mobile browser gesture and history semantics without popups.
   window.location.assign(url);

@@ -24,7 +24,7 @@
   height: 48px;
   border-radius: 50%;
   background: var(--bg-secondary, #2a2a3e);
-  border: 1px solid var(--border-color, #3a3a5e);
+  border: 1px solid var(--border-primary);
   cursor: pointer;
   z-index: var(--layer-floating-action);
   display: flex;
@@ -113,7 +113,7 @@
   bottom: 60px;
   right: 0;
   background: var(--bg-secondary, #2a2a3e);
-  border: 1px solid var(--border-color, #3a3a5e);
+  border: 1px solid var(--border-primary);
   border-radius: 8px;
   padding: 8px 12px;
   max-width: 300px;

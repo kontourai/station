@@ -15,6 +15,13 @@ const state = {
   flow: { data: undefined as unknown },
   readiness: { data: undefined as unknown, isLoading: false, error: null },
   bundles: { data: undefined as unknown, isLoading: false, error: null },
+  // #2064: the Reviews tab's own source. Its default here is the empty
+  // aggregate, which is what a project with no review evidence really reads.
+  reviewEvidence: {
+    data: { receipts: [], unavailableProjects: [] } as unknown,
+    isLoading: false,
+    isError: false,
+  },
   trustReport: { data: undefined as unknown, isLoading: false, error: null },
   initReadinessResult: undefined as unknown,
 };
@@ -32,6 +39,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: null,
   }),
   useTrustBundlesQuery: () => state.bundles,
+  useReviewEvidenceQuery: () => state.reviewEvidence,
   useTrustReportQuery: () => state.trustReport,
   useInitFlowMutation: () => ({
     mutate: initFlowMutate,
@@ -59,6 +67,7 @@ function harnessTabs(): InspectorTabState[] {
     { id: 'plan', configured: false, attention: false },
     { id: 'readiness', configured: false, attention: false },
     { id: 'trust', configured: false, attention: false },
+    { id: 'reviews', configured: false, attention: false },
   ];
 }
 

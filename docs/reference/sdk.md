@@ -474,6 +474,41 @@ Fetches layouts for a project.
 
 Fetches a single project layout.
 
+### `usePersonalLayoutsQuery(config?)`
+
+Lists the caller's own Boards — Layouts owned by a principal rather than a
+project. Cache key: `['me', 'layouts']`. No parameter names the owner, because
+no URL in this family does: the server resolves it from the request's own
+authentication.
+
+### `usePersonalLayoutQuery(layoutSlug: string | undefined, config?)`
+
+Fetches one of the caller's own Boards. Cache key:
+`['me', 'layouts', layoutSlug]`. Disabled when `layoutSlug` is undefined.
+
+### `useCreatePersonalLayoutMutation(options?)`
+
+Creates a Board. Invalidates `['me', 'layouts']` on success.
+
+### `useUpdatePersonalLayoutMutation(options?)`
+
+Patches a Board (`{ layoutSlug, update }`); omitted fields keep their stored
+values. Invalidates the list and that Board's own key.
+
+### `useDeletePersonalLayoutMutation(options?)`
+
+Deletes a Board. Invalidates the list and REMOVES that Board's own cache entry
+rather than invalidating it — refetching a record that no longer exists would
+park a 404 under a key nothing should read again.
+
+### `usePromotePersonalLayoutMutation(options?)`
+
+Moves a Board into a project (`{ layoutSlug, projectSlug }`), where it becomes
+that project's Layout under the same id. Invalidates `['me', 'layouts']`,
+removes the Board's own key, AND invalidates
+`['projects', projectSlug, 'layouts']` — the record crosses a scope boundary,
+so a cache that refreshed only one side would tell two stories about it.
+
 ### `useConversationsQuery(agentSlug: string | undefined, config?)`
 
 Fetches conversations for an agent. Disabled when `agentSlug` is undefined.

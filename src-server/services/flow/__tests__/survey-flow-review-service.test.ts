@@ -13,13 +13,17 @@ import {
 
 const roots: string[] = [];
 
-function domainNeutralReviewItem(): ReviewItem {
+function domainNeutralReviewItem(
+  name = 'public-record-status',
+  candidateSetStatus?: 'escalated' | 'resolved',
+): ReviewItem {
   return {
     apiVersion: 'survey.kontourai.io/v1alpha1',
     kind: 'ReviewItem',
-    metadata: { name: 'public-record-status' },
+    metadata: { name },
     spec: {
       target: 'availabilityStatus',
+      ...(candidateSetStatus ? { candidateSetStatus } : {}),
       candidates: [
         {
           id: 'current',
@@ -42,10 +46,13 @@ function domainNeutralReviewItem(): ReviewItem {
   } as ReviewItem;
 }
 
-async function fixture(projectSlug = 'example') {
+async function fixture(
+  projectSlug = 'example',
+  items: readonly ReviewItem[] = [domainNeutralReviewItem()],
+) {
   const root = await mkdtemp(join(tmpdir(), 'station-survey-review-'));
   roots.push(root);
-  const snapshot = initialReviewQueueSessionState([domainNeutralReviewItem()]);
+  const snapshot = initialReviewQueueSessionState(items);
   const record = createServerReviewSessionRecord({
     sessionName: 'domain-neutral-review',
     snapshot,
@@ -95,6 +102,55 @@ describe('SurveyFlowReviewService', () => {
       summary: { unresolved: 1 },
     });
     expect(item.items[0]?.targetLabel).toBe('Availability Status');
+  });
+
+  /**
+   * #2064 review MED-2, at the derivation rather than at a fixture of it.
+   *
+   * Survey's `reviewSessionSummary` files an UNDECIDED item whose
+   * `candidateSetStatus` is `escalated` under `escalated` and one whose status
+   * is `resolved` under `accepted` — both read as `unresolved: 0` while
+   * `continuePausedGate` (which passes `requiredResolvedItems: 'all'`) still
+   * refuses, because neither item has a recorded decision. The whole point of
+   * `pendingDecisions` is that it disagrees with `summary.unresolved` here.
+   */
+  it('counts escalated items as awaiting a decision, though Survey reports unresolved 0', async () => {
+    const root = await fixture('example', [
+      domainNeutralReviewItem('escalated-one', 'escalated'),
+      domainNeutralReviewItem('escalated-two', 'escalated'),
+    ]);
+    const store = new FileStationSurveyReviewSessionStore({
+      listSlugs: () => ['example'],
+      workspace: () => root,
+    });
+    const [item] = await new SurveyFlowReviewService(store).list('example');
+
+    // The exact shape the reviewer reproduced, pinned so the disagreement
+    // between the two numbers is the assertion rather than a coincidence.
+    expect(item.summary).toMatchObject({ escalated: 2, unresolved: 0 });
+    expect(item.pendingDecisions).toBe(2);
+  });
+
+  /**
+   * The other half of the same divergence: `candidateSetStatus: 'resolved'`
+   * with no recorded decision is counted as `accepted` by Survey's summary,
+   * yet continuation has no result for it. Asserted because the arithmetic
+   * `items.length - (accepted + keptCurrent + rejected + couldNotConfirm)`
+   * — the obvious replacement for `unresolved` — gets this case wrong, and
+   * reading the continuation's own `unresolvedItemNames` gets it right.
+   */
+  it('counts a resolved-but-undecided item as awaiting a decision', async () => {
+    const root = await fixture('example', [
+      domainNeutralReviewItem('resolved-no-decision', 'resolved'),
+    ]);
+    const store = new FileStationSurveyReviewSessionStore({
+      listSlugs: () => ['example'],
+      workspace: () => root,
+    });
+    const [item] = await new SurveyFlowReviewService(store).list('example');
+
+    expect(item.summary).toMatchObject({ accepted: 1, unresolved: 0 });
+    expect(item.pendingDecisions).toBe(1);
   });
 
   it('fails closed when a foreign project binding is placed in a project store', async () => {

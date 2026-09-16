@@ -31,7 +31,8 @@ import {
   documentFitsViewportWidth,
   expectBoxWithinViewport,
   FIRST_RENDER_TIMEOUT_MS,
-  placeSurfaceThroughLayoutPicker,
+  moveLonePaneToRegion,
+  showSurfaceInEmptyRegion,
   surfaceDockShell,
 } from './helpers/region-placement';
 
@@ -87,7 +88,12 @@ test.describe('Activity surface deep link', () => {
   test('places the revealed surface in the primary area, keeps it across a reload, and gives the area back to Home', async ({
     page,
   }) => {
-    await placeSurfaceThroughLayoutPicker(page, 'Activity', 'Main');
+    // #2160: Activity is alone in `right`, so it renders no tab strip — and
+    // the bar's own "Move Activity" button opens the same menu a tab would,
+    // with Main among its rows. That is the whole route: no detour through
+    // another region to acquire a tab first, and no ⋮⋮ grab, which moves the
+    // region and offers dock edges only.
+    await moveLonePaneToRegion(page, 'Activity', 'Main');
 
     // In `main` the surface is the page: `ActivityRegionShell` renders it
     // through a `PageFrame`, whose title is the registry's, so the primary
@@ -119,7 +125,9 @@ test.describe('Activity surface deep link', () => {
       timeout: FIRST_RENDER_TIMEOUT_MS,
     });
 
-    await placeSurfaceThroughLayoutPicker(page, 'Activity', 'Right');
+    // The way back from `main` is the empty Right region's own control,
+    // which offers Activity because it declares that region (#2143).
+    await showSurfaceInEmptyRegion(page, 'Activity', 'Right');
 
     await expect(
       surfaceDockShell(page, 'Activity'),

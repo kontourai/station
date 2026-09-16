@@ -58,4 +58,33 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
     // Caller-supplied env is preserved alongside the injected TMPDIR.
     expect(options.env.CODEX_HOME).toBe('/tmp/codex-profile');
   });
+
+  test('station#2072 backstop: a caller-supplied TMPDIR can no longer win — Station-owned always', async () => {
+    const spawnMock = vi.fn(
+      (
+        _binary: string,
+        _args: string[],
+        _options: { env: NodeJS.ProcessEnv },
+      ) => new EventEmitter(),
+    );
+    vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
+    vi.doMock('../auth/cli-auth.js', () => ({
+      findCliBinary: () => '/usr/local/bin/codex',
+    }));
+
+    const { createCodexProcess } = await import(
+      '../adapters/codex-adapter-transport.js'
+    );
+
+    createCodexProcess(undefined, {
+      TMPDIR: '/ambient/not-station-owned',
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+    });
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    const [, , options] = spawnMock.mock.calls[0];
+    expect(options.env.TMPDIR).toBe(join(home, 'tmp', 'engine-spawn'));
+    // Routing keys ride through untouched.
+    expect(options.env.ANTHROPIC_BASE_URL).toBe('http://127.0.0.1:8318');
+  });
 });

@@ -153,49 +153,65 @@ export function listSortedConversations(
   return records;
 }
 
+/**
+ * Whether one Layout's `config` names this agent anywhere.
+ *
+ * Extracted from the project sweep so the non-project layout roots ask the
+ * question the same way (#2060 review MED-4): a second implementation of
+ * "does this layout use this agent" is a second answer, and the one that
+ * drifts is the one guarding a delete.
+ */
+export function layoutConfigReferencesAgent(
+  rawConfig: unknown,
+  agentSlug: string,
+  // Agent identity is exact; no synthetic aliases are accepted.
+  slugsMatch: (a: string, b: string) => boolean = (a, b) => a === b,
+): boolean {
+  const config = (rawConfig ?? {}) as {
+    tabs?: Array<{
+      skills?: Array<{ agent?: string }>;
+      actions?: Array<{ agent?: string }>;
+    }>;
+    globalSkills?: Array<{ agent?: string }>;
+    actions?: Array<{ agent?: string }>;
+    defaultAgent?: string;
+    availableAgents?: string[];
+  };
+
+  const refersToAgent = (candidate: string | undefined): boolean =>
+    candidate !== undefined && slugsMatch(candidate, agentSlug);
+
+  const tabs = config.tabs ?? [];
+  const isReferencedInTabs = tabs.some(
+    (tab) =>
+      (tab.skills ?? []).some((skill) => refersToAgent(skill.agent)) ||
+      (tab.actions ?? []).some((action) => refersToAgent(action.agent)),
+  );
+  const isReferencedGlobally =
+    (config.globalSkills ?? []).some((skill) => refersToAgent(skill.agent)) ||
+    (config.actions ?? []).some((action) => refersToAgent(action.agent));
+  const isConfiguredAgent =
+    refersToAgent(config.defaultAgent) ||
+    (config.availableAgents ?? []).some((slug) => refersToAgent(slug));
+
+  return isReferencedInTabs || isReferencedGlobally || isConfiguredAgent;
+}
+
 export function buildLayoutAgentReferences(
   projects: Array<{ slug: string }>,
   listLayouts: (projectSlug: string) => Array<{ slug: string }>,
   getLayoutConfig: (projectSlug: string, layoutSlug: string) => any,
   agentSlug: string,
-  // Agent identity is exact; no synthetic aliases are accepted.
   slugsMatch: (a: string, b: string) => boolean = (a, b) => a === b,
 ): LayoutAgentReference[] {
   const references: LayoutAgentReference[] = [];
 
   for (const project of projects) {
     for (const layout of listLayouts(project.slug)) {
-      const config = getLayoutConfig(project.slug, layout.slug).config as {
-        tabs?: Array<{
-          skills?: Array<{ agent?: string }>;
-          actions?: Array<{ agent?: string }>;
-        }>;
-        globalSkills?: Array<{ agent?: string }>;
-        actions?: Array<{ agent?: string }>;
-        defaultAgent?: string;
-        availableAgents?: string[];
-      };
-
-      const refersToAgent = (candidate: string | undefined): boolean =>
-        candidate !== undefined && slugsMatch(candidate, agentSlug);
-
-      const tabs = config.tabs ?? [];
-      const isReferencedInTabs = tabs.some(
-        (tab) =>
-          (tab.skills ?? []).some((skill) => refersToAgent(skill.agent)) ||
-          (tab.actions ?? []).some((action) => refersToAgent(action.agent)),
-      );
-      const isReferencedGlobally =
-        (config.globalSkills ?? []).some((skill) =>
-          refersToAgent(skill.agent),
-        ) ||
-        (config.actions ?? []).some((action) => refersToAgent(action.agent));
-      const isConfiguredAgent =
-        refersToAgent(config.defaultAgent) ||
-        (config.availableAgents ?? []).some((slug) => refersToAgent(slug));
-
-      if (isReferencedInTabs || isReferencedGlobally || isConfiguredAgent) {
+      const config = getLayoutConfig(project.slug, layout.slug).config;
+      if (layoutConfigReferencesAgent(config, agentSlug, slugsMatch)) {
         references.push({
+          owner: { kind: 'project', projectSlug: project.slug },
           projectSlug: project.slug,
           layoutSlug: layout.slug,
         });

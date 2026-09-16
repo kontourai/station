@@ -88,6 +88,7 @@ import {
   type TenantExecutionContext,
 } from '@kontourai/station-contracts/tenancy';
 import type { SessionBuilderRunView } from '@kontourai/station-contracts/workflow';
+import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
@@ -583,6 +584,15 @@ interface OrchestrationServiceOptions {
   resolveProjectSessionDirectory?: (
     slug: string,
   ) => Promise<string | undefined>;
+  /**
+   * This Station's `AppConfig.defaultWorkspaceIsolation` (#2144 slice 2).
+   * Read through the live config loader rather than captured at
+   * construction, so an operator's edit applies to the next chat instead of
+   * to the next Station restart.
+   */
+  resolveStationDefaultWorkspaceIsolation?: () => Promise<
+    WorkspaceIsolationMode | undefined
+  >;
   /** Private exact PR point read; it never shares the public route's branch resolver. */
   nativeDeclaredPullRequestResolver?: {
     read(input: {
@@ -1092,6 +1102,10 @@ export class OrchestrationService {
   readonly resolveProjectSessionDirectory?: (
     slug: string,
   ) => Promise<string | undefined>;
+  /** This Station's default workspace mode for a project that names none. */
+  readonly resolveStationDefaultWorkspaceIsolation?: () => Promise<
+    WorkspaceIsolationMode | undefined
+  >;
   readonly sessionCommands: SessionCommandModule;
   private readonly sessionCommandImplementation: SessionCommandImplementation;
   readonly sessionQueries: SessionQueryModule;
@@ -1323,6 +1337,8 @@ export class OrchestrationService {
   constructor(private readonly options: OrchestrationServiceOptions) {
     this.resolveProjectSessionDirectory =
       options.resolveProjectSessionDirectory;
+    this.resolveStationDefaultWorkspaceIsolation =
+      options.resolveStationDefaultWorkspaceIsolation;
     this.nativeOutputDeclarations = createNativeOutputDeclarationOperation({
       authority: this.nativeOutputGrants,
       workspaceForCall: (facts) => facts.workspaceRoot,

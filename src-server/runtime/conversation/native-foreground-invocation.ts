@@ -76,10 +76,11 @@ export function createNativeForegroundRelay(
   const capturedSpec = admission.agentSpec;
   const capturedProject = admission.project;
   const workspaceRoot = binding.workspaceRoot;
-  if (
-    capturedProject.defaultWorkspaceIsolation === 'worktree' &&
-    !workspaceRoot
-  )
+  // #2144 slice 2: the admission's CAPTURED mode, not the project record's
+  // own field — a Station-level default produces a worktree invocation for a
+  // project that names no mode, and this relay must see the same mode the
+  // resolver and the provisioning precondition saw.
+  if (admission.workspaceIsolationMode === 'worktree' && !workspaceRoot)
     throw new ForegroundInvocationUnavailableError();
   // The private relay supplies the server-resolved Session cwd.
   // resolveStartSessionCwd expands stored Project paths before this binding;

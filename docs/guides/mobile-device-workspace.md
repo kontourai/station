@@ -1,10 +1,27 @@
 # Mobile device inspection
 
-**Status:** initial API/SDK slice of [#1967](https://github.com/kontourai/station/issues/1967).
-The shared Device pane, managed setup, application installation, input control,
+**Status:** the API/SDK slice of
+[#1967](https://github.com/kontourai/station/issues/1967), plus the shared
+Device pane ([#1969](https://github.com/kontourai/station/issues/1969)) that
+reads it. Managed setup, application installation, input control,
 logs/debugging, and paired dogfood qualification are separate tracked slices.
 This interface lists simulators/emulators and captures one frame from an already
 booted device. It does not claim a live stream or identify the foreground app.
+
+The Device pane is a dock surface offered by a region's "+" (`device`,
+`exposure: 'catalog'`). It asks for a frame, shows it with the time it was
+taken, and sends nothing back: there is no input in this build, and the pane
+says so in every state that shows a frame rather than leaving a reader to
+assume. The frame's shape comes from the capture's own `width`/`height`, so a
+device held in landscape needs no orientation field. A frame older than 30
+seconds is labelled old and is KEPT — a timestamped old frame is more
+informative than nothing, provided it says so — and a refused re-capture
+keeps it too, showing the refusal beside it rather than in its place. A frame
+is dropped only when it stops being about the thing on screen: choosing
+another device, or a change of Station or authority. Which device is selected is
+bounded pane state (`WorkspaceDevicePaneState`); the captured image is never
+persisted, and changing the selected Station or its authority unmounts the
+pane, which is what drops the decoded frame.
 
 ## Configure a device host
 

@@ -15,29 +15,22 @@ import {
 } from '@kontourai/station-contracts/settings-registry';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { assertSafeContextText } from '../services/orchestration/context-safety.js';
+import { APP_CONFIG_SEED } from './app-config-seed.js';
 import { validator } from './validator.js';
 
-export const DEFAULT_SYSTEM_PROMPT = [
-  'You are {{AGENT_NAME}}, a helpful AI assistant.',
-  '',
-  'Be concise and direct. When you lack information, say so rather than guessing.',
-  '',
-  '## Environment',
-  'Date: {{date}}',
-  'Time: {{time}}',
-].join('\n');
-
-const DEFAULT_TEMPLATE_VARIABLES = [
-  { key: 'AGENT_NAME', type: 'static' as const, value: 'Station' },
-];
-
-export const DEFAULT_MODEL = '';
+// The literal values live in `app-config-seed.ts`, a leaf module the
+// provenance builder also reads so it can tell a value this loader SEEDED
+// apart from one the operator chose (see that module's docblock). These
+// names are the ones the rest of the server already imports.
+export const DEFAULT_SYSTEM_PROMPT = APP_CONFIG_SEED.systemPrompt;
+const DEFAULT_TEMPLATE_VARIABLES = APP_CONFIG_SEED.templateVariables;
+export const DEFAULT_MODEL = APP_CONFIG_SEED.defaultModel;
 const LEGACY_DEFAULT_MODELS = new Set([
   'us.anthropic.claude-sonnet-4-6',
   'us.anthropic.claude-sonnet-4-20250514-v1:0',
 ]);
-const DEFAULT_INVOKE_MODEL = '';
-const DEFAULT_STRUCTURE_MODEL = '';
+const DEFAULT_INVOKE_MODEL = APP_CONFIG_SEED.invokeModel;
+const DEFAULT_STRUCTURE_MODEL = APP_CONFIG_SEED.structureModel;
 export const APP_CONFIG_MAX_BYTES = 2 * 1024 * 1024;
 const APP_CONFIG_LOAD_MAX_ATTEMPTS = 8;
 

@@ -427,6 +427,52 @@ describe('Workspace Pane host document', () => {
     expect(restored.document?.instances).toEqual([catalog]);
   });
 
+  test("a persisted instance's own project never survives a catalog match", () => {
+    // #2047: a dock persists its panes under an instance id the catalog also
+    // issues. If the persisted `boundContext.projectId` survived restoration,
+    // a region could come back holding another project's pane under its own
+    // id. The dock host also re-derives the binding on mount, which is what
+    // `RegionPaneHost.project.test.tsx` observes; this pins restoration's own
+    // substitution, at both sites that perform it.
+    const base = instance('one');
+    const catalog = { ...base, boundContext: { projectId: 'alpha-id' } };
+    const persisted = { ...base, boundContext: { projectId: 'beta-id' } };
+
+    // The strict catalog-match branch: every persisted instance matches a
+    // catalog record on descriptor and state key, so the whole instance list
+    // is replaced by the catalog's records.
+    const matched = restoreWorkspacePaneHostDocument(
+      { ...documentWith(base), instances: [persisted] },
+      [catalog],
+    );
+    expect(matched.failures).toEqual([]);
+    expect(matched.document?.instances[0]?.boundContext).toEqual({
+      projectId: 'alpha-id',
+    });
+
+    // The per-candidate repair branch: one malformed sibling takes the
+    // document off the strict path, and the surviving persisted candidate
+    // must still be substituted for its catalog record. Two sites do that
+    // here — `known ?? parsed` in the candidate loop and `seatOnCatalog` on
+    // the rebuilt document — so this half reds only when BOTH are reverted.
+    // Reverting `seatOnCatalog` alone is caught by the identity assertions
+    // above it in this file; `known ?? parsed` is redundant with it and is
+    // not independently pinned.
+    const repaired = restoreWorkspacePaneHostDocument(
+      {
+        ...documentWith(base),
+        instances: [{ version: '1.0', instanceId: 'broken' }, persisted],
+      },
+      [catalog],
+    );
+    expect(repaired.failures.map((failure) => failure.code)).toContain(
+      'invalid-instance',
+    );
+    expect(repaired.document?.instances[0]?.boundContext).toEqual({
+      projectId: 'alpha-id',
+    });
+  });
+
   test('is non-throwing and returns no document when recovery has no valid instance', () => {
     expect(
       restoreWorkspacePaneHostDocument({

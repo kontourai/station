@@ -63,6 +63,8 @@ export function routeIdentity(view: NavigationView): string {
       return `project-session-board:${view.slug}`;
     case 'project-flow-console':
       return `project-flow-console:${view.slug}:${view.runId ?? 'all'}`;
+    case 'personal-board':
+      return `personal-board:${view.boardSlug}`;
     case 'layout':
       return `layout:${view.projectSlug}:${view.layoutSlug}`;
     case 'workspace-pane':

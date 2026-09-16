@@ -47,6 +47,29 @@ describe('ContextPercentage live ACP usage', () => {
     expect(screen.getByText('(50.0%)')).toBeTruthy();
   });
 
+  test('paints the meter fill and its rest tint through theme rungs, never a pigment (#2140)', () => {
+    // The fill used to be a hex from `getContextWindowColor`, and the rest
+    // tint an `rgba(var(--accent-primary-rgb, 0, 102, 204), …)` whose token
+    // is defined in no theme -- so every render painted the blue fallback
+    // beside a teal/green brand. What is pinned is that both NAME a rung;
+    // `theme-rung-contrast.test.ts` measures what the rung resolves to.
+    const { container } = render(
+      <ContextPercentage
+        {...props}
+        liveUsage={{ contextTokens: 120_000, contextWindowTokens: 200_000 }}
+      />,
+    );
+    const button = container.querySelector(
+      'button.context-indicator',
+    ) as HTMLElement;
+    expect(button.style.background).toBe('var(--accent-subtle)');
+    const fill = [...container.querySelectorAll('div')].find(
+      (node) => (node as HTMLElement).style.width === '60%',
+    ) as HTMLElement;
+    expect(fill, 'the 60% meter fill').toBeTruthy();
+    expect(fill.style.background).toBe('var(--meter-mid)');
+  });
+
   test('renders an exact zero-used observation as 0%', () => {
     render(
       <ContextPercentage

@@ -73,6 +73,7 @@ afterEach(async () => {
 function createApp(projectHomeDir: string) {
   const app = new Hono();
   registerPluginInstallRoutes(app, {
+    projectVisiblePlugins: () => (installed) => installed,
     agentsDir: join(projectHomeDir, 'agents'),
     logger: {
       debug: vi.fn(),

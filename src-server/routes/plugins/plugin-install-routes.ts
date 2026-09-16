@@ -2,10 +2,11 @@ import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PluginComponent } from '@kontourai/station-contracts/plugin';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
+import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import {
   describePluginManifestRejection,
@@ -100,6 +101,30 @@ interface PluginInstallRouteDeps {
   quiesceEventSubscriptions?: (
     pluginName: string,
   ) => Promise<{ release(): void }>;
+  /**
+   * The caller's plugin-visibility projection (#2067). REQUIRED, and
+   * deliberately not optional-with-a-permissive-default: `GET /` IS the
+   * instance plugin enumeration the membership record requires a collaborator's
+   * first-member journey to be refused
+   * (`docs/design/project-membership.md`), so a composition that forgot to
+   * supply it must fail to typecheck rather than quietly serve the whole
+   * instance's inventory to everybody.
+   *
+   * It is handed the request context and returns a PROJECTOR bound to that
+   * caller: given the installed plugin names this response would carry, it
+   * returns the subset the caller may see. The intersection — rather than a
+   * pointwise predicate — is the derivation itself, and it is what makes a
+   * grant naming an uninstalled plugin inert instead of merely unused.
+   *
+   * Resolving the caller is separated from applying the projection so the
+   * handler can refuse an unattributable caller BEFORE the inventory scan and
+   * its per-plugin Git observation, rather than paying for the whole
+   * enumeration and then discarding it. It throws `PrincipalUnresolvedError`
+   * at resolution time for exactly that reason.
+   */
+  projectVisiblePlugins(
+    c: Context,
+  ): (installed: readonly string[]) => readonly string[];
 }
 
 export function registerPluginInstallRoutes(
@@ -132,6 +157,20 @@ export function registerPluginInstallRoutes(
   });
 
   app.get('/', async (c) => {
+    // #2067: resolve the caller first. An unattributable caller is refused
+    // before the inventory scan below, not after it.
+    let projectVisible: (installed: readonly string[]) => readonly string[];
+    try {
+      projectVisible = deps.projectVisiblePlugins(c);
+    } catch (error) {
+      if (error instanceof PrincipalUnresolvedError) {
+        return c.json(
+          { success: false, error: errorMessage(error), code: error.code },
+          400,
+        );
+      }
+      throw error;
+    }
     const readEntries = () => {
       const inventory = scanInstalledPluginInventory(pluginsDir, logger);
       const selected = deps.packageMcpJournal?.selectedInstallations();
@@ -250,7 +289,30 @@ export function registerPluginInstallRoutes(
           );
         }
       }
-      return c.json({ plugins });
+      let visible: Set<string>;
+      try {
+        visible = new Set(projectVisible(plugins.map((plugin) => plugin.name)));
+      } catch (error) {
+        // The grant record could not be read (oversized, corrupt, mid-write).
+        // Withhold the list — the fail-closed direction — but say which thing
+        // failed: inside the outer catch this became a 503 about the plugin
+        // INVENTORY, which is fine and would send the reader to the wrong
+        // store.
+        logger.error?.('Plugin visibility record could not be read', {
+          error: errorMessage(error),
+        });
+        return c.json(
+          {
+            success: false,
+            error: 'Plugin visibility is unavailable',
+            visibilityUnavailable: true,
+          },
+          503,
+        );
+      }
+      return c.json({
+        plugins: plugins.filter((plugin) => visible.has(plugin.name)),
+      });
     } catch (error) {
       if (error instanceof PluginGrantsUnavailableError)
         return c.json(
