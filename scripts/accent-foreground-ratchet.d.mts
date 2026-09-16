@@ -3,6 +3,15 @@
  * `src-ui/src/__tests__/accent-fill-foreground.test.ts` can import the same
  * reading the gate uses instead of re-deriving one that would drift from it.
  */
+/**
+ * Every directory the gate scans. Exported so a test that builds a scratch
+ * tree seeds it from this list rather than a copy: the gate `scandir`s each
+ * root, so a scratch repo missing one dies with ENOENT, and a hand-written
+ * copy has no way to notice a root being added (#1542 added one and only
+ * Nightly failed).
+ */
+export const ACCENT_FOREGROUND_SOURCE_ROOTS: readonly string[];
+
 export interface AccentFilledRule {
   path: string;
   selector: string;
