@@ -127,7 +127,16 @@ function createHarness() {
       allowedOrigins: ['https://station.example.test'],
     },
   });
-  configureDevicePairingHostRoutes(app as never, pairing);
+  configureDevicePairingHostRoutes(app as never, pairing, {
+    // The denial IS this fixture's declaration of what authority it holds:
+    // none. It is not a placeholder to be filled in later. The value is
+    // self-enforcing -- adding an operator pairing-management assertion here
+    // returns 401, which forces whoever adds it to decide what authority the
+    // fixture should claim rather than silently inheriting one it never
+    // asserted. Supply a real currency reading at that point; do not flip
+    // this to `() => true` to clear the red.
+    isRequestPrincipalCurrent: () => false,
+  });
 
   const request = (
     path: string,

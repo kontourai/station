@@ -104,6 +104,11 @@ function createPairingApp(allowedOrigins: string[]) {
         authorizeCredential,
         resolveGrantedScope,
       }),
+    isRequestPrincipalCurrent: (request) =>
+      isRuntimeRequestPrincipalCurrent(request, {
+        authorizeCredential,
+        resolveGrantedScope,
+      }),
   });
   return app;
 }
