@@ -248,6 +248,19 @@ test.skipIf(process.platform === 'win32')(
     expect(
       (await post('/transfers', stranger.credential, transfer)).status,
     ).toBe(403);
+    // `expectedRevision: 0` above is a FIRST enrollment, and the route must
+    // not confuse a 0-based revision with a 1-based generation: #1659 briefly
+    // refused both at <= 0 and this suite went red on Nightly. A negative
+    // revision is the only malformed shape, and it is 400 before any
+    // authority runs.
+    expect(
+      (
+        await post('/transfers', source.credential, {
+          ...transfer,
+          expectedRevision: -1,
+        })
+      ).status,
+    ).toBe(400);
     const prepared = await post('/transfers', source.credential, transfer);
     expect(prepared.status).toBe(200);
     expect(await prepared.json()).toMatchObject({
