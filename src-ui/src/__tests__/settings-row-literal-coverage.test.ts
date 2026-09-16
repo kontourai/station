@@ -106,7 +106,10 @@ function settingsRowLiterals(
 describe('settingsRow literal coverage', () => {
   const files = trackedTsxFiles();
   const literals = settingsRowLiterals(files);
-  const catalogIds = new Set(SETTINGS_CATALOG.map((entry) => entry.id));
+  // Widened to `string` deliberately: the whole question is whether an
+  // arbitrary source literal is in this set, and `Set<SettingsCatalogId>`
+  // would refuse to be asked.
+  const catalogIds = new Set<string>(SETTINGS_CATALOG.map((entry) => entry.id));
 
   test('the scan reaches the files it claims to scan', () => {
     expect(files.length).toBeGreaterThan(20);
