@@ -1301,7 +1301,12 @@ describe('installPluginFromSource', () => {
       }
 
       const app = new Hono();
-      registerPluginInstallRoutes(app, installDeps);
+      // #2067 made the visibility projection a required dep; these previews
+      // are not about visibility, so the projection is the identity.
+      registerPluginInstallRoutes(app, {
+        ...installDeps,
+        projectVisiblePlugins: () => (installed) => installed,
+      });
       const previewResponse = await app.request('http://localhost/preview', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -1655,7 +1660,12 @@ describe('installPluginFromSource', () => {
       ).rejects.toMatchObject({ reason: 'stale-review' });
       expect(installDeps.buildPlugin).not.toHaveBeenCalled();
       const app = new Hono();
-      registerPluginInstallRoutes(app, installDeps);
+      // #2067 made the visibility projection a required dep; these previews
+      // are not about visibility, so the projection is the identity.
+      registerPluginInstallRoutes(app, {
+        ...installDeps,
+        projectVisiblePlugins: () => (installed) => installed,
+      });
       const previewResponse = await app.request('http://localhost/preview', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
