@@ -149,6 +149,32 @@ describe('dock placement control (#3930)', () => {
     expect(onPlacementChange).not.toHaveBeenCalled();
   });
 
+  /**
+   * The one dock behaviour the #2185 extraction moved behind an option: the
+   * grab used to call `setMenuOpen(false)` inline on a primary press, and now
+   * asks the hook to do it through `onDragStart`. A helper test cannot prove
+   * that wire (tests/AGENTS.md), so this drives the control: with the menu
+   * open, a press on the grab closes it BEFORE any release. Deleting the
+   * `onDragStart` call in the hook, or the option at the call site, reds it —
+   * and the user-visible defect that would ship is a drag begun with the
+   * menu up that drops with the menu still up.
+   */
+  test('a press on the grab closes an open menu before the drag begins (#2185)', () => {
+    renderControl();
+
+    const handle = screen.getByRole('button', { name: 'Move the dock' });
+    fireEvent.keyDown(handle, { key: 'Enter' });
+    fireEvent.click(handle);
+    expect(screen.getByRole('menu', { name: 'Dock placement' })).toBeTruthy();
+
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 1 });
+    expect(screen.queryByRole('menu')).toBeNull();
+    // The overlay is up: the press is a drag in progress, not a dismissed menu.
+    expect(screen.getByTestId('dock-placement-targets')).toBeTruthy();
+
+    fireEvent.pointerCancel(handle, { pointerId: 1 });
+  });
+
   test('Escape closes the menu and returns focus to the control that opened it', () => {
     const onPlacementChange = vi.fn();
     render(
