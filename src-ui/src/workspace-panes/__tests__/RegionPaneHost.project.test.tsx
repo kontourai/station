@@ -88,35 +88,6 @@ vi.mock('../../contexts/ProjectsContext', () => ({
  * every assertion about "which project the pane is bound to" reads the
  * host's real derivation, not the stub's.
  */
-/**
- * The dock catalog's data seam: the server's resolved catalog for the dock
- * project, holding the Terminal occurrence the server issues for it.
- */
-vi.mock('../resolvedWorkspacePaneCatalog', async () => {
-  const { WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR } = await import(
-    '@kontourai/station-contracts/workspace-coding-panels'
-  );
-  return {
-    useResolvedWorkspacePaneCatalog: (projectSlug: string) => ({
-      entries: [
-        {
-          descriptor: WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
-          instance: createWorkspaceCodingTerminalPaneInstance(
-            PROJECTS[projectSlug]?.id ?? '',
-          ),
-          availability: {
-            state: 'available',
-            reason: { code: 'ready', source: 'resolver' },
-          },
-          clientRendererPresence: 'present',
-        },
-      ],
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    }),
-  };
-});
 vi.mock('../builtinWorkspacePaneRegistry', () => ({
   getBuiltinWorkspacePaneRenderer: () =>
     function CodingStub({ instance }: { instance: WorkspacePaneInstance }) {
@@ -511,11 +482,28 @@ test('without a project a placed coding pane keeps its tab and shows the placeho
     visible: true,
   });
   // The region's bar names the pane it holds; nothing was written for a
-  // document the region could not derive; and no "+" is offered — every
-  // Open would land a pane that cannot render (D6).
+  // document the region could not derive; and the "+" IS offered (#2154
+  // A6): the chooser lists the rows a projectless dock can supply enabled
+  // and the coding rows disabled with the reason, so it is never a control
+  // whose every choice fails.
   expect(within(shell('right')).getByLabelText('Hide Terminal')).toBeTruthy();
   expect(window.localStorage.getItem(RIGHT_KEY)).toBeNull();
-  expect(screen.queryByLabelText(/^Add pane to /)).toBeNull();
+  fireEvent.click(within(shell('right')).getByLabelText('Add pane to Right'));
+  const menu = screen.getByRole('menu', { name: 'Add to Right region' });
+  expect(
+    within(menu)
+      .getByRole('menuitem', {
+        name: 'Diff Choose a project for this dock before opening that pane.',
+      })
+      .getAttribute('aria-disabled'),
+  ).toBe('true');
+  expect(
+    within(menu)
+      .getByRole('menuitem', { name: 'Activity' })
+      .getAttribute('aria-disabled'),
+  ).toBeNull();
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.queryByRole('menu')).toBeNull();
 
   act(() => deviceSettingsStore.set('chatDockProjectSlug', 'alpha'));
   await act(async () => {
@@ -537,7 +525,8 @@ test('without a project a placed coding pane keeps its tab and shows the placeho
 /**
  * Review M3: the project read in flight is not "no project". While it is
  * pending the region waits — the pane's loading skeleton, no instruction to
- * pick a project the user has already picked, no "+" — and nothing is
+ * pick a project the user has already picked, no "+" (its rows would name a
+ * remedy for a state the user is not in) — and nothing is
  * written to the region's document from a pane set the query has not
  * settled. Once the read settles the reconcile still runs: the stored
  * document gains Chat beside the Terminal.
@@ -712,14 +701,17 @@ test('a dock binding naming a project that no longer exists falls back to the ro
 });
 
 /**
- * The acceptance, end to end (#2047 D4): from Chat alone at the bottom, the
- * region's "+" opens the dock catalog, Open Terminal lands Terminal as the
- * selected tab beside Chat and the catalog closes. Reverting the catalog's
- * Open to the host's own open action fails the tab assertion (the host
- * refuses a pane the region does not hold); dropping the "+" from the
- * one-pane bar fails at the first click.
+ * The acceptance, end to end (#2047 D4, re-targeted by #2154 A5): from Chat
+ * alone at the bottom, the region's "+" opens the chooser as a `menu`
+ * anchored to the button (`aria-expanded` follows), Terminal lands as the
+ * selected tab beside Chat and the menu closes with focus back on the "+";
+ * Escape closes it too, and returns focus. Reverting the chooser's choice to
+ * the host's own open action fails the tab assertion (the host refuses a
+ * pane the region does not hold); dropping the "+" from the one-pane bar
+ * fails at the first click; dropping `aria-expanded` fails its assertions;
+ * dropping `useMenuFocus` fails the focus-return assertions.
  */
-test('the "+" opens the dock catalog and Open Terminal lands it as the selected tab beside Chat', async () => {
+test('the "+" opens the chooser menu; Terminal lands as the selected tab beside Chat; Escape closes and returns focus', async () => {
   deviceSettingsStore.set('chatDockProjectSlug', 'alpha');
   renderShells();
   await waitFor(() => expect(model).not.toBeNull());
@@ -728,25 +720,31 @@ test('the "+" opens the dock catalog and Open Terminal lands it as the selected 
   );
   expect(within(shell('bottom')).queryByRole('tablist')).toBeNull();
 
-  fireEvent.click(within(shell('bottom')).getByLabelText('Add pane to Bottom'));
-  await act(async () => {
-    await vi.dynamicImportSettled();
-  });
-  const dialog = await screen.findByRole('dialog', {
-    name: 'Add pane to Bottom',
-  });
+  const add = within(shell('bottom')).getByLabelText('Add pane to Bottom');
+  expect(add.getAttribute('aria-haspopup')).toBe('menu');
+  expect(add.getAttribute('aria-expanded')).toBe('false');
+  add.focus();
+  fireEvent.click(add);
+  const menu = screen.getByRole('menu', { name: 'Add to Bottom region' });
+  expect(add.getAttribute('aria-expanded')).toBe('true');
+  expect(menu.contains(document.activeElement)).toBe(true);
+  // Escape closes and returns focus to the "+".
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.queryByRole('menu')).toBeNull();
+  expect(add.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).toBe(add);
+
+  fireEvent.click(add);
   fireEvent.click(
-    within(dialog).getByRole('button', { name: 'Open Terminal' }),
+    within(
+      screen.getByRole('menu', { name: 'Add to Bottom region' }),
+    ).getByRole('menuitem', { name: 'Terminal' }),
   );
   await act(async () => {
     await vi.dynamicImportSettled();
   });
 
-  await waitFor(() =>
-    expect(
-      screen.queryByRole('dialog', { name: 'Add pane to Bottom' }),
-    ).toBeNull(),
-  );
+  expect(screen.queryByRole('menu')).toBeNull();
   const pane = await screen.findByTestId('coding-pane');
   expect(pane.dataset.project).toBe('alpha-id');
   expect(tabs('bottom')).toEqual([

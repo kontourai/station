@@ -1,0 +1,84 @@
+/* The empty region's chooser (#2154). Rows are `.menu-row` from index.css's
+   one menu primitive (#1552 D4) so they align, hover and take the coarse 44px
+   floor the way every other menu row does; what is here is only the list's
+   own frame, the two-line row text, and the panel's anchoring. No focus ring
+   is declared: index.css's product-level `:focus-visible` rule covers every
+   button in these rows. */
+.region-chooser {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-3);
+}
+
+.region-chooser__label {
+  margin: 0;
+  padding: 0 var(--space-6);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.region-chooser__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.region-chooser__row {
+  /* Two lines of text need the row to grow past the family's 32px floor. */
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.region-chooser__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  text-align: left;
+}
+
+.region-chooser__detail {
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+/* Real text for the accessible name and for find-in-page, clipped from view
+   because the layout already separates title from detail (#1868). */
+.region-chooser__separator {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+/* A row that cannot be chosen yet keeps its place and its name; only the
+   affordance dims. `aria-disabled`, not `disabled`, so `:disabled` from the
+   family does not apply and this rule carries it. */
+.region-chooser__row[aria-disabled="true"] {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.region-chooser__row[aria-disabled="true"]:hover {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.region-chooser__notice {
+  margin: 0;
+  padding: var(--space-2) var(--space-6) 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* The "+" panel: fixed under the button (or above it, when there is no room
+   below — the chooser measures and flips), on the navigation layer like a
+   tab's move menu, above the dock it opens from. */
+.region-chooser__menu {
+  position: fixed;
+  z-index: var(--layer-navigation);
+  min-width: 14rem;
+}

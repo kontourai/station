@@ -840,9 +840,10 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
  * built-in descriptor that declares `docked`.
  *
  * These surfaces are never registry keys: there is no blank occurrence to
- * register, `REGION_SURFACE_PANES` holds none of them, and a region's "+"
- * cannot offer them (`dockCatalogEntries` filters their descriptors out).
- * They reach a region only through `openInRegion` from a link click.
+ * register, `REGION_SURFACE_PANES` holds none of them, and a region's
+ * chooser cannot offer them (`RegionEmptyChooser` lists `surfaces`, the
+ * registry, which holds no prefix family). They reach a region only through
+ * `openInRegion` from a link click.
  */
 export interface InstanceSurfacePrefix {
   /** The prefix every id of this family starts with. */

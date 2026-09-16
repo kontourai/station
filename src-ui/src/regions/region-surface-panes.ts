@@ -24,11 +24,11 @@
  * `RegionPaneHost` builds the region's document from its panes' entries (in
  * tab order, #2046 2a) and admits a persisted or opened pane only when
  * `regionSurfaceOfPane` names a surface the region holds and its project is
- * the dock's; the dock catalog (`RegionPaneCatalog`) maps a catalog
- * descriptor back to its surface through `regionSurfaceOfDescriptor` and
- * offers only what `dockCanSupply` admits. `region-surface-panes.test.ts`
- * pins the keys to the registry's dock-capable surfaces in both directions
- * and every entry's descriptor to `dockCanSupply`.
+ * the dock's; the empty region's chooser (`RegionEmptyChooser`, #2154)
+ * enables a row only where the entry's `instance(context)` is non-null.
+ * `region-surface-panes.test.ts` pins the keys to the registry's
+ * dock-capable surfaces in both directions and every entry's descriptor to
+ * `dockCanSupply`.
  *
  * Since #2049 the inventory also resolves INSTANCE-KEYED panes, which are not
  * map entries: `regionSurfacePane` answers for any id whose prefix
@@ -113,16 +113,13 @@ import {
  * catalog's filter (`dockCanSupply`) and what the inventory's own pin
  * asserts of every entry, so the two cannot disagree.
  *
- * What a user sees of the `task` exclusion today: NOTHING (review M2). The
- * catalog lists the panes declaring `docked` and re-resolves an available
- * one the dock cannot supply into a disabled row with the resolver's reason
- * (`missing-task`) — but that path needs a descriptor that declares BOTH
- * `docked` and a Task requirement, and no shipped pane does: the task-room
- * panes declare `primary`/`secondary`, so the catalog's `docked` filter
- * drops them before any reason is computed. They are neither listed nor
- * explained. The mechanism exists and is proven by a fixture descriptor
- * (`RegionPaneCatalog.test.tsx`); the first shipped `docked` pane needing a
- * Task is what will make it visible.
+ * What a user sees of the `task` exclusion today: NOTHING (review M2). No
+ * shipped pane declares BOTH `docked` and a Task requirement — the
+ * task-room panes declare `primary`/`secondary` — and since #2154 a region's
+ * chooser lists registry surfaces, not catalog descriptors, so a pane that
+ * needed a Task would first need a registry entry and an inventory entry
+ * whose `instance` returned null for it. The set stays the inventory pin's
+ * admission check (`region-surface-panes.test.ts`).
  */
 export const DOCK_HOST_SUPPLIABLE_CONTEXTS: WorkspacePaneSuppliableContexts =
   new Set(['project', 'source', 'workspace'] as const);
@@ -423,9 +420,9 @@ export function regionSurfaceOfPane(
 
 /**
  * The surface a catalog descriptor is placed as, or null for a descriptor no
- * region surface renders (#2047): the dock catalog's Open goes through the
- * model (`placeSurface`), so a card must resolve to a surface id before it
- * can offer anything.
+ * region surface renders (#2047). The dock catalog that read it was retired
+ * by #2154 (the chooser lists registry surfaces directly); the inventory
+ * pin (`region-surface-panes.test.ts`) still reads it both ways.
  */
 export function regionSurfaceOfDescriptor(descriptorId: string): string | null {
   for (const pane of REGION_SURFACE_PANES.values()) {
