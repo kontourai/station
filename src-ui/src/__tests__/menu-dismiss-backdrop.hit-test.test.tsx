@@ -17,9 +17,11 @@
  * at all otherwise, and neither `.app` nor `.app__main` opens a stacking
  * context above them. `index.css` states it in prose. Raise the toolbar past
  * 9349, drop a backdrop, or give an ancestor of the toolbar a stacking context
- * that OUTRANKS 9349, and four consumers silently reacquire #2081's defect —
- * `RegionToolbarControls` worse than the rest, since its `onClick` only ever
- * OPENS, so a reachable trigger there is inert rather than merely re-toggling.
+ * that OUTRANKS 9349, and four consumers silently reacquire #2081's defect.
+ * The region toggle's is the one that changed shape since: its panel is
+ * #2154's chooser, opened by a hold or a right-click (#2155), and a reachable
+ * trigger there would take the user's dismissing press as a show/hide of the
+ * region the panel is about.
  *
  * "Outranks" is load-bearing in that sentence, and #2112's own wording ("give
  * an ancestor of the toolbar a stacking context") is looser than the mechanism.
@@ -135,6 +137,22 @@ vi.mock('../contexts/RegionModelContext', async (importOriginal) => {
     useRegionModel: () => model,
   };
 });
+
+// The chooser a region toggle opens carries the dock's project read
+// (`RegionChooserPanel` → `useDockProject`). No project here: the rows that
+// need one list disabled with the reason, which changes none of the geometry
+// this file measures.
+vi.mock('../contexts/DeviceSettingsContext', () => ({
+  useDeviceSettings: () => ({ chatDockProjectSlug: null }),
+}));
+
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProject: () => ({ project: undefined, isLoading: false }),
+}));
+
+vi.mock('../hooks/useActiveProject', () => ({
+  useActiveProject: () => ({ projectSlug: null }),
+}));
 
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useKeyboardShortcut: () => {},
@@ -270,6 +288,7 @@ function tabMoveChrome(): DockShellChrome {
     selectRegionPane: noop,
     ownsMaximizeShortcut: true,
     applyDockSnap: noop,
+    setRegionOpen: noop,
     commitDesktopBottomHeight: noop,
     commitDockPlacement: noop,
     restoreDockToDocked: noop,
@@ -288,6 +307,13 @@ const CHAT_CSS_PATH = resolve(HERE, '../components/chat/chat.css');
 const HEADER_MENU_CSS_PATH = resolve(
   HERE,
   '../components/header/HeaderMenu.css',
+);
+// #2155: the panel a region toggle opens is #2154's chooser, whose own frame
+// and anchoring live here. Without it the panel has no `position: fixed` and
+// lands in normal flow, where it covers nothing and proves nothing.
+const REGION_CHOOSER_CSS_PATH = resolve(
+  HERE,
+  '../workspace-panes/RegionEmptyChooser.css',
 );
 
 type MenuId =
@@ -357,15 +383,15 @@ const SHAPES: readonly Shape[] = [
     openerLabel: null,
   },
   {
-    name: 'the header’s empty-region menu on a desktop, where its trigger exists',
+    name: 'the region toggle’s chooser on a desktop, where its trigger exists',
     menu: 'region',
     viewport: DESKTOP,
     device: 'desktop',
-    backdropLabel: 'Close region menu',
+    backdropLabel: 'Close the Add to Left region menu',
     // On a phone `commandsInOverflowMenu` renders no region control at all —
     // the commands move into the ⋯ menu — so this control is desktop-only.
-    // The fixture's `left` region is empty, so its control opens a menu
-    // (#2143); an occupied region's is a toggle and opens nothing.
+    // Since #2155 every region toggle opens #2154's chooser on a hold or a
+    // right-click, whatever the region holds; the fixture opens `left`'s.
     openerLabel: 'Left region',
   },
   {
@@ -413,6 +439,7 @@ function buildFixtureCss(): string {
     resolveCssImports(INDEX_CSS_PATH),
     resolveCssImports(CHAT_CSS_PATH),
     resolveCssImports(HEADER_MENU_CSS_PATH),
+    resolveCssImports(REGION_CHOOSER_CSS_PATH),
   ].join('\n');
   assertNoImportsSurvive(css);
   return css;
@@ -541,12 +568,16 @@ async function renderShellMarkup(
       const opener = screen.getByLabelText(shape.openerLabel as string, {
         exact: false,
       });
-      // Both components read the trigger's rect in their own `onClick`. jsdom
-      // reports zeros for it, which would put the panel somewhere no product
-      // state does; pass 1's real measurement is what makes the panel land
-      // where Chromium would actually draw it.
+      // Both components read the trigger's rect at the moment they open.
+      // jsdom reports zeros for it, which would put the panel somewhere no
+      // product state does; pass 1's real measurement is what makes the panel
+      // land where Chromium would actually draw it.
       opener.getBoundingClientRect = () => geometry.rect as DOMRect;
-      fireEvent.click(opener);
+      // A region toggle's CLICK shows or hides the region (#2155); the panel
+      // is behind the hold and its pointer-independent twin, `contextmenu` —
+      // the one a test can dispatch without a 500ms clock.
+      if (shape.menu === 'region') fireEvent.contextMenu(opener);
+      else fireEvent.click(opener);
     }
     // The three header menus are behind `LazyBoundary`, so the portal does not
     // exist on the render that flips their flag. Awaiting the backdrop by name
