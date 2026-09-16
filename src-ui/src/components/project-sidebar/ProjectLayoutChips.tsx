@@ -88,6 +88,22 @@ export function ProjectLayoutChips({
    * other pill menu (#2158).
    */
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  /**
+   * Bumped by every gesture that opens the menu, and used as the
+   * `LazyBoundary`'s `key` — so each gesture gets a FRESH boundary (#2158).
+   *
+   * Without it a failed chunk fetch was permanent. `LazyBoundary` clears its
+   * error only when its `onRetry` runs, and the `unavailable` renderer below
+   * discards that callback deliberately (an error card with two buttons is a
+   * worse answer than no menu, and nothing in the rail could dismiss it); its
+   * `attempt` therefore never moved, and the boundary is not unmounted by
+   * re-opening either — right-clicking the SAME chip writes the value
+   * `menuFor` already holds and React bails out, and a different chip only
+   * changes the boundary's props. One failed fetch and the chip's menu was off
+   * for the life of the row, silently. A key the gesture owns is what makes
+   * the retry real rather than asserted in a comment.
+   */
+  const [menuAttempt, setMenuAttempt] = useState(0);
   const pillRegions = useSidebarPillRegions();
 
   // Derived from the LIST, not trusted from state: a layout deleted or a
@@ -114,7 +130,50 @@ export function ProjectLayoutChips({
     buttons.current.get(next.key)?.focus();
   };
 
+  /**
+   * Opens one chip's menu, or answers that there is nothing to open.
+   *
+   * Shared by the two gestures that reach it — `contextmenu` on the chip and
+   * the keyboard's own context-menu request on the strip — so both apply the
+   * same precondition and both get a fresh boundary. Returns whether it
+   * opened, because each caller only suppresses the platform's default
+   * behaviour when it did.
+   */
+  const openMenuFor = (index: number): boolean => {
+    const chip = chips[index];
+    if (!chip?.dockSurfaceId || pillRegions.regions.length === 0) return false;
+    focusAt(index);
+    setMenuFor(chip.key);
+    setMenuAttempt((attempt) => attempt + 1);
+    return true;
+  };
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    /**
+     * The keyboard's route to the chip's menu (#2158).
+     *
+     * `contextmenu` alone is not a route for everyone: macOS has no Menu key
+     * and no Shift+F10, so on Station's primary desktop platform a sighted
+     * keyboard-only reader had NO way to reach these rows — while the design
+     * record claimed the menu is the route a keyboard has. Shift+Enter is the
+     * portable half, `ContextMenu` the one that already means this on the
+     * platforms that have the key.
+     *
+     * The stop is the subject: the menu opens for the chip holding the roving
+     * tab stop, which is the chip the reader is on. `preventDefault` matters
+     * for Shift+Enter specifically — Enter on a button still activates it with
+     * a modifier held, and navigating away is the opposite of what was asked.
+     * It is called only when a menu actually opened, so a chip with nothing to
+     * offer keeps Enter's ordinary meaning.
+     */
+    if (
+      event.key === 'ContextMenu' ||
+      (event.key === 'Enter' && event.shiftKey)
+    ) {
+      if (!openMenuFor(rovingIndex)) return;
+      event.preventDefault();
+      return;
+    }
     // Horizontal toolbar: Up/Down stay unhandled on purpose. The row sits
     // beside a reorder handle whose own keyboard contract IS Up/Down, and
     // swallowing them here would teach two meanings for one pair of keys.
@@ -190,28 +249,38 @@ export function ProjectLayoutChips({
             // announcing a popup would be describing something Enter and
             // Space do not do — they navigate, which is the chip's primary
             // action and stays so.
+            //
+            // `openMenuFor` moves the roving tab stop onto this chip as it
+            // focuses it — the same pair `focusAt` performs for an arrow key.
+            // Focusing without the stop would leave the strip's
+            // `tabIndex={0}` on a different chip from the one holding focus;
+            // not focusing at all would leave the menu's return focus
+            // (`useMenuFocus` captures whatever is focused when it opens)
+            // wherever the engine happened to put it, and engines disagree
+            // about whether a right-click focuses a button.
+            //
+            // ON TOUCH this is the LONG PRESS, and suppressing the platform
+            // callout is the point: the pill's menu is what the gesture is
+            // for. A coarse pointer offers one region rather than none, so
+            // the Boards row beside it answers the same gesture the same way.
             onContextMenu={(event) => {
-              if (!chip.dockSurfaceId || pillRegions.regions.length === 0)
-                return;
+              if (!openMenuFor(index)) return;
               event.preventDefault();
-              // Moves the roving tab stop onto this chip as it focuses it —
-              // the same pair `focusAt` performs for an arrow key. Focusing
-              // without the stop would leave the strip's `tabIndex={0}` on a
-              // different chip from the one holding focus; not focusing at
-              // all would leave the menu's return focus (`useMenuFocus`
-              // captures whatever is focused when it opens) wherever the
-              // engine happened to put it, and engines disagree about
-              // whether a right-click focuses a button.
-              focusAt(index);
-              setMenuFor(chip.key);
             }}
           >
             {chip.name}
           </button>
         ))}
       </div>
-      {menuChip?.dockSurfaceId && (
+      {/* Both halves, not just the id: narrowing the window under 768px while
+          a menu is open takes the regions away under it, and the id alone
+          would then render an empty `.menu-surface` with the reader's focus
+          inside it. */}
+      {menuChip?.dockSurfaceId && pillRegions.regions.length > 0 && (
         <LazyBoundary
+          // A FRESH boundary per gesture — see `menuAttempt`. This is what
+          // retries an import that failed; nothing else can.
+          key={menuAttempt}
           load={loadProjectLayoutChipMenu}
           componentProps={{
             label: `${menuChip.name} actions`,
@@ -222,8 +291,9 @@ export function ProjectLayoutChips({
           }}
           pending={null}
           // A menu that failed to arrive renders nothing, rather than planting
-          // an error card with two buttons permanently in a 240px rail. The
-          // next right-click remounts this boundary and retries the import.
+          // an error card with two buttons permanently in a 240px rail that
+          // nothing here could dismiss. Discarding `onRetry` is why the retry
+          // has to come from `key={menuAttempt}` above.
           unavailable={() => null}
         />
       )}

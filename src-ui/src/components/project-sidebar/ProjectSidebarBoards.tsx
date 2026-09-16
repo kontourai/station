@@ -659,38 +659,6 @@ export function ProjectSidebarBoards({
                 label={`${board.name} actions`}
                 onDismiss={closeMenu}
               >
-                {/* WHERE this Board can go, ABOVE the rows that change the
-                    record (#2158). Two reasons for the order rather than
-                    one: this menu is now reached by right-clicking the pill,
-                    where the subject is the Board as a DESTINATION, and the
-                    family a reader compares it against — a file manager, an
-                    editor's explorer, a browser's tab — opens with Open and
-                    ends with the destructive row.
-
-                    It costs the phone nothing, which is what settles it:
-                    `useSidebarPillRegions` returns no regions on a coarse
-                    pointer (the dock folds to one there), so on the device
-                    where this menu is the ONLY rename affordance the section
-                    has, Rename is still the first row and still the row that
-                    takes focus on open. */}
-                {paneId !== null &&
-                  pillRegions.regions.map((region) => (
-                    <button
-                      key={region}
-                      type="button"
-                      className="menu-row"
-                      role="menuitem"
-                      onClick={() => {
-                        setMode({ kind: 'rest' });
-                        pillRegions.openInRegion(paneId, region);
-                      }}
-                    >
-                      {/* Bare, with the subject in the menu's own
-                          `aria-label` ("<name> actions") — the shape Rename
-                          and Delete beside it already use. */}
-                      Open in {regionLabel(region)}
-                    </button>
-                  ))}
                 <button
                   type="button"
                   className="menu-row"
@@ -709,6 +677,42 @@ export function ProjectSidebarBoards({
                 >
                   Move to project…
                 </button>
+                {/* WHERE this Board can go: after the row that already
+                    answers "where does this live" and BEFORE the destructive
+                    one, which stays last.
+
+                    This menu shipped in #2062 with Rename / Move to project… /
+                    Delete, and #2158 adds to it rather than re-ordering it —
+                    every row a reader already knows keeps its neighbours, and
+                    Rename keeps the first position and the focus it takes on
+                    open. That matters most exactly where the placement rows
+                    are fewest: on a phone this menu is the ONLY rename
+                    affordance the section has (#2062 review M1), and it is
+                    reached from a permanently-visible `⋯` at the 44px floor.
+
+                    The convention these rows would otherwise follow — a file
+                    manager or an editor opens with Open — was weighed and
+                    lost to that: the Open-first shape is for a menu designed
+                    around opening, and this one is a record's actions that
+                    opening has joined. */}
+                {paneId !== null &&
+                  pillRegions.regions.map((region) => (
+                    <button
+                      key={region}
+                      type="button"
+                      className="menu-row"
+                      role="menuitem"
+                      onClick={() => {
+                        setMode({ kind: 'rest' });
+                        pillRegions.openInRegion(paneId, region);
+                      }}
+                    >
+                      {/* Bare, with the subject in the menu's own
+                          `aria-label` ("<name> actions") — the shape Rename
+                          and Delete beside it already use. */}
+                      Open in {regionLabel(region)}
+                    </button>
+                  ))}
                 <button
                   type="button"
                   className="menu-row"

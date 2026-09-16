@@ -10,9 +10,14 @@ import type { DockMode } from '../../types';
  *
  * `ProjectLayoutChips` is EAGER — `main.tsx` → `App.tsx` → `ProjectSidebar` —
  * so everything it references is paid for on every cold load by every user,
- * including the ones who never right-click a chip. Measured at 307 B gzip of
- * entry chunk for this surface, against 424 B of headroom on a ceiling the
- * repo gates hard; behind this boundary it is ~100 B of stub instead.
+ * including the ones who never right-click a chip.
+ *
+ * THE MEASUREMENT THAT DECIDES IT, on base 3b55b26fb (ceiling 333800): with
+ * this component inlined into `ProjectLayoutChips` the entry chunk measures
+ * 333843, which is over. Behind this boundary it measures 333650. The
+ * lazy-to-inline delta is 193 B — the stub, the key and the boundary call are
+ * not free, so this is smaller than the component's own weight and it is the
+ * number that matters.
  *
  * That is also the shape its sibling already has. The Boards SECTION — whose
  * row menu this one mirrors — is behind a `LazyBoundary` for the same reason
@@ -20,10 +25,12 @@ import type { DockMode } from '../../types';
  * rather than this being a new kind of thing in the rail.
  *
  * The cost of the boundary, stated: the first right-click on a chip fetches
- * this chunk before the menu appears, and a fetch that fails renders nothing
- * (`unavailable={() => null}` at the call site — an error card with two
- * buttons planted permanently in a 240px rail is a worse answer for a menu
- * than no menu). A second right-click remounts the boundary and retries.
+ * this chunk before the menu appears, and a fetch that fails renders nothing — `unavailable={() => null}` at the call
+ * site, because an error card with two buttons planted permanently in a 240px
+ * rail is a worse answer for a menu than no menu. That renderer discards
+ * `LazyBoundary`'s own `onRetry`, so the retry is NOT the boundary's: the call
+ * site gives it a `key` the gesture owns, and each new gesture mounts a fresh
+ * boundary that runs the import again.
  */
 export function ProjectLayoutChipMenu({
   label,
@@ -78,8 +85,9 @@ export function ProjectLayoutChipMenu({
       role="menu"
       aria-label={label}
       // Required by `useMenuFocus`: focus lands on the container when the menu
-      // holds nothing focusable. It cannot here — the menu only opens with at
-      // least two regions — but the hook's contract is the container's.
+      // holds nothing focusable. It cannot here — the call site renders this
+      // only with at least one region, and a device has one or three, never
+      // none — but the hook's contract is the container's.
       tabIndex={-1}
       onKeyDown={(event) => {
         if (event.key !== 'Escape') return;
