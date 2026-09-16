@@ -251,13 +251,21 @@ export function createHomeAuthorityRoutes(
       const data = value as Record<string, unknown>;
       if (
         keys.some((key) =>
-          key === 'expectedRevision' || key === 'expectedGeneration'
-            ? // Generations and revisions are 1-based counters. A zero or
-              // negative one is refused by the authority as `conflict`, which
-              // this route answers 409 — indistinguishable from a real
-              // generation mismatch the caller could resolve by re-reading.
+          key === 'expectedGeneration'
+            ? // Generations are 1-based counters. A zero or negative one is
+              // refused by the authority as `conflict`, which this route
+              // answers 409 — indistinguishable from a real generation
+              // mismatch the caller could resolve by re-reading.
               !Number.isSafeInteger(data[key]) || (data[key] as number) <= 0
-            : typeof data[key] !== 'string',
+            : key === 'expectedRevision'
+              ? // A revision is NOT 1-based: a home's first transfer is
+                // prepared against revision 0, and the transfers routes have
+                // accepted it since #1615. #1659 swept this key into the
+                // generation rule above and turned every first transfer into
+                // a 400 that fired before authorization (#2196) — the stranger
+                // case answered 400 where 403 was the whole point.
+                !Number.isSafeInteger(data[key])
+              : typeof data[key] !== 'string',
         )
       )
         return undefined;
