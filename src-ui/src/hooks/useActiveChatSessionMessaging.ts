@@ -12,7 +12,7 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
-import { useConfig } from '../contexts/ConfigContext';
+import { useAgents } from '../contexts/AgentsContext';
 import {
   type ChatMessage,
   isTurnInFlight,
@@ -21,17 +21,21 @@ import {
   activeChatsStore,
   type ChatUIState,
 } from '../contexts/active-chats-store';
+import { useConfig } from '../contexts/ConfigContext';
 import type {
   OutboundDispatchClaim,
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
+import { approvalModeForDispatch } from '../utils/approvalMode';
 import {
   type ChatErrorTranslation,
   translateChatError,
 } from '../utils/chatErrorTranslation';
-import { approvalModeForDispatch } from '../utils/approvalMode';
-import { sessionAdapterSupportsSteering } from '../utils/execution';
+import {
+  resolveSessionEngineConnectionId,
+  sessionAdapterSupportsSteering,
+} from '../utils/execution';
 import { steerRefusalMessage } from '../utils/steerTurn';
 import { isReplayThread } from './orchestration/replay/replay-registry';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
@@ -153,6 +157,9 @@ export function useSendMessage(
   // and nothing put them on the wire. This is the one send path that starts a
   // conversation, so it is where the whole resolved chain becomes a request.
   const stationApprovalModeDefault = useConfig()?.defaultApprovalMode;
+  // Only for the Agent-record link of the engine-connection chain the
+  // composer resolves its approval chip from (round 2 LOW-5).
+  const agents = useAgents();
   const sendMessage = useCallback(
     async (
       sessionId: string,
@@ -318,6 +325,15 @@ export function useSendMessage(
         const { dispatchForeground } = await import(
           '../lib/foregroundMessageDispatch'
         );
+        // The chip's own chain, shared (round 2 LOW-5).
+        const sessionEngineConnectionId = resolveSessionEngineConnectionId({
+          conversationOpenState: currentState?.conversationOpenState,
+          currentSessionId: currentState?.currentSessionId,
+          chatStateConnectionId: currentState?.agentConnectionId,
+          agentBoundConnectionId: agents.find(
+            (agent) => agent.slug === agentSlug,
+          )?.execution?.agentConnectionId,
+        });
         const dispatchedProviderOptions = options?.executionSnapshot
           ? (options.executionSnapshot.requestedProviderOptions ??
             options.executionSnapshot.providerOptions)
@@ -330,13 +346,22 @@ export function useSendMessage(
           projectSlug: currentState?.projectSlug,
           // The layers below the session override, resolved here because this
           // is where the engine identity, the connection record and the app
-          // config all exist at once. `undefined` for any engine whose
-          // adapter has no approval knob.
+          // config all exist at once. `undefined` unless this turn STARTS the
+          // chat's session on an external engine whose adapter has the knob —
+          // see `approvalModeForDispatch` for every gate and why.
           approvalModeFallback: approvalModeForDispatch({
-            engineConnectionId: currentState?.agentConnectionId,
+            engineConnectionId: sessionEngineConnectionId,
+            executionMode: currentState?.executionMode,
+            // `orchestrationSessionStarted` is this chat's own "a session is
+            // live" flag (the same one line 389 reads below); a reopened
+            // conversation carries it, and its child id, from the resolved
+            // open. Either means this turn is not a session start.
+            sessionAlreadyStarted:
+              currentState?.orchestrationSessionStarted === true ||
+              !!currentState?.currentSessionId,
             sessionOverride: dispatchedProviderOptions?.approvalMode,
             connectionDefault: agentConnections.find(
-              (connection) => connection.id === currentState?.agentConnectionId,
+              (connection) => connection.id === sessionEngineConnectionId,
             )?.config.approvalMode,
             stationDefault: stationApprovalModeDefault,
           }),
@@ -638,6 +663,7 @@ export function useSendMessage(
     [
       addEphemeralMessage,
       agentConnections,
+      agents,
       apiBase,
       assignConversationId,
       clearEphemeralMessages,

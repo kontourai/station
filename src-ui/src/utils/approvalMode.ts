@@ -2,6 +2,10 @@ import {
   type ApprovalMode,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
+import {
+  EXECUTION_MODE,
+  type ExecutionMode,
+} from '@kontourai/station-contracts/tool';
 
 export type { ApprovalMode } from '@kontourai/station-contracts/provider';
 
@@ -241,27 +245,47 @@ export function resolveEffectiveApprovalMode({
  * The approval mode this send must put ON THE WIRE, or `undefined` for "send
  * nothing and let the engine keep whatever it already does".
  *
- * `resolveEffectiveApprovalMode` answers what to DISPLAY. This answers what to
- * ENFORCE, and the two have to agree or the chip narrates a posture nothing
- * applies (#2144 slice 6 fix round 1: both the Station default and the
- * connection default were display-only — the only value that reached
+ * `resolveEffectiveApprovalMode` answers what to DISPLAY. This answers what
+ * to ENFORCE, and the two have to agree or the chip narrates a posture
+ * nothing applies (#2144 slice 6 fix round 1: both the Station default and
+ * the connection default were display-only — the only value that reached
  * `modelOptions.approvalMode`, which is the single thing the server reads
  * (`readApprovalMode`, provider.ts), was the session override).
  *
  * Returns `undefined` when:
  * - the engine's adapter has no approval knob (`approvalModeKnobSupported`) —
  *   sending a posture there would be a request nothing can honour;
- * - the resolution came from a session override, which the dispatcher already
- *   carries in `requestedProviderOptions`;
+ * - the chat does not run in `external` execution mode. A provider-managed
+ *   Station-mode chat keeps a knob-capable `agentConnectionId` (its model
+ *   provider), and `ChatInputArea` renders no approval control for it, so a
+ *   posture on the wire would be one no surface offered (round 2 M2);
+ * - this chat ALREADY has a live orchestration session. The default is a
+ *   posture new chats START in: re-requesting it on a warm session would
+ *   make a mid-life edit of the Station setting reconfigure a running chat,
+ *   and Claude refuses an escalation to `'never'` on a session that was not
+ *   spawned for it — with a `runtime.warning` banner on every later turn
+ *   (claude-adapter.ts). A session override is the only thing that may
+ *   change a live session's posture, and it travels on its own (round 2 M3);
+ * - the resolution came from that session override, which the dispatcher
+ *   already carries in `requestedProviderOptions`;
  * - nothing concrete resolved (`'connection-default'`), which is Station
  *   deliberately stating no posture.
  */
 export function approvalModeForDispatch(input: {
   engineConnectionId?: string | null;
+  /** The chat's execution mode; only `external` reaches an engine adapter. */
+  executionMode?: ExecutionMode;
+  /**
+   * Whether this chat already has a live orchestration session. `true`
+   * suppresses the fold entirely — see above.
+   */
+  sessionAlreadyStarted?: boolean;
   sessionOverride?: unknown;
   connectionDefault?: unknown;
   stationDefault?: unknown;
 }): ApprovalMode | undefined {
+  if (input.executionMode !== EXECUTION_MODE.EXTERNAL) return undefined;
+  if (input.sessionAlreadyStarted) return undefined;
   if (!approvalModeKnobSupported(input.engineConnectionId)) return undefined;
   const resolved = resolveEffectiveApprovalMode(input);
   if (resolved.source === 'session override') return undefined;

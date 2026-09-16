@@ -203,6 +203,11 @@ describe('buildDeviceResetPlan', () => {
       ...pristine(),
       chatDockHeight: 720,
       inboxOpen: false,
+      // Every excluded key below must differ from its default, or this test
+      // cannot see it being wrongly admitted: a candidate list that gained
+      // `firstRunProgress` stayed green while the fixture left it pristine
+      // (round 2, verifier AC6(b)).
+      firstRunProgress: { chapter: 'about-you', deferred: true },
       onboardingSetupDismissed: true,
       theme: 'light',
     } as never);
@@ -212,6 +217,9 @@ describe('buildDeviceResetPlan', () => {
     for (const key of DIRECT_MANIPULATION_DEVICE_KEYS) {
       expect(plan.keys as readonly string[]).not.toContain(key);
     }
+    // The fixture's own power, pinned: four excluded keys genuinely differ
+    // here, so admitting any one of them reddens the equality above.
+    expect(plan.labels).toEqual(['Theme']);
   });
 
   test('an absent key reads as its default rather than as a change', () => {

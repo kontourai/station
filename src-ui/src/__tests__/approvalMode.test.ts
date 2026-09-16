@@ -325,19 +325,23 @@ describe('resolveEffectiveApprovalMode', () => {
  * `useActiveChatSessionMessaging.test.ts`, which reach the wire.
  */
 describe('approvalModeForDispatch', () => {
+  /** A chat starting its session on an external, knob-capable engine. */
+  const starting = {
+    engineConnectionId: 'codex',
+    executionMode: 'external',
+    sessionAlreadyStarted: false,
+  } as const;
+
   test("the Station default becomes this turn's request", () => {
     expect(
-      approvalModeForDispatch({
-        engineConnectionId: 'codex',
-        stationDefault: 'never',
-      }),
+      approvalModeForDispatch({ ...starting, stationDefault: 'never' }),
     ).toBe('never');
   });
 
   test("the connection's default outranks the Station default", () => {
     expect(
       approvalModeForDispatch({
-        engineConnectionId: 'codex',
+        ...starting,
         connectionDefault: 'auto',
         stationDefault: 'never',
       }),
@@ -347,7 +351,7 @@ describe('approvalModeForDispatch', () => {
   test('a session override is already on the wire, so nothing is added', () => {
     expect(
       approvalModeForDispatch({
-        engineConnectionId: 'codex',
+        ...starting,
         sessionOverride: 'ask',
         stationDefault: 'never',
       }),
@@ -357,7 +361,36 @@ describe('approvalModeForDispatch', () => {
   test('an engine with no approval knob is asked for nothing', () => {
     expect(
       approvalModeForDispatch({
+        ...starting,
         engineConnectionId: 'acp',
+        connectionDefault: 'auto',
+        stationDefault: 'never',
+      }),
+    ).toBeUndefined();
+  });
+
+  test('a Station-mode chat is asked for nothing, knob-capable id or not', () => {
+    // It keeps its model provider's id, and no approval control renders.
+    expect(
+      approvalModeForDispatch({
+        ...starting,
+        executionMode: 'station',
+        stationDefault: 'never',
+      }),
+    ).toBeUndefined();
+    expect(
+      approvalModeForDispatch({
+        engineConnectionId: 'codex',
+        stationDefault: 'never',
+      }),
+    ).toBeUndefined();
+  });
+
+  test('a chat whose session is already live is asked for nothing', () => {
+    expect(
+      approvalModeForDispatch({
+        ...starting,
+        sessionAlreadyStarted: true,
         connectionDefault: 'auto',
         stationDefault: 'never',
       }),
@@ -367,10 +400,10 @@ describe('approvalModeForDispatch', () => {
   test('stating no posture sends no posture', () => {
     expect(
       approvalModeForDispatch({
-        engineConnectionId: 'codex',
+        ...starting,
         stationDefault: 'connection-default',
       }),
     ).toBeUndefined();
-    expect(approvalModeForDispatch({ engineConnectionId: 'codex' })).toBeUndefined();
+    expect(approvalModeForDispatch(starting)).toBeUndefined();
   });
 });

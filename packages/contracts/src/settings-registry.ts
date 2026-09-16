@@ -430,7 +430,7 @@ export const APP_SETTINGS_REGISTRY = [
     label: 'Default approval mode',
     help: 'New chats start in this approval posture unless the chat or its engine connection names its own.',
     description:
-      'The third step of the approval chain: the chat’s own override, then the engine connection’s default, then this, then whatever the engine already does. Connection default states no posture and leaves the engine’s own behaviour in place. Engines with no approval knob of their own (everything but Claude and Codex) ignore this value.',
+      'The third step of the approval chain: the chat’s own override, then the engine connection’s default, then this, then whatever the engine already does. It is sent when a chat starts its session and is not re-sent afterwards — changing it leaves running chats alone, and a chat’s own approval control is the only thing that changes a live session. A connection’s own approvalMode is sent the same way. Connection default states no posture and leaves the engine’s own behaviour in place. Chats that run on Station’s own engine, and engines with no approval knob of their own (everything but Claude and Codex), ignore this value.',
     // `'connection-default'` IS the honest fallback, not a placeholder for
     // one: `adapterDefaultApprovalMode` returns undefined for every engine
     // (station#1950 — Station no longer guesses Ask/Never), so "defer to the

@@ -93,6 +93,9 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     },
     useEngineConnectionsQuery: () => agentConnectionsMock(),
     useConfigQuery: () => configQueryMock(),
+    // The Agent-record link of the engine-connection chain; this fixture's
+    // chats carry their own binding, so the catalog is empty here.
+    useAgentsQuery: () => ({ data: [], error: null }),
     useInvalidateQuery: () => invalidateMock,
     interruptOrchestrationTurn: (...args: unknown[]) =>
       interruptOrchestrationTurnMock(...args),
@@ -317,6 +320,9 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       // read `modelOptions.approvalMode`), with nothing session-scoped.
       activeChatsStore.updateChat(sessionId, {
         agentConnectionId: 'claude',
+        // The composer renders an approval control only for `external`, and
+        // this turn starts the chat's session (no id, nothing started).
+        executionMode: 'external',
         requestedProviderOptions: undefined,
         providerOptions: {},
       });
@@ -380,6 +386,45 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       stationAppConfig.current = { defaultApprovalMode: 'never' };
       activeChatsStore.updateChat(sessionId, {
         agentConnectionId: 'some-acp-runtime',
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+
+      expect(
+        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
+      ).not.toHaveProperty('approvalMode');
+    });
+
+    it('sends nothing for a Station-mode chat, which shows no approval control', async () => {
+      // Round 2 M2: a provider-managed Station-mode chat keeps a
+      // knob-capable `agentConnectionId` (its model provider), and
+      // ChatInputArea renders no chip for it — a posture on the wire would
+      // be one no surface offered.
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      activeChatsStore.updateChat(sessionId, { executionMode: 'station' });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+
+      expect(
+        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
+      ).not.toHaveProperty('approvalMode');
+    });
+
+    it('sends nothing on a warm session, which is not a chat starting', async () => {
+      // Round 2 M3: the setting is the posture a NEW chat starts in.
+      // Re-requesting it per turn reconfigures a running session, and
+      // Claude refuses a mid-session escalation to 'never' with a
+      // runtime.warning on every later turn.
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      activeChatsStore.updateChat(sessionId, {
+        orchestrationSessionStarted: true,
+        currentSessionId: 'live-session-1',
       });
       const { result } = renderHook(() => useSendMessage('http://api.test'));
 

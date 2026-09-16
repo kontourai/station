@@ -266,7 +266,7 @@ describe('dispatchForeground target', () => {
         model: { options: { approvalMode: 'ask' } },
       });
       expect(
-        (dispatchedTarget().model as Record<string, unknown>),
+        dispatchedTarget().model as Record<string, unknown>,
       ).not.toHaveProperty('override');
     });
 

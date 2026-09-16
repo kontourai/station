@@ -4,6 +4,7 @@ import {
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import type { EngineId } from '@kontourai/station-contracts/provider';
 import {
   type AgentConnectionView,
@@ -711,6 +712,38 @@ export function preferredConnectedRuntime(
 export function executionStatusLabel(status?: string | null): string {
   if (!status) return 'Not started';
   return connectionStatusLabel(status);
+}
+
+/**
+ * WHICH engine connection a chat session is actually running on.
+ *
+ * One derivation because two surfaces read it for the same session and must
+ * not disagree: the composer decides whether to render an approval control
+ * from it (`useChatDockViewModel`), and the send path decides whether to put
+ * a posture on the wire from it (`useSendMessage`). Round 2 LOW-5 — the
+ * enforcement side read only `chatState.agentConnectionId`, so a chip shown
+ * off an OBSERVED binding could sit above a dispatch that carried nothing.
+ *
+ * A resolved conversation-open observation wins, but only while it describes
+ * the session the chat is actually on (`sessionId === currentSessionId`);
+ * otherwise the chat's own stored binding, then the Agent record's.
+ */
+export function resolveSessionEngineConnectionId(input: {
+  conversationOpenState?: ConversationOpenResolution | null;
+  currentSessionId?: string | null;
+  /** `ChatUIState.agentConnectionId`. */
+  chatStateConnectionId?: string | null;
+  /** `agent.execution.agentConnectionId` for the chat's Agent. */
+  agentBoundConnectionId?: string | null;
+}): string | null {
+  const observed =
+    input.conversationOpenState?.status === 'resolved'
+      ? input.conversationOpenState.execution
+      : undefined;
+  if (observed && observed.sessionId === input.currentSessionId) {
+    return observed.engineConnectionId ?? null;
+  }
+  return input.chatStateConnectionId ?? input.agentBoundConnectionId ?? null;
 }
 
 export function buildProviderOptions(

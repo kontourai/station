@@ -38,17 +38,26 @@ export interface AppConfig {
    * Approval posture a new chat starts in when neither the chat itself nor
    * its engine connection names one (epic #2144 slice 6).
    *
-   * Read by `resolveEffectiveApprovalMode`
-   * (`src-ui/src/utils/approvalMode.ts`) as the layer BELOW a session
-   * override and the engine connection's own default, and ABOVE the
-   * adapter default. It changes nothing for an engine whose adapter exposes
-   * no native approval knob — `approvalModeKnobSupported` names the two
-   * that do (claude, codex), and `PROVIDER_MODEL_OPTION_SUPPORT` in
-   * `provider.ts` is the authority the server applies.
+   * Two readers, deliberately paired, in `src-ui/src/utils/approvalMode.ts`:
+   * `resolveEffectiveApprovalMode` decides what the composer chip DISPLAYS,
+   * and `approvalModeForDispatch` decides what the send path ENFORCES by
+   * folding into `modelOptions.approvalMode` — the only channel the server
+   * reads (`readApprovalMode` below). Both place it under a session override
+   * and under the engine connection's own default, and above the adapter
+   * default.
+   *
+   * ENFORCEMENT IS NARROWER THAN DISPLAY, by design. It applies only to the
+   * turn that STARTS a chat's session, and only for an `external`-mode chat
+   * on an engine whose adapter has a native knob (`approvalModeKnobSupported`
+   * — claude and codex; `PROVIDER_MODEL_OPTION_SUPPORT` in `provider.ts` is
+   * the server-side authority). Re-requesting a posture on a live session
+   * would reconfigure a running chat from a setting edited elsewhere, and
+   * Claude refuses a mid-session escalation to `'never'` outright. Only a
+   * session override may change a live chat's posture.
    *
    * `'connection-default'` is a real, canonical value here and means "this
-   * Station states no posture" — it is NOT a fourth posture. The resolver
-   * skips it exactly as it skips a session override holding it.
+   * Station states no posture" — it is NOT a fourth posture. Both readers
+   * skip it exactly as they skip a session override holding it.
    */
   defaultApprovalMode?: ApprovalMode;
   logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
