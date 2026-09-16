@@ -153,12 +153,51 @@ export function deriveComparisonView(
   };
 }
 
-/** A5 source-metadata labels for the compact fact row. */
+/**
+ * The install's update channel, with where it came from, and an explicit
+ * answer when there is none (epic #2144 slice 6 item C).
+ *
+ * Station has no writer for this. `CoreUpdateStatus.channel` reaches the
+ * client only from `readNightlySourceStamp`
+ * (`src-server/routes/system/install-provenance.ts`), the installer-written
+ * stamp whose reader rejects anything malformed rather than fabricating a
+ * channel — so "set at install" is what the value IS, not a guess about it.
+ * An install with no stamp (a source checkout, or a hand-copied bundle) has
+ * no channel at all, and the previous compact fact row said nothing in that
+ * case, which reads the same as not having looked.
+ *
+ * Deliberately no selector: switching channels means reinstalling from the
+ * other channel's installer, and a control that looked like it could change
+ * this would be a control with nothing behind it.
+ *
+ * Renders only once a check has ANSWERED — the caller passes `status`, so a
+ * card that has never checked cannot claim "not recorded".
+ */
+export function UpdateChannelRow({ status }: { status: CoreUpdateStatus }) {
+  return (
+    <div className="settings__update-meta">
+      <span>
+        Update channel:{' '}
+        {status.channel
+          ? `${status.channel} (set at install)`
+          : 'Not recorded for this install'}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * A5 source-metadata labels for the compact fact row.
+ *
+ * `channel` is deliberately absent: it has its own row
+ * ({@link UpdateChannelRow}) in both cards that render this list, because it
+ * needs a provenance statement and an absent case that a bare `label: value`
+ * run cannot carry. Adding it back here would print it twice.
+ */
 export function comparisonMetadata(
   status: CoreUpdateStatus,
 ): Array<{ label: string; value: string }> {
   const labels: Array<{ label: string; value: string }> = [];
-  if (status.channel) labels.push({ label: 'Channel', value: status.channel });
   if (status.branch) labels.push({ label: 'Branch', value: status.branch });
   if (status.currentHash) {
     const label =

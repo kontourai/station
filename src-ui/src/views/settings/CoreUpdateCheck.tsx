@@ -16,6 +16,7 @@ import {
   deriveComparisonView,
   serverIdentityMatchesView,
   TechnicalDetails,
+  UpdateChannelRow,
 } from './coreUpdatePresentation';
 
 export const RESTART_STATUS_POLL_INTERVAL_MS = 1_500;
@@ -420,6 +421,7 @@ export function CoreUpdateCheck({
           </span>
         </div>
       )}
+      {status && <UpdateChannelRow status={status} />}
       {status && comparisonMetadata(status).length > 0 && (
         <div className="settings__update-meta">
           {comparisonMetadata(status).map(({ label, value }, index) => (

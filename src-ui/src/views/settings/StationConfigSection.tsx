@@ -39,6 +39,7 @@ export const STATION_CONFIG_KEYS: readonly (keyof AppConfig)[] = [
   'disableDefaultSkillRegistries',
   'workspaceCheckpoints',
   'defaultWorkspaceIsolation',
+  'defaultApprovalMode',
   'registryUrl',
   'distributionProfile',
   'builtinAgentEngineConnectionId',

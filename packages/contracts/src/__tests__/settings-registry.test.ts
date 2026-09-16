@@ -280,6 +280,11 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
       .sort();
     expect(withDefaults).toEqual(
       [
+        // #2144 slice 6: confirmed against `adapterDefaultApprovalMode`,
+        // which returns undefined for every engine (station#1950) — so with
+        // nothing stored Station genuinely defers to the connection, and
+        // 'connection-default' is that behavior's name rather than a guess.
+        'defaultApprovalMode',
         'defaultChatFontSize',
         'defaultMaxTurns',
         // #2144 slice 2: confirmed against `resolveWorkspaceIsolationMode`

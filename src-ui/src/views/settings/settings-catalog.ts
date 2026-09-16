@@ -96,6 +96,12 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['telemetryEnabled'],
   },
   {
+    id: 'telemetry-destination',
+    title: 'Telemetry destination',
+    section: 'station-config',
+    keywords: ['endpoint', 'where telemetry goes', 'otel'],
+  },
+  {
     id: 'default-max-turns',
     title: 'Default max turns',
     section: 'station-config',
@@ -148,6 +154,13 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'New chat workspace',
     section: 'station-config',
     configKeys: ['defaultWorkspaceIsolation'],
+  },
+  {
+    id: 'default-approval-mode',
+    title: 'Default approval mode',
+    section: 'station-config',
+    keywords: ['approval', 'permissions', 'auto approve', 'ask first'],
+    configKeys: ['defaultApprovalMode'],
   },
   {
     id: 'registry-url',
@@ -203,6 +216,12 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Reset Station settings',
     section: 'system',
     keywords: ['factory reset', 'reset to defaults'],
+  },
+  {
+    id: 'reset-device-defaults',
+    title: 'Restore device defaults',
+    section: 'system',
+    keywords: ['reset this device', 'device defaults', 'restore'],
   },
   {
     id: 'feature-previews',
@@ -275,10 +294,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['chatFontSize'],
   },
   {
+    // The id is the stable URL/palette identity and stays as minted even
+    // though the title no longer matches it (#2144 slice 6 item B) — a
+    // rename would break every deep link and every recorded highlight.
     id: 'smooth-answer-reveal',
-    title: 'Smooth answer reveal',
+    title: 'Answer delivery',
     section: 'appearance',
-    keywords: ['chat streaming steady cadence'],
+    keywords: ['chat streaming steady cadence', 'smooth reveal'],
     configKeys: ['featureSettings'],
   },
   { id: 'theme', title: 'Theme', section: 'appearance', configKeys: ['theme'] },
@@ -295,6 +317,13 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'appearance',
     configKeys: ['hapticsEnabled'],
     conditional: 'mobile',
+  },
+  {
+    id: 'confirm-conversation-delete',
+    title: 'Ask before deleting a conversation',
+    section: 'appearance',
+    keywords: ['confirm', 'confirmation', 'delete', 'undo', 'destructive'],
+    configKeys: ['confirmConversationDelete'],
   },
   {
     id: 'accent-color',
@@ -413,6 +442,12 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   Partial<Record<SettingsCatalogId, NonNullable<SettingsCatalogEntry['scope']>>>
 > = {
   'backup-restore': 'mixed',
+  // #2144 slice 6 item F: in the Station's System section, but it writes
+  // this device's store and nothing on the Station.
+  'reset-device-defaults': 'device',
+  // #2144 slice 6 item D: a derived status line with no writer, inside a
+  // section whose other rows are all Station-scope writes.
+  'telemetry-destination': 'informational',
   'deployed-build': 'informational',
   'message-context': 'temporary',
 };

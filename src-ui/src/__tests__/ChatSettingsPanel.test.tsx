@@ -29,20 +29,51 @@ function props() {
 }
 
 describe('ChatSettingsPanel accessibility', () => {
-  test('persists smooth answer reveal to this device and defaults it off', () => {
+  /**
+   * #585 / #2144 slice 6 item B: the "Smooth answer reveal" toggle became a
+   * two-option "Answer delivery" control over the SAME
+   * `featureSettings.smoothReveal` boolean. Both directions are asserted —
+   * a picker that only ever wrote `true` would pass the first half alone.
+   */
+  test('persists answer delivery to this device, both ways, and defaults to token', () => {
     deviceSettingsStore.reset('featureSettings');
     const rendered = render(<ChatSettingsPanel {...props()} />);
 
-    const toggle = screen.getByRole('switch', {
-      name: 'Smooth answer reveal',
-    });
-    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    const select = screen.getByLabelText(
+      'Answer delivery',
+    ) as HTMLSelectElement;
+    expect(select.value).toBe('token');
+    expect([...select.options].map((option) => option.value)).toEqual([
+      'token',
+      'smooth',
+    ]);
 
-    fireEvent.click(toggle);
+    fireEvent.change(select, { target: { value: 'smooth' } });
     expect(deviceSettingsStore.get('featureSettings').smoothReveal).toBe(true);
-    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect(select.value).toBe('smooth');
+
+    fireEvent.change(select, { target: { value: 'token' } });
+    expect(deviceSettingsStore.get('featureSettings').smoothReveal).toBe(false);
+    expect(select.value).toBe('token');
+
+    // The retired mechanism-named toggle is gone, not merely relabelled.
+    expect(
+      screen.queryByRole('switch', { name: 'Smooth answer reveal' }),
+    ).toBeNull();
     rendered.unmount();
     deviceSettingsStore.reset('featureSettings');
+  });
+
+  /**
+   * #585: `paragraph` is sketched on the issue and has no client-side
+   * consumer, so offering it would be a control that changes nothing.
+   */
+  test('offers no third delivery option', () => {
+    render(<ChatSettingsPanel {...props()} />);
+    const select = screen.getByLabelText(
+      'Answer delivery',
+    ) as HTMLSelectElement;
+    expect(select.options).toHaveLength(2);
   });
   test('owns focus, traps both Tab directions, closes on Escape, and restores the trigger', async () => {
     const trigger = document.createElement('button');
