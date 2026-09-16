@@ -127,14 +127,19 @@ export function surfaceMayOccupy(
  * `preferred` one when that is empty, else the first empty region in the
  * fallback order.
  *
- * The fallback tries `right` BEFORE `bottom` (#2156). Bottom is Chat's by
- * default, and the old `bottom`-first order meant any surface whose preferred
- * region was already taken fell into it — a conversation's region acquiring a
- * Diff or a Device because the right side happened to be busy. A surface whose
- * default is taken lands on the right first, so nothing arrives in Bottom by
- * accident. It is a default, not a rule: Bottom refuses nothing, and an
- * explicit placement (a move from a tab, a region's "+") still puts any
- * surface there.
+ * The fallback tries `right` BEFORE `bottom` (#2156). Only an EMPTY region
+ * is ever returned, so under either order nothing lands beside a pane that
+ * is already there; what the order decides is which empty edge a surface
+ * takes when its own default is taken. Bottom is Chat's by default, and an
+ * empty Bottom is where Chat will land next (a closed Chat tab re-placed by
+ * `dock=open`, `focusSession`, or ⌘D), so a surface with nowhere of its own
+ * to go takes the right edge and leaves Bottom for Chat. The one journey
+ * the order changes today is Chat itself: unplaced, with a remembered
+ * `left` placement that is occupied and both other edges free, it now lands
+ * right rather than bottom (`syncRegionArrangementFromDock`) — accepted, so
+ * the rule has no Chat-shaped exception. A default, not a rule: Bottom
+ * refuses nothing, and an explicit placement (a move from a tab, a region's
+ * "+") still puts any surface there.
  */
 export function firstFreeDockRegion(
   arrangement: RegionArrangement,

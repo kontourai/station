@@ -696,11 +696,19 @@ instance-keyed families (`pr:`, `file-preview:`). Home's only placement is
 `main`. The table is pinned in `region-model.test.ts`, so a later change to
 any entry is an argued edit rather than a drift.
 
-The fallback order moves with it. `firstFreeDockRegion` used to try
-`bottom` first, so any surface whose own default was already taken fell into
-Chat's region — a Diff or a Device arriving beside a conversation because the
-right side happened to be busy. It now tries `['right', 'bottom', 'left']`, so
-a surface with nowhere of its own to go lands on the right.
+The fallback order moves with it. `firstFreeDockRegion` returns only an
+EMPTY region, so under either order nothing lands beside a pane already
+there; the order decides which empty edge a surface takes when its own
+default is taken. It now tries `['right', 'bottom', 'left']` rather than
+`bottom` first, so a surface with nowhere of its own to go takes the right
+edge and leaves an empty Bottom for Chat, which is where Chat lands next.
+The one journey this changes today is Chat itself: unplaced, with a
+remembered `left` dock placement that is occupied and both other edges free,
+Chat now re-lands right rather than bottom (`syncRegionArrangementFromDock`).
+Accepted: the rule has no Chat-shaped exception. Terminal's new default is
+read by the `?surface=coding:terminal` deep link and by nothing advertised in
+the UI today (the region "+" always names its region); it is a default that
+#2154's chooser and later openers inherit.
 
 Both are DEFAULTS, not rules: Bottom refuses nothing. Every dock-capable
 surface still declares all three dock regions, so a tab's "Move to Bottom",
