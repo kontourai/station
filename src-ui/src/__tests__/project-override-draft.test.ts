@@ -25,9 +25,9 @@ describe('project override delta', () => {
   test('a reset of a key the project never overrode is not a change', () => {
     // Both spellings of "no stored override" compare equal, so Save is not
     // armed over a request that would write nothing.
-    expect(projectOverrideDelta({ defaultWorkspaceIsolation: null }, {})).toEqual(
-      {},
-    );
+    expect(
+      projectOverrideDelta({ defaultWorkspaceIsolation: null }, {}),
+    ).toEqual({});
     expect(
       projectOverrideDelta(
         { defaultWorkspaceIsolation: null },
@@ -38,9 +38,9 @@ describe('project override delta', () => {
 
   test('a pending reset reads as inheriting before it is saved', () => {
     const saved = { defaultWorkspaceIsolation: 'worktree' } as const;
-    expect(
-      effectiveOverrideValue('defaultWorkspaceIsolation', {}, saved),
-    ).toBe('worktree');
+    expect(effectiveOverrideValue('defaultWorkspaceIsolation', {}, saved)).toBe(
+      'worktree',
+    );
     expect(
       effectiveOverrideValue(
         'defaultWorkspaceIsolation',
@@ -89,9 +89,10 @@ describe('project override update body', () => {
   test('a half-pair is written away rather than stored as an override nothing reads', () => {
     // `readProjectOverrides` accepts the pair only whole, so leaving the
     // provider behind would store a value no resolver ever reaches.
-    expect(
-      buildProjectOverrideUpdate({ defaultModel: 'gpt-5' }, {}),
-    ).toEqual({ defaultModel: null, defaultProviderId: null });
+    expect(buildProjectOverrideUpdate({ defaultModel: 'gpt-5' }, {})).toEqual({
+      defaultModel: null,
+      defaultProviderId: null,
+    });
   });
 
   test('a key the page never touched is left out of the body entirely', () => {

@@ -1170,7 +1170,6 @@ describe('settings catalog completeness', () => {
     });
   });
 
-
   /**
    * #2144 slice 3 — the project scope selector and the override draft it
    * owns. `defaultWorkspaceIsolation` is the exercised row because it is the

@@ -119,7 +119,9 @@ export function inheritanceLayers({
     // A required setting has no default to fall back to — the value has to
     // come from somewhere closer, and printing `undefined` as a default would
     // claim a fallback that does not exist.
-    value: definition.required ? 'none' : describeValue(definition.defaultValue),
+    value: definition.required
+      ? 'none'
+      : describeValue(definition.defaultValue),
     inEffect: source === 'default',
   });
   return layers;
@@ -128,8 +130,7 @@ export function inheritanceLayers({
 export function SettingInheritanceLayers(props: SettingInheritanceLayersProps) {
   const layers = inheritanceLayers(props);
   const overriddenByProject =
-    props.provenance?.source === 'file' &&
-    props.provenance.scope === 'project';
+    props.provenance?.source === 'file' && props.provenance.scope === 'project';
 
   return (
     <div className="setting-inheritance">

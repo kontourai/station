@@ -53,6 +53,13 @@ import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
 import { PluginVisibilitySection } from './settings/PluginVisibilitySection';
+import {
+  buildProjectOverrideUpdate,
+  effectiveOverrideValue,
+  type ProjectOverrideDraft,
+  projectOverrideDelta,
+  savedOverridesFor,
+} from './settings/project-override-draft';
 import { SettingsManageSection } from './settings/SettingsManageSection';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
@@ -66,13 +73,6 @@ import {
   SETTINGS_SECTIONS,
   settingsRow,
 } from './settings/settings-catalog';
-import {
-  buildProjectOverrideUpdate,
-  effectiveOverrideValue,
-  type ProjectOverrideDraft,
-  projectOverrideDelta,
-  savedOverridesFor,
-} from './settings/project-override-draft';
 import { buildStationResetPlan } from './settings/station-reset';
 import {
   buildSettingsExportPayload,
@@ -613,7 +613,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       // The project write settles on its own: it is a different document on a
       // different route, so it succeeding or failing says nothing about the
       // Station config write and must not silence or absorb its message.
-      if (overrideWrite !== undefined && overrideOutcome.status === 'fulfilled') {
+      if (
+        overrideWrite !== undefined &&
+        overrideOutcome.status === 'fulfilled'
+      ) {
         setOverrideDraft({});
         // The provenance the page renders is computed from the project record
         // that just changed, so the badges are stale until it is re-read.

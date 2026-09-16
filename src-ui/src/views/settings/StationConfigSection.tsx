@@ -13,14 +13,14 @@
  * (see the delivery report's judgment-calls section).
  */
 
-import type {
-  SettingDefinition,
-  SettingProvenanceEntry,
-} from '@kontourai/station-contracts/settings-registry';
 import {
   PROJECT_OVERRIDABLE_APP_SETTING_KEYS,
   type ProjectOverridableAppSettingKey,
 } from '@kontourai/station-contracts/project-settings-overrides';
+import type {
+  SettingDefinition,
+  SettingProvenanceEntry,
+} from '@kontourai/station-contracts/settings-registry';
 import { USER_FACING_APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import type { AppConfig } from '../../types';
 import { renderSettingRow } from './registry-row';
@@ -131,9 +131,10 @@ export function StationConfigSection({
           : undefined;
         return renderSettingRow({
           definition,
-          value: overridable && overrideValue !== undefined
-            ? overrideValue
-            : config[key],
+          value:
+            overridable && overrideValue !== undefined
+              ? overrideValue
+              : config[key],
           provenance: provenance?.[key as string],
           runtimeDefault: hostDerivedDefault(config, key),
           ...(overridable

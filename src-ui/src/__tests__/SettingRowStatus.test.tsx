@@ -22,8 +22,8 @@ import {
   SettingInheritanceLayers,
 } from '../views/settings/SettingInheritanceLayers';
 import {
-  scopeBadgeLabel,
   SettingRowStatus,
+  scopeBadgeLabel,
 } from '../views/settings/SettingRowStatus';
 
 afterEach(cleanup);

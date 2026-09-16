@@ -25,6 +25,7 @@ import { Badge, Popover } from '@kontourai/ui/react';
 import { InfoGlyph } from '../../components/icons/Glyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { ProvenanceBadge } from '../../components/ProvenanceBadge';
+import { SkeletonBlock } from '../../components/state';
 import type { SettingsCatalogEntry } from './settings-catalog';
 
 /**
@@ -136,10 +137,14 @@ export function SettingRowStatus({
             projectValue,
             stationValue,
           }}
+          // The shared loading vocabulary, not a new sentence: SHELL-13's
+          // ratchet counts a bespoke "Loading…" string as a regression, and
+          // `SkeletonBlock`'s `label` is where the wait gets named.
           pending={
-            <p className="setting-row-status__pending" role="status">
-              Loading…
-            </p>
+            <SkeletonBlock
+              count={2}
+              label="Loading where this value comes from"
+            />
           }
           unavailable={(onRetry) => (
             <p className="setting-row-status__pending">
