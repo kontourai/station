@@ -1011,17 +1011,32 @@ export function resolveSessionExecutionSummary(
  * (`sessionHandlers`, and the snapshot's dead-session fold in
  * `snapshotHandlers`).
  *
- * Every other writer of `orchestrationStatus`, classified, because the
- * distinction is the whole point (round 4 N1): SESSION-level writers are
- * `session.state-changed` (`event.to`, a `SessionLifecycleState`, with
- * 'running'-without-an-open-turn folded to 'idle') and the snapshot's
- * `session.status`; TURN-level writers are `turn.started` ('running'),
- * `assistantTurn` ('idle'), `turn.aborted` ('aborted'), `runtime.error`
- * ('errored') and the approval handlers ('awaiting-approval'/'running').
- * A turn ending — including a user pressing Stop — leaves the process alive
- * and `orchestrationSessionStarted` untouched, so 'aborted' and 'errored'
- * are LIVE here. They were settled in round 3, which re-requested the
- * posture into a session the server merely continues.
+ * The writers of `orchestrationStatus` this derivation has been checked
+ * against, because the distinction is the whole point (round 4 N1). The
+ * field is written from three vocabularies, none of which is
+ * `SessionLifecycleState`: `session.state-changed` carries a `SessionState`
+ * (`packages/contracts/src/runtime-events.ts`), the connect-time snapshot
+ * carries `ProviderSession['status']`, and the turn handlers write their own
+ * strings. SESSION-level writers: `session.state-changed` (`event.to`, with
+ * 'running'-without-an-open-turn-or-local-send folded to 'idle') and the
+ * snapshot's `session.status`. TURN-level writers: `turn.started`
+ * ('running'), `assistantTurn` ('idle'), `turn.aborted` ('aborted'),
+ * `runtime.error` ('errored'), the approval handlers
+ * ('awaiting-approval'/'running'), and the storage rehydrator, which scrubs
+ * 'running'/'awaiting-approval' on restore.
+ *
+ * 'errored' arrives from BOTH levels — `runtime.error` and a
+ * `session.state-changed` from the Codex and station-agent adapters — and
+ * `sessionHandlers` treats the latter as terminal for activity hints. It is
+ * LIVE here regardless: the server decides continuation on the lifecycle
+ * state, not this string, and an errored thread can return to idle. Likewise
+ * 'aborted': a user pressing Stop leaves the process alive and
+ * `orchestrationSessionStarted` untouched. Both were settled in round 3,
+ * which re-requested the posture into a session the server merely continues.
+ *
+ * Known gap, tracked in #2168: the snapshot vocabulary's 'dead' and
+ * 'closed' fall through both halves below and read live, so a send against
+ * such a row withholds the posture from a genuine restart.
  */
 const CLIENT_SESSION_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   'exited',
