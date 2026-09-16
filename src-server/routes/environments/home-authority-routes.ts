@@ -250,15 +250,23 @@ export function createHomeAuthorityRoutes(
         return undefined;
       const data = value as Record<string, unknown>;
       if (
-        keys.some((key) =>
-          key === 'expectedRevision' || key === 'expectedGeneration'
-            ? // Generations and revisions are 1-based counters. A zero or
-              // negative one is refused by the authority as `conflict`, which
-              // this route answers 409 — indistinguishable from a real
-              // generation mismatch the caller could resolve by re-reading.
-              !Number.isSafeInteger(data[key]) || (data[key] as number) <= 0
-            : typeof data[key] !== 'string',
-        )
+        keys.some((key) => {
+          const numeric = data[key];
+          // The two counters are NOT the same shape, and a previous version
+          // of this check said they were. A control-session GENERATION is
+          // 1-based: the authority refuses `expectedGeneration <= 0` itself,
+          // as `conflict`, which this route answers 409 — indistinguishable
+          // from a real generation mismatch — so a non-positive one is
+          // refused here as 400 first. An owner REVISION is 0-based: a fresh
+          // owner's revision is 0, and `expectedRevision: 0` is the body every
+          // first enrollment sends. Refusing it broke two suites that only
+          // Nightly runs. Only a negative revision is malformed.
+          if (key === 'expectedGeneration')
+            return !Number.isSafeInteger(numeric) || (numeric as number) <= 0;
+          if (key === 'expectedRevision')
+            return !Number.isSafeInteger(numeric) || (numeric as number) < 0;
+          return typeof numeric !== 'string';
+        })
       )
         return undefined;
       return data;
