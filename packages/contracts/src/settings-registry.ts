@@ -242,6 +242,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'composite' },
     label: 'Registry trust policy',
+    help: 'Signing keys a registry must match before Station installs from it.',
     description:
       'Candidate registry signature policy. It becomes authoritative only after configuration is applied.',
   }),
