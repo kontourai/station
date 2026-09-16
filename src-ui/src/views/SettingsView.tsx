@@ -1498,7 +1498,7 @@ export function settingsSectionNavItems(
     // reader scanning for "Agents" or "Developer" is looking for a place, not
     // a row of this page. Each row is placed by the group the registry gives
     // it, not by being nav-only — Developer belongs beside this Station's own
-    // sections, not under SET UP with the entity lists.
+    // sections, not under Set up with the entity lists.
     const items = [
       ...navOnlyEntries
         .filter((entry) => entry.group === group.id)
@@ -1516,7 +1516,7 @@ export function settingsSectionNavItems(
       ),
     ];
     // An empty group renders NO heading: a label naming a group that is not
-    // there is worse than a missing label. THIS STATION's Developer row is
+    // there is worse than a missing label. This Station's Developer row is
     // conditional today, and a group could become wholly conditional next.
     if (items.length === 0) return [];
     return items.map((item, index) =>
