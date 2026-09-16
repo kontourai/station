@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
+import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { LazyBoundary } from '../LazyBoundary';
-import { useSidebarPillRegions } from './pill-region-placement';
 
 /**
  * Module-level so `LazyBoundary` sees ONE identity: it memoizes the lazy
@@ -104,7 +104,16 @@ export function ProjectLayoutChips({
    * the retry real rather than asserted in a comment.
    */
   const [menuAttempt, setMenuAttempt] = useState(0);
-  const pillRegions = useSidebarPillRegions();
+  /**
+   * Whether a region model is mounted — the whole of what this strip needs to
+   * know before it swallows a gesture. WHICH regions is the menu's own read
+   * (`pill-region-open.ts`, behind the lazy boundary), because
+   * `availablePlacements` never answers with an empty list: a coarse pointer
+   * or a narrow viewport offers `['bottom']`, not nothing. So "there is a
+   * model" and "there is somewhere to put it" are the same fact here, and this
+   * is the cheap spelling of it in a chunk every cold load pays for.
+   */
+  const hasRegionModel = useRegionModelOptional() !== null;
 
   // Derived from the LIST, not trusted from state: a layout deleted or a
   // project switched under an open menu leaves a key naming no chip, and a
@@ -141,7 +150,7 @@ export function ProjectLayoutChips({
    */
   const openMenuFor = (index: number): boolean => {
     const chip = chips[index];
-    if (!chip?.dockSurfaceId || pillRegions.regions.length === 0) return false;
+    if (!chip?.dockSurfaceId || !hasRegionModel) return false;
     focusAt(index);
     setMenuFor(chip.key);
     setMenuAttempt((attempt) => attempt + 1);
@@ -154,24 +163,25 @@ export function ProjectLayoutChips({
     // swallowing them here would teach two meanings for one pair of keys.
     switch (event.key) {
       /**
-       * The keyboard's route to the chip's menu (#2158).
+       * The keyboard's route to the chip's menu (#2158), and the ONLY key
+       * this adds.
        *
-       * `contextmenu` alone is not a route for everyone: macOS has no Menu key
-       * and no Shift+F10, so on Station's primary desktop platform a sighted
-       * keyboard-only reader had NO way to reach these rows — while the design
-       * record claimed the menu is the route a keyboard has. Shift+Enter is
-       * the portable half; `ContextMenu` is the one that already means this
-       * where the key exists.
+       * The context-menu gesture is already a keyboard route on Windows and
+       * Linux: the Menu key and Shift+F10 make the browser fire `contextmenu`
+       * on the focused element, which the chip's own handler answers. macOS
+       * has neither — no Menu key, no Shift+F10 — so on Station's primary
+       * desktop platform a sighted keyboard-only reader had NO way to reach
+       * these rows, while the design record claimed the menu is the route a
+       * keyboard has. Shift+Enter is what closes that, and handling the
+       * `ContextMenu` key here as well would be a second mechanism doing what
+       * the browser already does for the first.
        *
        * The subject is the chip holding the roving tab stop, which is the chip
-       * the reader is on. Both cases fall through to this handler's own
-       * `preventDefault` and only when a menu actually OPENED — which is what
-       * leaves Enter its ordinary meaning (activate the chip, navigate) on a
-       * chip with nothing to offer, and on plain Enter everywhere.
+       * the reader is on. `preventDefault` runs at the bottom of this handler
+       * and only when a menu actually OPENED — which is what leaves Enter its
+       * ordinary meaning (activate the chip, navigate) on plain Enter, and on
+       * a chip with nothing to offer.
        */
-      case 'ContextMenu':
-        if (!openMenuFor(rovingIndex)) return;
-        break;
       case 'Enter':
         if (!event.shiftKey || !openMenuFor(rovingIndex)) return;
         break;
@@ -208,6 +218,10 @@ export function ProjectLayoutChips({
         role="toolbar"
         aria-label={`${projectName} layouts`}
         aria-orientation="horizontal"
+        // Advertised, not just implemented: a chord nothing announces is a
+        // chord only its author knows. The reorder handle beside this row
+        // states its own the same way.
+        aria-keyshortcuts="Shift+Enter"
         onKeyDown={onKeyDown}
       >
         {chips.map((chip, index) => (
@@ -269,11 +283,10 @@ export function ProjectLayoutChips({
           </button>
         ))}
       </div>
-      {/* Both halves, not just the id: narrowing the window under 768px while
-          a menu is open takes the regions away under it, and the id alone
-          would then render an empty `.menu-surface` with the reader's focus
-          inside it. */}
-      {menuChip?.dockSurfaceId && pillRegions.regions.length > 0 && (
+      {/* Both halves, not just the id — the same pair `openMenuFor` requires,
+          so a model that goes away under an open menu takes the menu with
+          it rather than leaving a surface nothing can honour. */}
+      {menuChip?.dockSurfaceId && hasRegionModel && (
         <LazyBoundary
           // A FRESH boundary per gesture — see `menuAttempt`. This is what
           // retries an import that failed; nothing else can.
@@ -282,9 +295,7 @@ export function ProjectLayoutChips({
           componentProps={{
             label: `${menuChip.name} actions`,
             surfaceId: menuChip.dockSurfaceId,
-            regions: pillRegions.regions,
             onClose: closeMenu,
-            onOpenInRegion: pillRegions.openInRegion,
           }}
           pending={null}
           // A menu that failed to arrive renders nothing, rather than planting

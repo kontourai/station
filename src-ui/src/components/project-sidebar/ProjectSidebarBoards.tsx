@@ -12,10 +12,8 @@ import { useProjects } from '../../contexts/ProjectsContext';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { regionLabel } from '../../regions/region-model';
 import { NEW_BOARD_REQUEST_EVENT } from './new-board-events';
-import {
-  sidebarLayoutPaneId,
-  useSidebarPillRegions,
-} from './pill-region-placement';
+import { useSidebarPillRegions } from './pill-region-open';
+import { sidebarLayoutPaneId } from './pill-region-placement';
 import './ProjectSidebarBoards.css';
 
 /**

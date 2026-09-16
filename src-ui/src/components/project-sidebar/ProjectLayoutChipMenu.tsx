@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { regionLabel } from '../../regions/region-model';
-import type { DockMode } from '../../types';
+import { useSidebarPillRegions } from './pill-region-open';
 
 /**
  * A project Layout chip's "Open in <region>" menu (#2158).
@@ -35,19 +35,17 @@ import type { DockMode } from '../../types';
 export function ProjectLayoutChipMenu({
   label,
   surfaceId,
-  regions,
   onClose,
-  onOpenInRegion,
 }: {
   /** The menu's accessible name; its rows read bare beneath it. */
   label: string;
   /** The Layout this chip names, as `layout:<projectId>/<layoutId>`. */
   surfaceId: string;
-  /** The dock regions this device offers, from `useSidebarPillRegions`. */
-  regions: readonly DockMode[];
   onClose: () => void;
-  onOpenInRegion: (surfaceId: string, region: DockMode) => void;
 }) {
+  // Read HERE rather than taken as a prop: the strip that mounts this is
+  // eager, and the device read belongs with the rows it decides.
+  const { regions, openInRegion } = useSidebarPillRegions();
   // Always open: this component only exists while the menu is.
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
 
@@ -85,9 +83,9 @@ export function ProjectLayoutChipMenu({
       role="menu"
       aria-label={label}
       // Required by `useMenuFocus`: focus lands on the container when the menu
-      // holds nothing focusable. It cannot here — the call site renders this
-      // only with at least one region, and a device has one or three, never
-      // none — but the hook's contract is the container's.
+      // holds nothing focusable. `availablePlacements` never answers with an
+      // empty list, so a mounted menu always has a row — but the hook's
+      // contract is the container's, not this caller's.
       tabIndex={-1}
       onKeyDown={(event) => {
         if (event.key !== 'Escape') return;
@@ -107,7 +105,7 @@ export function ProjectLayoutChipMenu({
           role="menuitem"
           onClick={() => {
             onClose();
-            onOpenInRegion(surfaceId, region);
+            openInRegion(surfaceId, region);
           }}
         >
           {/* Bare, with the subject in the menu's own `aria-label` — the shape
