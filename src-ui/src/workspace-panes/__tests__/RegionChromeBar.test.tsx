@@ -217,8 +217,16 @@ describe('the region bar control set', () => {
    * here; dropping `!chrome.isMobile` fails the coarse assertion; dropping the
    * `onMoveTab` gate fails the model-less one; dropping the
    * `moveTargets(...).length > 0` gate fails the nowhere-to-go one; and
-   * keeping the strip's own `moving` state instead of the bar's leaves two
-   * menus open at once, which the last assertion counts.
+   * reporting the wrong opener — `from: 'tab'` where the button sets the state
+   * — fails the `aria-expanded` assertion.
+   *
+   * WHAT THE LAST ASSERTION DOES NOT PIN, measured rather than assumed:
+   * restoring a SECOND, strip-local `moving` state beside the bar's (the
+   * pre-#2160 shape, both menus rendered) still leaves one `role="menu"` here,
+   * because `useMenuFocus` focuses the newly mounted menu and the one that
+   * loses focus dismisses itself on `focusout`. So the count states the
+   * user-visible outcome, not the single-state mechanism; `aria-expanded`,
+   * which only one owner of the state can derive, is what carries that.
    */
   test('the bar’s Move button opens the same menu for the selected pane, including for a lone pane; absent on a coarse device, without a move handler, and with nowhere to go', () => {
     const lone = renderBar({
