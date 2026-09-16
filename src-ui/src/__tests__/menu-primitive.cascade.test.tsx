@@ -155,7 +155,18 @@ vi.mock('../contexts/RegionModelContext', async (importOriginal) => {
   };
 });
 
-vi.mock('../hooks/useIsMobile', () => ({
+/**
+ * The harness drives the device; everything else in the module stays REAL.
+ *
+ * It used to be a bare factory listing the three members this file needed, so
+ * a consumer reaching for a fourth — `dockFoldsToOneRegion`, which the sidebar
+ * pill menus read since #2158 — got `undefined` and reported a missing export
+ * rather than anything about menus. Spreading the actual module means the
+ * derivations that are pure functions of the faked device (the fold rule) stay
+ * the shipped ones and agree with the two overrides below by construction.
+ */
+vi.mock('../hooks/useIsMobile', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => harness.isMobile,
   useDockSlotDevice: () => ({
     viewportWidth: harness.bottomOnly ? 390 : 1456,
