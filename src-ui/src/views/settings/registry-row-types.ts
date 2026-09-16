@@ -30,6 +30,15 @@ export interface RegistryRowComponentProps {
    */
   runtimeDefault?: string;
   /**
+   * #2144 slice 7 — the storage rule the ENCLOSING scope group's caption has
+   * already stated for every row inside it. The status strip draws a scope
+   * chip only when this row's scope differs from that promise, so a plain
+   * Station row inside "Saved to this Station" prints nothing where it used
+   * to print STATION on every line. Supplied by the scope group that renders
+   * the row, never inferred: a row cannot know which box it is in.
+   */
+  containerScope?: 'station' | 'device';
+  /**
    * #2144 slice 3 — the project override context, supplied only by a caller
    * that holds a project override draft (`SettingsView`'s project selector).
    * All four are absent on a Station-only page, which is what makes its rows

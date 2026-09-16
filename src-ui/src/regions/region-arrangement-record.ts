@@ -31,6 +31,7 @@ import {
 } from '@kontourai/station-contracts/device-settings';
 import {
   DEFAULT_DEVICE_REGION_ARRANGEMENT,
+  isInstanceSurface,
   normalizeRegionPanes,
   REGION_IDS,
   REGION_SURFACE_REGISTRY,
@@ -186,10 +187,26 @@ function parseOccupant(
 /**
  * Reads a stored record back into live state, or returns null for a record
  * the caller should treat as absent. See the module comment for the
- * per-field fail-closed rules; in addition, a surface named by two regions
- * keeps the first in `REGION_IDS` order and is dropped from the later
- * regions' panes — a region left with nothing reads as empty, with the
- * visibility the record stored (#2153).
+ * per-field fail-closed rules; in addition, a SHELL surface named by two
+ * regions keeps the first in `REGION_IDS` order and is dropped from the
+ * later regions' panes — a region left with nothing reads as empty, with the
+ * visibility the record stored (#2153). An id repeated WITHIN one region is
+ * always collapsed, for either kind (`normalizeRegionPanes`).
+ *
+ * An INSTANCE-KEYED id (`isInstanceSurface`: a pull request, a file preview,
+ * a Board, a Layout) is exempt from the cross-region rule and is kept in
+ * every region that names it — a tolerance nothing in this build can produce
+ * (#2159 slice A). `placeSurface` still vacates the region a pane leaves, so
+ * no record this release writes holds one twice; the parser accepts the
+ * shape anyway so that the release ALREADY DEPLOYED can read what the next
+ * one will write, when placement stops vacating for those ids (slice B).
+ * That ordering is what makes slice B revertable for a full release window:
+ * reverting it leaves duplicates in records already on disk, and this parser
+ * — shipped first — still reads them as the two panes the user made, instead
+ * of silently dropping one and leaving a visible, empty region behind.
+ *
+ * So this is not permissiveness looking for a use: it is the read half of a
+ * read-before-write pair, and it stops being unreachable when slice B lands.
  */
 export function parseRegionArrangementRecord(
   value: unknown,
@@ -216,7 +233,9 @@ export function parseRegionArrangementRecord(
         }
       : { ...fallback };
     if (state.panes.some((pane) => seen.has(pane))) {
-      // A duplicate is dropped from the later region, which may empty it —
+      // A duplicate — a SHELL surface only, since `seen` no longer records
+      // an instance-keyed id (#2159 slice A) — is dropped from the later
+      // region, which may empty it —
       // and an emptied region KEEPS THE VISIBILITY THE RECORD STORED (#2153):
       // a dock region may be visible and empty, so coercing it to hidden here
       // would close a region the record says is open on the strength of a
@@ -233,7 +252,13 @@ export function parseRegionArrangementRecord(
         ),
       );
     }
-    for (const pane of state.panes) seen.add(pane);
+    // Only a SHELL surface is recorded as seen, so only a shell surface is
+    // de-duped across regions (#2159 slice A): an instance-keyed id is left
+    // out of `seen` and therefore survives in every region that names it.
+    // Within one region the collapse is unconditional and unchanged — it
+    // happens in `normalizeRegionPanes`, above, for ids of both kinds.
+    for (const pane of state.panes)
+      if (!isInstanceSurface(pane)) seen.add(pane);
     // The same invariants `updateRegion` holds for live state: `main` is
     // never maximized, nor is a hidden or empty region. Stored bytes can say
     // anything; the shell must never mount a blank full-height panel from

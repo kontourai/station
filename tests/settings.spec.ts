@@ -172,6 +172,38 @@ test.describe('Settings', () => {
     ).toBeLessThanOrEqual(page.viewportSize()!.width);
   });
 
+  // #2144 slice 7: at a fine-pointer desktop width the section navigation is
+  // a vertical rail, and every group heading is on screen without scrolling.
+  // Before this, the strip scrolled sideways at every width and at 1440x900
+  // cut off after the second group heading — three of five groups sat
+  // behind a horizontal scroll nothing announced. The mobile test above
+  // keeps the strip; this pins the other half of the modifier, and both
+  // would go red together if the breakpoint stopped being a complement.
+  test('at desktop width the section navigation is a rail that shows every group', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const nav = page.getByRole('navigation', { name: 'Settings sections' });
+    await expect(nav).toBeVisible({ timeout: 10_000 });
+    expect(
+      await nav.evaluate((element) => getComputedStyle(element).flexDirection),
+    ).toBe('column');
+    // Nothing hides behind a horizontal scroll inside the rail.
+    expect(
+      await nav.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+    const headings = nav.getByRole('heading');
+    expect(await headings.count()).toBeGreaterThanOrEqual(4);
+    const width = page.viewportSize()!.width;
+    for (const heading of await headings.all()) {
+      const box = (await heading.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+    }
+  });
+
   test('a nav-only row leaves Settings for the destination it names', async ({
     page,
   }) => {

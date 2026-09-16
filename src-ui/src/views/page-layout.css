@@ -689,6 +689,110 @@
   white-space: nowrap;
 }
 
+/* ── SectionNav rail (#2144 slice 7) ──
+   The SAME `<nav>` of the SAME flat `<a>`/`<h2>` children the strip above
+   renders — turned on its side. `.section-nav` alone truncates: a strip that
+   scrolls horizontally shows only as many links as fit, and at 1440x900
+   Settings' own strip cut off after the second group heading, leaving three
+   of five groups (Control, This device, Knowledge) behind a horizontal scroll
+   nothing announced. A vertical rail shows the whole map at once.
+
+   Three consequences worth stating, because each of them is a rule an earlier
+   change in this family had to learn:
+
+   - It is a MODIFIER, not a replacement. Below the mobile breakpoint, and on
+     any coarse pointer, `.section-nav`'s horizontal scroller is what ships —
+     the rail would eat a phone's width, and `tests/settings.spec.ts` pins both
+     that scroller and the 44px touch floor. The condition below is the exact
+     complement of this file's `(max-width: 768px), (pointer: coarse)` block,
+     so no device matches both and none matches neither.
+   - It adds NO element inside the nav. `SettingsSectionNav.test.tsx` pins that
+     every child of the strip is a link or a heading; the rail is a flex
+     DIRECTION change plus a layout partner OUTSIDE the landmark, so the
+     landmark, its single accessible name and its heading rotor are untouched.
+   - It lives here, beside `.section-nav`, for the reason review MED-4 gave
+     when it moved the scroll affordance here: the layout of this primitive is
+     decided in one file, so a host's own copy cannot be silently outranked.
+     `.section-nav-rail`/`__body` are the rail's layout partner, not a page's
+     own responsive CSS — a host supplies only the classes. */
+.section-nav-rail__body {
+  min-width: 0;
+}
+
+@media (min-width: 769px) and (not (pointer: coarse)) {
+  .section-nav-rail {
+    display: flex;
+    align-items: flex-start;
+    gap: 2rem;
+  }
+
+  .section-nav--rail {
+    flex: 0 0 200px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1px;
+    margin-bottom: 0;
+    padding-right: 0.75rem;
+    border-right: 1px solid var(--border-primary);
+    /* The rail's own scroll, so a nav taller than the window scrolls inside
+       itself instead of pushing the page. `sticky` keeps it beside the
+       content it navigates; `max-height` is what makes the overflow
+       reachable at all when it does. */
+    position: sticky;
+    top: 0.5rem;
+    max-height: calc(100vh - 6rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  /* A rail row is a line of a list, not a pill: no border of its own, the
+     full width of the rail, and text that wraps rather than a strip's
+     `white-space: nowrap` (which would clip "Engines & Models" at 200px). */
+  .section-nav--rail > .page__tab {
+    display: block;
+    padding: 0.5rem 0.625rem;
+    border-color: transparent;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    white-space: normal;
+  }
+
+  .section-nav--rail > .page__tab:hover {
+    border-color: transparent;
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  /* The established selected-row pair in this tree (`index.css` agent
+     selector, `chat.css` model row): a 14% accent TINT, not an accent fill,
+     with the accent itself as the foreground. */
+  .section-nav--rail > .page__tab--active {
+    border-color: transparent;
+    background: var(--bg-selected);
+    color: var(--accent-primary);
+    font-weight: 600;
+  }
+
+  .section-nav--rail > .section-nav__group-label {
+    align-self: stretch;
+    margin: 1rem 0 0.25rem 0.625rem;
+  }
+
+  .section-nav--rail > .section-nav__group-label:first-child {
+    margin-top: 0;
+  }
+
+  .section-nav-rail__body {
+    flex: 1 1 auto;
+    /* Station's own measure — `.page--narrow` / `.page-frame--narrow` are
+       960px — rather than a number borrowed from another product. At 1440
+       the content column is already narrower than this, so nothing moves
+       there; it caps the line length on a wide window, which is the case the
+       rail creates by taking the page's full width out of one column. */
+    max-width: 960px;
+  }
+}
+
 /* Shared Guidance/section tab-strip primitive: tabs grow to a 44px touch
    target and Tabs' (not SectionNav's) scrollbar hides on touch-sized
    screens; page surfaces must not supply their own mobile rail. */

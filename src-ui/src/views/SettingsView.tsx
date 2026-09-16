@@ -796,35 +796,42 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             reaches each of them too; `destination-registry.test.ts` pins
             that. This is about not stranding a reader who is already here.)
             */}
-        <SettingsSectionNav
-          activeSection={activeSection}
-          hrefForSection={hrefForSection}
-          navigateToSection={navigateToSection}
-        />
-        {/*
+        {/* The same rail frame the loaded branch renders (#2144 slice 7), so
+            a slow or failed config read does not first draw the navigation in
+            one place and then move it. */}
+        <div className="section-nav-rail">
+          <SettingsSectionNav
+            activeSection={activeSection}
+            hrefForSection={hrefForSection}
+            navigateToSection={navigateToSection}
+          />
+          <div className="section-nav-rail__body">
+            {/*
           Review M2: this branch used to be the skeleton alone, and
           `useConfigSnapshot` discarded the query error — so a failed initial
           config read left Settings drawing "still loading" forever. Error is
           not loading. The header and section nav above stay put either way
           (6-OPS-23): the frame a page owns is known before its data is.
 */}
-        {configError ? (
-          <ErrorState
-            title="Unable to load settings"
-            description={describeReadFailure(configError)}
-            action={
-              <Button size="sm" onClick={retryConfigRead}>
-                Retry
-              </Button>
-            }
-          />
-        ) : (
-          <SkeletonBlock
-            count={3}
-            className="settings__skeleton"
-            label="Loading settings"
-          />
-        )}
+            {configError ? (
+              <ErrorState
+                title="Unable to load settings"
+                description={describeReadFailure(configError)}
+                action={
+                  <Button size="sm" onClick={retryConfigRead}>
+                    Retry
+                  </Button>
+                }
+              />
+            ) : (
+              <SkeletonBlock
+                count={3}
+                className="settings__skeleton"
+                label="Loading settings"
+              />
+            )}
+          </div>
+        </div>
       </div>
     );
   }
@@ -861,286 +868,292 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           onChange={(e) => setSearchQuery(e.target.value)}
           aria-label="Filter settings"
         />
-        <SettingsSectionNav
-          activeSection={activeSection}
-          hrefForSection={hrefForSection}
-          navigateToSection={navigateToSection}
-        />
-
-        {/* #2144 slice 3: which document the page is showing values for.
+        <div className="section-nav-rail">
+          <SettingsSectionNav
+            activeSection={activeSection}
+            hrefForSection={hrefForSection}
+            navigateToSection={navigateToSection}
+          />
+          <div className="section-nav-rail__body">
+            {/* #2144 slice 3: which document the page is showing values for.
             Outside every scope group because it re-attributes rows in more
             than one of them, and the sentence beside it names exactly what a
             project may override — the selector governs attribution for the
             whole page, but only these settings are a project's to change. */}
-        <div className="settings__project-scope">
-          <label
-            className="settings__project-scope-label"
-            htmlFor="settings-project-scope"
-          >
-            Show settings for:
-          </label>
-          <select
-            id="settings-project-scope"
-            className="editor-select"
-            value={selectedProjectSlug ?? ''}
-            onChange={(event) => selectProject(event.target.value || null)}
-          >
-            <option value="">Station only</option>
-            {projectList.map((project) => (
-              <option key={project.slug} value={project.slug}>
-                {project.name ?? project.slug}
-              </option>
-            ))}
-          </select>
-          <span className="settings__field-hint">
-            A project can override its new-chat workspace and its default model
-            connection and model. Every other setting on this page belongs to
-            the Station.
-          </span>
-        </div>
+            <div className="settings__project-scope">
+              <label
+                className="settings__project-scope-label"
+                htmlFor="settings-project-scope"
+              >
+                Show settings for:
+              </label>
+              <select
+                id="settings-project-scope"
+                className="editor-select"
+                value={selectedProjectSlug ?? ''}
+                onChange={(event) => selectProject(event.target.value || null)}
+              >
+                <option value="">Station only</option>
+                {projectList.map((project) => (
+                  <option key={project.slug} value={project.slug}>
+                    {project.name ?? project.slug}
+                  </option>
+                ))}
+              </select>
+              <span className="settings__field-hint">
+                A project can override its new-chat workspace and its default
+                model connection and model. Every other setting on this page
+                belongs to the Station.
+              </span>
+            </div>
 
-        {/* ── Station scope ── */}
-        <section
-          aria-label="This Station settings"
-          className="settings__scope-group"
-        >
-          <p className="settings__scope-caption">
-            Saved to this Station — every client sees the same values.
-          </p>
+            {/* ── Station scope ── */}
+            <section
+              aria-label="This Station settings"
+              className="settings__scope-group"
+            >
+              <p className="settings__scope-caption">
+                Saved to this Station — every client sees the same values.
+              </p>
 
-          {sectionVisible('station-config') && (
-            <>
-              <StationConfigSection
-                config={config}
-                provenance={provenance}
-                onChange={setConfig}
-                projectOverride={projectOverride}
-              />
-              {/* #2144 slice 6 item D: whether anything CAN be sent, beside
+              {sectionVisible('station-config') && (
+                <>
+                  <StationConfigSection
+                    config={config}
+                    provenance={provenance}
+                    onChange={setConfig}
+                    // This box's caption is "Saved to this Station"; a plain
+                    // Station row inside it says nothing more.
+                    containerScope="station"
+                    projectOverride={projectOverride}
+                  />
+                  {/* #2144 slice 6 item D: whether anything CAN be sent, beside
                   the toggle that decides whether it is. Derived from the
                   boolean the disclosure query already holds — React Query
                   dedupes on the key, so this is the same request the
                   disclosure below makes, not a second one. The host is not
                   exposed (see `usageTelemetryDestinationSummary`). */}
-              <PageRow
-                {...settingsRow('telemetry-destination')}
-                description="Usage telemetry has somewhere to go only when the operator has configured a destination for this Station. Station does not show where that is."
-                control={(() => {
-                  // `null` is the in-flight read: the row keeps its place
-                  // (and its catalog identity) while saying nothing, rather
-                  // than asserting the host reported nothing.
-                  const summary = usageTelemetryDestinationSummary({
-                    endpointConfigured:
-                      telemetryDisclosure.data?.endpointConfigured,
-                    settled: telemetryDisclosure.settled,
-                    isError: telemetryDisclosure.isError,
-                  });
-                  return summary === null ? null : (
-                    <span className="settings__field-hint">{summary}</span>
-                  );
-                })()}
-              />
-              <UsageTelemetryDisclosure />
-              <LocalAccountsSection />
-            </>
-          )}
+                  <PageRow
+                    {...settingsRow('telemetry-destination')}
+                    description="Usage telemetry has somewhere to go only when the operator has configured a destination for this Station. Station does not show where that is."
+                    control={(() => {
+                      // `null` is the in-flight read: the row keeps its place
+                      // (and its catalog identity) while saying nothing, rather
+                      // than asserting the host reported nothing.
+                      const summary = usageTelemetryDestinationSummary({
+                        endpointConfigured:
+                          telemetryDisclosure.data?.endpointConfigured,
+                        settled: telemetryDisclosure.settled,
+                        isError: telemetryDisclosure.isError,
+                      });
+                      return summary === null ? null : (
+                        <span className="settings__field-hint">{summary}</span>
+                      );
+                    })()}
+                  />
+                  <UsageTelemetryDisclosure />
+                  <LocalAccountsSection />
+                </>
+              )}
 
-          {sectionVisible('system') && (
-            <>
-              <SystemSection
-                apiBase={currentApiBase}
-                config={config}
-                onChange={setConfig}
-                onExport={exportSettings}
-                onImport={importSettings}
-                onResetToDefaults={() => setShowResetModal(true)}
-                hasUnsavedChanges={hasChanges}
-              />
-              <ExistingSetupImportStepper />
-            </>
-          )}
+              {sectionVisible('system') && (
+                <>
+                  <SystemSection
+                    apiBase={currentApiBase}
+                    config={config}
+                    onChange={setConfig}
+                    onExport={exportSettings}
+                    onImport={importSettings}
+                    onResetToDefaults={() => setShowResetModal(true)}
+                    hasUnsavedChanges={hasChanges}
+                  />
+                  <ExistingSetupImportStepper />
+                </>
+              )}
 
-          {/* archive#3313: previews persist on the Station (PUT
+              {/* archive#3313: previews persist on the Station (PUT
               /api/feature-previews/:id), so the section lives in this scope. */}
-          {sectionVisible('feature-previews') && <FeaturePreviewsSection />}
+              {sectionVisible('feature-previews') && <FeaturePreviewsSection />}
 
-          {/* archive#1423: answer permalinks the operator has minted. Station
+              {/* archive#1423: answer permalinks the operator has minted. Station
               scope because the shares live on this Station and every client
               of it sees the same list. */}
-          {sectionVisible('answer-shares') && <AnswerSharesSection />}
+              {sectionVisible('answer-shares') && <AnswerSharesSection />}
 
-          {/* #2067: per-principal plugin visibility. Station scope — the
+              {/* #2067: per-principal plugin visibility. Station scope — the
               grants live on this Station — and the section renders nothing
               for a caller the route refuses as a non-operator. */}
-          {sectionVisible('plugin-visibility') && <PluginVisibilitySection />}
-          {sectionVisible('host-runtime') && (
-            <EnvironmentStatus apiBase={currentApiBase} />
-          )}
-
-          {sectionVisible('diagnostics') && (
-            <Section icon="◫" title="Diagnostics" id="section-diagnostics">
-              <PageRow
-                {...settingsRow('diagnostics-bundle')}
-                description="Download a redacted snapshot of Station health and configuration. It includes recent server logs when logging is enabled."
-                control={
-                  <button
-                    type="button"
-                    className="settings__secondary-btn settings__diagnostics-download"
-                    disabled={diagnosticsBundle.isPending}
-                    onClick={() => diagnosticsBundle.mutate(undefined)}
-                  >
-                    Download diagnostics bundle
-                  </button>
-                }
-              />
-              {diagnosticsBundle.isPending && (
-                <div
-                  className="settings__diagnostics-status"
-                  role="status"
-                  aria-label="Generating diagnostics bundle"
-                >
-                  <Skeleton variant="line" />
-                </div>
+              {sectionVisible('plugin-visibility') && (
+                <PluginVisibilitySection />
               )}
-              {diagnosticsBundle.isError && (
-                <ErrorState
-                  className="settings__diagnostics-status"
-                  variant="compact"
-                  title="Diagnostics bundle failed"
-                  description="Station could not prepare the diagnostics bundle."
-                  action={
-                    <button
-                      type="button"
-                      className="settings__secondary-btn"
-                      onClick={() => diagnosticsBundle.mutate(undefined)}
+              {sectionVisible('host-runtime') && (
+                <EnvironmentStatus apiBase={currentApiBase} />
+              )}
+
+              {sectionVisible('diagnostics') && (
+                <Section icon="◫" title="Diagnostics" id="section-diagnostics">
+                  <PageRow
+                    {...settingsRow('diagnostics-bundle')}
+                    description="Download a redacted snapshot of Station health and configuration. It includes recent server logs when logging is enabled."
+                    control={
+                      <button
+                        type="button"
+                        className="settings__secondary-btn settings__diagnostics-download"
+                        disabled={diagnosticsBundle.isPending}
+                        onClick={() => diagnosticsBundle.mutate(undefined)}
+                      >
+                        Download diagnostics bundle
+                      </button>
+                    }
+                  />
+                  {diagnosticsBundle.isPending && (
+                    <div
+                      className="settings__diagnostics-status"
+                      role="status"
+                      aria-label="Generating diagnostics bundle"
                     >
-                      Retry download
-                    </button>
-                  }
-                />
-              )}
-            </Section>
-          )}
-        </section>
-
-        {/* ── Defaults scope ── */}
-        <section
-          aria-label="Control settings"
-          className="settings__scope-group"
-        >
-          <p className="settings__scope-caption">
-            Saved to this Station — used when a chat, project, or agent doesn’t
-            set its own value.
-          </p>
-
-          {sectionVisible('agent-defaults') && (
-            <AgentDefaultsSection
-              config={config}
-              validationErrors={validationErrors}
-              validationWarnings={validationWarnings}
-              onChange={setConfig}
-              region={config.region || ''}
-              regionError={validationErrors.region}
-              regionProvenance={provenance?.region}
-              showRegion={showRegion}
-              onRegionChange={(value) =>
-                setConfig({ ...config, region: value })
-              }
-            />
-          )}
-        </section>
-
-        {/* ── This device scope ── */}
-        <section
-          aria-label="This device settings"
-          className="settings__scope-group"
-        >
-          <p className="settings__scope-caption">
-            Saved to this device only — these choices won’t follow you to
-            another device.
-          </p>
-
-          {sectionVisible('appearance') && (
-            <Section icon="◐" title="Appearance" id="section-appearance">
-              <PageRow
-                {...settingsRow('theme')}
-                description="Toggle between light and dark mode."
-                control={<ThemeToggle />}
-              />
-              {/* archive#3314: the restore path for a section removed via the
-                  sidebar's own × affordance. */}
-              <PageRow
-                {...settingsRow('sidebar-sections')}
-                description="Show the Open chats and Drafts sections in the sidebar."
-                control={
-                  <div className="settings__toggle-column">
-                    <div className="settings__toggle-line">
-                      <Toggle
-                        checked={!sidebarSections.openChatsHidden}
-                        onChange={(checked) =>
-                          setDeviceSetting('sidebarSections', {
-                            ...sidebarSections,
-                            openChatsHidden: !checked,
-                          })
-                        }
-                        label="Open chats in sidebar"
-                      />
-                      <span aria-hidden="true">Open chats</span>
+                      <Skeleton variant="line" />
                     </div>
-                    <div className="settings__toggle-line">
-                      <Toggle
-                        checked={!sidebarSections.draftsHidden}
-                        onChange={(checked) =>
-                          setDeviceSetting('sidebarSections', {
-                            ...sidebarSections,
-                            draftsHidden: !checked,
-                          })
-                        }
-                        label="Drafts in sidebar"
-                      />
-                      <span aria-hidden="true">Drafts</span>
-                    </div>
-                  </div>
-                }
-              />
-              {isMobile && (
-                <PageRow
-                  {...settingsRow('haptic-feedback')}
-                  description="Light pulses while an assistant reply streams, plus feedback on copy, pairing success, and destructive confirms."
-                  control={
-                    <Toggle
-                      checked={hapticsEnabled}
-                      onChange={(checked) =>
-                        setDeviceSetting('hapticsEnabled', checked)
+                  )}
+                  {diagnosticsBundle.isError && (
+                    <ErrorState
+                      className="settings__diagnostics-status"
+                      variant="compact"
+                      title="Diagnostics bundle failed"
+                      description="Station could not prepare the diagnostics bundle."
+                      action={
+                        <button
+                          type="button"
+                          className="settings__secondary-btn"
+                          onClick={() => diagnosticsBundle.mutate(undefined)}
+                        >
+                          Retry download
+                        </button>
                       }
-                      label={settingsRow('haptic-feedback').title}
                     />
+                  )}
+                </Section>
+              )}
+            </section>
+
+            {/* ── Defaults scope ── */}
+            <section
+              aria-label="Control settings"
+              className="settings__scope-group"
+            >
+              <p className="settings__scope-caption">
+                Saved to this Station — used when a chat, project, or agent
+                doesn’t set its own value.
+              </p>
+
+              {sectionVisible('agent-defaults') && (
+                <AgentDefaultsSection
+                  config={config}
+                  validationErrors={validationErrors}
+                  validationWarnings={validationWarnings}
+                  onChange={setConfig}
+                  region={config.region || ''}
+                  regionError={validationErrors.region}
+                  regionProvenance={provenance?.region}
+                  showRegion={showRegion}
+                  onRegionChange={(value) =>
+                    setConfig({ ...config, region: value })
                   }
                 />
               )}
-              <AccentColorPicker />
-              {/* #2144 slice 6 item E. A group, not a new section: slice 4
+            </section>
+
+            {/* ── This device scope ── */}
+            <section
+              aria-label="This device settings"
+              className="settings__scope-group"
+            >
+              <p className="settings__scope-caption">
+                Saved to this device only — these choices won’t follow you to
+                another device.
+              </p>
+
+              {sectionVisible('appearance') && (
+                <Section icon="◐" title="Appearance" id="section-appearance">
+                  <PageRow
+                    {...settingsRow('theme')}
+                    description="Toggle between light and dark mode."
+                    control={<ThemeToggle />}
+                  />
+                  {/* archive#3314: the restore path for a section removed via the
+                  sidebar's own × affordance. */}
+                  <PageRow
+                    {...settingsRow('sidebar-sections')}
+                    description="Show the Open chats and Drafts sections in the sidebar."
+                    control={
+                      <div className="settings__toggle-column">
+                        <div className="settings__toggle-line">
+                          <Toggle
+                            checked={!sidebarSections.openChatsHidden}
+                            onChange={(checked) =>
+                              setDeviceSetting('sidebarSections', {
+                                ...sidebarSections,
+                                openChatsHidden: !checked,
+                              })
+                            }
+                            label="Open chats in sidebar"
+                          />
+                          <span aria-hidden="true">Open chats</span>
+                        </div>
+                        <div className="settings__toggle-line">
+                          <Toggle
+                            checked={!sidebarSections.draftsHidden}
+                            onChange={(checked) =>
+                              setDeviceSetting('sidebarSections', {
+                                ...sidebarSections,
+                                draftsHidden: !checked,
+                              })
+                            }
+                            label="Drafts in sidebar"
+                          />
+                          <span aria-hidden="true">Drafts</span>
+                        </div>
+                      </div>
+                    }
+                  />
+                  {isMobile && (
+                    <PageRow
+                      {...settingsRow('haptic-feedback')}
+                      description="Light pulses while an assistant reply streams, plus feedback on copy, pairing success, and destructive confirms."
+                      control={
+                        <Toggle
+                          checked={hapticsEnabled}
+                          onChange={(checked) =>
+                            setDeviceSetting('hapticsEnabled', checked)
+                          }
+                          label={settingsRow('haptic-feedback').title}
+                        />
+                      }
+                    />
+                  )}
+                  <AccentColorPicker />
+                  {/* #2144 slice 6 item E. A group, not a new section: slice 4
                   owns the navigation, and only ONE destructive confirm has
                   an action behind it today — archive and quit do not exist,
                   and "Clear all conversations" deliberately keeps asking. */}
-              <h3 className="settings__group-title">Confirmations</h3>
-              <PageRow
-                {...settingsRow('confirm-conversation-delete')}
-                description="Deleting a conversation cannot be undone. Turn this off to delete immediately. Clearing all conversations always asks."
-                control={
-                  <Toggle
-                    checked={confirmConversationDelete}
-                    onChange={(checked) =>
-                      setDeviceSetting('confirmConversationDelete', checked)
+                  <h3 className="settings__group-title">Confirmations</h3>
+                  <PageRow
+                    {...settingsRow('confirm-conversation-delete')}
+                    description="Deleting a conversation cannot be undone. Turn this off to delete immediately. Clearing all conversations always asks."
+                    control={
+                      <Toggle
+                        checked={confirmConversationDelete}
+                        onChange={(checked) =>
+                          setDeviceSetting('confirmConversationDelete', checked)
+                        }
+                        label={settingsRow('confirm-conversation-delete').title}
+                      />
                     }
-                    label={settingsRow('confirm-conversation-delete').title}
                   />
-                }
-              />
-            </Section>
-          )}
+                </Section>
+              )}
 
-          {/* #2144 decision 2: Chat owns the rows that decide what a chat
+              {/* #2144 decision 2: Chat owns the rows that decide what a chat
               LOOKS and BEHAVES like on this device. Two of them moved here
               from Appearance (their ids, and therefore every `highlight=`
               deep link, are unchanged); the other five had a device-settings
@@ -1164,224 +1177,230 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               than a new one: that list is recorded debt (#1704 is shrinking
               it), so a section arriving with its own pictogram would grow it
               for decoration. A speech bubble would have. */}
-          {sectionVisible('chat') && (
-            <Section icon="◇" title="Chat" id="section-chat">
-              {/* This slider writes the DEVICE key only. The Station
+              {sectionVisible('chat') && (
+                <Section icon="◇" title="Chat" id="section-chat">
+                  {/* This slider writes the DEVICE key only. The Station
                   default it falls back to (`defaultChatFontSize`) has its own
                   row under Station configuration — the catalog entry used to
                   claim both keys while nothing here wrote the Station one. */}
-              <PageRow
-                {...settingsRow('chat-font-size')}
-                // `savedConfig`, not `config`, in all three places below: this
-                // row reports what this device falls back to, which is the
-                // STORED Station default. An unsaved draft of
-                // `defaultChatFontSize` is not in force anywhere yet, so
-                // moving the slider with it would show a fallback no chat is
-                // using.
-                description={`Font size for chat messages on this device (10–24px). Leave at the Station default of ${savedConfig.defaultChatFontSize ?? 14}px unless you want this device to differ.`}
-                control={
-                  <div className="settings__range-row">
-                    <input
-                      id="chatFontSize"
-                      aria-label={settingsRow('chat-font-size').title}
-                      type="range"
-                      min="10"
-                      max="24"
-                      value={
-                        chatFontSize ?? savedConfig.defaultChatFontSize ?? 14
-                      }
-                      onChange={(e) =>
-                        setDeviceSetting(
-                          'chatFontSize',
-                          parseInt(e.target.value, 10),
-                        )
-                      }
-                    />
-                    <span className="settings__range-value">
-                      {`${chatFontSize ?? savedConfig.defaultChatFontSize ?? 14}px`}
-                    </span>
-                    {chatFontSize != null && (
-                      <button
-                        type="button"
-                        className="settings__secondary-btn"
-                        onClick={() => resetDeviceSetting('chatFontSize')}
-                      >
-                        Use Station default
-                      </button>
-                    )}
-                  </div>
-                }
-              />
-              {/* #585 / #2144 slice 6 item B: one control naming BOTH
+                  <PageRow
+                    {...settingsRow('chat-font-size')}
+                    // `savedConfig`, not `config`, in all three places below: this
+                    // row reports what this device falls back to, which is the
+                    // STORED Station default. An unsaved draft of
+                    // `defaultChatFontSize` is not in force anywhere yet, so
+                    // moving the slider with it would show a fallback no chat is
+                    // using.
+                    description={`Font size for chat messages on this device (10–24px). Leave at the Station default of ${savedConfig.defaultChatFontSize ?? 14}px unless you want this device to differ.`}
+                    control={
+                      <div className="settings__range-row">
+                        <input
+                          id="chatFontSize"
+                          aria-label={settingsRow('chat-font-size').title}
+                          type="range"
+                          min="10"
+                          max="24"
+                          value={
+                            chatFontSize ??
+                            savedConfig.defaultChatFontSize ??
+                            14
+                          }
+                          onChange={(e) =>
+                            setDeviceSetting(
+                              'chatFontSize',
+                              parseInt(e.target.value, 10),
+                            )
+                          }
+                        />
+                        <span className="settings__range-value">
+                          {`${chatFontSize ?? savedConfig.defaultChatFontSize ?? 14}px`}
+                        </span>
+                        {chatFontSize != null && (
+                          <button
+                            type="button"
+                            className="settings__secondary-btn"
+                            onClick={() => resetDeviceSetting('chatFontSize')}
+                          >
+                            Use Station default
+                          </button>
+                        )}
+                      </div>
+                    }
+                  />
+                  {/* #585 / #2144 slice 6 item B: one control naming BOTH
                   outcomes, over the same `featureSettings.smoothReveal`
                   boolean the two "Smooth answer reveal" toggles wrote. The
                   in-chat gear panel renders the same options from the same
                   mapping module. */}
-              <PageRow
-                {...settingsRow('smooth-answer-reveal')}
-                description="How streamed answer text appears on this device. Either way the same text arrives at the same time; only its pacing on screen differs."
-                control={
-                  <select
-                    className="editor-select"
-                    aria-label={settingsRow('smooth-answer-reveal').title}
-                    value={answerDeliveryModeOf(featureSettings?.smoothReveal)}
-                    onChange={(event) => {
-                      const mode = event.target.value;
-                      if (!isAnswerDeliveryMode(mode)) return;
-                      setDeviceSetting('featureSettings', {
-                        ...featureSettings,
-                        smoothReveal: smoothRevealForAnswerDelivery(mode),
-                      });
-                    }}
-                  >
-                    {ANSWER_DELIVERY_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                }
-              />
-              <PageRow
-                {...settingsRow('chat-show-reasoning')}
-                description="Chat messages on this device include the model’s reasoning steps."
-                control={
-                  <Toggle
-                    checked={chatShowReasoning}
-                    onChange={(checked) =>
-                      setDeviceSetting('chatShowReasoning', checked)
+                  <PageRow
+                    {...settingsRow('smooth-answer-reveal')}
+                    description="How streamed answer text appears on this device. Either way the same text arrives at the same time; only its pacing on screen differs."
+                    control={
+                      <select
+                        className="editor-select"
+                        aria-label={settingsRow('smooth-answer-reveal').title}
+                        value={answerDeliveryModeOf(
+                          featureSettings?.smoothReveal,
+                        )}
+                        onChange={(event) => {
+                          const mode = event.target.value;
+                          if (!isAnswerDeliveryMode(mode)) return;
+                          setDeviceSetting('featureSettings', {
+                            ...featureSettings,
+                            smoothReveal: smoothRevealForAnswerDelivery(mode),
+                          });
+                        }}
+                      >
+                        {ANSWER_DELIVERY_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     }
-                    label={settingsRow('chat-show-reasoning').title}
                   />
-                }
-              />
-              <PageRow
-                {...settingsRow('chat-show-tool-details')}
-                description="Tool calls can be expanded to read their arguments and results."
-                control={
-                  <Toggle
-                    checked={chatShowToolDetails}
-                    onChange={(checked) =>
-                      setDeviceSetting('chatShowToolDetails', checked)
+                  <PageRow
+                    {...settingsRow('chat-show-reasoning')}
+                    description="Chat messages on this device include the model’s reasoning steps."
+                    control={
+                      <Toggle
+                        checked={chatShowReasoning}
+                        onChange={(checked) =>
+                          setDeviceSetting('chatShowReasoning', checked)
+                        }
+                        label={settingsRow('chat-show-reasoning').title}
+                      />
                     }
-                    label={settingsRow('chat-show-tool-details').title}
                   />
-                }
-              />
-              <PageRow
-                {...settingsRow('chat-dock-auto-hide')}
-                description="An idle, open chat dock collapses to its bar after five seconds."
-                control={
-                  <Toggle
-                    checked={chatDockAutoHide}
-                    onChange={(checked) =>
-                      setDeviceSetting('chatDockAutoHide', checked)
+                  <PageRow
+                    {...settingsRow('chat-show-tool-details')}
+                    description="Tool calls can be expanded to read their arguments and results."
+                    control={
+                      <Toggle
+                        checked={chatShowToolDetails}
+                        onChange={(checked) =>
+                          setDeviceSetting('chatShowToolDetails', checked)
+                        }
+                        label={settingsRow('chat-show-tool-details').title}
+                      />
                     }
-                    label={settingsRow('chat-dock-auto-hide').title}
                   />
-                }
-              />
-              {/* The diff rows belong to chat because the changed files a
+                  <PageRow
+                    {...settingsRow('chat-dock-auto-hide')}
+                    description="An idle, open chat dock collapses to its bar after five seconds."
+                    control={
+                      <Toggle
+                        checked={chatDockAutoHide}
+                        onChange={(checked) =>
+                          setDeviceSetting('chatDockAutoHide', checked)
+                        }
+                        label={settingsRow('chat-dock-auto-hide').title}
+                      />
+                    }
+                  />
+                  {/* The diff rows belong to chat because the changed files a
                   reader opens arrive there. `DiffPanel` writes the same two
                   keys from its own controls. */}
-              <PageRow
-                {...settingsRow('diff-style')}
-                description="Changed files show as one column, or as two side-by-side columns."
-                control={
-                  <select
-                    className="editor-select"
-                    aria-label={settingsRow('diff-style').title}
-                    value={diffStyle}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      if (value !== 'unified' && value !== 'split') return;
-                      setDeviceSetting('diffStyle', value);
-                    }}
-                  >
-                    <option value="unified">Unified</option>
-                    <option value="split">Side by side</option>
-                  </select>
-                }
-              />
-              <PageRow
-                {...settingsRow('diff-wrap')}
-                description="Long diff lines wrap instead of scrolling sideways."
-                control={
-                  <Toggle
-                    checked={diffWrap}
-                    onChange={(checked) =>
-                      setDeviceSetting('diffWrap', checked)
+                  <PageRow
+                    {...settingsRow('diff-style')}
+                    description="Changed files show as one column, or as two side-by-side columns."
+                    control={
+                      <select
+                        className="editor-select"
+                        aria-label={settingsRow('diff-style').title}
+                        value={diffStyle}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          if (value !== 'unified' && value !== 'split') return;
+                          setDeviceSetting('diffStyle', value);
+                        }}
+                      >
+                        <option value="unified">Unified</option>
+                        <option value="split">Side by side</option>
+                      </select>
                     }
-                    label={settingsRow('diff-wrap').title}
                   />
-                }
-              />
-            </Section>
-          )}
-
-          {sectionVisible('keyboard-shortcuts') && (
-            <Section
-              icon="⌨"
-              title="Keyboard shortcuts"
-              id="section-keyboard-shortcuts"
-            >
-              <KeyboardShortcutsSection />
-            </Section>
-          )}
-
-          {sectionVisible('notifications') && (
-            <NotificationsSection apiBase={currentApiBase} />
-          )}
-
-          {sectionVisible('voice') && <VoiceFeaturesSection />}
-
-          {sectionVisible('developer-tools') && (
-            <Section
-              icon="⌥"
-              title="Developer tools"
-              id="section-developer-tools"
-            >
-              <PageRow
-                {...settingsRow('enable-developer-tools')}
-                // Where the result APPEARS, because it is not here: the row
-                // this adds opens the This Station group of the navigation
-                // strip at the top of this page, while the switch itself sits
-                // in This device further down, and the strip scrolls
-                // sideways. Nothing else on the page moves, so without the
-                // sentence the press reads as having done nothing.
-                description="Show the Developer surface (logs, system, telemetry, memory, archive) on this device. A Developer row appears in the navigation at the top of this page, first under This Station, and Developer joins the sidebar and the command palette. Deep links to /developer keep working either way."
-                control={
-                  <Toggle
-                    checked={developerToolsEnabled}
-                    onChange={(checked) =>
-                      setDeviceSetting('developerToolsEnabled', checked)
+                  <PageRow
+                    {...settingsRow('diff-wrap')}
+                    description="Long diff lines wrap instead of scrolling sideways."
+                    control={
+                      <Toggle
+                        checked={diffWrap}
+                        onChange={(checked) =>
+                          setDeviceSetting('diffWrap', checked)
+                        }
+                        label={settingsRow('diff-wrap').title}
+                      />
                     }
-                    label={settingsRow('enable-developer-tools').title}
                   />
-                }
-              />
-            </Section>
-          )}
-        </section>
+                </Section>
+              )}
 
-        {/* ── My knowledge store (stays its own top-level card) ──
+              {sectionVisible('keyboard-shortcuts') && (
+                <Section
+                  icon="⌨"
+                  title="Keyboard shortcuts"
+                  id="section-keyboard-shortcuts"
+                >
+                  <KeyboardShortcutsSection />
+                </Section>
+              )}
+
+              {sectionVisible('notifications') && (
+                <NotificationsSection apiBase={currentApiBase} />
+              )}
+
+              {sectionVisible('voice') && <VoiceFeaturesSection />}
+
+              {sectionVisible('developer-tools') && (
+                <Section
+                  icon="⌥"
+                  title="Developer tools"
+                  id="section-developer-tools"
+                >
+                  <PageRow
+                    {...settingsRow('enable-developer-tools')}
+                    // Where the result APPEARS, because it is not here: the row
+                    // this adds opens the This Station group of the navigation
+                    // strip at the top of this page, while the switch itself sits
+                    // in This device further down, and the strip scrolls
+                    // sideways. Nothing else on the page moves, so without the
+                    // sentence the press reads as having done nothing.
+                    description="Show the Developer surface (logs, system, telemetry, memory, archive) on this device. A Developer row appears in the navigation at the top of this page, first under This Station, and Developer joins the sidebar and the command palette. Deep links to /developer keep working either way."
+                    control={
+                      <Toggle
+                        checked={developerToolsEnabled}
+                        onChange={(checked) =>
+                          setDeviceSetting('developerToolsEnabled', checked)
+                        }
+                        label={settingsRow('enable-developer-tools').title}
+                      />
+                    }
+                  />
+                </Section>
+              )}
+            </section>
+
+            {/* ── My knowledge store (stays its own top-level card) ──
             The caption keeps the persistence fact the removed scope legend
             used to carry for knowledge (station#1826 delivery review, M2):
             this card sits outside every scope group, so without its own
             caption nothing on the page said knowledge lives on the Station
             and follows you across devices. */}
-        {sectionVisible('knowledge') && (
-          <section
-            aria-label="Knowledge settings"
-            className="settings__scope-group"
-          >
-            <p className="settings__scope-caption">
-              Saved to this Station — available from every device that connects
-              to it.
-            </p>
-            <KnowledgeStoreSection />
-          </section>
-        )}
+            {sectionVisible('knowledge') && (
+              <section
+                aria-label="Knowledge settings"
+                className="settings__scope-group"
+              >
+                <p className="settings__scope-caption">
+                  Saved to this Station — available from every device that
+                  connects to it.
+                </p>
+                <KnowledgeStoreSection />
+              </section>
+            )}
+          </div>
+        </div>
       </div>
 
       {(hasChanges || overrideDirty) && (
@@ -1591,7 +1610,7 @@ function SettingsSectionNav({
   );
   return (
     <SectionNav
-      className="settings__section-nav"
+      className="settings__section-nav section-nav--rail"
       aria-label="Settings sections"
       items={items}
       activeKey={activeSection}

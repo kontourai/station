@@ -74,7 +74,7 @@ function createHarness(
     connectedClientPresence?: ClientConnectionPresence;
     clientPresenceAvailable?: boolean;
     resolvePublicIngressOrigin?: () => Promise<readonly string[] | undefined>;
-    isRequestPrincipalCurrent?: ((request: Request) => boolean) | null;
+    isRequestPrincipalCurrent?: (request: Request) => boolean;
   } = {},
 ) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-pairing-routes-'));
@@ -173,20 +173,15 @@ function createHarness(
       }),
     connectedClientPresence: options.connectedClientPresence,
     clientPresenceAvailable: options.clientPresenceAvailable,
-    ...(options.isRequestPrincipalCurrent === null
-      ? {}
-      : {
-          isRequestPrincipalCurrent:
-            options.isRequestPrincipalCurrent ??
-            ((request) => {
-              const principal =
-                getRuntimeAuthenticatedRequestPrincipal(request);
-              return (
-                principal?.authority === 'operator-credential' &&
-                principal.credential === MASTER_CREDENTIAL
-              );
-            }),
-        }),
+    isRequestPrincipalCurrent:
+      options.isRequestPrincipalCurrent ??
+      ((request) => {
+        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+        return (
+          principal?.authority === 'operator-credential' &&
+          principal.credential === MASTER_CREDENTIAL
+        );
+      }),
   });
   app.get('/api/projects', (c) => c.json({ projects: [] }));
   app.post('/api/projects', (c) => c.json({ projects: [] }));
@@ -1755,8 +1750,12 @@ describe('device scope change (station#3816)', () => {
     expect(checkedRequests[1]).toBe(checkedRequests[0]);
   });
 
+  // An ABSENT callback is deliberately not a row here: the option is
+  // required, so omitting it is a compile error rather than a behaviour to
+  // pin, and writing the case would need a cast to express a state the type
+  // forbids. The 'throwing' row is what pins the fail-closed catch that
+  // absence used to exercise.
   test.each([
-    ['absent', null],
     ['false', () => false],
     [
       'throwing',
@@ -1765,7 +1764,12 @@ describe('device scope change (station#3816)', () => {
       },
     ],
     [
-      'async',
+      // Not "async is supported" -- nothing can produce a Promise here. What
+      // this pins is that a NON-BOOLEAN return from a malformed callback is
+      // denied rather than read as truthy authorization. The cast below is
+      // load-bearing and deliberate: it constructs a value the option's type
+      // forbids, which is the only way to reach this branch at all.
+      'non-boolean-returning',
       (() => Promise.resolve(true)) as unknown as (request: Request) => boolean,
     ],
   ] as const)(

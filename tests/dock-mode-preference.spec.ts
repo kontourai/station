@@ -15,6 +15,7 @@ import {
   installE2EWorkspacePaneCatalog,
 } from './helpers/current-station-contract';
 import { dismissSetupLauncher } from './helpers/orchestration';
+import { dragDockTo } from './helpers/region-placement';
 
 const STATUS_READY = JSON.stringify({
   ready: true,
@@ -191,29 +192,6 @@ async function seedRoutes(page: import('@playwright/test').Page) {
       }),
     ),
   ]);
-}
-
-async function dragDockTo(page: Page, placement: 'left' | 'right') {
-  const handle = page.getByRole('button', { name: 'Move the dock' });
-  const handleBox = await handle.boundingBox();
-  expect(handleBox, 'Move the dock handle must be measurable').not.toBeNull();
-  await page.mouse.move(
-    handleBox!.x + handleBox!.width / 2,
-    handleBox!.y + handleBox!.height / 2,
-  );
-  await page.mouse.down();
-  const target = page.locator(`[data-dock-placement-target="${placement}"]`);
-  await expect(target).toBeVisible();
-  const targetBox = await target.boundingBox();
-  expect(
-    targetBox,
-    `${placement} drop target must be measurable`,
-  ).not.toBeNull();
-  await page.mouse.move(
-    targetBox!.x + targetBox!.width / 2,
-    targetBox!.y + targetBox!.height / 2,
-  );
-  await page.mouse.up();
 }
 
 async function settleDock(page: Page) {

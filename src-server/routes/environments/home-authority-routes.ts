@@ -250,23 +250,24 @@ export function createHomeAuthorityRoutes(
         return undefined;
       const data = value as Record<string, unknown>;
       if (
-        keys.some((key) => {
-          const numeric = data[key];
-          // The two counters are NOT the same shape, and a previous version
-          // of this check said they were. A control-session GENERATION is
-          // 1-based: the authority refuses `expectedGeneration <= 0` itself,
-          // as `conflict`, which this route answers 409 — indistinguishable
-          // from a real generation mismatch — so a non-positive one is
-          // refused here as 400 first. An owner REVISION is 0-based: a fresh
-          // owner's revision is 0, and `expectedRevision: 0` is the body every
-          // first enrollment sends. Refusing it broke two suites that only
-          // Nightly runs. Only a negative revision is malformed.
-          if (key === 'expectedGeneration')
-            return !Number.isSafeInteger(numeric) || (numeric as number) <= 0;
-          if (key === 'expectedRevision')
-            return !Number.isSafeInteger(numeric) || (numeric as number) < 0;
-          return typeof numeric !== 'string';
-        })
+        keys.some((key) =>
+          key === 'expectedGeneration'
+            ? // Generations are 1-based counters. A zero or negative one is
+              // refused by the authority as `conflict`, which this route
+              // answers 409 — indistinguishable from a real generation
+              // mismatch the caller could resolve by re-reading.
+              !Number.isSafeInteger(data[key]) || (data[key] as number) <= 0
+            : key === 'expectedRevision'
+              ? // A revision is NOT 1-based: a home's first transfer is
+                // prepared against revision 0, and the transfers routes have
+                // accepted it since #1615. #1659 swept this key into the
+                // generation rule above and turned every first transfer into
+                // a 400 that fired before authorization (#2196) — the stranger
+                // case answered 400 where 403 was the whole point. Only a
+                // negative revision is malformed.
+                !Number.isSafeInteger(data[key]) || (data[key] as number) < 0
+              : typeof data[key] !== 'string',
+        )
       )
         return undefined;
       return data;

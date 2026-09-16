@@ -59,13 +59,24 @@ type CatalogScope = NonNullable<SettingsCatalogEntry['scope']>;
 export function scopeBadgeLabel(
   catalogScope: CatalogScope | undefined,
   provenance: SettingProvenanceEntry | undefined,
+  containerScope?: 'station' | 'device',
 ): string | undefined {
   if (provenance?.source === 'file' && provenance.scope === 'project')
     return 'Project';
-  if (catalogScope === 'station' || catalogScope === 'defaults')
-    return 'Station';
-  if (catalogScope === 'device') return 'This device';
-  return undefined;
+  // #2144 slice 7: a label that only restates the enclosing group's caption
+  // is withheld. Every Station row inside "Saved to this Station" used to
+  // carry a STATION chip — a label printed regardless of state, the epic's
+  // own named defect in visual form; none of the three products compared
+  // marks the common case per row. So the chip is a DIFFERENCE from the
+  // caption, and a caller that names no container gets the old behaviour.
+  const own =
+    catalogScope === 'station' || catalogScope === 'defaults'
+      ? 'station'
+      : catalogScope === 'device'
+        ? 'device'
+        : undefined;
+  if (own === undefined || own === containerScope) return undefined;
+  return own === 'station' ? 'Station' : 'This device';
 }
 
 export interface SettingRowStatusProps {
@@ -73,6 +84,8 @@ export interface SettingRowStatusProps {
   provenance?: SettingProvenanceEntry;
   /** The owning catalog entry's scope; absent for a row with no catalog entry. */
   catalogScope?: CatalogScope;
+  /** The rule the enclosing scope group's caption states; see `scopeBadgeLabel`. */
+  containerScope?: 'station' | 'device';
   /** The selected project's display name, for the layer list. */
   projectName?: string;
   /** The project's override value for this key, when it has one. */
@@ -96,13 +109,14 @@ export function SettingRowStatus({
   definition,
   provenance,
   catalogScope,
+  containerScope,
   projectName,
   projectValue,
   stationValue,
   pending,
   onResetToInherited,
 }: SettingRowStatusProps) {
-  const scopeLabel = scopeBadgeLabel(catalogScope, provenance);
+  const scopeLabel = scopeBadgeLabel(catalogScope, provenance, containerScope);
   const overriddenByProject =
     provenance?.source === 'file' && provenance.scope === 'project';
   // `required` has no inherited value to fall back TO — dropping the override
@@ -113,6 +127,11 @@ export function SettingRowStatus({
 
   return (
     <span className="setting-row-status">
+      {/* No reserved footprint for the chip. Reserving one was tried and cost
+          every row a description line (the slot squeezed the text column on
+          rows that will never grow a chip); a chip shifting ONE row's control
+          by its own width, on the rare row that has an override, is the
+          cheaper of the two. */}
       {scopeLabel && (
         <Badge
           value={scopeLabel}
