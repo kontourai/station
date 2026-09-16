@@ -117,6 +117,10 @@ export async function toggleRegionThroughToolbar(
  * The post-condition is the toggle reading pressed AND the surface owning
  * that region's shell — the first says the region opened, the second that
  * the pane landed in it.
+ *
+ * NOT for Chat: a region holding Chat takes the landmark `Dock` rather than
+ * the surface's own title (`DockShell`), so the shell assertion below would
+ * never find it. `orchestration.ts` drives Chat's own route.
  */
 export async function showSurfaceInEmptyRegion(
   page: Page,
