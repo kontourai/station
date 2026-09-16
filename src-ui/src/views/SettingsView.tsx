@@ -22,7 +22,11 @@ import {
   SkeletonBlock,
 } from '../components/state';
 import { Toggle } from '../components/Toggle';
-import { UsageTelemetryDisclosure } from '../components/UsageTelemetryDisclosure';
+import {
+  UsageTelemetryDisclosure,
+  usageTelemetryDestinationSummary,
+  useUsageTelemetryDisclosureState,
+} from '../components/UsageTelemetryDisclosure';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useConfigActions, useConfigSnapshot } from '../contexts/ConfigContext';
 import {
@@ -134,6 +138,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   } = useDeviceSettings();
   const { setDeviceSetting, resetDeviceSetting } = useDeviceSettingsActions();
   const { isMobile, isDesktop } = usePlatformProfile();
+  // #2144 slice 6 item D. The same query the disclosure card reads; React
+  // Query dedupes on its key so there is one request, not two answers.
+  const telemetryDisclosure = useUsageTelemetryDisclosureState();
   const { locale } = useLocale();
 
   const [config, setConfig] = useState<AppConfig>(
@@ -691,6 +698,23 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 config={config}
                 provenance={provenance}
                 onChange={setConfig}
+              />
+              {/* #2144 slice 6 item D: whether anything CAN be sent, beside
+                  the toggle that decides whether it is. Derived from the
+                  boolean the disclosure query already holds — React Query
+                  dedupes on the key, so this is the same request the
+                  disclosure below makes, not a second one. The host is not
+                  exposed (see `usageTelemetryDestinationSummary`). */}
+              <PageRow
+                {...settingsRow('telemetry-destination')}
+                description="Usage telemetry has somewhere to go only when the operator has configured a destination for this Station. Station does not show where that is."
+                control={
+                  <span className="settings__field-hint">
+                    {usageTelemetryDestinationSummary(
+                      telemetryDisclosure.data?.endpointConfigured,
+                    )}
+                  </span>
+                }
               />
               <UsageTelemetryDisclosure />
               <LocalAccountsSection />

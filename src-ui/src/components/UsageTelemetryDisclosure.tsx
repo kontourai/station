@@ -406,6 +406,33 @@ export function usageTelemetryDisclosureSummary(
 }
 
 /**
+ * Whether a destination exists for usage telemetry on this Station, for the
+ * informational row beside the Usage telemetry toggle (epic #2144 slice 6
+ * item D).
+ *
+ * The HOST is deliberately not exposed. `endpointConfigured` is a boolean
+ * precisely because the endpoint itself is read from the environment in
+ * `UsageTelemetryService`'s constructor and never left the server; naming it
+ * here would add an egress the privacy inventory does not declare.
+ *
+ * Three answers, not two. `undefined` means this Station did not report the
+ * field — an older peer, or a read that failed — and it gets its own
+ * sentence rather than being folded into "none is configured", which would
+ * be a claim about this Station derived from silence. Same doctrine as
+ * {@link usageTelemetryDisclosureSummary}, which drops its clause in that
+ * case.
+ */
+export function usageTelemetryDestinationSummary(
+  endpointConfigured: boolean | undefined,
+): string {
+  if (endpointConfigured === true)
+    return 'Destination: configured by the operator.';
+  if (endpointConfigured === false)
+    return 'No destination configured; nothing is sent.';
+  return 'This Station has not reported whether a destination is configured.';
+}
+
+/**
  * The two decisions the first screen offers, named after what they do.
  *
  * Both are derived from the EFFECTIVE setting, never from the label: on a

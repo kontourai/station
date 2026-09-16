@@ -154,6 +154,31 @@ vi.mock('../contexts/ConfigContext', () => ({
 let deviceChatFontSize: number | null = 14;
 const setDeviceSetting = vi.fn();
 const resetDeviceSetting = vi.fn();
+/**
+ * #2144 slice 6 item D: what the disclosure query reports about a telemetry
+ * DESTINATION. Partial mock — only the shared hook is replaced, so the real
+ * `UsageTelemetryDisclosure` card and the real summary function still run.
+ */
+let telemetryEndpointConfigured: boolean | undefined;
+vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../components/UsageTelemetryDisclosure')
+    >();
+  return {
+    ...actual,
+    useUsageTelemetryDisclosureState: () => ({
+      data:
+        telemetryEndpointConfigured === undefined
+          ? undefined
+          : { endpointConfigured: telemetryEndpointConfigured },
+      isError: false,
+      settled: true,
+      outstanding: false,
+    }),
+  };
+});
+
 let deviceFeatureSettings: Record<string, unknown> = {};
 vi.mock('../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({
@@ -248,6 +273,7 @@ describe('settings catalog completeness', () => {
     configProvenance = {};
     deviceChatFontSize = 14;
     deviceFeatureSettings = {};
+    telemetryEndpointConfigured = undefined;
     setDeviceSetting.mockClear();
     resetDeviceSetting.mockClear();
     window.history.replaceState({}, '', '/settings');
@@ -349,8 +375,9 @@ describe('settings catalog completeness', () => {
     // longer user-facing) and +2 (workspace-checkpoints,
     // default-chat-font-size). #2144 slice 2: +1
     // (default-workspace-isolation). Counted from the merged catalog, not
-    // added up. #2144 slice 6: +1 (default-approval-mode).
-    expect(SETTINGS_CATALOG).toHaveLength(46);
+    // added up. #2144 slice 6: +2 (default-approval-mode,
+    // telemetry-destination).
+    expect(SETTINGS_CATALOG).toHaveLength(47);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
@@ -1190,6 +1217,42 @@ describe('settings catalog completeness', () => {
       await renderSettings();
       expect(
         screen.queryByRole('switch', { name: 'Smooth answer reveal' }),
+      ).toBeNull();
+    });
+  });
+
+  /**
+   * #2144 slice 6 item D. The toggle beside this row decides whether Station
+   * WOULD send; this row says whether there is anywhere to send to. Both
+   * answers are the host's, and the host itself is never named.
+   */
+  describe('Telemetry destination', () => {
+    test('reports a configured destination without naming it', async () => {
+      telemetryEndpointConfigured = true;
+      await renderSettings();
+      expect(
+        screen.getByText('Destination: configured by the operator.'),
+      ).toBeTruthy();
+    });
+
+    test('reports that nothing is sent when no destination exists', async () => {
+      telemetryEndpointConfigured = false;
+      await renderSettings();
+      expect(
+        screen.getByText('No destination configured; nothing is sent.'),
+      ).toBeTruthy();
+    });
+
+    test('a host that did not report the field is not folded into either answer', async () => {
+      telemetryEndpointConfigured = undefined;
+      await renderSettings();
+      expect(
+        screen.getByText(
+          'This Station has not reported whether a destination is configured.',
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText('No destination configured; nothing is sent.'),
       ).toBeNull();
     });
   });

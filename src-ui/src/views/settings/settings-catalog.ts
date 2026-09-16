@@ -96,6 +96,12 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['telemetryEnabled'],
   },
   {
+    id: 'telemetry-destination',
+    title: 'Telemetry destination',
+    section: 'station-config',
+    keywords: ['endpoint', 'where telemetry goes', 'otel'],
+  },
+  {
     id: 'default-max-turns',
     title: 'Default max turns',
     section: 'station-config',
@@ -423,6 +429,9 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   Partial<Record<SettingsCatalogId, NonNullable<SettingsCatalogEntry['scope']>>>
 > = {
   'backup-restore': 'mixed',
+  // #2144 slice 6 item D: a derived status line with no writer, inside a
+  // section whose other rows are all Station-scope writes.
+  'telemetry-destination': 'informational',
   'deployed-build': 'informational',
   'message-context': 'temporary',
 };
