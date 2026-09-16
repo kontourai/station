@@ -57,8 +57,11 @@ vi.mock('../ProjectLayoutChipMenu', async (importActual) => {
 });
 
 const openSurfaceInRegion = vi.hoisted(() => vi.fn());
+/** Whether a region model is mounted above this strip. */
+const region = vi.hoisted(() => ({ mounted: true }));
 vi.mock('../../../contexts/RegionModelContext', () => ({
-  useRegionModelOptional: () => ({ openSurfaceInRegion }),
+  useRegionModelOptional: () =>
+    region.mounted ? { openSurfaceInRegion } : null,
 }));
 
 import { ProjectLayoutChips } from '../ProjectLayoutChips';
@@ -66,8 +69,8 @@ import { ProjectLayoutChips } from '../ProjectLayoutChips';
 const SURFACE_ID =
   'layout:9f1d2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b/1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
 
-function renderStrip() {
-  return render(
+function strip() {
+  return (
     <ProjectLayoutChips
       projectName="Demo"
       chips={[
@@ -79,8 +82,12 @@ function renderStrip() {
           dockSurfaceId: SURFACE_ID,
         },
       ]}
-    />,
+    />
   );
+}
+
+function renderStrip() {
+  return render(strip());
 }
 
 /** The gesture. What it causes is awaited by each case, on its own terms. */
@@ -93,6 +100,7 @@ function rightClickChip() {
 beforeEach(() => {
   chunk.fails = false;
   chunk.attempts = 0;
+  region.mounted = true;
   openSurfaceInRegion.mockClear();
 });
 
@@ -127,6 +135,35 @@ describe('a chip menu whose chunk fails to load (#2158)', () => {
     expect(openSurfaceInRegion).toHaveBeenCalledWith(SURFACE_ID, {
       region: 'right',
     });
+  });
+
+  /**
+   * The render guard's second half, which an injection found nothing asserted.
+   *
+   * `openMenuFor` already refuses without a model, so `menuFor` can only be
+   * set while one is mounted — which is why removing `&& hasRegionModel` from
+   * the render condition left every other case green. What it defends is the
+   * model going away UNDER an open menu: the menu would then mount, ask
+   * `useSidebarPillRegions` for regions, receive none, and render an empty
+   * `.menu-surface` that `useMenuFocus` puts the reader's focus inside. The
+   * app's own provider sits above `App` and does not come and go, so this is
+   * the component's contract for an optional context rather than a journey —
+   * and it is asserted here, at the level where it is reachable, instead of
+   * being left as a guard nobody has ever executed.
+   */
+  test('the menu goes away with the model rather than rendering an empty surface', async () => {
+    const view = renderStrip();
+    await rightClickChip();
+    await screen.findByRole('menu', { name: 'Coding actions' });
+
+    region.mounted = false;
+    await act(async () => {
+      view.rerender(strip());
+    });
+
+    expect(screen.queryByRole('menu')).toBeNull();
+    // And no empty surface left behind holding focus.
+    expect(document.querySelector('.menu-surface')).toBeNull();
   });
 
   test('the ordinary case is unaffected: the first gesture opens the menu', async () => {
