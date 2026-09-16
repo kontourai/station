@@ -71,6 +71,41 @@ describe('region arrangement record (#928 D)', () => {
     ).toEqual(VALID);
   });
 
+  /**
+   * #2153: a visible EMPTY region is a state the arrangement can hold, so it
+   * must survive a write and a read — it is what a user sees after closing a
+   * region's last tab, and losing it on the next launch would re-impose the
+   * invariant this slice lifted. The record shape is unchanged (`visible`
+   * true beside a null occupant), which is also the rollback degrade: an
+   * older build parses the same bytes and re-hides the region, because the
+   * hiding lived in its parser.
+   */
+  test('a visible empty region round-trips with its visibility intact', () => {
+    const visibleEmpty: RegionArrangement = {
+      ...VALID,
+      left: { ...VALID.left, panes: [], occupant: null, visible: true },
+      bottom: { ...VALID.bottom, panes: [], occupant: null, visible: false },
+    };
+    const record = toRegionArrangementRecord(visibleEmpty);
+    expect(record.regions.left).toMatchObject({
+      visible: true,
+      occupant: null,
+    });
+    const parsed = parseRegionArrangementRecord(record)!;
+    expect(parsed.left).toMatchObject({
+      panes: [],
+      occupant: null,
+      visible: true,
+    });
+    // The hidden empty region is the discriminating half: both are empty, and
+    // only the stored bit tells them apart.
+    expect(parsed.bottom).toMatchObject({
+      panes: [],
+      occupant: null,
+      visible: false,
+    });
+  });
+
   test('an occupant is written as { kind: "surface", id } — the pane-host extension point', () => {
     expect(toRegionArrangementRecord(VALID).regions.right.occupant).toEqual({
       kind: 'surface',
@@ -254,7 +289,7 @@ describe('region arrangement record (#928 D)', () => {
       ).toBeNull();
     });
 
-    test('a surface named by two regions keeps the first in REGION_IDS order and empties and hides the rest', () => {
+    test('a surface named by two regions keeps the first in REGION_IDS order; the rest empty and keep the visibility the record stored', () => {
       const parsed = parseRegionArrangementRecord({
         version: 1,
         regions: {
@@ -285,15 +320,20 @@ describe('region arrangement record (#928 D)', () => {
         },
       });
       expect(parsed!.main.occupant).toBe('activity');
+      // Both were stored VISIBLE, and both come back visible and empty
+      // (#2153): a region the record says is open is not closed on the
+      // strength of a pane it does not get to keep. Restoring
+      // `if (state.panes.length === 0) state.visible = id === 'main';` to the
+      // duplicate branch in region-arrangement-record.ts reds both of these.
       expect(parsed!.left).toEqual({
-        visible: false,
+        visible: true,
         size: 400,
         panes: [],
         occupant: null,
         maximized: false,
       });
       expect(parsed!.right).toEqual({
-        visible: false,
+        visible: true,
         size: 400,
         panes: [],
         occupant: null,
@@ -589,7 +629,13 @@ describe('region arrangement record (#928 D)', () => {
           },
         }),
       )!.right;
-      expect(nothingLeft).toMatchObject({ panes: [], occupant: null });
+      // Stored visible, and visible it stays (#2153): an empty region is a
+      // state the arrangement can hold, so the parser has nothing to correct.
+      expect(nothingLeft).toMatchObject({
+        panes: [],
+        occupant: null,
+        visible: true,
+      });
     });
 
     /**
@@ -921,7 +967,45 @@ describe('region arrangement record (#928 D)', () => {
         occupant: 'chat',
         visible: true,
       });
-      // Chat was `right`'s first; `bottom` has nothing left: empty and hidden.
+      // Chat was `right`'s first; `bottom` has nothing left: empty, and
+      // still visible because that is what the record stored (#2153).
+      expect(parsed.bottom).toMatchObject({
+        panes: [],
+        occupant: null,
+        visible: true,
+      });
+    });
+
+    /**
+     * The other half of #2153's parser rule: an emptied region keeps the
+     * STORED value, so a record that says hidden still reads hidden. Without
+     * this, the change above would be indistinguishable from "an emptied
+     * region is forced open", and the duplicate branch could coerce the
+     * other way unnoticed.
+     */
+    test('a region emptied by a duplicate stays HIDDEN when the record stored it hidden', () => {
+      const parsed = parseRegionArrangementRecord({
+        version: 1,
+        regions: {
+          main: {
+            visible: true,
+            size: 0,
+            occupant: { kind: 'surface', id: 'home' },
+          },
+          left: {
+            visible: true,
+            size: 400,
+            occupant: { kind: 'surface', id: 'activity' },
+          },
+          right: { visible: true, size: 400, occupant: null },
+          bottom: {
+            visible: false,
+            size: 320,
+            occupant: { kind: 'surface', id: 'activity' },
+          },
+        },
+      })!;
+      expect(parsed.left).toMatchObject({ panes: ['activity'] });
       expect(parsed.bottom).toMatchObject({
         panes: [],
         occupant: null,

@@ -27,6 +27,7 @@ import { readToolbarHeight } from '../lib/toolbarGeometry';
 import {
   chatRegion,
   regionHoldsChat,
+  regionLabel,
   resolveRegionSurface,
 } from '../regions/region-model';
 import type { DockMode } from '../types';
@@ -102,6 +103,12 @@ export interface DockShellChrome {
   visualViewport: ReturnType<typeof useMobileVisualViewport>;
   availableDockSlotPlacements: readonly DockMode[];
   effectiveDockSlotPlacement: DockMode;
+  /**
+   * The chord that toggles this shell's surface, for the chevron's tooltip.
+   * EMPTY STRING for an empty region (#2153): nothing toggles a region that
+   * holds no surface, and the registry answers nothing for an unknown id, so
+   * `withShortcutHint` leaves the label unadorned.
+   */
   surfaceShortcutId: string;
   /**
    * The registered title of the surface this shell holds, which is what its
@@ -110,6 +117,11 @@ export interface DockShellChrome {
    * shell never reads a registry to learn which surface it is — and so
    * `ChatDock`, which IS Chat's registered renderer, can be named without
    * importing the region model (`region-surface-boundary.test.ts`).
+   *
+   * An EMPTY region has no surface to be named after and names itself
+   * instead — "Right region", so its chevron reads "Hide Right region"
+   * (#2153). Only under a region model: the model-less ambient dock is
+   * Chat's and keeps "Chat".
    */
   surfaceTitle: string;
   /** Any dock occupant may maximize its region (#928 slice iii). */
@@ -748,10 +760,19 @@ export function useDockShellChrome({
     visualViewport,
     availableDockSlotPlacements,
     effectiveDockSlotPlacement,
-    surfaceShortcutId:
-      (shellOccupant
-        ? resolveRegionSurface(shellOccupant)?.shortcut?.id
-        : undefined) ?? 'dock.toggle',
+    surfaceShortcutId: shellOccupant
+      ? (resolveRegionSurface(shellOccupant)?.shortcut?.id ?? 'dock.toggle')
+      : // An EMPTY region under a model advertises NO chord (#2153). The
+        // `dock.toggle` fallback is Chat's, and it is right for the two
+        // mounts that ARE Chat's — the model-less ambient dock and the
+        // fullscreen pane, whose `shellOccupant` is the literal `'chat'`.
+        // An empty region is neither: nothing toggles IT, and a chevron
+        // reading "Hide Right region (⌘D)" would name a key that toggles
+        // Chat wherever Chat is. `withShortcutHint` leaves the bare label
+        // for an id the registry does not know.
+        regionModel && regionId
+        ? ''
+        : 'dock.toggle',
     // Three cases reach a fallback, and TWO of them are Chat's, because
     // neither has an occupant to name: the model-less ambient dock (Chat's
     // and nothing else's, the same mount `dock.toggle` above falls back for
@@ -776,7 +797,15 @@ export function useDockShellChrome({
     surfaceTitle:
       regionModel && shellOccupant
         ? (resolveRegionSurface(shellOccupant)?.title ?? shellOccupant)
-        : 'Chat',
+        : // An empty region under a model names ITSELF (#2153): its chevron
+          // reads "Hide Right region", the same name its landmark
+          // (`DockShell`), its placeholder and its toolbar toggle use. Falling
+          // through to 'Chat' here was sound only while an empty region
+          // mounted no shell; now that one does, it would put "Hide Chat" on a
+          // region holding no Chat — #1386's defect, relocated.
+          regionModel && regionId
+          ? `${regionLabel(regionId)} region`
+          : 'Chat',
     canMaximize: shellOccupant !== null,
     regionPanes,
     selectRegionPane,

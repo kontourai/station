@@ -29,6 +29,7 @@ import {
   type DockRegionId,
   isDockRegion,
   type RegionId,
+  regionLabel,
   resolveRegionSurface,
 } from '../regions/region-model';
 import {
@@ -463,6 +464,30 @@ function RegionPaneUnavailable({ title }: { title: string }) {
 }
 
 /**
+ * What a VISIBLE region with no panes shows (#2153). The region's chrome bar
+ * renders above it — placement grab, chevron, maximize — so the region is
+ * still a thing the user can move, collapse and hide; this is its body.
+ *
+ * It names the REGION, not a pane, because there is no pane to name: a
+ * reader who closed the last tab and a reader who opened an empty region
+ * from the toolbar arrive at the same place and must be told the same thing.
+ * It states the region is empty and stops there — the chooser that offers
+ * what can go here is #2154, and an instruction naming a control that is not
+ * on screen yet would be the "remedy that does nothing" `RegionPaneUnavailable`
+ * was written to avoid.
+ */
+function RegionEmptyPlaceholder({ regionId }: { regionId: RegionId }) {
+  return (
+    <div className="dock-slot__body">
+      <Empty
+        variant="compact"
+        label={`Nothing in the ${regionLabel(regionId)} region yet`}
+      />
+    </div>
+  );
+}
+
+/**
  * One dock region's pane host (#2045): `DockShell` (the one dock chrome shell
  * — root box, resize handle, geometry/snap/drag state,
  * `dock.toggle`/`dock.maximize`) around the region's chrome bar
@@ -732,8 +757,20 @@ export function RegionPaneHost({
   const [catalogOpen, setCatalogOpen] = useState(false);
   const openCatalog = useCallback(() => setCatalogOpen(true), []);
   const closeCatalog = useCallback(() => setCatalogOpen(false), []);
+  // A visible region with no panes (#2153): the bar over a placeholder. Only
+  // under a model — the model-less mount's `panes` is Chat's, never empty.
+  const emptyRegion =
+    regionId !== undefined && model !== null && panes.length === 0;
   const catalogRegion =
-    regionId && model && isDockRegion(regionId) && projectSlug !== null
+    regionId &&
+    model &&
+    isDockRegion(regionId) &&
+    projectSlug !== null &&
+    // No "+" on an empty region yet: the affordance that fills one is the
+    // placeholder's own chooser (#2154), and offering the catalog here first
+    // would put two answers to "what goes in this region" on screen, one of
+    // them the region's own bar. Re-offered with #2154.
+    !emptyRegion
       ? regionId
       : undefined;
   return (
@@ -775,7 +812,13 @@ export function RegionPaneHost({
               pending={null}
             />
           ) : null}
-          {document && selectedSupplied ? (
+          {emptyRegion && regionId ? (
+            // Before the project branches below: an empty region has no pane
+            // whose rendering the project read could be holding up, so a
+            // region emptied while that read is in flight must not sit on the
+            // skeleton (it would never resolve into anything).
+            <RegionEmptyPlaceholder regionId={regionId} />
+          ) : document && selectedSupplied ? (
             <WorkspacePaneHost
               document={document}
               presentation="dock"

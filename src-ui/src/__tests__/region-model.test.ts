@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { RegionId } from '../regions/region-model';
 import {
   DEFAULT_DEVICE_REGION_ARRANGEMENT,
   dockMirrorDiff,
   firstFreeDockRegion,
   foldedDockRegion,
+  INSTANCE_SURFACE_PREFIXES,
   moveRegionPanes,
   occupiedDockRegion,
   occupiedRegion,
@@ -121,6 +123,49 @@ describe('region model', () => {
     });
   });
 
+  test('the coarse fold admits a visible EMPTY region as a candidate', () => {
+    // #2153: a visible empty region mounts a host of its own, so on a
+    // bottom-only device it is a thing to fold to. `left` is the only
+    // VISIBLE dock region here and holds nothing; `bottom` holds Chat and is
+    // hidden. Reverting `foldedDockRegion`'s `visibleDock` filter to
+    // `!regionIsEmpty(arrangement[id]) && arrangement[id].visible`
+    // (region-model.ts) folds to 'bottom' instead and reds both lines.
+    const visibleEmptyLeft = updateRegion(
+      updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'bottom', {
+        visible: false,
+      }),
+      'left',
+      { visible: true },
+    );
+    expect(visibleEmptyLeft.left).toMatchObject({ panes: [], visible: true });
+    expect(foldedDockRegion(visibleEmptyLeft, null)).toBe('left');
+    expect(foldedDockRegion(visibleEmptyLeft, 'left')).toBe('left');
+
+    // But never OVER the user's panes: with `left` visible-empty AND
+    // `bottom` visible holding Chat, and no `lastShownRegion` to decide, the
+    // fold takes the region that holds something — a coarse device shows one
+    // dock, and a placeholder in place of Chat is the wrong one. Reverting
+    // the `visibleDock.find(!regionIsEmpty)` preference to `visibleDock[0]`
+    // folds to 'left' and reds this.
+    // The default arrangement ships Chat's `bottom` HIDDEN, so both are
+    // shown explicitly.
+    const bothVisible = updateRegion(
+      updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'bottom', {
+        visible: true,
+      }),
+      'left',
+      { visible: true },
+    );
+    expect(bothVisible.bottom).toMatchObject({
+      panes: ['chat'],
+      visible: true,
+    });
+    expect(foldedDockRegion(bothVisible, null)).toBe('bottom');
+    expect(foldedDockRegion(bothVisible, 'main')).toBe('bottom');
+    // `lastShownRegion` still decides between visible candidates.
+    expect(foldedDockRegion(bothVisible, 'left')).toBe('left');
+  });
+
   test('the coarse fold chooses the most recently shown occupied region and falls back to Chat', () => {
     const withActivity = placeSurface(
       DEFAULT_DEVICE_REGION_ARRANGEMENT,
@@ -157,6 +202,57 @@ describe('region model', () => {
       'right',
     );
     expect(firstFreeDockRegion(chatAtRight, 'right')).toBe('bottom');
+  });
+
+  /**
+   * The case the fallback ORDER decides, and the only shape that tells the
+   * two orders apart: the preferred region is taken while BOTH `bottom` and
+   * `right` are free (only an empty region is ever returned, so for
+   * `preferred` of `right` or `bottom` the two orders agree everywhere).
+   * Reverting `['right', 'bottom', 'left']` to the old
+   * `['bottom', 'right', 'left']` in `firstFreeDockRegion` turns this answer
+   * back into `'bottom'` — taking the empty edge Chat lands in next, which
+   * is what #2156 stops. The fixture holds Chat at `left` because that is
+   * the only reachable `preferred: 'left'` today (a remembered dock
+   * placement); the answer is about which EMPTY edge is chosen.
+   */
+  test('a taken default falls to the right before Bottom, which is Chat’s', () => {
+    const chatAtLeft = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'chat',
+      'left',
+    );
+
+    expect(chatAtLeft.bottom.panes).toEqual([]);
+    expect(chatAtLeft.right.panes).toEqual([]);
+    expect(firstFreeDockRegion(chatAtLeft, 'left')).toBe('right');
+  });
+
+  /**
+   * Every dock-capable surface's default region, registered and
+   * instance-keyed alike (#2156). A pin, not a derivation: changing one of
+   * these is a product decision, so it should be an argued edit here rather
+   * than a silent drift in the registry.
+   */
+  test('the default region of every registered and instance-keyed surface', () => {
+    const defaults = new Map<string, RegionId>();
+    for (const [id, surface] of REGION_SURFACE_REGISTRY)
+      defaults.set(id, surface.defaultRegion);
+    for (const prefix of INSTANCE_SURFACE_PREFIXES)
+      defaults.set(prefix.prefix, prefix.defaultRegion);
+
+    expect(Object.fromEntries(defaults)).toEqual({
+      chat: 'bottom',
+      'coding:terminal': 'bottom',
+      activity: 'right',
+      'workspace-agents': 'right',
+      device: 'right',
+      'coding:diff': 'right',
+      'coding:file-browser': 'left',
+      home: 'main',
+      'pr:': 'right',
+      'file-preview:': 'right',
+    });
   });
 
   test('revealSurface makes an occupied hidden surface visible without moving it', () => {
@@ -470,7 +566,8 @@ describe('region model', () => {
         title: 'Terminal',
         icon: 'terminal',
         regions: ['left', 'right', 'bottom'],
-        defaultRegion: 'right',
+        // #2156: Bottom, beside Chat.
+        defaultRegion: 'bottom',
         exposure: 'catalog',
       }),
       expect.objectContaining({
@@ -553,6 +650,9 @@ describe('region model', () => {
     const placed = placeSurface(activityAtRight, 'activity', 'main');
 
     expect(placed.main.occupant).toBe('activity');
+    // The vacated dock region HIDES (#2153: `placeSurface` vacates with
+    // `'hide'` — a move is not a close, and a placeholder left behind would
+    // be a second dock nobody asked for).
     expect(placed.right).toEqual({
       visible: false,
       size: 400,
@@ -626,6 +726,7 @@ describe('region model', () => {
       occupant: 'activity',
       visible: true,
     });
+    // Vacated by a MOVE, so hidden (#2153: a close keeps, a move hides).
     expect(joined.right).toEqual({
       visible: false,
       size: 400,
@@ -745,6 +846,11 @@ describe('region model', () => {
       occupant: 'activity',
       maximized: false,
     });
+    // A MOVE hides the region it vacates (#2153: `placeSurface` calls
+    // `withoutRegionPane` with `'hide'`) — a relocation is not a close, and
+    // an empty placeholder left behind is a second dock nobody asked for.
+    // Passing `'keep'` there reds this `visible: false`; the CLOSE case that
+    // keeps a region open is `removeRegionPane`'s, pinned below.
     expect(joined.right).toEqual({
       visible: false,
       size: 517,
@@ -1062,7 +1168,10 @@ describe('region model', () => {
       });
 
       // Join: Activity into Chat's maximized bottom (#2046 2a). The region
-      // it enters is restored; the region it leaves empties and hides.
+      // it enters is restored; the region it leaves empties and HIDES (#2153:
+      // a move is not a close) — and is still RESTORED, which is what this
+      // test is about:
+      // an empty region is never maximized (`updateRegion`).
       const joined = placeSurface(chatMax, 'activity', 'bottom');
       expect(joined.bottom).toMatchObject({
         panes: ['chat', 'activity'],
@@ -1213,6 +1322,36 @@ describe('region model', () => {
     ).toMatchObject({ visible: false, occupant: 'activity' });
   });
 
+  /**
+   * #2156's one observable journey: an UNPLACED Chat (its tab closed) with a
+   * remembered `left` placement that is now occupied, both other edges free,
+   * revealed by `dock=open`. The fallback order decides where it re-lands:
+   * `right` now, `bottom` under the old `['bottom', 'right', 'left']`. That
+   * Chat itself takes the right edge here is accepted — the rule has no
+   * Chat-shaped exception, and Bottom is Chat's by DEFAULT, not by
+   * reservation. Reverting the order in `firstFreeDockRegion` reds this.
+   */
+  test('an unplaced Chat with an occupied remembered placement re-lands right, not bottom', () => {
+    const settings = { chatDockHeight: 320, chatDockWidth: 400 };
+    const leftTaken = updateRegion(
+      removeRegionPane(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'bottom', 'chat'),
+      'left',
+      { panes: ['fixture'], occupant: 'fixture', visible: true },
+    );
+    expect(occupiedRegion(leftTaken, 'chat')).toBeUndefined();
+    expect(leftTaken.right.panes).toEqual([]);
+    expect(leftTaken.bottom.panes).toEqual([]);
+
+    const synced = syncRegionArrangementFromDock(
+      leftTaken,
+      settings,
+      true,
+      'left',
+    );
+    expect(synced.right).toMatchObject({ panes: ['chat'], visible: true });
+    expect(synced.bottom.panes).toEqual([]);
+  });
+
   // #2046 2b: the tab strip's close and the region bar's placement.
   describe('closing a tab and moving a region', () => {
     const both = updateRegion(
@@ -1221,7 +1360,7 @@ describe('region model', () => {
       { visible: true },
     );
 
-    test('removeRegionPane unplaces the pane and selects its neighbour; the last pane empties and hides the region', () => {
+    test('removeRegionPane unplaces the pane and selects its neighbour; the last pane empties the region and leaves it visible', () => {
       expect(both.bottom).toMatchObject({
         panes: ['chat', 'activity'],
         occupant: 'activity',
@@ -1252,13 +1391,23 @@ describe('region model', () => {
         occupant: 'activity',
       });
 
-      // The last pane: the region empties and hides.
+      // The last pane: the region empties and STAYS VISIBLE (#2153, owner
+      // decision). Reverting `visible: regionId === 'main' || previous.visible`
+      // to `visible: regionId === 'main'` in `withoutRegionPane`
+      // (region-model.ts) reds this line.
       const emptied = removeRegionPane(behind, 'bottom', 'activity');
       expect(emptied.bottom).toMatchObject({
         panes: [],
         occupant: null,
-        visible: false,
+        visible: true,
       });
+      // And a region that was HIDDEN when its last pane left stays hidden:
+      // the rule is that the close does not write visibility at all, not
+      // that an emptied region is forced open.
+      const hiddenBehind = updateRegion(behind, 'bottom', { visible: false });
+      expect(
+        removeRegionPane(hiddenBehind, 'bottom', 'activity').bottom,
+      ).toMatchObject({ panes: [], occupant: null, visible: false });
       // A surface the region does not hold: unchanged, by reference.
       expect(removeRegionPane(both, 'right', 'chat')).toBe(both);
     });
@@ -1299,11 +1448,23 @@ describe('region model', () => {
         visible: true,
         maximized: false,
       });
+      // The emptied SOURCE hides (#2153): the grab relocated every pane, and
+      // a placeholder left where they were is a second dock nobody asked
+      // for. A CLOSE keeps a region open; a MOVE does not. Reverting the
+      // source-empty branch to `visible: source.visible` reds this.
       expect(moved.bottom).toMatchObject({
         panes: [],
         occupant: null,
         visible: false,
       });
+      // A hidden source stays hidden, for the same reason.
+      expect(
+        moveRegionPanes(
+          updateRegion(both, 'bottom', { visible: false }),
+          'bottom',
+          'right',
+        ).bottom,
+      ).toMatchObject({ panes: [], occupant: null, visible: false });
       // Chat's mirror sees the move as Chat's placement.
       expect(dockMirrorDiff(both, moved)).toEqual({
         placement: 'right',

@@ -296,7 +296,8 @@ type MenuId =
   | 'help'
   | 'region'
   | 'dock-more'
-  | 'tab-move';
+  | 'tab-move'
+  | 'bar-move';
 
 interface Shape {
   /** Reads as the test name, so keep it a sentence. */
@@ -376,6 +377,18 @@ const SHAPES: readonly Shape[] = [
     device: 'desktop',
     backdropLabel: 'Close move menu for Activity',
     openerLabel: 'Activity',
+  },
+  {
+    // #2160: the SAME menu, opened from the region bar's own Move button —
+    // the route a lone pane has, where no tab exists to right-click. The
+    // button sits in the bar's actions cluster, so its trigger is chrome the
+    // backdrop must outrank just as the tab's is. Desktop only, like the "+".
+    name: 'a pane’s move menu opened from the region bar’s Move button',
+    menu: 'bar-move',
+    viewport: DESKTOP,
+    device: 'desktop',
+    backdropLabel: 'Close move menu for Activity',
+    openerLabel: 'Move Activity',
   },
   {
     name: 'the dock header’s More menu on a phone',
@@ -465,7 +478,7 @@ async function renderShellMarkup(
           className="chat-dock chat-dock--bottom is-maximized"
           data-region="bottom"
         >
-          {shape.menu === 'tab-move' ? (
+          {shape.menu === 'tab-move' || shape.menu === 'bar-move' ? (
             <RegionChromeBar
               chrome={tabMoveChrome()}
               groupId="region:bottom"
@@ -513,14 +526,17 @@ async function renderShellMarkup(
   );
 
   if (geometry) {
-    if (shape.menu === 'tab-move') {
-      // The move menu opens from a `contextmenu` and anchors under the tab;
-      // pass 1's measurement of the tab is what it anchors to.
-      const tab = screen.getByRole('tab', {
-        name: shape.openerLabel as string,
-      });
-      tab.getBoundingClientRect = () => geometry.rect as DOMRect;
-      fireEvent.contextMenu(tab);
+    if (shape.menu === 'tab-move' || shape.menu === 'bar-move') {
+      // The move menu anchors under whichever trigger opened it, and pass 1's
+      // measurement of that trigger is what it anchors to. A tab opens it on
+      // `contextmenu`; the bar's Move button on `click`.
+      const opener =
+        shape.menu === 'tab-move'
+          ? screen.getByRole('tab', { name: shape.openerLabel as string })
+          : screen.getByRole('button', { name: shape.openerLabel as string });
+      opener.getBoundingClientRect = () => geometry.rect as DOMRect;
+      if (shape.menu === 'tab-move') fireEvent.contextMenu(opener);
+      else fireEvent.click(opener);
     } else if (shape.menu === 'region' || shape.menu === 'dock-more') {
       const opener = screen.getByLabelText(shape.openerLabel as string, {
         exact: false,
