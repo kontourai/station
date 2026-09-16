@@ -80,6 +80,75 @@ describe('dock placement control (#3930)', () => {
     expect(onPlacementChange).not.toHaveBeenCalled();
   });
 
+  test('a drag that wanders past the threshold and releases on empty space is not a click (#2185)', () => {
+    // The rule this replaced suppressed only when the pointer had passed OVER
+    // a target, so this exact gesture — move away, drop on nothing — left the
+    // click alive and reopened the menu. Movement past the tolerance is what
+    // kills the click now, wherever it lands.
+    const onPlacementChange = renderControl();
+    const handle = screen.getByRole('button', { name: 'Move the dock' });
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => null,
+    });
+
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 60, clientY: 10 });
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 60, clientY: 10 });
+    fireEvent.click(handle);
+
+    expect(onPlacementChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole('menu', { name: 'Dock placement' })).toBeNull();
+    // Exactly one click is swallowed: the next plain press is a press.
+    fireEvent.click(handle);
+    expect(screen.getByRole('menu', { name: 'Dock placement' })).toBeTruthy();
+  });
+
+  test('a press whose release the control never saw leaves no flag standing for the next one (#2185)', () => {
+    // jsdom implements no pointer capture, so a press dragged off the control
+    // and released elsewhere is a release this element never sees — the one
+    // path that reaches no click to clear the flag at. The next `pointerdown`
+    // is the second clear; without it this press would swallow the user's
+    // next activation.
+    const onPlacementChange = renderControl();
+    const handle = screen.getByRole('button', { name: 'Move the dock' });
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => null,
+    });
+
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 80, clientY: 10 });
+    fireEvent.pointerUp(document.body, {
+      pointerId: 1,
+      clientX: 80,
+      clientY: 10,
+    });
+    expect(screen.queryByRole('menu', { name: 'Dock placement' })).toBeNull();
+
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      pointerId: 2,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerUp(handle, { pointerId: 2, clientX: 10, clientY: 10 });
+    fireEvent.click(handle);
+
+    expect(screen.getByRole('menu', { name: 'Dock placement' })).toBeTruthy();
+    expect(onPlacementChange).not.toHaveBeenCalled();
+  });
+
   test('Escape closes the menu and returns focus to the control that opened it', () => {
     const onPlacementChange = vi.fn();
     render(
