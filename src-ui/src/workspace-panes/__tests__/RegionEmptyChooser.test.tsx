@@ -266,6 +266,22 @@ test('a surface held elsewhere reads "Move here from <Region>", and one held her
     occupant: 'chat',
   };
   harness.regions = regions;
+  // Chat's default region IS Bottom, so the first half cannot tell the
+  // arrangement from the registry; Chat held in Left can.
+  const fromLeft = render(
+    <RegionEmptyChooser
+      regionId="right"
+      context={NO_PROJECT}
+      variant="inline"
+    />,
+  );
+  expect(
+    screen.getByRole('button', { name: 'Chat Move here from Left' }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Activity Move here from Left' }),
+  ).toBeTruthy();
+  fromLeft.unmount();
   render(
     <RegionEmptyChooser
       regionId="left"
