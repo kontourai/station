@@ -2,15 +2,29 @@ import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import { useLongPress } from '../../hooks/useLongPress';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import type { RegisteredSurface } from '../../regions/region-model';
 import { ChartGlyph, HomeGlyph, MessageGlyph } from '../icons/Glyph';
+import { LazyBoundary } from '../LazyBoundary';
 import './HeaderMenu.css';
 import {
   type RegionToggle,
-  type RegionToggleOffer,
   useRegionSurfaceMenu,
 } from './useRegionSurfaceMenu';
+
+/**
+ * #2154's chooser, loaded only when a toggle's long press or right-click
+ * opens one. The toolbar is in the ENTRY chunk and the chooser is not: it
+ * reaches the pane inventory and the dock's project read, which are the host
+ * chunk's, and a panel most sessions never open must not be in the initial
+ * download. Every call returns a new promise, which the module registry makes
+ * free — memoizing it is what livelocked React's `lazy` in station#1301.
+ */
+const loadRegionChooserPanel = () =>
+  import('../../workspace-panes/RegionChooserPanel').then((module) => ({
+    default: module.RegionChooserPanel,
+  }));
 
 /**
  * `RegisteredSurface.icon` → a glyph from the one factory, so every icon in this
@@ -37,17 +51,33 @@ const DOCK_WHEN = { not: 'composerFocused' } as const;
 type PopupRole = 'menu' | 'group';
 
 /**
- * The region frame with ONE edge filled: which dock region this toggle is,
- * drawn the way every comparable shell draws its layout toggles (#2143). The
- * fill follows `pressed` — a shown region is a filled edge, a hidden one an
- * outlined edge — so the glyph depicts the same fact `aria-pressed` reports.
+ * How a region's edge is drawn inside the frame — the three states a toggle
+ * has (#2155 D4), as a ramp a reader can order at a glance:
+ *
+ * - `filled`: the region is on screen.
+ * - `outlined`: hidden, and HOLDING panes — there is something to come back
+ *   to. Drawn as the edge's own rectangle in outline, at the family's stroke
+ *   weight, rather than as a dot or a badge: it is the same shape the filled
+ *   state paints, one step down.
+ * - `none`: hidden and empty. The frame alone, which is what the region is.
+ *
+ * The middle state is the one #2143 could not say: an empty region and a
+ * region holding two hidden tabs drew the same unpressed glyph.
+ */
+type RegionEdgeFill = 'filled' | 'outlined' | 'none';
+
+/**
+ * The region frame with ONE edge marked: which dock region this toggle is,
+ * drawn the way every comparable shell draws its layout toggles (#2143).
+ * The mark follows the same facts `aria-pressed` and the tooltip report, so
+ * the glyph cannot depict a state the button denies.
  */
 function RegionGlyph({
   region,
-  pressed,
+  fill,
 }: {
   region: RegionToggle['region'];
-  pressed: boolean;
+  fill: RegionEdgeFill;
 }) {
   const edge =
     region === 'left'
@@ -61,8 +91,10 @@ function RegionGlyph({
       <rect
         {...edge}
         rx="1"
-        fill={pressed ? 'currentColor' : 'none'}
-        stroke="none"
+        fill={fill === 'filled' ? 'currentColor' : 'none'}
+        // The sheet's `stroke: currentColor` reaches every rect, so an
+        // unmarked edge has to say so explicitly or it would outline.
+        stroke={fill === 'outlined' ? 'currentColor' : 'none'}
       />
     </svg>
   );
@@ -105,12 +137,15 @@ interface ToolbarMenuRow {
 }
 
 /**
- * The portalled panel and its dismiss backdrop, shared by the folded device's
- * flat Show/Hide menu and an empty region's offer menu (#2143).
+ * The portalled panel and its dismiss backdrop under the app toolbar. Its one
+ * caller since #2155 is the folded device's flat Show/Hide menu: the
+ * per-region toggles' panel is #2154's chooser, which anchors to its trigger
+ * and flips above it, while this surface fixes its `top` to the toolbar's
+ * height.
  *
  * `role` is the CALLER'S: `useMenuFocus` gives arrow-key roving focus to a
- * `role="menu"` container only, and both menus here are menus of commands, so
- * both pass `menu`. The type is kept narrow so a later panel that is NOT a
+ * `role="menu"` container only, and the folded menu is a menu of commands, so
+ * it passes `menu`. The type is kept narrow so a later panel that is NOT a
  * menu (#1552 D2's picker was a `group` of `radiogroup`s) has to say so and
  * gets focus entry, Escape and focus-return without the roving handler.
  */
@@ -267,105 +302,78 @@ function FoldedRegionMenu({
 }
 
 /**
- * What an EMPTY region's control opens (#2143): the shell surfaces that
- * declare the region, one command row each. A region with no panes cannot be
- * shown — the shell mounts no host for it and the model hides a region its
- * last pane leaves — so its toggle would be a control that does nothing;
- * offering what can go there is the only honest thing the button can do.
- * Choosing a row is `placeSurface` through the hook, and closes the menu.
- */
-function RegionOfferMenu({
-  offers,
-  onClose,
-}: {
-  offers: readonly RegionToggleOffer[];
-  onClose: () => void;
-}) {
-  return (
-    <>
-      {offers.map((offer) => (
-        <button
-          key={offer.surfaceId}
-          type="button"
-          role="menuitem"
-          className="menu-row"
-          onClick={() => {
-            offer.onSelect();
-            onClose();
-          }}
-        >
-          <span className="menu-row__glyph" aria-hidden="true">
-            <SurfaceGlyph icon={offer.icon} />
-          </span>
-          Show {offer.label} here
-        </button>
-      ))}
-    </>
-  );
-}
-
-/**
- * One dock region's toolbar control (#2143). While the region holds panes it
- * is a TOGGLE — `aria-pressed` is the region's visibility, derived from the
- * model, and a press shows or hides the region with every tab it holds — the
- * shape VS Code's three layout toggles and T3 Code's panel toggle have, and
- * the shape #2044's outcome sentence asks for ("show/hide … per region").
- * While it holds none it opens `RegionOfferMenu`, and claims the popup only
- * then, so `aria-haspopup` and `aria-pressed` are never both on one button:
- * a control is a toggle or a menu trigger, not both at once.
+ * One dock region's toolbar control (#2155). It is a TOGGLE, always, in every
+ * state: `aria-pressed` is the region's visibility derived from the model, a
+ * press shows or hides the region with every tab it holds, and no state of it
+ * is inert or a menu trigger. #2143 made an EMPTY region's button open an
+ * offer menu instead — which put a second answer to "what goes here" beside
+ * the region's own chooser (#2154), left `aria-haspopup` and `aria-pressed`
+ * alternating on one control, and gave a region nothing declared an
+ * `aria-disabled` button. The owner's direction settles it: "by default if
+ * you just click it it should just open or close it"; the toggles do not
+ * control content, the pane does.
  *
- * The name is the region's — "Left region", "Bottom region" — with the panes
- * it holds in the tooltip ("Bottom region: Chat, Activity"), so the accessible
- * name is stable across every arrangement (an e2e can always find "Bottom
- * region") and what the region HOLDS is still one hover away.
+ * The hide is the region bar chevron's own act, not a bare visibility write:
+ * `RegionToggle.onToggle` calls the mounted shell's `setRegionOpen` through
+ * `region-visibility-appliers.ts`, so the snap and the maximize memory come
+ * out the same whichever control the user pressed.
+ *
+ * A HOLD (500ms) or a right-click opens #2154's chooser anchored here — the
+ * "maybe if you do a long tap or click that could be an option" half. It is
+ * deliberately NOT advertised with `aria-haspopup`: this button's primary act
+ * is the toggle, the panel is a shortcut to a control that is also reachable
+ * in the region itself, and announcing a popup would describe the press the
+ * user is about to make as opening a menu. On a coarse pointer the hold is
+ * the only route, which is why it exists at all.
+ *
+ * The name is the region's — "Left region", "Bottom region" — with the state
+ * and the panes it holds in the tooltip, so the accessible name is stable
+ * across every arrangement (an e2e can always find "Bottom region") and what
+ * the region HOLDS is still one hover away.
  */
 function RegionToggleButton({
   toggle,
-  menuOpen,
-  onOpenMenu,
+  onOpenChooser,
 }: {
   toggle: RegionToggle;
-  menuOpen: boolean;
-  onOpenMenu: (trigger: HTMLButtonElement) => void;
+  onOpenChooser: (trigger: HTMLElement) => void;
 }) {
-  const empty = toggle.paneTitles.length === 0;
-  // A menu trigger only while there is something to offer: an empty region
-  // no shell surface declares (none today — both dock surfaces declare all
-  // three edges — but the registry decides that, not this button) would
-  // otherwise announce a popup and open an empty panel. It is inert instead
-  // — `aria-disabled`, not `disabled`, so it stays in the tab order and its
-  // accessible name carries the reason a `title` alone cannot deliver to a
-  // keyboard or screen-reader user.
-  const offers = empty && toggle.offers.length > 0;
   const label = `${toggle.label} region`;
-  const inert = empty && !offers;
-  // An empty region's press opens the offer menu whether the region is
-  // visible or hidden (until #2155 makes this button a plain toggle), so its
-  // tooltip names no act — "Hide" or "Show" would promise a toggle the
-  // button is not. It says what the region is: on screen or not, and empty.
-  const title = empty
-    ? `${label}: ${toggle.visible ? 'open, ' : ''}empty${inert ? ', nothing can be shown here' : ''}`
-    : `${toggle.visible ? 'Hide' : 'Show'} ${label}: ${toggle.paneTitles.join(', ')}`;
+  const holds = toggle.paneTitles.length > 0;
+  // The act the press performs, then what the region is. An EMPTY region
+  // takes the same verb — since #2153 showing one is a thing that happens,
+  // and since #2154 what it shows is the chooser — with "(empty)" where the
+  // pane list would be, so no state of this control names an act it does not
+  // perform.
+  //
+  // The second line is the HOLD (#2155 review L4). It is the only place this
+  // control advertises the chooser: `aria-haspopup` would describe the press
+  // the user is about to make as opening a menu, which it is not. A tooltip
+  // is a weak channel and this is not the panel's only route — the region's
+  // own body and its "+" carry the same rows — but an undiscoverable gesture
+  // named nowhere is worse than one named here.
+  const title = `${toggle.visible ? 'Hide' : 'Show'} ${label}${
+    holds ? `: ${toggle.paneTitles.join(', ')}` : ' (empty)'
+  }\nHold or right-click to choose what goes here`;
+  const gesture = useLongPress({
+    onLongPress: onOpenChooser,
+    onClick: toggle.onToggle,
+  });
   return (
     <button
       type="button"
       className={`app-toolbar__region-btn app-toolbar__region-toggle${
-        toggle.visible ? ' is-pressed' : ''
+        toggle.visible ? ' is-pressed' : holds ? ' is-holding' : ''
       }`}
-      aria-label={inert ? title : label}
+      aria-label={label}
       title={title}
-      {...(empty
-        ? offers
-          ? { 'aria-haspopup': 'menu' as const, 'aria-expanded': menuOpen }
-          : { 'aria-disabled': true }
-        : { 'aria-pressed': toggle.visible })}
-      onClick={(event) => {
-        if (inert) return;
-        if (empty) onOpenMenu(event.currentTarget);
-        else toggle.onToggle();
-      }}
+      aria-pressed={toggle.visible}
+      {...gesture}
     >
-      <RegionGlyph region={toggle.region} pressed={toggle.visible} />
+      <RegionGlyph
+        region={toggle.region}
+        fill={toggle.visible ? 'filled' : holds ? 'outlined' : 'none'}
+      />
     </button>
   );
 }
@@ -379,42 +387,37 @@ function ConnectedRegionToolbarControls() {
     menuItems,
     regionToggles,
   } = useRegionSurfaceMenu();
-  // Which menu is open: the folded branch's one flat menu (`'folded'`), or an
-  // empty region's offer menu, keyed by region. One state for both so exactly
-  // one panel can be portalled at a time.
-  const [openMenu, setOpenMenu] = useState<
-    'folded' | RegionToggle['region'] | null
-  >(null);
-  const closeMenu = useCallback(() => setOpenMenu(null), []);
+  // Whether the folded device's one flat menu is open. Since #2155 it is the
+  // only MENU this row opens: the per-region toggles open #2154's chooser
+  // instead, which is its own state below because it carries an anchor box
+  // and loads its own chunk.
+  const [foldedMenuOpen, setFoldedMenuOpen] = useState(false);
+  const closeMenu = useCallback(() => setFoldedMenuOpen(false), []);
+  // The chooser a toggle's hold or right-click opened: which region it is
+  // for, and the box of the toggle it hangs under (#2155 D2). One state, so
+  // exactly one panel is portalled at a time.
+  const [chooser, setChooser] = useState<{
+    region: RegionToggle['region'];
+    anchor: { right: number; top: number; bottom: number };
+  } | null>(null);
+  const closeChooser = useCallback(() => setChooser(null), []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the layout owners are this effect's trigger, not values it reads — it exists to fire when they change.
   useEffect(() => {
-    // Close whenever the branch that OWNS the menu changes, not only when the
+    // Close whenever the branch that OWNS the panel changes, not only when the
     // overflow branch takes over. Three transitions reach this, and rendering
     // through any of them is wrong in a different way:
     //   fine -> coarse while still wide: the toggles are replaced by the
-    //     folded control, so an open offer menu would float over a trigger
+    //     folded control, so an open chooser would float over a trigger
     //     that no longer exists.
     //   -> overflow: the early return below unmounts the portal without
-    //     clearing this, so widening back re-opens a menu nobody reopened.
+    //     clearing this, so widening back re-opens a panel nobody reopened.
     //   overflow -> back: same state, restored under a different owner.
-    setOpenMenu(null);
+    setFoldedMenuOpen(false);
+    setChooser(null);
   }, [bottomOnly, commandsInOverflowMenu]);
   const [menuAnchorRight, setMenuAnchorRight] = useState(8);
-  // The offer menu is a menu of what can be placed in an EMPTY region. The
-  // region can stop being empty while it is open — the ⌘⇧A chord fires with
-  // the menu holding focus (`DOCK_WHEN` excludes only the composer), and a
-  // cross-tab arrangement sync arrives whenever it likes — and then its
-  // trigger is a toggle again while a zero-row panel sits over a viewport
-  // backdrop. Derived from the same toggles the trigger reads, so the panel
-  // cannot outlive the state that justified it.
-  const offering = regionToggles.find((toggle) => toggle.region === openMenu);
-  const offeringIsStale =
-    offering !== undefined && offering.offers.length === 0;
-  useEffect(() => {
-    if (offeringIsStale) setOpenMenu(null);
-  }, [offeringIsStale]);
 
-  const anchorTo = useCallback((trigger: HTMLButtonElement) => {
+  const anchorTo = useCallback((trigger: HTMLElement) => {
     setMenuAnchorRight(
       window.innerWidth - trigger.getBoundingClientRect().right,
     );
@@ -459,15 +462,15 @@ function ConnectedRegionToolbarControls() {
           aria-label={label}
           title={label}
           aria-haspopup="menu"
-          aria-expanded={openMenu === 'folded'}
+          aria-expanded={foldedMenuOpen}
           onClick={(event) => {
             anchorTo(event.currentTarget);
-            setOpenMenu('folded');
+            setFoldedMenuOpen(true);
           }}
         >
-          <RegionGlyph region="bottom" pressed={false} />
+          <RegionGlyph region="bottom" fill="none" />
         </button>
-        {openMenu === 'folded' ? (
+        {foldedMenuOpen ? (
           <ToolbarMenuSurface
             ariaLabel="Region surfaces"
             dismissLabel="Close regions menu"
@@ -482,13 +485,14 @@ function ConnectedRegionToolbarControls() {
     );
   }
 
-  // #2143: one toggle per dock region, in screen order. #1536 F folded five
-  // unlabeled per-region rectangles into one "Layout" control and #1552 D2
-  // made that control a per-SURFACE placement picker; this is the third
-  // shape, and it is per REGION again — but each button now answers exactly
-  // one question ("is this region open?") with a pressed state the model
-  // derives, which is what the five glyphs and the picker both lacked. What a
-  // region holds lives in its own tab strip (#2046); how a pane moves is the
+  // #2143, settled by #2155: one toggle per dock region, in screen order, and
+  // every one of them a toggle. #1536 F folded five unlabeled per-region
+  // rectangles into one "Layout" control and #1552 D2 made that control a
+  // per-SURFACE placement picker; this is the third shape, and it is per
+  // REGION again — each button answering exactly one question ("is this
+  // region open?") with a pressed state the model derives, which is what the
+  // five glyphs and the picker both lacked. What a region holds lives in its
+  // own tab strip (#2046) and its chooser (#2154); how a pane moves is the
   // tab's own menu (`RegionChromeBar`).
   return (
     <fieldset className="app-toolbar__regions">
@@ -498,23 +502,28 @@ function ConnectedRegionToolbarControls() {
         <RegionToggleButton
           key={toggle.region}
           toggle={toggle}
-          menuOpen={openMenu === toggle.region}
-          onOpenMenu={(trigger) => {
-            anchorTo(trigger);
-            setOpenMenu(toggle.region);
+          onOpenChooser={(trigger) => {
+            const box = trigger.getBoundingClientRect();
+            setChooser({
+              region: toggle.region,
+              anchor: { right: box.right, top: box.top, bottom: box.bottom },
+            });
           }}
         />
       ))}
-      {offering && !offeringIsStale ? (
-        <ToolbarMenuSurface
-          ariaLabel={`Show in ${offering.label} region`}
-          dismissLabel="Close region menu"
-          anchorRight={menuAnchorRight}
-          role="menu"
-          onClose={closeMenu}
-        >
-          <RegionOfferMenu offers={offering.offers} onClose={closeMenu} />
-        </ToolbarMenuSurface>
+      {chooser ? (
+        // `pending={null}`: the chunk is small and the panel is the response
+        // to a gesture the user just completed, so a skeleton hanging under
+        // the toggle for a frame would be more motion than information.
+        <LazyBoundary
+          load={loadRegionChooserPanel}
+          componentProps={{
+            regionId: chooser.region,
+            anchor: chooser.anchor,
+            onClose: closeChooser,
+          }}
+          pending={null}
+        />
       ) : null}
     </fieldset>
   );

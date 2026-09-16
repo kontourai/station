@@ -155,24 +155,6 @@ function dockParam(): string | null {
   return new URLSearchParams(window.location.search).get('dock');
 }
 
-/**
- * #2143: the toolbar is one TOGGLE per dock region, and an EMPTY region's
- * control opens a menu offering the shell surfaces that declare it. Placing
- * Chat into empty `right` is therefore that region's offer row, through the
- * model's own `placeSurface`.
- */
-function chooseRegionOffer(regionLabel: string, surfaceTitle: string) {
-  fireEvent.click(
-    screen.getByRole('button', { name: `${regionLabel} region` }),
-  );
-  const menu = screen.getByRole('menu', {
-    name: `Show in ${regionLabel} region`,
-  });
-  fireEvent.click(
-    within(menu).getByRole('menuitem', { name: `Show ${surfaceTitle} here` }),
-  );
-}
-
 /** Press a region's toggle: the region shows or hides, every pane with it. */
 function pressRegionToggle(regionLabel: string) {
   fireEvent.click(
@@ -191,9 +173,18 @@ async function placeChatRight() {
   );
 }
 
+/**
+ * The retired "Place Chat here", then #2143's "Show Chat here" offer row
+ * under an empty region's toolbar button. Since #2155 the toolbar places
+ * nothing at all — its toggles only show and hide, and what goes in a region
+ * is the region's own chooser (#2154) — so the placement these tests need as
+ * a fixture is issued through the model, the same command every surviving
+ * route (a tab's move menu, the chooser, a link's `openInRegion`) reaches.
+ * What this file pins is the MIRROR a placement produces, not which chrome
+ * sent it; `RegionToolbarControls.test.tsx` owns the toolbar's own behaviour.
+ */
 function chooseChatForEmptyRight() {
-  // The retired "Place Chat here" under a Right heading.
-  chooseRegionOffer('Right', 'Chat');
+  act(() => currentRegionModel().placeSurface('chat', 'right'));
 }
 
 function dockToggle(): () => void {
