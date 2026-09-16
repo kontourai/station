@@ -917,6 +917,19 @@ const PULL_REQUEST_SURFACE_ID =
  */
 const FILE_PREVIEW_SURFACE_ID = /^file-preview:[0-9a-f]{32}$/;
 
+/**
+ * `board:<layoutId>` and `layout:<projectId>/<layoutId>` (#2157), the exact
+ * shapes `workspaceLayoutPaneId` mints: each id a lowercase UUID, the form
+ * the server's `randomUUID()` writes into a Layout's and a Project's `id`.
+ */
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+const BOARD_SURFACE_ID = new RegExp(`^board:${UUID}$`);
+const PROJECT_LAYOUT_SURFACE_ID = new RegExp(`^layout:${UUID}/${UUID}$`);
+
+/** The renderer both Layout families mount: one Board or project Layout as a tab. */
+const LAYOUT_PANE_SOURCE_FILE =
+  'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx';
+
 export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
   {
     prefix: 'pr:',
@@ -938,6 +951,33 @@ export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
     regions: DOCK_REGION_IDS,
     defaultRegion: 'right',
     sourceFile: 'src-ui/src/workspace-panes/FilePreviewPane.tsx',
+  },
+  // #2157: a Board (a principal-owned Layout) and a project Layout as dock
+  // tabs. The titles here are the family's FALLBACK — the tab shows the
+  // Layout's own name once `RegionPaneHost` resolves it from the SDK's
+  // metadata lists (`LayoutPaneTitles`), which this entry chunk may not
+  // read. `right` by default for the same reason a pull request lands
+  // there: a Layout is a page-shaped thing, and the right region is the
+  // tall one beside Chat. The `board` glyph is the sidebar's Boards glyph.
+  {
+    prefix: 'board:',
+    matches: (id) => BOARD_SURFACE_ID.test(id),
+    descriptorId: 'pane:builtin:workspace-layout',
+    title: 'Board',
+    icon: 'board',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'right',
+    sourceFile: LAYOUT_PANE_SOURCE_FILE,
+  },
+  {
+    prefix: 'layout:',
+    matches: (id) => PROJECT_LAYOUT_SURFACE_ID.test(id),
+    descriptorId: 'pane:builtin:workspace-layout',
+    title: 'Layout',
+    icon: 'board',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'right',
+    sourceFile: LAYOUT_PANE_SOURCE_FILE,
   },
 ];
 
@@ -1000,8 +1040,9 @@ function regionStatesEqual(a: RegionState, b: RegionState): boolean {
     a.size === b.size &&
     // Surface ids carry no comma — registered ids are words, and an
     // instance-keyed id is built from a validated host/owner/repository and
-    // a number or a hex nonce (`workspacePullRequestPaneId`,
-    // `file-preview:<nonce>`), none of which admit one — so the joined form
+    // a number, a hex nonce or UUIDs (`workspacePullRequestPaneId`,
+    // `file-preview:<nonce>`, `workspaceLayoutPaneId`), none of which admit
+    // one — so the joined form
     // compares the lists element by element, in order.
     String(a.panes) === String(b.panes) &&
     a.occupant === b.occupant &&

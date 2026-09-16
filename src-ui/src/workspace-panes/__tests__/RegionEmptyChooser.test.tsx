@@ -13,7 +13,12 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { OpenInRegionOutcome } from '../../contexts/RegionModelContext';
-import type { RegionArrangement, RegionId } from '../../regions/region-model';
+import {
+  INSTANCE_SURFACE_PREFIXES,
+  REGION_SURFACE_REGISTRY,
+  type RegionArrangement,
+  type RegionId,
+} from '../../regions/region-model';
 
 const harness = vi.hoisted(() => ({
   openSurfaceInRegion: vi.fn(),
@@ -129,6 +134,18 @@ test('an empty region lists every surface declaring it, in registry order, for R
     'Diff',
     'Files',
   ]);
+  // No instance-keyed family is offered: `board:`, `layout:`, `pr:` and
+  // `file-preview:` name one occurrence each and have no blank one to
+  // place, so they are prefixes (`INSTANCE_SURFACE_PREFIXES`) and never
+  // registry keys. The retired "+" catalog filtered their descriptors out
+  // by hand; the chooser reads `model.surfaces`, which never held them.
+  // The filter is only a claim while there are prefixes to match with.
+  expect(INSTANCE_SURFACE_PREFIXES.length).toBeGreaterThan(0);
+  expect(
+    [...REGION_SURFACE_REGISTRY.keys()].filter((id) =>
+      INSTANCE_SURFACE_PREFIXES.some((prefix) => id.startsWith(prefix.prefix)),
+    ),
+  ).toEqual([]);
   expect(screen.getByText('Nothing in the Right region yet')).toBeTruthy();
   expect(screen.queryByRole('menu')).toBeNull();
   unmount();

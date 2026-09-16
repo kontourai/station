@@ -60,6 +60,9 @@ const BUILTIN_PANE_GLYPHS = {
   // A branch, not the Diff pane's glyph: a pull-request pane and the Diff
   // pane are two tiles a reader chooses between (#2049).
   'workspace-pull-request': BranchGlyph,
+  // The sidebar's Boards glyph: a docked Board or project Layout is the
+  // same object the sidebar's pill names (#2157).
+  'workspace-layout': BoardGlyph,
   'workspace-home': HomeGlyph,
   'workspace-activity': ChartGlyph,
   'workspace-agents': AgentGlyph,

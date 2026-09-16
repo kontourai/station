@@ -204,7 +204,7 @@ map; anything not listed is a label.
 | `REGION_SURFACE_PANES` (#2045; #2047) | surface id → the canonical `WorkspacePaneInstance` under the dock's context (`instance({ projectId })` — a coding pane is the dock project's and has no instance without one; Chat, Activity, Agents and Device ignore the context, Device because a device list is the Station host's fact rather than a Project's — #1969), plus `descriptorId` and the entry's constant `instanceId` | `RegionPaneHost`: the region's document is its panes' entries in tab order under the dock's project (an unsuppliable pane keeps its tab and renders "Choose a project for this dock"), and a persisted or opened pane is admitted only when `regionSurfaceOfPane` names a surface in the region's `panes` AND it binds the dock's project (an opened pane bound to another project is refused; a persisted one is re-bound by the catalog match); the empty region's chooser (`RegionEmptyChooser`, #2154) lists registry surfaces and enables a row only where the entry's `instance(context)` is non-null — no prefix family is a registry key, so an instance-keyed pane is never a row (`regionSurfaceOfDescriptor` and `dockCanSupply` are read by the inventory pin alone since the dock catalog was retired); `useOpenInRegion` folds an instance to its surface; `region-surface-panes.test.ts` pins the keys to the registry's dock-capable surfaces both ways and every entry's descriptor to `dockCanSupply`. Since #2049 `RegionShells` decides "mount a host" from `resolveRegionSurface`, not from the registry alone — so what makes that sufficient is this pin PLUS `region-instance-panes.test.ts`, which pins the id-keyed resolver and this module's occurrence minter to admit exactly the same instance ids |
 | `DOCK_HOST_SUPPLIABLE_CONTEXTS` (#2047) | `{ project, source, workspace }` — what a dock region can bind for a pane | `dockCanSupply` (`workspacePaneModesSatisfiableBy` over it): the inventory pin's admission check (`region-surface-panes.test.ts`); it was also the dock catalog's filter for "listed disabled with the reason" until #2154 retired that catalog for the registry-driven chooser |
 | `RegisteredSurface.exposure` (#2047) | absent (`shell`) or `catalog` | `useRegionSurfaceMenu` (`surfaceList`: a catalog-only surface is never an empty region's offer, has no chord and no unplaced Show row; a placed one keeps its folded Show/Hide row, which reads `region.panes`) — the region's "+" is a catalog-only surface's only offer; `?surface=<id>` is a command and reveals either kind |
-| `INSTANCE_SURFACE_PREFIXES` / `resolveRegionSurface` (#2049) | an id PREFIX (`pr:`, `file-preview:`) → a `RegisteredSurface`-shaped description: title, icon, the dock regions it may take, `exposure: 'catalog'`, and the `pane:builtin:…` descriptor id its occurrences carry (named as a STRING — this table is in the entry chunk and may import no pane contract) | THE id-keyed lookup: `surfaceMayOccupy`, the record parser's `parseSurfaceEntry`, the provider's `openSurfaceInRegion` and `toggleSurface`, `RegionShells`' mount rule, `RegionPaneHost`'s tab titles and placeholder titles, `useDockShellChrome` (`surfaceTitle`, `surfaceShortcutId`, the landmark), `useRegionSurfaceMenu`'s folded rows, `DockShell`'s landmark; `RegionEmptyChooser` (#2154) lists `model.surfaces`, which holds none of them, so a region's "+" cannot offer them. `region-instance-panes.test.ts` pins each prefix to the minting half in `region-surface-panes.ts`; `docked-capability-derivation.test.ts` pins each `descriptorId` to a built-in descriptor that exists and declares `docked`. These surfaces are never registry keys — there is no blank occurrence to register — so `model.surfaces` (the SHELL's inventory: what the toolbar may offer, what a chord toggles) holds none of them |
+| `INSTANCE_SURFACE_PREFIXES` / `resolveRegionSurface` (#2049; #2157 adds `board:` and `layout:`) | an id PREFIX (`pr:`, `file-preview:`, `board:`, `layout:`) → a `RegisteredSurface`-shaped description: title, icon, the dock regions it may take, `exposure: 'catalog'`, and the `pane:builtin:…` descriptor id its occurrences carry (named as a STRING — this table is in the entry chunk and may import no pane contract) | THE id-keyed lookup: `surfaceMayOccupy`, the record parser's `parseSurfaceEntry`, the provider's `openSurfaceInRegion` and `toggleSurface`, `RegionShells`' mount rule, `RegionPaneHost`'s tab titles and placeholder titles, `useDockShellChrome` (`surfaceTitle`, `surfaceShortcutId`, the landmark), `useRegionSurfaceMenu`'s folded rows, `DockShell`'s landmark; `RegionEmptyChooser` (#2154) lists `model.surfaces`, which holds none of them, so neither a region's "+" nor an empty region's chooser can offer them. `region-instance-panes.test.ts` pins each prefix to the minting half in `region-surface-panes.ts`; `docked-capability-derivation.test.ts` pins each `descriptorId` to a built-in descriptor that exists and declares `docked`. These surfaces are never registry keys — there is no blank occurrence to register — so `model.surfaces` (the SHELL's inventory: what the toolbar may offer, what a chord toggles) holds none of them |
 | `MarkdownLinkContext` (#2049) | the conversation a rendered message belongs to: its project slug and id, the DOCK's project slug, whether this device folds to one region, and the `setLayout` route a preview took before | `ChatMarkdownAnchor` (inside `MarkdownRenderer`'s lazy chunk) — the ONLY reader, and the absence of a provider is the default: a document view, a shared answer and a system event have no conversation, so their anchors stay plain anchors. Provided by `ChatDock` alone |
 | `RegionState.panes` (surface ids, tab order; #2046 2a) | surface ids | `occupiedRegion`, `occupiedDockRegion`, `chatRegion`, `firstFreeDockRegion`, `foldedDockRegion` (a surface behind another's tab is still IN its region; a region with no panes is free), `placeSurface` (joins a dock region's panes, replaces `main`'s, removes the surface from the region it leaves), `removeRegionPane` (a closed tab: the surface leaves and is placed nowhere), `moveRegionPanes` (the region bar's placement: every pane, in order, moves), `dockMirrorDiff` (a region holding Chat, selected or not, is Chat's region; Chat leaving every region reads as the dock closing), the record writer (one pane → `surface`, two or more → `pane-host`), `RegionPaneHost` (the document is DERIVED from it; a mount reconciles a persisted document that lacks a pane), the tab strip (`RegionChromeBar`, #2046 2b: one tab per pane in this order; a reorder writes it back), `DockShell` and `useDockShellChrome` (a region whose panes include Chat is Chat's shell — `#chat-dock`, the "Dock" landmark, the `dock.maximize` registration, the persisted snap key and the project binding's cleanup — whichever tab it shows; D3), `DockShellChrome.regionPanes` (Chat's mobile overflow sheet lists the region's other panes from it), and `useRegionSurfaceMenu` (a segment for a region the surface already holds is a select, and claims no displacement; the folded menu's rows are per region, in this order) |
 | `RegionState.occupant` (the SELECTED pane, a member of `panes` or null) | surface ids | every pre-2a reader keeps its meaning for a one-pane region: `useDockShellChrome` (`surfaceTitle`, `surfaceShortcutId` and `canMaximize` name the pane the region SHOWS, so the region bar's visibility control reads "Hide Activity" while Activity's tab is selected; a non-Chat region's landmark takes the same title — and an EMPTY region, having no pane to be named after, names itself: "Right region", with `canMaximize` false, #2153), `RegionShells` (a host mounts for a registered selected pane, or — #2153 — for a VISIBLE region with no pane at all), `MainRegionSurface`, `ProjectSidebar`, `useRegionSurfaceMenu` (a surface is SEEN only when its region is visible and it is the selected pane; the picker reads Hidden otherwise, and the folded menu's row for the selected pane is the region's Hide), `toggleSurface` (only the selected pane's toggle hides its region; a pane behind selects), `revealSurface`/`showSurface` (select the pane's tab), `selectRegionPane`/the provider's `selectPane` (what a tab click writes), the record's `selected`, the tab strip (the pressed tab), the `dock` host (the one pane it mounts, as the strip's `tabpanel`), and `RegionPaneHost`, which makes the controller's active pane follow it (`focusExisting`) |
@@ -614,6 +614,90 @@ out of Activity's instance. The "+" stays project-scoped
 project cannot reach a pane that needs no project; that limitation is #2047's
 and is documented here rather than widened by this slice.
 
+## A Board or a Layout as a pane (#2157)
+
+**Implemented by #2157, 2026-09-16.** The sidebar's Boards pills and a
+project's Layout chips name `LayoutConfig` records; a dock region can now hold
+one of those beside Chat, as an instance-keyed pane riding the #2049 prefix
+mechanism. Not the Session Board (`pane:builtin:board`, one per project), which
+stays a route.
+
+**Id grammar.** A Board is `board:<layoutId>`; a project Layout is
+`layout:<projectId>/<layoutId>`. Both parts are the server's own ids
+(`randomUUID()` on create, so lowercase UUIDs — `workspace-layout-pane.ts`
+pins the shape and refuses anything else, including a slug or a comma, which
+`regionStatesEqual` joins on). Ids rather than slugs because a slug is
+renamed and reused while an id is minted once, and because a Board carries
+the SAME id through promote. A project Layout carries its project IN the id:
+the id alone does not name a project, `useProjectLayoutsQuery` is
+slug-scoped, and the dock's own project is the wrong answer — a region holds
+another project's Layout as readily as its own, and a dock with no project
+still renders one. So the occurrence binds the project the id names and the
+host's admission (`RegionPaneHost`, which compares `boundContext.projectId`
+against the derived occurrence) sees the same project on both sides. A Board
+binds none. Both families share one descriptor,
+`pane:builtin:workspace-layout` (`docked` only, one requirement-free mode,
+not offered by the region's "+": there is no blank occurrence).
+
+**Title.** The tab shows the Layout's `name` — the same word the pill shows —
+resolved by `RegionPaneHost` from the SDK's metadata LISTS
+(`LayoutPaneTitles`: `usePersonalLayoutsQuery`, `useProjectsQuery` +
+`useProjectLayoutsQuery`), mounted only while the region holds such a pane
+and reading no record, so the host chunk gains no layout renderer. Until the
+list resolves, and for an id the list no longer carries, the tab shows the
+prefix fallback ("Board" / "Layout").
+
+**Which kinds render.** The renderer (`LayoutWorkspacePane`, lazy) is
+`PersonalBoardView`'s: the one `LayoutRenderer` through the one
+`layoutWorkspaceShape` derivation, `SDKAdapter` with `boundProjectSlug` for
+a project Layout, local tab state, and NO `LayoutNavigationProvider` (it
+writes `location.hash` and would fight the main region's for the one
+hash). A Board always renders. A project Layout renders only when
+`ProjectLayoutRenderer` would send it to `LayoutView`
+(`resolveProjectLayoutRendererKind` === `'layout-view'`); every other kind
+shows "Open this Layout in Main" whose action is `setLayout`. `coding` is
+refused because it is a whole `WorkspacePaneHost` whose storage key, `?pane=`
+scope and DOM ids derive from `(projectId, layoutId)` — a docked copy would
+share the main region's persisted document and duplicate element ids.
+`chat` is refused because it suspends the ambient regions it would be docked
+in (`App.tsx`). `tasks`, `session-board` and `review` are route-shaped pages
+(`layoutTypeRegistry`) and docking them is a separate decision this change
+does not make. An id the list no longer carries — a Board promoted, a Layout
+deleted — renders "not found" in the tab; the tab stays, because closing a
+tab is the user's act.
+
+**A built-in tab that reads the route.** `SDKAdapter`'s `boundProjectSlug`
+rewrites the SDK's navigation, which every plugin tab reads; the built-in
+`flow-run-console` tab reads the UI's own `NavigationContext` instead, so a
+docked Layout of project B would have shown project A's runs. `LayoutRenderer`
+now carries `boundProjectSlug` (`AgentLayoutProps`) and that registry entry
+passes it to `FlowRunConsole`; the route-bound hosts pass none and keep their
+behaviour. No other built-in tab reads a project (audited 2026-09-16:
+`DefaultLayout`, `UnavailableLayoutTab`, `KitStandardViewLayout`,
+`MCPToolUILayout` read none; `UnsupportedLayoutComponent` reads navigation
+only to `navigate('/registry')`).
+
+**Deliberately not carried.** A docked Layout gets none of `LayoutView`'s
+agent affordances — no `annotateAgentRef` (`agentAvailableInProject`), no
+`onLaunchPrompt`, no `onShowChat` — for a Board because there is no project
+to filter against (`PersonalBoardView`'s reason), and for a project Layout
+because a prompt launch binds a chat session to the ROUTE's project through
+`LayoutView`'s handlers and action bar, which a dock tab beside Chat does not
+have. A docked Layout reads and navigates; it does not launch. The SDK
+header still renders the layout's prompt buttons with a no-op launcher, so a
+docked Layout that carries prompts shows inert controls today; wiring the
+launch to the pane's bound project, or hiding the bar, is #2171.
+
+**Openers.** `openSurfaceInRegion('board:<id>')` from the model, or
+`openLayoutInRegion(model, key)` in `useOpenInRegion.ts`, which mints the
+occurrence and refuses an id the grammar cannot (`no-surface`). This slice
+adds NO sidebar entry point; #2158 adds the context menu and drag.
+
+**One-way rollback, disclosed and accepted.** The record shape is unchanged
+(`{ kind: 'surface', id }`), so a build without this reads a `board:` or
+`layout:` id the way it reads a retired surface — dropped on parse, dropped
+on its next write — and the tab is lost. The stale-tab story above covers it.
+
 **Still direction.** More instance-keyed families ride the #2049 prefix
 mechanism as their own change (a second terminal, Browser Preview): a prefix
 entry naming a descriptor that declares `docked`, the minting half in
@@ -703,8 +787,9 @@ direction of 2026-09-15 settles it: **Bottom is Chat's.** Terminal joins it
 (`coding:terminal`'s `defaultRegion` moves from `right` to `bottom` — a
 terminal belongs under the conversation that is driving it), Files stays on
 the left (`coding:file-browser`), and everything else that is not Home
-defaults to the right: Activity, Agents, Device, Diff, and the two
-instance-keyed families (`pr:`, `file-preview:`). Home's only placement is
+defaults to the right: Activity, Agents, Device, Diff, and the four
+instance-keyed families (`pr:`, `file-preview:`, and #2157's `board:` and
+`layout:`). Home's only placement is
 `main`. The table is pinned in `region-model.test.ts`, so a later change to
 any entry is an argued edit rather than a drift.
 
