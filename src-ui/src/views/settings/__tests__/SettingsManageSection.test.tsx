@@ -32,7 +32,7 @@ describe('SettingsManageSection', () => {
 
   test.each([
     ['Agents', '/agents'],
-    ['Guidance', '/guidance'],
+    ['Skills', '/guidance'],
     ['Connections', '/connections'],
     ['Registry', '/registry'],
     // #2065 retired the global `/review-queue`: Review is a layout kind a
@@ -73,7 +73,7 @@ describe('SettingsManageSection', () => {
       screen.getAllByRole('button').map((button) => button.textContent?.trim()),
     ).toEqual([
       'Agents',
-      'Guidance',
+      'Skills',
       'Connections',
       'Registry',
       'Plugins',

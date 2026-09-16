@@ -59,7 +59,7 @@ describe('ProjectSidebarNav', () => {
   });
 
   // #2059 (design record D3): the left panel lists PLACES only. Agents,
-  // Connections, Guidance, Registry, Plugins, Schedule and Developer moved
+  // Connections, Skills, Registry, Plugins, Schedule and Developer moved
   // behind the gear and the palette; Notifications and Settings became the
   // footer's bell and gear; and the `Customize` and `System` group headers
   // went with them. Activity is what is left — a place, beside Home.

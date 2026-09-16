@@ -166,7 +166,13 @@ describe('e2e manifest', () => {
       'tests/project-task-room-collaboration.spec.ts',
       'tests/interactive-workspace-performance-bridge.spec.ts',
     ]);
-    expect(getSpecsForSuite('extended')).toContain('tests/settings.spec.ts');
+    // #2144 slice 4 (#2146): Settings left `extended` for `product`. The
+    // placeholder bucket ran in no ordinary lane, which is how its Manage-group
+    // assertion went on naming a destination #2065 had retired.
+    expect(getSpecsForSuite('extended')).not.toContain(
+      'tests/settings.spec.ts',
+    );
+    expect(getSpecsForSuite('product')).toContain('tests/settings.spec.ts');
     expect(getSpecsForSuite('starter-clean-install')).toEqual([
       'tests/starter-clean-install.spec.ts',
     ]);
@@ -236,6 +242,11 @@ describe('e2e manifest', () => {
       // Creates and revision-checks a real personal Board through the shared
       // instance API, so it cannot run beside another stateful product spec.
       'tests/work-board.spec.ts',
+      // #2144 slice 4 (#2146): Settings' persistence journeys PUT /config/app
+      // on the shared instance and read the value back, and one drives the
+      // reset confirmation — the boot configuration every sibling journey
+      // reads.
+      'tests/settings.spec.ts',
     ]);
   });
 
@@ -314,7 +325,7 @@ describe('e2e manifest', () => {
     expect(result.status).toBe(0);
     const parsed = JSON.parse(result.stdout);
     expect(parsed.suite).toBe('extended');
-    expect(parsed.specs).toContain('tests/settings.spec.ts');
+    expect(parsed.specs).toContain('tests/ui-blocks.spec.ts');
   });
 
   it('lists the isolated PR smoke suite without starting Station', () => {

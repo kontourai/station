@@ -434,6 +434,12 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // Work Board writes the personal revisioned board through the live API.
     // It cannot share that state with another product browser journey.
     'tests/work-board.spec.ts',
+    // #2144 slice 4 promotion (#2146). Settings SAVES: its persistence
+    // journeys drive real PUT /config/app writes and read the value back, and
+    // one drives the reset confirmation. The instance's app configuration is
+    // exactly the state every other product journey reads at boot, so this
+    // spec cannot run beside one.
+    'tests/settings.spec.ts',
   ],
 };
 
@@ -611,7 +617,7 @@ export const e2eManifest = [
   {
     path: 'tests/skills-command-surface.spec.ts',
     bucket: 'product',
-    surface: 'Guidance',
+    surface: 'Skills',
     tierTarget: 'full',
     primary: true,
     rationale:
@@ -1073,7 +1079,7 @@ export const e2eManifest = [
   {
     path: 'tests/skills-command-routes.spec.ts',
     bucket: 'product',
-    surface: 'Guidance',
+    surface: 'Skills',
     tierTarget: 'full',
     primary: true,
     rationale:
@@ -1808,12 +1814,12 @@ export const e2eManifest = [
   },
   {
     path: 'tests/settings.spec.ts',
-    bucket: 'extended',
+    bucket: 'product',
     surface: 'Settings',
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Settings is a routed surface pending product-bucket promotion review.',
+      "#2144 slice 4 promotion (#2146). Held in `extended` under a placeholder rationale that said only that promotion review was pending, this spec was not run by any ordinary lane — and it asserted a 'Review' entry in Settings' Manage group that #2065 had retired, so the surface's one browser journey had been red-by-construction with nobody reading it. That is the defect #2146 records: a bucket nobody runs cannot tell a stale assertion from a regression. The assertions themselves are ones only a browser can make — the section navigation's rows measured against the 44px touch floor at 390x844 with no horizontal document scroll, a nav-only row really leaving /settings for its destination's route, the scope captions each section's persistence rule is written in, and the highlight/view deep-link round-trips landing on a rendered row — so the spec belongs in the bucket that runs.",
     exceptions: [],
   },
   {

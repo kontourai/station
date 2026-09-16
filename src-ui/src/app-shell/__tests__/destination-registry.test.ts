@@ -172,6 +172,155 @@ describe('DestinationRegistry', () => {
     ).toThrow(/Duplicate management destination order: 1/);
   });
 
+  // #2144 slice 4: the Settings navigation's nav-only rows. A literal
+  // inventory, not a re-read of `getSettingsNav()` — comparing the projection
+  // against itself would pass however it changed, including a destination
+  // silently losing the only entry point it has left.
+  test('projects the Settings nav-only rows with their overrides resolved', () => {
+    expect(APP_DESTINATION_REGISTRY.getSettingsNav()).toEqual([
+      {
+        id: 'agents',
+        group: 'set-up',
+        order: 10,
+        label: 'Agents',
+        route: '/agents',
+      },
+      {
+        id: 'guidance',
+        group: 'set-up',
+        order: 20,
+        label: 'Skills',
+        route: '/guidance',
+      },
+      {
+        id: 'connections',
+        group: 'set-up',
+        order: 30,
+        // The whole point of the override: the LABEL is not the destination's
+        // own ('Connections') and the ROUTE is not its root ('/connections').
+        label: 'Engines & Models',
+        route: '/connections/engines',
+      },
+      {
+        id: 'plugins',
+        group: 'set-up',
+        order: 40,
+        label: 'Plugins',
+        route: '/plugins',
+      },
+      {
+        id: 'schedule',
+        group: 'set-up',
+        order: 50,
+        label: 'Schedule',
+        route: '/schedule',
+      },
+    ]);
+    // Registry is deliberately absent: #2144 decision 4 folds it into Plugins,
+    // and it keeps its route, its palette entry and its keywords.
+    expect(
+      APP_DESTINATION_REGISTRY.getSettingsNav().map((entry) => entry.id),
+    ).not.toContain('registry');
+  });
+
+  test('offers Developer as a Settings nav row only while developer tools are enabled', () => {
+    // archive#3313: the flag gates ADVERTISEMENT. /developer stays
+    // deep-linkable either way, which is why this is a row-level assertion and
+    // not a claim about routing.
+    expect(
+      APP_DESTINATION_REGISTRY.getSettingsNav().map((entry) => entry.id),
+    ).not.toContain('developer');
+    expect(
+      APP_DESTINATION_REGISTRY.getSettingsNav(
+        new Set([DEVELOPER_TOOLS_FLAG]),
+      ).find((entry) => entry.id === 'developer'),
+    ).toEqual({
+      id: 'developer',
+      group: 'this-station',
+      order: 10,
+      label: 'Developer',
+      route: '/developer',
+    });
+  });
+
+  test('refuses a destination that is both a panel place and a Settings nav entry', () => {
+    expect(() =>
+      createDestinationRegistry([
+        {
+          id: 'both',
+          route: '/both',
+          label: () => 'Both',
+          sidebar: { order: 1 },
+          settingsNav: { group: 'set-up', order: 1 },
+        },
+      ]),
+    ).toThrow(/both a panel place and a Settings nav entry/);
+  });
+
+  test('refuses a Settings nav entry that is also hidden from nav', () => {
+    expect(() =>
+      createDestinationRegistry([
+        {
+          id: 'hidden',
+          route: '/hidden',
+          label: () => 'Hidden',
+          hiddenFromNav: true,
+          settingsNav: { group: 'set-up', order: 1 },
+        },
+      ]),
+    ).toThrow(/cannot be hidden from nav and a Settings nav entry/);
+  });
+
+  test('refuses a relative Settings nav route override', () => {
+    expect(() =>
+      createDestinationRegistry([
+        {
+          id: 'relative',
+          route: '/relative',
+          label: () => 'Relative',
+          settingsNav: { group: 'set-up', order: 1, route: 'engines' },
+        },
+      ]),
+    ).toThrow(/absolute Station route for its Settings nav entry/);
+  });
+
+  test('refuses two Settings nav entries in one slot, but not across groups', () => {
+    expect(() =>
+      createDestinationRegistry([
+        {
+          id: 'one',
+          route: '/one',
+          label: () => 'One',
+          settingsNav: { group: 'set-up', order: 1 },
+        },
+        {
+          id: 'two',
+          route: '/two',
+          label: () => 'Two',
+          settingsNav: { group: 'set-up', order: 1 },
+        },
+      ]),
+    ).toThrow(/Duplicate Settings nav destination order: set-up:1/);
+    // Order is unique within a group, not globally: two groups may each have a
+    // first row, and refusing that would make the orders one shared sequence.
+    expect(() =>
+      createDestinationRegistry([
+        {
+          id: 'one',
+          route: '/one',
+          label: () => 'One',
+          settingsNav: { group: 'set-up', order: 1 },
+        },
+        {
+          id: 'two',
+          route: '/two',
+          label: () => 'Two',
+          settingsNav: { group: 'this-station', order: 1 },
+        },
+      ]),
+    ).not.toThrow();
+  });
+
   test('keeps registered preview surfaces wired while advertising only enabled ones', () => {
     const preview: DestinationDefinition = {
       id: 'preview',
@@ -245,16 +394,25 @@ describe('DestinationRegistry', () => {
         sidebar: { order: 1 },
         palette: { order: 1, params: { tab: 'one' } },
       },
+      {
+        id: 'two',
+        route: '/two',
+        label: () => 'Two',
+        settingsNav: { group: 'set-up', order: 1 },
+      },
     ]);
-    const [definition] = registry.getRegistered();
+    const [definition, navDefinition] = registry.getRegistered();
 
     expect(Object.isFrozen(registry.getRegistered())).toBe(true);
     expect(Object.isFrozen(registry.getSidebar())).toBe(true);
     expect(Object.isFrozen(registry.getPalette())).toBe(true);
+    expect(Object.isFrozen(registry.getSettingsNav())).toBe(true);
+    expect(Object.isFrozen(registry.getSettingsNav()[0])).toBe(true);
     expect(Object.isFrozen(definition)).toBe(true);
     expect(Object.isFrozen(definition?.keywords)).toBe(true);
     expect(Object.isFrozen(definition?.sidebar)).toBe(true);
     expect(Object.isFrozen(definition?.palette?.params)).toBe(true);
+    expect(Object.isFrozen(navDefinition?.settingsNav)).toBe(true);
   });
 
   test.each([

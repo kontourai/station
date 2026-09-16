@@ -1389,7 +1389,7 @@ const SCREENS: Screen[] = [
   { name: 'agents', title: 'Agents', path: '/agents', viewport: DESKTOP },
   {
     name: 'skills',
-    title: 'Guidance — Skills',
+    title: 'Skills',
     path: '/guidance?tab=skills',
     viewport: DESKTOP,
   },
