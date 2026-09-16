@@ -1142,9 +1142,14 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               Both surfaces write the SAME device-settings keys through the
               same store, so neither is a copy of the other's state: the gear
               panel is a shortcut to the handful used mid-conversation, and
-              links here for the rest. */}
+              links here for the rest.
+
+              The icon is one already on the glyph-coverage allowlist rather
+              than a new one: that list is recorded debt (#1704 is shrinking
+              it), so a section arriving with its own pictogram would grow it
+              for decoration. A speech bubble would have. */}
           {sectionVisible('chat') && (
-            <Section icon="💬" title="Chat" id="section-chat">
+            <Section icon="◇" title="Chat" id="section-chat">
               {/* This slider writes the DEVICE key only. The Station
                   default it falls back to (`defaultChatFontSize`) has its own
                   row under Station configuration — the catalog entry used to
