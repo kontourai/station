@@ -134,13 +134,13 @@ importers:
         specifier: ^0.5.1
         version: link:packages/connect
       '@kontourai/station-contracts':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:packages/contracts
       '@kontourai/station-sdk':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:packages/sdk
       '@kontourai/station-shared':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:packages/shared
       '@kontourai/surface':
         specifier: 3.2.0
@@ -505,7 +505,7 @@ importers:
         specifier: 0.10.0
         version: 0.10.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.122.0(zod@4.5.4))(@kontourai/bearing@0.2.0(playwright@1.62.1))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(ws@8.21.3)(zod@4.5.4))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)
       '@kontourai/station-sdk':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../../packages/sdk
     devDependencies:
       '@tanstack/react-query':
@@ -533,10 +533,10 @@ importers:
   packages/basis-pane:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../sdk
       '@kontourai/surface':
         specifier: ^3.2.0
@@ -579,10 +579,10 @@ importers:
         specifier: ^0.2.0
         version: 0.2.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@kontourai/station-contracts':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../sdk
       '@kontourai/ui':
         specifier: ^1.12.0
@@ -614,13 +614,13 @@ importers:
         specifier: ^0.5.1
         version: link:../connect
       '@kontourai/station-contracts':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../sdk
       '@kontourai/station-shared':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../shared
       commander:
         specifier: ^15.0.0
@@ -635,10 +635,10 @@ importers:
   packages/connect:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../contracts
       '@kontourai/station-shared':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../shared
       jsqr:
         specifier: ^1.4.0
@@ -702,10 +702,10 @@ importers:
         specifier: 6.2.0
         version: 6.2.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
       '@kontourai/station-contracts':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../contracts
       '@kontourai/station-shared':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../shared
       '@kontourai/surface':
         specifier: ^3.2.0
@@ -739,7 +739,7 @@ importers:
   packages/shared:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../contracts
       '@kontourai/thread':
         specifier: 0.5.0
