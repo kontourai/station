@@ -15,14 +15,22 @@
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
 }));
+/**
+ * A SPY model rather than the `null` this returned before #2158: a chip's
+ * "Open in <region>" menu calls `openSurfaceInRegion`, and with no model
+ * `useSidebarPillRegions` reports no regions — every placement assertion below
+ * would then pass for the wrong reason.
+ */
+const openSurfaceInRegion = vi.hoisted(() => vi.fn());
+const regionModel = vi.hoisted(() => ({ value: null as unknown }));
 vi.mock('../contexts/RegionModelContext', () => ({
-  useRegionModelOptional: () => null,
+  useRegionModelOptional: () => regionModel.value,
 }));
 vi.mock('../build-info', () => ({
   buildInfo: { version: '0.1.2', commit: 'test' },
@@ -58,7 +66,16 @@ const {
   setLayout: vi.fn(),
 }));
 
-const PROJECTS = [{ id: 'p1', slug: 'demo', name: 'Demo' }];
+/**
+ * Real ids, in the shape the server mints them (`randomUUID()`), because
+ * #2158's pane id is `layout:<projectId>/<layoutId>` and both halves must
+ * parse or the chip offers no placement rows. The `p1`/`l1` shorthand these
+ * fixtures used before is a legacy record's shape, and it now has a case of
+ * its own rather than being the silent default for every case here.
+ */
+const DEMO_PROJECT_ID = '9f1d2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b';
+const CODING_LAYOUT_ID = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
+const PROJECTS = [{ id: DEMO_PROJECT_ID, slug: 'demo', name: 'Demo' }];
 
 vi.mock('../contexts/ProjectsContext', () => ({
   useProjects: () => ({ projects: PROJECTS, isLoading: false }),
@@ -121,7 +138,15 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
   useHostRequestAuthorityScope: () => undefined,
 }));
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+/**
+ * `useIsMobile` only. The dock-placement half of this module decides whether a
+ * chip has placement rows at all (#2158 D4), so it stays REAL and the cases
+ * below drive it through `window.innerWidth`, the input it reads.
+ */
+vi.mock('../hooks/useIsMobile', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: [] }),
   useProjectLayoutsQuery: () => layouts,
@@ -135,6 +160,23 @@ import { rendersChatWorkspaceLayout } from '../app-shell/project-layout-kind';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
+
+regionModel.value = {
+  regions: DEFAULT_DEVICE_REGION_ARRANGEMENT,
+  openSurfaceInRegion,
+  toggleSurface: vi.fn(),
+};
+
+/** jsdom's own default, restated so the one narrow case cannot leak. */
+const DESKTOP_WIDTH = 1024;
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, 'innerWidth', {
+    value: width,
+    configurable: true,
+    writable: true,
+  });
+}
 
 /**
  * The fixture the Chat chip is built from. Declared as the layout record the
@@ -143,9 +185,24 @@ import { deviceSettingsStore } from '../lib/device-settings-store';
  * regions on. A fixture typed 'chat' that the derivation rejected would make
  * the routing assertion below prove nothing about the chat placement.
  */
-const CHAT_LAYOUT = { slug: 'chat', name: 'Chat', type: 'chat' };
-const CODING_LAYOUT = { slug: 'code', name: 'Coding', type: 'coding' };
-const TASKS_LAYOUT = { slug: 'tasks', name: 'Tasks', type: 'tasks' };
+const CHAT_LAYOUT = {
+  id: '2b3c4d5e-6f7a-4b8c-89da-1e2f3a4b5c6d',
+  slug: 'chat',
+  name: 'Chat',
+  type: 'chat',
+};
+const CODING_LAYOUT = {
+  id: CODING_LAYOUT_ID,
+  slug: 'code',
+  name: 'Coding',
+  type: 'coding',
+};
+const TASKS_LAYOUT = {
+  id: '3c4d5e6f-7a8b-4c9d-8e1f-2a3b4c5d6e7f',
+  slug: 'tasks',
+  name: 'Tasks',
+  type: 'tasks',
+};
 
 function renderSidebar(ui: ReactElement) {
   return render(<KeyboardShortcutsProvider>{ui}</KeyboardShortcutsProvider>);
@@ -169,6 +226,8 @@ describe('project layout chips in the real sidebar (#2063)', () => {
     navigate.mockClear();
     setProject.mockClear();
     setLayout.mockClear();
+    openSurfaceInRegion.mockClear();
+    setViewportWidth(DESKTOP_WIDTH);
     window.localStorage.clear();
     deviceSettingsStore.reloadFromStorage();
   });
@@ -321,5 +380,267 @@ describe('project layout chips in the real sidebar (#2063)', () => {
     renderSidebar(<ProjectSidebar />);
 
     expect(screen.queryByRole('toolbar', { name: 'Demo layouts' })).toBeNull();
+  });
+
+  /**
+   * #2158 — a project Layout chip opens into a dock region.
+   *
+   * Driven through the real `ProjectSidebar` for the reason this file's own
+   * header gives: the chip's dock id is built by `ProjectSidebarRow` from
+   * `project.id` and `layout.id`, so a harness that mounted `ProjectLayoutChips`
+   * with a hand-written `dockSurfaceId` would prove the menu renders while
+   * proving nothing about the ids the panel actually produces.
+   *
+   * The menu is behind a `LazyBoundary` (it is 307 B of entry chunk otherwise),
+   * so every case awaits the chunk the way `ProjectSidebarBoards.test.tsx`
+   * awaits the Boards section.
+   */
+  describe('a Layout chip opens into a region (#2158)', () => {
+    /**
+     * The menu's chunk, in the module cache before the first right-click.
+     *
+     * `LazyBoundary` resolves an import that is ALREADY cached in a single
+     * microtask; an uncached one takes however long the loader takes. Without
+     * this the flush below would be a wait with a guessed length, and a case
+     * asserting NO menu would be asserting "not yet" — the absence-as-success
+     * shape. With it, one flush is enough for every case, so "no menu" means
+     * the boundary never mounted.
+     */
+    beforeAll(async () => {
+      await import('../components/project-sidebar/ProjectLayoutChipMenu');
+    });
+
+    async function openChipMenu(name: string): Promise<HTMLButtonElement> {
+      const target = chip(name);
+      await act(async () => {
+        fireEvent.contextMenu(target);
+      });
+      // `React.lazy` settles its (already resolved) promise.
+      await act(async () => {});
+      return target;
+    }
+
+    function menu(): HTMLElement | null {
+      return screen.queryByRole('menu');
+    }
+
+    function tabStops(): string[] {
+      return Array.from(chipRow().querySelectorAll('button'))
+        .filter((button) => button.tabIndex === 0)
+        .map((button) => button.textContent ?? '');
+    }
+
+    test('right-clicking a chip offers the regions, and Right opens that Layout there', async () => {
+      renderSidebar(<ProjectSidebar />);
+
+      await openChipMenu('Coding');
+      const surface = menu();
+      expect(surface?.getAttribute('aria-label')).toBe('Coding actions');
+      expect(
+        Array.from(surface?.querySelectorAll('[role="menuitem"]') ?? []).map(
+          (row) => row.textContent,
+        ),
+      ).toEqual(['Open in Left', 'Open in Right', 'Open in Bottom']);
+
+      act(() => {
+        fireEvent.click(
+          screen.getByRole('menuitem', { name: 'Open in Right' }),
+        );
+      });
+      // The id carries its project, which is why a region can hold another
+      // project's Layout (#2157). Both halves are the server's own ids.
+      expect(openSurfaceInRegion).toHaveBeenCalledWith(
+        `layout:${DEMO_PROJECT_ID}/${CODING_LAYOUT_ID}`,
+        { region: 'right' },
+      );
+      expect(menu()).toBeNull();
+    });
+
+    /**
+     * D5. The strip is a `role="toolbar"` composite widget — ONE tab stop, arrow
+     * keys inside it — and a `role="menu"` mounted inside it would put a second
+     * focusable structure in that widget and its rows in the strip's own
+     * Left/Right order. The menu is therefore a SIBLING, and the two properties
+     * the toolbar promises are re-read here while it is open.
+     */
+    test('the menu is a sibling of the strip, and the strip keeps its single tab stop', async () => {
+      renderSidebar(<ProjectSidebar />);
+      expect(tabStops()).toEqual(['Coding']);
+
+      await openChipMenu('Tasks');
+      const surface = menu();
+      expect(surface).not.toBeNull();
+      expect(chipRow().contains(surface)).toBe(false);
+      // The right-click moved the stop onto the chip it focused — still exactly
+      // one, which is the property `role="toolbar"` asserts.
+      expect(tabStops()).toEqual(['Tasks']);
+      expect(document.activeElement).toBe(
+        screen.getByRole('menuitem', { name: 'Open in Left' }),
+      );
+    });
+
+    test('Escape closes the menu and returns focus to the chip', async () => {
+      renderSidebar(<ProjectSidebar />);
+      const target = await openChipMenu('Coding');
+
+      act(() => {
+        fireEvent.keyDown(document.activeElement ?? document.body, {
+          key: 'Escape',
+        });
+      });
+
+      expect(menu()).toBeNull();
+      // Not stranded on `<body>`: the chip is where the user was, and it is the
+      // control the gesture reopens.
+      expect(document.activeElement).toBe(target);
+      expect(openSurfaceInRegion).not.toHaveBeenCalled();
+    });
+
+    /**
+     * D3. The synthesized Board chip is the project's SESSION board, which is a
+     * route: #2157 declares panes for Boards and project Layouts only. So it has
+     * no `dockSurfaceId`, and its `contextmenu` is left to the platform rather
+     * than swallowed by a menu with nothing in it.
+     */
+    test('the Session Board chip has no placement rows', async () => {
+      boardAvailability.data = { hasBuilderRun: true };
+      renderSidebar(<ProjectSidebar />);
+
+      await openChipMenu('Board');
+      expect(menu()).toBeNull();
+      // The chip beside it does have them, so this is the Board chip's own
+      // answer rather than the menu being broken for every chip.
+      await openChipMenu('Coding');
+      expect(menu()).not.toBeNull();
+    });
+
+    /** D2, for a chip: a legacy record's ids do not parse, so no rows render. */
+    test('a Layout whose ids are not UUIDs has no placement rows', async () => {
+      // `l1` beside a real record: the legacy chip offers nothing and the one
+      // next to it still does, so the absence belongs to the id rather than to
+      // a menu that stopped working for this case.
+      layouts.data = [
+        { id: 'l1', slug: 'code', name: 'Coding', type: 'coding' },
+        TASKS_LAYOUT,
+      ];
+      renderSidebar(<ProjectSidebar />);
+
+      await openChipMenu('Coding');
+      expect(menu()).toBeNull();
+      expect(openSurfaceInRegion).not.toHaveBeenCalled();
+
+      await openChipMenu('Tasks');
+      expect(menu()).not.toBeNull();
+    });
+
+    /**
+     * A folded device offers its ONE region rather than falling silent — the
+     * reversal of the rule the first pass borrowed from `DockPlacementControl`
+     * (a chooser with one option has nothing to choose; an action with one
+     * destination still has somewhere to go). This is also the phone's long
+     * press: a coarse pointer delivers `contextmenu`, and what it reaches is
+     * this one row.
+     */
+    test('a device with one dock region offers exactly that region', async () => {
+      setViewportWidth(500);
+      renderSidebar(<ProjectSidebar />);
+
+      await openChipMenu('Coding');
+      const surface = menu();
+      expect(
+        Array.from(surface?.querySelectorAll('[role="menuitem"]') ?? []).map(
+          (row) => row.textContent,
+        ),
+      ).toEqual(['Open in Bottom']);
+
+      act(() => {
+        fireEvent.click(
+          screen.getByRole('menuitem', { name: 'Open in Bottom' }),
+        );
+      });
+      expect(openSurfaceInRegion).toHaveBeenCalledWith(
+        `layout:${DEMO_PROJECT_ID}/${CODING_LAYOUT_ID}`,
+        { region: 'bottom' },
+      );
+    });
+
+    /**
+     * The keyboard's route (#2158). macOS has no Menu key and no Shift+F10, so
+     * without this a sighted keyboard-only reader on Station's primary desktop
+     * platform could not reach these rows at all — the gap that made the
+     * design record's "the only route a keyboard has" sentence false.
+     */
+    test('Shift+Enter on the strip opens the menu for the chip holding the tab stop', async () => {
+      renderSidebar(<ProjectSidebar />);
+      chip('Coding').focus();
+      fireEvent.keyDown(chipRow(), { key: 'ArrowRight' });
+      expect(document.activeElement).toBe(chip('Tasks'));
+
+      await act(async () => {
+        fireEvent.keyDown(chipRow(), { key: 'Enter', shiftKey: true });
+      });
+      await act(async () => {});
+
+      // The menu names the chip the reader was ON, not the first chip.
+      expect(menu()?.getAttribute('aria-label')).toBe('Tasks actions');
+      // Plain Enter is untouched: it still activates the chip, which is the
+      // chip's primary action.
+      act(() => {
+        fireEvent.keyDown(document.activeElement ?? document.body, {
+          key: 'Escape',
+        });
+      });
+      fireEvent.click(chip('Tasks'));
+      expect(setLayout).toHaveBeenCalledWith('demo', 'tasks');
+    });
+
+    /**
+     * The other half of D5, which nothing asserted: the strip is a composite
+     * widget with ONE tab stop, and an open menu must not let arrow keys move
+     * it. They cannot, because the menu is the strip's SIBLING — a key pressed
+     * inside it never reaches the strip's `onKeyDown` — and that is exactly
+     * the property a nested menu would destroy.
+     */
+    test('arrow keys inside the open menu do not move the roving tab stop', async () => {
+      renderSidebar(<ProjectSidebar />);
+      await openChipMenu('Tasks');
+      expect(tabStops()).toEqual(['Tasks']);
+
+      act(() => {
+        fireEvent.keyDown(document.activeElement ?? document.body, {
+          key: 'ArrowRight',
+        });
+        fireEvent.keyDown(document.activeElement ?? document.body, {
+          key: 'ArrowLeft',
+        });
+      });
+
+      expect(tabStops()).toEqual(['Tasks']);
+      expect(menu()).not.toBeNull();
+    });
+
+    /**
+     * A chunk fetch that FAILS must not latch the menu off — the review's
+     * HIGH. It is pinned in
+     * `components/project-sidebar/__tests__/ProjectLayoutChipMenuRetry.test.tsx`
+     * rather than here: making the import reject needs `vi.doMock`, whose
+     * registry edit leaked into whichever case ran next in this file (observed
+     * twice, on two different neighbours, depending on the corpus). A file
+     * whose mock is declared once, with a flag, has no such edit to leak.
+     */
+
+    test('a plain click still selects the layout', async () => {
+      renderSidebar(<ProjectSidebar />);
+      await openChipMenu('Coding');
+      act(() => {
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Open in Left' }));
+      });
+      // The menu ran its own command and nothing else: opening a Layout in a
+      // region is not also a navigation away from where the reader is.
+      expect(setLayout).not.toHaveBeenCalled();
+
+      fireEvent.click(chip('Coding'));
+      expect(setLayout).toHaveBeenCalledWith('demo', 'code');
+    });
   });
 });

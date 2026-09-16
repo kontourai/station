@@ -44,9 +44,20 @@ const SEED_STORAGE = `
   window.localStorage.setItem('station-connect-connections-active', 'c1');
 `;
 
+/**
+ * The ids the SERVER mints: `randomUUID()` in `project-service.ts` and in the
+ * project layout routes. `p1`/`l1` was shorthand until #2158 gave the ids a
+ * job — a chip's dock pane is `layout:<projectId>/<layoutId>` and the grammar
+ * refuses anything that is not a lowercase UUID, so a fixture carrying the
+ * shorthand would silently make every chip in this spec undockable and hide a
+ * regression behind a shape no real record has.
+ */
+const ALPHA_PROJECT_ID = '4d0f9c21-8b3e-4a57-9f62-0c18ab7d5e34';
+const CHAT_LAYOUT_ID = '7a63be05-1c94-4d28-8e10-3f5b6d9c2a71';
+
 const TEST_PROJECTS = [
   {
-    id: 'p1',
+    id: ALPHA_PROJECT_ID,
     slug: 'alpha',
     name: 'Alpha',
     icon: '🚀',
@@ -59,7 +70,7 @@ const TEST_PROJECTS = [
 
 const ALPHA_LAYOUTS = [
   {
-    id: 'l1',
+    id: CHAT_LAYOUT_ID,
     slug: 'chat',
     projectSlug: 'alpha',
     type: 'chat',
@@ -69,7 +80,7 @@ const ALPHA_LAYOUTS = [
 ];
 
 const ALPHA_CONFIG = {
-  id: 'p1',
+  id: ALPHA_PROJECT_ID,
   slug: 'alpha',
   name: 'Alpha',
   icon: '🚀',
@@ -79,7 +90,7 @@ const ALPHA_CONFIG = {
 };
 
 const CHAT_LAYOUT = {
-  id: 'l1',
+  id: CHAT_LAYOUT_ID,
   slug: 'chat',
   projectSlug: 'alpha',
   type: 'chat',

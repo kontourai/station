@@ -691,7 +691,7 @@ launch to the pane's bound project, or hiding the bar, is #2171.
 **Openers.** `openSurfaceInRegion('board:<id>')` from the model, or
 `openLayoutInRegion(model, key)` in `useOpenInRegion.ts`, which mints the
 occurrence and refuses an id the grammar cannot (`no-surface`). This slice
-adds NO sidebar entry point; #2158 adds the context menu and drag.
+adds NO sidebar entry point; #2158 adds the context menu, and #2175 the drag.
 
 **One-way rollback, disclosed and accepted.** The record shape is unchanged
 (`{ kind: 'surface', id }`), so a build without this reads a `board:` or
@@ -708,6 +708,108 @@ The Device pane (#1969) rides the #2047 path instead (descriptor with
 renderer, the four lockstep pins) — done, see above. A `?surface=pr:…` deep link stays
 IGNORED: materialising a pane from a URL is a new entry point nobody asked
 for.
+
+## A sidebar pill opens into a region (#2158)
+
+**Implemented by #2158, 2026-09-16.** The pane #2157 declared now has a way in
+that a user can find: a Boards row or a project's Layout chip is right-clicked
+and its menu offers **Open in Left / Open in Right / Open in Bottom**. The pill
+stays a destination — a plain click still navigates, and a `contextmenu` never
+does.
+
+**The drag is #2175.** The owner asked for both routes and this sequences them.
+The menu is the route every device gets, and the only one a keyboard or a
+screen reader has; the drag needs `usePlacementDrag`/`DockPlacementTargets`
+extracted out of `DockPlacementControl` (a shipped control on a journey's
+critical path) plus entry-chunk weight this one does not have.
+
+**What "every device" and "a keyboard" cost.** On touch the gesture is the LONG
+PRESS, and the pill suppresses the platform callout for it, because the pill's
+own menu is what the press is for; both pills answer it the same way. On a
+keyboard, Windows and Linux already have one — the Menu key and Shift+F10 make
+the browser fire `contextmenu` on the focused control, which is the same
+handler a right-click reaches. macOS has neither, so the chip strip adds
+**Shift+Enter**, announced on the strip as `aria-keyshortcuts`, opening the
+menu for the chip that holds the roving tab stop. Without it the sentence above
+was false on Station's primary desktop platform. A Boards row needs no chord:
+its `⋯` is an ordinary focusable button.
+
+**What opens what.** A Boards row opens `board:<layoutId>`; a project Layout
+chip opens `layout:<projectId>/<layoutId>`, with the project id taken from the
+row's own `ProjectMetadata`. The synthesized **Board** chip gets no placement
+rows at all: it is the project's SESSION board, which is a route rather than a
+pane (`pane:builtin:board`, one per project). The Boards row menu keeps its
+Rename / Move to project… / Delete and takes the placement rows BETWEEN Move
+and Delete: this menu shipped in #2062 and #2158 adds to it rather than
+re-ordering it, so every row a reader knows keeps its neighbours, the
+destructive row stays last, and Rename keeps the first position and the focus
+it takes on open — which matters most on a phone, where this menu is the only
+rename affordance the section has (#2062 review M1). The Open-first convention
+a file manager or an editor follows was weighed and lost to that: it is the
+shape for a menu designed around opening, and this is a record's actions that
+opening has joined.
+
+**Ids must parse or the rows are absent.** `workspaceLayoutPaneId` refuses
+anything that is not a lowercase UUID, so a pre-provisioned project's
+hand-written id, or a record from before the server minted them, cannot be
+named. The UI applies the same rule BEFORE rendering: `sidebarLayoutPaneId`
+(`src-ui/src/components/project-sidebar/pill-region-placement.ts`) builds the
+id and admits it through `resolveRegionSurface`, and a null answer renders no
+row. A legacy record degrades to an absent row, never to a row that refuses
+when pressed. **A folded device offers its one region, and this is NOT
+`DockPlacementControl`'s rule.** That control renders nothing at one available
+placement, and the first pass at this copied it. The rule does not transfer: it
+is a CHOOSER — a `menuitemradio` group over where the dock sits — and with one
+option there is nothing to choose, while these rows are an ACTION, which is
+worth offering at one destination as much as at three. `availablePlacements`
+answers `['bottom']` for EVERY coarse pointer whatever its width, and the model
+accepts `openSurfaceInRegion(id, { region: 'bottom' })` there and places the
+pane — so the copied rule was withholding a capability the runtime had, from
+the population that most needs it: a phone, where this menu is the only way a
+Layout reaches a region at all, and which this issue's acceptance says gets the
+menu. So a phone and a tablet see exactly one row, "Open in Bottom".
+
+**Why the sidebar calls the model rather than the opener hook.** `openLayoutInRegion`
+in `src-ui/src/contexts/useOpenInRegion.ts` is the natural caller and is the
+wrong import here: that module's own docblock records it at +1,820 B gzip
+against a 527 B headroom, which is why every one of its callers sits behind a
+lazy boundary. The sidebar does not — it is `main.tsx` → `App.tsx` →
+`ProjectSidebar`, statically, in the entry chunk. So the pill builds the id
+string itself and hands it to `RegionModelContext.openSurfaceInRegion`, which
+is already in that chunk and resolves both prefixes by prefix table with no
+pane inventory. The only duplication that leaves is the id's spelling, and
+`pill-region-placement.test.ts` pins it against `workspaceLayoutPaneId` for
+both families and for every id the grammar refuses — a test-only import, where
+the bytes are free.
+
+**The pill's own absence rules, and where each lives.** An id the grammar
+refuses is `sidebarLayoutPaneId`'s answer
+(`src-ui/src/components/project-sidebar/pill-region-placement.ts`); the Session
+Board chip's is `ProjectSidebarRow` declining to give it a `dockSurfaceId`; no
+region model mounted is the chip strip's own precondition. There is no fourth:
+the regions list itself is never empty. Which regions a device offers, and the
+model call that uses them, live in `pill-region-open.ts` — split from the id
+module BY CONSUMER rather than by topic, because the id is needed where chips
+are BUILT (eager) and the regions only where a menu RENDERS (lazy, both
+callers).
+
+**The chip's menu is a sibling of its strip, and lazy.** The chip row is a
+`role="toolbar"` composite widget: one tab stop, Left/Right inside it. A
+`role="menu"` mounted INSIDE it would add a second focusable structure to that
+widget and put its rows in the strip's own arrow order, so the menu renders as
+the strip's sibling; the right-click moves the roving stop onto the chip it
+focuses, so there is still exactly one. The menu itself is behind a
+`LazyBoundary` — measured on the delivering branch against base 3b55b26fb
+(ceiling 333800): inlined, the entry chunk is 333884 and over; behind the
+boundary, 333738. That is the same reason the Boards SECTION beside it is
+lazy. Its cost is stated where
+it is taken (`ProjectLayoutChipMenu.tsx`): the first right-click fetches the
+chunk, and a fetch that fails renders nothing rather than planting an error
+card in a 240px rail that nothing there could dismiss. Because that choice
+discards `LazyBoundary`'s own `onRetry`, the retry cannot be the boundary's:
+the call site gives it a `key` each gesture bumps, so a failed fetch is retried
+by the next right-click instead of latching the menu off for the life of the
+row.
 
 ## The toolbar is per region (#2143)
 
