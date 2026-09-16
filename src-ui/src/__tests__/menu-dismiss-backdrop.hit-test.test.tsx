@@ -18,10 +18,12 @@
  * context above them. `index.css` states it in prose. Raise the toolbar past
  * 9349, drop a backdrop, or give an ancestor of the toolbar a stacking context
  * that OUTRANKS 9349, and four consumers silently reacquire #2081's defect.
- * The region toggle's is the one that changed shape since: its panel is
- * #2154's chooser, opened by a hold or a right-click (#2155), and a reachable
- * trigger there would take the user's dismissing press as a show/hide of the
- * region the panel is about.
+ * `RegionToolbarControls` now opens TWO panels, and both are measured: the
+ * folded device's flat Regions menu, which is what is left of the
+ * `ToolbarMenuSurface` backdrop the original ruling was about, and — since
+ * #2155 — #2154's chooser, which every per-region toggle opens on a hold or a
+ * right-click. A reachable trigger under the chooser would take the user's
+ * dismissing press as a show/hide of the very region the panel is about.
  *
  * "Outranks" is load-bearing in that sentence, and #2112's own wording ("give
  * an ancestor of the toolbar a stacking context") is looser than the mechanism.
@@ -321,6 +323,7 @@ type MenuId =
   | 'profile'
   | 'help'
   | 'region'
+  | 'folded-regions'
   | 'dock-more'
   | 'tab-move'
   | 'bar-move';
@@ -330,7 +333,15 @@ interface Shape {
   readonly name: string;
   readonly menu: MenuId;
   readonly viewport: { width: number; height: number };
-  readonly device: 'phone' | 'desktop';
+  /**
+   * Which chrome this shape's toolbar draws. `tablet` is a COARSE pointer
+   * wide enough to escape the mobile media query (#917): `availablePlacements`
+   * folds it to one dock, so the toolbar renders the folded "Regions" menu —
+   * the surviving `ToolbarMenuSurface` consumer since #2155 moved the
+   * per-region control's panel to the chooser, and a menu this file must
+   * still measure (review M6).
+   */
+  readonly device: 'phone' | 'desktop' | 'tablet';
   /** The backdrop this menu renders, by accessible name. */
   readonly backdropLabel: string;
   /**
@@ -393,6 +404,20 @@ const SHAPES: readonly Shape[] = [
     // Since #2155 every region toggle opens #2154's chooser on a hold or a
     // right-click, whatever the region holds; the fixture opens `left`'s.
     openerLabel: 'Left region',
+  },
+  {
+    // The folded "Regions" menu, and the reason it is a shape of its own
+    // (#2155 review M6): it is the last consumer of `ToolbarMenuSurface`,
+    // whose backdrop is the one the region shape above used to measure. A
+    // coarse pointer at 1180x820 — a tablet in landscape — is the device
+    // that draws it: bottom-only by `availablePlacements`, but too wide for
+    // the mobile query that would move its commands into the `⋯` menu.
+    name: 'the toolbar’s folded Regions menu on a coarse, wide device',
+    menu: 'folded-regions',
+    viewport: { width: 1180, height: 820 },
+    device: 'tablet',
+    backdropLabel: 'Close regions menu',
+    openerLabel: 'Regions',
   },
   {
     // #2143: a tab's move menu, opened from the region bar's strip. Desktop
@@ -472,7 +497,10 @@ async function renderShellMarkup(
   geometry: TriggerGeometry | null,
 ): Promise<string> {
   harness.isMobile = shape.device === 'phone';
-  harness.bottomOnly = shape.device === 'phone';
+  // Coarse: a phone, and a tablet too. Only the phone matches the mobile
+  // media query, which is what decides whether the region commands move into
+  // the `⋯` menu or stay in the toolbar as the folded control.
+  harness.bottomOnly = shape.device !== 'desktop';
   viewModel.showHelp = geometry !== null && shape.menu === 'help';
   viewModel.showOverflow = geometry !== null && shape.menu === 'overflow';
   viewModel.showProfileMenu = geometry !== null && shape.menu === 'profile';
@@ -564,7 +592,11 @@ async function renderShellMarkup(
       opener.getBoundingClientRect = () => geometry.rect as DOMRect;
       if (shape.menu === 'tab-move') fireEvent.contextMenu(opener);
       else fireEvent.click(opener);
-    } else if (shape.menu === 'region' || shape.menu === 'dock-more') {
+    } else if (
+      shape.menu === 'region' ||
+      shape.menu === 'folded-regions' ||
+      shape.menu === 'dock-more'
+    ) {
       const opener = screen.getByLabelText(shape.openerLabel as string, {
         exact: false,
       });
