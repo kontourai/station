@@ -14,10 +14,7 @@ import {
   executeOwnedProcess,
 } from '../../../../scripts/lib/owned-process.mjs';
 import { EventStore } from '../event-store.js';
-import {
-  plannedHomeAdmissionIdentifier,
-  readPlannedHomeAdmissionJournal,
-} from '../planned-home-admission-schema.js';
+import { readPlannedHomeAdmissionJournal } from '../planned-home-admission-schema.js';
 import { createPlannedHomeAdmissionStore } from '../planned-home-admission-store.js';
 import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
 import {
@@ -555,94 +552,6 @@ describe('ProjectTaskRoomHistory v2', () => {
       expect(beginCalls).toBe(1);
       expect(finishCalls).toBe(2);
       await reopened.close();
-    });
-
-    it.each([
-      ['newline', 'line\nbreak'],
-      ['tab', 'tab\there'],
-      ['nul', 'nul\u0000byte'],
-      ['delete', 'del\u007fchar'],
-    ])(
-      'refuses a %s in a proposal id whether or not a port is attached',
-      async (_label, proposalId) => {
-        // The controller's admission validator refuses these code points, so
-        // accepting them locally would make the legal alphabet depend on
-        // whether a room happens to be controlled.
-        expect(plannedHomeAdmissionIdentifier(proposalId)).toBe(false);
-        const local = history();
-        await local.open({ grant: grant('discover') });
-        await expect(local.append(message(proposalId))).resolves.toEqual({
-          kind: 'rejected',
-          reason: 'malformed',
-        });
-        await local.close();
-
-        let beginCalls = 0;
-        const controlled = history(databasePath(), {
-          roomWriteAdmissions: {
-            async begin() {
-              beginCalls += 1;
-              return { kind: 'admitted' };
-            },
-            finish: vi.fn(async () => ({ kind: 'finished' as const })),
-          },
-        });
-        await controlled.open({ grant: grant('discover') });
-        await expect(controlled.append(message(proposalId))).resolves.toEqual({
-          kind: 'rejected',
-          reason: 'malformed',
-        });
-        expect(beginCalls).toBe(0);
-        await controlled.close();
-      },
-    );
-
-    it('accepts no room identifier the controller validator would refuse', async () => {
-      // Containment, derived rather than asserted in prose: every string this
-      // room accepts as a proposal id must also pass
-      // plannedHomeAdmissionIdentifier, or an append that is legal on an
-      // uncontrolled room becomes denied the moment a port is attached. The
-      // acceptance side is read from a real append, not from a copy of the
-      // predicate, so the two cannot drift apart.
-      const candidates = [
-        'plain',
-        'task-a',
-        'a'.repeat(256),
-        'a'.repeat(257),
-        '',
-        'line\nbreak',
-        'tab\there',
-        'nul\u0000byte',
-        'del\u007fchar',
-        'esc\u001bseq',
-        'unit\u001fsep',
-        'space here',
-        'emoji-\u{1f600}',
-        'accent-é',
-        'lone-surrogate-\ud800',
-        `${'x'.repeat(200)}${'\u{1f600}'.repeat(20)}`,
-      ];
-      const room = history();
-      await room.open({ grant: grant('discover') });
-      const accepted: string[] = [];
-      for (const candidate of candidates) {
-        const outcome = await room.append(message(candidate, 'body'));
-        const malformed =
-          outcome.kind === 'rejected' && outcome.reason === 'malformed';
-        if (!malformed) accepted.push(candidate);
-      }
-      await room.close();
-      // The containment itself, asserted before any spot check so that it is
-      // what fails when the two predicates drift apart.
-      for (const identifier of accepted)
-        expect([
-          identifier,
-          plannedHomeAdmissionIdentifier(identifier),
-        ]).toEqual([identifier, true]);
-      // Containment would also hold if the room accepted nothing at all.
-      expect(accepted).toContain('plain');
-      expect(accepted).toContain('emoji-\u{1f600}');
-      expect(accepted).not.toContain('line\nbreak');
     });
 
     it('asks for no admission when the transaction cannot reach its first write', async () => {

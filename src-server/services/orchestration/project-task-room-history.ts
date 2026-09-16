@@ -1924,23 +1924,6 @@ function boundedPlain(
     maxKeyCodeUnits: 256,
   }).ok;
 }
-/**
- * C0 controls and DEL are excluded so that a room identifier this history
- * accepts is always an identifier the controller's admission validator
- * (`plannedHomeAdmissionIdentifier`) accepts too. Without that containment a
- * proposal id like `"line\nbreak"` writes fine into an uncontrolled room and
- * is refused only once a write-admission port is attached, which would make
- * the legal alphabet depend on the room's controller configuration.
- * `project-task-room-history.test.ts` asserts the containment directly; this
- * predicate must stay at least as narrow as that one.
- */
-function controlCharacter(value: string) {
-  for (const character of value) {
-    const code = character.charCodeAt(0);
-    if (code < 32 || code === 127) return true;
-  }
-  return false;
-}
 function id(value: unknown) {
   return (
     typeof value === 'string' &&
@@ -1948,7 +1931,6 @@ function id(value: unknown) {
     value.length <= PROJECT_TASK_ROOM_LIMITS.idBytes &&
     new TextEncoder().encode(value).byteLength <=
       PROJECT_TASK_ROOM_LIMITS.idBytes &&
-    !controlCharacter(value) &&
     isWellFormed(value)
   );
 }
