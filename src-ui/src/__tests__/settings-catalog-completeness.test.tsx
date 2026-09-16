@@ -190,7 +190,7 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
  */
 const DEFAULT_DEVICE_FEATURE_SETTINGS = DEVICE_SETTINGS_REGISTRY.find(
   (definition) => definition.key === 'featureSettings',
-)!.defaultValue as Record<string, unknown>;
+)!.defaultValue as unknown as Record<string, unknown>;
 let deviceFeatureSettings: Record<string, unknown> =
   DEFAULT_DEVICE_FEATURE_SETTINGS;
 vi.mock('../contexts/DeviceSettingsContext', () => ({
