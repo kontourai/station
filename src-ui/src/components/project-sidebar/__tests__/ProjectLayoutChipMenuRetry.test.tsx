@@ -132,6 +132,11 @@ describe('a chip menu whose chunk fails to load (#2158)', () => {
   test('the ordinary case is unaffected: the first gesture opens the menu', async () => {
     renderStrip();
     await rightClickChip();
-    expect(screen.getByRole('menu', { name: 'Coding actions' })).toBeDefined();
+    // POLLED, not read synchronously. A synchronous read passes only when the
+    // case above has already put the chunk in the module cache, which makes it
+    // an assertion about this file's running order rather than about the
+    // gesture. Nothing here pins how many times the runner re-runs a mock
+    // factory either, for the same reason.
+    await screen.findByRole('menu', { name: 'Coding actions' });
   });
 });
