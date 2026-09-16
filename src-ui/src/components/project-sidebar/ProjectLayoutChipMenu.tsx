@@ -25,7 +25,7 @@ import type { DockMode } from '../../types';
  * buttons planted permanently in a 240px rail is a worse answer for a menu
  * than no menu). A second right-click remounts the boundary and retries.
  */
-export default function ProjectLayoutChipMenu({
+export function ProjectLayoutChipMenu({
   label,
   surfaceId,
   regions,

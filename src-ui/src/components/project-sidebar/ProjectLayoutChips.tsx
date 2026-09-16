@@ -7,7 +7,10 @@ import { useSidebarPillRegions } from './pill-region-placement';
  * component on this function, and a factory rebuilt every render would remount
  * the chunk on each keystroke elsewhere in the rail.
  */
-const loadProjectLayoutChipMenu = () => import('./ProjectLayoutChipMenu');
+const loadProjectLayoutChipMenu = () =>
+  import('./ProjectLayoutChipMenu').then((module) => ({
+    default: module.ProjectLayoutChipMenu,
+  }));
 
 /**
  * One entry of a project's chip row. The row renders and navigates chips; it
