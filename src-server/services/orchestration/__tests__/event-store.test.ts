@@ -60,6 +60,53 @@ function recoveryLedger(eventStore: EventStore) {
   return eventStore.createRecoveryLedger();
 }
 
+/**
+ * A pre-#1092 `orchestration_events` table (no `global_sequence` column) with
+ * the given rows, written in ONE transaction (#1531). The multi-batch case
+ * seeds 2,050 rows; in autocommit that was 2,050 fsync-bearing commits --
+ * 864 ms on an APFS laptop and the whole of a 15 s budget on a loaded runner
+ * with a slower disk, which is how a fixture's setup, not the backfill under
+ * test, timed the test out. One transaction writes the same rows in 6 ms.
+ */
+function seedLegacyOrchestrationEvents(
+  path: string,
+  rows: ReadonlyArray<{
+    id: string;
+    threadId: string;
+    method: string;
+    createdAt: string;
+    sequence: number;
+  }>,
+): void {
+  const legacyDb = new DatabaseSync(path);
+  legacyDb.exec(`
+    CREATE TABLE orchestration_events (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      turn_id TEXT,
+      method TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      sequence INTEGER NOT NULL
+    );
+  `);
+  const insert = legacyDb.prepare(
+    `INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence)
+     VALUES (?, 'claude', ?, ?, '{}', ?, ?)`,
+  );
+  legacyDb.exec('BEGIN');
+  try {
+    for (const row of rows)
+      insert.run(row.id, row.threadId, row.method, row.createdAt, row.sequence);
+    legacyDb.exec('COMMIT');
+  } catch (error) {
+    legacyDb.exec('ROLLBACK');
+    throw error;
+  }
+  legacyDb.close();
+}
+
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
   DatabaseSync: new (
@@ -6840,42 +6887,22 @@ describe('EventStore', () => {
       // AND backfill it in that same order (not just default every row to 0).
       store.close();
       const legacyDbPath = join(dir, 'legacy-orchestration.sqlite');
-      const legacyDb = new DatabaseSync(legacyDbPath);
-      legacyDb.exec(`
-        CREATE TABLE orchestration_events (
-          id TEXT PRIMARY KEY,
-          provider TEXT NOT NULL,
-          thread_id TEXT NOT NULL,
-          turn_id TEXT,
-          method TEXT NOT NULL,
-          payload TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          sequence INTEGER NOT NULL
-        );
-      `);
-      const insert = legacyDb.prepare(
-        `INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      );
-      insert.run(
-        'evt-legacy-1',
-        'claude',
-        'thread-legacy',
-        'session.started',
-        '{}',
-        '2026-01-01T00:00:00.000Z',
-        1,
-      );
-      insert.run(
-        'evt-legacy-2',
-        'claude',
-        'thread-legacy',
-        'session.configured',
-        '{}',
-        '2026-01-01T00:00:01.000Z',
-        2,
-      );
-      legacyDb.close();
+      seedLegacyOrchestrationEvents(legacyDbPath, [
+        {
+          id: 'evt-legacy-1',
+          threadId: 'thread-legacy',
+          method: 'session.started',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          sequence: 1,
+        },
+        {
+          id: 'evt-legacy-2',
+          threadId: 'thread-legacy',
+          method: 'session.configured',
+          createdAt: '2026-01-01T00:00:01.000Z',
+          sequence: 2,
+        },
+      ]);
 
       store = new EventStore(legacyDbPath);
       expect(store.readGlobalSequence('evt-legacy-1')).toBe(1);
@@ -6932,36 +6959,17 @@ describe('EventStore', () => {
       const rowCount = GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE * 2 + 50;
       store.close();
       const legacyDbPath = join(dir, 'legacy-multi-batch.sqlite');
-      const legacyDb = new DatabaseSync(legacyDbPath);
-      legacyDb.exec(`
-        CREATE TABLE orchestration_events (
-          id TEXT PRIMARY KEY,
-          provider TEXT NOT NULL,
-          thread_id TEXT NOT NULL,
-          turn_id TEXT,
-          method TEXT NOT NULL,
-          payload TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          sequence INTEGER NOT NULL
-        );
-      `);
-      const insert = legacyDb.prepare(
-        `INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      );
       const baseMs = Date.parse('2026-01-01T00:00:00.000Z');
-      for (let index = 0; index < rowCount; index += 1) {
-        insert.run(
-          `evt-legacy-${index}`,
-          'claude',
-          'thread-legacy',
-          'content.text-delta',
-          '{}',
-          new Date(baseMs + index).toISOString(),
-          index + 1,
-        );
-      }
-      legacyDb.close();
+      seedLegacyOrchestrationEvents(
+        legacyDbPath,
+        Array.from({ length: rowCount }, (_, index) => ({
+          id: `evt-legacy-${index}`,
+          threadId: 'thread-legacy',
+          method: 'content.text-delta',
+          createdAt: new Date(baseMs + index).toISOString(),
+          sequence: index + 1,
+        })),
+      );
 
       store = new EventStore(legacyDbPath);
 

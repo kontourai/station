@@ -48,6 +48,36 @@ export const PROJECT_TASK_ROOM_LIMITS = Object.freeze({
 });
 const ROOM_WRITE_ADMISSION_MS = 1_000;
 
+/**
+ * How long the room worker waits for SQLite's write lock before a request
+ * reads as `unavailable` (#1531).
+ *
+ * An admitted write holds `BEGIN IMMEDIATE` across a main-thread round trip:
+ * the authorize phase, then the admit-new-write phase whose controller call
+ * is bounded by `roomWriteAdmissionMs`. A second connection -- a seal from a
+ * home transfer, a peer append -- that must "serialize behind an admitted
+ * transaction" therefore has to be willing to wait at least as long as that
+ * hold can legitimately last. The worker used to open with a fixed 175 ms,
+ * a number related to nothing; under runner load the authorization round
+ * trip alone outran it, the seal's `BEGIN IMMEDIATE` threw, and the catch
+ * reported the room `unavailable` while its history was fine.
+ *
+ * Two phases plus slack for the resolver hops between them, capped so the
+ * wait plus the request's own work stays inside the worker response budget
+ * -- a worker that answers nothing for `workerResponseMs` is terminated,
+ * and a lock wait that consumed that whole budget would turn every
+ * contention into a dead worker.
+ */
+const SQLITE_LOCK_WAIT_SLACK_MS = 250;
+export function sqliteLockWaitMs(
+  roomWriteAdmissionMs: number,
+  workerResponseMs: number = PROJECT_TASK_ROOM_LIMITS.workerResponseMs,
+): number {
+  const admissionHold = 2 * roomWriteAdmissionMs + SQLITE_LOCK_WAIT_SLACK_MS;
+  const ceiling = workerResponseMs - 4 * SQLITE_LOCK_WAIT_SLACK_MS;
+  return Math.max(SQLITE_LOCK_WAIT_SLACK_MS, Math.min(admissionHold, ceiling));
+}
+
 export interface ProjectTaskRoomWriteAdmissionIdentity {
   readonly scope: ProjectTaskRoomScope;
   readonly channelId: string;
@@ -215,6 +245,8 @@ function createProjectTaskRoomHistoryInternal(
     retentionBytes: PROJECT_TASK_ROOM_LIMITS.retentionBytes,
     maxIdentities: PROJECT_TASK_ROOM_LIMITS.maxIdentities,
   };
+  const roomWriteAdmissionMs =
+    input.roomWriteAdmissionMs ?? ROOM_WRITE_ADMISSION_MS;
   const storage =
     input.storage ??
     createWorkerStorage(
@@ -223,9 +255,8 @@ function createProjectTaskRoomHistoryInternal(
       input.unavailableAfterCommitOnce,
       input.workerSourceUrl,
       storageLimits,
+      sqliteLockWaitMs(roomWriteAdmissionMs),
     );
-  const roomWriteAdmissionMs =
-    input.roomWriteAdmissionMs ?? ROOM_WRITE_ADMISSION_MS;
   const writeAdmissionRequired = roomWriteAdmissions !== undefined;
   let closed = false;
   let generation = 0;
@@ -873,6 +904,7 @@ function createWorkerStorage(
     retentionBytes: PROJECT_TASK_ROOM_LIMITS.retentionBytes,
     maxIdentities: PROJECT_TASK_ROOM_LIMITS.maxIdentities,
   },
+  lockWaitMs: number = sqliteLockWaitMs(ROOM_WRITE_ADMISSION_MS),
 ): StorageAdapter {
   const sourceUrl =
     workerSourceUrl ??
@@ -886,6 +918,7 @@ function createWorkerStorage(
     workerData: {
       databasePath,
       ...limits,
+      lockWaitMs,
       faultAfterCommitOnce,
       unavailableAfterCommitOnce,
     },

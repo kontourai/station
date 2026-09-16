@@ -237,6 +237,22 @@ describe('promotion full-regression workflow', () => {
     expect(source('full-regression.yml')).not.toContain('continue-on-error');
   });
 
+  test('the keep-going audit retains its own verification output, not just a log tail (#1531)', () => {
+    const steps = workflow('full-regression.yml').jobs?.['full-regression']
+      ?.steps as Array<{ name?: string; with?: Record<string, unknown> }>;
+    const retain = steps.find(
+      (step) => step.name === 'Retain the keep-going diagnostic',
+    );
+    expect(retain, 'the audit retain step exists').toBeTruthy();
+    const path = String(retain?.with?.path);
+    expect(path).toContain('full-regression-audit.log');
+    // The reporter's stdout tail truncates; the per-request output directory
+    // is where each failing suite's assertion text actually lives.
+    expect(path).toContain('.kontourai/verification-output/');
+    expect(path).toContain('.kontourai/verification-phase-records/');
+    expect(retain?.with?.['include-hidden-files']).toBe(true);
+  });
+
   test('keeps manual dispatch while excluding ordinary PR and main-push runs', () => {
     const ci = workflow('ci.yml');
     expect(ci.on?.workflow_dispatch).toBeDefined();
