@@ -209,7 +209,10 @@ import {
 import { createBootRoutes } from '../../routes/system/boot.js';
 import { createBrandingRoutes } from '../../routes/system/branding.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
-import { createConfigRoutes } from '../../routes/system/config.js';
+import {
+  createConfigProjectReader,
+  createConfigRoutes,
+} from '../../routes/system/config.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createFeaturePreviewRoutes } from '../../routes/system/feature-previews.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
@@ -3877,6 +3880,9 @@ export function configureRuntimeRoutes(
       context.getManagedChatOrchestrationEnabled,
       context.rebindBuiltinAgents,
       context.getPluginFrameOrigin,
+      // #2144 slice 2: one project record for `GET /config/app?project=`.
+      // The reader owns which failures become "absent"; see its docblock.
+      createConfigProjectReader(context.storageAdapter),
     ),
   );
   context.app.route(

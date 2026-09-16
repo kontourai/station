@@ -4,6 +4,7 @@ import type { DistributionProfileSelection } from './distribution.js';
 import type { FleetContributionConfig } from './fleet-contribution.js';
 import type { AgentConnectionSettings } from './tool.js';
 import type { UserProfileSettings } from './user-profile.js';
+import type { WorkspaceIsolationMode } from './workspace-isolation.js';
 
 export interface ApprovalGuardianConfig {
   enabled?: boolean;
@@ -23,6 +24,15 @@ export interface AppConfig {
   systemPrompt?: string;
   templateVariables?: TemplateVariable[];
   defaultChatFontSize?: number;
+  /**
+   * Workspace mode a new project chat starts in when the project record does
+   * not name one (epic #2144 slice 2). Resolution is
+   * `project.defaultWorkspaceIsolation -> this -> 'shared'`; the fall-through
+   * lives in `resolveWorkspaceIsolationMode`
+   * (`@kontourai/station-contracts/workspace-isolation`) so every reader
+   * applies the same order.
+   */
+  defaultWorkspaceIsolation?: WorkspaceIsolationMode;
   logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   /** Default on, but nothing is sent unless an endpoint is configured. */
   telemetryEnabled?: boolean;

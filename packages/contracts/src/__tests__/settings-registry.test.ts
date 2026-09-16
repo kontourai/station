@@ -174,6 +174,7 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
             scope: 'defaults',
             descriptor,
             label: 'x',
+            help: 'x.',
             description: 'x',
           } as SettingDefinition,
           'anything at all',
@@ -281,6 +282,9 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
       [
         'defaultChatFontSize',
         'defaultMaxTurns',
+        // #2144 slice 2: confirmed against `resolveWorkspaceIsolationMode`
+        // — every reader falls through to 'shared'.
+        'defaultWorkspaceIsolation',
         'knowledgeStores',
         'mcpUiHost',
         'runtime',
@@ -341,5 +345,58 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
     expect(definition?.defaultValue).toBeUndefined();
     expect(definition?.required).toBeUndefined();
     expect(definition?.nullable).toBeUndefined();
+  });
+});
+
+/**
+ * `help` shape (epic #2144 slice 2). The compiler already guarantees the
+ * field EXISTS on every descriptor — `defineSetting`/`defineDeviceSetting`
+ * are generic over the definition interface, so a registration without one
+ * does not typecheck. These are the properties a type cannot state: that the
+ * sentence is a sentence, that it is short enough to sit beside a control,
+ * and that it is not the label wearing a period. The last one is the whole
+ * point of the field: a "help" string that restates its label is the class of
+ * copy this slice exists to replace, and nothing but an assertion catches it.
+ */
+describe('APP_SETTINGS_REGISTRY help copy', () => {
+  test('every help value is one trimmed sentence ending in a period', () => {
+    for (const definition of APP_SETTINGS_REGISTRY) {
+      const help = definition.help;
+      expect(help, definition.key as string).toBe(help.trim());
+      expect(help.length, definition.key as string).toBeGreaterThan(0);
+      expect(help.endsWith('.'), `${definition.key as string}: ${help}`).toBe(
+        true,
+      );
+      // One sentence: no interior terminator, and no second sentence started
+      // after one. `. ` also catches an abbreviation mid-string, which is
+      // what we want here — this copy should not need one.
+      expect(
+        help.slice(0, -1),
+        `${definition.key as string}: more than one sentence`,
+      ).not.toMatch(/[.!?]/);
+    }
+  });
+
+  test('every help value fits beside a control', () => {
+    for (const definition of APP_SETTINGS_REGISTRY) {
+      expect(
+        definition.help.length,
+        `${definition.key as string}: ${definition.help}`,
+      ).toBeLessThanOrEqual(160);
+    }
+  });
+
+  test('no help value is its own label restated', () => {
+    const flatten = (value: string) =>
+      value
+        .toLowerCase()
+        .replace(/[.]+$/, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+    for (const definition of APP_SETTINGS_REGISTRY) {
+      expect(flatten(definition.help), definition.key as string).not.toBe(
+        flatten(definition.label),
+      );
+    }
   });
 });

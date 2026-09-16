@@ -190,6 +190,23 @@ export const projectCreateSchema = z
     workingDirectory: z.string().optional(),
     description: z.string().optional(),
     defaultEnvironment: projectEnvironmentRefSchema.optional(),
+    // #2144 slice 2 — the three Station settings a project may override
+    // (`PROJECT_OVERRIDABLE_APP_SETTING_KEYS`), spelled as the project
+    // record spells them. Declared explicitly rather than left to
+    // `passthrough()`: these are settings now, and a settings write path
+    // that accepts any shape is one AJV rejects later, from the file layer,
+    // with a message about a document the caller never saw.
+    //
+    // `null` is ACCEPTED and means "drop this override" — see
+    // `updateProject`. It is not a stored value: the project file schema has
+    // no null for any of them, so storing one would make the record
+    // unloadable.
+    defaultWorkspaceIsolation: z
+      .enum(['shared', 'worktree'])
+      .nullable()
+      .optional(),
+    defaultModel: z.string().nullable().optional(),
+    defaultProviderId: z.string().nullable().optional(),
   })
   .passthrough();
 

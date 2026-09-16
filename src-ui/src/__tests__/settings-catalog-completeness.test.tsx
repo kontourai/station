@@ -343,8 +343,10 @@ describe('settings catalog completeness', () => {
     // update-ownership split (desktop-app-updates). This slice: -1
     // (knowledge-stores-preview, whose setting changes nothing and is no
     // longer user-facing) and +2 (workspace-checkpoints,
-    // default-chat-font-size). Counted from the merged catalog, not added up.
-    expect(SETTINGS_CATALOG).toHaveLength(44);
+    // default-chat-font-size). #2144 slice 2: +1
+    // (default-workspace-isolation). Counted from the merged catalog, not
+    // added up.
+    expect(SETTINGS_CATALOG).toHaveLength(45);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {

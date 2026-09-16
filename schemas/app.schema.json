@@ -79,6 +79,12 @@
       "minimum": 10,
       "maximum": 24
     },
+    "defaultWorkspaceIsolation": {
+      "type": "string",
+      "enum": ["shared", "worktree"],
+      "description": "Workspace mode a new project chat starts in when the project does not name one. Default: shared",
+      "default": "shared"
+    },
     "gitRemote": {
       "type": "string",
       "description": "Git remote URL resolved on first build, used for update checks"

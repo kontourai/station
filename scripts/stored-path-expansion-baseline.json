@@ -206,7 +206,7 @@
       "reason": "Expanded later in the same function: `const absolute = resolvePath(expandTilde(workingDirectory));` (line 384). The file\u2019s own docblock (point 8, lines 87-90) states this rule explicitly. Outside the guard\u2019s window."
     },
     {
-      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: await assertProjectWorktreeDirectory(slug, config.workingDirectory);",
+      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: await assertProjectWorktreeDirectory(slug, input.workingDirectory);",
       "category": 2,
       "reason": "assertProjectWorktreeDirectory() -> checkWorktreeDirectory() expands internally: `resolve(expandTilde(workingDirectory))` at line 131 (the station#3155 fix site), before the `git -C` call."
     },
@@ -216,12 +216,12 @@
       "reason": "Same call chain and expansion site as line 240 (checkWorktreeDirectory, project-service.ts:131)."
     },
     {
-      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: const basename = config.workingDirectory.split('/').filter(Boolean).pop();",
+      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: const basename = input.workingDirectory.split('/').filter(Boolean).pop();",
       "category": 1,
       "reason": "Derives a display name from the last path segment for a new project. A leading `~` occupies its own segment and never affects the basename result, so tilde expansion is immaterial here; the value is never used as a filesystem path."
     },
     {
-      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: if ((!name || name === 'Untitled') && config.workingDirectory) {",
+      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: if ((!name || name === 'Untitled') && input.workingDirectory) {",
       "category": 1,
       "reason": "Existence check gating the basename-derivation above. No filesystem access."
     },

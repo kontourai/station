@@ -336,6 +336,24 @@ export interface DeviceSettingDefinition<
   scope: 'device';
   descriptor: SettingValueDescriptor;
   label: string;
+  /**
+   * One sentence stating the CONSEQUENCE of this setting for the person
+   * reading it — what is different about this device because the setting
+   * holds the value it holds. It ends with a period, and it is not the label
+   * restated as a noun phrase.
+   *
+   * That last part is a WRITING RULE, not a checked one: the shape test can
+   * only reject a help string that is EXACTLY its label (normalized). Review
+   * enforces the rule; the test is the floor.
+   *
+   * Required, and `defineDeviceSetting` is generic over this interface, so
+   * the compiler is the completeness guard: a new device setting cannot be
+   * registered without one. `description` stays the longer explanation and
+   * remains what existing consumers render; `help` is the short consequence
+   * sentence a later slice renders beside the control. Mirrors
+   * `SettingDefinition.help` in `settings-registry.ts`.
+   */
+  help: string;
   description: string;
   /**
    * The pre-unification raw localStorage key this setting replaces. Used by
@@ -554,6 +572,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'enum', values: ['light', 'dark'] },
     label: 'Theme',
+    help: 'The interface renders in this color scheme on this device.',
     description: 'Light or dark interface theme.',
     priorStorageKey: 'theme',
     // Confirmed against index.css: no `data-theme` attribute resolves the
@@ -565,6 +584,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'string' },
     label: 'Accent color',
+    help: 'Accent-colored interface elements use this color on this device instead of the theme’s own.',
     description: 'Custom UI accent color (hex). Unset uses the theme default.',
     priorStorageKey: 'station-accent-color',
     defaultValue: null,
@@ -574,6 +594,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'composite' },
     label: 'Features',
+    help: 'Only the optional features turned on here are active on this device.',
     description: 'Per-device feature toggles.',
     priorStorageKey: 'station-feature-settings',
     // Confirmed against useFeatureSettings.ts's own DEFAULTS: all off
@@ -585,6 +606,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'string' },
     label: 'Speech-to-text provider',
+    help: 'Speech you dictate on this device is transcribed by the service named here.',
     description: 'Active speech-to-text provider id.',
     priorStorageKey: 'station-stt-provider',
     // Confirmed against VoiceProviderContext.tsx: `?? 'webspeech'`.
@@ -595,6 +617,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'string' },
     label: 'Text-to-speech provider',
+    help: 'Replies read aloud on this device are spoken by the service named here.',
     description: 'Active text-to-speech provider id.',
     priorStorageKey: 'station-tts-provider',
     // Confirmed against VoiceProviderContext.tsx: `?? 'webspeech'`.
@@ -605,6 +628,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'boolean' },
     label: 'Auto-hide chat dock',
+    help: 'An idle, open chat dock collapses to its bar after five seconds on this device.',
     description: 'Collapse an idle, open chat dock to its bar after 5s.',
     priorStorageKey: 'chatDockAutoHide',
     // Confirmed against useChatDockState.ts: `=== 'true'` (absent → false).
@@ -615,6 +639,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'number', integer: true },
     label: 'Chat dock height',
+    help: 'The bottom chat dock reopens at this height on this device.',
     description: 'Last committed bottom chat dock height in pixels.',
     defaultValue: 320,
   }),
@@ -623,6 +648,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'number', integer: true },
     label: 'Chat dock width',
+    help: 'The side chat dock reopens at this width on this device.',
     description: 'Last committed side chat dock width in pixels.',
     defaultValue: 400,
   }),
@@ -631,6 +657,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'enum', values: ['unified', 'split'] },
     label: 'Diff view style',
+    help: 'Changed files on this device show as one column or as two side-by-side columns.',
     description: 'Unified or side-by-side diff rendering.',
     priorStorageKey: 'station.diff.style',
     // Confirmed against DiffPanel.tsx: only 'split' flips it, else 'unified'.
@@ -641,6 +668,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'boolean' },
     label: 'Diff line wrap',
+    help: 'Long diff lines wrap on this device instead of scrolling sideways.',
     description: 'Wrap long diff lines instead of horizontal scroll.',
     priorStorageKey: 'station.diff.wrap',
     // Confirmed against DiffPanel.tsx: `=== '1'` (absent → false).
@@ -651,6 +679,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'boolean' },
     label: 'Chat dock inbox open',
+    help: 'The chat dock reopens with its inbox panel showing on this device.',
     description: 'Whether the chat dock inbox panel is open.',
     priorStorageKey: 'station.inbox.open',
     // Confirmed against ChatDock.tsx's readInboxOpen: `stored === null ?
@@ -662,6 +691,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'composite' },
     label: 'Chat dock inbox sections',
+    help: 'The snoozed and earlier inbox sections reopen collapsed or expanded as you left them.',
     description:
       'Collapsed/expanded state of the snoozed and earlier inbox sections.',
     priorStorageKey: 'station.inbox.sections',
@@ -673,6 +703,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'composite' },
     label: 'Sidebar sections',
+    help: 'The sidebar’s Open chats and Drafts sections reopen as you left them on this device.',
     description:
       'Collapsed and removed state of the sidebar Open chats and Drafts sections.',
     // archive#3314 — new sections state; never had a pre-unification key.
@@ -683,6 +714,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'boolean' },
     label: 'Project sidebar collapsed',
+    help: 'The project sidebar reopens icon-only, without labels, on this device.',
     description: 'Whether the project sidebar renders collapsed (icon-only).',
     priorStorageKey: 'station-sidebar-collapsed',
     // Confirmed against project-sidebar/utils.ts's readInitialSidebarCollapsed:
@@ -694,6 +726,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'boolean' },
     label: 'Setup launcher dismissed',
+    help: 'The first-run setup launcher stops appearing on this device.',
     description:
       'Persisted "do not show me this again" for the first-run setup launcher.',
     priorStorageKey: 'station:onboarding-setup-dismissed',
@@ -704,6 +737,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'composite' },
     label: 'Keyboard shortcut overrides',
+    help: 'Commands on this device respond to the keys you assigned instead of their default bindings.',
     // Persisted as a map keyed by command id; a `null` entry means the
     // shortcut is explicitly cleared (distinct from absent = default binding).
     description:
@@ -717,6 +751,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'composite' },
     label: 'First run',
+    help: 'The guided first run resumes where you left it on this device.',
     // archive#2652. Persisted as `{ chapter, deferred?, tourStepId? }`. Records
     // only how far the guided first run got on this device and whether its
     // automatic presentation was deferred; the About-you ANSWERS are
@@ -729,6 +764,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'composite' },
     label: 'Skill shortcuts',
+    help: 'Skills on this device run from the keys assigned to them here.',
     description: 'Keyboard shortcuts assigned to skills on this device.',
     defaultValue: DEFAULT_SKILL_SHORTCUTS,
   }),
@@ -737,6 +773,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'composite' },
     label: 'Model picker preferences',
+    help: 'The model picker on this device orders, hides, and highlights models as you arranged them.',
     description:
       'Favorite, recent, hidden, and manually ordered models in the model picker.',
     priorStorageKey: SHARED_PRIOR_DEVICE_SETTINGS_KEY,
@@ -754,6 +791,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'boolean' },
     label: 'Show reasoning',
+    help: 'Chat messages on this device include the model’s reasoning steps.',
     description: 'Display model reasoning steps in chat messages.',
     // Matches the prior `useChatDockState.ts` default:
     // `useState(true)`.
@@ -764,6 +802,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'boolean' },
     label: 'Show tool details',
+    help: 'Tool calls in chat on this device can be expanded to read their arguments and results.',
     description: 'Allow expanding tool calls to view arguments and results.',
     // Matches the prior `useChatDockState.ts` default:
     // `useState(true)`.
@@ -774,6 +813,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'number', integer: true, min: 10, max: 24 },
     label: 'Chat font size',
+    help: 'Chat messages render at this size on this device, ahead of the Station-configured default.',
     description:
       'Font size for chat messages (10-24px). Unset follows the Station-configured default.',
     // `null` (not a number) is the confirmed absent-value behavior: it means
@@ -786,6 +826,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'enum', values: ['left', 'bottom', 'right'] },
     label: 'Dock position',
+    help: 'The dock reopens on this side of the screen when this device offers a choice.',
     description:
       'Remembered dock-slot placement preference when this device offers a choice.',
     // Matches the prior `navigation-store.ts`'s
@@ -797,6 +838,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'boolean' },
     label: 'Haptic feedback',
+    help: 'A mobile shell pulses on streaming replies, copies, pairing success, and destructive confirms.',
     description:
       'Light selection pulses while an assistant reply streams, plus feedback on copy, pairing success, and destructive confirms. Mobile native shells only.',
     // archive#1954: default on; desktop/web no-op via capability gate.
@@ -807,6 +849,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'boolean' },
     label: 'Enable developer tools',
+    help: 'The Developer surface appears in this device’s sidebar and command palette.',
     description:
       'Show the Developer surface (logs, system, telemetry, memory, archive) in the sidebar and command palette on this device. Deep links to /developer keep working either way.',
     // archive#3313: developer surfaces are opt-in; which navigation entries a
@@ -819,6 +862,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'string' },
     label: 'Chat dock project',
+    help: 'The chat dock header stays bound to this project whichever chat is on screen.',
     description:
       'The project the chat dock header is currently bound to, independent of whichever chat is on screen.',
     // archive#4525: new device setting — the dock's project badge previously
@@ -830,6 +874,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'composite' },
     label: 'Region arrangement',
+    help: 'Each region of this device’s window reopens with the surface, size, and visibility you left it with.',
     description:
       "Which surfaces occupy the main, left, right, and bottom regions on this device, with each region's size, visibility, and whether it is maximized.",
     // #928 slice D: new device setting; the arrangement was previously seeded

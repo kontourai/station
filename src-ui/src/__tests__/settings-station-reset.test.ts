@@ -126,6 +126,9 @@ describe('buildStationResetPlan', () => {
       'surfaceTrustFromVeritasEvidence',
       'disableDefaultSkillRegistries',
       'workspaceCheckpoints',
+      // #2144 slice 2 — the new Station-scope row; a reset clears it back to
+      // the registry default, which is the shared checkout.
+      'defaultWorkspaceIsolation',
       'registryUrl',
       'distributionProfile',
       'systemPrompt',

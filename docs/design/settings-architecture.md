@@ -136,7 +136,8 @@ migrations from every legacy key, hydration-tracked so UI can distinguish
 ### S4. Entity — settings live with the thing they configure
 Already mostly right; the revamp names it as a rule rather than an accident:
 - **Project** → `/projects/:slug/edit` (workspace dir, project model, agent
-  availability, project knowledge, layouts).
+  availability, project knowledge, layouts), plus the three Station settings a
+  project may override — see §4.2.
 - **Agent** → agent editor (engine, model, thinking/effort defaults, guardrails,
   region override, prompt/skills/tools/commands).
 - **Connection / engine / plugin / integration** → their own detail panels.
@@ -165,11 +166,97 @@ defineSetting({
   schema: z.enum(['debug', 'info', 'warn', 'error']),
   default: 'info',
   label: 'Log level',
+  help: 'Station writes server log entries at this severity and above, and drops quieter ones.',
   description: '…',
   envFallback: 'STATION_LOG_LEVEL',   // optional: env var consulted when nothing is stored
   secret: false,
 })
 ```
+
+**`help` is required on every registered setting** (epic #2144 slice 2), on
+both `SettingDefinition` and `DeviceSettingDefinition`. One sentence, stating
+what is different about Station — or about this device — because the setting
+holds the value it holds; it ends with a period and it is not the label
+restated as a noun phrase. `defineSetting`/`defineDeviceSetting` are generic
+over their interfaces, so the compiler refuses a registration without one, and
+shape tests in each registry's test file assert the properties a type cannot:
+one sentence, at most 160 characters, not equal to the label. `help` is
+scanned as user-facing copy by `scripts/noun-consistency-gate.mjs`'s
+`COPY_FIELD_NAMES` from the day it is declared, not from the day a surface
+first renders it.
+
+`description` stays: it is the longer explanation (caveats, defaults,
+encoding) and remains what `views/settings/registry-row.tsx` renders and what
+`settings-catalog.ts` searches. Four keys nothing reads — `gitRemote`,
+`defaultEmbeddingProvider`, `defaultEmbeddingModel`, `defaultVectorDbProvider`
+— are `userFacing: false` for the same reason `knowledgeStores` is: a row for
+a key nothing reads is a control that persists and does nothing. Their `help`
+sentences say exactly that rather than describing behavior that does not
+exist.
+
+### 4.2 Project overrides (epic #2144 slice 2)
+
+Three Station settings, and only three, may be overridden per project
+(`packages/contracts/src/project-settings-overrides.ts`):
+
+| Setting | Project record field |
+| --- | --- |
+| `defaultModel` | `defaultModel` |
+| `defaultLLMProvider` | `defaultProviderId` |
+| `defaultWorkspaceIsolation` | `defaultWorkspaceIsolation` |
+
+The list is a closed `as const`, not "whatever the project record carries": a
+project record has fields that were never settings, and deriving the
+overridable set from its shape would present them as Station settings the
+moment someone added one. `PROJECT_OVERRIDE_FIELD_ALIASES` records the one
+name the two sides spell differently; neither side is being renamed, because
+a rename on either is a stored-data migration.
+
+`defaultWorkspaceIsolation` is new in this slice — a Station-scope setting for
+the workspace a new project chat starts in. Resolution is
+`project.defaultWorkspaceIsolation -> AppConfig.defaultWorkspaceIsolation ->
+'shared'`, through the single exported `resolveWorkspaceIsolationMode`. It is
+exported rather than inlined because the execution-target resolver DECIDES the
+mode and the plugin foreground-invocation admission separately re-checks it as
+a provisioning precondition: two readers of one resolution is two chances to
+get it wrong, and a precondition reading only the project record would refuse
+exactly the worktrees a Station-level default produces. A remote Environment
+keeps its existing behavior — its own project record, else shared — because
+this Station's config describes this host.
+
+**Provenance gains a scope.** `SettingProvenanceEntry.scope`
+(`'station' | 'project' | 'device'`) is optional and additive:
+`SettingProvenanceSource` is unchanged, an entry without `scope` means what it
+always meant, and a reader that ignores it is less specific rather than wrong.
+`GET /config/app?project=<slug>` emits it — overridden keys as
+`{ source: 'file', scope: 'project' }`, the rest of the file-sourced keys as
+`{ source: 'file', scope: 'station' }`. A read that names no project emits no
+`scope` at all: it has no project to attribute anything to and must not guess
+one. Naming a project asks for more provenance, never for different values;
+the response body stays this Station's config. An unknown slug is a 404, not a
+Station-only answer under a name that does not exist.
+
+**Effective values** are resolved by `resolveEffectiveAppSetting`
+(`src-server/domain/settings-effective.ts`) — project, then Station, then a
+declared `envFallback` the field's own validator accepts, then the registry
+default — and by `resolveEffectiveDeviceSetting`
+(`src-ui/src/views/settings/effective-device-setting.ts`) for the device
+scope's only two sources. Both reuse the existing "is this a decision or the
+absence of one" tests rather than re-deriving them; a second definition of
+absent is how a surface ends up naming a source for a value no resolver uses.
+
+**Write path.** `PUT /projects/:slug` (and `POST /projects`) validate the
+three fields explicitly instead of letting the project file schema reject them
+later, from a document the caller never saw. `null` on any of
+them DROPS the override rather than storing it — the project file schema
+admits no null for any of the three, so a stored null would make the record
+unloadable. Changing `defaultWorkspaceIsolation` additionally requires the
+scope that `PUT /config/app` requires, since it overrides a Station setting.
+Stated honestly: that scope is `orchestration:operate`, which
+`PUT /api/projects/:slug` already requires, so the guard refuses no caller
+today. It is defense in depth against a future narrowing of the project
+family's tier and the place the coupling is written down — not a claim that
+project updates are authorized more narrowly than they were.
 
 Derived from the registry, so they can never drift:
 - the typed `PUT /config/app` request schema (replacing `z.record(z.unknown())`),
