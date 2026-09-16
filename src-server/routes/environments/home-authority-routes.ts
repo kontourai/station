@@ -252,7 +252,11 @@ export function createHomeAuthorityRoutes(
       if (
         keys.some((key) =>
           key === 'expectedRevision' || key === 'expectedGeneration'
-            ? !Number.isSafeInteger(data[key])
+            ? // Generations and revisions are 1-based counters. A zero or
+              // negative one is refused by the authority as `conflict`, which
+              // this route answers 409 — indistinguishable from a real
+              // generation mismatch the caller could resolve by re-reading.
+              !Number.isSafeInteger(data[key]) || (data[key] as number) <= 0
             : typeof data[key] !== 'string',
         )
       )
@@ -262,6 +266,15 @@ export function createHomeAuthorityRoutes(
       return undefined;
     }
   }
+  /**
+   * A 256-bit secret, lower-case hex. The authority checks this too and
+   * refuses a bad one as `conflict`, which this route maps to 409 — the same
+   * answer it gives for "an active session exists under a different open".
+   * A caller cannot act on that: one means "retry with different state", the
+   * other means "your payload can never succeed". Checking the format here
+   * makes the second one a 400.
+   */
+  const HEX_256 = /^[a-f0-9]{64}$/;
   async function controlOpenBody(request: Request) {
     try {
       const bounded = await readBoundedRequestBody(request, 2048);
@@ -283,7 +296,9 @@ export function createHomeAuthorityRoutes(
         keys.every((key) => key === 'openId' || key === 'replaySecret') &&
         typeof record.replaySecret === 'string'
       )
-        return { openId: record.openId, replaySecret: record.replaySecret };
+        return HEX_256.test(record.replaySecret)
+          ? { openId: record.openId, replaySecret: record.replaySecret }
+          : undefined;
       const capability = record.existingCapability;
       if (
         !Object.hasOwn(record, 'existingCapability') ||
@@ -304,7 +319,9 @@ export function createHomeAuthorityRoutes(
         typeof candidate.homeRef !== 'string' ||
         typeof candidate.openId !== 'string' ||
         !Number.isSafeInteger(candidate.generation) ||
-        typeof candidate.token !== 'string'
+        (candidate.generation as number) <= 0 ||
+        typeof candidate.token !== 'string' ||
+        !HEX_256.test(candidate.token)
       )
         return undefined;
       return {

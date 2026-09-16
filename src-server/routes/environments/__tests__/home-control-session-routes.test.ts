@@ -271,7 +271,91 @@ test.skipIf(process.platform === 'win32')(
     const text = await wrong.text();
     expect(text).not.toContain(replaySecret);
     expect(text).not.toContain(wrongSecret);
+    // Hold the REAL capability and assert the refusal does not echo it. The
+    // previous form asserted only that the literal string 'token' is absent
+    // from a body that is `{"kind":"conflict"}` — true of almost any
+    // refusal, and true even if the live token were spliced in under another
+    // key.
+    const issued = (await opened.json()) as HomeControlSessionOpenObservation;
+    expect(text).not.toContain(issued.capability.token);
     expect(text).not.toContain('token');
+  },
+);
+
+test.skipIf(process.platform === 'win32')(
+  'a payload that can never succeed is 400, not the 409 a caller could act on',
+  async () => {
+    const f = await fixture();
+    const home = f.promoteControl(f.pair(PAIRING_SCOPE_HOME_TRANSFER));
+    const app = f.createApp();
+
+    // 409 is the answer for "an active session exists under a different open"
+    // and for "your replay secret is wrong" — both states a caller can read
+    // and act on. A malformed secret is neither: no retry against any server
+    // state makes `hello` a 256-bit hex value. Before this, the authority
+    // refused it as `conflict` and the route mapped that to 409, so the two
+    // were indistinguishable on the wire.
+    for (const replaySecret of [
+      'hello',
+      'a'.repeat(63),
+      'a'.repeat(65),
+      `A${'a'.repeat(63)}`,
+    ]) {
+      const response = await f.post(
+        app,
+        '/control-sessions/open',
+        home.credential,
+        { openId: 'open-a', replaySecret },
+      );
+      expect(response.status, replaySecret).toBe(400);
+      expect(await response.json()).toEqual({ kind: 'invalid-request' });
+    }
+    expect(f.databases).toHaveLength(0);
+
+    // Same for a presented capability whose token is not a token, and for a
+    // generation that is not a generation.
+    const badToken = await f.post(
+      app,
+      '/control-sessions/open',
+      home.credential,
+      {
+        openId: 'open-a',
+        existingCapability: {
+          homeRef: `paired:${home.device.id}`,
+          openId: 'open-a',
+          generation: 1,
+          token: 'not-a-token',
+        },
+      },
+    );
+    expect(badToken.status).toBe(400);
+    const badGeneration = await f.post(
+      app,
+      `/control-sessions/${home.device.id}/retire`,
+      f.controller.credential,
+      { expectedGeneration: 0 },
+    );
+    expect(badGeneration.status).toBe(400);
+
+    // And the well-formed-but-wrong case still reads 409, or the distinction
+    // above would just be "everything is 400".
+    const opened = await f.post(
+      app,
+      '/control-sessions/open',
+      home.credential,
+      {
+        openId: 'open-a',
+        replaySecret: 'a'.repeat(64),
+      },
+    );
+    expect(opened.status).toBe(200);
+    const wrongButWellFormed = await f.post(
+      app,
+      '/control-sessions/open',
+      home.credential,
+      { openId: 'open-a', replaySecret: 'b'.repeat(64) },
+    );
+    expect(wrongButWellFormed.status).toBe(409);
   },
 );
 
