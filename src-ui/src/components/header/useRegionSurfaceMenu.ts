@@ -16,6 +16,7 @@ import {
   regionLabel,
   resolveRegionSurface,
 } from '../../regions/region-model';
+import { regionVisibilityApplier } from '../../regions/region-visibility-appliers';
 import type { DockMode } from '../../types';
 
 /**
@@ -54,28 +55,15 @@ interface RegionSurfaceMenuItem {
 }
 
 /**
- * One thing an EMPTY region's control offers to show there: a shell surface
- * that declares the region (#2143). Choosing it is the model's own
- * `placeSurface` — a surface held elsewhere moves, a surface in `main` hands
- * the primary area back to Home — never a second placement rule here.
- */
-export interface RegionToggleOffer {
-  surfaceId: string;
-  /** The surface's title — "Chat", "Activity". */
-  label: string;
-  /** `RegisteredSurface.icon`, for the row's 16px glyph slot. */
-  icon: string;
-  onSelect: () => void;
-}
-
-/**
- * One dock region's toolbar control (#2143): a show/hide TOGGLE while the
- * region holds panes, and an offer of what can be placed there while it holds
- * none.
+ * One dock region's toolbar control (#2155): a show/hide TOGGLE, always, for
+ * every dock region this device can use. It shows and hides and does nothing
+ * else — what a region HOLDS is the pane's business (the region's own chooser
+ * and its "+", #2154), which is why the offer menu #2143 gave an empty region
+ * is gone and no state of this control is inert.
  *
  * `visible` is DERIVED from the arrangement, never stored: pressed means the
  * region is visible. Since #2153 that is all it means — an empty region may be
- * visible, and one that is shows its bar over a placeholder, so pressed is
+ * visible, and one that is shows its bar over a chooser, so pressed is
  * exactly "on screen". A hidden region holding two panes is one unpressed
  * toggle, and pressing it brings both tabs back with the same selection,
  * because the toggle writes the REGION's visibility and nothing about its
@@ -89,20 +77,24 @@ export interface RegionToggle {
   paneTitles: string[];
   visible: boolean;
   /**
-   * Show or hide the region — the model's `setRegion(region, { visible })`.
-   * The region bar's chevron reaches the SAME model write through
-   * `applyDockSnap`, which also records the shell's snap and height and
-   * passes `maximized` (a chevron collapse clears it); this toggle writes
-   * `visible` alone, so a region hidden here keeps its maximize memory and
-   * comes back maximized, while one hidden from its chevron comes back at
-   * the snap the chevron stored. Since #2153 it acts on an EMPTY region too —
-   * showing one opens it empty, on its placeholder — though the toolbar
-   * button still opens `offers` on a press while the region holds nothing
-   * (#2155 decides what that control becomes).
+   * Show or hide the region, by the SAME route the region bar's chevron
+   * takes (#2155): the mounted shell's own `setRegionOpen`, published per
+   * region by `useDockShellChrome` into `region-visibility-appliers.ts`. It
+   * goes through `applyDockSnap`, so the shell records its snap and its
+   * height and clears `maximized` on the hide — which is what the #2143
+   * toggle's bare `setRegion(region, { visible })` did not do, leaving a
+   * region hidden from the toolbar to come back maximized while one hidden
+   * from its chevron came back at the snap the chevron stored.
+   *
+   * With no applier the model is written directly. That is not a degraded
+   * path but the only possible one: a HIDDEN EMPTY region mounts no host
+   * (#2153, `RegionShells`), so there is no shell to hold a snap for it, and
+   * the same is true of every region while the app renders no region hosts
+   * at all (a Chat workspace layout). `maximized: false` goes with it in
+   * both directions — a shell-less region has no maximized rendering to
+   * return to, and nothing may carry a maximize across a hide.
    */
   onToggle: () => void;
-  /** What an EMPTY region's control offers; empty for an occupied region. */
-  offers: RegionToggleOffer[];
 }
 
 interface RegionSurfaceMenu {
@@ -200,13 +192,6 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
   );
   const foldedRegion = foldedDockRegion(regions, lastShownRegion);
 
-  const place = (surfaceId: string, id: RegionId) => {
-    if (id !== 'main' && !(available as readonly RegionId[]).includes(id))
-      return;
-    if (!surfaces.has(surfaceId)) return;
-    model.placeSurface(surfaceId, id);
-  };
-
   /**
    * The folded device's rows, per REGION (#2046 2b, D2). Each occupied dock
    * region contributes its panes in tab order: the SELECTED pane's row is
@@ -289,7 +274,6 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
 
   const regionToggle = (region: DockRegionId): RegionToggle => {
     const state = regions[region];
-    const held = state.panes.length > 0;
     return {
       region,
       label: regionLabel(region),
@@ -304,25 +288,21 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
       // user can see.
       visible: state.visible,
       onToggle: () => {
-        // No longer refused for an empty region (#2153): showing one is now a
-        // thing that happens — the region appears, empty, with its own bar —
-        // so the write that shows it must not be swallowed.
-        model.setRegion(region, { visible: !state.visible });
+        const open = !state.visible;
+        const applyRegionVisibility = regionVisibilityApplier(region);
+        // The mounted shell's route first, so this control and that region's
+        // chevron are the one act (#2155). Read at PRESS time, not at render
+        // time: a shell mounts and unmounts under the toolbar without the
+        // toggle re-rendering, and a captured applier would outlive its shell.
+        if (applyRegionVisibility) {
+          applyRegionVisibility(open);
+          return;
+        }
+        // No shell for this region (#2153: a hidden empty region mounts
+        // none). Showing one is a thing that happens — the region appears,
+        // empty, on its chooser — so the write must not be swallowed.
+        model.setRegion(region, { visible: open, maximized: false });
       },
-      // An occupied region offers nothing here: its "+" (#2047) is where more
-      // panes come from, and a toggle that also placed would be two controls
-      // under one name. An empty one offers the shell surfaces declaring it,
-      // in registry order — the same `surfaceList` the chords are built from.
-      offers: held
-        ? []
-        : surfaceList
-            .filter((surface) => surface.regions.includes(region))
-            .map((surface) => ({
-              surfaceId: surface.id,
-              label: surface.title,
-              icon: surface.icon,
-              onSelect: () => place(surface.id, region),
-            })),
     };
   };
 
