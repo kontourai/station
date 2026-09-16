@@ -282,6 +282,12 @@ export function createPlannedHomeControlRoomWriteAdmissionAdapter(
           ...fixed,
           receiptDigest: input.receiptDigest,
         });
+        // `not-found` from the journal is the one settlement result that is
+        // not a failure: no row has ever existed under this admission id, and
+        // the journal has no delete, so nothing can have removed one. The
+        // caller decides what an unadmitted durable effect means; the adapter
+        // only stops it from arriving as generic unavailability.
+        if (result.kind === 'not-found') return { kind: 'nothing-to-settle' };
         if (result.kind !== 'stored') return { kind: blockedKind(result) };
         const record = result.value;
         return plannedHomeAdmissionRecordValid(record) &&
