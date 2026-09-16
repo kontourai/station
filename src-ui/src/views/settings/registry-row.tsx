@@ -60,6 +60,7 @@ export function renderSettingRow({
   provenance,
   onChange,
   runtimeDefault,
+  containerScope,
   projectName,
   projectValue,
   stationValue,
@@ -103,6 +104,7 @@ export function renderSettingRow({
       definition={definition}
       provenance={provenance}
       catalogScope={catalogEntry?.scope}
+      containerScope={containerScope}
       projectName={projectName}
       projectValue={projectValue}
       // On a Station-only row the rendered value IS the Station's, so it

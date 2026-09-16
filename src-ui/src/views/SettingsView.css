@@ -447,8 +447,31 @@
 
 /* ── Mobile: stack template-variable rows so the key field isn't clipped ── */
 /* ── Section Cards ── */
+/* #2144 slice 7: the heading sits ABOVE the card, and the card holds only
+   rows. `PageSection` draws its border, radius and fill on the outer element
+   with the header inside it; both products this page was compared against
+   (T3 Code `settingsLayout.tsx:196-229`, Kiro Crew `settings.tsx:306-358`)
+   put the section title outside the bordered surface, which is a large part
+   of why their pages read lighter at the same row count. Scoped to
+   `.settings__section` so `PageSection`'s other hosts keep their card. The
+   `#section-<id>` anchor, its focus outline and its scroll margin stay on the
+   outer element, so deep links land and pulse exactly where they did. */
 .settings__section {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.75rem;
+}
+.settings__section.page-section {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.settings__section > .page-section__header {
+  padding: 0 0.25rem 0.5rem;
+  border-bottom: 0;
+}
+.settings__section .page-section__title {
+  font-size: 0.9375rem;
+  font-weight: 600;
 }
 .settings__section-icon {
   font-size: 0.9rem;
@@ -456,7 +479,10 @@
   opacity: 0.7;
 }
 .settings__section-body {
-  padding: 1.25rem;
+  padding: 0.25rem 1.25rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  background: var(--bg-secondary);
 }
 
 /* ── Field Rows ── */
