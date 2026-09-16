@@ -214,13 +214,16 @@ finished admission carrying a receipt digest, so an admission recorded for a
 write that never committed stays unresolved until an operator acts. Losing the
 response to a timeout does not clear the controller's record either. Rooms
 without the port write through the same transaction without requesting
-admission. Requesting admission is not the only difference: the controller's
-`plannedHomeAdmissionIdentifier` refuses code points below 32 and 127, which
-the room's own identifier check accepts, so a `proposalId` like `"line\nbreak"`
-writes into an uncontrolled room and is refused once a port is attached — and
-refused as `denied`, which reads as a permission decision. The legal alphabet
-therefore depends on whether a room is controlled. Narrowing the room to match
-belongs with the controller lane that introduces that validator, not here.
+admission, and the legal alphabet does not depend on whether a room is
+controlled: the room's own identifier check refuses code points below 32 and
+127 whether or not a port is attached, so a `proposalId` like `"line\nbreak"`
+is refused as `malformed` by both. Every identifier the room accepts is
+therefore one the controller's `plannedHomeAdmissionIdentifier` accepts too.
+The relation is containment, not equality — the room is the narrower of the
+two, because it also refuses lone surrogates, which that validator accepts —
+and containment is the direction that matters: attaching a port can never turn
+an append the room already allowed into a `denied` that reads as a permission
+decision.
 For every room, with or without the port, a commit-time local authority check
 that is unavailable now returns unavailable rather than denied.
 
@@ -312,6 +315,23 @@ succeed is distinguishable from a 409 the caller can act on. There is no
 admission begin/finish endpoint, room writer, Agent launch or target
 activation in this slice.
 
+## Private room-write adapter
+
+`createPlannedHomeControlRoomWriteAdmissionAdapter` connects an existing
+control-session capability to the optional `ProjectTaskRoomHistory` write port.
+It fixes the channel, owner revision and room-write kind, and requires a current
+local-authority guard. Failed configuration returns a concrete refusing port;
+it never falls back to an unmanaged room. Observed room scope must hash to the
+bound channel, and historical `settled` work cannot authorize a new append.
+
+The controller admission ID is a versioned hash of channel and proposal IDs.
+Two rooms can reuse a proposal ID without colliding in the controller journal.
+The owning `plannedHomeControlRoomWriteAdmissionId` helper defines that mapping.
+Receipt-verifier adapters must verify this mapping against the actual retained
+proposal and intent digest; the controller admission ID is not the room's raw
+proposal ID. No network transport or production bootstrap installs this adapter
+yet. Target activation and provider execution still require their own owners.
+
 ## Private operator receipt reconciliation
 
 A grant may be revoked after an effect commits but before its admission is
@@ -343,6 +363,7 @@ From an isolated repository worktree with managed dependencies installed:
 npm run test:focused -- \
   src-server/routes/environments/__tests__/home-control-session-routes.test.ts \
   src-server/services/orchestration/__tests__/planned-home-control-session-authority.test.ts \
+  src-server/services/orchestration/__tests__/planned-home-control-room-write-adapter.test.ts \
   src-server/services/orchestration/__tests__/planned-home-admission-reconciliation.test.ts \
   src-server/services/orchestration/__tests__/planned-home-admission-store.test.ts \
   src-server/services/orchestration/__tests__/planned-home-transfer-store.test.ts \

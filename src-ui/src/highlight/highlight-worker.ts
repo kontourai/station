@@ -14,6 +14,10 @@ import {
   type HighlighterCore,
   loadHighlighterLanguage,
 } from './core-highlighter';
+import {
+  IncrementalHighlightStore,
+  sessionTokenizerFor,
+} from './incremental-session';
 import { THEME } from './shared';
 
 type HighlightRequest = { id: number; code: string; lang: string };
@@ -38,12 +42,25 @@ const ctx = self as unknown as {
   postMessage(message: HighlightResponse): void;
 };
 
+/**
+ * #2093 — resume store shared by every request this worker serves. Matching
+ * is transparent (longest reusable `\n`-terminated prefix), so the message
+ * protocol is unchanged: growing streamed blocks resume, everything else
+ * takes the full path exactly as before. Bounded — one worker serves a page
+ * of chat, not an archive.
+ */
+const sessions = new IncrementalHighlightStore(16);
+
 ctx.addEventListener('message', async (e: MessageEvent) => {
   const { id, code, lang } = e.data as HighlightRequest;
   try {
     const h = await ensureHighlighter();
     const resolved = (await loadHighlighterLanguage(h, lang)) ? lang : 'text';
-    const html = h.codeToHtml(code, { lang: resolved, theme: THEME });
+    const html = sessions.highlight(
+      sessionTokenizerFor(h, THEME),
+      code,
+      resolved,
+    );
     ctx.postMessage({ id, html });
   } catch (err) {
     ctx.postMessage({ id, error: String(err) });
