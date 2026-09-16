@@ -1091,7 +1091,10 @@ blocks transfer commits while effects remain unresolved.
 [Control sessions](../../src-server/services/orchestration/planned-home-control-session-authority.ts)
 own private session exclusivity and explicit control-grant checks;
 [operator reconciliation](../../src-server/services/orchestration/planned-home-admission-reconciliation.ts)
-settles existing admissions only through a trusted durable-receipt verifier.
+settles existing admissions only through a trusted durable-receipt verifier. The
+[room-write adapter](../../src-server/services/orchestration/planned-home-control-room-write-adapter.ts)
+binds control-session authority to the private history port and owns cross-room
+admission identity.
 The [controller guide](../guides/home-transfer-controller.md) owns setup,
 private integration contracts, recovery limits, and reproducible checks.
 Production control-session transport, provider admission, and target activation
