@@ -632,14 +632,17 @@ describe('ProjectTaskRoomHistory v2', () => {
         if (!malformed) accepted.push(candidate);
       }
       await room.close();
-      expect(accepted).toContain('plain');
-      expect(accepted).toContain('emoji-\u{1f600}');
-      expect(accepted).not.toContain('line\nbreak');
+      // The containment itself, asserted before any spot check so that it is
+      // what fails when the two predicates drift apart.
       for (const identifier of accepted)
         expect([
           identifier,
           plannedHomeAdmissionIdentifier(identifier),
         ]).toEqual([identifier, true]);
+      // Containment would also hold if the room accepted nothing at all.
+      expect(accepted).toContain('plain');
+      expect(accepted).toContain('emoji-\u{1f600}');
+      expect(accepted).not.toContain('line\nbreak');
     });
 
     it('asks for no admission when the transaction cannot reach its first write', async () => {
