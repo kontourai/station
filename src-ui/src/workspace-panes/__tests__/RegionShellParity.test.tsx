@@ -1204,3 +1204,79 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     ).not.toBeNull();
   });
 });
+
+/**
+ * #2155 D3. The toolbar's per-region toggle used to write `visible` alone
+ * while the region bar's chevron went through `applyDockSnap` — so a region
+ * hidden from the toolbar kept its maximize memory and came back MAXIMIZED,
+ * while one hidden from its own chevron came back at the snap the chevron
+ * stored. The #2143 docblock recorded that as an open gap; this is the pin
+ * that closes it.
+ *
+ * The real `RegionShells` → `RegionPaneHost` → `DockShell` →
+ * `useDockShellChrome` path is what publishes the applier the toggle calls
+ * (`region-visibility-appliers.ts`), so nothing here can pass on a mock: the
+ * two routes are compared by running the SAME sequence through each and
+ * asserting the region records are deep-equal, plus one absolute assertion —
+ * the maximize is cleared — so that two identically broken paths cannot agree
+ * their way to green.
+ */
+describe('the toolbar toggle and the region bar chevron are one act (#2155)', () => {
+  /**
+   * Maximize Chat's region, hide it, show it again — through one route — and
+   * hand back what the model records for that region afterwards.
+   */
+  async function maximizeHideShow(route: 'toolbar' | 'chevron') {
+    seedPlacement('right', 'open');
+    const shell = await renderShellsSettled();
+    const toolbarToggle = () =>
+      screen.getByRole('button', { name: 'Right region', exact: true });
+    const press = (label: 'Hide Chat' | 'Show Chat') =>
+      route === 'toolbar'
+        ? fireEvent.click(toolbarToggle())
+        : fireEvent.click(within(shell).getByLabelText(label));
+
+    fireEvent.click(
+      within(shell).getByLabelText('Expand dock region to workspace'),
+    );
+    await waitFor(() =>
+      expect(currentRegionModel().regions.right.maximized).toBe(true),
+    );
+
+    press('Hide Chat');
+    await waitFor(() =>
+      expect(currentRegionModel().regions.right.visible).toBe(false),
+    );
+    // The gap's own symptom, asserted absolutely rather than only by
+    // agreement: a hide that wrote `visible` alone leaves this true.
+    expect(
+      currentRegionModel().regions.right.maximized,
+      `hiding from the ${route} left the region's maximize memory set, so showing it again re-maximizes it`,
+    ).toBe(false);
+    expect(toolbarToggle().getAttribute('aria-pressed')).toBe('false');
+
+    press('Show Chat');
+    await waitFor(() =>
+      expect(currentRegionModel().regions.right.visible).toBe(true),
+    );
+    const record = { ...currentRegionModel().regions.right };
+    cleanup();
+    return record;
+  }
+
+  test('maximize, hide and show leave the identical region record either way', async () => {
+    const viaToolbar = await maximizeHideShow('toolbar');
+    const viaChevron = await maximizeHideShow('chevron');
+
+    // The precondition: the sequence really did put Chat in `right` and bring
+    // it back on screen, un-maximized. Without it "both routes agree" would be
+    // satisfied by two routes that both did nothing.
+    expect(viaToolbar).toMatchObject({
+      panes: ['chat'],
+      occupant: 'chat',
+      visible: true,
+      maximized: false,
+    });
+    expect(viaToolbar).toEqual(viaChevron);
+  });
+});
