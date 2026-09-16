@@ -146,7 +146,8 @@ export async function showSurfaceInEmptyRegion(
  * right-click on the tab opens "Move <title>", whose rows are the regions the
  * pane declares on this device minus the one it is in. `Main` hands the pane
  * the primary area. The tab strip renders only for a region holding two or
- * more panes, so a one-pane region's pane is moved by the region's ⋮⋮ grab.
+ * more panes; a LONE pane reaches the same menu from the region bar's Move
+ * button — `moveLonePaneToRegion` below (#2160).
  */
 export async function moveTabToRegion(
   page: Page,
@@ -157,6 +158,39 @@ export async function moveTabToRegion(
   await strip
     .getByRole('tab', { name: surfaceTitle, exact: true })
     .click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: `Move ${surfaceTitle}` });
+  await expect(menu).toBeVisible();
+  await menu
+    .getByRole('menuitem', { name: `Move to ${regionLabel}`, exact: true })
+    .click();
+  await expect(menu).toBeHidden();
+}
+
+/**
+ * Moves a LONE pane — the only one its region holds, so there is no tab strip
+ * — through the region bar's own "Move <title>" button (#2160). It opens the
+ * SAME menu `moveTabToRegion` drives from a tab, for the pane the region
+ * shows, so this route reaches `main` where the bar's ⋮⋮ grab (whole region,
+ * dock edges only) cannot.
+ *
+ * Asserting the strip is absent first is what keeps this a drive of the lone
+ * pane's route rather than of a tab that happened to be on screen.
+ */
+export async function moveLonePaneToRegion(
+  page: Page,
+  surfaceTitle: string,
+  regionLabel: 'Left' | 'Bottom' | 'Right' | 'Main',
+): Promise<void> {
+  await expect(
+    page.getByRole('tablist', { name: 'Region panes' }),
+    `${surfaceTitle} must be alone in its region, or this is not the lone pane's route`,
+  ).toHaveCount(0);
+  const button = page.getByRole('button', {
+    name: `Move ${surfaceTitle}`,
+    exact: true,
+  });
+  await expect(button).toHaveAttribute('aria-expanded', 'false');
+  await button.click();
   const menu = page.getByRole('menu', { name: `Move ${surfaceTitle}` });
   await expect(menu).toBeVisible();
   await menu

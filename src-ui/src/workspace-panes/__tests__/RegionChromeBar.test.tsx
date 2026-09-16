@@ -154,6 +154,7 @@ describe('the region bar control set', () => {
       'Close Chat',
       'Activity',
       'Close Activity',
+      'Move Chat',
       'Expand dock region to workspace',
       'Hide Chat',
     ]);
@@ -173,6 +174,7 @@ describe('the region bar control set', () => {
     const one = renderBar({ tabs: [TABS[0]!], closable: false, onAddPane });
     expect(controlNames()).toEqual([
       'Move the dock',
+      'Move Chat',
       'Add pane to Bottom',
       'Expand dock region to workspace',
       'Hide Chat',
@@ -202,6 +204,91 @@ describe('the region bar control set', () => {
 
     renderBar({ tabs: [TABS[0]!], closable: false });
     expect(screen.queryByLabelText(/^Add pane to /)).toBeNull();
+  });
+
+  /**
+   * #2160: a LONE pane renders no strip, so it has no tab to right-click and
+   * its only move was the ⋮⋮ grab — which moves the whole region and offers
+   * dock edges only, never `main`. The bar's Move button opens the SAME
+   * `RegionTabMoveMenu` for the pane the region shows, so Activity alone in a
+   * region reaches Main directly.
+   *
+   * Deleting the button fails the ordered control-set pins above and the open
+   * here; dropping `!chrome.isMobile` fails the coarse assertion; dropping the
+   * `onMoveTab` gate fails the model-less one; dropping the
+   * `moveTargets(...).length > 0` gate fails the nowhere-to-go one; and
+   * keeping the strip's own `moving` state instead of the bar's leaves two
+   * menus open at once, which the last assertion counts.
+   */
+  test('the bar’s Move button opens the same menu for the selected pane, including for a lone pane; absent on a coarse device, without a move handler, and with nowhere to go', () => {
+    const lone = renderBar({
+      chrome: chromeStub({ surfaceTitle: 'Activity' }),
+      tabs: [TABS[1]!],
+      selected: 'activity',
+      closable: false,
+    });
+    expect(screen.queryByRole('tablist')).toBeNull();
+    const button = () => screen.getByRole('button', { name: 'Move Activity' });
+    expect(button().getAttribute('aria-haspopup')).toBe('menu');
+    expect(button().getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(button());
+    expect(button().getAttribute('aria-expanded')).toBe('true');
+    const menu = screen.getByRole('menu', { name: 'Move Activity' });
+    // The same derivation the tab's menu uses: Activity declares every
+    // region, so from `bottom` it is offered the other two edges and Main.
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Move to Left', 'Move to Right', 'Move to Main']);
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: 'Move to Main' }),
+    );
+    expect(handlers.onMoveTab).toHaveBeenCalledWith('activity', 'main');
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(button().getAttribute('aria-expanded')).toBe('false');
+    lone.unmount();
+
+    const coarse = renderBar({
+      chrome: chromeStub({ isMobile: true, surfaceTitle: 'Activity' }),
+      tabs: [TABS[1]!],
+      selected: 'activity',
+      closable: false,
+    });
+    expect(screen.queryByRole('button', { name: 'Move Activity' })).toBeNull();
+    coarse.unmount();
+
+    const modelLess = renderBar({ movable: false });
+    expect(screen.queryByRole('button', { name: 'Move Chat' })).toBeNull();
+    modelLess.unmount();
+
+    // Nowhere to go: a device with one dock edge, holding a pane that
+    // declares no `main`. The button would name a menu with no rows.
+    const alone = renderBar({
+      chrome: chromeStub({
+        availableDockSlotPlacements: ['bottom'],
+        effectiveDockSlotPlacement: 'bottom',
+      }),
+      tabs: [TABS[0]!],
+      closable: false,
+    });
+    expect(screen.queryByRole('button', { name: 'Move Chat' })).toBeNull();
+    alone.unmount();
+
+    // One menu at a time: the bar owns the state, so opening from the button
+    // replaces the menu a tab opened rather than adding a second.
+    renderBar();
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Activity' }));
+    expect(screen.getByRole('menu', { name: 'Move Activity' })).toBeTruthy();
+    // The tab opened it, so the button is not the expanded control.
+    expect(
+      screen
+        .getByRole('button', { name: 'Move Chat' })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: 'Move Chat' }));
+    expect(screen.getAllByRole('menu')).toHaveLength(1);
+    expect(screen.getByRole('menu', { name: 'Move Chat' })).toBeTruthy();
   });
 
   test('the strip hides while the region is collapsed (D1), on a coarse device, and for one pane', () => {
