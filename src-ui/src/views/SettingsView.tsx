@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/project-settings-overrides';
 import {
   authenticatedFetch,
+  isPluginVisibilityForbidden,
   StationReadOnlyError,
   useConfigProvenanceQuery,
   useInvalidateQuery,
@@ -334,11 +335,24 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   // direction, and matches the section, which renders nothing until then.
   const pluginVisibilityDirectory = usePluginVisibilityQuery();
   const isOperator = pluginVisibilityDirectory.data !== undefined;
+  // What the PAGE may select is not the same question as `isOperator`: it
+  // mirrors what `PluginVisibilitySection` itself renders. The section draws
+  // nothing while pending and nothing on the server's refusal, but on any
+  // OTHER failure it draws its own error with a Retry — the only way an
+  // operator whose one request failed (the query does not retry) gets back.
+  // Gating on `data` alone filtered that operator out into a blank body with
+  // no error and no Retry (#2182 delta review). So a settled non-forbidden
+  // error still selects the section; a refusal and the pending interval do
+  // not.
+  const operatorSectionsSelectable =
+    isOperator ||
+    (pluginVisibilityDirectory.isError &&
+      !isPluginVisibilityForbidden(pluginVisibilityDirectory.error));
   // Keyed on the CONDITIONAL, not on one section id: a second
   // operator-conditional section would otherwise leak the day somebody adds
   // it.
   const operatorMayView = (section: string) =>
-    isOperator || !OPERATOR_ONLY_SECTION_IDS.has(section);
+    operatorSectionsSelectable || !OPERATOR_ONLY_SECTION_IDS.has(section);
   const visibleSections = new Set(
     searchQuery.trim()
       ? matchingSettingsRows(searchQuery, { isOperator }).map(
@@ -355,10 +369,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           // section's own refusal already rendered, and no caption claims a
           // box that is not there.
           //
-          // `isOperator` is not known synchronously: it is false until the
-          // directory query resolves. For an OPERATOR landing here that
-          // interval now renders no section and no caption, then the section
-          // once the answer arrives. It rendered no section before this fix
+          // Operator status is not known synchronously: nothing is selectable
+          // until the directory query settles. For an OPERATOR landing here
+          // that interval now renders no section and no caption, then the
+          // section once the answer arrives (or its error, with Retry). It rendered no section before this fix
           // either (the section returns null while pending), so the only
           // change in the interval is that the caption no longer precedes
           // content that may never come. Fail-closed, and no content flashes.
@@ -1165,8 +1179,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   `routes/chat/chat.ts`); `template-variables`, one
                   Station-wide list substituted into those prompts
                   (`runtime-template-variables.ts`); `workspace-checkpoints`,
-                  read straight off the Station config each turn
-                  (`turn-checkpoint-capture.ts`); and `builtin-agent-engine`,
+                  read once when Station starts, so a change applies on the
+                  next start, and only to sessions bound to a project with a
+                  working directory (`turn-checkpoint-capture.ts`); and
+                  `builtin-agent-engine`,
                   which applies to every run of a BUILT-IN agent only — an
                   agent bound to its own engine is not carried by it. The
                   first two reach runs Station builds itself; an external

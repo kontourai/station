@@ -64,25 +64,41 @@ vi.mock('@kontourai/station-sdk', () => ({
       ? {
           data: undefined,
           error: new Error('forbidden'),
+          isError: true,
           isLoading: false,
           isPending: false,
         }
-      : {
-          data: {
-            principals: [
-              {
-                id: 'human:device:paired',
-                display: 'Paired device',
-                revoked: false,
-                plugins: [],
-                operator: false,
-              },
-            ],
+      : pluginVisibilityFailed
+        ? {
+            // A settled failure that is NOT a refusal: what an operator sees
+            // when the one request (the query does not retry) hits a 5xx.
+            data: undefined,
+            error: new Error('network down'),
+            isError: true,
+            isLoading: false,
+            isPending: false,
+            refetch: vi.fn(),
+          }
+        : {
+            data: {
+              principals: [
+                {
+                  id: 'human:device:paired',
+                  display: 'Paired device',
+                  revoked: false,
+                  plugins: [],
+                  operator: false,
+                },
+              ],
+            },
           },
-        },
   usePluginsQuery: () => ({ data: [] }),
   useSetPluginVisibilityMutation: () => ({ mutate: vi.fn(), isError: false }),
-  isPluginVisibilityForbidden: (error: unknown) => Boolean(error),
+  // Discriminates on the refusal, not on "any error": a failure that is not
+  // a refusal must stay distinguishable, or the failed-operator case below
+  // would be indistinguishable from a non-operator.
+  isPluginVisibilityForbidden: (error: unknown) =>
+    error instanceof Error && error.message === 'forbidden',
   useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
   // #2144 slice 3: the hook takes the selected project's slug, and the
   // server reports DIFFERENT provenance for a scoped read (`scope: 'project'`
@@ -284,6 +300,7 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
 let isMobile = false;
 let isDesktop = false;
 let pluginVisibilityRefused = false;
+let pluginVisibilityFailed = false;
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isMobile, isDesktop }),
 }));
@@ -355,6 +372,7 @@ describe('settings catalog completeness', () => {
     isMobile = false;
     isDesktop = false;
     pluginVisibilityRefused = false;
+    pluginVisibilityFailed = false;
     updateConfig.mockReset();
     updateAppLogLevel.mockReset();
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
@@ -684,6 +702,21 @@ describe('settings catalog completeness', () => {
       await screen.findByLabelText('Show settings for:');
       expect(captions(container)).toEqual([]);
       expect(container.querySelector('#section-plugin-visibility')).toBeNull();
+    });
+
+    /**
+     * An operator whose single directory request FAILED (not refused) still
+     * gets the section, and with it the error and its Retry. Gating on data
+     * alone filtered this operator into a blank body with no way back.
+     */
+    test('an operator whose visibility request failed still sees its error and a Retry', async () => {
+      pluginVisibilityFailed = true;
+      window.history.replaceState({}, '', '/settings?view=plugin-visibility');
+      const { container } = await renderSettings();
+
+      await screen.findByText('Plugin visibility could not be listed');
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+      expect(captions(container)).toEqual([STATION_CAPTION]);
     });
 
     /** The same URL for the operator still opens the section under its caption. */
