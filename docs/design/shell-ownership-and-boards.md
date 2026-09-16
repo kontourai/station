@@ -147,7 +147,9 @@ The destination registry is the seam. With both disclosure groups gone there
 are no sections left to order, so `sidebar.section` is retired: a panel row is
 `sidebar: { order }` and a configuration destination is
 `management: { order }`, read by a new `getManagement` projection that
-Settings' Manage group renders. A destination may be one or the other and the
+Settings' Manage group renders. (#2144 slice 4 retired both: those
+destinations are rows in Settings' own section navigation now, declared as
+`settingsNav: { group, order }` and read by `getSettingsNav`.) A destination may be one or the other and the
 composer refuses a definition claiming both. Routes and pages do not change.
 One palette entry is ADDED rather than moved: Review's panel row was its only
 advertised entry point, and D4 below requires it stay palette-reachable until

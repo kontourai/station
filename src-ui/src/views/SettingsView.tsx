@@ -16,6 +16,10 @@ import {
 import { updateAppLogLevel } from '@kontourai/station-sdk/app-config';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import {
+  APP_DESTINATION_REGISTRY,
+  type SettingsNavEntry,
+} from '../app-shell/destination-registry';
 import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/header/ThemeToggle';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
@@ -40,8 +44,10 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../contexts/DeviceSettingsContext';
+import { useNavigation } from '../contexts/NavigationContext';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
+import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useLocale } from '../i18n/LocaleContext';
 import { DeviceSettingsImportVersionError } from '../lib/device-settings-store';
@@ -71,7 +77,6 @@ import {
   projectOverrideDelta,
   savedOverridesFor,
 } from './settings/project-override-draft';
-import { SettingsManageSection } from './settings/SettingsManageSection';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
 import { SystemSection } from './settings/SystemSection';
@@ -82,6 +87,7 @@ import {
   OPERATOR_ONLY_SECTION_IDS,
   SETTINGS_CATALOG,
   SETTINGS_SECTIONS,
+  type SettingsNavGroup,
   settingsRow,
 } from './settings/settings-catalog';
 import { buildStationResetPlan } from './settings/station-reset';
@@ -210,6 +216,13 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     developerToolsEnabled,
     sidebarSections,
     confirmConversationDelete,
+    // #2144 decision 2: these five had a device-settings contract row and no
+    // Settings row, so the in-chat gear was the only place to change them.
+    chatShowReasoning,
+    chatShowToolDetails,
+    chatDockAutoHide,
+    diffStyle,
+    diffWrap,
   } = useDeviceSettings();
   const { setDeviceSetting, resetDeviceSetting } = useDeviceSettingsActions();
   const { isMobile, isDesktop } = usePlatformProfile();
@@ -777,7 +790,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             device flags, so it never waits on `/api/config/app`. A failed or
             slow config read must not be able to strand the only in-app way
             back to Agents, Connections or Plugins. */}
-        <SettingsManageSection />
         <SettingsSectionNav
           activeSection={activeSection}
           hrefForSection={hrefForSection}
@@ -849,9 +861,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           navigateToSection={navigateToSection}
         />
 
-        {/* ── Manage (other surfaces, not sections of this page) ── */}
-        <SettingsManageSection />
-
         {/* #2144 slice 3: which document the page is showing values for.
             Outside every scope group because it re-attributes rows in more
             than one of them, and the sentence beside it names exactly what a
@@ -886,7 +895,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
         {/* ── Station scope ── */}
         <section
-          aria-label="Station settings"
+          aria-label="This Station settings"
           className="settings__scope-group"
         >
           <p className="settings__scope-caption">
@@ -1010,7 +1019,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
         {/* ── Defaults scope ── */}
         <section
-          aria-label="Defaults settings"
+          aria-label="Control settings"
           className="settings__scope-group"
         >
           <p className="settings__scope-caption">
@@ -1036,10 +1045,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         </section>
 
         {/* ── This device scope ── */}
-        <section
-          aria-label="This device settings"
-          className="settings__scope-group"
-        >
+        <section aria-label="Your settings" className="settings__scope-group">
           <p className="settings__scope-caption">
             Saved to this device only — these choices won’t follow you to
             another device.
@@ -1047,6 +1053,98 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
           {sectionVisible('appearance') && (
             <Section icon="◐" title="Appearance" id="section-appearance">
+              <PageRow
+                {...settingsRow('theme')}
+                description="Toggle between light and dark mode."
+                control={<ThemeToggle />}
+              />
+              {/* archive#3314: the restore path for a section removed via the
+                  sidebar's own × affordance. */}
+              <PageRow
+                {...settingsRow('sidebar-sections')}
+                description="Show the Open chats and Drafts sections in the sidebar."
+                control={
+                  <div className="settings__toggle-column">
+                    <div className="settings__toggle-line">
+                      <Toggle
+                        checked={!sidebarSections.openChatsHidden}
+                        onChange={(checked) =>
+                          setDeviceSetting('sidebarSections', {
+                            ...sidebarSections,
+                            openChatsHidden: !checked,
+                          })
+                        }
+                        label="Open chats in sidebar"
+                      />
+                      <span aria-hidden="true">Open chats</span>
+                    </div>
+                    <div className="settings__toggle-line">
+                      <Toggle
+                        checked={!sidebarSections.draftsHidden}
+                        onChange={(checked) =>
+                          setDeviceSetting('sidebarSections', {
+                            ...sidebarSections,
+                            draftsHidden: !checked,
+                          })
+                        }
+                        label="Drafts in sidebar"
+                      />
+                      <span aria-hidden="true">Drafts</span>
+                    </div>
+                  </div>
+                }
+              />
+              {isMobile && (
+                <PageRow
+                  {...settingsRow('haptic-feedback')}
+                  description="Light pulses while an assistant reply streams, plus feedback on copy, pairing success, and destructive confirms."
+                  control={
+                    <Toggle
+                      checked={hapticsEnabled}
+                      onChange={(checked) =>
+                        setDeviceSetting('hapticsEnabled', checked)
+                      }
+                      label={settingsRow('haptic-feedback').title}
+                    />
+                  }
+                />
+              )}
+              <AccentColorPicker />
+              {/* #2144 slice 6 item E. A group, not a new section: slice 4
+                  owns the navigation, and only ONE destructive confirm has
+                  an action behind it today — archive and quit do not exist,
+                  and "Clear all conversations" deliberately keeps asking. */}
+              <h3 className="settings__group-title">Confirmations</h3>
+              <PageRow
+                {...settingsRow('confirm-conversation-delete')}
+                description="Deleting a conversation cannot be undone. Turn this off to delete immediately. Clearing all conversations always asks."
+                control={
+                  <Toggle
+                    checked={confirmConversationDelete}
+                    onChange={(checked) =>
+                      setDeviceSetting('confirmConversationDelete', checked)
+                    }
+                    label={settingsRow('confirm-conversation-delete').title}
+                  />
+                }
+              />
+            </Section>
+          )}
+
+          {/* #2144 decision 2: Chat owns the rows that decide what a chat
+              LOOKS and BEHAVES like on this device. Two of them moved here
+              from Appearance (their ids, and therefore every `highlight=`
+              deep link, are unchanged); the other five had a device-settings
+              contract row and no Settings row at all, so the in-chat gear
+              panel was the only surface that could change them and Settings'
+              own search returned nothing for "reasoning" or "diff".
+
+              Both surfaces write the SAME device-settings keys through the
+              same store, so neither is a copy of the other's state: the gear
+              panel is a shortcut to the handful used mid-conversation, and
+              links here for the rest. */}
+          {sectionVisible('chat') && (
+            <Section icon="💬" title="Chat" id="section-chat">
               {/* This slider writes the DEVICE key only. The Station
                   default it falls back to (`defaultChatFontSize`) has its own
                   row under Station configuration — the catalog entry used to
@@ -1124,77 +1222,76 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 }
               />
               <PageRow
-                {...settingsRow('theme')}
-                description="Toggle between light and dark mode."
-                control={<ThemeToggle />}
-              />
-              {/* archive#3314: the restore path for a section removed via the
-                  sidebar's own × affordance. */}
-              <PageRow
-                {...settingsRow('sidebar-sections')}
-                description="Show the Open chats and Drafts sections in the sidebar."
-                control={
-                  <div className="settings__toggle-column">
-                    <div className="settings__toggle-line">
-                      <Toggle
-                        checked={!sidebarSections.openChatsHidden}
-                        onChange={(checked) =>
-                          setDeviceSetting('sidebarSections', {
-                            ...sidebarSections,
-                            openChatsHidden: !checked,
-                          })
-                        }
-                        label="Open chats in sidebar"
-                      />
-                      <span aria-hidden="true">Open chats</span>
-                    </div>
-                    <div className="settings__toggle-line">
-                      <Toggle
-                        checked={!sidebarSections.draftsHidden}
-                        onChange={(checked) =>
-                          setDeviceSetting('sidebarSections', {
-                            ...sidebarSections,
-                            draftsHidden: !checked,
-                          })
-                        }
-                        label="Drafts in sidebar"
-                      />
-                      <span aria-hidden="true">Drafts</span>
-                    </div>
-                  </div>
-                }
-              />
-              {isMobile && (
-                <PageRow
-                  {...settingsRow('haptic-feedback')}
-                  description="Light pulses while an assistant reply streams, plus feedback on copy, pairing success, and destructive confirms."
-                  control={
-                    <Toggle
-                      checked={hapticsEnabled}
-                      onChange={(checked) =>
-                        setDeviceSetting('hapticsEnabled', checked)
-                      }
-                      label={settingsRow('haptic-feedback').title}
-                    />
-                  }
-                />
-              )}
-              <AccentColorPicker />
-              {/* #2144 slice 6 item E. A group, not a new section: slice 4
-                  owns the navigation, and only ONE destructive confirm has
-                  an action behind it today — archive and quit do not exist,
-                  and "Clear all conversations" deliberately keeps asking. */}
-              <h3 className="settings__group-title">Confirmations</h3>
-              <PageRow
-                {...settingsRow('confirm-conversation-delete')}
-                description="Deleting a conversation cannot be undone. Turn this off to delete immediately. Clearing all conversations always asks."
+                {...settingsRow('chat-show-reasoning')}
+                description="Chat messages on this device include the model’s reasoning steps."
                 control={
                   <Toggle
-                    checked={confirmConversationDelete}
+                    checked={chatShowReasoning}
                     onChange={(checked) =>
-                      setDeviceSetting('confirmConversationDelete', checked)
+                      setDeviceSetting('chatShowReasoning', checked)
                     }
-                    label={settingsRow('confirm-conversation-delete').title}
+                    label={settingsRow('chat-show-reasoning').title}
+                  />
+                }
+              />
+              <PageRow
+                {...settingsRow('chat-show-tool-details')}
+                description="Tool calls can be expanded to read their arguments and results."
+                control={
+                  <Toggle
+                    checked={chatShowToolDetails}
+                    onChange={(checked) =>
+                      setDeviceSetting('chatShowToolDetails', checked)
+                    }
+                    label={settingsRow('chat-show-tool-details').title}
+                  />
+                }
+              />
+              <PageRow
+                {...settingsRow('chat-dock-auto-hide')}
+                description="An idle, open chat dock collapses to its bar after five seconds."
+                control={
+                  <Toggle
+                    checked={chatDockAutoHide}
+                    onChange={(checked) =>
+                      setDeviceSetting('chatDockAutoHide', checked)
+                    }
+                    label={settingsRow('chat-dock-auto-hide').title}
+                  />
+                }
+              />
+              {/* The diff rows belong to chat because the changed files a
+                  reader opens arrive there. `DiffPanel` writes the same two
+                  keys from its own controls. */}
+              <PageRow
+                {...settingsRow('diff-style')}
+                description="Changed files show as one column, or as two side-by-side columns."
+                control={
+                  <select
+                    className="editor-select"
+                    aria-label={settingsRow('diff-style').title}
+                    value={diffStyle}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value !== 'unified' && value !== 'split') return;
+                      setDeviceSetting('diffStyle', value);
+                    }}
+                  >
+                    <option value="unified">Unified</option>
+                    <option value="split">Side by side</option>
+                  </select>
+                }
+              />
+              <PageRow
+                {...settingsRow('diff-wrap')}
+                description="Long diff lines wrap instead of scrolling sideways."
+                control={
+                  <Toggle
+                    checked={diffWrap}
+                    onChange={(checked) =>
+                      setDeviceSetting('diffWrap', checked)
+                    }
+                    label={settingsRow('diff-wrap').title}
                   />
                 }
               />
@@ -1319,55 +1416,91 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
  * title and three grey blocks: the page's whole navigable shape was known the
  * whole time and withheld anyway.
  *
- * archive#4463: this used to render its own all-caps `STATION` /
- * `DEFAULTS` / `THIS DEVICE` group-label `<span>`s inline in the same row as
- * the section links — the named this a bug (two label
- * vocabularies colliding in one control), and the fix is not to relabel it
- * but to remove it: every scope group's content already opens with its own
- * caption ("Saved to this Station — every client sees the same values.",
- * etc.), so the nav label was pure duplication. The scope grouping itself is
- * not lost — it is now a `dividerAfter` on each group's last item, drawn by
- * `SectionNav` as a real presentational separator element rather than a
- * second label vocabulary sharing the nav row.
+ * archive#4463 removed this strip's all-caps `STATION` / `DEFAULTS` /
+ * `THIS DEVICE` group-label `<span>`s — two label vocabularies colliding in
+ * one control — and left a silent `dividerAfter` in their place. #2144
+ * decision 6 brings NAMED groups back, and has to answer that removal rather
+ * than ignore it. Two things changed:
+ *
+ * - The label is a real `<h2>` styled to be unmistakably not a link (see
+ *   `.section-nav__group-label`), so the vocabularies no longer share one
+ *   visual control. The divider said "the subject changed" to sighted readers
+ *   and nothing at all to a screen reader; a heading says it to both and puts
+ *   the groups in the heading rotor.
+ * - The group names are no longer a restatement of the scope captions below.
+ *   They are an IA: SET UP holds surfaces that are not sections of this page
+ *   at all, and the remaining three name what a group is ABOUT rather than
+ *   where it is saved. Persistence is stated per ROW now (#2144 slice 3), so
+ *   the group is free to say something the caption cannot.
+ *
+ * The landmark stays single (`aria-label="Settings sections"`): one
+ * navigation with headings inside, not one landmark per group.
  *
  * `SectionNav`, not `Tabs`: these are real, deep-linkable URL sections
  * (`?view=`) navigated via `useSectionNavigation`'s `hrefForSection`, not an
  * in-place tab widget — see `components/SectionNav.tsx`'s docblock for why
- * that distinction is load-bearing (archive#4463).
+ * that distinction is load-bearing (archive#4463). The SET UP rows are the
+ * exception that proves it: they are ordinary links to other routes, and
+ * `SettingsSectionNav` sends them to the navigation store instead of the
+ * section resolver.
  */
+/**
+ * The nav group order, and the words each one is shown under. Order is the
+ * PAGE's order too: every section body below is rendered in this sequence, so
+ * the strip a reader skims and the page they scroll agree. Adding a group
+ * here without moving its bodies would desynchronise a scroll-spy nav.
+ */
+const NAV_GROUPS = [
+  { id: 'this-station', label: 'THIS STATION' },
+  { id: 'control', label: 'CONTROL' },
+  { id: 'you', label: 'YOU' },
+  { id: 'knowledge', label: 'KNOWLEDGE' },
+] as const satisfies readonly { id: SettingsNavGroup; label: string }[];
+
+/**
+ * The key prefix that separates a nav-only row from a settings section.
+ *
+ * A nav-only row LEAVES this page, so its key must never be mistaken for a
+ * `?view=` value: `useSectionNavigation` validates against
+ * `ALL_SETTINGS_VIEWS` and silently falls back to overview for anything else,
+ * which would turn "open Agents" into "scroll to the top" with no error
+ * anywhere. The prefix cannot collide, because a `SettingsSectionId` is a
+ * plain slug and `:` is not in that grammar.
+ */
+const NAV_ONLY_KEY_PREFIX = 'nav:';
+
 /** Exported for `SettingsSectionNav.test.tsx` — the nav's shape is worth testing directly, independent of the many hooks a full `SettingsView` render would require mocking. */
 export function settingsSectionNavItems(
   hrefForSection: (section: string) => string,
+  navOnlyEntries: readonly SettingsNavEntry[] = APP_DESTINATION_REGISTRY.getSettingsNav(),
 ): SectionNavItem[] {
-  const NAV_GROUPS = ['Station', 'Defaults', 'This device'] as const;
-  const grouped = NAV_GROUPS.flatMap((group, groupIndex) => {
+  // SET UP first: these are the surfaces Settings sends you TO, and they are
+  // the ones a reader arrives looking for. #2144 decision 7 retired the
+  // separate Manage grid that used to hold them below the fold.
+  const setUp = navOnlyEntries.map((entry, index) => ({
+    key: `${NAV_ONLY_KEY_PREFIX}${entry.id}`,
+    label: entry.label,
+    href: entry.route,
+    ...(index === 0 ? { groupLabel: 'SET UP' } : {}),
+  }));
+  const grouped = NAV_GROUPS.flatMap((group) => {
     const groupSections = SETTINGS_SECTIONS.filter(
-      (section) => section.group === group,
+      (section) => section.group === group.id,
     );
-    // A divider marks a boundary BETWEEN two groups — never after the last
-    // group's last item, which matches the original markup: Knowledge
-    // rendered outside every `.settings__nav-group` wrapper, so the CSS
-    // sibling-divider (`.settings__nav-group + .settings__nav-group`) never
-    // fired between "This device" and Knowledge.
-    const isLastGroup = groupIndex === NAV_GROUPS.length - 1;
+    // An empty group would render its heading over nothing — a label naming a
+    // group that is not there. Every group is populated today; this is what
+    // keeps that true when a section becomes conditional.
     return groupSections.map((section, index) => ({
       key: section.id,
       label: section.title,
       href: hrefForSection(section.id),
-      dividerAfter: !isLastGroup && index === groupSections.length - 1,
+      ...(index === 0 ? { groupLabel: group.label } : {}),
     }));
   });
-  const knowledge = SETTINGS_SECTIONS.filter(
-    (section) => section.group === 'Knowledge',
-  ).map((section) => ({
-    key: section.id,
-    label: section.title,
-    href: hrefForSection(section.id),
-  }));
   return [
     { key: 'overview', label: 'Overview', href: hrefForSection('overview') },
+    ...setUp,
     ...grouped,
-    ...knowledge,
   ];
 }
 
@@ -1380,13 +1513,33 @@ function SettingsSectionNav({
   hrefForSection: (section: string) => string;
   navigateToSection: (section: string) => void;
 }) {
+  const { navigate } = useNavigation();
+  // The SAME flag set every other advertisement surface filters on, so
+  // Developer appears here exactly when it appears in the palette — and
+  // disappears from the nav, not merely from the old Manage grid, when
+  // developer tools are off. Passing nothing would silently drop it forever.
+  const flags = useSurfaceVisibilityFlags();
+  const items = settingsSectionNavItems(
+    hrefForSection,
+    APP_DESTINATION_REGISTRY.getSettingsNav(flags),
+  );
   return (
     <SectionNav
       className="settings__section-nav"
       aria-label="Settings sections"
-      items={settingsSectionNavItems(hrefForSection)}
+      items={items}
       activeKey={activeSection}
-      onNavigate={navigateToSection}
+      onNavigate={(key) => {
+        if (!key.startsWith(NAV_ONLY_KEY_PREFIX)) {
+          navigateToSection(key);
+          return;
+        }
+        // The canonical `navigate`, so the page's unsaved-changes guard is
+        // asked exactly once — leaving Settings with a pending edit through
+        // this row must behave like leaving it any other way (src-ui/AGENTS.md).
+        const target = items.find((item) => item.key === key);
+        if (target) navigate(target.href);
+      }}
     />
   );
 }

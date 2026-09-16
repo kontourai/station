@@ -1,83 +1,108 @@
 /**
  * @vitest-environment jsdom
  *
- * archive#4463: the audit's named bug was Settings' all-caps
- * `STATION`/`DEFAULTS` group labels rendering inline in the same row as its
- * Title-case links — two label vocabularies colliding in one control.
- * `settingsSectionNavItems` is the fix's contract: a flat `SectionNavItem[]`
- * with no group-label item type at all, using `dividerAfter` to mark a scope
- * boundary instead. This tests that contract directly, and separately
- * renders it through the real `SectionNav` primitive (NOT `Tabs`
- * — these are real deep-linkable URL sections, not an in-place tab widget,
- * see `components/SectionNav.tsx`) to prove the nav's DOM never re-admits a
- * group-label node sharing the row.
+ * archive#4463's named bug was Settings' all-caps `STATION`/`DEFAULTS` group
+ * labels rendering inline in the same row as its Title-case links — two label
+ * vocabularies colliding in one control — and its fix was a flat item list
+ * with a silent `dividerAfter` marking each boundary.
+ *
+ * #2144 decision 6 brings NAMED groups back, so this file's contract changes
+ * with it, and the two things that make the reversal legitimate are what it
+ * now pins:
+ *
+ * - The label is a real HEADING, not another pill. A divider told a sighted
+ *   reader the subject had changed and told a screen-reader user nothing; the
+ *   whole point of naming the groups is that both get it. A test that only
+ *   counted children would pass for a `<span>` and miss that entirely.
+ * - The strip is still ONE landmark. Group headings live inside a single
+ *   `<nav aria-label="Settings sections">`; four nav landmarks would be four
+ *   things to skip past.
+ *
+ * It also pins the SET UP rows — links that leave this page for another
+ * route — because they are the ones that can go wrong silently: a nav-only key
+ * that leaked into the section vocabulary would be validated away by
+ * `useSectionNavigation` and scroll to the top instead of opening Agents.
  */
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
+import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
 import { SectionNav } from '../components/SectionNav';
 import { settingsSectionNavItems } from '../views/SettingsView';
 import { SETTINGS_SECTIONS } from '../views/settings/settings-catalog';
 
 const hrefForSection = (section: string) => `/settings?view=${section}`;
 
+/** The flagless projection the default argument uses — no Developer row. */
+const NAV_ONLY = APP_DESTINATION_REGISTRY.getSettingsNav();
+
 describe('settingsSectionNavItems', () => {
-  test('is Overview plus exactly one item per SETTINGS_SECTIONS entry — no separate group-label items', () => {
+  test('is Overview, then the nav-only rows, then exactly one item per SETTINGS_SECTIONS entry', () => {
     const items = settingsSectionNavItems(hrefForSection);
-    expect(items).toHaveLength(SETTINGS_SECTIONS.length + 1);
+    expect(items).toHaveLength(1 + NAV_ONLY.length + SETTINGS_SECTIONS.length);
     expect(items[0]).toMatchObject({ key: 'overview', label: 'Overview' });
-    const leafKeys = items.slice(1).map((item) => item.key);
+
+    const navOnly = items.slice(1, 1 + NAV_ONLY.length);
+    expect(navOnly.map((item) => item.key)).toEqual(
+      NAV_ONLY.map((entry) => `nav:${entry.id}`),
+    );
+    // The HREF is the destination's own route, not a `?view=` on this page:
+    // these rows leave Settings.
+    expect(navOnly.map((item) => item.href)).toEqual(
+      NAV_ONLY.map((entry) => entry.route),
+    );
+
+    const leafKeys = items.slice(1 + NAV_ONLY.length).map((item) => item.key);
     expect(leafKeys).toEqual(SETTINGS_SECTIONS.map((section) => section.id));
   });
 
-  test('renders no item that is not a real leaf section or Overview — no separate group-label pseudo-item', () => {
-    // The real guard: item count is EXACTLY Overview + one per leaf section
-    // (asserted above). This adds the complementary check that every group
-    // name appears at most as a leaf section's own title (e.g. the sole
-    // Defaults-group section is itself titled "Defaults") and never as an
-    // EXTRA item with no corresponding `SETTINGS_SECTIONS` entry.
-    const items = settingsSectionNavItems(hrefForSection);
-    const sectionIds = new Set<string>(SETTINGS_SECTIONS.map((s) => s.id));
-    for (const item of items.slice(1)) {
-      expect(sectionIds.has(item.key)).toBe(true);
+  test('no nav-only key is a settings section key', () => {
+    // The failure this prevents is silent: `useSectionNavigation` validates
+    // against the section vocabulary and falls back to overview for anything
+    // it does not recognise, so a colliding key would turn "open Plugins"
+    // into "scroll to the top" with no error anywhere.
+    const sectionKeys = new Set<string>([
+      'overview',
+      ...SETTINGS_SECTIONS.map((section) => section.id),
+    ]);
+    for (const entry of NAV_ONLY) {
+      expect(sectionKeys.has(`nav:${entry.id}`)).toBe(false);
     }
   });
 
-  test('dividerAfter marks only the last item of Station and Defaults — not This device, Knowledge, or Overview', () => {
+  test('opens each group at its first item, in page order, and never over an empty group', () => {
     const items = settingsSectionNavItems(hrefForSection);
-    const byId = new Map(items.map((item) => [item.key, item]));
+    const labelled = items.filter((item) => item.groupLabel);
+    expect(labelled.map((item) => item.groupLabel)).toEqual([
+      'SET UP',
+      'THIS STATION',
+      'CONTROL',
+      'YOU',
+      'KNOWLEDGE',
+    ]);
+    // A `groupLabel` is carried BY an item, so a heading can only exist where
+    // a row does — an empty group cannot render a label over nothing.
+    expect(labelled).toHaveLength(
+      new Set(labelled.map((item) => item.key)).size,
+    );
+    // Each label opens its group: the item carrying it is that group's first.
+    expect(labelled.map((item) => item.key)).toEqual([
+      `nav:${NAV_ONLY[0]!.id}`,
+      ...(['this-station', 'control', 'you', 'knowledge'] as const).map(
+        (group) =>
+          SETTINGS_SECTIONS.find((section) => section.group === group)!.id,
+      ),
+    ]);
+  });
 
-    const stationIds = SETTINGS_SECTIONS.filter(
-      (s) => s.group === 'Station',
-    ).map((s) => s.id);
-    const defaultsIds = SETTINGS_SECTIONS.filter(
-      (s) => s.group === 'Defaults',
-    ).map((s) => s.id);
-    const thisDeviceIds = SETTINGS_SECTIONS.filter(
-      (s) => s.group === 'This device',
-    ).map((s) => s.id);
-    const knowledgeIds = SETTINGS_SECTIONS.filter(
-      (s) => s.group === 'Knowledge',
-    ).map((s) => s.id);
-
-    expect(byId.get(stationIds.at(-1)!)?.dividerAfter).toBe(true);
-    expect(byId.get(defaultsIds.at(-1)!)?.dividerAfter).toBe(true);
-    expect(byId.get(thisDeviceIds.at(-1)!)?.dividerAfter).toBeFalsy();
-    for (const id of knowledgeIds) {
-      expect(byId.get(id)?.dividerAfter).toBeFalsy();
-    }
-    expect(byId.get('overview')?.dividerAfter).toBeFalsy();
-
-    // Every non-boundary item must be undefined/false, not just the ones checked above.
-    const dividerKeys = items
-      .filter((item) => item.dividerAfter)
-      .map((item) => item.key);
-    expect(dividerKeys).toEqual([stationIds.at(-1), defaultsIds.at(-1)]);
+  test('no longer draws the silent dividers the labels replace', () => {
+    const items = settingsSectionNavItems(hrefForSection);
+    expect(items.filter((item) => item.dividerAfter)).toEqual([]);
   });
 });
 
 describe('Settings section nav rendered through SectionNav', () => {
-  test('every rendered link is a real leaf-section anchor — a group label can never share the row', () => {
-    render(
+  function renderNav() {
+    return render(
       <SectionNav
         aria-label="Settings sections"
         items={settingsSectionNavItems(hrefForSection)}
@@ -85,33 +110,53 @@ describe('Settings section nav rendered through SectionNav', () => {
         onNavigate={() => {}}
       />,
     );
+  }
+
+  test('group names are real headings a screen reader announces, inside one landmark', () => {
+    renderNav();
+    // Exactly one navigation landmark, whatever the grouping does.
+    expect(screen.getAllByRole('navigation')).toHaveLength(1);
     const nav = screen.getByRole('navigation', { name: 'Settings sections' });
-    const links = screen.getAllByRole('link');
-    // Every DIRECT non-divider child of the nav is a link — no interposed
-    // group-label element, and no unaccounted-for child at all.
-    const nonDividerChildren = Array.from(nav.children).filter(
-      (child) => !child.classList.contains('section-nav__divider'),
-    );
-    expect(nonDividerChildren).toHaveLength(links.length);
-    for (const child of nonDividerChildren) {
-      expect(child.tagName).toBe('A');
+
+    // Headings, not decoration: found BY ROLE, which a `<span>` or an
+    // `aria-hidden` element could not satisfy — the exact failure archive#4463
+    // left behind when it replaced the labels with dividers.
+    const headings = screen.getAllByRole('heading');
+    expect(headings.map((heading) => heading.textContent)).toEqual([
+      'SET UP',
+      'THIS STATION',
+      'CONTROL',
+      'YOU',
+      'KNOWLEDGE',
+    ]);
+    for (const heading of headings) {
+      expect(nav.contains(heading)).toBe(true);
+      expect(heading.getAttribute('aria-hidden')).toBeNull();
     }
   });
 
-  test('draws exactly two dividers (Station→Defaults, Defaults→This device) as real elements, not text', () => {
-    const { container } = render(
-      <SectionNav
-        aria-label="Settings sections"
-        items={settingsSectionNavItems(hrefForSection)}
-        activeKey="overview"
-        onNavigate={() => {}}
-      />,
+  test('every other child of the strip is a link — nothing else shares the row', () => {
+    renderNav();
+    const nav = screen.getByRole('navigation', { name: 'Settings sections' });
+    const links = screen.getAllByRole('link');
+    const headings = screen.getAllByRole('heading');
+    expect(Array.from(nav.children)).toHaveLength(
+      links.length + headings.length,
     );
-    const dividers = container.querySelectorAll('.section-nav__divider');
-    expect(dividers).toHaveLength(2);
-    for (const divider of Array.from(dividers)) {
-      expect(divider.textContent).toBe('');
-      expect(divider.getAttribute('aria-hidden')).toBe('true');
+    for (const child of Array.from(nav.children)) {
+      expect(['A', 'H2']).toContain(child.tagName);
+    }
+  });
+
+  test('the nav-only rows render as ordinary links to their own routes', () => {
+    renderNav();
+    const nav = screen.getByRole('navigation', { name: 'Settings sections' });
+    for (const entry of NAV_ONLY) {
+      const link = screen.getByRole('link', { name: entry.label });
+      expect(nav.contains(link)).toBe(true);
+      expect(link.getAttribute('href')).toBe(entry.route);
+      // Not a section: nothing here may claim to be the current view.
+      expect(link.getAttribute('aria-current')).toBeNull();
     }
   });
 });

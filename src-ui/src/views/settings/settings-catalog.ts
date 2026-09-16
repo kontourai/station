@@ -14,6 +14,9 @@ export type SettingsSectionId =
   | 'diagnostics'
   | 'agent-defaults'
   | 'appearance'
+  // #2144 slice 4: chat behaviour owns its rows now, rather than borrowing
+  // Appearance's. The only new section id this slice adds.
+  | 'chat'
   | 'keyboard-shortcuts'
   | 'notifications'
   | 'voice'
@@ -50,36 +53,62 @@ export interface SettingsCatalogEntry {
   conditional?: 'mobile' | 'desktop' | 'operator';
 }
 
+/**
+ * Which navigation group a section is listed under.
+ *
+ * IDs, not the words on screen: #2144 decision 6 renamed the groups a reader
+ * sees ("THIS STATION", "CONTROL", "YOU") without moving a single section id,
+ * and it must be able to do that again. `SettingsView` owns the mapping from
+ * these ids to labels, and it is the only consumer — a group is a presentation
+ * fact about the nav strip, never a persistence or authority fact. What
+ * DECIDES a setting is the row's own `scope`, stated on the row (#2144
+ * slice 3), and the two deliberately do not have to agree: an informational
+ * Station-host reading and a saved Station setting can share a group.
+ */
+export type SettingsNavGroup = 'this-station' | 'control' | 'you' | 'knowledge';
+
 export const SETTINGS_SECTIONS = [
-  { id: 'station-config', title: 'Station configuration', group: 'Station' },
-  { id: 'system', title: 'System', group: 'Station' },
+  {
+    id: 'station-config',
+    title: 'Station configuration',
+    group: 'this-station',
+  },
+  { id: 'system', title: 'System', group: 'this-station' },
   // archive#3313 (IA option A): the retired standalone Feature Previews view,
   // as a Station-scope section (previews persist on the Station).
-  { id: 'feature-previews', title: 'Feature previews', group: 'Station' },
-  { id: 'answer-shares', title: 'Shared answers', group: 'Station' },
+  { id: 'feature-previews', title: 'Feature previews', group: 'this-station' },
+  { id: 'answer-shares', title: 'Shared answers', group: 'this-station' },
   // #2067: which installed plugins each paired person can see. Station scope
   // because the grants live on this Station; operator-only, gated by the
   // route, the same way 'answer-shares' is gated by its own scope tier.
-  { id: 'plugin-visibility', title: 'Plugin visibility', group: 'Station' },
-  { id: 'host-runtime', title: 'Station host', group: 'Station' },
-  { id: 'diagnostics', title: 'Diagnostics', group: 'Station' },
-  { id: 'agent-defaults', title: 'Defaults', group: 'Defaults' },
-  { id: 'appearance', title: 'Appearance', group: 'This device' },
+  {
+    id: 'plugin-visibility',
+    title: 'Plugin visibility',
+    group: 'this-station',
+  },
+  { id: 'host-runtime', title: 'Station host', group: 'this-station' },
+  { id: 'diagnostics', title: 'Diagnostics', group: 'this-station' },
+  { id: 'agent-defaults', title: 'Defaults', group: 'control' },
+  { id: 'appearance', title: 'Appearance', group: 'you' },
+  // #2144 decision 2: chat behaviour is per-device, so it sits beside the
+  // other choices this device makes for the person using it.
+  { id: 'chat', title: 'Chat', group: 'you' },
   {
     id: 'keyboard-shortcuts',
     title: 'Keyboard shortcuts',
-    group: 'This device',
+    group: 'you',
   },
-  { id: 'notifications', title: 'Notifications', group: 'This device' },
-  { id: 'voice', title: 'Voice & Features', group: 'This device' },
+  { id: 'notifications', title: 'Notifications', group: 'you' },
+  { id: 'voice', title: 'Voice & Features', group: 'you' },
   // archive#3313: gates the Developer surface's sidebar/palette entries on
   // this device (a device setting — see contracts' developerToolsEnabled).
-  { id: 'developer-tools', title: 'Developer tools', group: 'This device' },
-  { id: 'knowledge', title: 'My knowledge store', group: 'Knowledge' },
+  { id: 'developer-tools', title: 'Developer tools', group: 'you' },
+  // #2144 decision 5: Knowledge keeps a group of its own this slice.
+  { id: 'knowledge', title: 'My knowledge store', group: 'knowledge' },
 ] as const satisfies readonly {
   id: SettingsSectionId;
   title: string;
-  group: 'Station' | 'Defaults' | 'This device' | 'Knowledge';
+  group: SettingsNavGroup;
 }[];
 
 const SETTINGS_CATALOG_SOURCE = [
@@ -284,10 +313,17 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'agent-defaults',
     configKeys: ['templateVariables'],
   },
+  // ── Chat (#2144 decision 2) ──────────────────────────────────────────────
+  // These two MOVED here from 'appearance'. Their ids are unchanged, so every
+  // `highlight=` deep link and every recorded highlight still resolves; what
+  // changed is the `view=` each one belongs to, which is the documented soft
+  // break — an old `?view=appearance&highlight=chat-font-size` link still
+  // opens Settings and still reveals the row, it just opens the section the
+  // row is in now.
   {
     id: 'chat-font-size',
     title: 'Chat font size',
-    section: 'appearance',
+    section: 'chat',
     // Device key only: this slider writes `chatFontSize` through the
     // device-settings store. The Station default (`defaultChatFontSize`) is
     // its own row under Station configuration.
@@ -299,9 +335,47 @@ const SETTINGS_CATALOG_SOURCE = [
     // rename would break every deep link and every recorded highlight.
     id: 'smooth-answer-reveal',
     title: 'Answer delivery',
-    section: 'appearance',
+    section: 'chat',
     keywords: ['chat streaming steady cadence', 'smooth reveal'],
     configKeys: ['featureSettings'],
+  },
+  // The five below had a device-settings contract row and no catalog row, so
+  // the in-chat gear panel was the ONLY place they could be changed and
+  // Settings' own search could not find them at all.
+  {
+    id: 'chat-show-reasoning',
+    title: 'Show reasoning',
+    section: 'chat',
+    keywords: ['thinking', 'chain of thought'],
+    configKeys: ['chatShowReasoning'],
+  },
+  {
+    id: 'chat-show-tool-details',
+    title: 'Show tool details',
+    section: 'chat',
+    keywords: ['tool calls', 'arguments', 'results'],
+    configKeys: ['chatShowToolDetails'],
+  },
+  {
+    id: 'chat-dock-auto-hide',
+    title: 'Auto-hide chat dock',
+    section: 'chat',
+    keywords: ['collapse idle dock'],
+    configKeys: ['chatDockAutoHide'],
+  },
+  {
+    id: 'diff-style',
+    title: 'Diff view style',
+    section: 'chat',
+    keywords: ['unified', 'split', 'side by side', 'changed files'],
+    configKeys: ['diffStyle'],
+  },
+  {
+    id: 'diff-wrap',
+    title: 'Diff line wrap',
+    section: 'chat',
+    keywords: ['wrap long lines', 'changed files'],
+    configKeys: ['diffWrap'],
   },
   { id: 'theme', title: 'Theme', section: 'appearance', configKeys: ['theme'] },
   {
@@ -461,6 +535,7 @@ function scopeForSection(
   if (section === 'agent-defaults') return 'defaults';
   if (
     section === 'appearance' ||
+    section === 'chat' ||
     section === 'keyboard-shortcuts' ||
     section === 'notifications' ||
     section === 'voice' ||

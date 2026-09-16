@@ -7,48 +7,23 @@ import {
 } from '../destination-registry';
 
 describe('DestinationRegistry', () => {
-  test('drives the exact panel, Manage and command-palette inventories from one authority', () => {
+  test('drives the exact panel and command-palette inventories from one authority', () => {
     // #2059 (design record D3): the left panel lists PLACES only. Activity is
     // the sole `sidebar` row — Home is `hiddenFromNav` and the panel renders
     // it directly, Notifications and Settings became the footer's bell and
-    // gear, and the seven configuration destinations moved to `management`.
+    // gear, and the configuration destinations moved behind the gear.
     expect(
       APP_DESTINATION_REGISTRY.getSidebar().map(
         (destination) => destination.id,
       ),
     ).toEqual(['activity']);
     // The developer-tools flag must not put a row back in the panel: it
-    // gates Developer's MANAGE entry now.
+    // gates Developer's SETTINGS entry now.
     expect(
       APP_DESTINATION_REGISTRY.getSidebar(new Set([DEVELOPER_TOOLS_FLAG])).map(
         (destination) => destination.id,
       ),
     ).toEqual(['activity']);
-    expect(
-      APP_DESTINATION_REGISTRY.getManagement().map(
-        (destination) => destination.id,
-      ),
-    ).toEqual([
-      'agents',
-      'guidance',
-      'connections',
-      'registry',
-      'plugins',
-      'schedule',
-    ]);
-    expect(
-      APP_DESTINATION_REGISTRY.getManagement(
-        new Set([DEVELOPER_TOOLS_FLAG]),
-      ).map((destination) => destination.id),
-    ).toEqual([
-      'agents',
-      'guidance',
-      'connections',
-      'registry',
-      'plugins',
-      'schedule',
-      'developer',
-    ]);
     expect(
       APP_DESTINATION_REGISTRY.getPalette().map(
         (destination) => destination.id,
@@ -100,9 +75,9 @@ describe('DestinationRegistry', () => {
 
   // #2059 acceptance: "Every removed destination remains reachable from the
   // palette and from a Settings entry point." This is the palette half. It
-  // asserts the ROUTE, not the id, because Guidance reaches the palette under
-  // two entries of its own (`Commands` and `Skills`) rather than its own id —
-  // an id-keyed check would have called it unreachable.
+  // asserts the ROUTE, not the id, because the Skills page reaches the palette
+  // under two entries of its own (`Commands` and `Skills`) rather than its own
+  // id — an id-keyed check would have called it unreachable.
   test('every destination behind the gear is also reachable from the palette', () => {
     const flags = new Set([DEVELOPER_TOOLS_FLAG]);
     const paletteRoutes = new Set(
@@ -110,66 +85,52 @@ describe('DestinationRegistry', () => {
         (destination) => destination.route,
       ),
     );
-    for (const destination of APP_DESTINATION_REGISTRY.getManagement(flags)) {
+    for (const entry of APP_DESTINATION_REGISTRY.getSettingsNav(flags)) {
+      const destination = APP_DESTINATION_REGISTRY.get(entry.id);
       expect(
         paletteRoutes,
-        `${destination.id} left the panel with no palette entry for ${destination.route}`,
-      ).toContain(destination.route);
+        `${entry.id} left the panel with no palette entry for ${destination?.route}`,
+      ).toContain(destination?.route);
     }
   });
 
-  // A destination is a place or a managed setting, never both: two entry
-  // points advertising one surface as both a panel row and a Settings item is
-  // exactly the split the panel change removes.
-  test('refuses a destination that is both a panel place and a managed setting', () => {
-    expect(() =>
-      createDestinationRegistry([
-        {
-          id: 'both',
-          route: '/both',
-          label: () => 'Both',
-          sidebar: { order: 1 },
-          management: { order: 1 },
-        },
-      ]),
-    ).toThrow(/both a panel place and a managed setting/);
-  });
-
-  // `hiddenFromNav` filters `getManagement`, so the pair would declare a
-  // Manage entry and then withhold it — the destination would be gone from
-  // the panel AND from the group that is supposed to hold what left it, with
-  // no error anywhere.
-  test('refuses a managed setting that is also hidden from nav', () => {
-    expect(() =>
-      createDestinationRegistry([
-        {
-          id: 'hidden-manage',
-          route: '/hidden-manage',
-          label: () => 'Hidden',
-          hiddenFromNav: true,
-          management: { order: 1 },
-        },
-      ]),
-    ).toThrow(/cannot be hidden from nav and a managed setting/);
-  });
-
-  test('refuses two managed settings in the same slot', () => {
-    expect(() =>
-      createDestinationRegistry([
-        {
-          id: 'one',
-          route: '/one',
-          label: () => 'One',
-          management: { order: 1 },
-        },
-        {
-          id: 'two',
-          route: '/two',
-          label: () => 'Two',
-          management: { order: 1 },
-        },
-      ]),
-    ).toThrow(/Duplicate management destination order: 1/);
+  // #2144 slice 4 deleted the Manage grid. This is the other half of the same
+  // acceptance: every destination that grid used to list must still have a
+  // Settings entry point. The inventory is LITERAL, taken from the grid's own
+  // retired test, because deriving it from `getSettingsNav()` would compare
+  // the projection with itself and pass however it changed — which is exactly
+  // how a surface disappears from the panel AND from the group that was
+  // supposed to hold what left it.
+  test('every destination the retired Manage grid listed is still reachable from Settings', () => {
+    const flags = new Set([DEVELOPER_TOOLS_FLAG]);
+    const settingsRoutes = new Set(
+      APP_DESTINATION_REGISTRY.getSettingsNav(flags).map(
+        (entry) => entry.route,
+      ),
+    );
+    const formerManageRoutes = [
+      ['agents', '/agents'],
+      ['guidance', '/guidance'],
+      // Entered at the section the row names, not the hub root.
+      ['connections', '/connections/engines'],
+      ['plugins', '/plugins'],
+      ['schedule', '/schedule'],
+      ['developer', '/developer'],
+    ] as const;
+    for (const [id, route] of formerManageRoutes) {
+      expect(
+        settingsRoutes,
+        `${id} left the Manage grid with no Settings nav row for ${route}`,
+      ).toContain(route);
+    }
+    // Registry is the one FOLD (#2144 decision 4): it has no row of its own,
+    // so its reachability rests on the Plugins surface carrying a step to the
+    // catalogue. Asserted here as the fold's precondition — that Plugins IS
+    // listed — and end to end in tests/registry.spec.ts, which presses through
+    // Plugins to /registry. Without the fold named, a Registry row silently
+    // vanishing would read as this list simply being shorter.
+    expect(settingsRoutes).not.toContain('/registry');
+    expect(settingsRoutes).toContain('/plugins');
   });
 
   // #2144 slice 4: the Settings navigation's nav-only rows. A literal

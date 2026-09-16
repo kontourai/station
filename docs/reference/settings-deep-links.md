@@ -23,6 +23,22 @@ An id that is not in the catalog is not an error: `highlight` simply finds
 nothing and the page opens on the named section. There is no signal back to
 the caller that the link missed, which is why the rule below matters.
 
+### When a control changes section
+
+A control id never moves, but the section holding it can. If `highlight` names
+a real control and `view` names the section it USED to be in, Settings opens
+the section the control is in now and reveals it — the link still works, and
+the URL is corrected to the current `view`. Nothing is lost, but a link you
+built by hand from a remembered section can disagree with the registry, which
+is the reason to take both parameters from `GET /api/settings/registry` rather
+than assemble them.
+
+The one move so far is #2144's: a `chat` section now holds the chat controls
+that used to sit under `appearance` (`chat-font-size` and
+`smooth-answer-reveal`), alongside five controls that previously had no
+Settings row at all (`chat-show-reasoning`, `chat-show-tool-details`,
+`chat-dock-auto-hide`, `diff-style`, `diff-wrap`).
+
 ## `GET /api/settings/registry`
 
 Returns every control, its deep link, and, where one exists, the

@@ -38,13 +38,13 @@ describe('the notification inbox is a destination', () => {
         (surface) => surface.id === 'notifications',
       ),
     ).toBe(true);
-    // A footer control, not a panel row — and not a Manage entry either:
+    // A footer control, not a panel row — and not a Settings row either:
     // attention is not configuration.
     expect(
       APP_DESTINATION_REGISTRY.get('notifications')?.sidebar,
     ).toBeUndefined();
     expect(
-      APP_DESTINATION_REGISTRY.get('notifications')?.management,
+      APP_DESTINATION_REGISTRY.get('notifications')?.settingsNav,
     ).toBeUndefined();
   });
 });

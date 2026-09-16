@@ -11,6 +11,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   useDismissSessionSummaryMutation: () => ({ mutate: dismissSummary }),
   useShowSessionSummaryMutation: () => ({ mutate: showSummary }),
 }));
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock('../contexts/NavigationContext', () => ({
+  useNavigation: () => ({ navigate }),
+}));
 
 function props() {
   return {
@@ -62,6 +66,29 @@ describe('ChatSettingsPanel accessibility', () => {
     ).toBeNull();
     rendered.unmount();
     deviceSettingsStore.reset('featureSettings');
+  });
+
+  /**
+   * #2144 decision 3: this panel stays a SHORTCUT to the controls someone
+   * changes mid-conversation, and links to the rest rather than growing to
+   * hold them. The link is asserted through its effect — it closes the panel
+   * and navigates — because a link that renders and goes nowhere is exactly
+   * the failure a text assertion would miss.
+   */
+  test('links to the full Chat settings section and closes on the way', () => {
+    navigate.mockReset();
+    const panelProps = props();
+    const rendered = render(<ChatSettingsPanel {...panelProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'More chat settings' }));
+
+    expect(panelProps.onClose).toHaveBeenCalled();
+    // The exact deep link, not merely "navigate was called": a link to the
+    // section this panel is the shortcut FOR is the whole contract.
+    expect(navigate).toHaveBeenCalledWith(
+      '/settings?view=chat&highlight=diff-style',
+    );
+    rendered.unmount();
   });
 
   /**

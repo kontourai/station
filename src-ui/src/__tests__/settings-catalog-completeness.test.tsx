@@ -432,8 +432,13 @@ describe('settings catalog completeness', () => {
     // (default-workspace-isolation). Counted from the merged catalog, not
     // added up. #2144 slice 6: +4 (default-approval-mode,
     // telemetry-destination, confirm-conversation-delete,
-    // reset-device-defaults).
-    expect(SETTINGS_CATALOG).toHaveLength(49);
+    // reset-device-defaults). #2144 slice 4: +5 — the five chat rows that had
+    // a device-settings contract row and no catalog row, so the in-chat gear
+    // was their only surface (chat-show-reasoning, chat-show-tool-details,
+    // chat-dock-auto-hide, diff-style, diff-wrap). The two Appearance rows
+    // that MOVED into the new chat section are not a change to this count:
+    // the same ids, in a different `view`.
+    expect(SETTINGS_CATALOG).toHaveLength(54);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
@@ -927,7 +932,7 @@ describe('settings catalog completeness', () => {
     window.history.replaceState(
       {},
       '',
-      '/settings?view=appearance&highlight=chat-font-size',
+      '/settings?view=chat&highlight=chat-font-size',
     );
     const { container } = await renderSettings();
 
@@ -939,14 +944,44 @@ describe('settings catalog completeness', () => {
     window.history.pushState(
       {},
       '',
-      '/settings?view=appearance&highlight=chat-font-size',
+      '/settings?view=chat&highlight=chat-font-size',
     );
     fireEvent(window, new PopStateEvent('popstate'));
     await waitFor(() =>
       expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(2),
     );
-    expect(window.location.search).toBe('?view=appearance');
+    expect(window.location.search).toBe('?view=chat');
   });
+
+  // #2144 slice 4 moved `chat-font-size` and `smooth-answer-reveal` out of
+  // Appearance into the new Chat section. Their IDS did not change, so every
+  // recorded link and every palette entry still names a row that exists — but
+  // an old link names the wrong `view`. This is the documented soft break, and
+  // what it must NOT do is strand the reader on a section the row is not in:
+  // the stale view is corrected to the row's own, and the row is revealed.
+  test.each([
+    ['chat-font-size', '#chatFontSize'],
+    ['smooth-answer-reveal', '[data-catalog-id="smooth-answer-reveal"]'],
+  ])(
+    'a pre-move link to ?view=appearance&highlight=%s still lands on the row',
+    async (highlight, selector) => {
+      window.history.replaceState(
+        {},
+        '',
+        `/settings?view=appearance&highlight=${highlight}`,
+      );
+      const { container } = await renderSettings();
+
+      await waitFor(() =>
+        expect(container.querySelector(selector)).toBeTruthy(),
+      );
+      await waitFor(() => expect(window.location.search).toBe('?view=chat'));
+      // And it is not merely that some element matched: Appearance's own rows
+      // are not on screen, so the page really did move to the Chat section.
+      expect(container.querySelector('#section-appearance')).toBeNull();
+      expect(container.querySelector('#section-chat')).toBeTruthy();
+    },
+  );
 
   test('focuses a deep-linked editable field in the Defaults section', async () => {
     // The `.agent-defaults__disclosure` assertion that used to close this
@@ -988,7 +1023,7 @@ describe('settings catalog completeness', () => {
     window.history.replaceState(
       {},
       '',
-      '/settings?view=appearance&highlight=chat-font-size',
+      '/settings?view=chat&highlight=chat-font-size',
     );
     configSnapshot = { config: null, dataUpdatedAt: 0 };
     const { container, applyServerSnapshot } = await renderSettings();
@@ -1013,10 +1048,8 @@ describe('settings catalog completeness', () => {
       '/settings?view=system&highlight=log-level',
     );
     const { container, applyServerSnapshot } = await renderSettings();
-    fireEvent.click(screen.getByRole('link', { name: 'Appearance' }));
-    await waitFor(() =>
-      expect(window.location.search).toBe('?view=appearance'),
-    );
+    fireEvent.click(screen.getByRole('link', { name: 'Chat' }));
+    await waitFor(() => expect(window.location.search).toBe('?view=chat'));
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
     applyServerSnapshot();
 

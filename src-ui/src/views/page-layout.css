@@ -665,6 +665,34 @@
   background: var(--border-primary);
 }
 
+/* #2144 decision 6: named groups, which reverses archive#4463's removal of
+   Settings' inline STATION/DEFAULTS labels — and has to answer that removal's
+   reason. What collided then was two label VOCABULARIES sharing one control:
+   the group words looked like the link words. So this is styled to be
+   unmistakably not a link — no pill border, no background, muted and
+   letter-spaced small caps, and not interactive — while being a real heading
+   rather than the silent divider the removal left behind, which told a
+   screen-reader user nothing at all. */
+.section-nav__group-label {
+  flex: 0 0 auto;
+  align-self: center;
+  margin: 0 0.15rem 0 0.55rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.section-nav__group-label:first-child {
+  margin-left: 0;
+}
+
 /* Shared Guidance/section tab-strip primitive: tabs grow to a 44px touch
    target and Tabs' (not SectionNav's) scrollbar hides on touch-sized
    screens; page surfaces must not supply their own mobile rail. */
