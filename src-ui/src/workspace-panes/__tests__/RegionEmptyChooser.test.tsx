@@ -409,7 +409,7 @@ test('the panel flips above the "+" when the menu does not fit below it', () => 
   const innerHeight = window.innerHeight;
   Object.defineProperty(window, 'innerHeight', {
     configurable: true,
-    value: 200,
+    value: 400,
   });
   const rect = HTMLElement.prototype.getBoundingClientRect;
   HTMLElement.prototype.getBoundingClientRect = function () {
@@ -424,13 +424,16 @@ test('the panel flips above the "+" when the menu does not fit below it', () => 
         regionId="right"
         context={NO_PROJECT}
         variant="panel"
-        anchor={{ right: 400, top: 150, bottom: 170 }}
+        anchor={{ right: 400, top: 350, bottom: 370 }}
         onClose={() => {}}
       />,
     );
     const menu = screen.getByRole('menu', { name: 'Add to Right region' });
-    // 150 - 4 - 300 < 0, clamped to the viewport's top edge.
-    expect(menu.style.top).toBe('0px');
+    // Below would be 374 + 300 > 400; above is 350 - 4 - 300 = 46. A value
+    // that fits above is what discriminates the arithmetic from a clamp
+    // to 0 (an earlier fixture landed on the clamp, which a constant
+    // satisfies).
+    expect(menu.style.top).toBe('46px');
   } finally {
     HTMLElement.prototype.getBoundingClientRect = rect;
     Object.defineProperty(window, 'innerHeight', {

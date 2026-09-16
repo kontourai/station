@@ -109,9 +109,9 @@ import {
  * dock's own binding (`chatDockProjectSlug`, else the active project), and
  * the coding instances bind `sourceId` and `workspaceId = projectId` from
  * it. Nothing else: no `task`, no `session` (no docked pane reads one —
- * declare it when one does, not before), no `run`. This one set is BOTH the
- * catalog's filter (`dockCanSupply`) and what the inventory's own pin
- * asserts of every entry, so the two cannot disagree.
+ * declare it when one does, not before), no `run`. `dockCanSupply` is what
+ * the inventory's own pin asserts of every entry; since #2154 no catalog
+ * reads it (the chooser enables a row by minting its occurrence).
  *
  * What a user sees of the `task` exclusion today: NOTHING (review M2). No
  * shipped pane declares BOTH `docked` and a Task requirement — the
