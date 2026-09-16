@@ -662,20 +662,16 @@ export function RegionChromeBar({
         <button
           type="button"
           className="chat-dock__icon-btn"
-          // Reopens to the shell's own snap (`chrome.dockSnap`): Chat's
-          // region seeds it from the persisted `station.chatDock.snap`
-          // (archive#795, a Full-height collapse reopens Full) and every
-          // other region keeps its own in memory, so "Show Activity" can
-          // never maximize Activity because Chat's key says `full` (#1385).
-          onClick={() =>
-            applyDockSnap(
-              isDockOpen
-                ? 'collapsed'
-                : chrome.canMaximize && chrome.dockSnap === 'full'
-                  ? 'full'
-                  : 'half',
-            )
-          }
+          // `chrome.setRegionOpen`, not a snap expression written here:
+          // since #2155 the toolbar's toggle for this region presses the SAME
+          // derivation, so "hidden from the toolbar" and "hidden from the
+          // chevron" cannot mean two different things. It reopens to the
+          // shell's own snap (`chrome.dockSnap`): Chat's region seeds it from
+          // the persisted `station.chatDock.snap` (archive#795, a Full-height
+          // collapse reopens Full) and every other region keeps its own in
+          // memory, so "Show Activity" can never maximize Activity because
+          // Chat's key says `full` (#1385).
+          onClick={() => chrome.setRegionOpen(!isDockOpen)}
           title={withShortcutHint(
             visibilityLabel,
             chrome.surfaceShortcutId,

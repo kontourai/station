@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, type Page, type Route, test } from '@playwright/test';
 import { contrastRatio } from './helpers/color-contrast';
+import { openChooserFromToggle } from './helpers/region-placement';
 import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
 
 /**
@@ -1896,36 +1897,39 @@ const SCREENS: Screen[] = [
   // deterministic trigger (never the transient home-route redirect race —
   // see `newProjectOverlay`'s doc comment) so its shot is reproducible.
   {
-    // Renamed twice: `overlay-dock-picker` (#1541, the dock's own occupant
-    // picker, deleted in #928 C2b) became `overlay-layout-picker` (#1552 D2's
-    // per-surface placement picker), which #2143 retired for one toggle per
-    // region. What is left to capture as an overlay is an EMPTY region's
-    // offer menu — the only panel the region toolbar opens now.
-    name: 'overlay-region-offer-menu',
-    title: 'Overlay — empty region’s offer menu',
+    // Renamed three times: `overlay-dock-picker` (#1541, the dock's own
+    // occupant picker, deleted in #928 C2b) became `overlay-layout-picker`
+    // (#1552 D2's per-surface placement picker), which #2143 retired for one
+    // toggle per region and an empty region's offer menu
+    // (`overlay-region-offer-menu`). #2155 retires that too: the toggles only
+    // show and hide, and the panel they open is #2154's chooser — the same
+    // rows the region's own body and its "+" carry. This shot is that panel,
+    // opened the way the toolbar opens it.
+    name: 'overlay-region-chooser-from-toggle',
+    title: 'Overlay — region chooser, held open from its toggle',
     path: '/?dock=open',
     viewport: DESKTOP,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      // #2143: a fresh home holds Chat in Bottom; Left and Right are empty,
-      // so their controls are menus of what can be shown there.
+      // A fresh home holds Chat in Bottom; Right is empty and hidden, and its
+      // toggle is a toggle — so the panel is behind the HOLD, not the click.
       const trigger = page.getByRole('button', {
         name: 'Right region',
         exact: true,
       });
       await trigger.waitFor({ timeout: 10_000 });
-      await expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
-      await trigger.click();
-      const menu = page.getByRole('menu', { name: 'Show in Right region' });
-      await expect(menu).toBeVisible({ timeout: 10_000 });
+      await expect(trigger).toHaveAttribute('aria-pressed', 'false');
+      const menu = await openChooserFromToggle(page, 'Right');
       // Rows, not just the panel: an empty panel would still be "visible"
-      // and would capture a shot of nothing.
+      // and would capture a shot of nothing. Chat is placed (in Bottom) and
+      // lists as a MOVE; the coding rows list disabled without a project —
+      // both of which the retired offer menu could not show at all.
+      await expect(menu.getByRole('menuitem', { name: /^Chat/ })).toBeVisible();
       await expect(
-        menu.getByRole('menuitem', { name: 'Show Chat here' }),
+        menu.getByRole('menuitem', { name: /^Activity/ }),
       ).toBeVisible();
-      await expect(
-        menu.getByRole('menuitem', { name: 'Show Activity here' }),
-      ).toBeVisible();
+      // The hold must not ALSO have toggled the region under the panel.
+      await expect(trigger).toHaveAttribute('aria-pressed', 'false');
     },
   },
   {

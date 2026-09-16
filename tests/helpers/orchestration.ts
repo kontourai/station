@@ -46,6 +46,14 @@ type ChatRegionLabel = (typeof CHAT_REGION_LABELS)[number];
  * needed a catch, and a violation, a closed page and an invalid selector were
  * the only things one could ever have hidden. This predicate exists for the
  * one read whose catch has a legitimate case to keep.
+ *
+ * A read that is NOT one of those sixteen is the chooser wait in
+ * `openChatThroughRegionControl`: it asks for an element that appears as a
+ * consequence of a click it just made, behind a lazy boundary, so it
+ * auto-waits and fails loudly rather than answering `false` (#2155 delta
+ * review F3). The distinction to keep is the page's state, not the API: a
+ * probe on a settled page may read immediately; a probe on a page that is
+ * still becoming what the probe asks about may not.
  */
 function isAmbiguousLocator(error: unknown): boolean {
   return (
@@ -87,12 +95,26 @@ async function regionControlTrigger(page: Page) {
  * Opens Chat through the shell's region controls, whichever chrome this
  * breakpoint draws.
  *
- * FINE POINTER (#2143): one toggle per dock region, `aria-pressed` from the
- * model. Chat's region is read off the Dock's own class; if that region's
- * toggle is not pressed, pressing it shows the region; then, if Chat is
- * behind another pane's tab in that region, its tab is selected. An
- * unplaced Chat has no region: the empty Bottom region (Chat's default) is
- * then a menu, and "Show Chat here" is the placement.
+ * FINE POINTER (#2143, #2155): one toggle per dock region, `aria-pressed`
+ * from the model, and it only shows and hides. Chat's region is read off the
+ * Dock's own class; if that region's toggle is not pressed, pressing it shows
+ * the region; then, if Chat is behind another pane's tab there, its tab is
+ * selected. An UNPLACED Chat has no region at all, so the toggle pressed is
+ * Bottom's (Chat's default) — which opens Bottom EMPTY, on its own chooser
+ * (#2154), and the "Chat" row there is the placement.
+ *
+ * That second half is #2155's, and the shape it replaces is why it is spelled
+ * out: until then an empty region's toggle had NO `aria-pressed` and opened
+ * an offer menu, so this helper branched on `pressed !== null`. Every toggle
+ * reports `aria-pressed` now, so that branch became unreachable and the one
+ * it fell into opened an empty region and waited for a `Dock` landmark an
+ * empty region never has — a timeout where the contract says "return false
+ * and let the caller's fallbacks run".
+ *
+ * Chat's own shell is the one landmark named `Dock` rather than by its
+ * surface (`DockShell`), which is why the placement is driven here rather
+ * than through `region-placement.ts`'s `chooseSurfaceInEmptyRegion` — that
+ * helper's post-condition reads a shell named for its surface.
  *
  * COARSE, WIDE: the flat "Region surfaces" menu, unchanged since #1536 F.
  *
@@ -101,59 +123,68 @@ async function regionControlTrigger(page: Page) {
  * DOM just clicked.
  *
  * Returns false when no region control is on screen, or when the one that is
- * opened a surface it could not act on, leaving the caller's remaining
- * fallbacks to run.
+ * could not place Chat, leaving the caller's remaining fallbacks to run.
  */
 async function openChatThroughRegionControl(page: Page): Promise<boolean> {
   const region = await activeChatRegion(page);
+  const label = region ?? 'Bottom';
   const toggle = page.getByRole('button', {
-    name: `${region ?? 'Bottom'} region`,
+    name: `${label} region`,
     exact: true,
   });
   if (await toggle.isVisible()) {
-    const pressed = await toggle.getAttribute('aria-pressed');
-    if (pressed === 'false') {
+    if ((await toggle.getAttribute('aria-pressed')) === 'false') {
       await toggle.click();
       await expect(toggle).toHaveAttribute('aria-pressed', 'true');
     }
-    if (pressed !== null) {
-      // The region is showing, but "Dock" names the region whose panes
-      // INCLUDE Chat, selected or not (#2046 D3) — so Chat may be behind
-      // another pane's tab. The strip renders only for two or more panes;
-      // if it is there and Chat's tab is not selected, select it, and read
-      // `aria-selected` back rather than trusting the click. `count()` does
-      // not wait, so the strip is given the region's own settle first.
-      const chatTab = page
-        .getByRole('tablist', { name: 'Region panes' })
-        .getByRole('tab', { name: 'Chat', exact: true });
-      await page.getByRole('region', { name: 'Dock', exact: true }).waitFor();
-      if (
-        (await chatTab.count()) > 0 &&
-        (await chatTab.getAttribute('aria-selected')) !== 'true'
-      ) {
-        await chatTab.click();
-        await expect(chatTab).toHaveAttribute('aria-selected', 'true');
-      }
-      return true;
+    if (region === null) {
+      // Chat is placed nowhere, so the region just opened is empty and its
+      // body is the chooser. Its "Chat" row is `openSurfaceInRegion`, which
+      // places Chat here; the list going away is the placement landing.
+      //
+      // AUTO-WAITING, unlike the `isVisible()` reads elsewhere in this file
+      // (#2155 delta review F3). Those are branch-selection probes on a
+      // SETTLED page — "which chrome does this breakpoint draw" — and answer
+      // a question that is already decided when they run. This one asks for
+      // an element that appears as a CONSEQUENCE of the click three lines
+      // above, through `RegionShells` → a `LazyBoundary` whose `pending` is
+      // `null`: there is a real window in which the region is open and its
+      // body renders nothing at all, and the pre-warm that usually closes it
+      // has no reason to have run on a route that never mounted Chat. A
+      // non-waiting probe there does not report "no chooser", it reports
+      // "not yet" — and returning `false` for it would send 43 importing
+      // specs down their fallbacks for a timing accident.
+      const chooser = page.getByRole('list', {
+        name: `Add to ${label} region`,
+      });
+      await expect(
+        chooser,
+        `the ${label} region opened but never rendered its chooser, so Chat cannot be placed from it`,
+      ).toBeVisible();
+      // Settled now, so this one IS a branch-selection probe: whether the
+      // registry offers Chat for this region at all.
+      const row = chooser.getByRole('button', { name: /^Chat( |$)/ });
+      if (!(await row.isVisible())) return false;
+      await row.click();
+      await expect(chooser).toBeHidden();
     }
-    // No pressed state: the region is empty and the control is a menu.
-    await toggle.click();
-    const menu = page.getByRole('menu', {
-      name: `Show in ${region ?? 'Bottom'} region`,
-    });
-    await expect(menu).toBeVisible();
-    const show = menu.getByRole('menuitem', {
-      name: 'Show Chat here',
-      exact: true,
-    });
-    if (!(await show.isVisible())) {
-      await page.keyboard.press('Escape');
-      await expect(menu).toBeHidden();
-      return false;
+    // The region is showing, but "Dock" names the region whose panes
+    // INCLUDE Chat, selected or not (#2046 D3) — so Chat may be behind
+    // another pane's tab. The strip renders only for two or more panes;
+    // if it is there and Chat's tab is not selected, select it, and read
+    // `aria-selected` back rather than trusting the click. `count()` does
+    // not wait, so the strip is given the region's own settle first.
+    const chatTab = page
+      .getByRole('tablist', { name: 'Region panes' })
+      .getByRole('tab', { name: 'Chat', exact: true });
+    await page.getByRole('region', { name: 'Dock', exact: true }).waitFor();
+    if (
+      (await chatTab.count()) > 0 &&
+      (await chatTab.getAttribute('aria-selected')) !== 'true'
+    ) {
+      await chatTab.click();
+      await expect(chatTab).toHaveAttribute('aria-selected', 'true');
     }
-    await show.click();
-    await expect(menu).toBeHidden();
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
     return true;
   }
 

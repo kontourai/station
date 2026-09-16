@@ -107,11 +107,20 @@ export async function toggleRegionThroughToolbar(
 }
 
 /**
- * Shows a surface in an EMPTY region through that region's toolbar control
- * (#2143): an empty region's button is a menu of the shell surfaces that
- * declare it, and choosing one is the model's `placeSurface`. The
- * post-condition is the control turning into a pressed toggle — which only
- * a region that now holds a visible pane produces.
+ * Shows a surface in a HIDDEN, EMPTY region — the journey a user makes in two
+ * acts since #2155, through the two controls that own them. The toolbar's
+ * toggle opens the region (it only shows and hides now; #2143's offer menu
+ * is retired), and the region's own body is the chooser that fills it
+ * (#2154). The name and signature are the same as the toolbar-menu version
+ * this replaces, so both callers describe the same outcome.
+ *
+ * The post-condition is the toggle reading pressed AND the surface owning
+ * that region's shell — the first says the region opened, the second that
+ * the pane landed in it.
+ *
+ * NOT for Chat: a region holding Chat takes the landmark `Dock` rather than
+ * the surface's own title (`DockShell`), so the shell assertion below would
+ * never find it. `orchestration.ts` drives Chat's own route.
  */
 export async function showSurfaceInEmptyRegion(
   page: Page,
@@ -124,21 +133,80 @@ export async function showSurfaceInEmptyRegion(
   });
   await expect(
     control,
-    `${regionLabel} region is not empty, so it offers no menu; move a tab instead`,
-  ).toHaveAttribute('aria-haspopup', 'menu');
+    `${regionLabel} region is already shown, so this is not the empty-region journey`,
+  ).toHaveAttribute('aria-pressed', 'false');
   await control.click();
-  const menu = page.getByRole('menu', {
-    name: `Show in ${regionLabel} region`,
-  });
-  await expect(menu).toBeVisible();
-  await menu
-    .getByRole('menuitem', { name: `Show ${surfaceTitle} here`, exact: true })
-    .click();
-  await expect(menu).toBeHidden();
   await expect(
     control,
-    `${regionLabel} region did not become a pressed toggle, so ${surfaceTitle} was not placed there`,
+    `${regionLabel} region did not open, so there is no chooser to fill it from`,
   ).toHaveAttribute('aria-pressed', 'true');
+  await chooseSurfaceInEmptyRegion(page, surfaceTitle, regionLabel);
+  await expect(
+    control,
+    `${regionLabel} region closed again, so ${surfaceTitle} did not land there`,
+  ).toHaveAttribute('aria-pressed', 'true');
+}
+
+/**
+ * Opens #2154's chooser from a region's TOOLBAR toggle (#2155): a hold, which
+ * on a coarse pointer is the only route to it, and on a fine one sits beside
+ * the right-click. Held past the control's 500ms threshold with room to
+ * spare, because a hold measured to the millisecond is a flake.
+ *
+ * THE PANEL IS ASSERTED WHILE THE POINTER IS STILL DOWN, and then again after
+ * the release. That ordering is the whole point of driving this from a
+ * browser at all (#2155 review B1): the hold opens the panel from a timer
+ * mid-gesture, so the panel's full-viewport dismiss backdrop is on screen
+ * before the release — and a backdrop that dismissed on any release, or a
+ * control that let the release go to it, would eat the gesture that opened
+ * it. Waiting for the panel BEFORE the release is also what stops this being
+ * a race: without it, a release that beat a cold lazy chunk's fetch would
+ * pass for the same reason a broken build would.
+ *
+ * The toggle's ordinary click shows or hides the region, so a press that
+ * lands short opens nothing and toggles the region instead — which the
+ * caller's `aria-pressed` assertion around this catches.
+ *
+ * WHAT THIS CAN AND CANNOT SEE, measured by injection rather than assumed.
+ * It reds when the pointer capture is removed (the hold is then cancelled by
+ * a boundary event the settling layout produces under the stationary cursor),
+ * and it reds on the backdrop's own guard once capture is out of the way —
+ * with the message above. It does NOT red on that guard alone, because with
+ * capture in place a MOUSE release never reaches the backdrop; the guard's
+ * remaining job is the touch path's compatibility `click`, which Playwright's
+ * mouse cannot produce. That case is driven in jsdom, both routes explicitly
+ * (`RegionToolbarControls.test.tsx`).
+ */
+export async function openChooserFromToggle(
+  page: Page,
+  regionLabel: 'Left' | 'Bottom' | 'Right',
+): Promise<Locator> {
+  const control = page.getByRole('button', {
+    name: `${regionLabel} region`,
+    exact: true,
+  });
+  const box = await control.boundingBox();
+  expect(
+    box,
+    `${regionLabel} region's toggle must have a rendered box`,
+  ).not.toBeNull();
+  const menu = page.getByRole('menu', { name: `Add to ${regionLabel} region` });
+  await page.mouse.move(
+    (box?.x ?? 0) + (box?.width ?? 0) / 2,
+    (box?.y ?? 0) + (box?.height ?? 0) / 2,
+  );
+  await page.mouse.down();
+  await page.waitForTimeout(600);
+  await expect(
+    menu,
+    `the hold on ${regionLabel} region's toggle opened no chooser`,
+  ).toBeVisible();
+  await page.mouse.up();
+  await expect(
+    menu,
+    `the release that ended the hold on ${regionLabel} region's toggle dismissed the panel it had just opened`,
+  ).toBeVisible();
+  return menu;
 }
 
 /**
