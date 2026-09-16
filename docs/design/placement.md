@@ -721,15 +721,31 @@ screen reader has; the drag needs `usePlacementDrag`/`DockPlacementTargets`
 extracted out of `DockPlacementControl` (a shipped control on a journey's
 critical path) plus entry-chunk weight this one does not have.
 
+**What "every device" and "a keyboard" cost.** On touch the gesture is the LONG
+PRESS, and the pill suppresses the platform callout for it, because the pill's
+own menu is what the press is for; both pills answer it the same way. On a
+keyboard, Windows and Linux already have one — the Menu key and Shift+F10 make
+the browser fire `contextmenu` on the focused control, which is the same
+handler a right-click reaches. macOS has neither, so the chip strip adds
+**Shift+Enter**, announced on the strip as `aria-keyshortcuts`, opening the
+menu for the chip that holds the roving tab stop. Without it the sentence above
+was false on Station's primary desktop platform. A Boards row needs no chord:
+its `⋯` is an ordinary focusable button.
+
 **What opens what.** A Boards row opens `board:<layoutId>`; a project Layout
 chip opens `layout:<projectId>/<layoutId>`, with the project id taken from the
 row's own `ProjectMetadata`. The synthesized **Board** chip gets no placement
 rows at all: it is the project's SESSION board, which is a route rather than a
 pane (`pane:builtin:board`, one per project). The Boards row menu keeps its
-Rename / Move to project… / Delete and gains the placement rows ABOVE them —
-the family a reader compares this against opens with Open and ends with the
-destructive row, and the phone loses nothing by it (see the fold rule below,
-which leaves Rename first there).
+Rename / Move to project… / Delete and takes the placement rows BETWEEN Move
+and Delete: this menu shipped in #2062 and #2158 adds to it rather than
+re-ordering it, so every row a reader knows keeps its neighbours, the
+destructive row stays last, and Rename keeps the first position and the focus
+it takes on open — which matters most on a phone, where this menu is the only
+rename affordance the section has (#2062 review M1). The Open-first convention
+a file manager or an editor follows was weighed and lost to that: it is the
+shape for a menu designed around opening, and this is a record's actions that
+opening has joined.
 
 **Ids must parse or the rows are absent.** `workspaceLayoutPaneId` refuses
 anything that is not a lowercase UUID, so a pre-provisioned project's
@@ -738,10 +754,18 @@ named. The UI applies the same rule BEFORE rendering: `sidebarLayoutPaneId`
 (`src-ui/src/components/project-sidebar/pill-region-placement.ts`) builds the
 id and admits it through `resolveRegionSurface`, and a null answer renders no
 row. A legacy record degrades to an absent row, never to a row that refuses
-when pressed. Same shape for the device: where the dock folds to one region (a
-coarse pointer, or a viewport at 768px or under), there are no placement rows
-rather than three rows of which two would be turned down — `DockPlacementControl`'s
-existing rule for the same question.
+when pressed. **A folded device offers its one region, and this is NOT
+`DockPlacementControl`'s rule.** That control renders nothing at one available
+placement, and the first pass at this copied it. The rule does not transfer: it
+is a CHOOSER — a `menuitemradio` group over where the dock sits — and with one
+option there is nothing to choose, while these rows are an ACTION, which is
+worth offering at one destination as much as at three. `availablePlacements`
+answers `['bottom']` for EVERY coarse pointer whatever its width, and the model
+accepts `openSurfaceInRegion(id, { region: 'bottom' })` there and places the
+pane — so the copied rule was withholding a capability the runtime had, from
+the population that most needs it: a phone, where this menu is the only way a
+Layout reaches a region at all, and which this issue's acceptance says gets the
+menu. So a phone and a tablet see exactly one row, "Open in Bottom".
 
 **Why the sidebar calls the model rather than the opener hook.** `openLayoutInRegion`
 in `src-ui/src/contexts/useOpenInRegion.ts` is the natural caller and is the
@@ -756,18 +780,33 @@ pane inventory. The only duplication that leaves is the id's spelling, and
 both families and for every id the grammar refuses — a test-only import, where
 the bytes are free.
 
+**The pill's own absence rules, and where each lives.** An id the grammar
+refuses is `sidebarLayoutPaneId`'s answer
+(`src-ui/src/components/project-sidebar/pill-region-placement.ts`); the Session
+Board chip's is `ProjectSidebarRow` declining to give it a `dockSurfaceId`; no
+region model mounted is the chip strip's own precondition. There is no fourth:
+the regions list itself is never empty. Which regions a device offers, and the
+model call that uses them, live in `pill-region-open.ts` — split from the id
+module BY CONSUMER rather than by topic, because the id is needed where chips
+are BUILT (eager) and the regions only where a menu RENDERS (lazy, both
+callers).
+
 **The chip's menu is a sibling of its strip, and lazy.** The chip row is a
 `role="toolbar"` composite widget: one tab stop, Left/Right inside it. A
 `role="menu"` mounted INSIDE it would add a second focusable structure to that
 widget and put its rows in the strip's own arrow order, so the menu renders as
 the strip's sibling; the right-click moves the roving stop onto the chip it
 focuses, so there is still exactly one. The menu itself is behind a
-`LazyBoundary` — 307 B gzip of entry chunk otherwise, paid by every cold load
-for a surface opened by a minority gesture, which is the same reason the Boards
-SECTION beside it is lazy. Its cost is stated where it is taken
-(`ProjectLayoutChipMenu.tsx`): the first right-click fetches the chunk, and a
-fetch that fails renders nothing rather than planting an error card in a 240px
-rail.
+`LazyBoundary` — inlining it measured the entry chunk at 333843 against a
+333800 ceiling, and behind the boundary at 333650, on base 3b55b26fb. That is
+the same reason the Boards SECTION beside it is lazy. Its cost is stated where
+it is taken (`ProjectLayoutChipMenu.tsx`): the first right-click fetches the
+chunk, and a fetch that fails renders nothing rather than planting an error
+card in a 240px rail that nothing there could dismiss. Because that choice
+discards `LazyBoundary`'s own `onRetry`, the retry cannot be the boundary's:
+the call site gives it a `key` each gesture bumps, so a failed fetch is retried
+by the next right-click instead of latching the menu off for the life of the
+row.
 
 ## The toolbar is per region (#2143)
 

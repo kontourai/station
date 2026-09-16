@@ -303,15 +303,6 @@ test.describe("Board visibility follows the server's Builder-run predicate", () 
     const notes = strip.getByRole('button', { name: 'Notes', exact: true });
     await expect(notes).toBeVisible({ timeout: 20_000 });
 
-    // The Board chip offers no such menu, so the rows below belong to the
-    // Layout rather than to every chip in the strip.
-    await strip
-      .getByRole('button', { name: 'Board', exact: true })
-      .click({ button: 'right' });
-    await expect(page.getByRole('menu', { name: 'Board actions' })).toHaveCount(
-      0,
-    );
-
     await openPillInRegionThroughMenu(page, notes, 'Notes', 'Right');
 
     // The region holds it: a dock shell rendered in `right`, carrying the
@@ -323,6 +314,19 @@ test.describe("Board visibility follows the server's Builder-run predicate", () 
       page.getByRole('button', { name: 'Move Notes', exact: true }),
       'the right region must hold a pane the model calls Notes',
     ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+
+    // The Board chip beside it offers no such menu — asserted AFTER the open
+    // above, deliberately. The chip menu is behind a lazy boundary, so a
+    // `toHaveCount(0)` taken before anything had fetched that chunk would be
+    // satisfied by a menu that simply had not arrived yet. The journey above
+    // has loaded it in this document, so the absence is now a decision.
+    await strip
+      .getByRole('button', { name: 'Board', exact: true })
+      .click({ button: 'right' });
+    await expect(
+      page.getByRole('menu'),
+      'the Session Board chip is a route, not a pane: it offers no menu',
+    ).toHaveCount(0);
 
     // …and it is a placement, not a render: the arrangement is persisted, so
     // the reader finds it there again. A tab that only survived until the next
