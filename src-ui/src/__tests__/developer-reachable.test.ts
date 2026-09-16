@@ -1,6 +1,4 @@
 /** @vitest-environment jsdom */
-import { fireEvent, render, screen } from '@testing-library/react';
-import { createElement } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 // archive#3313: Developer is settings-gated. The flag derivation has its own
@@ -13,15 +11,19 @@ vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
 }));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigationActions: () => ({ navigate }),
+  useNavigation: () => ({ navigate }),
 }));
 
-import { DEVELOPER_TOOLS_FLAG } from '../app-shell/destination-registry';
+import {
+  APP_DESTINATION_REGISTRY,
+  DEVELOPER_TOOLS_FLAG,
+} from '../app-shell/destination-registry';
 import {
   getManagementNavigationGroup,
   getPathForView,
   resolveViewFromPath,
 } from '../app-shell/routing';
-import { SettingsManageSection } from '../views/settings/SettingsManageSection';
+import { settingsSectionNavItems } from '../views/SettingsView';
 
 /**
  * The /developer surface (Slice F) replaced the old Monitoring sidebar entry.
@@ -30,8 +32,9 @@ import { SettingsManageSection } from '../views/settings/SettingsManageSection';
  * highlight, and is actually advertised by a control someone can press.
  *
  * #2059 (D3) moved that control: Developer is a configuration surface, so it
- * left the left panel for Settings' Manage group. The flag gate did not
- * change — it still gates advertisement only.
+ * left the left panel for Settings. #2144 slice 4 then retired the separate
+ * Manage grid and made it a row in Settings' own section navigation. The flag
+ * gate did not change through either move — it still gates advertisement only.
  */
 describe('the developer surface is a destination', () => {
   beforeEach(() => {
@@ -57,19 +60,26 @@ describe('the developer surface is a destination', () => {
     );
   });
 
-  test('renders a Settings Manage control that navigates to its route while developer tools are enabled', () => {
-    render(createElement(SettingsManageSection));
-    const developer = screen.getByRole('button', { name: 'Developer' });
+  test('is offered as a Settings navigation row pointing at its route while developer tools are enabled', () => {
+    const developer = settingsSectionNavItems(
+      (section) => `/settings?view=${section}`,
+      APP_DESTINATION_REGISTRY.getSettingsNav(flagsState.flags),
+    ).find((item) => item.label === 'Developer');
     expect(developer).toBeTruthy();
-    fireEvent.click(developer);
-    expect(navigate).toHaveBeenCalledWith('/developer');
+    // The row is what a reader presses, so the assertion is the HREF it
+    // presses through to, not merely that a row with the word exists.
+    expect(developer?.href).toBe('/developer');
   });
 
   test('stays a deep-linkable route, but not an advertised one, while developer tools are disabled (station#3313)', () => {
     flagsState.flags = new Set();
     // The route still resolves — gating is advertisement-only.
     expect(resolveViewFromPath('/developer')).toEqual({ type: 'developer' });
-    render(createElement(SettingsManageSection));
-    expect(screen.queryByRole('button', { name: 'Developer' })).toBeNull();
+    expect(
+      settingsSectionNavItems(
+        (section) => `/settings?view=${section}`,
+        APP_DESTINATION_REGISTRY.getSettingsNav(flagsState.flags),
+      ).map((item) => item.label),
+    ).not.toContain('Developer');
   });
 });

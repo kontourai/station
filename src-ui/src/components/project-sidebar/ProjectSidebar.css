@@ -639,6 +639,26 @@
   background: color-mix(in srgb, var(--accent-primary) 20%, transparent);
 }
 
+/* WHERE a chip's "Open in <region>" menu sits, and nothing else (#2158).
+
+   Its surface and rows are `.menu-surface` / `.menu-row` from index.css — the
+   one spec #1552 D4 gave every menu in the app, including the coarse-pointer
+   44px row floor in components/chat/chat.css — so only the inset and the fill
+   live here. Both are `.sidebar__board-menu`'s (ProjectSidebarBoards.css): the
+   two pill menus render in flow inside the same rail, at the same indent, and
+   `--bg-secondary` is the EXACT fill of `.sidebar` itself, so the shared
+   surface's own fill would leave this reading as an unfilled outline drawn on
+   the panel. `--bg-tertiary` is the raised-on-panel answer the token set has.
+
+   The left inset is the chip strip's, not the board row's: the strip is padded
+   to 30px so the chips line up under the project name, and a menu about one of
+   those chips that started 18px to their left would read as belonging to the
+   row above it. */
+.sidebar__layout-chip-menu {
+  margin: 0 12px 6px 30px;
+  background: var(--bg-tertiary);
+}
+
 /* Panel destination rows. #2059 (D3): these sit INSIDE the scrolling body,
    directly under Home, rather than forming a bordered band pinned below the
    projects — the band existed to hold eleven configuration destinations that

@@ -3812,6 +3812,24 @@ button:hover {
   color: var(--text-secondary);
 }
 
+/* #2144 decision 3: the step from this shortcut panel to Chat's full settings
+   section. Styled as a link rather than a button because it navigates away
+   instead of changing something here, and it keeps the 44px touch floor every
+   other control in this panel clears. */
+.chat-settings-modal__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-primary);
+  font-family: inherit;
+  font-size: var(--text-base);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .chat-settings-modal__actions {
   display: flex;
   justify-content: flex-end;

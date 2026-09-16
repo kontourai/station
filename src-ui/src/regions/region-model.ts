@@ -863,8 +863,10 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
  * These surfaces are never registry keys: there is no blank occurrence to
  * register, `REGION_SURFACE_PANES` holds none of them, and a region's
  * chooser cannot offer them (`RegionEmptyChooser` lists `surfaces`, the
- * registry, which holds no prefix family). They reach a region only through
- * `openInRegion` from a link click.
+ * registry, which holds no prefix family). Two routes reach a region with
+ * one: `openInRegion` from a link click, and — since #2158 — a sidebar pill's
+ * menu, which builds the id and calls `openSurfaceInRegion` directly because
+ * the sidebar is in the entry chunk and the opener hook is not.
  */
 export interface InstanceSurfacePrefix {
   /** The prefix every id of this family starts with. */

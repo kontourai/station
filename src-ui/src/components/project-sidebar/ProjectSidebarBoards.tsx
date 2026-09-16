@@ -10,7 +10,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { boardPath } from '../../app-shell/board-route';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
+import { regionLabel } from '../../regions/region-model';
 import { NEW_BOARD_REQUEST_EVENT } from './new-board-events';
+import { useSidebarPillRegions } from './pill-region-open';
+import { sidebarLayoutPaneId } from './pill-region-placement';
 import './ProjectSidebarBoards.css';
 
 /**
@@ -165,6 +168,13 @@ export function ProjectSidebarBoards({
   const { data: boards } = usePersonalLayoutsQuery();
   const { projects } = useProjects();
   const [mode, setMode] = useState<RowMode>({ kind: 'rest' });
+  /**
+   * Where a Board may be opened, on this device (#2158). Read ONCE for the
+   * section rather than per row: the answer is the viewport's and the
+   * pointer's, identical for every Board, and `useDockSlotDevice` subscribes
+   * to a resize and a media query — one subscription for a list of forty.
+   */
+  const pillRegions = useSidebarPillRegions();
 
   /**
    * The menu-bearing half of `RowMode`. Three kinds render a `role="menu"`;
@@ -508,6 +518,16 @@ export function ProjectSidebarBoards({
         const isActive = activePath === path;
         const renaming = mode.kind === 'rename' && mode.slug === board.slug;
         const open = mode.kind !== 'rest' && mode.slug === board.slug;
+        /**
+         * This Board as a dock pane (#2157's `board:<layoutId>`), or null when
+         * its `id` is not the lowercase UUID the server mints. Null renders NO
+         * placement rows — see `sidebarLayoutPaneId`; the rest of the menu is
+         * untouched, because renaming and deleting a legacy record still work.
+         */
+        const paneId = sidebarLayoutPaneId({
+          kind: 'board',
+          layoutId: board.id,
+        });
         return (
           <div className="sidebar__board-row" key={board.slug}>
             {/* The row's own line — the Board button (or its rename input)
@@ -565,6 +585,40 @@ export function ProjectSidebarBoards({
                     navigate(path);
                     if (isMobile) onAfterNavigate?.();
                   }}
+                  // The row's menu from the pill itself (#2158) — a
+                  // right-click, or the keyboard's context-menu gesture. On
+                  // the BUTTON, never on the row's wrapping `<div>`: a
+                  // handler on a static element is what the a11y ratchet's
+                  // `noStaticElementInteractions` rule refuses, and the
+                  // button is the control the gesture is aimed at anyway.
+                  //
+                  // Collapsed is refused, which is the `⋯` trigger's own
+                  // gate minus the half that cannot apply here (this button
+                  // does not exist while the row is renaming — the input
+                  // replaces it). A collapsed rail renders no trigger and
+                  // hides the menu
+                  // (`.sidebar--collapsed .sidebar__board-menu`), so opening
+                  // one here would set a mode whose only exits are inside a
+                  // surface nobody can see — the unreachable state #2083
+                  // closed for the collapse transition.
+                  //
+                  // It does NOT navigate, and `preventDefault` is not what
+                  // makes that true: a context menu is not a click, so the
+                  // handler above never runs for this gesture. What
+                  // `preventDefault` stops is the PLATFORM menu opening over
+                  // this one.
+                  onContextMenu={(event) => {
+                    if (collapsed) return;
+                    event.preventDefault();
+                    // Focus the pill first so the menu's return focus
+                    // (`useMenuFocus`, which captures whatever is focused
+                    // when it opens) lands back on the control the user
+                    // aimed at. Engines disagree about whether a right-click
+                    // focuses a button at all, so this is what makes Escape
+                    // land in the same place on every one of them.
+                    event.currentTarget.focus();
+                    setMode({ kind: 'menu', slug: board.slug });
+                  }}
                 >
                   <span aria-hidden="true" className="sidebar__board-glyph">
                     {board.icon ?? '▦'}
@@ -621,6 +675,42 @@ export function ProjectSidebarBoards({
                 >
                   Move to project…
                 </button>
+                {/* WHERE this Board can go: after the row that already
+                    answers "where does this live" and BEFORE the destructive
+                    one, which stays last.
+
+                    This menu shipped in #2062 with Rename / Move to project… /
+                    Delete, and #2158 adds to it rather than re-ordering it —
+                    every row a reader already knows keeps its neighbours, and
+                    Rename keeps the first position and the focus it takes on
+                    open. That matters most exactly where the placement rows
+                    are fewest: on a phone this menu is the ONLY rename
+                    affordance the section has (#2062 review M1), and it is
+                    reached from a permanently-visible `⋯` at the 44px floor.
+
+                    The convention these rows would otherwise follow — a file
+                    manager or an editor opens with Open — was weighed and
+                    lost to that: the Open-first shape is for a menu designed
+                    around opening, and this one is a record's actions that
+                    opening has joined. */}
+                {paneId !== null &&
+                  pillRegions.regions.map((region) => (
+                    <button
+                      key={region}
+                      type="button"
+                      className="menu-row"
+                      role="menuitem"
+                      onClick={() => {
+                        setMode({ kind: 'rest' });
+                        pillRegions.openInRegion(paneId, region);
+                      }}
+                    >
+                      {/* Bare, with the subject in the menu's own
+                          `aria-label` ("<name> actions") — the shape Rename
+                          and Delete beside it already use. */}
+                      Open in {regionLabel(region)}
+                    </button>
+                  ))}
                 <button
                   type="button"
                   className="menu-row"

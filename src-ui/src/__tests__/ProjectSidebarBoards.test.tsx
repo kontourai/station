@@ -30,8 +30,22 @@ const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
 }));
+/**
+ * The region model, as a SPY rather than the `null` this used to return
+ * (#2158). Null was honest before this slice — the panel read nothing from the
+ * model — and it is not now: the Boards menu's "Open in <region>" rows call
+ * `openSurfaceInRegion`, and a null model makes `useSidebarPillRegions` report
+ * no regions, so the rows would be absent in every case here and nothing would
+ * be proven about them.
+ *
+ * `regions` is the real default arrangement, because `ProjectSidebarNav` and
+ * `ProjectSidebar` read it (`occupiedRegion`, `regions.main.occupant`) and a
+ * hand-built stand-in would be a second, drifting copy of that shape.
+ */
+const openSurfaceInRegion = vi.hoisted(() => vi.fn());
+const regionModel = vi.hoisted(() => ({ value: null as unknown }));
 vi.mock('../contexts/RegionModelContext', () => ({
-  useRegionModelOptional: () => null,
+  useRegionModelOptional: () => regionModel.value,
 }));
 vi.mock('../build-info', () => ({
   buildInfo: { version: '0.1.2', commit: 'test' },
@@ -39,6 +53,7 @@ vi.mock('../build-info', () => ({
 
 const {
   boards,
+  boardId,
   projects,
   navigate,
   calls,
@@ -56,7 +71,28 @@ const {
   viewport: { isMobile: false },
   /** Whether the next create is refused; see the create mock below. */
   createOutcome: { rejects: false },
-  boards: [] as Array<{ slug: string; name: string; icon?: string }>,
+  boards: [] as Array<{
+    id: string;
+    slug: string;
+    name: string;
+    icon?: string;
+  }>,
+  /**
+   * A stable lowercase UUID per slug — the shape `randomUUID()` writes into a
+   * Layout's `id` and `/api/me/layouts` returns (`file-storage-adapter.ts`).
+   *
+   * `id` is REQUIRED on the store above rather than optional, so a fixture
+   * cannot quietly omit the field the server always sends: #2158's placement
+   * rows are absent for a record whose id is not this shape, and a fixture
+   * without one would make every such row absent for the wrong reason.
+   */
+  boardId: (slug: string) => {
+    let hash = 0;
+    for (const character of slug)
+      hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+    const hex = hash.toString(16).padStart(8, '0');
+    return `${hex}-0000-4000-8000-${hex}0000`;
+  },
   projects: [] as Array<{ id: string; slug: string; name: string }>,
   navigate: vi.fn(),
   pathname: { value: '/' },
@@ -112,7 +148,17 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
   useHostRequestAuthorityScope: () => undefined,
 }));
-vi.mock('../hooks/useIsMobile', () => ({
+/**
+ * Only `useIsMobile` is replaced. The dock-placement half of this module —
+ * `useDockSlotDevice`, `availablePlacements` — is the REAL policy, because it
+ * is what decides WHICH placement rows a Board offers, down to the single
+ * `Open in Bottom` a folded device gets (#2158 D4). Mocking it wholesale, which is what a bare factory
+ * here would do, would replace the derivation under test with a constant; the
+ * cases below drive it through `window.innerWidth` instead, the input the
+ * policy actually reads.
+ */
+vi.mock('../hooks/useIsMobile', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => viewport.isMobile,
 }));
 
@@ -184,7 +230,11 @@ vi.mock('@kontourai/station-sdk', () => {
         // reds the assertion below, and without it, it does not.
         options?.onSuccess?.({ slug: input.slug });
         queueMicrotask(() => {
-          boards.push({ slug: input.slug, name: input.name });
+          boards.push({
+            id: boardId(input.slug),
+            slug: input.slug,
+            name: input.name,
+          });
           notify();
         });
       },
@@ -223,8 +273,30 @@ import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { nextBoardSlug } from '../components/project-sidebar/ProjectSidebarBoards';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
 
 reactApi.current = React;
+regionModel.value = {
+  regions: DEFAULT_DEVICE_REGION_ARRANGEMENT,
+  openSurfaceInRegion,
+  toggleSurface: vi.fn(),
+};
+
+/**
+ * The fine-pointer desktop width every case assumes unless it says otherwise:
+ * `availablePlacements` offers all three dock edges above 768px, and one below
+ * it. jsdom reports 1024 by default, so this is a restatement made explicit —
+ * and `beforeEach` puts it back, because the one case that narrows the window
+ * would otherwise leave every later case on a phone.
+ */
+const DESKTOP_WIDTH = 1024;
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, 'innerWidth', {
+    value: width,
+    configurable: true,
+    writable: true,
+  });
+}
 
 /**
  * Mounts the real panel and WAITS for the Boards chunk.
@@ -248,6 +320,8 @@ async function renderSidebar(ui: ReactElement) {
 
 beforeEach(() => {
   viewport.isMobile = false;
+  setViewportWidth(DESKTOP_WIDTH);
+  openSurfaceInRegion.mockClear();
   createOutcome.rejects = false;
   boards.length = 0;
   projects.length = 0;
@@ -291,7 +365,7 @@ describe('the Boards section is hidden until there is a Board', () => {
     // look identical from outside, so this proves the difference: publishing
     // a Board with no further awaiting makes the header appear, which is only
     // possible if the section was already mounted and chose to render null.
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     act(() => {
       sdk.notify();
     });
@@ -299,7 +373,7 @@ describe('the Boards section is hidden until there is a Board', () => {
   });
 
   test('one Board brings the section back, above Projects', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
     const header = boardsHeader();
     expect(header).not.toBeNull();
@@ -543,7 +617,7 @@ describe('creating a Board from the panel', () => {
    * like a palette one and navigated the user away from where they were.
    */
   test('a refused palette create does not make the next + navigate', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     createOutcome.rejects = true;
     await renderSidebar(<ProjectSidebar />);
 
@@ -567,7 +641,11 @@ describe('creating a Board from the panel', () => {
   });
 
   test('a palette-created Board takes the next free slug like the + does', async () => {
-    boards.push({ slug: 'untitled-board', name: 'Untitled Board' });
+    boards.push({
+      id: boardId('untitled-board'),
+      slug: 'untitled-board',
+      name: 'Untitled Board',
+    });
     await renderSidebar(<ProjectSidebar />);
 
     act(() => {
@@ -583,7 +661,7 @@ describe('creating a Board from the panel', () => {
   });
 
   test('+ does not navigate away from the list the new row joins', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
 
     await act(async () => {
@@ -599,7 +677,11 @@ describe('creating a Board from the panel', () => {
   });
 
   test('+ on an existing section creates the next free slug and enters rename', async () => {
-    boards.push({ slug: 'untitled-board', name: 'Untitled Board' });
+    boards.push({
+      id: boardId('untitled-board'),
+      slug: 'untitled-board',
+      name: 'Untitled Board',
+    });
     await renderSidebar(<ProjectSidebar />);
 
     await act(async () => {
@@ -681,7 +763,7 @@ describe('the Boards row menu on touch (#2062)', () => {
    * nothing if the menu is in there with it.
    */
   test('the open menu is outside the box the trigger is positioned against', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
     boardMenu('Daily brief');
 
@@ -811,7 +893,7 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
   }
 
   test('opening the menu moves focus into it', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
 
     const trigger = openBoardMenu('Daily brief');
@@ -819,6 +901,10 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
     // trigger, which is where it sat before and which made the open menu
     // something Tab walked past rather than into.
     expect(document.activeElement).not.toBe(trigger);
+    // Rename, on EVERY device: #2158 adds its placement rows after
+    // `Move to project…` rather than above Rename, so the row a phone reaches
+    // this menu for keeps the first position and the focus. The folded-device
+    // case at the end of this file asserts the same thing where it matters.
     expect(document.activeElement).toBe(
       screen.getByRole('menuitem', { name: 'Rename' }),
     );
@@ -828,14 +914,23 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
   });
 
   test('ArrowDown and ArrowUp move focus between the items, and wrap', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
     openBoardMenu('Daily brief');
 
-    const rename = screen.getByRole('menuitem', { name: 'Rename' });
-    const move = screen.getByRole('menuitem', { name: 'Move to project…' });
-    const remove = screen.getByRole('menuitem', { name: 'Delete' });
-    expect(document.activeElement).toBe(rename);
+    // Read off the menu rather than named one by one, so the rows #2158 added
+    // are walked by the same keys as the rows that were here before: a menu
+    // that grows must still wrap at ITS last row, not at the third.
+    const items = screen.getAllByRole('menuitem');
+    expect(items.map((item) => item.textContent)).toEqual([
+      'Rename',
+      'Move to project…',
+      'Open in Left',
+      'Open in Right',
+      'Open in Bottom',
+      'Delete',
+    ]);
+    expect(document.activeElement).toBe(items[0]);
 
     const arrow = (key: 'ArrowDown' | 'ArrowUp') => {
       act(() => {
@@ -843,19 +938,19 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
       });
     };
 
-    arrow('ArrowDown');
-    expect(document.activeElement).toBe(move);
-    arrow('ArrowDown');
-    expect(document.activeElement).toBe(remove);
+    for (let index = 1; index < items.length; index += 1) {
+      arrow('ArrowDown');
+      expect(document.activeElement).toBe(items[index]);
+    }
     // A menu wraps; the last row's Down is not a dead key.
     arrow('ArrowDown');
-    expect(document.activeElement).toBe(rename);
+    expect(document.activeElement).toBe(items[0]);
     arrow('ArrowUp');
-    expect(document.activeElement).toBe(remove);
+    expect(document.activeElement).toBe(items[items.length - 1]);
   });
 
   test('Escape closes the menu and returns focus to the trigger', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
     const trigger = openBoardMenu('Daily brief');
 
@@ -876,7 +971,7 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
   });
 
   test('a pointer press outside the menu dismisses it', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
     openBoardMenu('Daily brief');
     expect(screen.queryByRole('menu')).not.toBeNull();
@@ -899,7 +994,7 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
   });
 
   test('the trigger still closes the menu it opened', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
     const trigger = openBoardMenu('Daily brief');
     expect(screen.queryByRole('menu')).not.toBeNull();
@@ -940,7 +1035,7 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
    * these its focus entry, arrows, focusout and Escape were all untested.
    */
   test('the delete confirm takes focus and its own arrow keys', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
     openBoardMenu('Daily brief');
 
@@ -984,7 +1079,7 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
   });
 
   test('the project picker takes focus of its own', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     projects.push(
       { id: '1', slug: 'demo', name: 'Demo' },
       { id: '2', slug: 'other', name: 'Other' },
@@ -1023,7 +1118,7 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
   });
 
   test('collapsing the rail closes the menu rather than stranding it', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
     openBoardMenu('Daily brief');
     expect(screen.queryByRole('menu')).not.toBeNull();
@@ -1049,7 +1144,7 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
   });
 
   test('the menu rows are the shared menu primitive, which carries the 44px touch floor', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     projects.push({ id: '1', slug: 'demo', name: 'Demo' });
     await renderSidebar(<ProjectSidebar />);
 
@@ -1064,7 +1159,8 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
         .map((row) => [...row.classList].includes('menu-row'));
 
     openBoardMenu('Daily brief');
-    expect(rowClasses()).toEqual([true, true, true]);
+    // Six since #2158: three placement rows between Move and Delete.
+    expect(rowClasses()).toEqual([true, true, true, true, true, true]);
     // All three surfaces, because all three are menus the finger reaches.
     act(() => {
       fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
@@ -1152,7 +1248,7 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
 
 describe('renaming a Board from the panel', () => {
   test('the row menu opens an input, and Enter renames the Board', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
 
     boardMenu('Daily brief');
@@ -1174,7 +1270,7 @@ describe('renaming a Board from the panel', () => {
   });
 
   test('Escape discards the edit and writes nothing', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
 
     boardMenu('Daily brief');
@@ -1199,7 +1295,7 @@ describe('renaming a Board from the panel', () => {
   });
 
   test('clicking away commits the typed name', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
     boardMenu('Daily brief');
     act(() => {
@@ -1216,7 +1312,7 @@ describe('renaming a Board from the panel', () => {
   });
 
   test('a rename to the same name writes nothing', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
     boardMenu('Daily brief');
     act(() => {
@@ -1234,7 +1330,7 @@ describe('renaming a Board from the panel', () => {
 
 describe('deleting a Board from the panel', () => {
   test('the row menu confirms first, then removes the Board', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
 
     boardMenu('Daily brief');
@@ -1255,7 +1351,7 @@ describe('deleting a Board from the panel', () => {
   });
 
   test('Cancel in the confirm deletes nothing', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
     boardMenu('Daily brief');
     act(() => {
@@ -1271,7 +1367,7 @@ describe('deleting a Board from the panel', () => {
 
 describe('promoting a Board from the panel', () => {
   test('the row menu offers the projects and moves the Board into one', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     projects.push(
       { id: '1', slug: 'demo', name: 'Demo' },
       { id: '2', slug: 'other', name: 'Other' },
@@ -1305,7 +1401,7 @@ describe('promoting a Board from the panel', () => {
   });
 
   test('with no projects the picker names the remedy instead of offering nothing', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
     boardMenu('Daily brief');
     act(() => {
@@ -1322,7 +1418,7 @@ describe('promoting a Board from the panel', () => {
 
 describe('opening a Board', () => {
   test('the row navigates to the Board route and marks itself current there', async () => {
-    boards.push({ slug: 'daily', name: 'Daily brief' });
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     const first = await renderSidebar(<ProjectSidebar />);
     act(() => {
       fireEvent.click(screen.getByRole('button', { name: 'Daily brief' }));
@@ -1339,5 +1435,168 @@ describe('opening a Board', () => {
         .getByRole('button', { name: 'Daily brief' })
         .getAttribute('aria-current'),
     ).toBe('page');
+  });
+});
+
+/**
+ * #2158 — a Board pill opens into a dock region.
+ *
+ * Driven through the real panel like everything else here: the gesture is a
+ * `contextmenu` on the pill the user right-clicks, and the observation is the
+ * call the model receives. `openSurfaceInRegion` is the seam deliberately —
+ * `useSidebarPillRegions` calls it with an id this component BUILT, and the
+ * id is the whole claim (`pill-region-placement.test.ts` pins that spelling
+ * against the contract's own minter).
+ */
+describe('a Board pill opens into a region (#2158)', () => {
+  const DAILY_ID = boardId('daily');
+
+  function pill(name: string): HTMLElement {
+    return screen.getByRole('button', { name });
+  }
+
+  function placementRows(): string[] {
+    return screen
+      .queryAllByRole('menuitem')
+      .map((row) => row.textContent ?? '')
+      .filter((label) => label.startsWith('Open in '));
+  }
+
+  test('right-clicking the pill offers the three regions, and Right opens it there', async () => {
+    boards.push({ id: DAILY_ID, slug: 'daily', name: 'Daily brief' });
+    await renderSidebar(<ProjectSidebar />);
+
+    act(() => {
+      fireEvent.contextMenu(pill('Daily brief'));
+    });
+
+    // The menu is the row's own, named for the Board — the same surface the
+    // `⋯` trigger opens, not a second one.
+    expect(
+      screen.getByRole('menu', { name: 'Daily brief actions' }),
+    ).toBeDefined();
+    expect(placementRows()).toEqual([
+      'Open in Left',
+      'Open in Right',
+      'Open in Bottom',
+    ]);
+
+    act(() => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Open in Right' }));
+    });
+    expect(openSurfaceInRegion).toHaveBeenCalledWith(`board:${DAILY_ID}`, {
+      region: 'right',
+    });
+    // Choosing closes the menu; a menu left open over the rail after its
+    // command ran is a surface the user has to dismiss twice.
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  test('the ⋯ trigger opens the same rows', async () => {
+    boards.push({ id: DAILY_ID, slug: 'daily', name: 'Daily brief' });
+    await renderSidebar(<ProjectSidebar />);
+
+    act(() => {
+      fireEvent.click(pill('Daily brief actions'));
+    });
+    expect(placementRows()).toEqual([
+      'Open in Left',
+      'Open in Right',
+      'Open in Bottom',
+    ]);
+    act(() => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Open in Left' }));
+    });
+    expect(openSurfaceInRegion).toHaveBeenCalledWith(`board:${DAILY_ID}`, {
+      region: 'left',
+    });
+  });
+
+  test('the pill still navigates on a plain click, and the right-click does not', async () => {
+    boards.push({ id: DAILY_ID, slug: 'daily', name: 'Daily brief' });
+    await renderSidebar(<ProjectSidebar />);
+
+    // The menu did not steal the primary gesture: a Board pill is a
+    // destination first, and #2158 does not change that.
+    act(() => {
+      fireEvent.click(pill('Daily brief'));
+    });
+    expect(navigate).toHaveBeenCalledWith('/boards/daily');
+
+    navigate.mockClear();
+    act(() => {
+      fireEvent.contextMenu(pill('Daily brief'));
+    });
+    // A context menu is not a click. Without `preventDefault` the platform
+    // menu would also appear over this one; jsdom cannot observe that, so what
+    // is asserted here is the half it can: the gesture opened the menu and
+    // navigated nowhere.
+    expect(navigate).not.toHaveBeenCalled();
+    expect(screen.getByRole('menu')).toBeDefined();
+  });
+
+  /**
+   * D2: a record whose id is not the lowercase UUID the server mints — a Board
+   * from before ids existed — gets NO placement row. The rest of its menu is
+   * untouched: renaming and deleting a legacy record still work, and that is
+   * the difference between an absent row and a broken section.
+   */
+  test('a Board whose id is not a UUID offers no placement rows at all', async () => {
+    boards.push({ id: 'daily', slug: 'daily', name: 'Daily brief' });
+    await renderSidebar(<ProjectSidebar />);
+
+    act(() => {
+      fireEvent.contextMenu(pill('Daily brief'));
+    });
+    expect(placementRows()).toEqual([]);
+    expect(
+      screen.queryAllByRole('menuitem').map((row) => row.textContent),
+    ).toEqual(['Rename', 'Move to project…', 'Delete']);
+    // The menu this Board DOES have is the one it always had, focus included.
+    expect(document.activeElement).toBe(
+      screen.getByRole('menuitem', { name: 'Rename' }),
+    );
+    // Absent, not refusing: nothing reached the model to be turned down.
+    expect(openSurfaceInRegion).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A device whose dock folds to ONE region offers that one region — it does
+   * not fall silent.
+   *
+   * This reverses the rule the first pass copied from `DockPlacementControl`,
+   * which returns null at one placement because it is a CHOOSER and there is
+   * nothing to choose. These rows are an ACTION, the model accepts
+   * `{ region: 'bottom' }` on a folded device, and a phone is where this menu
+   * is the only way a Layout reaches a region at all. Driven through
+   * `window.innerWidth`, which is what `availablePlacements` reads, rather
+   * than by mocking the policy away.
+   */
+  test('a device with one dock region offers exactly that region', async () => {
+    setViewportWidth(500);
+    boards.push({ id: DAILY_ID, slug: 'daily', name: 'Daily brief' });
+    await renderSidebar(<ProjectSidebar />);
+
+    act(() => {
+      fireEvent.contextMenu(pill('Daily brief'));
+    });
+    expect(placementRows()).toEqual(['Open in Bottom']);
+    expect(
+      screen.queryAllByRole('menuitem').map((row) => row.textContent),
+    ).toEqual(['Rename', 'Move to project…', 'Open in Bottom', 'Delete']);
+    // AND Rename still takes the focus. This is the device where that matters:
+    // the row menu is the only rename affordance a phone has (#2062 review
+    // M1), which is why the placement rows went below Rename rather than above
+    // it — a decision this case is the standing proof of.
+    expect(document.activeElement).toBe(
+      screen.getByRole('menuitem', { name: 'Rename' }),
+    );
+
+    act(() => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Open in Bottom' }));
+    });
+    expect(openSurfaceInRegion).toHaveBeenCalledWith(`board:${DAILY_ID}`, {
+      region: 'bottom',
+    });
   });
 });

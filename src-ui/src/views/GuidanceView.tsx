@@ -15,19 +15,25 @@ import { SKILLS_SUBTITLE } from './skills/skill-view-utils';
 type GuidanceRoute = Extract<NavigationView, { type: 'guidance' }>;
 
 /**
- * Guidance is one page with two tabs. archive#4463 fixed the page's TITLE at
- * 'Guidance' — it must not change when
+ * This is one page with two tabs. archive#4463 fixed the page's TITLE — it
+ * must not change when
  * the tab changes, the same rule every other page-level view follows now: the
- * tab strip already names the section, and a title that flips between
- * 'Skills' and 'Commands' as the reader clicks a tab reads as two different
- * pages rather than one page with two views into it. Only the SUBTITLE still
+ * tab strip already names the section, and a title that flips as the reader
+ * clicks a tab reads as two different
+ * pages rather than one page with two views into it. #2144 slice 4 renamed
+ * that fixed title from 'Guidance' to 'Skills' (a label change only: the
+ * route, the `guidance` view member and the tab memory key are untouched), so
+ * the page title now coincides with one tab's name. The rule is unchanged and
+ * is what `PAGE_TITLE` below enforces: the title is a constant, not a
+ * function of the tab, and clicking Commands does not retitle the page.
+ * Only the SUBTITLE still
  * varies by tab, and the route table cannot supply either slot, because the
  * tab can come from `sessionStorage` rather than the URL. The tab is resolved
  * by `./guidance-tab`, which the shell's route placeholder reads too, so the
  * shape it holds while this chunk loads is the shape this tab renders. The
  * Skills tab is itself a split pane with a collection title of its own
  * ("Installed Skills"); `PageHeaderScope` below stops that reaching the page
- * header, so the page title a reader reads is always 'Guidance', never the
+ * header, so the page title a reader reads is always `PAGE_TITLE`, never the
  * pane's own collection name.
  *
  * There is ONE authored concept here — a Skill — and some skills are runnable
@@ -57,7 +63,7 @@ const COMMAND_SKILLS_HEADER = {
   subtitle: 'Skills that are runnable as a slash command.',
 };
 
-const PAGE_TITLE = 'Guidance';
+const PAGE_TITLE = 'Skills';
 
 /** Groups this view's generated tab/panel ids — see `components/Tabs.tsx`. */
 const TABS_ID = 'guidance-resource-type';

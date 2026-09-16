@@ -321,6 +321,7 @@ retired names.
 | The one place listing what needs a person's decision (tool approvals, device pairing, proposed changes, paused gate reviews) | **Notifications** (the **attention inbox**; the footer bell counts its pending items) |
 | Durable work identity | **Task** |
 | Execution episode | **Session** |
+| An authored instruction a user or agent can reuse (some are runnable as `/command`) | **Skill** — the page is **Skills** (`/guidance`, with a Commands tab) |
 | `missing_prerequisites` | name what's missing (e.g. "AWS credentials required") |
 
 ## Persisted identity records
@@ -337,6 +338,13 @@ This is the current pre-release vocabulary. Station does not preserve incompatib
   connection** on the Models tab, **Engine** on the Engines tab, **Model** for
   the option selected within a connection. Station/external and model/agent
   distinctions remain execution properties.
+- **Guidance → Skills (#2144):** the page a reader reaches at `/guidance` is
+  labelled **Skills** — in the Settings navigation, in the command palette, and
+  as its own `h1`. The rename is user-facing only: the `/guidance` route, the
+  `guidance` navigation view, the `guidance` destination id and the tab memory
+  key are unchanged, `/skills` still redirects to `/guidance?tab=skills`, and
+  "guidance" survives as a palette keyword so the retired word still finds the
+  surface. Commands remains a tab on that page, not a separate label.
 - **Data model:** `ConnectionKind` is `'model' | 'agent'`; Agent execution uses
   `agentConnectionId`; execution mode is `'external' | 'station'`; and adapter
   capability derives from `engineId` plus the engine capability matrix. Agent

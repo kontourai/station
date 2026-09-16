@@ -158,7 +158,14 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
   useHostRequestAuthorityScope: () => undefined,
 }));
-vi.mock('../hooks/useIsMobile', () => ({
+/**
+ * `useIsMobile` only. A bare factory here replaced the WHOLE module, including
+ * the dock-placement half (`useDockSlotDevice`, `availablePlacements`) that
+ * `ProjectSidebarBoards` reads since #2158 — the section then threw on mount
+ * and this file's lazy-boundary case saw the error alert it exists to refuse.
+ */
+vi.mock('../hooks/useIsMobile', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => false,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
@@ -612,7 +619,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
     for (const label of [
       'Agents',
       'Connections',
-      'Guidance',
+      'Skills',
       'Registry',
       'Review',
       'Plugins',

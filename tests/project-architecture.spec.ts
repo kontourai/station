@@ -44,9 +44,20 @@ const SEED_STORAGE = `
   window.localStorage.setItem('station-connect-connections-active', 'c1');
 `;
 
+/**
+ * The ids the SERVER mints: `randomUUID()` in `project-service.ts` and in the
+ * project layout routes. `p1`/`l1` was shorthand until #2158 gave the ids a
+ * job — a chip's dock pane is `layout:<projectId>/<layoutId>` and the grammar
+ * refuses anything that is not a lowercase UUID, so a fixture carrying the
+ * shorthand would silently make every chip in this spec undockable and hide a
+ * regression behind a shape no real record has.
+ */
+const ALPHA_PROJECT_ID = '4d0f9c21-8b3e-4a57-9f62-0c18ab7d5e34';
+const CHAT_LAYOUT_ID = '7a63be05-1c94-4d28-8e10-3f5b6d9c2a71';
+
 const TEST_PROJECTS = [
   {
-    id: 'p1',
+    id: ALPHA_PROJECT_ID,
     slug: 'alpha',
     name: 'Alpha',
     icon: '🚀',
@@ -59,7 +70,7 @@ const TEST_PROJECTS = [
 
 const ALPHA_LAYOUTS = [
   {
-    id: 'l1',
+    id: CHAT_LAYOUT_ID,
     slug: 'chat',
     projectSlug: 'alpha',
     type: 'chat',
@@ -69,7 +80,7 @@ const ALPHA_LAYOUTS = [
 ];
 
 const ALPHA_CONFIG = {
-  id: 'p1',
+  id: ALPHA_PROJECT_ID,
   slug: 'alpha',
   name: 'Alpha',
   icon: '🚀',
@@ -79,7 +90,7 @@ const ALPHA_CONFIG = {
 };
 
 const CHAT_LAYOUT = {
-  id: 'l1',
+  id: CHAT_LAYOUT_ID,
   slug: 'chat',
   projectSlug: 'alpha',
   type: 'chat',
@@ -262,13 +273,16 @@ function alphaProjectButton(page: Page) {
 }
 
 /**
- * #2059: configuration destinations left the panel. The `Customize` group
- * this helper used to open no longer exists — its members are reached through
- * the footer's gear, which lands on Settings' Manage group. The helper keeps
- * its role (put the caller in front of Agents/Connections) and changes only
- * where that is.
+ * #2059: configuration destinations left the panel, reached instead through
+ * the footer's gear. #2144 slice 4 removed the Manage GRID this helper used to
+ * open: those destinations are rows in Settings' own section navigation now,
+ * beside the settings sections, so a reader finds Agents in the same list they
+ * find Appearance in rather than in a separate grid below it. The helper keeps
+ * its role — put the caller in front of the configuration destinations — and
+ * changes only where that is. They are LINKS here, not buttons: a nav-only row
+ * leaves /settings for the destination's own route.
  */
-async function openManageNavigation(page: Page) {
+async function openSettingsNavigation(page: Page) {
   const navigation = page.getByRole('navigation', {
     name: 'Primary navigation',
   });
@@ -276,9 +290,9 @@ async function openManageNavigation(page: Page) {
     .getByRole('button', { name: 'Settings', exact: true })
     .click();
   await expect(page).toHaveURL(/\/settings/);
-  const manage = page.getByRole('region', { name: 'Manage' });
-  await expect(manage).toBeVisible({ timeout: 10_000 });
-  return manage;
+  const sections = page.getByRole('navigation', { name: 'Settings sections' });
+  await expect(sections).toBeVisible({ timeout: 10_000 });
+  return sections;
 }
 
 test.describe('Project Sidebar', () => {
@@ -310,14 +324,16 @@ test.describe('Project Sidebar', () => {
         navigation.getByRole('button', { name: gone, exact: true }),
       ).toHaveCount(0);
     }
-    // …and the configuration destinations are behind the gear.
-    const manage = await openManageNavigation(page);
+    // …and the configuration destinations are behind the gear. Connections is
+    // listed as 'Engines & Models' (#2144 decision 7): the row names what a
+    // reader is looking for and opens the hub at that tab.
+    const sections = await openSettingsNavigation(page);
     await expect(
-      manage.getByRole('button', { name: 'Agents', exact: true }),
+      sections.getByRole('link', { name: 'Agents', exact: true }),
     ).toBeVisible();
     await expect(
-      manage.getByRole('button', {
-        name: 'Connections',
+      sections.getByRole('link', {
+        name: 'Engines & Models',
         exact: true,
       }),
     ).toBeVisible();
@@ -895,13 +911,18 @@ test.describe('Provider Settings', () => {
   });
 
   test('connections view renders', async ({ page }) => {
-    const manage = await openManageNavigation(page);
-    await manage
-      .getByRole('button', { name: 'Connections', exact: true })
+    const sections = await openSettingsNavigation(page);
+    await sections
+      .getByRole('link', { name: 'Engines & Models', exact: true })
       .click();
-    await expect(page).toHaveURL(/\/connections/);
+    // The row opens the hub AT its Engines tab, so the landed page is the
+    // section — 'Engines' is the h1 there, with 'Connections' as the eyebrow
+    // (src-ui/src/app-shell/page-frame-registry.ts). Asserting the section
+    // rather than the hub root is what would catch the row quietly reverting
+    // to /connections and leaving the reader a redirect short.
+    await expect(page).toHaveURL(/\/connections\/engines$/);
     await expect(
-      page.getByRole('heading', { name: 'Connections', exact: true }),
+      page.getByRole('heading', { name: 'Engines', exact: true }),
     ).toBeVisible({ timeout: 5000 });
   });
 });

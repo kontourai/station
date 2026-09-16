@@ -7,12 +7,14 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
 import {
   ANSWER_DELIVERY_OPTIONS,
   answerDeliveryModeOf,
   isAnswerDeliveryMode,
   smoothRevealForAnswerDelivery,
 } from '../../utils/answerDelivery';
+import { settingsDeepLinkUrl } from '../../views/settings/settings-deep-link';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { Toggle } from '../Toggle';
 import {
@@ -72,6 +74,7 @@ export function ChatSettingsPanel({
   const autoHideId = useId();
   const answerDeliveryId = useId();
   const { featureSettings, developerToolsEnabled } = useDeviceSettings();
+  const { navigate } = useNavigationActions();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const dismissSummary = useDismissSessionSummaryMutation();
   const showSummary = useShowSessionSummaryMutation();
@@ -296,6 +299,28 @@ export function ChatSettingsPanel({
           </p>
         </fieldset>
       ) : null}
+
+      {/* #2144 decision 3: this panel STAYS a shortcut — the handful of
+          choices someone changes mid-conversation, where they are having it.
+          Chat's full set lives in Settings' own Chat section, and both
+          surfaces write the same device-settings keys through the same store,
+          so this is a link to the rest rather than a second copy of the
+          state. It lands on the first row this panel does not offer, so
+          "more" is literally where it takes you. */}
+      <div className="chat-settings-modal__section">
+        <button
+          type="button"
+          className="chat-settings-modal__link"
+          onClick={() => {
+            onClose();
+            navigate(
+              settingsDeepLinkUrl({ view: 'chat', highlight: 'diff-style' }),
+            );
+          }}
+        >
+          More chat settings
+        </button>
+      </div>
 
       <div className="chat-settings-modal__actions">
         <button

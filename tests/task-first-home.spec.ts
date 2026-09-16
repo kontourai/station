@@ -1351,7 +1351,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
         'System',
         'Agents',
         'Connections',
-        'Guidance',
+        'Skills',
         'Registry',
         'Plugins',
         'Schedule',
