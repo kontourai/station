@@ -85,6 +85,8 @@ interface WorkerInit {
   retentionRecords: number;
   retentionBytes: number;
   maxIdentities: number;
+  /** SQLite busy wait; derived by the owner from the admission deadline. */
+  lockWaitMs: number;
   faultAfterCommitOnce?: boolean;
   unavailableAfterCommitOnce?: boolean;
 }
@@ -145,6 +147,7 @@ if (
     'retentionRecords',
     'retentionBytes',
     'maxIdentities',
+    'lockWaitMs',
     'faultAfterCommitOnce',
     'unavailableAfterCommitOnce',
   ]) ||
@@ -157,6 +160,8 @@ if (
   Number(workerData.retentionBytes) < 48 * 1024 ||
   !Number.isSafeInteger(workerData.maxIdentities) ||
   Number(workerData.maxIdentities) < Number(workerData.retentionRecords) ||
+  !Number.isSafeInteger(workerData.lockWaitMs) ||
+  Number(workerData.lockWaitMs) < 1 ||
   (workerData.faultAfterCommitOnce !== undefined &&
     typeof workerData.faultAfterCommitOnce !== 'boolean') ||
   (workerData.unavailableAfterCommitOnce !== undefined &&
@@ -493,7 +498,9 @@ function validRequest(value: unknown): value is Request {
     }).ok
   );
 }
-const db = new DatabaseSync(init.databasePath, { timeout: 175 });
+// `sqliteLockWaitMs` in project-task-room-history.ts says why this is
+// derived rather than a literal (#1531).
+const db = new DatabaseSync(init.databasePath, { timeout: init.lockWaitMs });
 // archive#3661: bounded retry rather than a silent swallow — see
 // `enableWalJournalMode` for why `busy_timeout` does not cover this pragma.
 applyWalJournalMode(db, { store: 'project task room history' });
