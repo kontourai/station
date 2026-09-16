@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { RegionId } from '../regions/region-model';
 import {
   DEFAULT_DEVICE_REGION_ARRANGEMENT,
   dockMirrorDiff,
   firstFreeDockRegion,
   foldedDockRegion,
+  INSTANCE_SURFACE_PREFIXES,
   moveRegionPanes,
   occupiedDockRegion,
   occupiedRegion,
@@ -157,6 +159,53 @@ describe('region model', () => {
       'right',
     );
     expect(firstFreeDockRegion(chatAtRight, 'right')).toBe('bottom');
+  });
+
+  /**
+   * The case the fallback ORDER decides, and the only shape that tells the
+   * two orders apart: the preferred region is taken while BOTH `bottom` and
+   * `right` are free. Reverting `['right', 'bottom', 'left']` to the old
+   * `['bottom', 'right', 'left']` in `firstFreeDockRegion` turns this answer
+   * back into `'bottom'` — a surface falling into Chat's region because its
+   * own was busy, which is what #2156 stopped.
+   */
+  test('a taken default falls to the right before Bottom, which is Chat’s', () => {
+    const chatAtLeft = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'chat',
+      'left',
+    );
+
+    expect(chatAtLeft.bottom.panes).toEqual([]);
+    expect(chatAtLeft.right.panes).toEqual([]);
+    expect(firstFreeDockRegion(chatAtLeft, 'left')).toBe('right');
+  });
+
+  /**
+   * Every dock-capable surface's default region, registered and
+   * instance-keyed alike (#2156). A pin, not a derivation: changing one of
+   * these is a product decision, so it should be an argued edit here rather
+   * than a silent drift in the registry.
+   */
+  test('the default region of every dock-capable surface', () => {
+    const defaults = new Map<string, RegionId>();
+    for (const [id, surface] of REGION_SURFACE_REGISTRY)
+      defaults.set(id, surface.defaultRegion);
+    for (const prefix of INSTANCE_SURFACE_PREFIXES)
+      defaults.set(prefix.prefix, prefix.defaultRegion);
+
+    expect(Object.fromEntries(defaults)).toEqual({
+      chat: 'bottom',
+      'coding:terminal': 'bottom',
+      activity: 'right',
+      'workspace-agents': 'right',
+      device: 'right',
+      'coding:diff': 'right',
+      'coding:file-browser': 'left',
+      home: 'main',
+      'pr:': 'right',
+      'file-preview:': 'right',
+    });
   });
 
   test('revealSurface makes an occupied hidden surface visible without moving it', () => {
@@ -470,7 +519,8 @@ describe('region model', () => {
         title: 'Terminal',
         icon: 'terminal',
         regions: ['left', 'right', 'bottom'],
-        defaultRegion: 'right',
+        // #2156: Bottom, beside Chat.
+        defaultRegion: 'bottom',
         exposure: 'catalog',
       }),
       expect.objectContaining({

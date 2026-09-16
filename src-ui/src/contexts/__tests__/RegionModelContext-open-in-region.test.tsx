@@ -297,6 +297,10 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
     act(() => {
       outcome = current().open(terminal);
     });
+    // Terminal's default region is `bottom` since #2156, and at mount Chat
+    // holds it — so this open exercises the fallback rather than the
+    // default, and lands on the right.
+    expect(current().model.regions.bottom.panes).toEqual(['chat']);
     expect(outcome).toEqual({
       ok: true,
       region: 'right',

@@ -424,7 +424,9 @@ name). A closed Chat tab is the one close with a navigation mirror: Chat
 leaving a showing region reads as the dock closing (`dockMirrorDiff`), and
 `syncRegionArrangementFromDock` re-places an unplaced Chat only on an
 explicit open (`dock=open`, a `focusSession` reveal), the first free dock
-region else joining the requested one — a closed dock leaves it unplaced.
+region (`firstFreeDockRegion`: the requested one when empty, else `right`,
+`bottom`, `left` — #2156) else joining the requested one — a closed dock
+leaves it unplaced.
 
 The four forks of the 2a plan, as taken (each reversible on its own):
 
@@ -495,7 +497,8 @@ opens a pane instance in a dock region: `useOpenInRegion` (a sibling of
 hands it to the provider's `openSurfaceInRegion(surfaceId, { region?,
 placement?, focusExisting? })`, which resolves the target (explicit, else the
 surface's own rule: its region if held, else its default region or the first
-free dock region), reveals it and places or selects through the model.
+free dock region — `right`, then `bottom`, then `left`, since #2156), reveals
+it and places or selects through the model.
 `showSurface` is reimplemented over it. An instance already open somewhere is
 revealed where it is (`focusExisting`, default on) rather than opened twice —
 unless a DIFFERENT region is named, which moves it there: the default reveals,
@@ -680,6 +683,29 @@ Retired with it: `RegionPlacementPicker`, `placementRows` and the
 `placeSurfaceThroughLayoutPicker` became `toggleRegionThroughToolbar`,
 `showSurfaceInEmptyRegion` and `moveTabToRegion`. The #2113 finding that the
 picker's rows did not clear a 44px touch floor closes with the picker.
+
+### Defaults (#2156)
+
+Which region a surface starts in is a product decision, and the owner's
+direction of 2026-09-15 settles it: **Bottom is Chat's.** Terminal joins it
+(`coding:terminal`'s `defaultRegion` moves from `right` to `bottom` — a
+terminal belongs under the conversation that is driving it), Files stays on
+the left (`coding:file-browser`), and everything else that is not Home
+defaults to the right: Activity, Agents, Device, Diff, and the two
+instance-keyed families (`pr:`, `file-preview:`). Home's only placement is
+`main`. The table is pinned in `region-model.test.ts`, so a later change to
+any entry is an argued edit rather than a drift.
+
+The fallback order moves with it. `firstFreeDockRegion` used to try
+`bottom` first, so any surface whose own default was already taken fell into
+Chat's region — a Diff or a Device arriving beside a conversation because the
+right side happened to be busy. It now tries `['right', 'bottom', 'left']`, so
+a surface with nowhere of its own to go lands on the right.
+
+Both are DEFAULTS, not rules: Bottom refuses nothing. Every dock-capable
+surface still declares all three dock regions, so a tab's "Move to Bottom",
+an empty Bottom's "+", and a region grab put anything there, and the
+arrangement that results is persisted as the user's.
 
 ## Failure shapes this design is meant to prevent
 

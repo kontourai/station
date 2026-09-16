@@ -122,12 +122,26 @@ export function surfaceMayOccupy(
   return surface ? surface.regions.includes(regionId) : isDockRegion(regionId);
 }
 
+/**
+ * The dock region a surface with no placement of its own lands in: its
+ * `preferred` one when that is empty, else the first empty region in the
+ * fallback order.
+ *
+ * The fallback tries `right` BEFORE `bottom` (#2156). Bottom is Chat's by
+ * default, and the old `bottom`-first order meant any surface whose preferred
+ * region was already taken fell into it — a conversation's region acquiring a
+ * Diff or a Device because the right side happened to be busy. A surface whose
+ * default is taken lands on the right first, so nothing arrives in Bottom by
+ * accident. It is a default, not a rule: Bottom refuses nothing, and an
+ * explicit placement (a move from a tab, a region's "+") still puts any
+ * surface there.
+ */
 export function firstFreeDockRegion(
   arrangement: RegionArrangement,
   preferred: DockRegionId,
 ): DockRegionId | undefined {
   if (regionIsEmpty(arrangement[preferred])) return preferred;
-  return (['bottom', 'right', 'left'] as const).find((id) =>
+  return (['right', 'bottom', 'left'] as const).find((id) =>
     regionIsEmpty(arrangement[id]),
   );
 }
@@ -761,7 +775,9 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     title: 'Terminal',
     icon: 'terminal',
     regions: DOCK_REGION_IDS,
-    defaultRegion: 'right',
+    // Bottom, beside Chat — the owner's 2026-09-15 direction (#2156); a
+    // default, not a rule.
+    defaultRegion: 'bottom',
     exposure: 'catalog',
     sourceFile: 'src-ui/src/components/coding-layout/CodingTerminalPane.tsx',
   },
