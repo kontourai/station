@@ -443,9 +443,12 @@ describe('ProjectSidebarFooter', () => {
     const trigger = screen.getByRole('button', {
       name: 'Who is here: nobody is publishing live work',
     });
-    expect(
-      container.querySelector('.sidebar__presence-count')?.textContent,
-    ).toBe('0');
+    // #2150: a zero roster draws the glyph alone. The count used to render a
+    // bare `0` beside it, which read as a bug rather than as "nobody here";
+    // the number is information only when it is non-zero, and the accessible
+    // name (asserted above) already carries the full sentence.
+    expect(container.querySelector('.sidebar__presence-count')).toBeNull();
+    expect(container.querySelector('.sidebar__presence-glyph')).toBeTruthy();
     trigger.focus();
     fireEvent.click(trigger);
     const tray = screen.getByRole('dialog', { name: 'Who is here' });

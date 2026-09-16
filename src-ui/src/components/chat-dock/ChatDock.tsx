@@ -110,7 +110,6 @@ import {
   chatModelLabel,
   effectiveChatModelId,
   inboxPanelMounts,
-  markDockFirstRunSeen,
   projectDisplayName,
   resolveDirectNewChatProjectSlug,
   resolveDockBadgeProjectName,
@@ -118,7 +117,6 @@ import {
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
   routeToOpenChatsCollection,
-  shouldOpenDockForFirstRun,
   shouldRouteScopedChatProject,
 } from './chat-dock-utils';
 import { submitCommandLauncherIntent } from './command-launcher-model';
@@ -136,6 +134,7 @@ import { useChatDockOverlays } from './useChatDockOverlays';
 import { useChatDockViewModel } from './useChatDockViewModel';
 import { useConversationBoundaryDialogs } from './useConversationBoundaryDialogs';
 import { useDockCopyActions } from './useDockCopyActions';
+import { useFirstRunDockNudge } from './useFirstRunDockNudge';
 
 /**
  * Re-open an offline queued turn from what its owning session persistently
@@ -1154,16 +1153,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     rehydrateSessions();
   }, [rehydrateSessions]);
 
-  // First-run nudge: surface the chat dock once so a new user discovers the
-  // primary surface (skipped for automated/e2e sessions — see the helper). The
-  // localStorage flag, not the deps, is what makes this fire once; re-runs are
-  // a no-op once the flag is set.
-  useEffect(() => {
-    if (isFullscreenPlacement) return;
-    if (!shouldOpenDockForFirstRun()) return;
-    markDockFirstRunSeen();
-    if (!isDockOpen) setDockState(true);
-  }, [isDockOpen, isFullscreenPlacement, setDockState]);
+  // First-run nudge (#2151): opens the dock once, on a known non-empty
+  // inbox. The decision and the effect live in `useFirstRunDockNudge`.
+  useFirstRunDockNudge({
+    isFullscreenPlacement,
+    sessionsStatus: orchestrationSessionsStatus,
+    sessionCount: allSessions.length,
+    isDockOpen,
+    setDockState,
+  });
 
   // Get updateChat from context
   const { updateChat } = useActiveChatActions();

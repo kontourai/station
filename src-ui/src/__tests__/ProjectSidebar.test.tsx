@@ -628,6 +628,43 @@ describe('ProjectSidebar panel order (#2059)', () => {
         `${label} is still a panel row`,
       ).toBeNull();
     }
+    // #2150: the panel lists places, and "Work" was a category label over
+    // its two unlabelled places (Home, Activity) -- the one header the design
+    // record (D3) does not draw. Asserted as text, not a button: it never was
+    // a control, which is exactly why the row inventory above missed it.
+    expect(screen.queryByText('Work')).toBeNull();
+  });
+});
+
+/**
+ * #2150: `LayoutIcon` falls back to a two-letter monogram for a project with
+ * no icon. At the row's 18px that was a smudge, it landed in the accessible
+ * name ("CA Campfit"), and the design record draws the accent bar beside it
+ * for identity. An icon-less project now shows the bar alone; a project WITH
+ * an icon keeps it, because that is identity the user chose. Both directions
+ * are pinned so the gate cannot quietly become "never show an icon".
+ */
+describe('project row identity (#2150)', () => {
+  test('an icon-less project shows no monogram and is named by its name alone', () => {
+    resetState();
+    projects.push({ id: 'p1', slug: 'campfit', name: 'Campfit' });
+    renderSidebar(<ProjectSidebar />);
+    const row = screen.getByRole('button', { name: 'Campfit' });
+    expect(row.textContent?.trim()).toBe('Campfit');
+    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
+  });
+
+  test('a project with an icon keeps it', () => {
+    resetState();
+    projects.push({
+      id: 'p1',
+      slug: 'campfit',
+      name: 'Campfit',
+      icon: '🏕️',
+    } as (typeof projects)[number]);
+    renderSidebar(<ProjectSidebar />);
+    const row = screen.getByRole('button', { name: /Campfit/ });
+    expect(row.textContent).toContain('🏕️');
   });
 });
 
