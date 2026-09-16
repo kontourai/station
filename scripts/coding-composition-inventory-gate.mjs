@@ -57,6 +57,15 @@ const expectedDependencies = new Map(
     // the same derivation without importing the host or its renderers. It
     // renders nothing and grants nothing; it is the host's own branch table.
     'src-ui/src/app-shell/project-layout-kind.ts': 'aggregate-host',
+    // #2157: a Board or a project Layout as a dock pane. The scan sees it
+    // because it reads `project-layout-kind`'s dispatch to REFUSE the Coding
+    // kind — a Coding layout is a whole `WorkspacePaneHost` keyed on the
+    // same `(projectId, layoutId)` as the main region's, so a docked copy
+    // would share its persisted document — and renders "Open this Layout
+    // in Main" whose action is `setLayout`. `navigation`, ProjectPage's
+    // category: it chooses the host (Main) rather than being one; it mounts
+    // no Coding surface and grants nothing.
+    'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx': 'navigation',
     'src-ui/src/app-shell/codingFileCompositionTelemetry.ts':
       'operation-receipt',
     'src-ui/src/app-shell/codingDiffCompositionTelemetry.ts':
