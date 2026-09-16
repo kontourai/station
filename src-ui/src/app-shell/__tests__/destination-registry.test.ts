@@ -245,6 +245,33 @@ describe('DestinationRegistry', () => {
     ).toThrow(/absolute Station route for its Settings nav entry/);
   });
 
+  test('orders a group by `order`, not by declaration order', () => {
+    // The only ordering `getSettingsNav` promises, and the only one its
+    // consumer uses: `settingsSectionNavItems` partitions these rows by group,
+    // so what has to be right is the sequence WITHIN a group. Declared
+    // backwards on purpose — the real inventory happens to declare its rows
+    // in `order` sequence, so against it a sort that did nothing at all would
+    // pass.
+    const registry = createDestinationRegistry([
+      {
+        id: 'second',
+        route: '/second',
+        label: () => 'Second',
+        settingsNav: { group: 'set-up', order: 20 },
+      },
+      {
+        id: 'first',
+        route: '/first',
+        label: () => 'First',
+        settingsNav: { group: 'set-up', order: 10 },
+      },
+    ]);
+    expect(registry.getSettingsNav().map((entry) => entry.id)).toEqual([
+      'first',
+      'second',
+    ]);
+  });
+
   test('refuses two Settings nav entries in one slot, but not across groups', () => {
     expect(() =>
       createDestinationRegistry([

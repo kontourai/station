@@ -21,18 +21,6 @@ export type ManagementDestinationId =
  */
 export type SettingsNavGroupId = 'set-up' | 'control' | 'this-station';
 
-/**
- * Group order within `getSettingsNav`, so the projection is totally ordered and
- * a consumer that renders it straight through cannot depend on declaration
- * order in the inventory below. Where each group sits RELATIVE to the settings
- * sections is the navigation's decision, not this list's.
- */
-const SETTINGS_NAV_GROUP_ORDER: readonly SettingsNavGroupId[] = [
-  'set-up',
-  'control',
-  'this-station',
-];
-
 export type DestinationIconId =
   | 'agents'
   | 'connections'
@@ -141,9 +129,12 @@ export interface DestinationRegistry {
     enabledPreviewFlags?: ReadonlySet<string>,
   ): readonly DestinationDefinition[];
   /**
-   * The nav-only Settings rows, grouped and ordered as the navigation renders
-   * them. Flags apply exactly as they do everywhere else, so Developer appears
-   * here only while developer tools are enabled on this device.
+   * The nav-only Settings rows, each carrying the group it belongs to and
+   * ordered by `order`. Ordering is meaningful WITHIN a group; grouping them,
+   * and placing each group against this page's own sections, is the
+   * navigation's job. Flags apply exactly as they do everywhere else, so
+   * Developer appears here only while developer tools are enabled on this
+   * device.
    */
   getSettingsNav(
     enabledPreviewFlags?: ReadonlySet<string>,
@@ -312,12 +303,15 @@ export function createDestinationRegistry(
               route: definition.settingsNav!.route ?? definition.route,
             }),
           )
-          .sort(
-            (left, right) =>
-              SETTINGS_NAV_GROUP_ORDER.indexOf(left.group) -
-                SETTINGS_NAV_GROUP_ORDER.indexOf(right.group) ||
-              left.order - right.order,
-          ),
+          // `order` only. It is a total order WITHIN a group — the composer
+          // refuses two entries in one `group:order` slot — and that is all
+          // this projection promises, because sequencing the groups against
+          // each other and against the settings sections is the navigation's
+          // decision: `settingsSectionNavItems` partitions these rows by
+          // `group` and interleaves each partition with the sections of the
+          // same group. A list here that also claimed a group sequence would
+          // have to agree with that one, and nothing could check that it did.
+          .sort((left, right) => left.order - right.order),
       ),
     getPalette: (flags = defaultFlags) =>
       Object.freeze(
