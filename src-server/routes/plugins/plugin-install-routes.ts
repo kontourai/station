@@ -371,8 +371,24 @@ export function registerPluginInstallRoutes(
             404,
           );
         }
-        if (source && source !== resolved.source)
-          throw new Error('Registry source changed; preview again');
+        // A caller that pins a source AND a registry id is asserting the two
+        // still agree. They disagree when the registry moved the listing
+        // between the caller's last preview and this one, which is the
+        // caller's state going stale, not a server fault: refuse it as a
+        // conflict the caller can act on rather than as an unhandled throw,
+        // which this route surfaces as a 500.
+        if (source && source !== resolved.source) {
+          return c.json(
+            {
+              valid: false,
+              error: `Registry source for '${registryId}' changed since this preview; preview again`,
+              code: 'registry-source-changed',
+              components: [],
+              conflicts: [],
+            },
+            409,
+          );
+        }
         source = resolved.source;
         registryKey = resolved.registryKey;
       }
