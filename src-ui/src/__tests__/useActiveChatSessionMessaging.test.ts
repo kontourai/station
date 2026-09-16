@@ -440,6 +440,26 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
 
     /**
+     * Round 4 N1/N6. A stopped TURN is not a stopped session: the process is
+     * alive, the server continues it, and a posture sent now is the
+     * mid-life re-request this gate exists to prevent.
+     */
+    it.each([
+      ['aborted', 'the user stopped the previous turn'],
+      ['errored', 'the previous turn hit a runtime error'],
+      ['idle', 'the session is simply between turns'],
+    ])('sends nothing when the status is %s (%s)', async (status) => {
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      activeChatsStore.updateChat(sessionId, {
+        orchestrationSessionStarted: true,
+        orchestrationStatus: status,
+        currentSessionId: 'live-session-1',
+      });
+
+      expect(await optionsAfterSend()).not.toHaveProperty('approvalMode');
+    });
+
+    /**
      * Round 3 F1. The previous gate was
      * `orchestrationSessionStarted || currentSessionId`, and each disjunct
      * was true on a path where the SERVER starts a session — so the posture

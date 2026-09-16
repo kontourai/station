@@ -112,27 +112,21 @@ test('#2144 slice 6: the default approval mode row renders its effective value a
 
 test('#2144 slice 6: the row states who ignores it and when it applies', () => {
   render(<StationConfigSection config={{}} onChange={vi.fn()} />);
-  // The conditions themselves, not a paraphrase: the two engines whose
-  // adapters read `approvalMode` are named, so the row cannot imply a floor
-  // Station does not impose on the others; Station-mode chats are named
-  // because they keep a knob-capable connection id and still get nothing
-  // (round 2 M2).
+  // The conditions themselves, not a paraphrase. WHEN it applies is the
+  // row's checkable promise, and the qualifier is load-bearing: the client
+  // withholds the posture only while it CAN SEE a session running — a
+  // reopened conversation reports no status and is sent one (round 4 N7).
+  expect(screen.getByText(/Sent when a message starts a session/)).toBeTruthy();
   expect(
-    screen.getByText(/engines with no approval knob of their own/),
+    screen.getByText(/withheld while Station can see one running/),
   ).toBeTruthy();
+  // Who it does nothing for: Station's own engine (it keeps a knob-capable
+  // connection id and renders no approval control) and every engine whose
+  // adapter has no knob.
+  expect(screen.getByText(/Chats on Station\u2019s own engine/)).toBeTruthy();
   expect(
-    screen.getByText(/Chats that run on Station’s own engine/),
+    screen.getByText(/engines without an approval knob, ignore it/),
   ).toBeTruthy();
-  // The WHEN, which is what makes the row's own promise checkable: it is
-  // sent by whichever message starts a session — including a reopened or
-  // exited conversation's next send — and never while one is running
-  // (round 2 M3, corrected in round 3 F1).
-  expect(
-    screen.getByText(/sent whenever a message starts a session/),
-  ).toBeTruthy();
-  expect(screen.getByText(/never while one is running/)).toBeTruthy();
-  // The queued-drain carve-out is part of the promise, not a footnote.
-  expect(screen.getByText(/A queued follow-up never carries it/)).toBeTruthy();
 });
 
 test('#2144 slice 6: a stored value is what the row shows', () => {

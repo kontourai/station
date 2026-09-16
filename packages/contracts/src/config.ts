@@ -59,6 +59,12 @@ export interface AppConfig {
    * that was not spawned with its bypass flag. Only a
    * session override may change a live chat's posture.
    *
+   * The same send carries an engine connection's OWN `approvalMode` when it
+   * has one: that layer was display-only before #2144 slice 6 too, and it
+   * now enforces at session start under exactly these rules. A queued
+   * follow-up never carries either (`queueDrain.ts` passes no fallback — a
+   * queued message is never the message that starts a session).
+   *
    * `'connection-default'` is a real, canonical value here and means "this
    * Station states no posture" — it is NOT a fourth posture. Both readers
    * skip it exactly as they skip a session override holding it.

@@ -429,8 +429,15 @@ export const APP_SETTINGS_REGISTRY = [
     },
     label: 'Default approval mode',
     help: 'New chats start in this approval posture unless the chat or its engine connection names its own.',
+    // Kept to the row's own promise. The mechanism — which statuses count as
+    // a live session, that a connection's own `approvalMode` rides the same
+    // send, and that a queued follow-up carries neither — is in
+    // `AppConfig.defaultApprovalMode`'s docblock and in
+    // `approvalModeForDispatch`; a settings row is not the place to teach it
+    // (round 4 N2: this description had grown to 833 characters against a
+    // median of 110).
     description:
-      'The third step of the approval chain: the chat’s own override, then the engine connection’s default, then this, then whatever the engine already does. It is sent whenever a message starts a session — a new chat, a reopened conversation whose session has stopped, or a session that exited — and never while one is running, so changing it leaves live chats alone and a chat’s own approval control stays the only thing that changes a running session. A queued follow-up never carries it, because a queued message is never the message that starts a session. A connection’s own approvalMode is sent the same way. Connection default states no posture and leaves the engine’s own behaviour in place. Chats that run on Station’s own engine, and engines with no approval knob of their own (everything but Claude and Codex), ignore this value.',
+      'Sent when a message starts a session and withheld while Station can see one running; a chat’s own approval control is the only thing that changes a live session. Chats on Station’s own engine, and engines without an approval knob, ignore it.',
     // `'connection-default'` IS the honest fallback, not a placeholder for
     // one: `adapterDefaultApprovalMode` returns undefined for every engine
     // (station#1950 — Station no longer guesses Ask/Never), so "defer to the

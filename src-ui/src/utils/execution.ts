@@ -7,6 +7,11 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import type { EngineId } from '@kontourai/station-contracts/provider';
 import {
+  isSessionLifecycleStateStopped,
+  SESSION_LIFECYCLE_STATES,
+  type SessionLifecycleState,
+} from '@kontourai/station-contracts/session-lifecycle';
+import {
   type AgentConnectionView,
   type ConnectionConfig,
   type ConnectionReadinessEvidence,
@@ -1001,19 +1006,36 @@ export function resolveSessionExecutionSummary(
 }
 
 /**
- * Orchestration statuses that mean this chat's child session is gone or
- * permanently settled. Union of the lifecycle states a `session.state-changed`
- * can carry (`SESSION_LIFECYCLE_STATES`) and the client-written terminal
- * statuses (`turnHandlers` 'aborted'/'errored', `sessionHandlers` 'exited').
+ * Client-written `orchestrationStatus` values that mean the SESSION ended —
+ * the ones no lifecycle state covers. Today that is `session.exited`
+ * (`sessionHandlers`, and the snapshot's dead-session fold in
+ * `snapshotHandlers`).
+ *
+ * Every other writer of `orchestrationStatus`, classified, because the
+ * distinction is the whole point (round 4 N1): SESSION-level writers are
+ * `session.state-changed` (`event.to`, a `SessionLifecycleState`, with
+ * 'running'-without-an-open-turn folded to 'idle') and the snapshot's
+ * `session.status`; TURN-level writers are `turn.started` ('running'),
+ * `assistantTurn` ('idle'), `turn.aborted` ('aborted'), `runtime.error`
+ * ('errored') and the approval handlers ('awaiting-approval'/'running').
+ * A turn ending — including a user pressing Stop — leaves the process alive
+ * and `orchestrationSessionStarted` untouched, so 'aborted' and 'errored'
+ * are LIVE here. They were settled in round 3, which re-requested the
+ * posture into a session the server merely continues.
  */
-const SETTLED_ORCHESTRATION_STATUSES: ReadonlySet<string> = new Set([
-  'completed',
-  'failed',
-  'canceled',
-  'aborted',
-  'errored',
+const CLIENT_SESSION_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   'exited',
 ]);
+
+/** Whether an `orchestrationStatus` means this chat's SESSION is over. */
+function orchestrationStatusIsSessionSettled(status: string): boolean {
+  if (CLIENT_SESSION_TERMINAL_STATUSES.has(status)) return true;
+  // The lifecycle half is derived, never re-listed: station#1548 is two
+  // hand-written copies of "terminal" drifting apart.
+  return (SESSION_LIFECYCLE_STATES as readonly string[]).includes(status)
+    ? isSessionLifecycleStateStopped(status as SessionLifecycleState)
+    : false;
+}
 
 /**
  * Whether the server will CONTINUE this chat's existing session rather than
@@ -1051,7 +1073,7 @@ export function chatSessionIsLive(
   if (session.orchestrationSessionStarted !== true) return false;
   if (session.orchestrationTurnOpen === true) return true;
   if (!session.orchestrationStatus) return false;
-  return !SETTLED_ORCHESTRATION_STATUSES.has(session.orchestrationStatus);
+  return !orchestrationStatusIsSessionSettled(session.orchestrationStatus);
 }
 
 export function isSessionExecutionActive(

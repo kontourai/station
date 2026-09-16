@@ -1224,15 +1224,36 @@ describe('chatSessionIsLive', () => {
     ).toBe(true);
   });
 
-  test('every settled status is not live', () => {
-    for (const status of [
-      'completed',
-      'failed',
-      'canceled',
-      'aborted',
-      'errored',
-      'exited',
-    ]) {
+  /**
+   * Round 4 N1/N6. A TURN ending is not a session ending: `turn.aborted`
+   * (Stop) and `runtime.error` write a status and leave the process — and
+   * `orchestrationSessionStarted` — alone, and 'idle' is the ordinary
+   * between-turns status. Classing any of them as settled re-requests the
+   * posture into a session the server merely continues.
+   */
+  test.each([
+    ['aborted', 'the user pressed Stop'],
+    ['errored', 'a runtime error ended the turn'],
+    ['idle', 'the session is between turns'],
+    ['running', 'a turn is running'],
+    ['awaiting-approval', 'an approval is pending'],
+    ['queued', 'the session is queued'],
+    ['needs_input', 'the session is waiting on input'],
+    ['review_pending', 'a review is pending'],
+    ['blocked', 'the session is blocked'],
+  ])('%s is live (%s)', (status) => {
+    expect(
+      chatSessionIsLive({
+        orchestrationSessionStarted: true,
+        orchestrationStatus: status,
+      }),
+    ).toBe(true);
+  });
+
+  test('every session-terminal status is not live', () => {
+    // The lifecycle half is derived from `isSessionLifecycleStateStopped`,
+    // so this list is the assertion, not the source.
+    for (const status of ['completed', 'failed', 'canceled', 'exited']) {
       expect(
         chatSessionIsLive({
           orchestrationSessionStarted: true,

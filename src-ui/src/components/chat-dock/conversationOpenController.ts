@@ -166,6 +166,11 @@ export function conversationOpenPatch(
         providerOptions: {},
         ...(changedChild
           ? {
+              // The predecessor's session status is not this child's. A
+              // reused tab whose previous child ended 'idle' would otherwise
+              // read as a LIVE session (`chatSessionIsLive`) for a child
+              // nothing has reported on yet (round 4 N5).
+              orchestrationStatus: undefined,
               sessionAutoApprove: [],
               pendingApprovals: [],
               approvalToasts: new Map(),
