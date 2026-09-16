@@ -215,6 +215,7 @@ import {
 } from '../../routes/system/config.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createFeaturePreviewRoutes } from '../../routes/system/feature-previews.js';
+import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
@@ -1633,6 +1634,11 @@ export function configureRuntimeRoutes(
     '/api/feature-previews',
     createFeaturePreviewRoutes(context.featurePreviews, context.logger),
   );
+  // #2144 slice 5: the agent-facing settings deep-link registry. Its own
+  // top-level prefix rather than a leaf under `/config`, so an enumeration
+  // that carries no stored values is not tiered with the route that reads
+  // and writes them.
+  context.app.route('/api/settings', createSettingsRegistryRoutes());
 
   configureDevicePairingHostRoutes(
     context.app,
