@@ -336,6 +336,15 @@
       "configKey": "diffWrap"
     },
     {
+      "id": "confirm-conversation-delete",
+      "label": "Ask before deleting a conversation",
+      "help": "When on, deleting a conversation on this device asks for confirmation first; deleting is not undoable either way.",
+      "scope": "device",
+      "section": "chat",
+      "route": "/settings?view=chat&highlight=confirm-conversation-delete",
+      "configKey": "confirmConversationDelete"
+    },
+    {
       "id": "theme",
       "label": "Theme",
       "help": "The interface renders in this color scheme on this device.",
@@ -361,15 +370,6 @@
       "section": "appearance",
       "route": "/settings?view=appearance&highlight=haptic-feedback",
       "configKey": "hapticsEnabled"
-    },
-    {
-      "id": "confirm-conversation-delete",
-      "label": "Ask before deleting a conversation",
-      "help": "When on, deleting a conversation on this device asks for confirmation first; deleting is not undoable either way.",
-      "scope": "device",
-      "section": "appearance",
-      "route": "/settings?view=appearance&highlight=confirm-conversation-delete",
-      "configKey": "confirmConversationDelete"
     },
     {
       "id": "accent-color",
@@ -409,7 +409,7 @@
     },
     {
       "id": "text-to-speech",
-      "label": "Text-to-speech (agent readback)",
+      "label": "Text-to-speech service",
       "help": "Replies read aloud on this device are spoken by the service named here.",
       "scope": "device",
       "section": "voice",
@@ -443,7 +443,7 @@
     },
     {
       "id": "tts-readback",
-      "label": "Read agent responses aloud (TTS)",
+      "label": "Read replies aloud",
       "help": "Only the optional features turned on here are active on this device, and this is where each notification category’s sound is kept.",
       "scope": "device",
       "section": "voice",

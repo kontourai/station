@@ -251,7 +251,7 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
     hapticsEnabled: true,
     accentColor: null,
     developerToolsEnabled: false,
-    // #2144 slice 6 item E: the Confirmations group in Appearance.
+    // #2144 slice 6 item E: the Confirmations group (in Chat since #2182).
     confirmConversationDelete: true,
     sidebarSections: {
       openChatsCollapsed: false,
@@ -1709,13 +1709,26 @@ describe('settings catalog completeness', () => {
    * the control that writes it.
    */
   describe('Ask before deleting a conversation', () => {
-    test('renders on by default under a Confirmations group and round-trips', async () => {
+    test('renders on by default under a Confirmations group in Chat and round-trips', async () => {
       const { container } = await renderSettings();
+      // #2182 moved the group out of Appearance and into Chat. The SECTION
+      // is asserted, not merely the heading's existence: a heading that
+      // stayed behind in Appearance would satisfy a page-wide search while
+      // the row's own `?view=` said `chat`.
+      const chat = container.querySelector('#section-chat');
+      expect(chat).toBeTruthy();
       expect(
-        [...container.querySelectorAll('.settings__group-title')].map(
+        [...(chat?.querySelectorAll('.settings__group-title') ?? [])].map(
           (node) => node.textContent,
         ),
       ).toContain('Confirmations');
+      expect(
+        [
+          ...(container
+            .querySelector('#section-appearance')
+            ?.querySelectorAll('.settings__group-title') ?? []),
+        ].map((node) => node.textContent),
+      ).not.toContain('Confirmations');
       const toggle = screen.getByRole('switch', {
         name: 'Ask before deleting a conversation',
       });

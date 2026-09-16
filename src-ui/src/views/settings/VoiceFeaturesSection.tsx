@@ -237,11 +237,7 @@ export function VoiceFeaturesSection() {
     useMessageContextContext();
 
   return (
-    <SettingsSection
-      icon={<MicGlyph />}
-      title="Voice & Features"
-      id="section-voice"
-    >
+    <SettingsSection icon={<MicGlyph />} title="Voice" id="section-voice">
       <div
         className="voice-provider-section"
         {...settingsRow('speech-to-text')}

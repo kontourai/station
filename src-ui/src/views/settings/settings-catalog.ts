@@ -119,7 +119,10 @@ export const SETTINGS_SECTIONS = [
     group: 'you',
   },
   { id: 'notifications', title: 'Notifications', group: 'you' },
-  { id: 'voice', title: 'Voice & Features', group: 'you' },
+  // #2182: "Voice & Features" was two nouns because the section held one
+  // thing that was not voice — mobile pairing. "Features" named no category
+  // a reader could predict; it named the leftovers.
+  { id: 'voice', title: 'Voice', group: 'you' },
   // archive#3313: gates the Developer surface's sidebar/palette entries on
   // this device (a device setting — see contracts' developerToolsEnabled).
   { id: 'developer-tools', title: 'Developer tools', group: 'you' },
@@ -434,6 +437,18 @@ const SETTINGS_CATALOG_SOURCE = [
     keywords: ['wrap long lines', 'changed files'],
     configKeys: ['diffWrap'],
   },
+  {
+    id: 'confirm-conversation-delete',
+    title: 'Ask before deleting a conversation',
+    // #2182: moved from `appearance`. Whether deleting a conversation asks
+    // first is a fact about conversations, not about how the app looks; it
+    // sat under Appearance only because Appearance was where the device
+    // toggles happened to live before Chat existed. Its id is unchanged, so
+    // every `highlight=` link still resolves and heals to the new view.
+    section: 'chat',
+    keywords: ['confirm', 'confirmation', 'delete', 'undo', 'destructive'],
+    configKeys: ['confirmConversationDelete'],
+  },
   { id: 'theme', title: 'Theme', section: 'appearance', configKeys: ['theme'] },
   {
     id: 'sidebar-sections',
@@ -448,13 +463,6 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'appearance',
     configKeys: ['hapticsEnabled'],
     conditional: 'mobile',
-  },
-  {
-    id: 'confirm-conversation-delete',
-    title: 'Ask before deleting a conversation',
-    section: 'appearance',
-    keywords: ['confirm', 'confirmation', 'delete', 'undo', 'destructive'],
-    configKeys: ['confirmConversationDelete'],
   },
   {
     id: 'accent-color',
@@ -484,7 +492,11 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   {
     id: 'text-to-speech',
-    title: 'Text-to-speech (agent readback)',
+    // #2182: this row and `tts-readback` below read as one control — both
+    // said "text to speech" and both parenthesised the other's job. This one
+    // picks WHICH service speaks; that one decides WHETHER anything is read
+    // without being asked.
+    title: 'Text-to-speech service',
     section: 'voice',
     configKeys: ['ttsProvider'],
   },
@@ -508,7 +520,7 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   {
     id: 'tts-readback',
-    title: 'Read agent responses aloud (TTS)',
+    title: 'Read replies aloud',
     section: 'voice',
     configKeys: ['featureSettings'],
   },
