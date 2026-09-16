@@ -663,8 +663,14 @@ one arrangement, and no control at all that said whether a region was open
   declares on this device minus the one its shell renders in, `main`
   included for a pane that declares it; a choice is `placeSurface` (joins
   the target, leaves the source). A tab exists only in a region holding two
-  or more panes, so a lone pane moves with its region — the bar's ⋮⋮ grab,
-  dock edges only — and reaches `main` only after another pane joins it.
+  or more panes, so the region bar carries the SAME menu for the pane it
+  shows, as a "Move <title>" button in its actions cluster beside the "+"
+  (#2160) — one `moveTargets` derivation, one open menu, whichever trigger
+  opened it. That is the route a LONE pane has: it reaches every region it
+  declares, `main` included, without first acquiring a tab, where the bar's
+  ⋮⋮ grab moves the whole region and offers dock edges only. Fine pointer
+  only, like the "+"; and the button is absent when the selected pane has
+  nowhere to go.
 - **`main` has no toolbar control and no tab.** It is always visible and
   renders no `RegionChromeBar`, so a surface holding it (Activity) leaves
   through: an EMPTY dock region's offer ("Show Activity here"); its chord
@@ -681,7 +687,7 @@ Retired with it: `RegionPlacementPicker`, `placementRows` and the
 `.region-placement*` rules; `useRegionSurfaceMenu.placement.test.tsx` became
 `useRegionSurfaceMenu.toggles.test.tsx`; the e2e helper
 `placeSurfaceThroughLayoutPicker` became `toggleRegionThroughToolbar`,
-`showSurfaceInEmptyRegion` and `moveTabToRegion`. The #2113 finding that the
+`showSurfaceInEmptyRegion`, `moveTabToRegion` and `moveLonePaneToRegion`. The #2113 finding that the
 picker's rows did not clear a 44px touch floor closes with the picker.
 
 ### Defaults (#2156)
