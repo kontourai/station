@@ -81,8 +81,8 @@ every other route. Four rules make it a region rather than a special case
   of #1386) is gone with the single-occupant region it served. A surface is
   in at most one region: placing it elsewhere removes it from the region it
   leaves, which keeps its other panes (selecting the neighbour when the
-  leaving pane was the selected one) or, left empty, stays as visible as it
-  was (#2153).
+  leaving pane was the selected one) or, left empty by the move, hides
+  (#2153: a close keeps an emptied region open; a move does not).
 - **A placement into `main` navigates to `/`.** `main` renders only at `/`
   (`App.tsx` renders `main`'s occupant there through `MainRegionSurface`; a
   null occupant is Home). `RegionModelContext` is the one place that knows a
@@ -714,8 +714,10 @@ the region's "+" stays hidden while it is empty rather than putting two
 answers to "what goes here" on screen. Which control the TOOLBAR button is
 for an empty region — today still a menu trigger, not a toggle — is #2155;
 #2153 only makes that button report the region's real visibility (pressed
-glyph, "Hide Right region: empty") and makes `RegionToggle.onToggle` act on
-an empty region instead of returning.
+glyph; a tooltip that says "open, empty" and names no act, since the press
+still opens a menu) and makes `RegionToggle.onToggle` act on an empty region
+instead of returning — a change to the hook's contract that no control calls
+yet; #2155's toggle is its first caller.
 
 Visibility gates only the EMPTY case in `RegionShells`. A region that holds a
 pane still mounts its host whether or not it is visible, because hidden IS
@@ -726,14 +728,34 @@ An empty region is still never maximized (`updateRegion`, the parser), and
 `main` is unaffected: it was always visible with a null occupant, which the
 outlet renders as Home.
 
-**Rollback degrades to the old behaviour, on read.** The record shape does
-not change — a visible empty region is `visible: true` beside a null
-occupant, which every build can already write and parse. An older build
-reading those bytes re-hides the region, because the hiding lived in its
-parser (`state.visible = id === 'main'` on an emptied region) and in
-`withoutRegionPane`. So the worst a same-device stale tab does is close a
-region the user had left open and empty; nothing is lost, because an empty
-region holds nothing.
+**Rollback is benign, not a clean re-hide.** The record shape does not
+change — a visible empty region is `visible: true` beside a null occupant,
+which every build can already write and parse. An older build reading those
+bytes does NOT re-hide it: its parser coerced visibility only inside the
+duplicate-drop branch, so a plain visible-empty region parses as open while
+that build's `RegionShells` mounts no host for it. The result is a region
+the model calls open with nothing on screen for it — invisible in effect,
+and the next placement or hide writes it back to a state every build agrees
+on. Nothing is lost, because an empty region holds nothing.
+
+**What produces the state today: nothing in the product.** The only `'keep'`
+path is `removeRegionPane`, reached from a tab's close, and a close control
+renders only for a region holding two or more tabs — a region's LAST tab has
+no close. So until #2155 gives the toolbar toggle a plain show on an empty
+region, the visible-empty state, its placeholder, its self-named chrome and
+its chord suppression are exercised by tests and by a record written that
+way, not by a control. This slice is the model and shell scaffolding those
+two slices build on; the behaviour is stated here as what the code does, not
+as something a user can yet reach. Two consequences for #2155 to resolve:
+hiding an empty region unmounts it (an occupied one collapses to its bar),
+so a stray click on an empty region's bar makes it vanish with no in-place
+way back; and a visible empty region reserves its full workspace clearance
+for a placeholder.
+
+On a coarse device the fold prefers a visible region that HOLDS panes over
+a visible empty one when `lastShownRegion` does not decide, so the one dock
+such a device shows is never a placeholder while the user's panes sit in
+another visible region.
 
 ## Failure shapes this design is meant to prevent
 

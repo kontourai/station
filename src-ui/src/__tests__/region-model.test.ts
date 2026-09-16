@@ -138,6 +138,30 @@ describe('region model', () => {
     expect(visibleEmptyLeft.left).toMatchObject({ panes: [], visible: true });
     expect(foldedDockRegion(visibleEmptyLeft, null)).toBe('left');
     expect(foldedDockRegion(visibleEmptyLeft, 'left')).toBe('left');
+
+    // But never OVER the user's panes: with `left` visible-empty AND
+    // `bottom` visible holding Chat, and no `lastShownRegion` to decide, the
+    // fold takes the region that holds something — a coarse device shows one
+    // dock, and a placeholder in place of Chat is the wrong one. Reverting
+    // the `visibleDock.find(!regionIsEmpty)` preference to `visibleDock[0]`
+    // folds to 'left' and reds this.
+    // The default arrangement ships Chat's `bottom` HIDDEN, so both are
+    // shown explicitly.
+    const bothVisible = updateRegion(
+      updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'bottom', {
+        visible: true,
+      }),
+      'left',
+      { visible: true },
+    );
+    expect(bothVisible.bottom).toMatchObject({
+      panes: ['chat'],
+      visible: true,
+    });
+    expect(foldedDockRegion(bothVisible, null)).toBe('bottom');
+    expect(foldedDockRegion(bothVisible, 'main')).toBe('bottom');
+    // `lastShownRegion` still decides between visible candidates.
+    expect(foldedDockRegion(bothVisible, 'left')).toBe('left');
   });
 
   test('the coarse fold chooses the most recently shown occupied region and falls back to Chat', () => {

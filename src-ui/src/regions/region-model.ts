@@ -171,8 +171,11 @@ export function foldedDockRegion(
   // visible empty region mounts a host of its own (`RegionShells`), so on a
   // bottom-only device it is as much a thing to fold as an occupied one —
   // leaving it out would fold to another region while the user is looking at
-  // this one. The occupancy fallbacks below still decide when NOTHING is
-  // visible.
+  // this one. `lastShownRegion` decides between visible candidates; without
+  // it, a visible region HOLDING panes wins over a visible empty one, so the
+  // one dock a coarse device shows is never a placeholder while the user's
+  // panes sit in another visible region. The occupancy fallbacks below still
+  // decide when NOTHING is visible.
   const visibleDock = DOCK_REGION_IDS.filter((id) => arrangement[id].visible);
   if (
     lastShownRegion &&
@@ -182,6 +185,7 @@ export function foldedDockRegion(
     return lastShownRegion as DockRegionId;
   }
   return (
+    visibleDock.find((id) => !regionIsEmpty(arrangement[id])) ??
     visibleDock[0] ??
     chatRegion(arrangement) ??
     DOCK_REGION_IDS.find((id) => !regionIsEmpty(arrangement[id]))

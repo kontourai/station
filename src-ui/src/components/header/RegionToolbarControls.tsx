@@ -339,12 +339,12 @@ function RegionToggleButton({
   const offers = empty && toggle.offers.length > 0;
   const label = `${toggle.label} region`;
   const inert = empty && !offers;
-  // A VISIBLE empty region is on screen, so its tooltip leads with the act a
-  // press performs on it — "Hide Right region: empty" (#2153). A hidden empty
-  // one has no such act to name here: its press opens the offer menu, and
-  // "Show" would promise a toggle the button is not.
+  // An empty region's press opens the offer menu whether the region is
+  // visible or hidden (until #2155 makes this button a plain toggle), so its
+  // tooltip names no act — "Hide" or "Show" would promise a toggle the
+  // button is not. It says what the region is: on screen or not, and empty.
   const title = empty
-    ? `${toggle.visible ? 'Hide ' : ''}${label}: empty${inert ? ', nothing can be shown here' : ''}`
+    ? `${label}: ${toggle.visible ? 'open, ' : ''}empty${inert ? ', nothing can be shown here' : ''}`
     : `${toggle.visible ? 'Hide' : 'Show'} ${label}: ${toggle.paneTitles.join(', ')}`;
   return (
     <button

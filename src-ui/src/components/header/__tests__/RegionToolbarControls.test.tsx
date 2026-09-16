@@ -327,26 +327,22 @@ describe('RegionToolbarControls', () => {
   });
 
   /**
-   * #2153: a region may be VISIBLE while empty, and its control must not
-   * contradict what the user can see. The glyph reads pressed
-   * (`is-pressed`, from `RegionToggle.visible`) and the tooltip leads with
-   * the act — "Hide Left region: empty" — where a hidden empty region's
-   * still reads "Left region: empty", because its press opens the offer menu
-   * rather than hiding anything.
-   *
-   * Reverting `visible: state.visible` to `held && state.visible` in
-   * `useRegionSurfaceMenu.ts` reds both the class and the title. Reverting
-   * `RegionToolbarControls`' empty-title branch to `${label}: empty` reds the
-   * title alone.
+   * #2153: a visible empty region reads as ON — pressed glyph — and its
+   * tooltip says what it is (open, empty) but names NO act, because a press
+   * on an empty region's button opens the offer menu whether the region is
+   * visible or hidden; "Hide" would promise a toggle the button is not
+   * until #2155. Reverting `visible` to `held && state.visible` in the hook
+   * reds the pressed-class line; putting "Hide" back reds the title.
    */
-  test('a VISIBLE empty region reads as on: pressed glyph and a Hide tooltip', () => {
+  test('a VISIBLE empty region reads as on: pressed glyph, and a tooltip that names no act', () => {
     const { rerender } = render(<RegionToolbarControls />);
     expect(regionToggle('Left').title).toBe('Left region: empty');
     expect(regionToggle('Left').classList.contains('is-pressed')).toBe(false);
 
     harness.regions.left.visible = true;
     rerender(<RegionToolbarControls />);
-    expect(regionToggle('Left').title).toBe('Hide Left region: empty');
+    // No "Hide": the press opens the offer menu, not a toggle (until #2155).
+    expect(regionToggle('Left').title).toBe('Left region: open, empty');
     expect(regionToggle('Left').classList.contains('is-pressed')).toBe(true);
     // Still a menu trigger, not a toggle: #2153 changes what it reports, not
     // which control it is.
