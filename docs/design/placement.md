@@ -677,16 +677,58 @@ behaviour. No other built-in tab reads a project (audited 2026-09-16:
 `MCPToolUILayout` read none; `UnsupportedLayoutComponent` reads navigation
 only to `navigate('/registry')`).
 
-**Deliberately not carried.** A docked Layout gets none of `LayoutView`'s
-agent affordances — no `annotateAgentRef` (`agentAvailableInProject`), no
-`onLaunchPrompt`, no `onShowChat` — for a Board because there is no project
-to filter against (`PersonalBoardView`'s reason), and for a project Layout
-because a prompt launch binds a chat session to the ROUTE's project through
-`LayoutView`'s handlers and action bar, which a dock tab beside Chat does not
-have. A docked Layout reads and navigates; it does not launch. The SDK
-header still renders the layout's prompt buttons with a no-op launcher, so a
-docked Layout that carries prompts shows inert controls today; wiring the
-launch to the pane's bound project, or hiding the bar, is #2171.
+**Deliberately not carried, and the header is told (#2171).** A docked Layout
+gets none of `LayoutView`'s agent affordances — no `annotateAgentRef`
+(`agentAvailableInProject`), no `onLaunchPrompt`, no `onShowChat` — for a
+Board because there is no project to filter against (`PersonalBoardView`'s
+reason), and for a project Layout because a prompt launch binds a chat session
+to the ROUTE's project through `LayoutView`'s handlers and action bar, which a
+dock tab beside Chat does not have. A docked Layout reads and navigates; it
+does not launch.
+
+Until #2171 the SDK header rendered the layout's prompt buttons anyway, wired
+to a no-op launcher, so a docked Layout carrying prompts showed controls that
+did nothing when pressed. The host now says what it cannot do —
+`LayoutRenderer`'s `canLaunchPrompts={false}`, honoured by
+`LayoutHeader` — and the header renders no control that would need a launcher:
+the layout's prompt actions, its global skills, the active tab's prompt
+actions and its quick-actions menu are absent rather than dead. An `external`
+or `internal` action still renders, because those open a link or navigate
+without a launcher and so they work here. `LayoutRenderer` also withholds
+`onLaunchPrompt` from the tabs when a host declares `false`, so the
+declaration is one rule the header and the panes both obey rather than a flag
+one of them honours.
+
+**Why the buttons went rather than the launch got wired.** #2171 weighed
+wiring `onLaunchPrompt` to the pane's BOUND project — the pane already holds
+that slug and threads it to `flow-run-console` — and took the refusal instead,
+for two reasons the dock cannot answer on its own. A plugin Layout reaches
+this pane (`resolveProjectLayoutRendererKind` sends a `config.plugin` record
+to `layout-view`) and this host derives its shape with
+`hostOwnsGlobalActions: false`, so it HOLDS the saved plugin actions
+`LayoutView` strips and routes through captured server admission
+(`focusWorkspacePaneHostAction`, which refuses what the live contribution no
+longer carries); a chat launcher here would run those saved actions as chat
+messages, which is the revival that admission path exists to refuse, and the
+host it focuses is a `WorkspacePaneHost` a docked Layout does not mount.
+Second, the reference path's "open the session" half is itself incomplete:
+`LayoutView.handleLaunchPrompt` ends `setDockState(true)` — which does reveal
+Chat, and selects its tab in the region that holds it
+(`syncRegionArrangementFromDock`'s `openChat`) — followed by
+`setActiveChat(null)`, and nothing then selects the session just created
+(`useChatDockActiveChatSync` returns early on a null `activeChat`). There was
+no honest "and here is your new conversation" to copy. A Board has no project
+at all, so it could not have been wired either way, and one rule now covers
+both families.
+
+**What this does not reach.** The route-bound hosts pass nothing, so nothing
+changes for them: a Board at its own route (`PersonalBoardView`), a pane
+rendered through `WorkspacePaneRouteView`, and `ProjectLayoutRenderer`'s two
+synthetic single-tab layouts still render a saved prompt action with a no-op
+launcher. That is the same defect in three more places and it is NOT fixed
+here — the fix is opt-in precisely so this slice changes one host. `LayoutView`
+is unaffected in a different way: it passes a real launcher, so it never
+declares `false`.
 
 **Openers.** `openSurfaceInRegion('board:<id>')` from the model, or
 `openLayoutInRegion(model, key)` in `useOpenInRegion.ts`, which mints the
