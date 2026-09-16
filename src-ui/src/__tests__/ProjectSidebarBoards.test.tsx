@@ -901,11 +901,12 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
     // trigger, which is where it sat before and which made the open menu
     // something Tab walked past rather than into.
     expect(document.activeElement).not.toBe(trigger);
-    // The first command is a placement row since #2158, on a device that has
-    // more than one dock region. The coarse case keeps Rename first, and the
-    // case below this one proves it.
+    // Rename, on EVERY device: #2158 adds its placement rows after
+    // `Move to project…` rather than above Rename, so the row a phone reaches
+    // this menu for keeps the first position and the focus. The folded-device
+    // case at the end of this file asserts the same thing where it matters.
     expect(document.activeElement).toBe(
-      screen.getByRole('menuitem', { name: 'Open in Left' }),
+      screen.getByRole('menuitem', { name: 'Rename' }),
     );
     expect(screen.getByRole('menu').contains(document.activeElement)).toBe(
       true,
@@ -922,11 +923,11 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
     // that grows must still wrap at ITS last row, not at the third.
     const items = screen.getAllByRole('menuitem');
     expect(items.map((item) => item.textContent)).toEqual([
+      'Rename',
+      'Move to project…',
       'Open in Left',
       'Open in Right',
       'Open in Bottom',
-      'Rename',
-      'Move to project…',
       'Delete',
     ]);
     expect(document.activeElement).toBe(items[0]);
@@ -1158,7 +1159,7 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
         .map((row) => [...row.classList].includes('menu-row'));
 
     openBoardMenu('Daily brief');
-    // Six since #2158: three placement rows above Rename / Move / Delete.
+    // Six since #2158: three placement rows between Move and Delete.
     expect(rowClasses()).toEqual([true, true, true, true, true, true]);
     // All three surfaces, because all three are menus the finger reaches.
     act(() => {
@@ -1551,17 +1552,27 @@ describe('a Board pill opens into a region (#2158)', () => {
     expect(
       screen.queryAllByRole('menuitem').map((row) => row.textContent),
     ).toEqual(['Rename', 'Move to project…', 'Delete']);
+    // The menu this Board DOES have is the one it always had, focus included.
+    expect(document.activeElement).toBe(
+      screen.getByRole('menuitem', { name: 'Rename' }),
+    );
     // Absent, not refusing: nothing reached the model to be turned down.
     expect(openSurfaceInRegion).not.toHaveBeenCalled();
   });
 
   /**
-   * D4: a device whose dock folds to one region renders no placement rows —
-   * `DockPlacementControl`'s existing rule for the same question. Driven
-   * through `window.innerWidth`, which is what `availablePlacements` reads,
-   * rather than by mocking the policy away.
+   * A device whose dock folds to ONE region offers that one region — it does
+   * not fall silent.
+   *
+   * This reverses the rule the first pass copied from `DockPlacementControl`,
+   * which returns null at one placement because it is a CHOOSER and there is
+   * nothing to choose. These rows are an ACTION, the model accepts
+   * `{ region: 'bottom' }` on a folded device, and a phone is where this menu
+   * is the only way a Layout reaches a region at all. Driven through
+   * `window.innerWidth`, which is what `availablePlacements` reads, rather
+   * than by mocking the policy away.
    */
-  test('a device with one dock region offers no placement rows', async () => {
+  test('a device with one dock region offers exactly that region', async () => {
     setViewportWidth(500);
     boards.push({ id: DAILY_ID, slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
@@ -1569,12 +1580,23 @@ describe('a Board pill opens into a region (#2158)', () => {
     act(() => {
       fireEvent.contextMenu(pill('Daily brief'));
     });
-    expect(placementRows()).toEqual([]);
-    // The menu itself is still there — this is a Board with no PLACEMENT, not
-    // a Board with no actions, and on a phone this menu is the only rename
-    // affordance the section has.
+    expect(placementRows()).toEqual(['Open in Bottom']);
     expect(
       screen.queryAllByRole('menuitem').map((row) => row.textContent),
-    ).toEqual(['Rename', 'Move to project…', 'Delete']);
+    ).toEqual(['Rename', 'Move to project…', 'Open in Bottom', 'Delete']);
+    // AND Rename still takes the focus. This is the device where that matters:
+    // the row menu is the only rename affordance a phone has (#2062 review
+    // M1), which is why the placement rows went below Rename rather than above
+    // it — a decision this case is the standing proof of.
+    expect(document.activeElement).toBe(
+      screen.getByRole('menuitem', { name: 'Rename' }),
+    );
+
+    act(() => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Open in Bottom' }));
+    });
+    expect(openSurfaceInRegion).toHaveBeenCalledWith(`board:${DAILY_ID}`, {
+      region: 'bottom',
+    });
   });
 });
