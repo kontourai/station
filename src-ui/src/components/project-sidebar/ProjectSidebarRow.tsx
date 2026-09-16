@@ -157,7 +157,15 @@ export function ProjectSidebarRow({
             style={{ backgroundColor: accent }}
             aria-hidden="true"
           />
-          <LayoutIcon layout={project} size={collapsed ? 28 : 18} />
+          {/* #2150: the initials monogram (`CA`, `FE`) is `LayoutIcon`'s
+              fallback for a project with no icon. At 18px it is a smudge, it
+              lands in the accessible name ("CA Campfit"), and the design
+              record draws the accent bar beside it for identity -- so an
+              icon-less project shows the bar alone. A project WITH an icon
+              keeps it: that is identity the user chose. */}
+          {project.icon ? (
+            <LayoutIcon layout={project} size={collapsed ? 28 : 18} />
+          ) : null}
           <span className="sidebar__project-name">{project.name}</span>
           {liveCount > 0 && (
             <>
