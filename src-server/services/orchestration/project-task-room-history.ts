@@ -92,12 +92,27 @@ export interface ProjectTaskRoomWriteAdmissionPort {
     | { readonly kind: 'admitted' }
     | { readonly kind: 'conflict' | 'denied' | 'unavailable' }
   >;
+  /**
+   * `nothing-to-settle` is the controller stating that it holds no admission
+   * under this identity at all — not that settling failed. A duplicate write
+   * whose record predates the port reaches exactly that state, and it is the
+   * only result that lets the history tell "there was never anything here"
+   * apart from "the controller could not answer".
+   *
+   * AN ADAPTER MUST PRODUCE IT. `createPlannedHomeAdmissionStore.finish`
+   * answers `not-found` for precisely this case, and an adapter that folds
+   * `not-found` into `unavailable` — which is what the obvious "anything but
+   * stored+finished is unavailable" mapping does — reproduces the defect this
+   * result exists to fix: a durably present record that no retry can ever
+   * settle. Map the store's `not-found` here, not to `unavailable`.
+   */
   finish(
     input: ProjectTaskRoomWriteAdmissionIdentity & {
       readonly receiptDigest: string;
     },
   ): Promise<
     | { readonly kind: 'finished' }
+    | { readonly kind: 'nothing-to-settle' }
     | { readonly kind: 'conflict' | 'denied' | 'unavailable' }
   >;
 }
@@ -503,7 +518,11 @@ function createProjectTaskRoomHistoryInternal(
                 );
                 const local = authorizationDisposition(commitAuthorization);
                 if (phase === 'authorize' || local !== 'admitted') return local;
-                if (!beginRoomWriteAdmission) return 'admitted';
+                // Unreachable: the worker only asks for this phase when the
+                // request carried writeAdmissionRequired, which is set from
+                // the same port's presence. Fail closed anyway — a default
+                // that admits is one refactor away from being the answer.
+                if (!beginRoomWriteAdmission) return 'unavailable';
                 const admission = await boundedAdmissionCall(
                   () => beginRoomWriteAdmission(writeAdmission),
                   roomWriteAdmissionMs,
@@ -520,6 +539,27 @@ function createProjectTaskRoomHistoryInternal(
                 );
                 if (postLocal !== 'admitted') return postLocal;
                 if (isKind(admission, 'admitted')) return 'admitted';
+                // Known conflation, stated rather than papered over: the
+                // port's `conflict` is five different refusals that the
+                // controller's journal cannot tell apart at the call site.
+                // `planned-home-admission-store.ts`'s `begin` returns the one
+                // `conflict` for a full journal (MAX_PLANNED_HOME_ADMISSIONS,
+                // never reclaimed), a transfer pending on the channel, an
+                // owner-revision mismatch, a prior admission under the same id
+                // with a different identity, and a shape error in Station's
+                // own call. Only the last two are permanent for this identity
+                // and none of the five is a permission decision, so reporting
+                // them as `denied` is wrong for a caller reading it as "you
+                // may not write here" — a tenant at the 4,096 ceiling sees a
+                // permission refusal in every controlled room.
+                //
+                // No remapping is made here because none would be derived: a
+                // capacity result does not exist in the store's vocabulary and
+                // inventing one at this boundary would be a label computed
+                // from nothing. Separating capacity requires the store to
+                // return it, which is parent-PR surface (#1640). Until then
+                // `denied` stays, deliberately, and this comment is the
+                // record of what it does and does not mean.
                 return isKind(admission, 'denied') ||
                   isKind(admission, 'conflict')
                   ? 'denied'
@@ -551,14 +591,34 @@ function createProjectTaskRoomHistoryInternal(
                     ),
                   roomWriteAdmissionMs,
                 );
-                if (
-                  !active(operationGeneration) ||
-                  !isKind(finished, 'finished')
-                ) {
+                // Every remaining non-`finished` settlement — including a
+                // `denied` one — reports `unavailable` for a write that is
+                // already durable, which invites a retry against a decision
+                // that may not change. That is kept on purpose: the retry is
+                // the repair. It replays through the worker's duplicate
+                // short-circuit, re-presents the same receipt digest, and
+                // settles the admission as soon as the controller can answer,
+                // which is exactly how a lost acknowledgement recovers. The
+                // alternative — reporting the durable record as `denied` —
+                // would tell the caller its write did not happen when it did.
+                if (!active(operationGeneration))
                   outcome = { kind: 'unavailable' };
-                } else {
+                else if (isKind(finished, 'finished')) outcome = stored;
+                else if (
+                  stored.kind === 'duplicate' &&
+                  isKind(finished, 'nothing-to-settle')
+                )
+                  // The record is durably present and the controller holds no
+                  // admission for it: this room's history predates the port,
+                  // or an earlier attempt in this process never reached the
+                  // admission step. Reporting unavailable here would make a
+                  // record that already exists permanently unretryable, which
+                  // is the opposite of what a write fence is for. A committed
+                  // outcome is not given this treatment: that path always
+                  // began an admission, so an absent one is a real
+                  // inconsistency and stays unavailable.
                   outcome = stored;
-                }
+                else outcome = { kind: 'unavailable' };
               } else
                 outcome =
                   stored.kind === 'conflict'
@@ -1081,8 +1141,11 @@ async function boundedAdmissionCall<T>(
       Promise.resolve().then(operation),
       timeout,
     ]);
+    // Strictly greater: a call that returns exactly on the deadline met the
+    // budget. Discarding it would report unavailable for an admission the
+    // controller has already durably recorded.
     return result === ADMISSION_TIMEOUT ||
-      performance.now() - started >= timeoutMs
+      performance.now() - started > timeoutMs
       ? undefined
       : result;
   } catch {

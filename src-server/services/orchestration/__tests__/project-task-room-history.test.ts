@@ -14,6 +14,7 @@ import {
   executeOwnedProcess,
 } from '../../../../scripts/lib/owned-process.mjs';
 import { EventStore } from '../event-store.js';
+import { readPlannedHomeAdmissionJournal } from '../planned-home-admission-schema.js';
 import { createPlannedHomeAdmissionStore } from '../planned-home-admission-store.js';
 import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
 import {
@@ -553,6 +554,142 @@ describe('ProjectTaskRoomHistory v2', () => {
       await reopened.close();
     });
 
+    it('a record written before the port exists stays retryable once a port is attached', async () => {
+      const path = databasePath();
+      let beginCalls = 0;
+      let finishCalls = 0;
+
+      // The room writes this record with NO port. Nothing mints an admission
+      // for it, because there is nothing to ask.
+      const unmanaged = history(path);
+      await unmanaged.open({ grant: grant('discover') });
+      await expect(
+        unmanaged.append(message('predates-the-port')),
+      ).resolves.toMatchObject({ kind: 'committed' });
+      await unmanaged.close();
+
+      // A home is adopted later and a port appears. `bind` requires only an
+      // owner row — nothing requires the room to be empty, and adopting an
+      // existing room's home is the point of a transfer. So a client's
+      // idempotent retry of the pre-adoption proposal now reaches the
+      // settlement path for an admission that was never begun.
+      const port: ProjectTaskRoomWriteAdmissionPort = {
+        async begin() {
+          beginCalls += 1;
+          return { kind: 'admitted' };
+        },
+        async finish() {
+          finishCalls += 1;
+          return { kind: 'nothing-to-settle' };
+        },
+      };
+      const adopted = history(path, { roomWriteAdmissions: port });
+      await adopted.open({ grant: grant('discover') });
+      for (const attempt of [1, 2, 3]) {
+        // The record is durably present, so every retry must keep reporting
+        // the duplicate. Reporting `unavailable` would make an existing
+        // record permanently unretryable — the opposite of what a write
+        // fence is for — and no later call could ever change that answer.
+        await expect(
+          adopted.append(message('predates-the-port')),
+          `attempt ${attempt}`,
+        ).resolves.toMatchObject({
+          kind: 'duplicate',
+          receipt: { proposalId: 'predates-the-port' },
+        });
+      }
+      // The duplicate short-circuit runs before the admit phase, so the port
+      // is asked to settle and never asked to admit.
+      expect(beginCalls).toBe(0);
+      expect(finishCalls).toBe(3);
+      await adopted.close();
+    });
+
+    it('a committed write whose admission vanished is unavailable, not settled', async () => {
+      const path = databasePath();
+      let finishCalls = 0;
+      const port: ProjectTaskRoomWriteAdmissionPort = {
+        async begin() {
+          return { kind: 'admitted' };
+        },
+        async finish() {
+          finishCalls += 1;
+          return { kind: 'nothing-to-settle' };
+        },
+      };
+      const room = history(path, { roomWriteAdmissions: port });
+      await room.open({ grant: grant('discover') });
+
+      // This append DID begin an admission — it is not a duplicate — so the
+      // controller reporting that it holds none is a real inconsistency, not
+      // a record predating the port. Widening the duplicate-only branch to
+      // cover `committed` would make this read as a clean write, which is
+      // what the branch's comment claims it refuses to do. Nothing else in
+      // the suite holds that scoping in place.
+      await expect(room.append(message('admitted-then-lost'))).resolves.toEqual(
+        { kind: 'unavailable' },
+      );
+      expect(finishCalls).toBe(1);
+      await room.close();
+    });
+
+    it('asks for no admission when the transaction cannot reach its first write', async () => {
+      const authority = new DatabaseSync(databasePath());
+      authority.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL');
+      const transfers = createSqlitePlannedHomeTransferStore(authority);
+      const admissions = createPlannedHomeAdmissionStore(authority, () => true);
+      const owner = {
+        tenantId: 'personal-controller:test',
+        channelId: projectTaskRoomChannelId(scope),
+        homeRef: 'paired:source',
+        policyRevision: 'policy-1',
+        revision: 0,
+      };
+      expect(transfers.initialize(owner).kind).toBe('stored');
+      let beginCalls = 0;
+      const port: ProjectTaskRoomWriteAdmissionPort = {
+        async begin(input) {
+          beginCalls += 1;
+          const result = admissions.begin({
+            tenantId: owner.tenantId,
+            channelId: input.channelId,
+            admissionId: input.proposalId,
+            ownerRevision: owner.revision,
+            homeRef: owner.homeRef,
+            kind: 'room-write',
+            intentDigest: input.intentDigest,
+          });
+          return result.kind === 'stored' && result.value.state === 'unresolved'
+            ? { kind: 'admitted' }
+            : { kind: 'denied' };
+        },
+        finish: vi.fn(async () => ({ kind: 'finished' as const })),
+      };
+      const path = databasePath();
+      const room = history(path, { roomWriteAdmissions: port });
+      await room.open({ grant: grant('discover') });
+      // A non-null head envelope digest at head_seq 0 makes the first append's
+      // envelope a genesis envelope that links to something, which
+      // validateChannelSequencingEnvelope refuses by name. The refusal is
+      // deterministic, happens inside BEGIN IMMEDIATE, and rolls back — the
+      // shape of failure that used to mint an admission nothing could clear.
+      const corrupt = new DatabaseSync(path);
+      corrupt
+        .prepare('UPDATE project_task_room_heads SET head_envelope_digest=?')
+        .run('f'.repeat(64));
+      corrupt.close();
+      await expect(room.append(message('unwritable'))).resolves.toEqual({
+        kind: 'unavailable',
+      });
+      expect(beginCalls).toBe(0);
+      expect(readPlannedHomeAdmissionJournal(authority)).toEqual([]);
+      // The consequence the empty journal stands for: ownership commit is not
+      // held by an admission for a write that never happened.
+      expect(port.finish).not.toHaveBeenCalled();
+      await room.close();
+      authority.close();
+    });
+
     it('rejects null and malformed configured ports at construction', () => {
       expect(() =>
         history(databasePath(), {
@@ -614,17 +751,21 @@ describe('ProjectTaskRoomHistory v2', () => {
       await room.close();
     }, 10_000);
 
-    it('refuses the same proposal identity with a changed intent digest', async () => {
-      let retainedDigest: string | undefined;
+    // Named for what it proves: the refusal is local. The worker's identity
+    // read short-circuits a known proposal id before the admission phase, so
+    // the port is asked exactly once across both appends and never sees the
+    // changed digest at all. A fixture branch that refused a changed digest
+    // centrally used to sit here and was never reached; asserting beginCalls
+    // is what actually pins the behavior.
+    it('refuses a changed intent digest locally without re-asking the port', async () => {
       let beginCalls = 0;
+      const observedDigests: string[] = [];
       const finish = vi.fn(async () => ({ kind: 'finished' as const }));
       const room = history(databasePath(), {
         roomWriteAdmissions: {
           async begin(input) {
             beginCalls += 1;
-            if (retainedDigest && retainedDigest !== input.intentDigest)
-              return { kind: 'conflict' };
-            retainedDigest = input.intentDigest;
+            observedDigests.push(input.intentDigest);
             return { kind: 'admitted' };
           },
           finish,
@@ -639,6 +780,7 @@ describe('ProjectTaskRoomHistory v2', () => {
         reason: 'idempotency-conflict',
       });
       expect(beginCalls).toBe(1);
+      expect(observedDigests).toHaveLength(1);
       expect(finish).toHaveBeenCalledOnce();
       await room.close();
     });

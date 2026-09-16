@@ -188,18 +188,46 @@ waiting, or losing a process does not finish an admission.
 With that port configured, a new append obtains admission inside the local
 write transaction after checking local authority, existing proposal identity,
 source seal and capacity. Local authority is checked again after admission.
+Admission is also the last step before the transaction's first durable write:
+the sequencing envelope, its validation, the record and receipt budgets, and
+the retention plan including its anchor are all computed first, over rows the
+transaction has only read. A refusal from any of them rolls back without having
+asked the controller for anything, so no deterministic local failure can leave
+an admission behind.
+
 Committed and duplicate outcomes settle only from the validated durable receipt;
 a lost settlement acknowledgement returns unavailable, and the same intent can
 be retried on the open room, where it replays through the duplicate path.
-Duplicate replay does not request new admission. Each port call is bounded to
-one second. The admission phase as a whole (the local authority check, the port
-call and the repeated authority check) runs while the worker holds the write
+Duplicate replay does not request new admission. A duplicate whose record the
+controller holds no admission for — an existing room whose home is adopted
+later — settles as a duplicate rather than as unavailable: the port reports
+that there is nothing to settle, which is a distinct result from being unable
+to settle. A durable record never becomes unretryable.
+
+Each port call is bounded to one second, and a call that returns exactly on the
+deadline is kept. The admission phase as a whole (the local authority check, the
+port call and the repeated authority check) runs while the worker holds the write
 transaction and shares the worker's pre-existing five-second request budget;
-the authority checks are not separately bounded. A timeout never clears an
-unresolved controller record. Rooms without the port write through the same
-transaction without requesting admission. For every room, with or without the
-port, a commit-time local authority check that is unavailable now returns
-unavailable rather than denied.
+the authority checks are not separately bounded. Nothing settles an admission
+whose effect never became durable: reconciliation settles only from a verified
+finished admission carrying a receipt digest, so an admission recorded for a
+write that never committed stays unresolved until an operator acts. Losing the
+response to a timeout does not clear the controller's record either. Rooms
+without the port write through the same transaction without requesting
+admission. Requesting admission is not the only difference: the controller's
+`plannedHomeAdmissionIdentifier` refuses code points below 32 and 127, which
+the room's own identifier check accepts, so a `proposalId` like `"line\nbreak"`
+writes into an uncontrolled room and is refused once a port is attached — and
+refused as `denied`, which reads as a permission decision. The legal alphabet
+therefore depends on whether a room is controlled. Narrowing the room to match
+belongs with the controller lane that introduces that validator, not here.
+For every room, with or without the port, a commit-time local authority check
+that is unavailable now returns unavailable rather than denied.
+
+A port refusal reported as denied is not necessarily a permission decision: the
+journal collapses a full journal, a pending transfer, an owner-revision
+mismatch, a changed intent under a known admission id and a malformed call into
+one conflict result, and the history has no derived way to tell them apart.
 
 This is private integration infrastructure: production runtime composition and
 Agent launch paths are not yet connected to the controller journal. Integrators must verify a durable local effect
