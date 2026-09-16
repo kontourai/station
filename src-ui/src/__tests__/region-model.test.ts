@@ -121,6 +121,25 @@ describe('region model', () => {
     });
   });
 
+  test('the coarse fold admits a visible EMPTY region as a candidate', () => {
+    // #2153: a visible empty region mounts a host of its own, so on a
+    // bottom-only device it is a thing to fold to. `left` is the only
+    // VISIBLE dock region here and holds nothing; `bottom` holds Chat and is
+    // hidden. Reverting `foldedDockRegion`'s `visibleDock` filter to
+    // `!regionIsEmpty(arrangement[id]) && arrangement[id].visible`
+    // (region-model.ts) folds to 'bottom' instead and reds both lines.
+    const visibleEmptyLeft = updateRegion(
+      updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'bottom', {
+        visible: false,
+      }),
+      'left',
+      { visible: true },
+    );
+    expect(visibleEmptyLeft.left).toMatchObject({ panes: [], visible: true });
+    expect(foldedDockRegion(visibleEmptyLeft, null)).toBe('left');
+    expect(foldedDockRegion(visibleEmptyLeft, 'left')).toBe('left');
+  });
+
   test('the coarse fold chooses the most recently shown occupied region and falls back to Chat', () => {
     const withActivity = placeSurface(
       DEFAULT_DEVICE_REGION_ARRANGEMENT,
@@ -553,8 +572,10 @@ describe('region model', () => {
     const placed = placeSurface(activityAtRight, 'activity', 'main');
 
     expect(placed.main.occupant).toBe('activity');
+    // The vacated region stays OPEN and empty (#2153): `placeSurface` goes
+    // through `withoutRegionPane`, which no longer writes visibility.
     expect(placed.right).toEqual({
-      visible: false,
+      visible: true,
       size: 400,
       panes: [],
       occupant: null,
@@ -626,8 +647,9 @@ describe('region model', () => {
       occupant: 'activity',
       visible: true,
     });
+    // Vacated, and still open (#2153).
     expect(joined.right).toEqual({
-      visible: false,
+      visible: true,
       size: 400,
       panes: [],
       occupant: null,
@@ -730,7 +752,7 @@ describe('region model', () => {
     });
   });
 
-  test('joining a region keeps its size; the vacated region keeps its size and hides', () => {
+  test('joining a region keeps its size; the vacated region keeps its size and its visibility', () => {
     const withActivity = updateRegion(
       placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'right'),
       'right',
@@ -745,8 +767,12 @@ describe('region model', () => {
       occupant: 'activity',
       maximized: false,
     });
+    // The vacated region stays OPEN and empty (#2153): a placement made
+    // elsewhere does not close a region the user is looking at. Reverting
+    // `withoutRegionPane`'s empty branch to `visible: regionId === 'main'`
+    // reds this `visible: true`.
     expect(joined.right).toEqual({
-      visible: false,
+      visible: true,
       size: 517,
       panes: [],
       occupant: null,
@@ -1062,7 +1088,9 @@ describe('region model', () => {
       });
 
       // Join: Activity into Chat's maximized bottom (#2046 2a). The region
-      // it enters is restored; the region it leaves empties and hides.
+      // it enters is restored; the region it leaves empties and stays open
+      // (#2153) — but is still RESTORED, which is what this test is about:
+      // an empty region is never maximized (`updateRegion`).
       const joined = placeSurface(chatMax, 'activity', 'bottom');
       expect(joined.bottom).toMatchObject({
         panes: ['chat', 'activity'],
@@ -1072,7 +1100,7 @@ describe('region model', () => {
       expect(joined.right).toMatchObject({
         panes: [],
         occupant: null,
-        visible: false,
+        visible: true,
         maximized: false,
       });
 
@@ -1221,7 +1249,7 @@ describe('region model', () => {
       { visible: true },
     );
 
-    test('removeRegionPane unplaces the pane and selects its neighbour; the last pane empties and hides the region', () => {
+    test('removeRegionPane unplaces the pane and selects its neighbour; the last pane empties the region and leaves it visible', () => {
       expect(both.bottom).toMatchObject({
         panes: ['chat', 'activity'],
         occupant: 'activity',
@@ -1252,13 +1280,23 @@ describe('region model', () => {
         occupant: 'activity',
       });
 
-      // The last pane: the region empties and hides.
+      // The last pane: the region empties and STAYS VISIBLE (#2153, owner
+      // decision). Reverting `visible: regionId === 'main' || previous.visible`
+      // to `visible: regionId === 'main'` in `withoutRegionPane`
+      // (region-model.ts) reds this line.
       const emptied = removeRegionPane(behind, 'bottom', 'activity');
       expect(emptied.bottom).toMatchObject({
         panes: [],
         occupant: null,
-        visible: false,
+        visible: true,
       });
+      // And a region that was HIDDEN when its last pane left stays hidden:
+      // the rule is that the close does not write visibility at all, not
+      // that an emptied region is forced open.
+      const hiddenBehind = updateRegion(behind, 'bottom', { visible: false });
+      expect(
+        removeRegionPane(hiddenBehind, 'bottom', 'activity').bottom,
+      ).toMatchObject({ panes: [], occupant: null, visible: false });
       // A surface the region does not hold: unchanged, by reference.
       expect(removeRegionPane(both, 'right', 'chat')).toBe(both);
     });
@@ -1299,11 +1337,22 @@ describe('region model', () => {
         visible: true,
         maximized: false,
       });
+      // The emptied SOURCE keeps its visibility (#2153): the grab moved the
+      // panes, not the region's openness. Reverting `moveRegionPanes`'
+      // source-empty branch to `visible: false` reds this `visible: true`.
       expect(moved.bottom).toMatchObject({
         panes: [],
         occupant: null,
-        visible: false,
+        visible: true,
       });
+      // A hidden source stays hidden, for the same reason.
+      expect(
+        moveRegionPanes(
+          updateRegion(both, 'bottom', { visible: false }),
+          'bottom',
+          'right',
+        ).bottom,
+      ).toMatchObject({ panes: [], occupant: null, visible: false });
       // Chat's mirror sees the move as Chat's placement.
       expect(dockMirrorDiff(both, moved)).toEqual({
         placement: 'right',
