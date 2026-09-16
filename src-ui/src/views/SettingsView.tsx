@@ -128,12 +128,14 @@ export const SETTINGS_SAVE_DEADLINE_MS = 30_000;
  * never settles would otherwise leave `Save` spinning with nothing left to
  * wait for.
  *
- * What the timeout costs, stated honestly: the draft clears against a record
- * this page has not re-read. If the refetch was merely SLOW the stale value
- * shows until it lands. If it FAILED, the row goes on showing the pre-save
- * value with no pill and no error — the save did happen, and this page will
- * not say so until something else refetches the project. That is still the
- * better of the two outcomes against a Save button that never releases, but
+ * What the timeout costs, stated honestly: when the refetch is merely SLOW
+ * the draft clears against a record this page has not re-read, and the
+ * stale value shows until it lands. A FAILED refetch does not go through the
+ * timeout at all — `invalidateQueries` resolves once its refetches settle,
+ * errors included — but it leaves the same picture: the row goes on showing
+ * the pre-save value with no pill and no error, and this page will not say
+ * the save happened until something else refetches the project. That is
+ * still the better outcome against a Save button that never releases, but
  * it is a real gap, not a flicker.
  */
 export const SETTINGS_OVERRIDE_REFETCH_DEADLINE_MS = 3_000;

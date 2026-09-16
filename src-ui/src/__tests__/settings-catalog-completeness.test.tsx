@@ -1494,10 +1494,12 @@ describe('settings catalog completeness', () => {
 
       await waitFor(() => expect(updateProjectAsync).toHaveBeenCalledTimes(1));
       // The button comes back and the draft clears against a record this page
-      // never re-read. If the refetch was only slow the row corrects itself;
-      // if it FAILED the row keeps showing the pre-save value with no pill
-      // and no error until something else refetches the project. That gap is
-      // the accepted cost of not stranding Save forever.
+      // never re-read. This exercises the SLOW case only: the invalidation
+      // never settles, so the deadline is what releases Save. A refetch that
+      // FAILS settles on its own (errors included) and never reaches the
+      // deadline, yet leaves the same picture — the pre-save value with no
+      // pill and no error until something else refetches the project. That
+      // gap is the accepted cost of not stranding Save forever.
       await waitFor(
         () => expect(screen.queryByText('Unsaved changes')).toBeNull(),
         { timeout: 8000 },

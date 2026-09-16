@@ -88,9 +88,11 @@ function isUnstored(value: unknown): boolean {
  * would sit directly above "Built-in default: none" and promise a fallback
  * the chain does not have. A `required` setting is the same case by
  * declaration — see the built-in layer below, which applies the same test.
+ * `isUnstored` is the test on purpose: a declared default of `null` or `''`
+ * would print as "none" in that layer, so it must not count as a fallback here.
  */
 function unstoredStationValue(definition: SettingDefinition): string {
-  return definition.required || definition.defaultValue === undefined
+  return definition.required || isUnstored(definition.defaultValue)
     ? 'nothing stored'
     : 'uses the built-in default';
 }
