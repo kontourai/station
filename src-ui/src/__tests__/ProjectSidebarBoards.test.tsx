@@ -150,9 +150,9 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 /**
  * Only `useIsMobile` is replaced. The dock-placement half of this module —
- * `useDockSlotDevice`, `availablePlacements`, `dockFoldsToOneRegion` — is the
- * REAL policy, because it is what decides whether a Board's placement rows
- * exist at all (#2158 D4). Mocking it wholesale, which is what a bare factory
+ * `useDockSlotDevice`, `availablePlacements` — is the REAL policy, because it
+ * is what decides WHICH placement rows a Board offers, down to the single
+ * `Open in Bottom` a folded device gets (#2158 D4). Mocking it wholesale, which is what a bare factory
  * here would do, would replace the derivation under test with a constant; the
  * cases below drive it through `window.innerWidth` instead, the input the
  * policy actually reads.

@@ -270,10 +270,12 @@ export async function moveRegionThroughGrab(
  * belongs to the pill that was clicked rather than to whatever menu happens to
  * be on screen — the rail holds a Boards row menu with the same row labels.
  *
- * A pill whose Layout id is not a lowercase UUID, or a device whose dock folds
- * to one region, renders NO placement rows at all (#2158 D2/D4). This helper
- * therefore fails loudly rather than silently proving nothing: the menu it
- * waits for does not open for those pills.
+ * A pill whose Layout id is not a lowercase UUID renders NO placement rows at
+ * all, so for those pills the menu this helper waits for never opens and it
+ * fails loudly rather than silently proving nothing. A device whose dock folds
+ * to one region is different: it opens the menu with exactly `Open in Bottom`,
+ * so ask for that region there — a request for Left or Right fails on the
+ * missing row, which is the honest answer.
  */
 export async function openPillInRegionThroughMenu(
   page: Page,

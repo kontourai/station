@@ -159,7 +159,7 @@ vi.mock('../contexts/RegionModelContext', async (importOriginal) => {
  * The harness drives the device; everything else in the module stays REAL.
  *
  * It used to be a bare factory listing the three members this file needed, so
- * a consumer reaching for a fourth — `dockFoldsToOneRegion`, which the sidebar
+ * a consumer reaching for a fourth — `availablePlacements`, which the sidebar
  * pill menus read since #2158 — got `undefined` and reported a missing export
  * rather than anything about menus. Spreading the actual module means the
  * derivations that are pure functions of the faked device (the fold rule) stay
