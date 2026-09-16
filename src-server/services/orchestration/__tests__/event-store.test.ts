@@ -76,8 +76,17 @@ function seedLegacyOrchestrationEvents(
     method: string;
     createdAt: string;
     sequence: number;
+    /**
+     * When any row carries this, the table has the `global_sequence` column
+     * and rows without it are left at 0: a store whose backfill committed
+     * some batches and then the process died.
+     */
+    globalSequence?: number;
   }>,
 ): void {
+  const partiallyBackfilled = rows.some(
+    (row) => row.globalSequence !== undefined,
+  );
   const legacyDb = new DatabaseSync(path);
   legacyDb.exec(`
     CREATE TABLE orchestration_events (
@@ -88,17 +97,40 @@ function seedLegacyOrchestrationEvents(
       method TEXT NOT NULL,
       payload TEXT NOT NULL,
       created_at TEXT NOT NULL,
-      sequence INTEGER NOT NULL
+      sequence INTEGER NOT NULL${
+        partiallyBackfilled
+          ? ',\n      global_sequence INTEGER NOT NULL DEFAULT 0'
+          : ''
+      }
     );
   `);
   const insert = legacyDb.prepare(
-    `INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence)
-     VALUES (?, 'claude', ?, ?, '{}', ?, ?)`,
+    partiallyBackfilled
+      ? `INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
+         VALUES (?, 'claude', ?, ?, '{}', ?, ?, ?)`
+      : `INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence)
+         VALUES (?, 'claude', ?, ?, '{}', ?, ?)`,
   );
   legacyDb.exec('BEGIN');
   try {
     for (const row of rows)
-      insert.run(row.id, row.threadId, row.method, row.createdAt, row.sequence);
+      if (partiallyBackfilled)
+        insert.run(
+          row.id,
+          row.threadId,
+          row.method,
+          row.createdAt,
+          row.sequence,
+          row.globalSequence ?? 0,
+        );
+      else
+        insert.run(
+          row.id,
+          row.threadId,
+          row.method,
+          row.createdAt,
+          row.sequence,
+        );
     legacyDb.exec('COMMIT');
   } catch (error) {
     legacyDb.exec('ROLLBACK');
@@ -7013,6 +7045,61 @@ describe('EventStore', () => {
           globalSequence: index + 1,
         });
       }
+    });
+
+    test('a backfill interrupted between batches resumes after the highest committed value (#1531)', () => {
+      // The docblock on `backfillGlobalSequence` promises numbering starts
+      // from the current max so a prior partially-completed run -- one
+      // batch committed, the process then restarted -- resumes without
+      // colliding. Nothing pinned that: an injection restarting the cursor
+      // at 1 passed the multi-batch test above, because there every row
+      // starts at 0. `global_sequence` carries no unique index, so a
+      // collision would be silent duplicate numbering, which is the worst
+      // shape for a replay cursor to have.
+      store.close();
+      const legacyDbPath = join(dir, 'legacy-partial-backfill.sqlite');
+      const baseMs = Date.parse('2026-01-01T00:00:00.000Z');
+      const committed = GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE;
+      const total = committed + 30;
+      // The committed values start well above 1: the highest committed
+      // value is not the row count (rows before it may have been pruned),
+      // and a resume that COUNTED rows, or a fixture whose pre-assigned
+      // values happened to equal what a fresh backfill would produce,
+      // could not be told apart from a restart. With the offset, "resumed"
+      // and "restarted from 1" number the tail differently.
+      const offset = 500;
+      seedLegacyOrchestrationEvents(
+        legacyDbPath,
+        Array.from({ length: total }, (_, index) => ({
+          id: `evt-legacy-${index}`,
+          threadId: 'thread-legacy',
+          method: 'content.text-delta',
+          createdAt: new Date(baseMs + index).toISOString(),
+          sequence: index + 1,
+          // The first batch landed; the rest never got numbered.
+          ...(index < committed ? { globalSequence: offset + index + 1 } : {}),
+        })),
+      );
+
+      store = new EventStore(legacyDbPath);
+
+      expect(store.headGlobalSequence()).toBe(offset + total);
+      // The first unassigned row continues after the highest committed
+      // value, not from a fresh 1 and not from the row count.
+      expect(store.readGlobalSequence(`evt-legacy-${committed}`)).toBe(
+        offset + committed + 1,
+      );
+      // Already-numbered rows are untouched.
+      expect(store.readGlobalSequence('evt-legacy-0')).toBe(offset + 1);
+      expect(store.readGlobalSequence(`evt-legacy-${committed - 1}`)).toBe(
+        offset + committed,
+      );
+      // And the numbering is a permutation of offset+1..offset+total: no
+      // duplicates, no gaps.
+      const values = store.listEvents().map((event) => event.globalSequence);
+      expect(new Set(values).size).toBe(total);
+      expect(Math.min(...values)).toBe(offset + 1);
+      expect(Math.max(...values)).toBe(offset + total);
     });
   });
 
