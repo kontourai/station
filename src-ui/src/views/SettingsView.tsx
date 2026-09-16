@@ -1461,12 +1461,13 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
  *   what answers it is that a group label is a non-interactive heading and
  *   never a place to press — not that its words have to differ from the
  *   caption's.
- * - "Control" is the one name that is not a storage location. Its box is
- *   saved on the Station exactly as This Station's is, so a name drawn from
- *   persistence could not tell the two apart; what separates them is the rest
- *   of its caption — these are the values "used when a chat, project, or
- *   agent doesn't set its own value". The name states that authority
- *   relationship, which is the only thing that distinguishes the group.
+ *
+ * "Control" is the one group name that is not a storage location, and it has
+ * to be: its box is saved on the Station exactly as This Station's is, so a
+ * name drawn from persistence could not tell the two apart. What separates
+ * them is the rest of its caption — these are the values "used when a chat,
+ * project, or agent doesn't set its own value" — and the name states that
+ * authority relationship rather than a place.
  *
  * The landmark stays single (`aria-label="Settings sections"`): one
  * navigation with headings inside, not one landmark per group.
