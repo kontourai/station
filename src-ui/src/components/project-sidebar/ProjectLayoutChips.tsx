@@ -109,7 +109,7 @@ export function ProjectLayoutChips({
   // Derived from the LIST, not trusted from state: a layout deleted or a
   // project switched under an open menu leaves a key naming no chip, and a
   // menu whose subject has left the row is a menu about nothing.
-  const menuChip = chips.find((chip) => chip.key === menuFor) ?? null;
+  const menuChip = chips.find((chip) => chip.key === menuFor);
   const closeMenu = useCallback(() => setMenuFor(null), []);
 
   const currentIndex = chips.findIndex((chip) => chip.current);
@@ -149,35 +149,32 @@ export function ProjectLayoutChips({
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    /**
-     * The keyboard's route to the chip's menu (#2158).
-     *
-     * `contextmenu` alone is not a route for everyone: macOS has no Menu key
-     * and no Shift+F10, so on Station's primary desktop platform a sighted
-     * keyboard-only reader had NO way to reach these rows — while the design
-     * record claimed the menu is the route a keyboard has. Shift+Enter is the
-     * portable half, `ContextMenu` the one that already means this on the
-     * platforms that have the key.
-     *
-     * The stop is the subject: the menu opens for the chip holding the roving
-     * tab stop, which is the chip the reader is on. `preventDefault` matters
-     * for Shift+Enter specifically — Enter on a button still activates it with
-     * a modifier held, and navigating away is the opposite of what was asked.
-     * It is called only when a menu actually opened, so a chip with nothing to
-     * offer keeps Enter's ordinary meaning.
-     */
-    if (
-      event.key === 'ContextMenu' ||
-      (event.key === 'Enter' && event.shiftKey)
-    ) {
-      if (!openMenuFor(rovingIndex)) return;
-      event.preventDefault();
-      return;
-    }
     // Horizontal toolbar: Up/Down stay unhandled on purpose. The row sits
     // beside a reorder handle whose own keyboard contract IS Up/Down, and
     // swallowing them here would teach two meanings for one pair of keys.
     switch (event.key) {
+      /**
+       * The keyboard's route to the chip's menu (#2158).
+       *
+       * `contextmenu` alone is not a route for everyone: macOS has no Menu key
+       * and no Shift+F10, so on Station's primary desktop platform a sighted
+       * keyboard-only reader had NO way to reach these rows — while the design
+       * record claimed the menu is the route a keyboard has. Shift+Enter is
+       * the portable half; `ContextMenu` is the one that already means this
+       * where the key exists.
+       *
+       * The subject is the chip holding the roving tab stop, which is the chip
+       * the reader is on. Both cases fall through to this handler's own
+       * `preventDefault` and only when a menu actually OPENED — which is what
+       * leaves Enter its ordinary meaning (activate the chip, navigate) on a
+       * chip with nothing to offer, and on plain Enter everywhere.
+       */
+      case 'ContextMenu':
+        if (!openMenuFor(rovingIndex)) return;
+        break;
+      case 'Enter':
+        if (!event.shiftKey || !openMenuFor(rovingIndex)) return;
+        break;
       case 'ArrowRight':
         focusAt(rovingIndex + 1);
         break;
