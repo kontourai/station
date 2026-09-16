@@ -28,6 +28,7 @@
 import { expect, test } from '@playwright/test';
 import {
   chatDockShell,
+  chooseSurfaceInEmptyRegion,
   documentFitsViewportWidth,
   expectBoxWithinViewport,
   expectRegionTabs,
@@ -145,6 +146,93 @@ test.describe('Activity surface deep link', () => {
       'an emptied primary area reads as Home',
     ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
     await expect(mainHeading(page, 'Activity')).toHaveCount(0);
+  });
+});
+
+test.describe('An empty region is a chooser', () => {
+  /**
+   * #2154: a VISIBLE, EMPTY dock region renders a chooser in its body —
+   * every registry surface declaring the region, the coding rows disabled
+   * with the reason while the dock has no project — and choosing Activity
+   * places it there through the model. No control produces the visible-empty
+   * state before #2155 (a region's last tab has no close; the toolbar button
+   * on an empty region opens its offer menu), so the arrangement is seeded
+   * the way a returning device's is: through the `regionArrangement` device
+   * setting, the record the model reads on boot (#2153 pins the shape).
+   */
+  test('a visible empty Right region lists what can go there and places Activity on choice', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'station-device-settings-v1',
+        JSON.stringify({
+          version: 2,
+          values: {
+            regionArrangement: {
+              version: 1,
+              regions: {
+                main: {
+                  visible: true,
+                  size: 0,
+                  occupant: { kind: 'surface', id: 'home' },
+                },
+                left: { visible: false, size: 400, occupant: null },
+                right: { visible: true, size: 400, occupant: null },
+                bottom: {
+                  visible: true,
+                  size: 320,
+                  occupant: { kind: 'surface', id: 'chat' },
+                },
+              },
+            },
+          },
+        }),
+      );
+    });
+    await page.goto('/');
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/, {
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
+
+    // The region is on screen with no pane, named for itself, and its body
+    // is the chooser: the seven dock surfaces in registry order. The coding
+    // rows are disabled with the dock's own sentence — this instance binds
+    // no project to its dock — and stay in the tab order (`aria-disabled`).
+    const right = page.locator('.chat-dock[aria-label="Right region"]');
+    await expect(right).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+    const list = right.getByRole('list', { name: 'Add to Right region' });
+    await expect(list).toBeVisible();
+    await expect(list.getByRole('button')).toHaveText([
+      /^Chat/,
+      /^Activity/,
+      /^Agents/,
+      /^Device/,
+      /^Terminal/,
+      /^Diff/,
+      /^Files/,
+    ]);
+    await expect(
+      list.getByRole('button', { name: /^Terminal Choose a project/ }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    // Chat is held at the bottom, so its row is a move, not hidden.
+    await expect(
+      list.getByRole('button', { name: 'Chat Move here from Bottom' }),
+    ).toBeVisible();
+    // The bar's "+" is the same chooser as a menu, offered without a project.
+    const add = right.getByRole('button', { name: 'Add pane to Right' });
+    await expect(add).toHaveAttribute('aria-haspopup', 'menu');
+
+    await chooseSurfaceInEmptyRegion(page, 'Activity', 'Right');
+    await expect(
+      surfaceDockShell(page, 'Activity').getByRole('button', {
+        name: 'Hide Activity',
+        exact: true,
+      }),
+    ).toBeVisible();
+    // Chat's region is untouched by a placement into another region.
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
+    await expect(right).toHaveCount(0);
   });
 });
 
