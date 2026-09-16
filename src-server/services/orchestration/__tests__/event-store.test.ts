@@ -6960,40 +6960,56 @@ describe('EventStore', () => {
       store.close();
       const legacyDbPath = join(dir, 'legacy-multi-batch.sqlite');
       const baseMs = Date.parse('2026-01-01T00:00:00.000Z');
-      seedLegacyOrchestrationEvents(
-        legacyDbPath,
-        Array.from({ length: rowCount }, (_, index) => ({
+      // The backfill orders by `created_at ASC, sequence ASC, id ASC`. Five
+      // rows share each created_at, and within a group `sequence` runs
+      // OPPOSITE to id order, so the second key is what decides and the
+      // third cannot stand in for it (#1531: with distinct timestamps and
+      // ids that happened to sort like sequence, dropping the `sequence` key
+      // from the ORDER BY changed nothing this test could see). Seeded
+      // newest-first so insertion order cannot stand in for it either.
+      const rows = Array.from({ length: rowCount }, (_, index) => {
+        const group = Math.floor(index / 5);
+        const offset = index % 5;
+        return {
           id: `evt-legacy-${index}`,
           threadId: 'thread-legacy',
           method: 'content.text-delta',
-          createdAt: new Date(baseMs + index).toISOString(),
-          sequence: index + 1,
-        })),
-      );
+          createdAt: new Date(baseMs + group).toISOString(),
+          sequence: group * 5 + (5 - offset),
+        };
+      });
+      seedLegacyOrchestrationEvents(legacyDbPath, rows.slice().reverse());
+      // The contract, stated once, as the comparator the migration uses.
+      const expected = rows.slice().sort((a, b) => {
+        if (a.createdAt !== b.createdAt)
+          return a.createdAt < b.createdAt ? -1 : 1;
+        if (a.sequence !== b.sequence) return a.sequence - b.sequence;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      });
 
       store = new EventStore(legacyDbPath);
 
       expect(store.headGlobalSequence()).toBe(rowCount);
       // Spot-check across all three batches: start, a row inside the
       // second batch (past the first boundary), and the very last row.
-      expect(store.readGlobalSequence('evt-legacy-0')).toBe(1);
-      expect(
-        store.readGlobalSequence(
-          `evt-legacy-${GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE + 10}`,
-        ),
-      ).toBe(GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE + 11);
-      expect(store.readGlobalSequence(`evt-legacy-${rowCount - 1}`)).toBe(
-        rowCount,
-      );
+      for (const position of [
+        0,
+        GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE + 10,
+        rowCount - 1,
+      ]) {
+        expect(store.readGlobalSequence(expected[position]!.id)).toBe(
+          position + 1,
+        );
+      }
 
-      // Full-order check: every row's global_sequence matches its
-      // created_at-ascending position exactly (no batch-boundary
-      // duplication, skip, or reordering).
+      // Full-order check: every row's global_sequence matches its position
+      // under the contract exactly (no batch-boundary duplication, skip, or
+      // reordering, and the tiebreak honoured within every timestamp).
       const ordered = store.listEvents();
       expect(ordered).toHaveLength(rowCount);
       for (let index = 0; index < rowCount; index += 1) {
         expect(ordered[index]).toMatchObject({
-          id: `evt-legacy-${index}`,
+          id: expected[index]!.id,
           globalSequence: index + 1,
         });
       }
