@@ -1,10 +1,17 @@
 import './SettingsView.css';
 import {
+  PROJECT_OVERRIDABLE_APP_SETTING_KEYS,
+  type ProjectOverridableAppSettingKey,
+} from '@kontourai/station-contracts/project-settings-overrides';
+import {
   authenticatedFetch,
   StationReadOnlyError,
   useConfigProvenanceQuery,
   useInvalidateQuery,
   usePluginVisibilityQuery,
+  useProjectQuery,
+  useProjectsQuery,
+  useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
 import { updateAppLogLevel } from '@kontourai/station-sdk/app-config';
 import { useMutation } from '@tanstack/react-query';
@@ -59,6 +66,13 @@ import {
   SETTINGS_SECTIONS,
   settingsRow,
 } from './settings/settings-catalog';
+import {
+  buildProjectOverrideUpdate,
+  effectiveOverrideValue,
+  type ProjectOverrideDraft,
+  projectOverrideDelta,
+  savedOverridesFor,
+} from './settings/project-override-draft';
 import { buildStationResetPlan } from './settings/station-reset';
 import {
   buildSettingsExportPayload,
@@ -118,7 +132,31 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   } = useConfigSnapshot();
   const { updateConfig, isSaving } = useConfigActions();
   const invalidate = useInvalidateQuery();
-  const { data: provenance } = useConfigProvenanceQuery();
+  // #2144 slice 3. The project the page is showing settings FOR. It lives
+  // OUTSIDE the Station draft on purpose: a project override is a different
+  // document with a different write path, and folding it into `config` would
+  // make one Save request carry two authorities' values.
+  const [selectedProjectSlug, setSelectedProjectSlug] = useState<string | null>(
+    null,
+  );
+  const [overrideDraft, setOverrideDraft] = useState<ProjectOverrideDraft>({});
+  const { data: projects } = useProjectsQuery();
+  const projectList: { slug: string; name?: string }[] = Array.isArray(projects)
+    ? projects
+    : [];
+  const { data: selectedProject } = useProjectQuery(selectedProjectSlug ?? '', {
+    enabled: Boolean(selectedProjectSlug),
+  });
+  const savedOverrides = savedOverridesFor(
+    selectedProjectSlug ? selectedProject : undefined,
+  );
+  const updateProject = useUpdateProjectMutation();
+  // Asking the SAME route for more provenance, not for different values: the
+  // response body stays this Station's config and only the attribution gains
+  // the project's scope (`GET /config/app?project=<slug>`, slice 2).
+  const { data: provenance } = useConfigProvenanceQuery(
+    selectedProjectSlug ?? undefined,
+  );
   const {
     chatFontSize,
     featureSettings,
@@ -166,7 +204,39 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const configJson = JSON.stringify(config);
   const baselineJson = JSON.stringify(savedConfig);
   const hasChanges = configJson !== baselineJson;
-  const { DiscardModal } = useUnsavedGuard(hasChanges);
+  const overrideDelta = projectOverrideDelta(overrideDraft, savedOverrides);
+  const overrideDirty = Object.keys(overrideDelta).length > 0;
+  // ONE guard over both drafts. Two guards would ask twice for a single
+  // navigation and let either one discard while the other still holds an
+  // unsaved edit.
+  const { guard, DiscardModal } = useUnsavedGuard(hasChanges || overrideDirty);
+  const selectProject = (slug: string | null) => {
+    guard(() => {
+      setConfig(savedConfig);
+      setOverrideDraft({});
+      setSelectedProjectSlug(slug);
+    });
+  };
+  const projectOverride = selectedProjectSlug
+    ? {
+        name:
+          projectList.find((entry) => entry.slug === selectedProjectSlug)
+            ?.name ?? selectedProjectSlug,
+        values: Object.fromEntries(
+          PROJECT_OVERRIDABLE_APP_SETTING_KEYS.map((key) => [
+            key,
+            effectiveOverrideValue(key, overrideDraft, savedOverrides),
+          ]),
+        ),
+        onChange: (key: ProjectOverridableAppSettingKey, value: unknown) =>
+          setOverrideDraft((current) => ({ ...current, [key]: value })),
+        // `null`, not a delete: the route reads `null` as "drop this
+        // override", and removing the key from the draft would only mean
+        // "never touched", which saves nothing.
+        onReset: (key: ProjectOverridableAppSettingKey) =>
+          setOverrideDraft((current) => ({ ...current, [key]: null })),
+      }
+    : undefined;
   const highlightNotice = highlightAnnouncement ? (
     <div
       className="settings__highlight-notice"
@@ -473,7 +543,18 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       logLevel !== undefined
         ? updateAppLogLevel(currentApiBase, logLevel)
         : undefined;
-    if (!plainWrite && !logLevelWrite) return;
+    // #2144 slice 3: the project's own document, written by its own route.
+    // A third independent write rather than a third key in the config PUT —
+    // `PUT /api/projects/:slug` is what accepts `null` as "drop this
+    // override", and the Station config route has no way to express that.
+    const overrideWrite =
+      selectedProjectSlug && overrideDirty
+        ? updateProject.mutateAsync({
+            slug: selectedProjectSlug,
+            ...buildProjectOverrideUpdate(overrideDelta, savedOverrides),
+          })
+        : undefined;
+    if (!plainWrite && !logLevelWrite && !overrideWrite) return;
 
     saveInFlightRef.current = true;
     setIsSplitSaving(true);
@@ -484,6 +565,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         Promise.allSettled([
           plainWrite ?? Promise.resolve(),
           logLevelWrite ?? Promise.resolve(),
+          overrideWrite ?? Promise.resolve(),
         ]),
         new Promise<'deadline'>((resolve) => {
           deadlineTimer = setTimeout(
@@ -498,7 +580,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         );
         return;
       }
-      const [plainOutcome, logLevelOutcome] = settled;
+      const [plainOutcome, logLevelOutcome, overrideOutcome] = settled;
       const plainFailed =
         plainWrite !== undefined && plainOutcome.status === 'rejected';
       const logLevelFailed =
@@ -528,23 +610,36 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         invalidate(['config']);
         onSaved?.();
       }
-      if (plainFailed && logLevelFailed) {
-        setError(
-          'Log Level and other settings could not be saved. Your changes are kept here until you retry.',
-        );
-      } else if (logLevelFailed) {
-        setError(
-          plainOutcome.status === 'fulfilled'
-            ? 'Log Level could not be saved. Other settings were saved; your Log Level change is kept here until you retry.'
-            : 'Log Level could not be saved. Your change is kept here until you retry.',
-        );
-      } else if (plainFailed) {
-        setError(
-          plainOutcome.reason instanceof StationReadOnlyError
-            ? 'Save failed — Station is unreachable. Your changes are kept here until you retry; they are not saved yet.'
-            : 'Some settings could not be saved. Your changes are kept here until you retry.',
-        );
+      // The project write settles on its own: it is a different document on a
+      // different route, so it succeeding or failing says nothing about the
+      // Station config write and must not silence or absorb its message.
+      if (overrideWrite !== undefined && overrideOutcome.status === 'fulfilled') {
+        setOverrideDraft({});
+        // The provenance the page renders is computed from the project record
+        // that just changed, so the badges are stale until it is re-read.
+        invalidate(['config']);
       }
+      const overrideFailed =
+        overrideWrite !== undefined && overrideOutcome.status === 'rejected';
+      const stationMessage =
+        plainFailed && logLevelFailed
+          ? 'Log Level and other settings could not be saved. Your changes are kept here until you retry.'
+          : logLevelFailed
+            ? plainOutcome.status === 'fulfilled'
+              ? 'Log Level could not be saved. Other settings were saved; your Log Level change is kept here until you retry.'
+              : 'Log Level could not be saved. Your change is kept here until you retry.'
+            : plainFailed
+              ? plainOutcome.reason instanceof StationReadOnlyError
+                ? 'Save failed — Station is unreachable. Your changes are kept here until you retry; they are not saved yet.'
+                : 'Some settings could not be saved. Your changes are kept here until you retry.'
+              : null;
+      const messages = [
+        stationMessage,
+        overrideFailed
+          ? "This project's overrides could not be saved. Your changes to them are kept here until you retry."
+          : null,
+      ].filter((message): message is string => message !== null);
+      if (messages.length > 0) setError(messages.join(' '));
     } finally {
       if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
       saveInFlightRef.current = false;
@@ -670,6 +765,38 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         {/* ── Manage (other surfaces, not sections of this page) ── */}
         <SettingsManageSection />
 
+        {/* #2144 slice 3: which document the page is showing values for.
+            Outside every scope group because it re-attributes rows in more
+            than one of them, and the sentence beside it names exactly what a
+            project may override — the selector governs attribution for the
+            whole page, but only these settings are a project's to change. */}
+        <div className="settings__project-scope">
+          <label
+            className="settings__project-scope-label"
+            htmlFor="settings-project-scope"
+          >
+            Show settings for:
+          </label>
+          <select
+            id="settings-project-scope"
+            className="editor-select"
+            value={selectedProjectSlug ?? ''}
+            onChange={(event) => selectProject(event.target.value || null)}
+          >
+            <option value="">Station only</option>
+            {projectList.map((project) => (
+              <option key={project.slug} value={project.slug}>
+                {project.name ?? project.slug}
+              </option>
+            ))}
+          </select>
+          <span className="settings__field-hint">
+            A project can override its new-chat workspace and its default model
+            connection and model. Every other setting on this page belongs to
+            the Station.
+          </span>
+        </div>
+
         {/* ── Station scope ── */}
         <section
           aria-label="Station settings"
@@ -685,6 +812,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 config={config}
                 provenance={provenance}
                 onChange={setConfig}
+                projectOverride={projectOverride}
               />
               <UsageTelemetryDisclosure />
               <LocalAccountsSection />
@@ -989,13 +1117,16 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         )}
       </div>
 
-      {hasChanges && (
+      {(hasChanges || overrideDirty) && (
         <div className="settings__save-pill" role="status" aria-live="polite">
           <span className="settings__save-pill-text">Unsaved changes</span>
           <button
             type="button"
             className="settings__save-pill-discard"
-            onClick={() => setConfig(savedConfig)}
+            onClick={() => {
+              setConfig(savedConfig);
+              setOverrideDraft({});
+            }}
           >
             Discard
           </button>

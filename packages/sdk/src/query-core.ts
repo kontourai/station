@@ -87,7 +87,7 @@ const activeCancelableQueries = new WeakMap<
 >();
 
 export function useCancelWhenInactive(
-  queryKey: (string | number | object)[],
+  queryKey: (string | number | object | null)[],
   enabled: boolean,
   cancelWhenInactive: boolean | undefined,
 ): void {
@@ -122,7 +122,13 @@ export async function resolveApiBase(apiBase?: string): Promise<string> {
 }
 
 export function useApiQuery<T = any>(
-  queryKey: (string | number | object)[],
+  // `null` is a member because an OPTIONAL key segment has to have a spelling
+  // that is distinct from "no segment": `['config','provenance', slug ?? null]`
+  // and `['config','provenance']` would otherwise be the same cache entry, and
+  // the scoped read's answer would be served for the unscoped one. React Query
+  // serializes `null` in a key like any other JSON value, and the raw
+  // `useQuery` callers in this package (`developerRuntime.ts`) already do this.
+  queryKey: (string | number | object | null)[],
   queryFn: (signal?: AbortSignal) => Promise<T>,
   config?: QueryConfig<T>,
 ) {

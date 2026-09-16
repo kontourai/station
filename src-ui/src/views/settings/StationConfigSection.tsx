@@ -17,6 +17,10 @@ import type {
   SettingDefinition,
   SettingProvenanceEntry,
 } from '@kontourai/station-contracts/settings-registry';
+import {
+  PROJECT_OVERRIDABLE_APP_SETTING_KEYS,
+  type ProjectOverridableAppSettingKey,
+} from '@kontourai/station-contracts/project-settings-overrides';
 import { USER_FACING_APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import type { AppConfig } from '../../types';
 import { renderSettingRow } from './registry-row';
@@ -73,17 +77,37 @@ const REGISTRY_BY_KEY: ReadonlyMap<keyof AppConfig, SettingDefinition> =
     ]),
   );
 
+/**
+ * #2144 slice 3 — the project the page is currently showing settings FOR,
+ * supplied only while its selector names one. Absent is the ordinary Station
+ * page, and every row below then behaves exactly as it did before the slice.
+ */
+export interface StationConfigProjectOverride {
+  name: string;
+  /** The effective override value per setting key; `undefined` = inherits. */
+  values: Partial<Record<ProjectOverridableAppSettingKey, unknown>>;
+  onChange: (key: ProjectOverridableAppSettingKey, value: unknown) => void;
+  /** Drops the key's override, pending save. */
+  onReset: (key: ProjectOverridableAppSettingKey) => void;
+}
+
+const OVERRIDABLE: ReadonlySet<string> = new Set(
+  PROJECT_OVERRIDABLE_APP_SETTING_KEYS,
+);
+
 export function StationConfigSection({
   config,
   provenance,
   onChange,
   embedded = false,
+  projectOverride,
 }: {
   config: AppConfig;
   provenance?: Record<string, SettingProvenanceEntry>;
   onChange: (config: AppConfig) => void;
   /** Host owns the page heading; preserve the Settings route's default. */
   embedded?: boolean;
+  projectOverride?: StationConfigProjectOverride;
 }) {
   return (
     <SettingsSection
@@ -94,11 +118,32 @@ export function StationConfigSection({
       {STATION_CONFIG_KEYS.map((key) => {
         const definition = REGISTRY_BY_KEY.get(key);
         if (!definition) return null;
+        // A project may override only the keys the contract lists, and only
+        // while one is selected. Everything else keeps writing the Station
+        // draft even on a project-scoped view — a project has no opinion to
+        // record about them, and silently routing the edit somewhere the
+        // resolver never reads is the failure this closed list prevents.
+        const overridable =
+          projectOverride !== undefined && OVERRIDABLE.has(key as string);
+        const overrideKey = key as ProjectOverridableAppSettingKey;
+        const overrideValue = overridable
+          ? projectOverride.values[overrideKey]
+          : undefined;
         return renderSettingRow({
           definition,
-          value: config[key],
+          value: overridable && overrideValue !== undefined
+            ? overrideValue
+            : config[key],
           provenance: provenance?.[key as string],
           runtimeDefault: hostDerivedDefault(config, key),
+          ...(overridable
+            ? {
+                projectName: projectOverride.name,
+                projectValue: overrideValue,
+                stationValue: config[key],
+                onResetToInherited: () => projectOverride.onReset(overrideKey),
+              }
+            : {}),
           // `value` is passed through verbatim (never coerced to
           // `undefined`) — an explicit `null` is the documented "clear this
           // field" signal at the PUT layer (`sanitizeAppConfigUpdate`), and
@@ -107,7 +152,9 @@ export function StationConfigSection({
           // ("re-derived each boot") — coercing it away would silently
           // change which of those two states a save actually persists.
           onChange: (value) =>
-            onChange({ ...config, [key]: value } as AppConfig),
+            overridable
+              ? projectOverride.onChange(overrideKey, value)
+              : onChange({ ...config, [key]: value } as AppConfig),
         });
       })}
     </SettingsSection>
