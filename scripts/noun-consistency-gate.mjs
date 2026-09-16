@@ -901,9 +901,10 @@ function main() {
       console.error(`  ${entry.file}:${entry.line}: ${entry.snippet}`);
     }
     console.error(
-      '\nThe scanner reads plain string literals out of defineSetting({ ... })' +
-        '\nblocks. Copy it cannot read is reported instead of skipped — express the' +
-        '\nstring as a literal, or teach scanCopySourceContent the new shape.',
+      "\nThe scanner reads plain string literals out of each copy source's own" +
+        '\nfactory blocks (COPY_SOURCE_OPENERS). Copy it cannot read is reported' +
+        '\ninstead of skipped — express the string as a literal, register the' +
+        '\nright opener, or teach scanCopySourceContent the new shape.',
     );
   }
 
