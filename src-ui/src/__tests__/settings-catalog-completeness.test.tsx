@@ -154,9 +154,12 @@ vi.mock('../contexts/ConfigContext', () => ({
 let deviceChatFontSize: number | null = 14;
 const setDeviceSetting = vi.fn();
 const resetDeviceSetting = vi.fn();
+let deviceFeatureSettings: Record<string, unknown> = {};
 vi.mock('../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({
     chatFontSize: deviceChatFontSize,
+    // #2144 slice 6 item B: the Answer delivery row reads this.
+    featureSettings: deviceFeatureSettings,
     hapticsEnabled: true,
     accentColor: null,
     developerToolsEnabled: false,
@@ -244,6 +247,7 @@ describe('settings catalog completeness', () => {
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
     configProvenance = {};
     deviceChatFontSize = 14;
+    deviceFeatureSettings = {};
     setDeviceSetting.mockClear();
     resetDeviceSetting.mockClear();
     window.history.replaceState({}, '', '/settings');
@@ -1143,6 +1147,50 @@ describe('settings catalog completeness', () => {
       expect(resetDeviceSetting).toHaveBeenCalledTimes(1);
       expect(resetDeviceSetting).toHaveBeenCalledWith('chatFontSize');
       expect(setDeviceSetting).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * #585 / #2144 slice 6 item B. The chat gear panel's half of this is in
+   * ChatSettingsPanel.test.tsx; this is the Settings row, and the point of
+   * having both is that they write the SAME device key with the same
+   * meaning rather than two controls that happen to look alike.
+   */
+  describe('Answer delivery', () => {
+    test('writes smoothReveal in both directions from the Appearance row', async () => {
+      const { unmount } = await renderSettings();
+      const select = screen.getByLabelText(
+        'Answer delivery',
+      ) as HTMLSelectElement;
+      expect(select.value).toBe('token');
+
+      fireEvent.change(select, { target: { value: 'smooth' } });
+      expect(setDeviceSetting).toHaveBeenCalledWith(
+        'featureSettings',
+        expect.objectContaining({ smoothReveal: true }),
+      );
+
+      setDeviceSetting.mockClear();
+      deviceFeatureSettings = { smoothReveal: true };
+      unmount();
+      const second = await renderSettings();
+      const reopened = screen.getByLabelText(
+        'Answer delivery',
+      ) as HTMLSelectElement;
+      expect(reopened.value).toBe('smooth');
+      fireEvent.change(reopened, { target: { value: 'token' } });
+      expect(setDeviceSetting).toHaveBeenCalledWith(
+        'featureSettings',
+        expect.objectContaining({ smoothReveal: false }),
+      );
+      second.unmount();
+    });
+
+    test('the retired mechanism-named toggle is gone', async () => {
+      await renderSettings();
+      expect(
+        screen.queryByRole('switch', { name: 'Smooth answer reveal' }),
+      ).toBeNull();
     });
   });
 

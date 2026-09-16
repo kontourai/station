@@ -282,10 +282,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['chatFontSize'],
   },
   {
+    // The id is the stable URL/palette identity and stays as minted even
+    // though the title no longer matches it (#2144 slice 6 item B) — a
+    // rename would break every deep link and every recorded highlight.
     id: 'smooth-answer-reveal',
-    title: 'Smooth answer reveal',
+    title: 'Answer delivery',
     section: 'appearance',
-    keywords: ['chat streaming steady cadence'],
+    keywords: ['chat streaming steady cadence', 'smooth reveal'],
     configKeys: ['featureSettings'],
   },
   { id: 'theme', title: 'Theme', section: 'appearance', configKeys: ['theme'] },

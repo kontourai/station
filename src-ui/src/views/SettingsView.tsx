@@ -36,6 +36,12 @@ import { useLocale } from '../i18n/LocaleContext';
 import { DeviceSettingsImportVersionError } from '../lib/device-settings-store';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import type { AppConfig, NavigationView } from '../types';
+import {
+  ANSWER_DELIVERY_OPTIONS,
+  answerDeliveryModeOf,
+  isAnswerDeliveryMode,
+  smoothRevealForAnswerDelivery,
+} from '../utils/answerDelivery';
 import { AccentColorPicker } from './settings/AccentColorPicker';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
@@ -854,20 +860,34 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   </div>
                 }
               />
+              {/* #585 / #2144 slice 6 item B: one control naming BOTH
+                  outcomes, over the same `featureSettings.smoothReveal`
+                  boolean the two "Smooth answer reveal" toggles wrote. The
+                  in-chat gear panel renders the same options from the same
+                  mapping module. */}
               <PageRow
                 {...settingsRow('smooth-answer-reveal')}
-                description="Reveal incoming answer text steadily instead of showing network bursts all at once."
+                description="How streamed answer text appears on this device. Either way the same text arrives at the same time; only its pacing on screen differs."
                 control={
-                  <Toggle
-                    checked={featureSettings?.smoothReveal ?? false}
-                    onChange={(checked) =>
+                  <select
+                    className="editor-select"
+                    aria-label={settingsRow('smooth-answer-reveal').title}
+                    value={answerDeliveryModeOf(featureSettings?.smoothReveal)}
+                    onChange={(event) => {
+                      const mode = event.target.value;
+                      if (!isAnswerDeliveryMode(mode)) return;
                       setDeviceSetting('featureSettings', {
                         ...featureSettings,
-                        smoothReveal: checked,
-                      })
-                    }
-                    label={settingsRow('smooth-answer-reveal').title}
-                  />
+                        smoothReveal: smoothRevealForAnswerDelivery(mode),
+                      });
+                    }}
+                  >
+                    {ANSWER_DELIVERY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 }
               />
               <PageRow

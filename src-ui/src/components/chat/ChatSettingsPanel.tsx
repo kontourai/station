@@ -7,6 +7,12 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import {
+  ANSWER_DELIVERY_OPTIONS,
+  answerDeliveryModeOf,
+  isAnswerDeliveryMode,
+  smoothRevealForAnswerDelivery,
+} from '../../utils/answerDelivery';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { Toggle } from '../Toggle';
 import {
@@ -64,7 +70,7 @@ export function ChatSettingsPanel({
   const reasoningId = useId();
   const toolsId = useId();
   const autoHideId = useId();
-  const smoothRevealId = useId();
+  const answerDeliveryId = useId();
   const { featureSettings, developerToolsEnabled } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const dismissSummary = useDismissSessionSummaryMutation();
@@ -123,31 +129,42 @@ export function ChatSettingsPanel({
         </div>
       </fieldset>
 
+      {/* #585 / #2144 slice 6 item B: the same two named options as the
+          Settings Appearance row, over the same boolean and the same
+          mapping module — the two surfaces cannot drift. */}
       <div className="chat-settings-modal__section">
         <label
-          className="chat-settings-modal__checkbox"
-          htmlFor={smoothRevealId}
+          className="chat-settings-modal__label"
+          htmlFor={answerDeliveryId}
         >
-          <Toggle
-            id={smoothRevealId}
-            checked={featureSettings.smoothReveal ?? false}
-            onChange={(checked) =>
-              setDeviceSetting('featureSettings', {
-                ...featureSettings,
-                smoothReveal: checked,
-              })
-            }
-            size="sm"
-            describedBy="chat-settings-smooth-reveal-hint"
-          />
-          <span>Smooth answer reveal</span>
+          Answer delivery
         </label>
+        <select
+          id={answerDeliveryId}
+          className="editor-select"
+          value={answerDeliveryModeOf(featureSettings.smoothReveal)}
+          aria-describedby="chat-settings-answer-delivery-hint"
+          onChange={(event) => {
+            const mode = event.target.value;
+            if (!isAnswerDeliveryMode(mode)) return;
+            setDeviceSetting('featureSettings', {
+              ...featureSettings,
+              smoothReveal: smoothRevealForAnswerDelivery(mode),
+            });
+          }}
+        >
+          {ANSWER_DELIVERY_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
         <p
-          id="chat-settings-smooth-reveal-hint"
+          id="chat-settings-answer-delivery-hint"
           className="chat-settings-modal__hint"
         >
-          Reveal incoming answer text steadily instead of showing network bursts
-          all at once
+          Either way the same text arrives at the same time; only its pacing on
+          screen differs
         </p>
       </div>
 
