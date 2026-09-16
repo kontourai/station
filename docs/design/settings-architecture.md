@@ -361,6 +361,27 @@ not compete with palette return focus. Navigating within mounted Settings keeps
 the form and its drafts alive; only a genuine route leave crosses the existing
 unsaved-changes guard, so Back retains the expected Settings intent.
 
+Epic #2144 slice 3 gives every generic registry row a status strip
+(`src-ui/src/views/settings/SettingRowStatus.tsx`): a scope badge naming the
+document that owns the value — **Station**, **This device**, or **Project**
+when `GET /config/app?project=<slug>` reported the project as its source — the
+unchanged provenance chip beside it, and a trigger opening an on-demand
+inheritance list (`SettingInheritanceLayers.tsx`, loaded through
+`LazyBoundary`). That list shows the layers a value resolves through, project
+override first and built-in default last, with exactly one marked "in effect"
+— derived from the provenance entry the server computed, never re-derived by
+comparing raw values. A row the selected project overrides also offers **Reset
+to inherited**, which sends `null` on `PUT /api/projects/:slug` (the route's
+own spelling for dropping an override) rather than omitting the field, and is
+withheld for a `required` setting that has nothing to fall back to. The
+project the page is attributed to comes from a selector above the scope
+groups; its draft is held outside the Station draft, folded into the same
+unsaved-changes guard, and saved by its own request beside the config write.
+A project may only change the keys
+`PROJECT_OVERRIDABLE_APP_SETTING_KEYS` lists, and the model pair is written
+whole or not at all. The three composite rows keep no status strip in this
+slice.
+
 - `/settings` becomes three registry-driven sections with explicit scope labels:
   **Station** (S1), **Defaults** (S2), **This device** (S3) — progressive
   disclosure, search across all of them, persistence-tier caption per section.
