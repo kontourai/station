@@ -797,9 +797,10 @@ callers).
 widget and put its rows in the strip's own arrow order, so the menu renders as
 the strip's sibling; the right-click moves the roving stop onto the chip it
 focuses, so there is still exactly one. The menu itself is behind a
-`LazyBoundary` — inlining it measured the entry chunk at 333843 against a
-333800 ceiling, and behind the boundary at 333650, on base 3b55b26fb. That is
-the same reason the Boards SECTION beside it is lazy. Its cost is stated where
+`LazyBoundary` — measured on the delivering branch against base 3b55b26fb
+(ceiling 333800): inlined, the entry chunk is 333884 and over; behind the
+boundary, 333738. That is the same reason the Boards SECTION beside it is
+lazy. Its cost is stated where
 it is taken (`ProjectLayoutChipMenu.tsx`): the first right-click fetches the
 chunk, and a fetch that fails renders nothing rather than planting an error
 card in a 240px rail that nothing there could dismiss. Because that choice

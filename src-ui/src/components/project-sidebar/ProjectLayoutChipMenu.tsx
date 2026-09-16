@@ -12,12 +12,13 @@ import { useSidebarPillRegions } from './pill-region-open';
  * so everything it references is paid for on every cold load by every user,
  * including the ones who never right-click a chip.
  *
- * THE MEASUREMENT THAT DECIDES IT, on base 3b55b26fb (ceiling 333800): with
- * this component inlined into `ProjectLayoutChips` the entry chunk measures
- * 333843, which is over. Behind this boundary it measures 333650. The
- * lazy-to-inline delta is 193 B — the stub, the key and the boundary call are
- * not free, so this is smaller than the component's own weight and it is the
- * number that matters.
+ * THE MEASUREMENT THAT DECIDES IT, taken on this branch against base
+ * 3b55b26fb, ceiling 333800: with this component inlined into
+ * `ProjectLayoutChips` (and the retry key dropped, which an inlined menu does
+ * not need) the entry chunk measures 333884 — over. Behind this boundary it
+ * measures 333738. The delta is 146 B, which is smaller than this file's own
+ * weight because the stub, the key and the boundary call are not free; 146 is
+ * the number that decides it, not the component's size.
  *
  * That is also the shape its sibling already has. The Boards SECTION — whose
  * row menu this one mirrors — is behind a `LazyBoundary` for the same reason
