@@ -15,6 +15,10 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  APP_DESTINATION_REGISTRY,
+  DEVELOPER_TOOLS_FLAG,
+} from '../app-shell/destination-registry';
+import {
   SETTINGS_CATALOG,
   visibleCatalogIds,
 } from '../views/settings/settings-catalog';
@@ -220,9 +224,28 @@ const DEFAULT_DEVICE_FEATURE_SETTINGS = DEVICE_SETTINGS_REGISTRY.find(
 )!.defaultValue as unknown as Record<string, unknown>;
 let deviceFeatureSettings: Record<string, unknown> =
   DEFAULT_DEVICE_FEATURE_SETTINGS;
+/**
+ * #2144 slice 4: the five chat rows that had a device-settings contract row
+ * and no Settings row. Seeded from the REGISTRY's own defaults rather than
+ * hand-written literals, so the fixture is the shape the real store hands a
+ * device nobody has touched — a hand-picked `true` here would make a row that
+ * silently ignores its stored value look correct.
+ */
+function deviceDefault<T>(key: string): T {
+  return DEVICE_SETTINGS_REGISTRY.find((definition) => definition.key === key)!
+    .defaultValue as unknown as T;
+}
+let deviceChatSettings = {
+  chatShowReasoning: deviceDefault<boolean>('chatShowReasoning'),
+  chatShowToolDetails: deviceDefault<boolean>('chatShowToolDetails'),
+  chatDockAutoHide: deviceDefault<boolean>('chatDockAutoHide'),
+  diffStyle: deviceDefault<'unified' | 'split'>('diffStyle'),
+  diffWrap: deviceDefault<boolean>('diffWrap'),
+};
 vi.mock('../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({
     chatFontSize: deviceChatFontSize,
+    ...deviceChatSettings,
     // #2144 slice 6 item B: the Answer delivery row reads this.
     featureSettings: deviceFeatureSettings,
     hapticsEnabled: true,
@@ -250,10 +273,12 @@ vi.mock('../platform/PlatformProfileContext', () => ({
 }));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
-  // #2059: the page's Manage group navigates to other DESTINATIONS (Agents,
-  // Connections, …) rather than to a `?view=` section of this page, so it
-  // reads the navigation actions directly. Its own behaviour is covered by
-  // SettingsManageSection.test.tsx; here it only has to mount.
+  // #2059: the page's nav-only rows navigate to other DESTINATIONS (Agents,
+  // Skills, Engines & Models, …) rather than to a `?view=` section of this
+  // page, so the section nav reads the navigation actions directly. Where
+  // those rows sit and where they point is covered by
+  // `SettingsSectionNav.test.tsx` and `developer-reachable.test.ts`; here the
+  // nav only has to mount.
   useNavigationActions: () => ({ navigate: vi.fn() }),
 }));
 vi.mock('../contexts/KeyboardShortcutsContext', () => {
@@ -325,6 +350,13 @@ describe('settings catalog completeness', () => {
     invalidateQuery.mockImplementation(() => Promise.resolve());
     deviceChatFontSize = 14;
     deviceFeatureSettings = DEFAULT_DEVICE_FEATURE_SETTINGS;
+    deviceChatSettings = {
+      chatShowReasoning: deviceDefault<boolean>('chatShowReasoning'),
+      chatShowToolDetails: deviceDefault<boolean>('chatShowToolDetails'),
+      chatDockAutoHide: deviceDefault<boolean>('chatDockAutoHide'),
+      diffStyle: deviceDefault<'unified' | 'split'>('diffStyle'),
+      diffWrap: deviceDefault<boolean>('diffWrap'),
+    };
     telemetryEndpointConfigured = undefined;
     telemetryDisclosureSettled = true;
     telemetryDisclosureIsError = false;
@@ -432,8 +464,13 @@ describe('settings catalog completeness', () => {
     // (default-workspace-isolation). Counted from the merged catalog, not
     // added up. #2144 slice 6: +4 (default-approval-mode,
     // telemetry-destination, confirm-conversation-delete,
-    // reset-device-defaults).
-    expect(SETTINGS_CATALOG).toHaveLength(49);
+    // reset-device-defaults). #2144 slice 4: +5 — the five chat rows that had
+    // a device-settings contract row and no catalog row, so the in-chat gear
+    // was their only surface (chat-show-reasoning, chat-show-tool-details,
+    // chat-dock-auto-hide, diff-style, diff-wrap). The two Appearance rows
+    // that MOVED into the new chat section are not a change to this count:
+    // the same ids, in a different `view`.
+    expect(SETTINGS_CATALOG).toHaveLength(54);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
@@ -927,7 +964,7 @@ describe('settings catalog completeness', () => {
     window.history.replaceState(
       {},
       '',
-      '/settings?view=appearance&highlight=chat-font-size',
+      '/settings?view=chat&highlight=chat-font-size',
     );
     const { container } = await renderSettings();
 
@@ -939,13 +976,62 @@ describe('settings catalog completeness', () => {
     window.history.pushState(
       {},
       '',
-      '/settings?view=appearance&highlight=chat-font-size',
+      '/settings?view=chat&highlight=chat-font-size',
     );
     fireEvent(window, new PopStateEvent('popstate'));
     await waitFor(() =>
       expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(2),
     );
-    expect(window.location.search).toBe('?view=appearance');
+    expect(window.location.search).toBe('?view=chat');
+  });
+
+  // #2144 slice 4 moved `chat-font-size` and `smooth-answer-reveal` out of
+  // Appearance into the new Chat section. Their IDS did not change, so every
+  // recorded link and every palette entry still names a row that exists — but
+  // an old link names the wrong `view`. This is the documented soft break, and
+  // what it must NOT do is strand the reader on a section the row is not in:
+  // the stale view is corrected to the row's own, and the row is revealed.
+  test.each([
+    ['chat-font-size', '#chatFontSize'],
+    ['smooth-answer-reveal', '[data-catalog-id="smooth-answer-reveal"]'],
+  ])(
+    'a pre-move link to ?view=appearance&highlight=%s still lands on the row',
+    async (highlight, selector) => {
+      window.history.replaceState(
+        {},
+        '',
+        `/settings?view=appearance&highlight=${highlight}`,
+      );
+      const { container } = await renderSettings();
+
+      await waitFor(() =>
+        expect(container.querySelector(selector)).toBeTruthy(),
+      );
+      await waitFor(() => expect(window.location.search).toBe('?view=chat'));
+      // And it is not merely that some element matched: Appearance's own rows
+      // are not on screen, so the page really did move to the Chat section.
+      expect(container.querySelector('#section-appearance')).toBeNull();
+      expect(container.querySelector('#section-chat')).toBeTruthy();
+    },
+  );
+
+  // The reverse of the case above, and not covered by it: the healing is
+  // driven by the ENTRY's own section, so a link that names `chat` for a row
+  // that lives in Appearance has to be corrected the other way. A fix that
+  // only ever moved a reader towards `chat` — the direction #2144's move
+  // went — would satisfy the pair above and fail here.
+  test('a link naming ?view=chat for a row that lives in Appearance lands on Appearance', async () => {
+    window.history.replaceState({}, '', '/settings?view=chat&highlight=theme');
+    const { container } = await renderSettings();
+
+    await waitFor(() =>
+      expect(container.querySelector('[data-catalog-id="theme"]')).toBeTruthy(),
+    );
+    await waitFor(() =>
+      expect(window.location.search).toBe('?view=appearance'),
+    );
+    expect(container.querySelector('#section-chat')).toBeNull();
+    expect(container.querySelector('#section-appearance')).toBeTruthy();
   });
 
   test('focuses a deep-linked editable field in the Defaults section', async () => {
@@ -968,6 +1054,52 @@ describe('settings catalog completeness', () => {
     expect(container.querySelector('.agent-defaults__disclosure')).toBeNull();
   });
 
+  // #2144 slice 4. Turning developer tools on changes nothing where the switch
+  // is: it adds a row to the navigation strip at the top of the page, under a
+  // different group heading, in a strip that scrolls sideways. So the row has
+  // to say where to look — and the sentence has to be checked against the
+  // placement, or it goes on describing the old one after a move.
+  //
+  // The heading half is DERIVED: the projection below is built by the
+  // production `getSettingsNav` and `settingsSectionNavItems` against the real
+  // registry, then walked back to the group label the row would sit under.
+  // The flag set is synthetic because this render has developer tools OFF —
+  // the page as rendered here has no Developer row at all, which is the state
+  // a reader is in when they read this description.
+  //
+  // That the row is FIRST within the group is not asserted here; it is pinned
+  // in `SettingsSectionNav.test.tsx` ('opens each group at its first item').
+  test('the developer-tools row names the row it reveals and the group it opens', async () => {
+    window.history.replaceState({}, '', '/settings?view=developer-tools');
+    const { settingsSectionNavItems } = await import('../views/SettingsView');
+    const { container, unmount } = await renderSettings();
+
+    const withDeveloper = APP_DESTINATION_REGISTRY.getSettingsNav(
+      new Set([DEVELOPER_TOOLS_FLAG]),
+    );
+    const developer = withDeveloper.find((entry) => entry.id === 'developer');
+    expect(developer).toBeTruthy();
+    const navItems = settingsSectionNavItems(
+      (section) => `/settings?view=${section}`,
+      withDeveloper,
+    );
+    const index = navItems.findIndex((item) => item.href === developer!.route);
+    expect(index).toBeGreaterThan(-1);
+    let groupLabel: string | undefined;
+    for (let cursor = index; cursor >= 0 && !groupLabel; cursor -= 1) {
+      groupLabel = navItems[cursor]!.groupLabel;
+    }
+    expect(groupLabel).toBeTruthy();
+
+    const description = container.querySelector(
+      '[data-catalog-id="enable-developer-tools"] .page-row__description',
+    );
+    expect(description).toBeTruthy();
+    expect(description!.textContent).toContain(developer!.label);
+    expect(description!.textContent).toContain(groupLabel!);
+    unmount();
+  });
+
   test('removes an invalid highlight without disturbing route and shell query state', async () => {
     window.history.replaceState(
       {},
@@ -984,11 +1116,71 @@ describe('settings catalog completeness', () => {
     expect(window.location.search).toBe('?dock=true&locale=fr&view=appearance');
   });
 
+  // Both halves of the link wrong at once, which is what a bookmark from two
+  // renames ago looks like. Neither correction can lean on the other here: the
+  // view is not in the section vocabulary, so the resolver drops it rather
+  // than opening it, and the id is not in the catalog, so there is no entry to
+  // heal the view towards. The page lands on overview — not blank, not on a
+  // section that does not exist — and says the target is gone.
+  test('drops a retired highlight and the retired view named beside it', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/settings?view=manage&highlight=retired-control',
+    );
+    const { container } = await renderSettings();
+
+    await waitFor(() =>
+      expect(container.textContent).toContain(
+        'That Settings target is no longer available.',
+      ),
+    );
+    await waitFor(() => expect(window.location.search).toBe(''));
+    // Overview: every section on screen, rather than the reader stranded on
+    // the one the dead `view` named.
+    expect(container.querySelector('#section-appearance')).toBeTruthy();
+    expect(container.querySelector('#section-chat')).toBeTruthy();
+  });
+
+  // #2144 slice 4 renamed these, and nothing asserted them — so the rename was
+  // free. Each box also opens with a caption stating its rule in words
+  // (`tests/settings.spec.ts` pins those); the landmark name is what a reader
+  // moving by region hears WITHOUT entering the box, which is the only way to
+  // tell which run of sections you are about to walk into. Two of the four
+  // name something other than a storage location: `Control` is an authority
+  // relationship and `Knowledge` is a topic.
+  test('each scope group is a landmark named for what it holds', async () => {
+    window.history.replaceState({}, '', '/settings');
+    const { container } = await renderSettings();
+
+    await waitFor(() =>
+      expect(container.querySelector('.settings__scope-group')).toBeTruthy(),
+    );
+    const groups = [
+      ...container.querySelectorAll<HTMLElement>('.settings__scope-group'),
+    ];
+    expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
+      'This Station settings',
+      'Control settings',
+      'This device settings',
+      'Knowledge settings',
+    ]);
+    // Named regions, not styling wrappers: the name has to reach the
+    // accessibility tree or it is decoration.
+    for (const group of groups) {
+      expect(
+        screen.getByRole('region', {
+          name: group.getAttribute('aria-label')!,
+        }),
+      ).toBe(group);
+    }
+  });
+
   test('does not steal focus from a person while a config-gated target mounts', async () => {
     window.history.replaceState(
       {},
       '',
-      '/settings?view=appearance&highlight=chat-font-size',
+      '/settings?view=chat&highlight=chat-font-size',
     );
     configSnapshot = { config: null, dataUpdatedAt: 0 };
     const { container, applyServerSnapshot } = await renderSettings();
@@ -1013,10 +1205,8 @@ describe('settings catalog completeness', () => {
       '/settings?view=system&highlight=log-level',
     );
     const { container, applyServerSnapshot } = await renderSettings();
-    fireEvent.click(screen.getByRole('link', { name: 'Appearance' }));
-    await waitFor(() =>
-      expect(window.location.search).toBe('?view=appearance'),
-    );
+    fireEvent.click(screen.getByRole('link', { name: 'Chat' }));
+    await waitFor(() => expect(window.location.search).toBe('?view=chat'));
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
     applyServerSnapshot();
 
@@ -1239,8 +1429,88 @@ describe('settings catalog completeness', () => {
    * having both is that they write the SAME device key with the same
    * meaning rather than two controls that happen to look alike.
    */
+  /**
+   * #2144 slice 4. Each of these five had a device-settings contract row and
+   * no Settings row, so nothing on this page could change them. Three of them
+   * (`chatShowReasoning`, `chatShowToolDetails`, `chatDockAutoHide`) were
+   * reachable only from the in-chat gear panel; the two diff keys were
+   * reachable only from `DiffPanel`'s own toolbar, which is why this file
+   * covers both directions for every one of them rather than trusting the
+   * other surface's test. Both directions per row, because either half alone
+   * passes for a broken control: a write-only assertion passes for a row
+   * that ignores what is stored, and a read-only one passes for a row that
+   * writes NOTHING — or, the failure an orchestrator injection actually
+   * produced here, writes its NEIGHBOUR's key, which every other test in this
+   * file was blind to.
+   */
+  describe('Chat section device rows', () => {
+    test.each([
+      // label, stored value to seed, device key, value the click must write
+      ['Show reasoning', 'chatShowReasoning', false, true],
+      ['Show tool details', 'chatShowToolDetails', false, true],
+      ['Auto-hide chat dock', 'chatDockAutoHide', true, false],
+      ['Diff line wrap', 'diffWrap', true, false],
+    ] as const)(
+      '%s reads %s and writes it back',
+      async (label, key, stored, written) => {
+        deviceChatSettings = { ...deviceChatSettings, [key]: stored };
+        const { unmount } = await renderSettings();
+
+        const toggle = screen.getByRole('switch', { name: label });
+        // Read direction: the control shows what is STORED, not a literal.
+        expect(toggle.getAttribute('aria-checked')).toBe(String(stored));
+
+        fireEvent.click(toggle);
+        // Write direction, keyed: `toHaveBeenCalledWith` alone would pass for
+        // a row writing a sibling's key with the same boolean.
+        expect(setDeviceSetting.mock.calls).toEqual([[key, written]]);
+        unmount();
+      },
+    );
+
+    test('Diff view style reads and writes diffStyle in both directions', async () => {
+      deviceChatSettings = { ...deviceChatSettings, diffStyle: 'split' };
+      const { unmount } = await renderSettings();
+
+      const select = screen.getByLabelText(
+        'Diff view style',
+      ) as HTMLSelectElement;
+      expect(select.value).toBe('split');
+      expect([...select.options].map((option) => option.value)).toEqual([
+        'unified',
+        'split',
+      ]);
+
+      fireEvent.change(select, { target: { value: 'unified' } });
+      expect(setDeviceSetting.mock.calls).toEqual([['diffStyle', 'unified']]);
+      unmount();
+
+      setDeviceSetting.mockClear();
+      deviceChatSettings = { ...deviceChatSettings, diffStyle: 'unified' };
+      const second = await renderSettings();
+      const reopened = screen.getByLabelText(
+        'Diff view style',
+      ) as HTMLSelectElement;
+      expect(reopened.value).toBe('unified');
+      fireEvent.change(reopened, { target: { value: 'split' } });
+      expect(setDeviceSetting.mock.calls).toEqual([['diffStyle', 'split']]);
+      second.unmount();
+    });
+
+    test('the two rows that moved out of Appearance render under Chat, not Appearance', async () => {
+      window.history.replaceState({}, '', '/settings?view=chat');
+      const { container, unmount } = await renderSettings();
+      const chat = container.querySelector('#section-chat')!;
+      expect(container.querySelector('#section-appearance')).toBeNull();
+      for (const id of ['chat-font-size', 'smooth-answer-reveal']) {
+        expect(chat.querySelector(`[data-catalog-id="${id}"]`)).toBeTruthy();
+      }
+      unmount();
+    });
+  });
+
   describe('Answer delivery', () => {
-    test('writes smoothReveal in both directions from the Appearance row', async () => {
+    test('writes smoothReveal in both directions from the Chat row', async () => {
       const { unmount } = await renderSettings();
       const select = screen.getByLabelText(
         'Answer delivery',

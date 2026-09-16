@@ -612,7 +612,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
     for (const label of [
       'Agents',
       'Connections',
-      'Guidance',
+      'Skills',
       'Registry',
       'Review',
       'Plugins',

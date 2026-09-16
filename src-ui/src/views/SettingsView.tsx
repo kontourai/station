@@ -16,6 +16,11 @@ import {
 import { updateAppLogLevel } from '@kontourai/station-sdk/app-config';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import {
+  APP_DESTINATION_REGISTRY,
+  type SettingsNavEntry,
+  type SettingsNavGroupId,
+} from '../app-shell/destination-registry';
 import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/header/ThemeToggle';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
@@ -40,8 +45,10 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../contexts/DeviceSettingsContext';
+import { useNavigationActions } from '../contexts/NavigationContext';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
+import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useLocale } from '../i18n/LocaleContext';
 import { DeviceSettingsImportVersionError } from '../lib/device-settings-store';
@@ -71,7 +78,6 @@ import {
   projectOverrideDelta,
   savedOverridesFor,
 } from './settings/project-override-draft';
-import { SettingsManageSection } from './settings/SettingsManageSection';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
 import { SystemSection } from './settings/SystemSection';
@@ -82,6 +88,7 @@ import {
   OPERATOR_ONLY_SECTION_IDS,
   SETTINGS_CATALOG,
   SETTINGS_SECTIONS,
+  type SettingsNavGroup,
   settingsRow,
 } from './settings/settings-catalog';
 import { buildStationResetPlan } from './settings/station-reset';
@@ -210,6 +217,13 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     developerToolsEnabled,
     sidebarSections,
     confirmConversationDelete,
+    // #2144 decision 2: these five had a device-settings contract row and no
+    // Settings row, so the in-chat gear was the only place to change them.
+    chatShowReasoning,
+    chatShowToolDetails,
+    chatDockAutoHide,
+    diffStyle,
+    diffWrap,
   } = useDeviceSettings();
   const { setDeviceSetting, resetDeviceSetting } = useDeviceSettingsActions();
   const { isMobile, isDesktop } = usePlatformProfile();
@@ -772,12 +786,16 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       // stay exactly as they are.
       <div className="settings">
         {highlightNotice}
-        {/* #2059: rendered in BOTH branches for the same reason the section
-            nav is — it is derived from the destination registry and the
-            device flags, so it never waits on `/api/config/app`. A failed or
-            slow config read must not be able to strand the only in-app way
-            back to Agents, Connections or Plugins. */}
-        <SettingsManageSection />
+        {/* #2059: the section nav renders in BOTH the loaded and the
+            not-yet-loaded branch, because nothing it draws comes from the
+            config read. Its rows are derived from the destination registry,
+            the device flags and `SETTINGS_SECTIONS`, so it is complete before
+            `/api/config/app` answers — and a failed or slow read must not be
+            able to strand this page's own way back to Agents, Skills, Engines
+            & Models, Plugins, Schedule or Developer. (The command palette
+            reaches each of them too; `destination-registry.test.ts` pins
+            that. This is about not stranding a reader who is already here.)
+            */}
         <SettingsSectionNav
           activeSection={activeSection}
           hrefForSection={hrefForSection}
@@ -849,9 +867,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           navigateToSection={navigateToSection}
         />
 
-        {/* ── Manage (other surfaces, not sections of this page) ── */}
-        <SettingsManageSection />
-
         {/* #2144 slice 3: which document the page is showing values for.
             Outside every scope group because it re-attributes rows in more
             than one of them, and the sentence beside it names exactly what a
@@ -886,7 +901,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
         {/* ── Station scope ── */}
         <section
-          aria-label="Station settings"
+          aria-label="This Station settings"
           className="settings__scope-group"
         >
           <p className="settings__scope-caption">
@@ -1010,7 +1025,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
         {/* ── Defaults scope ── */}
         <section
-          aria-label="Defaults settings"
+          aria-label="Control settings"
           className="settings__scope-group"
         >
           <p className="settings__scope-caption">
@@ -1047,82 +1062,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
           {sectionVisible('appearance') && (
             <Section icon="◐" title="Appearance" id="section-appearance">
-              {/* This slider writes the DEVICE key only. The Station
-                  default it falls back to (`defaultChatFontSize`) has its own
-                  row under Station configuration — the catalog entry used to
-                  claim both keys while nothing here wrote the Station one. */}
-              <PageRow
-                {...settingsRow('chat-font-size')}
-                // `savedConfig`, not `config`, in all three places below: this
-                // row reports what this device falls back to, which is the
-                // STORED Station default. An unsaved draft of
-                // `defaultChatFontSize` is not in force anywhere yet, so
-                // moving the slider with it would show a fallback no chat is
-                // using.
-                description={`Font size for chat messages on this device (10–24px). Leave at the Station default of ${savedConfig.defaultChatFontSize ?? 14}px unless you want this device to differ.`}
-                control={
-                  <div className="settings__range-row">
-                    <input
-                      id="chatFontSize"
-                      aria-label={settingsRow('chat-font-size').title}
-                      type="range"
-                      min="10"
-                      max="24"
-                      value={
-                        chatFontSize ?? savedConfig.defaultChatFontSize ?? 14
-                      }
-                      onChange={(e) =>
-                        setDeviceSetting(
-                          'chatFontSize',
-                          parseInt(e.target.value, 10),
-                        )
-                      }
-                    />
-                    <span className="settings__range-value">
-                      {`${chatFontSize ?? savedConfig.defaultChatFontSize ?? 14}px`}
-                    </span>
-                    {chatFontSize != null && (
-                      <button
-                        type="button"
-                        className="settings__secondary-btn"
-                        onClick={() => resetDeviceSetting('chatFontSize')}
-                      >
-                        Use Station default
-                      </button>
-                    )}
-                  </div>
-                }
-              />
-              {/* #585 / #2144 slice 6 item B: one control naming BOTH
-                  outcomes, over the same `featureSettings.smoothReveal`
-                  boolean the two "Smooth answer reveal" toggles wrote. The
-                  in-chat gear panel renders the same options from the same
-                  mapping module. */}
-              <PageRow
-                {...settingsRow('smooth-answer-reveal')}
-                description="How streamed answer text appears on this device. Either way the same text arrives at the same time; only its pacing on screen differs."
-                control={
-                  <select
-                    className="editor-select"
-                    aria-label={settingsRow('smooth-answer-reveal').title}
-                    value={answerDeliveryModeOf(featureSettings?.smoothReveal)}
-                    onChange={(event) => {
-                      const mode = event.target.value;
-                      if (!isAnswerDeliveryMode(mode)) return;
-                      setDeviceSetting('featureSettings', {
-                        ...featureSettings,
-                        smoothReveal: smoothRevealForAnswerDelivery(mode),
-                      });
-                    }}
-                  >
-                    {ANSWER_DELIVERY_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                }
-              />
               <PageRow
                 {...settingsRow('theme')}
                 description="Toggle between light and dark mode."
@@ -1201,6 +1140,185 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             </Section>
           )}
 
+          {/* #2144 decision 2: Chat owns the rows that decide what a chat
+              LOOKS and BEHAVES like on this device. Two of them moved here
+              from Appearance (their ids, and therefore every `highlight=`
+              deep link, are unchanged); the other five had a device-settings
+              contract row and no Settings row at all, so Settings' own search
+              returned nothing for "reasoning" or "diff".
+
+              Only THREE of those five had the gear panel as their one
+              surface — Show reasoning, Show tool details and Auto-hide chat
+              dock. The panel has never offered the diff rows; those were
+              changed from `DiffPanel`'s own toolbar, which the note beside
+              them names.
+
+              Every one of these surfaces writes the SAME device-settings key
+              through the same store, so none of them is a copy of another's
+              state: the gear panel is a shortcut to the handful used
+              mid-conversation, `DiffPanel`'s toolbar to the two that only
+              mean anything over a diff, and Settings is where all of them
+              have a home and a search term.
+
+              The icon is one already on the glyph-coverage allowlist rather
+              than a new one: that list is recorded debt (#1704 is shrinking
+              it), so a section arriving with its own pictogram would grow it
+              for decoration. A speech bubble would have. */}
+          {sectionVisible('chat') && (
+            <Section icon="◇" title="Chat" id="section-chat">
+              {/* This slider writes the DEVICE key only. The Station
+                  default it falls back to (`defaultChatFontSize`) has its own
+                  row under Station configuration — the catalog entry used to
+                  claim both keys while nothing here wrote the Station one. */}
+              <PageRow
+                {...settingsRow('chat-font-size')}
+                // `savedConfig`, not `config`, in all three places below: this
+                // row reports what this device falls back to, which is the
+                // STORED Station default. An unsaved draft of
+                // `defaultChatFontSize` is not in force anywhere yet, so
+                // moving the slider with it would show a fallback no chat is
+                // using.
+                description={`Font size for chat messages on this device (10–24px). Leave at the Station default of ${savedConfig.defaultChatFontSize ?? 14}px unless you want this device to differ.`}
+                control={
+                  <div className="settings__range-row">
+                    <input
+                      id="chatFontSize"
+                      aria-label={settingsRow('chat-font-size').title}
+                      type="range"
+                      min="10"
+                      max="24"
+                      value={
+                        chatFontSize ?? savedConfig.defaultChatFontSize ?? 14
+                      }
+                      onChange={(e) =>
+                        setDeviceSetting(
+                          'chatFontSize',
+                          parseInt(e.target.value, 10),
+                        )
+                      }
+                    />
+                    <span className="settings__range-value">
+                      {`${chatFontSize ?? savedConfig.defaultChatFontSize ?? 14}px`}
+                    </span>
+                    {chatFontSize != null && (
+                      <button
+                        type="button"
+                        className="settings__secondary-btn"
+                        onClick={() => resetDeviceSetting('chatFontSize')}
+                      >
+                        Use Station default
+                      </button>
+                    )}
+                  </div>
+                }
+              />
+              {/* #585 / #2144 slice 6 item B: one control naming BOTH
+                  outcomes, over the same `featureSettings.smoothReveal`
+                  boolean the two "Smooth answer reveal" toggles wrote. The
+                  in-chat gear panel renders the same options from the same
+                  mapping module. */}
+              <PageRow
+                {...settingsRow('smooth-answer-reveal')}
+                description="How streamed answer text appears on this device. Either way the same text arrives at the same time; only its pacing on screen differs."
+                control={
+                  <select
+                    className="editor-select"
+                    aria-label={settingsRow('smooth-answer-reveal').title}
+                    value={answerDeliveryModeOf(featureSettings?.smoothReveal)}
+                    onChange={(event) => {
+                      const mode = event.target.value;
+                      if (!isAnswerDeliveryMode(mode)) return;
+                      setDeviceSetting('featureSettings', {
+                        ...featureSettings,
+                        smoothReveal: smoothRevealForAnswerDelivery(mode),
+                      });
+                    }}
+                  >
+                    {ANSWER_DELIVERY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                }
+              />
+              <PageRow
+                {...settingsRow('chat-show-reasoning')}
+                description="Chat messages on this device include the model’s reasoning steps."
+                control={
+                  <Toggle
+                    checked={chatShowReasoning}
+                    onChange={(checked) =>
+                      setDeviceSetting('chatShowReasoning', checked)
+                    }
+                    label={settingsRow('chat-show-reasoning').title}
+                  />
+                }
+              />
+              <PageRow
+                {...settingsRow('chat-show-tool-details')}
+                description="Tool calls can be expanded to read their arguments and results."
+                control={
+                  <Toggle
+                    checked={chatShowToolDetails}
+                    onChange={(checked) =>
+                      setDeviceSetting('chatShowToolDetails', checked)
+                    }
+                    label={settingsRow('chat-show-tool-details').title}
+                  />
+                }
+              />
+              <PageRow
+                {...settingsRow('chat-dock-auto-hide')}
+                description="An idle, open chat dock collapses to its bar after five seconds."
+                control={
+                  <Toggle
+                    checked={chatDockAutoHide}
+                    onChange={(checked) =>
+                      setDeviceSetting('chatDockAutoHide', checked)
+                    }
+                    label={settingsRow('chat-dock-auto-hide').title}
+                  />
+                }
+              />
+              {/* The diff rows belong to chat because the changed files a
+                  reader opens arrive there. `DiffPanel` writes the same two
+                  keys from its own controls. */}
+              <PageRow
+                {...settingsRow('diff-style')}
+                description="Changed files show as one column, or as two side-by-side columns."
+                control={
+                  <select
+                    className="editor-select"
+                    aria-label={settingsRow('diff-style').title}
+                    value={diffStyle}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value !== 'unified' && value !== 'split') return;
+                      setDeviceSetting('diffStyle', value);
+                    }}
+                  >
+                    <option value="unified">Unified</option>
+                    <option value="split">Side by side</option>
+                  </select>
+                }
+              />
+              <PageRow
+                {...settingsRow('diff-wrap')}
+                description="Long diff lines wrap instead of scrolling sideways."
+                control={
+                  <Toggle
+                    checked={diffWrap}
+                    onChange={(checked) =>
+                      setDeviceSetting('diffWrap', checked)
+                    }
+                    label={settingsRow('diff-wrap').title}
+                  />
+                }
+              />
+            </Section>
+          )}
+
           {sectionVisible('keyboard-shortcuts') && (
             <Section
               icon="⌨"
@@ -1225,7 +1343,13 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             >
               <PageRow
                 {...settingsRow('enable-developer-tools')}
-                description="Show the Developer surface (logs, system, telemetry, memory, archive) in the sidebar and command palette on this device. Deep links to /developer keep working either way."
+                // Where the result APPEARS, because it is not here: the row
+                // this adds opens the This Station group of the navigation
+                // strip at the top of this page, while the switch itself sits
+                // in This device further down, and the strip scrolls
+                // sideways. Nothing else on the page moves, so without the
+                // sentence the press reads as having done nothing.
+                description="Show the Developer surface (logs, system, telemetry, memory, archive) on this device. A Developer row appears in the navigation at the top of this page, first under This Station, and Developer joins the sidebar and the command palette. Deep links to /developer keep working either way."
                 control={
                   <Toggle
                     checked={developerToolsEnabled}
@@ -1319,55 +1443,128 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
  * title and three grey blocks: the page's whole navigable shape was known the
  * whole time and withheld anyway.
  *
- * archive#4463: this used to render its own all-caps `STATION` /
- * `DEFAULTS` / `THIS DEVICE` group-label `<span>`s inline in the same row as
- * the section links — the named this a bug (two label
- * vocabularies colliding in one control), and the fix is not to relabel it
- * but to remove it: every scope group's content already opens with its own
- * caption ("Saved to this Station — every client sees the same values.",
- * etc.), so the nav label was pure duplication. The scope grouping itself is
- * not lost — it is now a `dividerAfter` on each group's last item, drawn by
- * `SectionNav` as a real presentational separator element rather than a
- * second label vocabulary sharing the nav row.
+ * archive#4463 removed this strip's all-caps `STATION` / `DEFAULTS` /
+ * `THIS DEVICE` group-label `<span>`s — two label vocabularies colliding in
+ * one control — and left a silent `dividerAfter` in their place. #2144
+ * decision 6 brings NAMED groups back, and has to answer that removal rather
+ * than ignore it. Two things changed:
+ *
+ * - The label is a real `<h2>` styled to be unmistakably not a link (see
+ *   `.section-nav__group-label`), so the vocabularies no longer share one
+ *   visual control. The divider said "the subject changed" to sighted readers
+ *   and nothing at all to a screen reader; a heading says it to both and puts
+ *   the groups in the heading rotor.
+ * - The group names are deliberately ALIGNED with the page below, not
+ *   independent of it. This page's structure IS persistence-shaped: its body
+ *   is a run of `.settings__scope-group` sections, each opening with the rule
+ *   its settings are saved under, and four of the five nav groups map onto
+ *   one of those boxes each. "This Station" is its box's caption restated,
+ *   and that is the point — a nav that named the page's structure differently
+ *   would mislabel a box a reader is about to scroll into. Set up is the one
+ *   group with no box, because it holds no sections of this page at all.
+ *   archive#4463's collision was two label vocabularies over ONE control, and
+ *   what answers it is that a group label is a non-interactive heading and
+ *   never a place to press — not that its words have to differ from the
+ *   caption's.
+ *
+ * "Control" is the one group name that is not a storage location, and it has
+ * to be: its box is saved on the Station exactly as This Station's is, so a
+ * name drawn from persistence could not tell the two apart. What separates
+ * them is the rest of its caption — these are the values "used when a chat,
+ * project, or agent doesn't set its own value" — and the name states that
+ * authority relationship rather than a place.
+ *
+ * The landmark stays single (`aria-label="Settings sections"`): one
+ * navigation with headings inside, not one landmark per group.
  *
  * `SectionNav`, not `Tabs`: these are real, deep-linkable URL sections
  * (`?view=`) navigated via `useSectionNavigation`'s `hrefForSection`, not an
  * in-place tab widget — see `components/SectionNav.tsx`'s docblock for why
- * that distinction is load-bearing (archive#4463).
+ * that distinction is load-bearing (archive#4463). The Set up rows are the
+ * exception that proves it: they are ordinary links to other routes, and
+ * `SettingsSectionNav` sends them to the navigation store instead of the
+ * section resolver.
  */
+/**
+ * The nav group order, and the words each one is shown under. Order is the
+ * PAGE's order too: every section body below is rendered in this sequence, so
+ * the strip a reader skims and the page they scroll agree. Adding a group
+ * here without moving its bodies would desynchronise a scroll-spy nav.
+ */
+// Sentence case in the DOM; `.section-nav__group-label` is what draws them as
+// small caps. Writing "SET UP" here would put shouted text in the accessibility
+// tree for a purely visual treatment, and some screen readers spell short
+// all-caps strings out letter by letter.
+const NAV_GROUPS = [
+  // Set up holds no settings sections at all — only rows that leave this page
+  // for the surface they name.
+  { id: 'set-up', label: 'Set up' },
+  { id: 'this-station', label: 'This Station' },
+  { id: 'control', label: 'Control' },
+  // The id stays as minted: it is internal, and no URL, registry record or
+  // deep link carries it. The LABEL is the owner decision on #2144 — a
+  // heading reading "You" over a caption that says "Saved to this device
+  // only" named a person where the box names a machine.
+  { id: 'you', label: 'This device' },
+  { id: 'knowledge', label: 'Knowledge' },
+] as const satisfies readonly {
+  // Both vocabularies: a group can hold sections, nav-only rows, or both.
+  // This Station holds both — its sections, plus Developer when this device
+  // has developer tools on.
+  id: SettingsNavGroup | SettingsNavGroupId;
+  label: string;
+}[];
+
+/**
+ * The key prefix that separates a nav-only row from a settings section.
+ *
+ * A nav-only row LEAVES this page, so its key must never be mistaken for a
+ * `?view=` value: `useSectionNavigation` validates against
+ * `ALL_SETTINGS_VIEWS` and silently falls back to overview for anything else,
+ * which would turn "open Agents" into "scroll to the top" with no error
+ * anywhere. The prefix cannot collide, because a `SettingsSectionId` is a
+ * plain slug and `:` is not in that grammar.
+ */
+const NAV_ONLY_KEY_PREFIX = 'nav:';
+
 /** Exported for `SettingsSectionNav.test.tsx` — the nav's shape is worth testing directly, independent of the many hooks a full `SettingsView` render would require mocking. */
 export function settingsSectionNavItems(
   hrefForSection: (section: string) => string,
+  navOnlyEntries: readonly SettingsNavEntry[] = APP_DESTINATION_REGISTRY.getSettingsNav(),
 ): SectionNavItem[] {
-  const NAV_GROUPS = ['Station', 'Defaults', 'This device'] as const;
-  const grouped = NAV_GROUPS.flatMap((group, groupIndex) => {
-    const groupSections = SETTINGS_SECTIONS.filter(
-      (section) => section.group === group,
+  const grouped = NAV_GROUPS.flatMap((group) => {
+    // Nav-only rows come FIRST within their group: they are surfaces, and a
+    // reader scanning for "Agents" or "Developer" is looking for a place, not
+    // a row of this page. Each row is placed by the group the registry gives
+    // it, not by being nav-only — Developer belongs beside this Station's own
+    // sections, not under Set up with the entity lists.
+    const items = [
+      ...navOnlyEntries
+        .filter((entry) => entry.group === group.id)
+        .map((entry) => ({
+          key: `${NAV_ONLY_KEY_PREFIX}${entry.id}`,
+          label: entry.label,
+          href: entry.route,
+        })),
+      ...SETTINGS_SECTIONS.filter((section) => section.group === group.id).map(
+        (section) => ({
+          key: section.id as string,
+          label: section.title as string,
+          href: hrefForSection(section.id),
+        }),
+      ),
+    ];
+    // An empty group renders NO heading: a label naming a group that is not
+    // there is worse than a missing label. This Station's Developer row is
+    // conditional today, and a group could become wholly conditional next.
+    if (items.length === 0) return [];
+    return items.map((item, index) =>
+      index === 0 ? { ...item, groupLabel: group.label } : item,
     );
-    // A divider marks a boundary BETWEEN two groups — never after the last
-    // group's last item, which matches the original markup: Knowledge
-    // rendered outside every `.settings__nav-group` wrapper, so the CSS
-    // sibling-divider (`.settings__nav-group + .settings__nav-group`) never
-    // fired between "This device" and Knowledge.
-    const isLastGroup = groupIndex === NAV_GROUPS.length - 1;
-    return groupSections.map((section, index) => ({
-      key: section.id,
-      label: section.title,
-      href: hrefForSection(section.id),
-      dividerAfter: !isLastGroup && index === groupSections.length - 1,
-    }));
   });
-  const knowledge = SETTINGS_SECTIONS.filter(
-    (section) => section.group === 'Knowledge',
-  ).map((section) => ({
-    key: section.id,
-    label: section.title,
-    href: hrefForSection(section.id),
-  }));
   return [
     { key: 'overview', label: 'Overview', href: hrefForSection('overview') },
     ...grouped,
-    ...knowledge,
   ];
 }
 
@@ -1380,13 +1577,35 @@ function SettingsSectionNav({
   hrefForSection: (section: string) => string;
   navigateToSection: (section: string) => void;
 }) {
+  // The narrow hook: this destructure is actions only, and the bare
+  // `useNavigation()` re-renders the strip on every navigation-store write.
+  const { navigate } = useNavigationActions();
+  // The SAME flag set every other advertisement surface filters on, so
+  // Developer appears here exactly when it appears in the palette — and
+  // disappears from the nav, not merely from the old Manage grid, when
+  // developer tools are off. Passing nothing would silently drop it forever.
+  const flags = useSurfaceVisibilityFlags();
+  const items = settingsSectionNavItems(
+    hrefForSection,
+    APP_DESTINATION_REGISTRY.getSettingsNav(flags),
+  );
   return (
     <SectionNav
       className="settings__section-nav"
       aria-label="Settings sections"
-      items={settingsSectionNavItems(hrefForSection)}
+      items={items}
       activeKey={activeSection}
-      onNavigate={navigateToSection}
+      onNavigate={(key) => {
+        if (!key.startsWith(NAV_ONLY_KEY_PREFIX)) {
+          navigateToSection(key);
+          return;
+        }
+        // The canonical `navigate`, so the page's unsaved-changes guard is
+        // asked exactly once — leaving Settings with a pending edit through
+        // this row must behave like leaving it any other way (src-ui/AGENTS.md).
+        const target = items.find((item) => item.key === key);
+        if (target) navigate(target.href);
+      }}
     />
   );
 }

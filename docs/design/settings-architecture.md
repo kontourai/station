@@ -148,6 +148,31 @@ Already mostly right; the revamp names it as a rule rather than an accident:
 Entity screens keep their homes; the global page never absorbs them. Cross-links
 replace duplication (e.g. Defaults page links to "override per agent").
 
+#2144 slice 4 applied that last rule to the chat gear panel in both
+directions. The panel is a SHORTCUT, not an entity screen: every control on it
+is S3 device scope, so Settings now carries a `chat` section holding all of
+them — the two that used to sit under Appearance (`chat-font-size`,
+`smooth-answer-reveal`) plus the five that had a device-settings contract row
+and no Settings row at all (`chat-show-reasoning`, `chat-show-tool-details`,
+`chat-dock-auto-hide`, `diff-style`, `diff-wrap`). The panel was the only
+surface for `chat-show-reasoning`, `chat-show-tool-details` and
+`chat-dock-auto-hide`; `diff-style` and `diff-wrap` were never on it, and were
+reachable only from `DiffPanel`'s own style toggle and Wrap button, which write
+the same two device keys. The panel keeps the handful someone changes
+mid-conversation and links to the section for the rest; every one of these
+surfaces writes the same device-settings key through the same store, so none of
+them holds a copy of another's state.
+
+The Settings section navigation groups those sections under four names —
+Set up, This Station, Control, This device — plus Knowledge, which keeps a group of its
+own for now. The names are presentation: no section id moved with them, and
+what DECIDES a setting is still the row's own scope, stated on the row. Set up
+holds no sections at all; its rows are links to other surfaces (Agents, Skills,
+Engines & Models, Plugins, Schedule, and Developer under This Station when
+device developer tools are on), which replaced the separate "Manage" grid that
+used to sit below the nav. Registry has no row of its own: it is reached from
+Plugins, which carries the step to the catalogue.
+
 ### S5. Connections — integration-shaped config stays in the hub
 Models, engines, stations/environments (incl. the still-CLI-only peer credentials,
 which get their UI home under Connections → Stations), knowledge infrastructure,

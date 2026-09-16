@@ -434,6 +434,13 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // Work Board writes the personal revisioned board through the live API.
     // It cannot share that state with another product browser journey.
     'tests/work-board.spec.ts',
+    // #2144 slice 4 promotion (#2146). Settings SAVES: its persistence
+    // journeys drive real PUT /config/app writes and read the value back. The
+    // reset journey only opens the confirmation and cancels, so it is the
+    // writes that carry this. The instance's app configuration is
+    // exactly the state every other product journey reads at boot, so this
+    // spec cannot run beside one.
+    'tests/settings.spec.ts',
   ],
 };
 
@@ -611,7 +618,7 @@ export const e2eManifest = [
   {
     path: 'tests/skills-command-surface.spec.ts',
     bucket: 'product',
-    surface: 'Guidance',
+    surface: 'Skills',
     tierTarget: 'full',
     primary: true,
     rationale:
@@ -1093,7 +1100,7 @@ export const e2eManifest = [
   {
     path: 'tests/skills-command-routes.spec.ts',
     bucket: 'product',
-    surface: 'Guidance',
+    surface: 'Skills',
     tierTarget: 'full',
     primary: true,
     rationale:
@@ -1828,12 +1835,12 @@ export const e2eManifest = [
   },
   {
     path: 'tests/settings.spec.ts',
-    bucket: 'extended',
+    bucket: 'product',
     surface: 'Settings',
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Settings is a routed surface pending product-bucket promotion review.',
+      "#2144 slice 4 promotion (#2146). The move is not about how often the spec runs: `product` and `extended` are both weighted buckets of `scripts/run-e2e-coverage.mjs`, which `verify:e2e:full` drives, so the same lane executes either one. It is about isolation being DECLARED. Settings SAVES — its journeys drive real PUT /config/app writes and read the value back — so it must not share its instance with a concurrent sibling. `product` is the only bucket where that requirement is written down and enforced: `PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive` above, checked by `validateE2EManifest`, which refuses a product spec carrying no execution class. In `extended` the same isolation happens to hold, because `scripts/run-e2e-suite.mjs` runs every non-product suite as a single `workers: 1` phase — but nothing declares it, nothing validates it, and no test pins that worker count, so a later parallelization of `extended` would withdraw it silently. This spec did carry a stale 'Review' assertion naming a Manage-group destination #2065 had retired; that is a grep-every-bucket failure of the change that retired it — `docs/guides/testing.md` records the same thing happening to this same file at #190/#205 — and the bucket it sits in does not fix that. The assertions themselves are ones only a browser can make — the section navigation's rows measured against the 44px touch floor at 390x844 with no horizontal document scroll, a nav-only row really leaving /settings for its destination's route, the scope captions each section's persistence rule is written in, and the highlight/view deep-link round-trips landing on a rendered row — and they are made against an instance no sibling spec is writing to.",
     exceptions: [],
   },
   {

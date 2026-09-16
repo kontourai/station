@@ -168,7 +168,18 @@ describe('e2e manifest', () => {
       'tests/project-task-room-collaboration.spec.ts',
       'tests/interactive-workspace-performance-bridge.spec.ts',
     ]);
-    expect(getSpecsForSuite('extended')).toContain('tests/settings.spec.ts');
+    // #2144 slice 4 (#2146): Settings left `extended` for `product` so that
+    // its shared-instance exclusivity is DECLARED. Both buckets run in the
+    // same lane (`scripts/run-e2e-coverage.mjs` via `verify:e2e:full`), so the
+    // move buys no extra execution; what it buys is the classification
+    // asserted below, which `validateE2EManifest` requires of every product
+    // spec. `extended` would serialize this spec too — `run-e2e-suite.mjs`
+    // gives every non-product suite one `workers: 1` phase — but nothing
+    // there records the requirement or would notice it being withdrawn.
+    expect(getSpecsForSuite('extended')).not.toContain(
+      'tests/settings.spec.ts',
+    );
+    expect(getSpecsForSuite('product')).toContain('tests/settings.spec.ts');
     expect(getSpecsForSuite('starter-clean-install')).toEqual([
       'tests/starter-clean-install.spec.ts',
     ]);
@@ -238,6 +249,10 @@ describe('e2e manifest', () => {
       // Creates and revision-checks a real personal Board through the shared
       // instance API, so it cannot run beside another stateful product spec.
       'tests/work-board.spec.ts',
+      // #2144 slice 4 (#2146): Settings' persistence journeys PUT /config/app
+      // on the shared instance and read the value back — the boot
+      // configuration every sibling journey reads.
+      'tests/settings.spec.ts',
     ]);
   });
 
@@ -316,7 +331,7 @@ describe('e2e manifest', () => {
     expect(result.status).toBe(0);
     const parsed = JSON.parse(result.stdout);
     expect(parsed.suite).toBe('extended');
-    expect(parsed.specs).toContain('tests/settings.spec.ts');
+    expect(parsed.specs).toContain('tests/ui-blocks.spec.ts');
   });
 
   it('lists the isolated PR smoke suite without starting Station', () => {
