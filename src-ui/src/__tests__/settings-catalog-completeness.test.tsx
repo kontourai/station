@@ -1792,12 +1792,16 @@ describe('settings catalog completeness', () => {
       expect(row.querySelector('.setting-row-status')!.textContent).toContain(
         'Project',
       );
+      // #2144 slice 7: a plain Station row inside the box captioned "Saved
+      // to this Station" prints NO scope chip — the caption said it once for
+      // the whole box. The project-overridden row above still says Project,
+      // because that IS a difference from the caption.
       const stationRow = screen
         .getByLabelText('Registry URL')
         .closest('.page-row')!;
       expect(
         stationRow.querySelector('.setting-row-status')!.textContent,
-      ).toContain('Station');
+      ).not.toContain('Station');
     });
 
     test('an override edit saves to the project, not to the Station config', async () => {

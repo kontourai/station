@@ -111,6 +111,7 @@ export function StationConfigSection({
   provenance,
   onChange,
   embedded = false,
+  containerScope,
   projectOverride,
 }: {
   config: AppConfig;
@@ -118,6 +119,8 @@ export function StationConfigSection({
   onChange: (config: AppConfig) => void;
   /** Host owns the page heading; preserve the Settings route's default. */
   embedded?: boolean;
+  /** The rule the enclosing scope group's caption states (`registry-row-types.ts`). */
+  containerScope?: 'station' | 'device';
   projectOverride?: StationConfigProjectOverride;
 }) {
   return (
@@ -148,6 +151,7 @@ export function StationConfigSection({
               : config[key],
           provenance: provenance?.[key as string],
           runtimeDefault: hostDerivedDefault(config, key),
+          containerScope,
           ...(overridable
             ? {
                 projectName: projectOverride.name,
