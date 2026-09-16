@@ -165,16 +165,16 @@ export function SystemSection({
           its own hint that settings on this device are not affected, and
           before this there was no way to undo a device's choices at all. */}
       <div
-        className="settings__field"
+        className="settings__danger"
         {...settingsRow('reset-device-defaults')}
         tabIndex={-1}
       >
-        <span className="settings__field-label">
-          {settingsRow('reset-device-defaults').title}
-        </span>
+        {/* Shaped like its Station-scope sibling below: the button carries
+            the row's visible name, and the hint explains it. A separate
+            label span would have repeated the button's own words. */}
         <button
           type="button"
-          className="settings__secondary-btn"
+          className="settings__danger-btn"
           disabled={deviceResetPlan.keys.length === 0}
           onClick={() => setShowDeviceResetModal(true)}
         >
