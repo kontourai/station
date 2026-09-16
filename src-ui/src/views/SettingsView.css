@@ -429,6 +429,16 @@
   color: var(--text-muted);
 }
 
+/* A named group of rows INSIDE a section card (#2144 slice 6): the section
+   heading stays the card's, so this is a level below it. Deliberately not a
+   second section — navigation is owned by the section registry. */
+.settings__group-title {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
 /* The dock is reserved once, by the shell's route outlet (archive#3902).
    This is the page's own bottom gutter and nothing else. */
 .settings.page {

@@ -192,7 +192,10 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
       'settings__update-text--success',
     );
     expect(differsLine.querySelector('svg')).toBeNull();
-    expect(screen.getByText(/Channel: nightly/)).toBeTruthy();
+    // #2144 slice 6 item C: the channel now states where it came from.
+    expect(
+      screen.getByText(/Update channel: nightly \(set at install\)/),
+    ).toBeTruthy();
     expect(screen.getByText(/Build: aaaaaaa/)).toBeTruthy();
     expect(screen.getByText(/Source ref: bbbbbbb/)).toBeTruthy();
     // The retired heuristics stay retired.
@@ -575,7 +578,7 @@ describe('re-check keeps the last known state (6-OPS-44)', () => {
     expect(
       screen.getByLabelText('Checking the connected server’s update source'),
     ).toBeTruthy();
-    expect(screen.queryByText(/Channel: nightly/)).toBeNull();
+    expect(screen.queryByText(/Update channel/)).toBeNull();
     expect(screen.queryByText(/Showing the result from/)).toBeNull();
     queryState.isFetching = false;
   });
@@ -584,7 +587,9 @@ describe('re-check keeps the last known state (6-OPS-44)', () => {
     queryState.isFetching = false;
     const context = makeContext();
     const { rerender } = renderWith(KNOWN, context);
-    expect(screen.getByText(/Channel: nightly/)).toBeTruthy();
+    expect(
+      screen.getByText(/Update channel: nightly \(set at install\)/),
+    ).toBeTruthy();
 
     // The transition under test: the same card, now refetching.
     queryState.isFetching = true;
@@ -592,7 +597,9 @@ describe('re-check keeps the last known state (6-OPS-44)', () => {
       <CoreUpdateCheck apiBase="http://localhost:3141" context={context} />,
     );
 
-    expect(screen.getByText(/Channel: nightly/)).toBeTruthy();
+    expect(
+      screen.getByText(/Update channel: nightly \(set at install\)/),
+    ).toBeTruthy();
     expect(screen.getByText(/Checkout: aaaaaaa/)).toBeTruthy();
     expect(screen.getByText(/Showing the result from/).textContent).toMatch(
       /Showing the result from/,
@@ -922,5 +929,56 @@ describe('git-based checkout apply flow (#1624, update-ux PR4)', () => {
 
     rendered.unmount();
     expect(signal?.aborted).toBe(true);
+  });
+});
+
+/**
+ * Epic #2144 slice 6 item C. The channel used to appear as a bare
+ * `Channel: nightly` inside the compact fact run, with NOTHING at all when
+ * the install had no stamp — indistinguishable from not having checked. It
+ * now states its provenance and answers the absent case out loud, and it is
+ * read-only: switching channels means reinstalling.
+ */
+describe('the update channel row', () => {
+  test('names the stamped channel and where it came from', () => {
+    renderWith(behindCheckout({ channel: 'nightly' }));
+    expect(
+      screen.getByText('Update channel: nightly (set at install)'),
+    ).toBeTruthy();
+  });
+
+  test('says so when this install records no channel', () => {
+    // A source checkout, and any hand-copied bundle, has no installer stamp
+    // — `readNightlySourceStamp` returns null rather than guessing one.
+    const status = behindCheckout();
+    expect(status.channel).toBeUndefined();
+    renderWith(status);
+    expect(
+      screen.getByText('Update channel: Not recorded for this install'),
+    ).toBeTruthy();
+  });
+
+  test('offers no way to change it', () => {
+    renderWith(behindCheckout({ channel: 'stable' }));
+    const row = screen
+      .getByText('Update channel: stable (set at install)')
+      .closest('div')!;
+    expect(row.querySelector('select')).toBeNull();
+    expect(row.querySelector('button')).toBeNull();
+    expect(row.querySelector('input')).toBeNull();
+  });
+
+  test('claims nothing before a check has answered', () => {
+    queryState.isFetching = true;
+    queryState.data = undefined;
+    render(<CoreUpdateCheck apiBase="http://localhost:3141" />);
+    expect(screen.queryByText(/Update channel/)).toBeNull();
+    queryState.isFetching = false;
+  });
+
+  test('the channel is not also printed by the compact fact run', () => {
+    renderWith(behindCheckout({ channel: 'nightly' }));
+    expect(screen.queryByText(/·\s*Channel: nightly/)).toBeNull();
+    expect(screen.getAllByText(/nightly/)).toHaveLength(1);
   });
 });

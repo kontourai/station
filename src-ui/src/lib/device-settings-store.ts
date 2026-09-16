@@ -931,10 +931,25 @@ class DeviceSettingsStore {
 
   /** Clears an explicit override, falling back to the registry default. Read-merge-write. */
   reset = <K extends keyof DeviceSettings>(key: K): void => {
+    this.resetMany([key]);
+  };
+
+  /**
+   * Clears several overrides in ONE read-merge-write: one persist, one
+   * notify, one snapshot. "Restore device defaults" called `reset` per key,
+   * which re-read and re-wrote the envelope N times and published N
+   * intermediate snapshots — every subscriber re-rendered against a device
+   * that was only partly restored (#2144 slice 6 fix round 1).
+   *
+   * Keys holding no explicit override are skipped, so an all-default set is
+   * the same true no-op `reset` already was.
+   */
+  resetMany = (keys: readonly (keyof DeviceSettings)[]): void => {
     const fresh = this.readPersistedEnvelope();
-    if (!Object.hasOwn(fresh.values, key)) return;
+    const stored = keys.filter((key) => Object.hasOwn(fresh.values, key));
+    if (stored.length === 0) return;
     const nextValues = { ...fresh.values };
-    delete nextValues[key];
+    for (const key of stored) delete nextValues[key];
     this.applyEnvelope({ ...fresh, values: nextValues });
   };
 }

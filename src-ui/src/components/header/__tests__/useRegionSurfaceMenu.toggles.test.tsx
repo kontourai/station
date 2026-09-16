@@ -28,6 +28,7 @@ const harness = vi.hoisted(() => ({
     right: { visible: false, size: 400, panes: [], occupant: null },
     bottom: { visible: true, size: 320, panes: ['chat'], occupant: 'chat' },
   },
+  setRegion: vi.fn(),
 }));
 
 vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
@@ -42,7 +43,7 @@ vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
     regions: harness.regions,
     lastShownRegion: null,
     surfaces: REGION_SURFACE_REGISTRY,
-    setRegion: vi.fn(),
+    setRegion: harness.setRegion,
     placeSurface: vi.fn(),
     showSurface: vi.fn(),
   };
@@ -100,6 +101,44 @@ describe('the toolbar offers a toggle for every dock region the model declares',
       'chat',
       'activity',
     ]);
+  });
+
+  /**
+   * #2153: `visible` is the REGION's visibility and nothing else, and
+   * `onToggle` acts on an empty region.
+   *
+   * Reverting `visible: state.visible` to `held && state.visible` in
+   * `useRegionSurfaceMenu.ts` reds the first assertion: the region is on
+   * screen and its control would report unpressed. Restoring the
+   * `if (!held) return;` guard in `onToggle` reds the second: the write that
+   * hides a visible empty region would be swallowed.
+   */
+  test('a visible EMPTY region reports visible, and its toggle writes', () => {
+    harness.regions.left = {
+      visible: true,
+      size: 400,
+      panes: [],
+      occupant: null,
+    };
+    try {
+      const { result } = renderHook(() => useRegionSurfaceMenu());
+      const left = result.current.regionToggles.find(
+        (toggle) => toggle.region === 'left',
+      );
+      expect(left).toMatchObject({ paneTitles: [], visible: true });
+      harness.setRegion.mockClear();
+      left?.onToggle();
+      expect(harness.setRegion).toHaveBeenCalledWith('left', {
+        visible: false,
+      });
+    } finally {
+      harness.regions.left = {
+        visible: false,
+        size: 400,
+        panes: [],
+        occupant: null,
+      };
+    }
   });
 
   /**

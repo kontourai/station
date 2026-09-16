@@ -291,9 +291,9 @@ describe('RegionToolbarControls', () => {
       ['Bottom region', 'true'],
       ['Right region', null],
     ]);
-    // Bottom holds Chat and is a pressed toggle. Left and right are EMPTY,
-    // so they are not toggles at all — `null`, not `'false'`: an empty
-    // region has no visibility to report (the next test) — and a hidden
+    // Bottom holds Chat and is a pressed toggle. Left and right are EMPTY
+    // and hidden, so they are not toggles at all — `null`, not `'false'`:
+    // their control is a menu trigger (the next test) — and a hidden
     // OCCUPIED region is what reads `'false'` (the two-pane test below).
     expect(regionToggle('Bottom').title).toBe('Hide Bottom region: Chat');
     // No visible word: the glyph is the region's own edge, and the name is
@@ -305,10 +305,11 @@ describe('RegionToolbarControls', () => {
   });
 
   /**
-   * An empty region cannot be shown — `RegionShells` mounts no host for it and
-   * the model hides a region its last pane leaves — so its control is not a
-   * toggle (no `aria-pressed`, which would be a state nothing can change) but
-   * a menu trigger offering what can go there. Never both on one button.
+   * An empty region's control is a menu trigger offering what can go there,
+   * not a toggle: `aria-pressed` and `aria-haspopup` are never both on one
+   * button. Unchanged by #2153 — an empty region CAN now be shown, but which
+   * control this button is stays #2155's question; all #2153 moves here is
+   * what the button reports about visibility (the next test).
    */
   test('an empty region is a menu trigger, not a toggle; an occupied one is a toggle, not a trigger', () => {
     render(<RegionToolbarControls />);
@@ -323,6 +324,31 @@ describe('RegionToolbarControls', () => {
     expect(bottom.getAttribute('aria-pressed')).toBe('true');
     expect(bottom.getAttribute('aria-haspopup')).toBeNull();
     expect(bottom.getAttribute('aria-expanded')).toBeNull();
+  });
+
+  /**
+   * #2153: a visible empty region reads as ON — pressed glyph — and its
+   * tooltip says what it is (open, empty) but names NO act, because a press
+   * on an empty region's button opens the offer menu whether the region is
+   * visible or hidden; "Hide" would promise a toggle the button is not
+   * until #2155. Reverting `visible` to `held && state.visible` in the hook
+   * reds the pressed-class line; putting "Hide" back reds the title.
+   */
+  test('a VISIBLE empty region reads as on: pressed glyph, and a tooltip that names no act', () => {
+    const { rerender } = render(<RegionToolbarControls />);
+    expect(regionToggle('Left').title).toBe('Left region: empty');
+    expect(regionToggle('Left').classList.contains('is-pressed')).toBe(false);
+
+    harness.regions.left.visible = true;
+    rerender(<RegionToolbarControls />);
+    // No "Hide": the press opens the offer menu, not a toggle (until #2155).
+    expect(regionToggle('Left').title).toBe('Left region: open, empty');
+    expect(regionToggle('Left').classList.contains('is-pressed')).toBe(true);
+    // Still a menu trigger, not a toggle: #2153 changes what it reports, not
+    // which control it is.
+    expect(regionToggle('Left').getAttribute('aria-pressed')).toBeNull();
+    expect(regionToggle('Left').getAttribute('aria-haspopup')).toBe('menu');
+    harness.regions.left.visible = false;
   });
 
   test('pressing an occupied region’s toggle hides it; pressing a hidden one shows it — the region, not a surface', () => {

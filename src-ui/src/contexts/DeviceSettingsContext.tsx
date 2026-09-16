@@ -42,6 +42,8 @@ export interface DeviceSettingsActions {
     value: DeviceSettings[K],
   ) => void;
   resetDeviceSetting: <K extends keyof DeviceSettings>(key: K) => void;
+  /** One envelope write and one notify for the whole set (#2144 slice 6). */
+  resetDeviceSettings: (keys: readonly (keyof DeviceSettings)[]) => void;
 }
 
 export function useDeviceSettingsActions(): DeviceSettingsActions {
@@ -58,5 +60,12 @@ export function useDeviceSettingsActions(): DeviceSettingsActions {
     [],
   );
 
-  return { setDeviceSetting, resetDeviceSetting };
+  const resetDeviceSettings = useCallback(
+    (keys: readonly (keyof DeviceSettings)[]) => {
+      deviceSettingsStore.resetMany(keys);
+    },
+    [],
+  );
+
+  return { setDeviceSetting, resetDeviceSetting, resetDeviceSettings };
 }

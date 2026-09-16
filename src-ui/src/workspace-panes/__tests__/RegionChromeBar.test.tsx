@@ -207,6 +207,49 @@ describe('the region bar control set', () => {
   });
 
   /**
+   * #2153: an EMPTY region's bar. It has no pane to be named after, so the
+   * chrome names the region ("Right region", `useDockShellChrome`'s
+   * `surfaceTitle`) and the chevron follows — "Hide Right region" open,
+   * "Show Right region" collapsed. `canMaximize` is false for an empty
+   * region, so the bar offers no maximize; there are no tabs and no "+"
+   * (the chooser is #2154), which leaves the grab and the chevron.
+   *
+   * Reverting `useDockShellChrome`'s `surfaceTitle` fallback to the bare
+   * `'Chat'` puts "Hide Chat" on a region holding no Chat; this file feeds
+   * the chrome directly, so the assertion that catches it is in
+   * `DockShellControlParity.test.tsx`, which drives the real hook. What
+   * this pins is that the bar RENDERS the name it is handed, for a pane set
+   * that is empty.
+   */
+  test('an empty region’s bar is the grab and a chevron named for the region', () => {
+    const emptyChrome = {
+      surfaceTitle: 'Right region',
+      canMaximize: false,
+      effectiveDockSlotPlacement: 'right' as const,
+    };
+    const open = renderBar({
+      chrome: chromeStub(emptyChrome),
+      tabs: [],
+      selected: undefined,
+      closable: false,
+      movable: false,
+    });
+    expect(controlNames()).toEqual(['Move the dock', 'Hide Right region']);
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.queryByLabelText(/^Add pane to /)).toBeNull();
+    open.unmount();
+
+    renderBar({
+      chrome: chromeStub({ ...emptyChrome, isDockOpen: false }),
+      tabs: [],
+      selected: undefined,
+      closable: false,
+      movable: false,
+    });
+    expect(screen.getByLabelText('Show Right region')).toBeTruthy();
+  });
+
+  /**
    * #2160: a LONE pane renders no strip, so it has no tab to right-click and
    * its only move was the ⋮⋮ grab — which moves the whole region and offers
    * dock edges only, never `main`. The bar's Move button opens the SAME

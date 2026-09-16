@@ -70,15 +70,16 @@ export interface RegionToggleOffer {
 
 /**
  * One dock region's toolbar control (#2143): a show/hide TOGGLE while the
- * region holds panes, and — since an empty region cannot be shown (the shell
- * mounts no host for it, and the model hides a region its last pane leaves) —
- * an offer of what can be placed there while it holds none.
+ * region holds panes, and an offer of what can be placed there while it holds
+ * none.
  *
  * `visible` is DERIVED from the arrangement, never stored: pressed means the
- * region is visible AND holds a pane. A hidden region holding two panes is one
- * unpressed toggle, and pressing it brings both tabs back with the same
- * selection, because the toggle writes the REGION's visibility and nothing
- * about its panes.
+ * region is visible. Since #2153 that is all it means — an empty region may be
+ * visible, and one that is shows its bar over a placeholder, so pressed is
+ * exactly "on screen". A hidden region holding two panes is one unpressed
+ * toggle, and pressing it brings both tabs back with the same selection,
+ * because the toggle writes the REGION's visibility and nothing about its
+ * panes.
  */
 export interface RegionToggle {
   region: DockRegionId;
@@ -94,8 +95,10 @@ export interface RegionToggle {
    * passes `maximized` (a chevron collapse clears it); this toggle writes
    * `visible` alone, so a region hidden here keeps its maximize memory and
    * comes back maximized, while one hidden from its chevron comes back at
-   * the snap the chevron stored. A no-op for an empty region, whose control
-   * opens `offers` instead.
+   * the snap the chevron stored. Since #2153 it acts on an EMPTY region too —
+   * showing one opens it empty, on its placeholder — though the toolbar
+   * button still opens `offers` on a press while the region holds nothing
+   * (#2155 decides what that control becomes).
    */
   onToggle: () => void;
   /** What an EMPTY region's control offers; empty for an occupied region. */
@@ -295,9 +298,15 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
       paneTitles: state.panes.map(
         (id) => resolveRegionSurface(id)?.title ?? id,
       ),
-      visible: held && state.visible,
+      // The REGION's visibility, not "visible and occupied" (#2153): a
+      // visible empty region is on screen — its bar over a placeholder — so
+      // reporting it unpressed would have the control contradict what the
+      // user can see.
+      visible: state.visible,
       onToggle: () => {
-        if (!held) return;
+        // No longer refused for an empty region (#2153): showing one is now a
+        // thing that happens — the region appears, empty, with its own bar —
+        // so the write that shows it must not be swallowed.
         model.setRegion(region, { visible: !state.visible });
       },
       // An occupied region offers nothing here: its "+" (#2047) is where more

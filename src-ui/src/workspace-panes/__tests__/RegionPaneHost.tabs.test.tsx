@@ -162,6 +162,22 @@ afterEach(() => {
   delete (globalThis.navigator as { locks?: unknown }).locks;
 });
 
+/**
+ * Mounts the shells and lets the host's lazy chunk land before any
+ * assertion waits on it. `RegionShells` reaches `RegionPaneHost` through
+ * `React.lazy`, and on a cold vitest worker that first `import()` can outrun
+ * `waitFor`'s one-second default (seen on a CI runner: the toolbar rendered,
+ * no `.chat-dock` at all); settling the import first makes the wait about
+ * the mount, not the chunk.
+ */
+async function mountShells() {
+  const rendered = renderShells();
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+  return rendered;
+}
+
 function renderShells() {
   return render(
     <KeyboardShortcutsProvider>
@@ -206,7 +222,7 @@ function recordedBottom(): unknown {
 
 /** Chat in `bottom`, Activity joined and selected: the two-pane region. */
 async function renderJoined() {
-  const rendered = renderShells();
+  const rendered = await mountShells();
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(() =>
     expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
@@ -294,7 +310,7 @@ test('a tab click writes the selection through the model and it persists across 
   first.unmount();
   model = null;
   deviceSettingsStore.reloadFromStorage();
-  renderShells();
+  await mountShells();
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(() =>
     expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
@@ -445,7 +461,7 @@ test('reordering tabs writes the pane order and it persists across reload', asyn
   first.unmount();
   model = null;
   deviceSettingsStore.reloadFromStorage();
-  renderShells();
+  await mountShells();
   await waitFor(() => expect(model).not.toBeNull());
   await act(async () => {
     await vi.dynamicImportSettled();
@@ -474,7 +490,7 @@ test('selection writes no history: a mount, a join, a tab click and a ?pane= pop
   const paneParam = () =>
     new URLSearchParams(window.location.search).get('pane');
 
-  renderShells();
+  await mountShells();
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(() =>
     expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
@@ -704,6 +720,8 @@ test('the region bar’s placement moves both panes to the chosen region', async
       visible: true,
     }),
   );
+  // The grab relocated every pane; the emptied source hides (#2153: a move
+  // is not a close, and a placeholder left behind would be a second dock).
   expect(currentModel().regions.bottom).toMatchObject({
     panes: [],
     occupant: null,
@@ -714,7 +732,10 @@ test('the region bar’s placement moves both panes to the chosen region', async
       document.querySelector<HTMLElement>('.chat-dock')?.dataset.region,
     ).toBe('right'),
   );
+  // One shell: `right`, which took both panes. The emptied `bottom` hid,
+  // so it mounts nothing (an empty region mounts a host only while visible).
   expect(document.querySelectorAll('.chat-dock')).toHaveLength(1);
+  expect(document.querySelector('.chat-dock[data-region="bottom"]')).toBeNull();
   expect(tabs()).toEqual([
     ['Chat', 'false'],
     ['Activity', 'true'],
@@ -766,7 +787,7 @@ test('a coarse device renders no strip, and the chrome lists both panes for the 
     value: 390,
   });
   installMatchMedia(true);
-  renderShells();
+  await mountShells();
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(() =>
     expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),

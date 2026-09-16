@@ -561,3 +561,51 @@ test('a region host follows its pane set through the fingerprint path alone: no 
   expect(within(rightShell).queryByTestId('ambient-chat-occupant')).toBeNull();
   expect(within(rightShell).queryByTestId('sessions-view')).not.toBeNull();
 });
+
+/**
+ * #2153: a VISIBLE region with no panes derives NO host document
+ * (`createRegionPaneHostDocument` returns null for an empty pane set) and
+ * mounts no `WorkspacePaneHost` at all — the shell and its chrome bar over a
+ * placeholder, and nothing else. It writes no region key either: there is no
+ * document to reconcile or persist, so an empty region leaves a user's
+ * stored panes for that region exactly as they were.
+ *
+ * Reverting `RegionShells`' mount condition to
+ * `occupant && resolveRegionSurface(occupant)` reds the first `waitFor`;
+ * reverting `RegionPaneHost`'s `emptyRegion` branch reds the placeholder.
+ */
+test('a visible region with no panes renders the placeholder, no pane host and no stored document', async () => {
+  renderShells();
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+  // `right` starts hidden AND empty, so nothing renders for it.
+  expect(document.querySelector('[data-region="right"]')).toBeNull();
+
+  act(() => currentModel().setRegion('right', { visible: true }));
+  const rightShell = await waitFor(() => {
+    const element = document.querySelector<HTMLElement>(
+      '[data-region="right"]',
+    );
+    if (!element) throw new Error('the visible empty region never rendered');
+    return element;
+  });
+  expect(currentModel().regions.right).toMatchObject({
+    panes: [],
+    occupant: null,
+    visible: true,
+  });
+  expect(
+    within(rightShell).getByText('Nothing in the Right region yet'),
+  ).toBeTruthy();
+  // No pane host: no pane rendered, and no tab strip to select one with.
+  expect(within(rightShell).queryByTestId('ambient-chat-occupant')).toBeNull();
+  expect(within(rightShell).queryByTestId('sessions-view')).toBeNull();
+  expect(within(rightShell).queryAllByRole('tab')).toHaveLength(0);
+  expect(within(rightShell).queryByRole('tabpanel')).toBeNull();
+  // And no document written under the region's key.
+  expect(window.localStorage.getItem(RIGHT_KEY)).toBeNull();
+  // Chat's own region is untouched by any of it.
+  expect(document.querySelectorAll('#chat-dock')).toHaveLength(1);
+  expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
+});
