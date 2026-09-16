@@ -1291,3 +1291,21 @@
   border-radius: 6px;
   padding: 0.5rem;
 }
+
+/* #2144 slice 3 — the project-scope selector. Page chrome, not a setting:
+   it changes which document the rows below are attributed to, and it is
+   deliberately outside every scope group's card. */
+.settings__project-scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-block: 0.75rem;
+}
+.settings__project-scope-label {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.settings__project-scope .settings__field-hint {
+  flex-basis: 100%;
+}

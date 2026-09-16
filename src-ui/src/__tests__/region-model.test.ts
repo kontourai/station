@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { RegionId } from '../regions/region-model';
 import {
   DEFAULT_DEVICE_REGION_ARRANGEMENT,
   dockMirrorDiff,
   firstFreeDockRegion,
   foldedDockRegion,
+  INSTANCE_SURFACE_PREFIXES,
   moveRegionPanes,
   occupiedDockRegion,
   occupiedRegion,
@@ -157,6 +159,57 @@ describe('region model', () => {
       'right',
     );
     expect(firstFreeDockRegion(chatAtRight, 'right')).toBe('bottom');
+  });
+
+  /**
+   * The case the fallback ORDER decides, and the only shape that tells the
+   * two orders apart: the preferred region is taken while BOTH `bottom` and
+   * `right` are free (only an empty region is ever returned, so for
+   * `preferred` of `right` or `bottom` the two orders agree everywhere).
+   * Reverting `['right', 'bottom', 'left']` to the old
+   * `['bottom', 'right', 'left']` in `firstFreeDockRegion` turns this answer
+   * back into `'bottom'` — taking the empty edge Chat lands in next, which
+   * is what #2156 stops. The fixture holds Chat at `left` because that is
+   * the only reachable `preferred: 'left'` today (a remembered dock
+   * placement); the answer is about which EMPTY edge is chosen.
+   */
+  test('a taken default falls to the right before Bottom, which is Chat’s', () => {
+    const chatAtLeft = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'chat',
+      'left',
+    );
+
+    expect(chatAtLeft.bottom.panes).toEqual([]);
+    expect(chatAtLeft.right.panes).toEqual([]);
+    expect(firstFreeDockRegion(chatAtLeft, 'left')).toBe('right');
+  });
+
+  /**
+   * Every dock-capable surface's default region, registered and
+   * instance-keyed alike (#2156). A pin, not a derivation: changing one of
+   * these is a product decision, so it should be an argued edit here rather
+   * than a silent drift in the registry.
+   */
+  test('the default region of every registered and instance-keyed surface', () => {
+    const defaults = new Map<string, RegionId>();
+    for (const [id, surface] of REGION_SURFACE_REGISTRY)
+      defaults.set(id, surface.defaultRegion);
+    for (const prefix of INSTANCE_SURFACE_PREFIXES)
+      defaults.set(prefix.prefix, prefix.defaultRegion);
+
+    expect(Object.fromEntries(defaults)).toEqual({
+      chat: 'bottom',
+      'coding:terminal': 'bottom',
+      activity: 'right',
+      'workspace-agents': 'right',
+      device: 'right',
+      'coding:diff': 'right',
+      'coding:file-browser': 'left',
+      home: 'main',
+      'pr:': 'right',
+      'file-preview:': 'right',
+    });
   });
 
   test('revealSurface makes an occupied hidden surface visible without moving it', () => {
@@ -470,7 +523,8 @@ describe('region model', () => {
         title: 'Terminal',
         icon: 'terminal',
         regions: ['left', 'right', 'bottom'],
-        defaultRegion: 'right',
+        // #2156: Bottom, beside Chat.
+        defaultRegion: 'bottom',
         exposure: 'catalog',
       }),
       expect.objectContaining({
@@ -1211,6 +1265,36 @@ describe('region model', () => {
     expect(
       syncRegionArrangementFromDock(shown, settings, false, 'bottom').bottom,
     ).toMatchObject({ visible: false, occupant: 'activity' });
+  });
+
+  /**
+   * #2156's one observable journey: an UNPLACED Chat (its tab closed) with a
+   * remembered `left` placement that is now occupied, both other edges free,
+   * revealed by `dock=open`. The fallback order decides where it re-lands:
+   * `right` now, `bottom` under the old `['bottom', 'right', 'left']`. That
+   * Chat itself takes the right edge here is accepted — the rule has no
+   * Chat-shaped exception, and Bottom is Chat's by DEFAULT, not by
+   * reservation. Reverting the order in `firstFreeDockRegion` reds this.
+   */
+  test('an unplaced Chat with an occupied remembered placement re-lands right, not bottom', () => {
+    const settings = { chatDockHeight: 320, chatDockWidth: 400 };
+    const leftTaken = updateRegion(
+      removeRegionPane(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'bottom', 'chat'),
+      'left',
+      { panes: ['fixture'], occupant: 'fixture', visible: true },
+    );
+    expect(occupiedRegion(leftTaken, 'chat')).toBeUndefined();
+    expect(leftTaken.right.panes).toEqual([]);
+    expect(leftTaken.bottom.panes).toEqual([]);
+
+    const synced = syncRegionArrangementFromDock(
+      leftTaken,
+      settings,
+      true,
+      'left',
+    );
+    expect(synced.right).toMatchObject({ panes: ['chat'], visible: true });
+    expect(synced.bottom.panes).toEqual([]);
   });
 
   // #2046 2b: the tab strip's close and the region bar's placement.

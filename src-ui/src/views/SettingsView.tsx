@@ -1,10 +1,17 @@
 import './SettingsView.css';
 import {
+  PROJECT_OVERRIDABLE_APP_SETTING_KEYS,
+  type ProjectOverridableAppSettingKey,
+} from '@kontourai/station-contracts/project-settings-overrides';
+import {
   authenticatedFetch,
   StationReadOnlyError,
   useConfigProvenanceQuery,
   useInvalidateQuery,
   usePluginVisibilityQuery,
+  useProjectQuery,
+  useProjectsQuery,
+  useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
 import { updateAppLogLevel } from '@kontourai/station-sdk/app-config';
 import { useMutation } from '@tanstack/react-query';
@@ -56,6 +63,14 @@ import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
 import { PluginVisibilitySection } from './settings/PluginVisibilitySection';
+import {
+  buildProjectOverrideUpdate,
+  effectiveOverrideValue,
+  type ProjectOverrideDraft,
+  pendingOverrideChanges,
+  projectOverrideDelta,
+  savedOverridesFor,
+} from './settings/project-override-draft';
 import { SettingsManageSection } from './settings/SettingsManageSection';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
@@ -112,6 +127,29 @@ const ALL_SETTINGS_VIEWS = ['overview', ...ALL_LEAF_SECTION_IDS];
  */
 export const SETTINGS_SAVE_DEADLINE_MS = 30_000;
 
+/**
+ * How long the save path waits for the saved project's record to be re-read
+ * before clearing the override draft anyway.
+ *
+ * The write has already landed when this runs, so the wait only decides what
+ * the row shows next. It is its own, much shorter deadline rather than a
+ * second use of the save deadline above, and it must have one at all because
+ * it runs AFTER the save deadline's race has been decided — a refetch that
+ * never settles would otherwise leave `Save` spinning with nothing left to
+ * wait for.
+ *
+ * What the timeout costs, stated honestly: when the refetch is merely SLOW
+ * the draft clears against a record this page has not re-read, and the
+ * stale value shows until it lands. A FAILED refetch does not go through the
+ * timeout at all — `invalidateQueries` resolves once its refetches settle,
+ * errors included — but it leaves the same picture: the row goes on showing
+ * the pre-save value with no pill and no error, and this page will not say
+ * the save happened until something else refetches the project. That is
+ * still the better outcome against a Save button that never releases, but
+ * it is a real gap, not a flicker.
+ */
+const SETTINGS_OVERRIDE_REFETCH_DEADLINE_MS = 3_000;
+
 export interface SettingsViewProps {
   onBack: () => void;
   onSaved?: () => void;
@@ -128,7 +166,43 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   } = useConfigSnapshot();
   const { updateConfig, isSaving } = useConfigActions();
   const invalidate = useInvalidateQuery();
-  const { data: provenance } = useConfigProvenanceQuery();
+  // #2144 slice 3. The project the page is showing settings FOR. It lives
+  // OUTSIDE the Station draft on purpose: a project override is a different
+  // document with a different write path, and folding it into `config` would
+  // make one Save request carry two authorities' values.
+  const [selectedProjectSlug, setSelectedProjectSlug] = useState<string | null>(
+    null,
+  );
+  const [overrideDraft, setOverrideDraft] = useState<ProjectOverrideDraft>({});
+  const { data: projects } = useProjectsQuery();
+  const projectList: { slug: string; name?: string }[] = Array.isArray(projects)
+    ? projects
+    : [];
+  const { data: selectedProject } = useProjectQuery(selectedProjectSlug ?? '', {
+    enabled: Boolean(selectedProjectSlug),
+  });
+  const savedOverrides = savedOverridesFor(
+    selectedProjectSlug ? selectedProject : undefined,
+  );
+  const updateProject = useUpdateProjectMutation();
+  // Asking the SAME route for more provenance, not for different values: the
+  // response body stays this Station's config and only the attribution gains
+  // the project's scope (`GET /config/app?project=<slug>`, slice 2).
+  const { data: provenance } = useConfigProvenanceQuery(
+    selectedProjectSlug ?? undefined,
+  );
+  // The SAME route read WITHOUT a project, for the Station reset plan only.
+  //
+  // A scoped read replaces an overridden key's entry with the project's
+  // (`{ source: 'file', scope: 'project' }`), which `buildStationResetPlan`
+  // reads as an ordinary stored Station value. With a project selected that
+  // made the dialog offer to clear a Station setting nobody had stored and
+  // send `null` for it to the STATION document — a write against the wrong
+  // authority, decided by which project happened to be selected. Reset is a
+  // Station action and must read Station provenance, so it gets its own
+  // query; React Query keys them apart (`['config','provenance', null]` vs
+  // the slug) and dedupes the unscoped one with every other unscoped caller.
+  const { data: stationProvenance } = useConfigProvenanceQuery();
   const {
     chatFontSize,
     featureSettings,
@@ -180,7 +254,45 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const configJson = JSON.stringify(config);
   const baselineJson = JSON.stringify(savedConfig);
   const hasChanges = configJson !== baselineJson;
-  const { DiscardModal } = useUnsavedGuard(hasChanges);
+  const overrideDelta = projectOverrideDelta(overrideDraft, savedOverrides);
+  const overrideDirty = Object.keys(overrideDelta).length > 0;
+  // ONE guard over both drafts. Two guards would ask twice for a single
+  // navigation and let either one discard while the other still holds an
+  // unsaved edit.
+  const { guard, DiscardModal } = useUnsavedGuard(hasChanges || overrideDirty);
+  const selectProject = (slug: string | null) => {
+    guard(() => {
+      setConfig(savedConfig);
+      setOverrideDraft({});
+      setSelectedProjectSlug(slug);
+    });
+  };
+  const projectOverride = selectedProjectSlug
+    ? {
+        name:
+          projectList.find((entry) => entry.slug === selectedProjectSlug)
+            ?.name ?? selectedProjectSlug,
+        values: Object.fromEntries(
+          PROJECT_OVERRIDABLE_APP_SETTING_KEYS.map((key) => [
+            key,
+            effectiveOverrideValue(key, overrideDraft, savedOverrides),
+          ]),
+        ),
+        // The set the SAVE will change, which is neither the raw draft nor
+        // the delta: a draft entry equal to the stored value is not a change
+        // at all, and the delta is too NARROW because the model pair is
+        // written whole — resetting one half drops the other. Both rules live
+        // in `pendingOverrideChanges`, which reads the request body itself.
+        pending: pendingOverrideChanges(overrideDraft, savedOverrides),
+        onChange: (key: ProjectOverridableAppSettingKey, value: unknown) =>
+          setOverrideDraft((current) => ({ ...current, [key]: value })),
+        // `null`, not a delete: the route reads `null` as "drop this
+        // override", and removing the key from the draft would only mean
+        // "never touched", which saves nothing.
+        onReset: (key: ProjectOverridableAppSettingKey) =>
+          setOverrideDraft((current) => ({ ...current, [key]: null })),
+      }
+    : undefined;
   const highlightNotice = highlightAnnouncement ? (
     <div
       className="settings__highlight-notice"
@@ -487,7 +599,28 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       logLevel !== undefined
         ? updateAppLogLevel(currentApiBase, logLevel)
         : undefined;
-    if (!plainWrite && !logLevelWrite) return;
+    // #2144 slice 3: the project's own document, written by its own route.
+    // A third independent write rather than a third key in the config PUT —
+    // `PUT /api/projects/:slug` is what accepts `null` as "drop this
+    // override", and the Station config route has no way to express that.
+    // `selectedProject !== undefined` is a real precondition, not a
+    // convenience: `savedOverrides` is derived from that record, so an
+    // in-flight or failed read presents as "this project overrides nothing"
+    // — and `buildProjectOverrideUpdate` would then see a half-pair and null
+    // BOTH model fields on a project that had set them.
+    // Pinned once: the whole settle path below refers to the project this
+    // save was for, not to whatever the selector holds by the time it lands.
+    const overrideSlug =
+      selectedProjectSlug && overrideDirty && selectedProject !== undefined
+        ? selectedProjectSlug
+        : undefined;
+    const overrideWrite = overrideSlug
+      ? updateProject.mutateAsync({
+          slug: overrideSlug,
+          ...buildProjectOverrideUpdate(overrideDelta, savedOverrides),
+        })
+      : undefined;
+    if (!plainWrite && !logLevelWrite && !overrideWrite) return;
 
     saveInFlightRef.current = true;
     setIsSplitSaving(true);
@@ -498,6 +631,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         Promise.allSettled([
           plainWrite ?? Promise.resolve(),
           logLevelWrite ?? Promise.resolve(),
+          overrideWrite ?? Promise.resolve(),
         ]),
         new Promise<'deadline'>((resolve) => {
           deadlineTimer = setTimeout(
@@ -512,7 +646,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         );
         return;
       }
-      const [plainOutcome, logLevelOutcome] = settled;
+      const [plainOutcome, logLevelOutcome, overrideOutcome] = settled;
       const plainFailed =
         plainWrite !== undefined && plainOutcome.status === 'rejected';
       const logLevelFailed =
@@ -542,23 +676,57 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         invalidate(['config']);
         onSaved?.();
       }
-      if (plainFailed && logLevelFailed) {
-        setError(
-          'Log Level and other settings could not be saved. Your changes are kept here until you retry.',
-        );
-      } else if (logLevelFailed) {
-        setError(
-          plainOutcome.status === 'fulfilled'
-            ? 'Log Level could not be saved. Other settings were saved; your Log Level change is kept here until you retry.'
-            : 'Log Level could not be saved. Your change is kept here until you retry.',
-        );
-      } else if (plainFailed) {
-        setError(
-          plainOutcome.reason instanceof StationReadOnlyError
-            ? 'Save failed — Station is unreachable. Your changes are kept here until you retry; they are not saved yet.'
-            : 'Some settings could not be saved. Your changes are kept here until you retry.',
-        );
+      // The project write settles on its own: it is a different document on a
+      // different route, so it succeeding or failing says nothing about the
+      // Station config write and must not silence or absorb its message.
+      // Keyed on `overrideSlug`, which is defined exactly when
+      // `overrideWrite` is — and unlike it, still carries the project's name.
+      if (overrideSlug && overrideOutcome.status === 'fulfilled') {
+        // Await the project record's refetch BEFORE clearing the draft: the
+        // row falls back to `savedOverrides` the instant the draft goes, and
+        // that read is stale until this settles, so clearing first shows the
+        // pre-save value back at the person who just changed it. Bounded —
+        // see `SETTINGS_OVERRIDE_REFETCH_DEADLINE_MS` for what expiry costs.
+        let refetchTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            invalidate(['projects', overrideSlug]),
+            new Promise<void>((resolve) => {
+              refetchTimer = setTimeout(
+                resolve,
+                SETTINGS_OVERRIDE_REFETCH_DEADLINE_MS,
+              );
+            }),
+          ]);
+        } finally {
+          if (refetchTimer !== undefined) clearTimeout(refetchTimer);
+        }
+        setOverrideDraft({});
+        // The provenance the page renders is computed from the project record
+        // that just changed, so the badges are stale until it is re-read.
+        invalidate(['config']);
       }
+      const overrideFailed =
+        overrideWrite !== undefined && overrideOutcome.status === 'rejected';
+      const stationMessage =
+        plainFailed && logLevelFailed
+          ? 'Log Level and other settings could not be saved. Your changes are kept here until you retry.'
+          : logLevelFailed
+            ? plainOutcome.status === 'fulfilled'
+              ? 'Log Level could not be saved. Other settings were saved; your Log Level change is kept here until you retry.'
+              : 'Log Level could not be saved. Your change is kept here until you retry.'
+            : plainFailed
+              ? plainOutcome.reason instanceof StationReadOnlyError
+                ? 'Save failed — Station is unreachable. Your changes are kept here until you retry; they are not saved yet.'
+                : 'Some settings could not be saved. Your changes are kept here until you retry.'
+              : null;
+      const messages = [
+        stationMessage,
+        overrideFailed
+          ? "This project's overrides could not be saved. Your changes to them are kept here until you retry."
+          : null,
+      ].filter((message): message is string => message !== null);
+      if (messages.length > 0) setError(messages.join(' '));
     } finally {
       if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
       saveInFlightRef.current = false;
@@ -570,7 +738,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   // already holds: only a `source: 'file'` key is stored, and only a stored
   // key changes when it is cleared. The dialog names these, and an empty plan
   // is a disabled confirm rather than a request that silently does nothing.
-  const resetPlan = buildStationResetPlan(provenance);
+  const resetPlan = buildStationResetPlan(stationProvenance);
 
   const resetToDefaults = async () => {
     setShowResetModal(false);
@@ -684,6 +852,38 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         {/* ── Manage (other surfaces, not sections of this page) ── */}
         <SettingsManageSection />
 
+        {/* #2144 slice 3: which document the page is showing values for.
+            Outside every scope group because it re-attributes rows in more
+            than one of them, and the sentence beside it names exactly what a
+            project may override — the selector governs attribution for the
+            whole page, but only these settings are a project's to change. */}
+        <div className="settings__project-scope">
+          <label
+            className="settings__project-scope-label"
+            htmlFor="settings-project-scope"
+          >
+            Show settings for:
+          </label>
+          <select
+            id="settings-project-scope"
+            className="editor-select"
+            value={selectedProjectSlug ?? ''}
+            onChange={(event) => selectProject(event.target.value || null)}
+          >
+            <option value="">Station only</option>
+            {projectList.map((project) => (
+              <option key={project.slug} value={project.slug}>
+                {project.name ?? project.slug}
+              </option>
+            ))}
+          </select>
+          <span className="settings__field-hint">
+            A project can override its new-chat workspace and its default model
+            connection and model. Every other setting on this page belongs to
+            the Station.
+          </span>
+        </div>
+
         {/* ── Station scope ── */}
         <section
           aria-label="Station settings"
@@ -699,6 +899,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 config={config}
                 provenance={provenance}
                 onChange={setConfig}
+                projectOverride={projectOverride}
               />
               {/* #2144 slice 6 item D: whether anything CAN be sent, beside
                   the toggle that decides whether it is. Derived from the
@@ -1059,13 +1260,16 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         )}
       </div>
 
-      {hasChanges && (
+      {(hasChanges || overrideDirty) && (
         <div className="settings__save-pill" role="status" aria-live="polite">
           <span className="settings__save-pill-text">Unsaved changes</span>
           <button
             type="button"
             className="settings__save-pill-discard"
-            onClick={() => setConfig(savedConfig)}
+            onClick={() => {
+              setConfig(savedConfig);
+              setOverrideDraft({});
+            }}
           >
             Discard
           </button>

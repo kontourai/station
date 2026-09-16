@@ -52,6 +52,10 @@ import type {
   localizedSettingsTargetLabel,
   SettingsPaletteCommand,
 } from '../views/settings/settings-catalog';
+import {
+  SETTINGS_DEEP_LINK_PATH,
+  settingsDeepLinkParams,
+} from '../views/settings/settings-deep-link';
 import { commandFrecencyStorage } from './command-frecency-storage';
 import {
   groupRanked,
@@ -536,10 +540,13 @@ export function CommandPalette() {
             });
             return;
           }
-          navigate('/settings', {
-            view: setting.view,
-            highlight: setting.highlight,
-          });
+          navigate(
+            SETTINGS_DEEP_LINK_PATH,
+            settingsDeepLinkParams({
+              view: setting.view,
+              highlight: setting.highlight,
+            }),
+          );
         },
       });
     }

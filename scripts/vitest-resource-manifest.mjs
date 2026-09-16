@@ -376,6 +376,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture. Fix-forward: landed via #1478 without this classification; the
   // verification-policy gate caught it on the pull request.
   'src-ui/src/__tests__/placement-vocabulary.test.ts',
+  // #2144 slice 5: the `settingsRow` literal reverse guard enumerates its
+  // scan scope through one single-shot `git ls-files`, same shape and same
+  // reason as the placement ratchet above — a glob pathspec silently drops
+  // root-level files and a shrinking scope still reads clean.
+  'src-ui/src/__tests__/settings-row-literal-coverage.test.ts',
   // station#3549: drives a single `git grep -l` through `execFileSync` to
   // discover every file that calls `adapter.startSession(` — the same "real
   // git, not a fixture" shape as gate-scope.test.ts above. Fix-forward: this
