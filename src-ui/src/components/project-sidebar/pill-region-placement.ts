@@ -56,8 +56,8 @@ export function sidebarLayoutPaneId(key: SidebarLayoutPaneKey): string | null {
   return resolveRegionSurface(id) ? id : null;
 }
 
-/** The empty answer, one frozen array, so a folded device re-renders nothing. */
-const NO_REGIONS: readonly DockMode[] = Object.freeze([]);
+/** The empty answer, one array, so a folded device hands back one identity. */
+const NO_REGIONS: readonly DockMode[] = [];
 
 /**
  * The regions a pill may be opened into on THIS device, and the model call

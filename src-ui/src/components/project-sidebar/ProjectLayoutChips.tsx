@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useMenuFocus } from '../../hooks/useMenuFocus';
-import { regionLabel } from '../../regions/region-model';
+import { useCallback, useRef, useState } from 'react';
+import { LazyBoundary } from '../LazyBoundary';
 import { useSidebarPillRegions } from './pill-region-placement';
+
+/**
+ * Module-level so `LazyBoundary` sees ONE identity: it memoizes the lazy
+ * component on this function, and a factory rebuilt every render would remount
+ * the chunk on each keystroke elsewhere in the rail.
+ */
+const loadProjectLayoutChipMenu = () => import('./ProjectLayoutChipMenu');
 
 /**
  * One entry of a project's chip row. The row renders and navigates chips; it
@@ -90,38 +96,7 @@ export function ProjectLayoutChips({
   // project switched under an open menu leaves a key naming no chip, and a
   // menu whose subject has left the row is a menu about nothing.
   const menuChip = chips.find((chip) => chip.key === menuFor) ?? null;
-  const menuOpen = menuChip !== null;
   const closeMenu = useCallback(() => setMenuFor(null), []);
-  const menuRef = useMenuFocus<HTMLDivElement>(menuOpen, closeMenu);
-
-  /**
-   * Outside-pointer dismissal, the same gap and the same answer as
-   * `ProjectSidebarBoards`' row menu: `useMenuFocus`'s focusout covers leaving
-   * by keyboard and pressing another focusable control, but not a press on
-   * ordinary page furniture — the rail's background, a section label — which
-   * moves focus to `<body>` in some engines and nowhere at all in others. This
-   * menu renders IN FLOW inside the scrolling rail, so the portalled header
-   * menus' full-viewport dismiss backdrop is not available to it.
-   *
-   * The chip that opened the menu is exempt for the reason its sibling records:
-   * without it the press closes the menu, React re-renders, and the
-   * `contextmenu` that follows reopens it — a right-click that appears to do
-   * nothing.
-   */
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onPointerDown = (event: Event) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (menuRef.current?.contains(target)) return;
-      if (menuFor !== null && buttons.current.get(menuFor)?.contains(target))
-        return;
-      setMenuFor(null);
-    };
-    document.addEventListener('pointerdown', onPointerDown, true);
-    return () =>
-      document.removeEventListener('pointerdown', onPointerDown, true);
-  }, [menuOpen, menuFor, menuRef]);
 
   const currentIndex = chips.findIndex((chip) => chip.current);
   const currentKey = chips[currentIndex]?.key;
@@ -231,45 +206,22 @@ export function ProjectLayoutChips({
           </button>
         ))}
       </div>
-      {menuChip && (
-        <div
-          ref={menuRef}
-          className="menu-surface sidebar__layout-chip-menu"
-          role="menu"
-          // The subject is the menu's, so its rows read bare — the shape the
-          // Boards row menu beside it uses for Rename and Delete.
-          aria-label={`${menuChip.name} actions`}
-          // Required by `useMenuFocus`: focus lands on the container when the
-          // menu holds nothing focusable. It cannot here (the menu only opens
-          // with at least two regions), but the hook's contract is the
-          // container's, not this caller's.
-          tabIndex={-1}
-          onKeyDown={(event) => {
-            if (event.key !== 'Escape') return;
-            event.preventDefault();
-            // The shell carries document-level Escape handlers; dismissing a
-            // menu is not also a request to close what is behind it.
-            event.stopPropagation();
-            // `useMenuFocus`'s teardown returns focus to the chip.
-            closeMenu();
+      {menuChip?.dockSurfaceId && (
+        <LazyBoundary
+          load={loadProjectLayoutChipMenu}
+          componentProps={{
+            label: `${menuChip.name} actions`,
+            surfaceId: menuChip.dockSurfaceId,
+            regions: pillRegions.regions,
+            onClose: closeMenu,
+            onOpenInRegion: pillRegions.openInRegion,
           }}
-        >
-          {pillRegions.regions.map((region) => (
-            <button
-              key={region}
-              type="button"
-              className="menu-row"
-              role="menuitem"
-              onClick={() => {
-                const surfaceId = menuChip.dockSurfaceId;
-                closeMenu();
-                if (surfaceId) pillRegions.openInRegion(surfaceId, region);
-              }}
-            >
-              Open in {regionLabel(region)}
-            </button>
-          ))}
-        </div>
+          pending={null}
+          // A menu that failed to arrive renders nothing, rather than planting
+          // an error card with two buttons permanently in a 240px rail. The
+          // next right-click remounts this boundary and retries the import.
+          unavailable={() => null}
+        />
       )}
     </>
   );
