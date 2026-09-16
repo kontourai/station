@@ -24,7 +24,8 @@ export interface RegionState {
    * region may hold several; `main` holds at most one (it keeps
    * displacement, #928 C2a). No surface is in two regions' `panes` at once
    * (`placeSurface` removes it from the region it leaves) and no id repeats
-   * within one. `updateRegion` holds both.
+   * within one. `updateRegion` holds the second; `placeSurface`'s vacate
+   * holds the first for live state.
    *
    * The record parser holds the second outright and the first for SHELL
    * surfaces only (#2159 slice A): it tolerates an instance-keyed id
@@ -1004,6 +1005,12 @@ export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
  * parser's cross-region de-dup (`region-arrangement-record.ts`), which
  * records only the ids this refuses, so a shell surface named by two regions
  * still keeps the first and an instance id survives in both.
+ *
+ * Reads the module's own registry, not the parser's `registry` parameter:
+ * that parameter exists for the older-registry tests, whose subsets never
+ * hold an id a family grammar matches, so the two tables agree everywhere
+ * the parser is called. A caller with a genuinely different registry would
+ * need this to take one too.
  */
 export function isInstanceSurface(id: string): boolean {
   return (

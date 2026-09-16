@@ -950,6 +950,34 @@ describe('region arrangement record (#928 D)', () => {
           occupant: id,
         });
         expect(parsed, id).toEqual(inTwoRegions);
+
+        // The region that DOES enter the duplicate branch — `bottom` names
+        // `activity` too, which `right` already claimed — must drop only the
+        // shell duplicate and keep the instance id. Review injection: making
+        // that branch's filter also strip instance ids passed every case
+        // above, because none of them put a shell duplicate and an instance
+        // id in one later region. This one does.
+        const shellDuplicateBeside: RegionArrangement = {
+          ...inTwoRegions,
+          bottom: {
+            visible: true,
+            size: 320,
+            panes: ['activity', id],
+            occupant: 'activity',
+            maximized: false,
+          },
+        };
+        const reparsed = parseRegionArrangementRecord(
+          toRegionArrangementRecord(shellDuplicateBeside),
+        );
+        expect(reparsed?.right, id).toMatchObject({
+          panes: ['activity', id],
+          occupant: id,
+        });
+        expect(reparsed?.bottom, id).toMatchObject({
+          panes: [id],
+          occupant: id,
+        });
       }
     });
 
