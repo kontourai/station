@@ -110,7 +110,7 @@ const CURSOR_LINE_SPAN = '<span class="line"></span>';
  * must equal `codeToHtml(previous.code + suffix)`. Returns null when either
  * side does not have the expected shape, and the caller falls back to full.
  */
-export function spliceHtml(
+function spliceHtml(
   previousFull: string,
   suffixFull: string,
 ): string | null {
