@@ -22,6 +22,7 @@ import {
   type ProjectTaskRoomCapabilityAuthority,
   type ProjectTaskRoomWriteAdmissionPort,
   projectTaskRoomChannelId,
+  sqliteLockWaitMs,
 } from '../project-task-room-history.js';
 import { createProjectTaskRoomWorkingState } from '../project-task-room-working-state.js';
 import { SessionExecutionCoordinator } from '../session-execution-coordinator.js';
@@ -1951,6 +1952,85 @@ it('source seal serializes behind an admitted transaction and closes at its comm
     });
     expect(await source.append(message('after-race'))).toEqual({
       kind: 'denied',
+    });
+  } finally {
+    release();
+    await source.close();
+    await sealer.close();
+  }
+});
+
+/**
+ * #1531: the lock wait is a derivation of the admission deadline, not a
+ * literal. Pinned as arithmetic so a future edit that shortens the hold an
+ * admitted write may take must also shorten what a competing connection
+ * is willing to wait, and vice versa.
+ */
+it('a competing connection waits at least as long as an admitted write may hold the lock', () => {
+  // Default admission deadline: two bounded phases plus resolver slack.
+  expect(sqliteLockWaitMs(1_000)).toBe(2_250);
+  // The old literal was 175 ms, which is below the floor now.
+  expect(sqliteLockWaitMs(1_000)).toBeGreaterThan(175);
+  // Bounded above by the worker response budget so a contention cannot
+  // become a terminated worker.
+  expect(sqliteLockWaitMs(10_000)).toBe(
+    PROJECT_TASK_ROOM_LIMITS.workerResponseMs - 1_000,
+  );
+  // A test adapter with a tiny admission deadline still keeps a floor.
+  expect(sqliteLockWaitMs(10)).toBe(270);
+  expect(sqliteLockWaitMs(1)).toBeGreaterThanOrEqual(250);
+});
+
+/**
+ * #1531, the nightly's actual failure: an admitted append holds
+ * `BEGIN IMMEDIATE` across its authorization round trip, and the seal that
+ * must serialize behind it used to give up after 175 ms and report the room
+ * `unavailable`. On a loaded runner the round trip alone outran that. The
+ * hold here is longer than the old wait and shorter than the derived one, so
+ * this reddens on the literal and passes on the derivation.
+ */
+it('the seal waits through an admitted write that holds the lock past the old 175 ms wait', async () => {
+  const path = databasePath();
+  let entered!: () => void;
+  let release!: () => void;
+  const atCommit = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const proceed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let checks = 0;
+  const source = history(path, {
+    capabilities: {
+      resolve: async (input) => {
+        if (input.required === 'message-write' && ++checks === 3) {
+          entered();
+          await proceed;
+        }
+        return capabilities.resolve(input);
+      },
+    },
+  });
+  const sealer = history(path);
+  try {
+    await source.open({ grant: grant('discover') });
+    await sealer.open({ grant: grant('discover') });
+    const append = source.append(message('held-past-old-wait'));
+    await atCommit;
+    const sealing = sealer.sealSource({
+      grant: grant('home-transfer'),
+      ...sealIntent,
+    });
+    // Hold the admitted write's lock for longer than the retired literal
+    // and well inside what the derivation is willing to wait.
+    await new Promise<void>((resolve) => setTimeout(resolve, 600));
+    release();
+    const committed = await append;
+    expect(committed.kind).toBe('committed');
+    if (committed.kind !== 'committed') throw new Error('Expected real commit');
+    expect(await sealing).toMatchObject({
+      kind: 'sealed',
+      seal: { checkpoint: committed.receipt.checkpoint },
     });
   } finally {
     release();
