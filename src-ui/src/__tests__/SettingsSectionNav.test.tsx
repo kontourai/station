@@ -25,7 +25,10 @@
  */
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
-import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
+import {
+  APP_DESTINATION_REGISTRY,
+  DEVELOPER_TOOLS_FLAG,
+} from '../app-shell/destination-registry';
 import { SectionNav } from '../components/SectionNav';
 import { settingsSectionNavItems } from '../views/SettingsView';
 import { SETTINGS_SECTIONS } from '../views/settings/settings-catalog';
@@ -91,6 +94,50 @@ describe('settingsSectionNavItems', () => {
         (group) =>
           SETTINGS_SECTIONS.find((section) => section.group === group)!.id,
       ),
+    ]);
+  });
+
+  test('places a nav-only row in ITS OWN group, not all of them under SET UP', () => {
+    // The defect this catches shipped once: every nav-only row was emitted as
+    // one SET UP block, so Developer — which the registry puts under THIS
+    // STATION, beside this Station's own sections — appeared among the entity
+    // lists instead. Invisible to the flagless projection, because Developer
+    // is the only nav-only row in another group and it is not in it.
+    const withDeveloper = settingsSectionNavItems(
+      hrefForSection,
+      APP_DESTINATION_REGISTRY.getSettingsNav(new Set([DEVELOPER_TOOLS_FLAG])),
+    );
+    const keys = withDeveloper.map((item) => item.key);
+    const groupOf = (key: string) => {
+      const index = keys.indexOf(key);
+      for (let cursor = index; cursor >= 0; cursor -= 1) {
+        const label = withDeveloper[cursor]!.groupLabel;
+        if (label) return label;
+      }
+      return null;
+    };
+    expect(groupOf('nav:developer')).toBe('THIS STATION');
+    expect(groupOf('nav:agents')).toBe('SET UP');
+    // And it leads its group rather than trailing the sections: it is a
+    // surface, and the heading opens on it.
+    expect(
+      withDeveloper.find((item) => item.groupLabel === 'THIS STATION'),
+    ).toMatchObject({ key: 'nav:developer' });
+  });
+
+  test('renders no heading for a group with nothing in it', () => {
+    // Every group is populated today, so this drives the branch with a
+    // fixture rather than waiting for a section to become conditional: with
+    // no nav-only rows at all, SET UP holds nothing and must not appear.
+    const labels = settingsSectionNavItems(hrefForSection, []).map(
+      (item) => item.groupLabel,
+    );
+    expect(labels).not.toContain('SET UP');
+    expect(labels.filter(Boolean)).toEqual([
+      'THIS STATION',
+      'CONTROL',
+      'YOU',
+      'KNOWLEDGE',
     ]);
   });
 

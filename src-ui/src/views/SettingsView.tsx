@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   APP_DESTINATION_REGISTRY,
   type SettingsNavEntry,
+  type SettingsNavGroupId,
 } from '../app-shell/destination-registry';
 import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/header/ThemeToggle';
@@ -1456,11 +1457,20 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
  * here without moving its bodies would desynchronise a scroll-spy nav.
  */
 const NAV_GROUPS = [
+  // SET UP holds no settings sections at all — only rows that leave this page
+  // for the surface they name.
+  { id: 'set-up', label: 'SET UP' },
   { id: 'this-station', label: 'THIS STATION' },
   { id: 'control', label: 'CONTROL' },
   { id: 'you', label: 'YOU' },
   { id: 'knowledge', label: 'KNOWLEDGE' },
-] as const satisfies readonly { id: SettingsNavGroup; label: string }[];
+] as const satisfies readonly {
+  // Both vocabularies: a group can hold sections, nav-only rows, or both.
+  // THIS STATION holds both — its sections, plus Developer when this device
+  // has developer tools on.
+  id: SettingsNavGroup | SettingsNavGroupId;
+  label: string;
+}[];
 
 /**
  * The key prefix that separates a nav-only row from a settings section.
@@ -1479,32 +1489,38 @@ export function settingsSectionNavItems(
   hrefForSection: (section: string) => string,
   navOnlyEntries: readonly SettingsNavEntry[] = APP_DESTINATION_REGISTRY.getSettingsNav(),
 ): SectionNavItem[] {
-  // SET UP first: these are the surfaces Settings sends you TO, and they are
-  // the ones a reader arrives looking for. #2144 decision 7 retired the
-  // separate Manage grid that used to hold them below the fold.
-  const setUp = navOnlyEntries.map((entry, index) => ({
-    key: `${NAV_ONLY_KEY_PREFIX}${entry.id}`,
-    label: entry.label,
-    href: entry.route,
-    ...(index === 0 ? { groupLabel: 'SET UP' } : {}),
-  }));
   const grouped = NAV_GROUPS.flatMap((group) => {
-    const groupSections = SETTINGS_SECTIONS.filter(
-      (section) => section.group === group.id,
+    // Nav-only rows come FIRST within their group: they are surfaces, and a
+    // reader scanning for "Agents" or "Developer" is looking for a place, not
+    // a row of this page. Each row is placed by the group the registry gives
+    // it, not by being nav-only — Developer belongs beside this Station's own
+    // sections, not under SET UP with the entity lists.
+    const items = [
+      ...navOnlyEntries
+        .filter((entry) => entry.group === group.id)
+        .map((entry) => ({
+          key: `${NAV_ONLY_KEY_PREFIX}${entry.id}`,
+          label: entry.label,
+          href: entry.route,
+        })),
+      ...SETTINGS_SECTIONS.filter((section) => section.group === group.id).map(
+        (section) => ({
+          key: section.id as string,
+          label: section.title as string,
+          href: hrefForSection(section.id),
+        }),
+      ),
+    ];
+    // An empty group renders NO heading: a label naming a group that is not
+    // there is worse than a missing label. THIS STATION's Developer row is
+    // conditional today, and a group could become wholly conditional next.
+    if (items.length === 0) return [];
+    return items.map((item, index) =>
+      index === 0 ? { ...item, groupLabel: group.label } : item,
     );
-    // An empty group would render its heading over nothing — a label naming a
-    // group that is not there. Every group is populated today; this is what
-    // keeps that true when a section becomes conditional.
-    return groupSections.map((section, index) => ({
-      key: section.id,
-      label: section.title,
-      href: hrefForSection(section.id),
-      ...(index === 0 ? { groupLabel: group.label } : {}),
-    }));
   });
   return [
     { key: 'overview', label: 'Overview', href: hrefForSection('overview') },
-    ...setUp,
     ...grouped,
   ];
 }
