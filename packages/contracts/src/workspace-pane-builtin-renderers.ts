@@ -41,6 +41,10 @@ export const BUILTIN_WORKSPACE_PANE_RENDERER_NAMES = [
   // `workspace-pull-request-pane.ts`; the renderer mounts the same review
   // surface the Diff pane's list opens.
   'workspace-pull-request',
+  // One Board or project Layout as its own dock tab (#2157). Its descriptor
+  // lives in `workspace-layout-pane.ts`; the renderer mounts the same
+  // `LayoutRenderer` the main region uses for the layout the id names.
+  'workspace-layout',
   'workspace-home',
   'workspace-activity',
   // This conversation's running tool calls, delegated sessions and provider

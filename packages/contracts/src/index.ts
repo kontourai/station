@@ -100,6 +100,7 @@ export * from './workspace-file-preview.js';
 export * from './workspace-home-pane.js';
 export * from './workspace-home-role.js';
 export * from './workspace-isolation.js';
+export * from './workspace-layout-pane.js';
 export * from './workspace-pane.js';
 export * from './workspace-pane-availability.js';
 export * from './workspace-pane-host.js';
