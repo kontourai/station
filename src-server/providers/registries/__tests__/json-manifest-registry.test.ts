@@ -65,6 +65,36 @@ function registryInstallRecord(manifestPath: string, pluginName: string) {
 }
 
 describe('JsonManifestRegistryProvider registry manifest proof', () => {
+  test('resolves source and untrusted claim from one fresh observation despite catalog cache', async () => {
+    const home = await makeProjectHome();
+    const path = join(home, 'catalog.json');
+    const write = (version: string) =>
+      writeFileSync(
+        path,
+        JSON.stringify({
+          version: 1,
+          plugins: [
+            { id: 'fresh', source: `./${version}`, claim: { version } },
+          ],
+        }),
+      );
+    write('one');
+    const provider = new JsonManifestRegistryProvider(path, home);
+    expect((await provider.listAvailable())[0]?.source).toBe(join(home, 'one'));
+    write('two');
+    const resolved = await provider.resolvePackage('fresh');
+    expect(resolved).toEqual({
+      source: join(home, 'two'),
+      claim: { version: 'two' },
+    });
+    (resolved!.claim as { version: string }).version = 'caller-change';
+    expect(await provider.resolvePackage('fresh')).toEqual({
+      source: join(home, 'two'),
+      claim: { version: 'two' },
+    });
+    writeFileSync(path, JSON.stringify({ version: 1, plugins: [] }));
+    expect(await provider.resolvePackage('fresh')).toBeNull();
+  });
   test('recognizes the canonical shared lifecycle registry alias', async () => {
     const projectHome = await makeProjectHome();
     const registrySource = resolve(projectHome, 'registry-demo-source');

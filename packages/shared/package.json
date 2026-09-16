@@ -86,7 +86,8 @@
     "./knowledge-root-identity": "./src/knowledge-root-identity.ts",
     "./cloud-move": "./src/cloud-move.ts",
     "./workspace-package": "./src/workspace-package.ts",
-    "./environment-security-record": "./src/environment-security-record.ts"
+    "./environment-security-record": "./src/environment-security-record.ts",
+    "./plugin-registry-signature": "./src/plugin-registry-signature.ts"
   },
   "publishConfig": {
     "access": "public"

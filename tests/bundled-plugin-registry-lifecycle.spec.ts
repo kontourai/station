@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   type AuthenticatedE2ERequest,
   expect,
@@ -6,9 +9,12 @@ import {
 import { resolveE2EApiBase } from './helpers/e2e-target';
 
 const API = resolveE2EApiBase();
+// Registry display name of the bundled `minimal-layout` package (#265: the
+// package id is retained; the friendly name is the Pane's).
+const PLUGIN_NAME = 'Minimal Workspace';
 // Inventory, CSS, and JavaScript each have an 8s owner deadline.
 // A 5s locator assertion can delete the plugin while that valid load is pending.
-const LAYOUT_READY_TIMEOUT_MS = 30_000;
+const PANE_READY_TIMEOUT_MS = 30_000;
 
 async function openBundledPluginInRegistry(
   page: import('@playwright/test').Page,
@@ -23,9 +29,40 @@ async function openBundledPluginInRegistry(
   }
   await page.getByRole('tab', { name: 'Plugins', exact: true }).click();
   await page
-    .getByRole('button', { name: 'View Minimal Layout details' })
+    .getByRole('button', { name: `View ${PLUGIN_NAME} details` })
     .click();
-  return page.getByRole('region', { name: 'Minimal Layout' });
+  return page.getByRole('region', { name: PLUGIN_NAME });
+}
+
+/**
+ * The Pane-era project journey, mirroring minimal-workspace-example.spec.ts:
+ * the "+ Add pane" picker offers the installed contribution and opens its
+ * Project-bound occurrence. Returns the committed pane URL so the caller can
+ * revisit the same occurrence after the plugin is removed.
+ */
+async function openMinimalWorkspacePane(
+  page: import('@playwright/test').Page,
+  slug: string,
+): Promise<string> {
+  await page.goto(`/projects/${slug}`);
+  await page.getByRole('button', { name: '+ Add pane', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Add workspace pane' })
+    .getByRole('listitem')
+    .filter({ has: page.getByText(PLUGIN_NAME, { exact: true }) })
+    .getByRole('button', { name: `Open ${PLUGIN_NAME}`, exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: PLUGIN_NAME, exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText('Minimal plugin starter')).toBeVisible({
+    timeout: PANE_READY_TIMEOUT_MS,
+  });
+  const paneUrl = page.url();
+  expect(new URL(paneUrl).pathname).toMatch(
+    new RegExp(`^/projects/${slug}/panes/`),
+  );
+  return paneUrl;
 }
 
 async function assertNoHorizontalOverflow(
@@ -68,7 +105,7 @@ test.describe('Bundled plugin registry lifecycle', () => {
   // Body worst case: two 60s install waits (install + reinstall) plus one
   // 60s removal response = 180s. Baseline DELETE (30s) runs before the body;
   // final cleanup runs two 30s DELETEs concurrently (Promise.all) = 30s
-  // ceiling. Two layout readiness waits add 60s: 180 + 30 + 30 + 60 = 300s.
+  // ceiling. Two pane readiness waits add 60s: 180 + 30 + 30 + 60 = 300s.
   // The 360s outer budget leaves 60s for ordinary UI interactions and cleanup.
   test.describe.configure({ timeout: 360_000 });
 
@@ -92,11 +129,12 @@ test.describe('Bundled plugin registry lifecycle', () => {
     }
   });
 
-  test('installs, uses, removes, and reinstalls the bundled minimal layout', async ({
+  test('installs, uses, removes, and reinstalls the bundled minimal workspace', async ({
     page,
     authenticatedRequest,
   }, testInfo) => {
-    const slug = `bundled-layout-${Date.now()}`;
+    const slug = `bundled-workspace-${Date.now()}`;
+    const workspace = mkdtempSync(join(tmpdir(), 'station-bundled-workspace-'));
 
     // Baseline cleanup: ensure no leftover install from a prior run. 404 is
     // expected when nothing is leftover; any other failure is surfaced
@@ -110,6 +148,9 @@ test.describe('Bundled plugin registry lifecycle', () => {
 
     let testError: unknown;
     try {
+      await page.addInitScript(() =>
+        localStorage.setItem('station:onboarding-setup-dismissed', '1'),
+      );
       const detail = await openBundledPluginInRegistry(page);
       await detail
         .getByRole('button', { name: 'Install', exact: true })
@@ -118,7 +159,7 @@ test.describe('Bundled plugin registry lifecycle', () => {
         .getByRole('dialog', { name: 'Install Preview' })
         .getByRole('button', { name: 'Confirm Install', exact: true })
         .click();
-      await expect(page.getByText('Installed Minimal Layout')).toBeVisible({
+      await expect(page.getByText(`Installed ${PLUGIN_NAME}`)).toBeVisible({
         timeout: 60_000,
       });
 
@@ -127,49 +168,38 @@ test.describe('Bundled plugin registry lifecycle', () => {
       await page.reload();
       await page.getByRole('tab', { name: 'Plugins', exact: true }).click();
       await expect(
-        page.getByRole('article').filter({ hasText: 'Minimal Layout' }).first(),
+        page.getByRole('article').filter({ hasText: PLUGIN_NAME }).first(),
       ).toContainText('Installed');
 
       await page.goto('/plugins');
       await expect(
-        page.getByText('Minimal Layout', { exact: true }),
+        page.getByText(PLUGIN_NAME, { exact: true }).first(),
       ).toBeVisible();
 
       const project = await authenticatedRequest.post(`${API}/api/projects`, {
-        data: { name: 'Bundled Layout Proof', slug },
+        data: {
+          name: 'Bundled Workspace Proof',
+          slug,
+          workingDirectory: workspace,
+        },
       });
       expect(project.ok()).toBe(true);
 
-      await page.goto(`/projects/${slug}`);
-      await page
-        .getByRole('button', { name: '+ Add layout', exact: true })
-        .click();
-      const picker = page.getByRole('dialog', { name: 'Add Layout' });
-      const minimalLayout = picker
-        .getByRole('button', { name: /Minimal.*Plugin: minimal-layout/ })
-        .first();
-      await expect(minimalLayout).toBeVisible();
-      await minimalLayout.click();
-      const minimalSidebarTab = page.getByRole('button', {
-        name: 'Minimal',
-        exact: true,
-      });
-      await expect(minimalSidebarTab).toBeVisible();
-      await minimalSidebarTab.click();
-      await expect(page.getByText('Minimal plugin starter')).toBeVisible({
-        timeout: LAYOUT_READY_TIMEOUT_MS,
-      });
+      const paneUrl = await openMinimalWorkspacePane(page, slug);
 
       await page.setViewportSize({ width: 390, height: 844 });
       await assertNoHorizontalOverflow(page);
-      await page.getByRole('button', { name: 'Open Chat Dock' }).focus();
+      await page
+        .getByRole('button', { name: 'Open Chat Dock', exact: true })
+        .focus();
       await expect(
-        page.getByRole('button', { name: 'Open Chat Dock' }),
+        page.getByRole('button', { name: 'Open Chat Dock', exact: true }),
       ).toBeFocused();
-      await testInfo.attach('bundled-layout-390x844', {
+      await testInfo.attach('bundled-workspace-390x844', {
         body: await page.screenshot(),
         contentType: 'image/png',
       });
+      await page.setViewportSize({ width: 1280, height: 900 });
 
       const removeDetail = await openBundledPluginInRegistry(page);
       // The uninstall DELETE can take ~24s under fixture-budget load; await the
@@ -187,11 +217,17 @@ test.describe('Bundled plugin registry lifecycle', () => {
         .click();
       const removed = await pluginRemoval;
       expect(removed.ok()).toBe(true);
-      await expect(page.getByText('Removed Minimal Layout')).toBeVisible();
+      await expect(page.getByText(`Removed ${PLUGIN_NAME}`)).toBeVisible();
 
-      await page.goto(`/projects/${slug}/layouts/minimal`);
-      await expect(page.getByText('Unsupported layout tab')).toBeVisible();
-      await expect(page.getByText(/not installed or registered/)).toBeVisible();
+      // The occurrence the plugin backed is withdrawn, not left rendering a
+      // stale component: the same pane route now reports the host's reason.
+      await page.goto(paneUrl);
+      await expect(
+        page.getByText('Workspace pane not found', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: 'Open Chat Dock', exact: true }),
+      ).toHaveCount(0);
 
       const reinstallDetail = await openBundledPluginInRegistry(page);
       await reinstallDetail
@@ -201,14 +237,13 @@ test.describe('Bundled plugin registry lifecycle', () => {
         .getByRole('dialog', { name: 'Install Preview' })
         .getByRole('button', { name: 'Confirm Install', exact: true })
         .click();
-      await expect(page.getByText('Installed Minimal Layout')).toBeVisible({
+      await expect(page.getByText(`Installed ${PLUGIN_NAME}`)).toBeVisible({
         timeout: 60_000,
       });
 
-      await page.goto(`/projects/${slug}/layouts/minimal`);
-      await expect(page.getByText('Minimal plugin starter')).toBeVisible({
-        timeout: LAYOUT_READY_TIMEOUT_MS,
-      });
+      // Reinstall is proven through the same picker journey rather than the
+      // earlier pane URL: the contribution is offered again and opens.
+      await openMinimalWorkspacePane(page, slug);
       await assertNoHorizontalOverflow(page);
     } catch (error) {
       testError = error;
@@ -229,6 +264,7 @@ test.describe('Bundled plugin registry lifecycle', () => {
         ),
       )
     ).filter((failure): failure is string => failure !== null);
+    rmSync(workspace, { recursive: true, force: true });
     if (cleanupFailures.length > 0) {
       const report = `Cleanup failures: ${cleanupFailures.join('; ')}`;
       if (testError) {

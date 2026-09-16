@@ -38,11 +38,12 @@ function descriptor(value: unknown): WorkspacePaneDescriptor {
  * own rather than reached through the Diff pane's list.
  *
  * `docked` is declared because #2049's link handler is its reader — the same
- * condition `workspace-file-preview` waited on. It is NOT offered by the
- * region's "+" catalog: like a File Preview it has no blank canonical
- * instance (an occurrence is keyed by a repository and a number), so a card
- * could be listed but never opened. `RegionPaneCatalog` filters both out and
- * says so.
+ * condition `workspace-file-preview` waited on. It is NOT offered by a
+ * region's chooser: like a File Preview it has no blank canonical instance
+ * (an occurrence is keyed by a repository and a number), so a row could be
+ * listed but never opened. The chooser lists registry surfaces, and no
+ * prefix family is a registry key (`region-model.ts`,
+ * `INSTANCE_SURFACE_PREFIXES`).
  *
  * `project: true` because the review route is project-scoped
  * (`PullRequestReviewTarget.project`): the server resolves the repository

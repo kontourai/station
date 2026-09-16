@@ -61,6 +61,11 @@ import {
   quiesceAllPluginPublicServerModules,
   quiescePluginPublicServerModule,
 } from '../../services/plugins/plugin-public-server.js';
+import {
+  isRegistryAcquisitionRefusal,
+  registryAcquisitionRefusalDetails,
+} from '../../services/plugins/registry-acquisition.js';
+import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { pluginUpdates } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
@@ -87,6 +92,7 @@ interface PluginLifecycleRouteDeps {
    */
   visibility?: PluginPrincipalResolution;
   installationHost?: PluginInstallationHost;
+  registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: {
@@ -651,6 +657,7 @@ export function registerPluginLifecycleRoutes(
                 projectHomeDir,
                 logger,
                 buildPlugin,
+                registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
                 packageMcpJournal: deps.packageMcpJournal,
                 installationHost: deps.installationHost,
                 beginConfigurationMutation: beginMutation,
@@ -996,6 +1003,14 @@ export function registerPluginLifecycleRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      if (isRegistryAcquisitionRefusal(error))
+        return c.json(
+          {
+            success: false,
+            ...registryAcquisitionRefusalDetails(error),
+          },
+          409,
+        );
       if (
         isContextSafetyError(error) ||
         error instanceof PluginUpdateRejectedError
@@ -1083,6 +1098,7 @@ export function registerPluginLifecycleRoutes(
         async (beginMutation) => {
           const result = await uninstallInstalledPlugin(installedPluginName, {
             agentsDir,
+            registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
             packageMcpJournal: deps.packageMcpJournal,
             installationHost: deps.installationHost,
             beginConfigurationMutation: beginMutation,

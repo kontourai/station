@@ -6,6 +6,11 @@ import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import { observePluginGrantRevisions } from '../../services/plugins/plugin-permissions.js';
+import {
+  isRegistryAcquisitionRefusal,
+  registryAcquisitionRefusalDetails,
+} from '../../services/plugins/registry-acquisition.js';
+import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { isRecord } from '../../utils/is-record.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 /**
@@ -82,6 +87,7 @@ interface RegistryRouteDeps {
    */
   canSeePlugin?: (c: Context, pluginId: string) => boolean;
   installationHost?: PluginInstallationHost;
+  registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   applyConfigurationMutation?: AgentConfigurationMutationRunner;
   approveKitOperatorAction?: (
@@ -133,6 +139,7 @@ export function createRegistryRoutes(
     deps?.layoutCatalog ?? new DistributionProfileService(projectHomeDir);
   const pluginInstallDeps = deps
     ? {
+        registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
         packageMcpJournal: deps.packageMcpJournal,
         installationHost: deps.installationHost,
         agentsDir: join(projectHomeDir, 'agents'),
@@ -751,12 +758,14 @@ export function createRegistryRoutes(
       skip?: string[];
       consent?: {
         grantRevision?: string;
+        registryTrustRevision?: string;
         permissions: string[];
         contentDigest: string;
         dependencies?: string[];
         dependencyApprovals?: Array<{
           id: string;
           grantRevision?: string;
+          registryTrustRevision?: string;
           permissions: string[];
           contentDigest: string;
           dependencies: string[];
@@ -788,6 +797,7 @@ export function createRegistryRoutes(
     const consent: PluginInstallConsent = consentBody
       ? {
           kind: 'operator-decision',
+          registryTrustRevision: consentBody.registryTrustRevision,
           grantRevision: consentBody.grantRevision,
           permissions: consentBody.permissions,
           contentDigest: consentBody.contentDigest,
@@ -858,6 +868,14 @@ export function createRegistryRoutes(
           : 500,
       );
     } catch (error: unknown) {
+      if (isRegistryAcquisitionRefusal(error))
+        return c.json(
+          {
+            success: false,
+            ...registryAcquisitionRefusalDetails(error),
+          },
+          409,
+        );
       if (error instanceof PluginInstallationPending)
         return c.json(
           {
