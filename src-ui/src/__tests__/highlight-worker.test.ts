@@ -120,4 +120,31 @@ describe('chat highlight worker', () => {
     expect(response.error).toBeUndefined();
     expect(response.html ?? '').toContain('not really code');
   }, 30_000);
+
+  test('#2093 — a resumed append returns exactly the full highlight', async () => {
+    const prefix = 'const a = 1;\n';
+    const grown = 'const a = 1;\nconst b = a + 2;\n';
+    const resumed = await loadWorker();
+    const first = await resumed.send({
+      id: 1,
+      code: prefix,
+      lang: 'typescript',
+    });
+    expect(first.error).toBeUndefined();
+    const second = await resumed.send({
+      id: 2,
+      code: grown,
+      lang: 'typescript',
+    });
+    expect(second.error).toBeUndefined();
+
+    // A worker that never saw the prefix must produce the identical HTML.
+    // (Compared whole, not by text search: Shiki splits identifiers across
+    // token spans, so no source line appears contiguously in the output.)
+    const fresh = await loadWorker();
+    const direct = await fresh.send({ id: 1, code: grown, lang: 'typescript' });
+    expect(direct.error).toBeUndefined();
+    expect(second.html).toBe(direct.html);
+    expect(second.html ?? '').toContain('shiki');
+  }, 30_000);
 });
