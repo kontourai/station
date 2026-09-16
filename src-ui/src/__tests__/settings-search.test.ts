@@ -66,7 +66,9 @@ describe('settings catalog search', () => {
       ...(entry.searchKeywords ?? []),
       ...(entry.configKeys ?? []).flatMap((key) => {
         const definition = SETTINGS_REGISTRY_BY_KEY.get(key);
-        return definition ? [key, definition.label, definition.description] : [key];
+        return definition
+          ? [key, definition.label, definition.description]
+          : [key];
       }),
     ])
       .join(' ')
