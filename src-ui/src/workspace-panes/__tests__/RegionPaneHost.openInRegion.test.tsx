@@ -279,7 +279,13 @@ test('a malformed instance id mounts no shell, while the well-formed id it imita
   await waitFor(() => expect(mountedRegions()).toEqual(['bottom']));
   const before = mountedRegions();
 
-  for (const malformed of ['pr:not-a-real-id', 'file-preview:zzz']) {
+  for (const malformed of [
+    'pr:not-a-real-id',
+    'file-preview:zzz',
+    // #2157: the Layout families, same rule.
+    'board:coding',
+    'layout:1d61ce22-7f4b-4282-86f0-019ef1bc223c',
+  ]) {
     act(() => current().model.placeSurface(malformed, 'right'));
     await act(async () => {
       await vi.dynamicImportSettled();

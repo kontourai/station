@@ -71,6 +71,7 @@ const EXPECTED_BUILTIN_DESCRIPTOR_EXPORTS = [
   '@kontourai/station-contracts:WORKSPACE_DEVICE_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_HOME_PANE_DESCRIPTOR',
+  '@kontourai/station-contracts:WORKSPACE_LAYOUT_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_PLAN_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_READINESS_PANE_DESCRIPTOR',
@@ -197,9 +198,14 @@ describe('docked is a derived capability, pinned to the shell surface registry',
         descriptor,
       ]),
     );
+    // Exact, in declaration order: #2049's two families and #2157's two
+    // (a Board and a project Layout, which share one descriptor — two
+    // prefixes for one `descriptorId` is the shape this pin admits).
     expect(INSTANCE_SURFACE_PREFIXES.map((prefix) => prefix.prefix)).toEqual([
       'pr:',
       'file-preview:',
+      'board:',
+      'layout:',
     ]);
     for (const prefix of INSTANCE_SURFACE_PREFIXES) {
       const descriptor = byId.get(prefix.descriptorId);

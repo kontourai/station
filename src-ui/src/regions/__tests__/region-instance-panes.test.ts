@@ -2,6 +2,10 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import {
+  createWorkspaceLayoutPaneInstance,
+  workspaceLayoutPaneId,
+} from '@kontourai/station-contracts/workspace-layout-pane';
 import { parseWorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
   createWorkspacePullRequestPaneInstance,
@@ -29,6 +33,76 @@ const NONCE = 'a'.repeat(32);
 const PREVIEW_ID = `file-preview:${NONCE}`;
 const PR_ID = 'pr:github.com/kontourai/station#2049';
 const PROJECT = { projectId: 'project-uuid', projectSlug: 'station' };
+const LAYOUT_UUID = '1d61ce22-7f4b-4282-86f0-019ef1bc223c';
+const PROJECT_UUID = 'f2e27d8e-dd81-4fe3-9d6e-9de369389b01';
+const BOARD_ID = `board:${LAYOUT_UUID}`;
+const LAYOUT_ID = `layout:${PROJECT_UUID}/${LAYOUT_UUID}`;
+
+/**
+ * One row per instance family: the prefix `INSTANCE_SURFACE_PREFIXES`
+ * declares, the descriptor its occurrences carry, ids the family's minter
+ * produces and ids that merely start the same way. Table-driven so a new
+ * family is one row, and no assertion indexes the prefix table by position.
+ */
+const FAMILIES: readonly {
+  prefix: string;
+  descriptorId: string;
+  admitted: readonly string[];
+  refused: readonly string[];
+}[] = [
+  {
+    prefix: 'pr:',
+    descriptorId: 'pane:builtin:workspace-pull-request',
+    admitted: [PR_ID, `${PR_ID.slice(0, -4)}1`],
+    refused: [
+      'pr:',
+      'pr:not-a-real-id',
+      'pr:github.com/owner#12',
+      'pr:github.com/o/r#nan',
+      'pr:github.com/o/r#',
+      'pr:github.com/o/r/extra#1',
+      'pr:GitHub.com/o/r#1',
+      'pr:/o/r#1',
+    ],
+  },
+  {
+    prefix: 'file-preview:',
+    descriptorId: 'pane:builtin:workspace-preview:file-preview',
+    admitted: [PREVIEW_ID],
+    refused: [
+      'file-preview:',
+      'file-preview:zzz',
+      `file-preview:${'z'.repeat(32)}`,
+      `file-preview:${'a'.repeat(31)}`,
+      `file-preview:${'a'.repeat(33)}`,
+    ],
+  },
+  // #2157: a Board and a project Layout share one descriptor.
+  {
+    prefix: 'board:',
+    descriptorId: 'pane:builtin:workspace-layout',
+    admitted: [BOARD_ID],
+    refused: [
+      'board:',
+      'board:coding',
+      `board:${LAYOUT_UUID.toUpperCase()}`,
+      `board:${LAYOUT_UUID},${LAYOUT_UUID}`,
+      `board:${LAYOUT_UUID}/${LAYOUT_UUID}`,
+    ],
+  },
+  {
+    prefix: 'layout:',
+    descriptorId: 'pane:builtin:workspace-layout',
+    admitted: [LAYOUT_ID],
+    refused: [
+      'layout:',
+      `layout:${LAYOUT_UUID}`,
+      `layout:${PROJECT_UUID}/`,
+      `layout:${PROJECT_UUID}/${LAYOUT_UUID}/extra`,
+      `layout:${PROJECT_UUID}/coding`,
+    ],
+  },
+];
 
 function writePreview(path: string, projectSlug = 'station', id = PREVIEW_ID) {
   writeFilePreviewPaneState(window.localStorage, id, {
@@ -51,24 +125,32 @@ describe('instance-keyed dock panes (#2049)', () => {
     window.localStorage.clear();
   });
 
-  test('the prefixes and the inventory describe the same two families', () => {
-    for (const prefix of INSTANCE_SURFACE_PREFIXES) {
+  test('the prefixes and the inventory describe the same families, one row each', () => {
+    // The table above IS the prefix table, by prefix and descriptor id: a
+    // family added to one and not the other reds here.
+    expect(
+      INSTANCE_SURFACE_PREFIXES.map(({ prefix, descriptorId }) => ({
+        prefix,
+        descriptorId,
+      })),
+    ).toEqual(
+      FAMILIES.map(({ prefix, descriptorId }) => ({ prefix, descriptorId })),
+    );
+    writePreview('src/app.ts');
+    for (const family of FAMILIES) {
       // Not a registry surface and not a map entry: an instance pane has no
       // blank occurrence, so it never appears in either inventory by name.
-      expect(REGION_SURFACE_PANES.has(prefix.prefix)).toBe(false);
-      expect(resolveRegionSurface(prefix.prefix)).toBeUndefined();
+      expect(REGION_SURFACE_PANES.has(family.prefix)).toBe(false);
+      expect(resolveRegionSurface(family.prefix)).toBeUndefined();
+      for (const id of family.admitted)
+        expect(regionSurfacePane(id)?.descriptorId, id).toBe(
+          family.descriptorId,
+        );
     }
-    writePreview('src/app.ts');
-    expect(regionSurfacePane(PR_ID)?.descriptorId).toBe(
-      INSTANCE_SURFACE_PREFIXES[0]?.descriptorId,
-    );
-    expect(regionSurfacePane(PREVIEW_ID)?.descriptorId).toBe(
-      INSTANCE_SURFACE_PREFIXES[1]?.descriptorId,
-    );
   });
 
   test('an instance id resolves to a dock-only surface, and never to main', () => {
-    for (const id of [PR_ID, PREVIEW_ID]) {
+    for (const id of FAMILIES.flatMap((family) => family.admitted)) {
       const surface = resolveRegionSurface(id);
       expect(surface?.id, id).toBe(id);
       // Catalog exposure, so the toolbar's picker, the chords and the
@@ -95,26 +177,15 @@ describe('instance-keyed dock panes (#2049)', () => {
    */
   test('the id-keyed resolver and the occurrence minter admit exactly the same ids', () => {
     writePreview('src/app.ts');
-    const admitted = [PR_ID, `${PR_ID.slice(0, -4)}1`, PREVIEW_ID];
+    const admitted = FAMILIES.flatMap((family) => family.admitted);
     const refused = [
-      // Bare prefixes name no pull request and no preview.
-      'pr:',
-      'file-preview:',
       // A prefix no family declares.
       'browser-preview:abc',
-      // Same prefix, shape the minter could never produce.
-      'pr:not-a-real-id',
-      'pr:github.com/owner#12',
-      'pr:github.com/o/r#nan',
-      'pr:github.com/o/r#',
-      'pr:github.com/o/r/extra#1',
-      'pr:GitHub.com/o/r#1',
-      'pr:/o/r#1',
-      'file-preview:zzz',
-      `file-preview:${'z'.repeat(32)}`,
-      `file-preview:${'a'.repeat(31)}`,
-      `file-preview:${'a'.repeat(33)}`,
+      // Per family: bare prefixes and same-prefix shapes the minter could
+      // never produce.
+      ...FAMILIES.flatMap((family) => family.refused),
     ];
+    expect(admitted.length).toBeGreaterThanOrEqual(FAMILIES.length);
     for (const id of admitted) {
       expect(resolveRegionSurface(id), id).toBeDefined();
       expect(regionSurfacePane(id), id).toBeDefined();
@@ -144,8 +215,11 @@ describe('instance-keyed dock panes (#2049)', () => {
         ref: '1',
       }),
     ).toBeNull();
-    expect(PR_ID).not.toContain(',');
-    expect(PREVIEW_ID).not.toContain(',');
+    expect(
+      workspaceLayoutPaneId({ kind: 'board', layoutId: `${LAYOUT_UUID},x` }),
+    ).toBeNull();
+    for (const id of FAMILIES.flatMap((family) => family.admitted))
+      expect(id).not.toContain(',');
   });
 
   test('one pull request has one id whatever case or suffix the URL used', () => {
@@ -294,6 +368,63 @@ describe('instance-keyed dock panes (#2049)', () => {
     if (!orphan) throw new Error('fixture must mint');
     expect(pane?.isCanonical(orphan)).toBe(false);
     expect(regionSurfaceOfPane(orphan)).toBeNull();
+  });
+
+  /**
+   * #2157: a Layout pane's occurrence is a function of its id ALONE — a
+   * project Layout binds the project its id names, a Board binds none — so
+   * the dock's own project is irrelevant: another project's Layout, or a
+   * dock with no project at all, mints the same occurrence. Reverting the
+   * minter to bind the dock's `projectId` reds the "other project" row.
+   */
+  test("a Layout pane mints from its id alone, whatever the dock's project", () => {
+    const board = regionSurfacePane(BOARD_ID);
+    const layout = regionSurfacePane(LAYOUT_ID);
+    // No title in the host chunk: the Layout's name is the SDK's to list.
+    expect(board?.title).toBeUndefined();
+    expect(layout?.title).toBeUndefined();
+    for (const context of [
+      { projectId: null, projectSlug: null },
+      PROJECT,
+      { projectId: 'other-uuid', projectSlug: 'other' },
+    ]) {
+      const boardInstance = board?.instance(context);
+      expect(String(boardInstance?.instanceId), 'board').toBe(BOARD_ID);
+      expect(boardInstance?.boundContext, 'board').toEqual({
+        sourceId: 'builtin:workspace-layout',
+      });
+      const layoutInstance = layout?.instance(context);
+      expect(String(layoutInstance?.instanceId), 'layout').toBe(LAYOUT_ID);
+      expect(layoutInstance?.boundContext, 'layout').toEqual({
+        projectId: PROJECT_UUID,
+        sourceId: 'builtin:workspace-layout',
+      });
+      if (!boardInstance || !layoutInstance)
+        throw new Error('the occurrences must mint');
+      expect(regionSurfaceOfPane(boardInstance)).toBe(BOARD_ID);
+      expect(regionSurfaceOfPane(layoutInstance)).toBe(LAYOUT_ID);
+    }
+    // Another Layout's occurrence is not this pane's.
+    const other = createWorkspaceLayoutPaneInstance({
+      kind: 'board',
+      layoutId: PROJECT_UUID,
+    });
+    if (!other) throw new Error('the sibling occurrence must mint');
+    expect(board?.isCanonical(other)).toBe(false);
+    expect(regionSurfaceOfPane(other)).toBe(`board:${PROJECT_UUID}`);
+    // An impostor under the Layout descriptor is no surface.
+    const impostor = parseWorkspacePaneInstance({
+      version: '1.0',
+      descriptorId: 'pane:builtin:workspace-layout',
+      instanceId: LAYOUT_ID,
+      stateKey: LAYOUT_ID,
+      boundContext: {
+        projectId: 'other-uuid',
+        sourceId: 'builtin:workspace-layout',
+      },
+    });
+    if (!impostor) throw new Error('fixture must parse');
+    expect(regionSurfaceOfPane(impostor)).toBeNull();
   });
 
   test('each prefix names a renderer source that reads no region state', () => {
