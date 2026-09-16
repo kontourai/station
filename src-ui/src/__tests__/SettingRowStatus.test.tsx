@@ -120,6 +120,64 @@ describe('inheritance layers', () => {
     expect(layers.find((layer) => layer.inEffect)?.id).toBe('project');
   });
 
+  test('a Station that stores nothing reads as the default, not as "none"', () => {
+    render(
+      <SettingInheritanceLayers
+        definition={definition}
+        provenance={{ source: 'file', scope: 'project' }}
+        projectName="Atlas"
+        projectValue="worktree"
+      />,
+    );
+    // "none" said the Station had no value at all. It has one — the registry
+    // default — and the list has to say so rather than invent an absence.
+    const station = screen.getByText('This Station').closest('li')!;
+    expect(station.textContent).toContain('uses the built-in default');
+    expect(station.textContent).not.toContain('none');
+    // Nothing is unreported in this case: no value in the config document IS
+    // the fallback, so the source note would be claiming a doubt that is gone.
+    expect(screen.queryByText(/is not reported while an override/)).toBeNull();
+  });
+
+  for (const pending of ['reset', 'edit'] as const) {
+    test(`a pending ${pending} stops the list claiming any layer is in effect`, () => {
+      render(
+        <SettingInheritanceLayers
+          definition={definition}
+          provenance={{ source: 'file', scope: 'project' }}
+          pending={pending}
+          projectName="Atlas"
+          projectValue="worktree"
+          stationValue="shared"
+        />,
+      );
+      // The provenance predates the draft, so marking the project layer in
+      // effect would describe a resolution the row no longer shows.
+      expect(screen.queryByText('in effect')).toBeNull();
+      expect(
+        screen.getByText(
+          'Unsaved change: the layers below describe what is saved.',
+        ),
+      ).toBeTruthy();
+      // The layers themselves are unchanged — only the claim is withheld.
+      expect(screen.getByText('Project: Atlas')).toBeTruthy();
+    });
+  }
+
+  test('with no pending change the in-effect mark is still made', () => {
+    render(
+      <SettingInheritanceLayers
+        definition={definition}
+        provenance={{ source: 'file', scope: 'project' }}
+        projectName="Atlas"
+        projectValue="worktree"
+        stationValue="shared"
+      />,
+    );
+    expect(screen.getByText('in effect')).toBeTruthy();
+    expect(screen.queryByText(/^Unsaved change/)).toBeNull();
+  });
+
   test('the layer list leads with the definition’s help sentence', () => {
     render(
       <SettingInheritanceLayers

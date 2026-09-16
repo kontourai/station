@@ -26,6 +26,7 @@ import { InfoGlyph } from '../../components/icons/Glyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { ProvenanceBadge } from '../../components/ProvenanceBadge';
 import { SkeletonBlock } from '../../components/state';
+import type { PendingOverrideChange } from './SettingInheritanceLayers';
 import type { SettingsCatalogEntry } from './settings-catalog';
 
 /**
@@ -79,6 +80,11 @@ export interface SettingRowStatusProps {
   /** This Station's stored value for this key. */
   stationValue?: unknown;
   /**
+   * An unsaved project-override change for this key. Passed to the layer list
+   * so it stops claiming a resolution the draft has already moved past.
+   */
+  pending?: PendingOverrideChange;
+  /**
    * Drops the project's override for this key. Supplied only by a caller
    * that owns a project override draft; its absence is why a Station-only
    * page shows no reset affordance rather than one that does nothing.
@@ -93,6 +99,7 @@ export function SettingRowStatus({
   projectName,
   projectValue,
   stationValue,
+  pending,
   onResetToInherited,
 }: SettingRowStatusProps) {
   const scopeLabel = scopeBadgeLabel(catalogScope, provenance);
@@ -136,6 +143,7 @@ export function SettingRowStatus({
             projectName,
             projectValue,
             stationValue,
+            pending,
           }}
           // The shared loading vocabulary, not a new sentence: SHELL-13's
           // ratchet counts a bespoke "Loading…" string as a regression, and

@@ -116,6 +116,21 @@ const ALL_SETTINGS_VIEWS = ['overview', ...ALL_LEAF_SECTION_IDS];
  */
 export const SETTINGS_SAVE_DEADLINE_MS = 30_000;
 
+/**
+ * How long the save path waits for the saved project's record to be re-read
+ * before clearing the override draft anyway.
+ *
+ * The write has already landed when this runs; the wait is a cosmetic one
+ * (clearing the draft before the refetch flashes the pre-save value back).
+ * It is therefore its own, much shorter deadline rather than a second use of
+ * the save deadline above — and it must have one at all, because it runs
+ * AFTER the save deadline's race has been decided, so a refetch that never
+ * settles would otherwise leave `Save` spinning with nothing left to wait
+ * for. On timeout the draft clears regardless: a brief flash is a strictly
+ * better outcome than a stuck button.
+ */
+export const SETTINGS_OVERRIDE_REFETCH_DEADLINE_MS = 3_000;
+
 export interface SettingsViewProps {
   onBack: () => void;
   onSaved?: () => void;
@@ -238,6 +253,19 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           PROJECT_OVERRIDABLE_APP_SETTING_KEYS.map((key) => [
             key,
             effectiveOverrideValue(key, overrideDraft, savedOverrides),
+          ]),
+        ),
+        // Derived from the DELTA, not the raw draft: a draft entry equal to
+        // what the project already stores is not an unsaved change, and
+        // marking it as one would tell someone their saved value is pending.
+        // A `null` (or otherwise unstored) delta value is a pending reset;
+        // anything else is a pending edit.
+        pending: Object.fromEntries(
+          Object.entries(overrideDelta).map(([key, value]) => [
+            key,
+            value === undefined || value === null || value === ''
+              ? 'reset'
+              : 'edit',
           ]),
         ),
         onChange: (key: ProjectOverridableAppSettingKey, value: unknown) =>
@@ -642,7 +670,20 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         // row falls back to `savedOverrides` the instant the draft goes, and
         // that read is stale until this settles, so clearing first flashes the
         // pre-save value back at the person who just changed it.
-        await invalidate(['projects', overrideSlug]);
+        let refetchTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            invalidate(['projects', overrideSlug]),
+            new Promise<void>((resolve) => {
+              refetchTimer = setTimeout(
+                resolve,
+                SETTINGS_OVERRIDE_REFETCH_DEADLINE_MS,
+              );
+            }),
+          ]);
+        } finally {
+          if (refetchTimer !== undefined) clearTimeout(refetchTimer);
+        }
         setOverrideDraft({});
         // The provenance the page renders is computed from the project record
         // that just changed, so the badges are stale until it is re-read.

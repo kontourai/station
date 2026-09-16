@@ -87,7 +87,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   // about.
   useConfigQuery: () => ({ data: { telemetryEnabled: true } }),
   useUpdateConfigMutation: () => ({ mutate: vi.fn(), isPending: false }),
-  useInvalidateQuery: () => vi.fn(),
+  useInvalidateQuery: () => invalidateQuery,
   useSystemStatusForApiBaseQuery: () => ({
     data: {
       build: {},
@@ -152,6 +152,9 @@ let projectProvenance: Record<string, { source: string; scope?: string }> = {};
 let projectList: { slug: string; name?: string }[] = [];
 let projectRecord: Record<string, unknown> | undefined;
 const updateProjectAsync = vi.fn(async () => ({}));
+// Returns a promise, because the save path AWAITS the project refetch before
+// clearing the override draft. A test can hand back one that never settles.
+const invalidateQuery = vi.fn((_key: unknown) => Promise.resolve());
 // The reconciliation effect reads the fetch generation, not just the values, so
 // tests drive both: `config` is what the server last returned and
 // `dataUpdatedAt` is when that fetch succeeded.
@@ -267,6 +270,8 @@ describe('settings catalog completeness', () => {
     projectList = [{ slug: 'atlas', name: 'Atlas' }];
     projectRecord = undefined;
     updateProjectAsync.mockClear();
+    invalidateQuery.mockReset();
+    invalidateQuery.mockImplementation(() => Promise.resolve());
     deviceChatFontSize = 14;
     setDeviceSetting.mockClear();
     resetDeviceSetting.mockClear();
@@ -1360,22 +1365,23 @@ describe('settings catalog completeness', () => {
         WORKSPACE_ROW,
       ) as HTMLSelectElement;
       await waitFor(() => expect(workspace.value).toBe('worktree'));
+
+      // One edit per draft, so each half has its own witness.
       fireEvent.change(workspace, { target: { value: 'shared' } });
+      const registry = screen.getByLabelText(
+        'Registry URL',
+      ) as HTMLInputElement;
+      fireEvent.change(registry, { target: { value: 'https://two.test' } });
       expect(screen.getByText('Unsaved changes')).toBeTruthy();
 
       fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 
-      // Back to the project's SAVED override, and the pill is gone — the
-      // override draft is empty, not merely invisible.
+      // The project row is back to its SAVED override and the Station row is
+      // back to `savedConfig`; the pill going means BOTH drafts are empty,
+      // not merely that one of them is.
       await waitFor(() => expect(workspace.value).toBe('worktree'));
+      expect(registry.value).toBe('');
       expect(screen.queryByText('Unsaved changes')).toBeNull();
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Reset Station settings' }),
-      );
-      expect(
-        (screen.getByRole('button', { name: 'Reset' }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(true);
     });
 
     test('a refused project write keeps its draft while the Station write still lands', async () => {
@@ -1460,6 +1466,72 @@ describe('settings catalog completeness', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
       await waitFor(() => expect(screen.queryByText('Saving…')).toBeNull());
+      expect(updateProjectAsync).not.toHaveBeenCalled();
+    });
+
+    test('a project refetch that never settles still lets Save finish', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas' };
+      // The write LANDS; only the re-read never comes back. Waiting on it
+      // happens after the save deadline's race is already decided, so
+      // without its own deadline `Save` would spin with nothing left to
+      // wait for.
+      invalidateQuery.mockImplementation((key) =>
+        Array.isArray(key) && key[0] === 'projects'
+          ? new Promise<void>(() => {})
+          : Promise.resolve(),
+      );
+      await renderSettings();
+
+      selectAtlas();
+      fireEvent.change(screen.getByLabelText(WORKSPACE_ROW), {
+        target: { value: 'worktree' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(updateProjectAsync).toHaveBeenCalledTimes(1));
+      // The button comes back and the draft clears anyway — a brief flash of
+      // the pre-save value beats a Save that never releases.
+      await waitFor(
+        () => expect(screen.queryByText('Unsaved changes')).toBeNull(),
+        { timeout: 8000 },
+      );
+    }, 20000);
+
+    test('a clean override draft issues no project write, however dirty the Station draft is', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, registryUrl: 'https://one.test' },
+        dataUpdatedAt: 1,
+      };
+      // Settled, and carrying a real override — so "nothing was sent" cannot
+      // be explained by an unread record or by there being nothing to send.
+      projectRecord = { slug: 'atlas', defaultWorkspaceIsolation: 'worktree' };
+      projectProvenance = {
+        defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
+      };
+      updateConfig.mockResolvedValueOnce({ data: {} });
+      await renderSettings();
+
+      selectAtlas();
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText(WORKSPACE_ROW) as HTMLSelectElement).value,
+        ).toBe('worktree'),
+      );
+      fireEvent.change(screen.getByLabelText('Registry URL'), {
+        target: { value: 'https://two.test' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
+      expect(updateConfig).toHaveBeenCalledWith({
+        registryUrl: 'https://two.test',
+      });
+      // Re-writing an unchanged override would restate the project's values
+      // on every unrelated Station save.
       expect(updateProjectAsync).not.toHaveBeenCalled();
     });
   });

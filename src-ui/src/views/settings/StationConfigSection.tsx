@@ -24,6 +24,7 @@ import type {
 import { USER_FACING_APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import type { AppConfig } from '../../types';
 import { renderSettingRow } from './registry-row';
+import type { PendingOverrideChange } from './SettingInheritanceLayers';
 import { SettingsSection } from './SettingsSection';
 
 export const STATION_CONFIG_KEYS: readonly (keyof AppConfig)[] = [
@@ -86,6 +87,15 @@ export interface StationConfigProjectOverride {
   name: string;
   /** The effective override value per setting key; `undefined` = inherits. */
   values: Partial<Record<ProjectOverridableAppSettingKey, unknown>>;
+  /**
+   * Which keys the page holds an UNSAVED override change for, and of which
+   * kind. The provenance every row renders was computed before the draft, so
+   * a key in here is one whose explanation describes the saved state while
+   * its control already shows the drafted one.
+   */
+  pending: Partial<
+    Record<ProjectOverridableAppSettingKey, PendingOverrideChange>
+  >;
   onChange: (key: ProjectOverridableAppSettingKey, value: unknown) => void;
   /** Drops the key's override, pending save. */
   onReset: (key: ProjectOverridableAppSettingKey) => void;
@@ -142,6 +152,7 @@ export function StationConfigSection({
                 projectName: projectOverride.name,
                 projectValue: overrideValue,
                 stationValue: config[key],
+                pending: projectOverride.pending[overrideKey],
                 // Offered only while there is an override left to give back.
                 // `undefined` here means the draft ALREADY resets this key
                 // (or the project never overrode it), and a second click

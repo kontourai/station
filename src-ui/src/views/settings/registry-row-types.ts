@@ -12,6 +12,7 @@ import type {
   SettingDefinition,
   SettingProvenanceEntry,
 } from '@kontourai/station-contracts/settings-registry';
+import type { PendingOverrideChange } from './SettingInheritanceLayers';
 
 export interface RegistryRowComponentProps {
   definition: SettingDefinition;
@@ -43,6 +44,8 @@ export interface RegistryRowComponentProps {
    * recover the Station's own value from a draft that has replaced it.
    */
   stationValue?: unknown;
+  /** An unsaved project-override change for this key; see `SettingRowStatus`. */
+  pending?: PendingOverrideChange;
   /** Drops this key's project override; see `SettingRowStatus`. */
   onResetToInherited?: () => void;
 }

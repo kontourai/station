@@ -372,8 +372,16 @@ override first and built-in default last, with exactly one marked "in effect"
 — derived from the provenance entry the server computed, never re-derived by
 comparing raw values. A row the selected project overrides also offers **Reset
 to inherited**, which sends `null` on `PUT /api/projects/:slug` (the route's
-own spelling for dropping an override) rather than omitting the field, and is
-withheld for a `required` setting that has nothing to fall back to. The
+own spelling for dropping an override) rather than omitting the field. It is
+withheld in two cases: a `required` setting has nothing to fall back to, and
+a key the draft has *already* reset has nothing left to give back — the row
+is showing the inherited value and a second click would write the same `null`
+again. **Reset Station settings** reads a separate, UNSCOPED
+`GET /config/app` provenance map: a scoped read reports an overridden key as
+`{ source: 'file', scope: 'project' }`, which the reset plan would read as an
+ordinary stored Station value and then clear from the STATION document —
+a write against the wrong authority, decided by whichever project happened to
+be selected. The
 project the page is attributed to comes from a selector above the scope
 groups; its draft is held outside the Station draft, folded into the same
 unsaved-changes guard, and saved by its own request beside the config write.

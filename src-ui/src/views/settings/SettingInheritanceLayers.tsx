@@ -27,9 +27,23 @@ import type {
   SettingProvenanceEntry,
 } from '@kontourai/station-contracts/settings-registry';
 
+/**
+ * A project-override change this page holds but has not saved.
+ *
+ * The provenance entry predates the draft, so with one in hand the list is
+ * describing the SAVED state while the row beside it already shows the
+ * drafted one. `'reset'` is a pending drop of the override, `'edit'` a
+ * pending new value; both mean the same thing here — do not claim any layer
+ * is in effect, because the page cannot know what the server will resolve
+ * until the write lands.
+ */
+export type PendingOverrideChange = 'reset' | 'edit';
+
 export interface SettingInheritanceLayersProps {
   definition: SettingDefinition;
   provenance?: SettingProvenanceEntry;
+  /** An unsaved project-override change, if the page holds one. */
+  pending?: PendingOverrideChange;
   /** The selected project's display name, for the project layer's label. */
   projectName?: string;
   /** The project's override value, when it has one. */
@@ -103,15 +117,24 @@ export function inheritanceLayers({
       inEffect: true,
     });
   } else if (fromProject) {
-    // The Station's value IS known — the page holds it — so show it as the
-    // layer the override sits on top of. What the provenance cannot say is
-    // whether that value is stored or is the registry default, because the
-    // scoped read replaced this key's entry with the project's; the note
-    // below says exactly that and nothing more.
+    // The layer the override sits on top of. Two different facts, and the
+    // list must not spell them the same way:
+    //
+    // - a value in hand -> show it. What the provenance cannot add is whether
+    //   that value is STORED or is the default the server already resolved,
+    //   because the scoped read replaced this key's entry with the project's;
+    //   the note below says exactly that.
+    // - nothing in hand -> the Station's config carries no value for the key,
+    //   so the Station falls back to the registry default. Rendering that as
+    //   "none" said the Station had no value at all, which is false for every
+    //   setting that has a default — and there is nothing unknown to note.
     layers.push({
       id: 'station',
       label: 'This Station',
-      value: describeValue(stationValue),
+      value:
+        stationValue === undefined
+          ? 'uses the built-in default'
+          : describeValue(stationValue),
       inEffect: false,
     });
   }
@@ -143,6 +166,11 @@ export function SettingInheritanceLayers(props: SettingInheritanceLayersProps) {
   const layers = inheritanceLayers(props);
   const overriddenByProject =
     props.provenance?.source === 'file' && props.provenance.scope === 'project';
+  // Only where there is something the page genuinely cannot report: a Station
+  // that carries no value for the key falls back to the default, full stop.
+  const stationSourceUnreported =
+    overriddenByProject && props.stationValue !== undefined;
+  const pending = props.pending !== undefined;
 
   return (
     <div className="setting-inheritance">
@@ -154,7 +182,9 @@ export function SettingInheritanceLayers(props: SettingInheritanceLayersProps) {
           <li
             key={layer.id}
             className={`setting-inheritance__layer${
-              layer.inEffect ? ' setting-inheritance__layer--in-effect' : ''
+              layer.inEffect && !pending
+                ? ' setting-inheritance__layer--in-effect'
+                : ''
             }`}
           >
             <span className="setting-inheritance__layer-label">
@@ -163,7 +193,7 @@ export function SettingInheritanceLayers(props: SettingInheritanceLayersProps) {
             <span className="setting-inheritance__layer-value">
               {layer.value}
             </span>
-            {layer.inEffect && (
+            {layer.inEffect && !pending && (
               <span className="setting-inheritance__layer-effect">
                 in effect
               </span>
@@ -171,7 +201,16 @@ export function SettingInheritanceLayers(props: SettingInheritanceLayersProps) {
           </li>
         ))}
       </ul>
-      {overriddenByProject && (
+      {pending && (
+        // The provenance was computed before this draft existed, so every
+        // "in effect" mark above would describe a resolution the row beside
+        // it no longer shows. Say which state the list describes rather than
+        // guessing at the one that has not been saved.
+        <p className="setting-inheritance__note">
+          Unsaved change: the layers below describe what is saved.
+        </p>
+      )}
+      {stationSourceUnreported && (
         // Narrowed to what is actually unknown: the page HAS the Station's
         // value (rendered as the layer above), and `GET /config/app?project=
         // <slug>` replaces this key's entry with the project's, so what the

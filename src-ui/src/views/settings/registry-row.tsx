@@ -63,6 +63,7 @@ export function renderSettingRow({
   projectName,
   projectValue,
   stationValue,
+  pending,
   onResetToInherited,
 }: RegistryRowComponentProps): ReactNode {
   if (definition.userFacing === false) return null;
@@ -104,9 +105,18 @@ export function renderSettingRow({
       catalogScope={catalogEntry?.scope}
       projectName={projectName}
       projectValue={projectValue}
-      // The Station's own value is only distinct from the rendered one when a
-      // project override has replaced it; otherwise they are the same value.
-      stationValue={stationValue === undefined ? value : stationValue}
+      // On a Station-only row the rendered value IS the Station's, so it
+      // stands in. On a project-scoped row it must not: `stationValue` is
+      // supplied there (together with every other project prop, by
+      // `StationConfigSection`), and an ABSENT Station value is a fact the
+      // layer list renders as "uses the built-in default" — substituting the
+      // rendered value would print the project's override as the Station's.
+      stationValue={
+        projectName === undefined && stationValue === undefined
+          ? value
+          : stationValue
+      }
+      pending={pending}
       onResetToInherited={onResetToInherited}
     />
   );
