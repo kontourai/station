@@ -1,4 +1,4 @@
-import { type Dirent, readdirSync, rmSync, statSync } from 'node:fs';
+import { readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import {
@@ -122,45 +122,41 @@ export class FileStorageAdapter implements IStorageAdapter {
 
   listProjects(): ProjectMetadata[] {
     const dir = join(this.projectHomeDir, 'projects');
-    const projects = readDirectoryEntries(dir)
-      .filter((entry) => entry.isDirectory())
-      .flatMap((entry) => {
-        let config: ProjectConfig;
-        try {
-          config = this.projectRevision(entry.name).value;
-        } catch (error) {
-          if (error instanceof FileStorageNotFoundError) return [];
-          throw error;
-        }
-        if (config.slug !== entry.name) {
-          throw new Error(
-            `project record identity does not match directory '${entry.name}'`,
-          );
-        }
-        const layoutsDir = join(dir, entry.name, 'layouts');
-        const layoutCount = readDirectoryNames(layoutsDir).filter((file) =>
-          file.endsWith('.json'),
-        ).length;
-        return [
-          {
-            id: config.id,
-            slug: config.slug,
-            name: config.name,
-            icon: config.icon,
-            description: config.description,
-            hasWorkingDirectory: !!config.workingDirectory,
-            workingDirectory: config.workingDirectory,
-            layoutCount,
-            hasKnowledge: pathExists(
-              join(dir, entry.name, 'documents', 'metadata.json'),
-            ),
-            defaultProviderId: config.defaultProviderId,
-            ...(config.position !== undefined
-              ? { position: config.position }
-              : {}),
-          } satisfies ProjectMetadata,
-        ];
-      });
+    const projects = readSubdirectoryNames(dir).flatMap((name) => {
+      let config: ProjectConfig;
+      try {
+        config = this.projectRevision(name).value;
+      } catch (error) {
+        if (error instanceof FileStorageNotFoundError) return [];
+        throw error;
+      }
+      if (config.slug !== name) {
+        throw new Error(
+          `project record identity does not match directory '${name}'`,
+        );
+      }
+      const layoutsDir = join(dir, name, 'layouts');
+      const layoutCount = readLayoutRecordNames(layoutsDir).length;
+      return [
+        {
+          id: config.id,
+          slug: config.slug,
+          name: config.name,
+          icon: config.icon,
+          description: config.description,
+          hasWorkingDirectory: !!config.workingDirectory,
+          workingDirectory: config.workingDirectory,
+          layoutCount,
+          hasKnowledge: pathExists(
+            join(dir, name, 'documents', 'metadata.json'),
+          ),
+          defaultProviderId: config.defaultProviderId,
+          ...(config.position !== undefined
+            ? { position: config.position }
+            : {}),
+        } satisfies ProjectMetadata,
+      ];
+    });
     // Server-owned order (archive#3315): explicit positions first, ascending;
     // projects without one append after them in name order, so directory
     // readdir order (arbitrary, machine-dependent) never reaches a consumer.
@@ -241,44 +237,42 @@ export class FileStorageAdapter implements IStorageAdapter {
   listLayouts(projectSlug: string): LayoutMetadata[] {
     assertSafeLayoutPathSegment('project slug', projectSlug);
     const dir = join(this.projectHomeDir, 'projects', projectSlug, 'layouts');
-    return readDirectoryNames(dir)
-      .filter((file) => file.endsWith('.json'))
-      .flatMap((file) => {
-        const layoutSlug = file.slice(0, -'.json'.length);
-        let config: LayoutConfig;
-        try {
-          config = this.layoutRevision(projectSlug, layoutSlug).value;
-        } catch (error) {
-          if (error instanceof FileStorageNotFoundError) return [];
-          throw error;
-        }
-        return [
-          {
-            id: config.id,
-            slug: config.slug,
-            projectSlug: layoutOwnerProjectSlug(config),
-            type: config.type,
-            name: config.name,
-            icon: config.icon,
-            description: config.description,
-            // archive#1497 — `LayoutConfig.config` is required by the
-            // contract, but a record persisted without one is reachable on
-            // disk today (the create route only materialized it as a side
-            // effect of copying a working directory in). Dereferencing it
-            // unconditionally made a single such record 500 the entire
-            // project's layout list, permanently and with no write that could
-            // repair it. Tolerate the absence on read; the write paths now
-            // materialize it so no new record can have the shape.
-            plugin:
-              typeof config.config?.plugin === 'string'
-                ? config.config.plugin
-                : undefined,
-            tabCount: Array.isArray(config.config?.tabs)
-              ? config.config.tabs.length
+    return readLayoutRecordNames(dir).flatMap((file) => {
+      const layoutSlug = file.slice(0, -'.json'.length);
+      let config: LayoutConfig;
+      try {
+        config = this.layoutRevision(projectSlug, layoutSlug).value;
+      } catch (error) {
+        if (error instanceof FileStorageNotFoundError) return [];
+        throw error;
+      }
+      return [
+        {
+          id: config.id,
+          slug: config.slug,
+          projectSlug: layoutOwnerProjectSlug(config),
+          type: config.type,
+          name: config.name,
+          icon: config.icon,
+          description: config.description,
+          // archive#1497 — `LayoutConfig.config` is required by the
+          // contract, but a record persisted without one is reachable on
+          // disk today (the create route only materialized it as a side
+          // effect of copying a working directory in). Dereferencing it
+          // unconditionally made a single such record 500 the entire
+          // project's layout list, permanently and with no write that could
+          // repair it. Tolerate the absence on read; the write paths now
+          // materialize it so no new record can have the shape.
+          plugin:
+            typeof config.config?.plugin === 'string'
+              ? config.config.plugin
               : undefined,
-          } satisfies LayoutMetadata,
-        ];
-      });
+          tabCount: Array.isArray(config.config?.tabs)
+            ? config.config.tabs.length
+            : undefined,
+        } satisfies LayoutMetadata,
+      ];
+    });
   }
 
   getLayout(projectSlug: string, layoutSlug: string): LayoutConfig {
@@ -350,8 +344,7 @@ export class FileStorageAdapter implements IStorageAdapter {
   listOwnedLayouts(owner: LayoutOwner): LayoutMetadata[] {
     if (owner.kind === 'project') return this.listLayouts(owner.projectSlug);
     const dir = layoutOwnerDirectory(this.projectHomeDir, owner);
-    return readDirectoryNames(dir)
-      .filter((file) => file.endsWith('.json'))
+    return readLayoutRecordNames(dir)
       .map((file) => file.slice(0, -'.json'.length))
       .sort()
       .flatMap((layoutSlug) => {
@@ -621,16 +614,13 @@ export class FileStorageAdapter implements IStorageAdapter {
     const root = join(this.projectHomeDir, 'layouts');
     const directories = [
       join(root, 'instance'),
-      ...readDirectoryEntries(join(root, 'personal'))
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => entry.name)
+      ...readSubdirectoryNames(join(root, 'personal'))
         .sort()
         .map((key) => join(root, 'personal', key)),
     ];
     const layouts: LayoutConfig[] = [];
     for (const directory of directories) {
-      for (const file of readDirectoryNames(directory).sort()) {
-        if (!file.endsWith('.json')) continue;
+      for (const file of readLayoutRecordNames(directory).sort()) {
         const layoutSlug = file.slice(0, -'.json'.length);
         const raw = readJsonFile<unknown>(
           join(directory, file),
@@ -926,15 +916,6 @@ export class FileStorageAdapter implements IStorageAdapter {
   }
 }
 
-function readDirectoryEntries(path: string): Dirent[] {
-  try {
-    return readdirSync(path, { withFileTypes: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw error;
-  }
-}
-
 function readDirectoryNames(path: string): string[] {
   try {
     return readdirSync(path);
@@ -942,6 +923,44 @@ function readDirectoryNames(path: string): string[] {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
   }
+}
+
+/**
+ * What an entry IS, through a symlink. `Dirent.isDirectory()` reports the
+ * link itself, so a symlinked project or principal directory was invisible
+ * to every sweep while `getLayout`/`getOwnedLayout` on the same path read
+ * it fine (#2076) -- a delete guard blind to a dependent it can otherwise
+ * see. A dangling link (`ENOENT` on stat) is nothing, not an error.
+ */
+function entryKind(path: string): 'directory' | 'file' | null {
+  try {
+    const stat = statSync(path);
+    if (stat.isDirectory()) return 'directory';
+    if (stat.isFile()) return 'file';
+    return null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+/** Child directories of `path` by name, symlinks followed. Missing = none. */
+function readSubdirectoryNames(path: string): string[] {
+  return readDirectoryNames(path).filter(
+    (name) => entryKind(join(path, name)) === 'directory',
+  );
+}
+
+/**
+ * The `*.json` FILES in a layout directory. Suffix alone admitted a
+ * directory named `x.json`, which every lister then opened as a record and
+ * died on with `EISDIR` (#2076). Nothing writes such a thing; a sweep that
+ * throws on it still answers "no dependents" to nobody.
+ */
+function readLayoutRecordNames(path: string): string[] {
+  return readDirectoryNames(path).filter(
+    (name) => name.endsWith('.json') && entryKind(join(path, name)) === 'file',
+  );
 }
 
 function pathExists(path: string): boolean {
