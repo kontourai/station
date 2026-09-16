@@ -122,6 +122,7 @@ describe('Developer tabs render exactly one h1 (station#2645)', () => {
         }
       >
         <StationConfigSection
+          containerScope="station"
           section="sources"
           config={{} as never}
           onChange={() => {}}

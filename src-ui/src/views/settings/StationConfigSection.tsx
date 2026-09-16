@@ -161,7 +161,13 @@ export function StationConfigSection({
    */
   embedded?: boolean;
   /** The rule the enclosing scope group's caption states (`registry-row-types.ts`). */
-  containerScope?: 'station' | 'device';
+  /**
+   * Required, not optional (#2182 review M6): for a Station row, an ABSENT
+   * container and a `device` container print the same "Station" chip, so no
+   * rendered assertion can catch a mount that forgot to name its box. The
+   * compiler can.
+   */
+  containerScope: 'station' | 'device';
   projectOverride?: StationConfigProjectOverride;
 }) {
   const rows = (

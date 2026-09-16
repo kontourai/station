@@ -80,6 +80,7 @@ test('USAGE TELEMETRY SETTINGS DEFECT: the registry-backed toggle renders and ro
   const onChange = vi.fn();
   render(
     <StationConfigSection
+      containerScope="station"
       section="telemetry"
       config={{}}
       onChange={onChange}
@@ -109,6 +110,7 @@ test('USAGE TELEMETRY SETTINGS DEFECT: the registry-backed toggle renders and ro
 test('#1582 D9: the terminal shell input shows the host default this server reported', () => {
   render(
     <StationConfigSection
+      containerScope="station"
       section="host-runtime"
       config={{ defaultTerminalShell: '/opt/homebrew/bin/fish' }}
       onChange={vi.fn()}
@@ -124,6 +126,7 @@ test('#1582 D9: the terminal shell input shows the host default this server repo
 test('#1582 D9: an override is the value, and the host default stays the hint', () => {
   render(
     <StationConfigSection
+      containerScope="station"
       section="host-runtime"
       config={{
         terminalShell: '/usr/bin/nu',
@@ -140,6 +143,7 @@ test('#1582 D9: an override is the value, and the host default stays the hint', 
 test('#1582 D9: a server that reports no default leaves the hint absent rather than guessing', () => {
   render(
     <StationConfigSection
+      containerScope="station"
       section="host-runtime"
       config={{}}
       onChange={vi.fn()}
@@ -156,6 +160,7 @@ test('#1582 D9: a field with no host default keeps its registry placeholder', ()
   // across the split too.
   render(
     <StationConfigSection
+      containerScope="station"
       section="sources"
       config={{ defaultTerminalShell: '/opt/homebrew/bin/fish' }}
       onChange={vi.fn()}
@@ -177,6 +182,7 @@ test('#2144 slice 6: the default approval mode row renders its effective value a
   const onChange = vi.fn();
   render(
     <StationConfigSection
+      containerScope="station"
       section="permissions"
       config={{}}
       onChange={onChange}
@@ -203,6 +209,7 @@ test('#2144 slice 6: the default approval mode row renders its effective value a
 test('#2144 slice 6: the row states who ignores it and when it applies', () => {
   render(
     <StationConfigSection
+      containerScope="station"
       section="permissions"
       config={{}}
       onChange={vi.fn()}
@@ -228,6 +235,7 @@ test('#2144 slice 6: the row states who ignores it and when it applies', () => {
 test('#2144 slice 6: a stored value is what the row shows', () => {
   render(
     <StationConfigSection
+      containerScope="station"
       section="permissions"
       config={{ defaultApprovalMode: 'never' }}
       onChange={vi.fn()}
