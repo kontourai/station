@@ -704,10 +704,12 @@ test('the region bar’s placement moves both panes to the chosen region', async
       visible: true,
     }),
   );
+  // The grab moved the panes, not the region's openness: the emptied source
+  // stays visible (#2153).
   expect(currentModel().regions.bottom).toMatchObject({
     panes: [],
     occupant: null,
-    visible: false,
+    visible: true,
   });
   await waitFor(() =>
     expect(
