@@ -62,19 +62,25 @@ import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailab
  * readily as its own. A Board has no project and the adapter is given none —
  * the same call `PersonalBoardView` makes.
  *
- * ## What a docked Layout deliberately does not carry
+ * ## What a docked Layout deliberately does not carry, and now says so
  *
  * Neither family gets `LayoutView`'s agent affordances: no `annotateAgentRef`
  * (`agentAvailableInProject`), no `onLaunchPrompt`, no `onShowChat`. For a
  * Board the reason is `PersonalBoardView`'s — there is no project to filter
- * against. For a project Layout there IS one, and the gap is deliberate for
- * this slice: launching a prompt binds a chat session to the route's
- * project through `LayoutView`'s own handlers and action bar, and a docked
- * tab beside Chat has no host chrome to launch from. A docked Layout reads
- * and navigates; it does not launch. The SDK header still renders the
- * layout's prompt buttons with a no-op launcher, so a docked Layout that
- * carries prompts shows inert controls today; wiring the launch to the
- * pane's bound project, or hiding the bar, is #2171.
+ * against. For a project Layout there IS one, and the launch is still
+ * refused: a saved prompt on a PLUGIN Layout is one `LayoutView` will not run
+ * as a chat message at all (it routes through captured server admission,
+ * `focusWorkspacePaneHostAction`, and refuses what the live contribution no
+ * longer carries), and this host derives its shape with
+ * `hostOwnsGlobalActions: false`, so those saved actions are exactly the ones
+ * it holds. Wiring a chat launcher here would run them.
+ *
+ * So a docked Layout reads and navigates; it does not launch — and since
+ * #2171 the header is told, through `canLaunchPrompts={false}`. Before that
+ * the SDK header rendered the layout's prompt buttons anyway, wired to a
+ * no-op, so a docked Layout carrying prompts showed controls that did nothing.
+ * An `external` or `internal` action still renders: those open a link or
+ * navigate without a launcher, and they work here.
  *
  * ## Which kinds render, and which are refused
  *
@@ -238,6 +244,7 @@ export function LayoutWorkspacePane({
       <LayoutRenderer
         layout={layout}
         {...(project ? { boundProjectSlug: projectSlug } : {})}
+        canLaunchPrompts={false}
         activeTab={activeTab}
         activeTabId={activeTab?.id}
         onTabChange={setActiveTabId}

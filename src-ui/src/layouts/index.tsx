@@ -413,6 +413,19 @@ interface LayoutRendererProps extends AgentLayoutProps {
   refreshKey?: number;
   /** Exact direct-pane plugin component already authorized by its occurrence. */
   trustedPluginLayout?: AgentLayoutComponent;
+  /**
+   * The host declaring whether it can run a layout's prompt (#2171). Absent
+   * means it can, which is what every host passed before this existed.
+   *
+   * `false` is the docked host (`LayoutWorkspacePane`): it has no chat
+   * launcher, and the SDK header used to render the layout's prompt buttons
+   * anyway, so a docked Layout carrying prompts showed controls that did
+   * nothing. The flag reaches the header, which renders no control that would
+   * need a launcher, and it withholds `onLaunchPrompt` from the tabs below —
+   * one declaration enforced everywhere the launcher flows, rather than a flag
+   * the header honours while a tab is handed a launcher regardless.
+   */
+  canLaunchPrompts?: boolean;
 }
 
 export function LayoutRenderer({
@@ -423,11 +436,17 @@ export function LayoutRenderer({
   loading,
   activeTabId,
   onTabChange,
-  onLaunchPrompt,
+  onLaunchPrompt: hostLaunchPrompt,
+  canLaunchPrompts,
   refreshKey = 0,
   trustedPluginLayout,
   ...props
 }: LayoutRendererProps) {
+  // A host that declares it cannot launch does not get to hand one over by
+  // passing a handler as well; the declaration wins for the header and the
+  // tabs alike.
+  const onLaunchPrompt =
+    canLaunchPrompts === false ? undefined : hostLaunchPrompt;
   // Re-resolve the component when the plugin registry's status changes: a
   // live registry reload (e.g. consent granted without a page reload) must
   // swap a mounted fallback for the newly registered layout instead of
@@ -446,6 +465,7 @@ export function LayoutRenderer({
             }))}
             activeTabId={activeTabId}
             onTabChange={onTabChange}
+            canLaunchPrompts={canLaunchPrompts}
             actions={layout.actions}
             layoutPrompts={layout.globalSkills}
             onLayoutPromptSelect={onLaunchPrompt}

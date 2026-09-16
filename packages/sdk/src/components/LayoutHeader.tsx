@@ -40,6 +40,42 @@ interface LayoutHeaderProps {
   onTabPromptSelect?: (prompt: LayoutPrompt) => void;
   onRefresh?: () => void;
   loading?: boolean;
+  /**
+   * Whether the host rendering this header can run a layout's prompt
+   * (station#2171). Absent means it can, which is every host that shipped
+   * before this prop; `false` is a host declaring it has no launcher at all.
+   *
+   * The header used to render the layout's prompt buttons whatever the host
+   * handed it, so a host with no `onLayoutPromptSelect` / `onLaunchAction` /
+   * `onTabPromptSelect` produced controls that did nothing when pressed. A
+   * host that says `false` gets no such control: the layout's prompt actions,
+   * its global skills, the active tab's prompt actions and its quick-actions
+   * menu are ABSENT rather than present and dead.
+   *
+   * An `external` or `internal` action is not a launcher — it opens a link or
+   * navigates, neither of which needs a handler from the host — so those keep
+   * rendering. Withholding them would take away a working affordance to fix a
+   * broken one.
+   */
+  canLaunchPrompts?: boolean;
+}
+
+/**
+ * Whether a header action opens without a launch handler from the host.
+ *
+ * `external` is an anchor and `internal` calls `navigate`, both of which
+ * `ActionButton` answers by itself. Everything else falls through to its
+ * prompt branch and calls `onLaunch`, INCLUDING an action carrying no `type`
+ * at all — so the test is "is this one of the two self-contained kinds",
+ * never "is this declared a prompt".
+ *
+ * Typed against `unknown` because `tabActions` is declared `LayoutPrompt[]`
+ * (no `type`) while the renderer hands it the active tab's actions, which do
+ * carry one.
+ */
+function actionOpensWithoutLauncher(action: unknown): boolean {
+  const type = (action as { type?: unknown }).type;
+  return type === 'external' || type === 'internal';
 }
 
 export function ActionButton({
@@ -108,12 +144,27 @@ export function LayoutHeader({
   onTabPromptSelect,
   onRefresh,
   loading,
+  canLaunchPrompts,
 }: LayoutHeaderProps) {
   const [showTabPrompts, setShowTabPrompts] = useState(false);
 
+  // What this header may show, derived from what the host says it can do.
+  // `visibleActions` stays `undefined` exactly when `actions` is, because the
+  // global-skills fallback below turns on that absence rather than on the
+  // list being empty.
+  const launches = canLaunchPrompts !== false;
+  const visibleActions = launches
+    ? actions
+    : actions?.filter(actionOpensWithoutLauncher);
+  const visibleLayoutPrompts = launches ? layoutPrompts : undefined;
+  const visibleTabActions = launches
+    ? tabActions
+    : tabActions?.filter(actionOpensWithoutLauncher);
+  const visibleTabPrompts = launches ? tabPrompts : undefined;
+
   const hasActions =
-    (actions && actions.length > 0) ||
-    (layoutPrompts && layoutPrompts.length > 0);
+    (visibleActions && visibleActions.length > 0) ||
+    (visibleLayoutPrompts && visibleLayoutPrompts.length > 0);
 
   return (
     <>
@@ -137,15 +188,15 @@ export function LayoutHeader({
             </div>
           )}
           <div className="workspace-header__prompts">
-            {actions?.map((action) => (
+            {visibleActions?.map((action) => (
               <ActionButton
                 key={action.data}
                 action={action}
                 onLaunch={onLaunchAction || (() => {})}
               />
             ))}
-            {!actions &&
-              layoutPrompts?.map((prompt) => (
+            {!visibleActions &&
+              visibleLayoutPrompts?.map((prompt) => (
                 <button
                   key={prompt.id}
                   onClick={() => onLayoutPromptSelect?.(prompt)}
@@ -167,14 +218,14 @@ export function LayoutHeader({
           <p className="workspace-header__description">{description}</p>
         )}
         <div className="workspace-header__tab-actions">
-          {tabActions?.map((action: any) => (
+          {visibleTabActions?.map((action: any) => (
             <ActionButton
               key={action.id || action.data}
               action={action}
               onLaunch={(a) => onTabPromptSelect?.(a as any)}
             />
           ))}
-          {tabPrompts && tabPrompts.length > 0 && (
+          {visibleTabPrompts && visibleTabPrompts.length > 0 && (
             <div className="workspace-header__dropdown">
               <button
                 onClick={() => setShowTabPrompts(!showTabPrompts)}
@@ -191,7 +242,7 @@ export function LayoutHeader({
                     onClick={() => setShowTabPrompts(false)}
                   />
                   <div className="workspace-header__dropdown-menu">
-                    {tabPrompts.map((prompt) => (
+                    {visibleTabPrompts.map((prompt) => (
                       <button
                         type="button"
                         key={prompt.id}
