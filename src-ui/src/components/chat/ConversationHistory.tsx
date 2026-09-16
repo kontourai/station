@@ -1,4 +1,6 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
+import { useEffect } from 'react';
+import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { useSessionManagementMenu } from '../../hooks/useSessionManagementMenu';
 import { useSessionManagementViewModel } from '../../hooks/useSessionManagementViewModel';
 import { ConfirmModal } from '../modals/ConfirmModal';
@@ -61,6 +63,26 @@ export function ConversationHistory({
     onTitleUpdate,
     onDelete,
   });
+  /**
+   * #2144 slice 6 item E: `confirmConversationDelete` decides whether a
+   * requested delete parks in the modal below or resolves immediately.
+   *
+   * The gate is HERE rather than in `useSessionManagementMenu.handleDelete`
+   * on purpose: the modal is this component's, and the hook's
+   * `confirmDelete` is the one path that performs the deletion, so routing
+   * through it keeps a single delete implementation — an "immediate" branch
+   * that called the mutation itself would be a second one, free to drift.
+   *
+   * Scope is one action. "Clear all conversations" and every other confirm
+   * in this component keep asking; this setting is named for conversation
+   * delete and must not widen past it.
+   */
+  const { confirmConversationDelete } = useDeviceSettings();
+  const pendingDelete = menu.deleteConfirm;
+  const confirmDelete = menu.confirmDelete;
+  useEffect(() => {
+    if (!confirmConversationDelete && pendingDelete) void confirmDelete();
+  }, [confirmConversationDelete, pendingDelete, confirmDelete]);
 
   const {
     conversations,
@@ -233,7 +255,7 @@ export function ConversationHistory({
       </div>
 
       <ConfirmModal
-        isOpen={!!menu.deleteConfirm}
+        isOpen={confirmConversationDelete && !!menu.deleteConfirm}
         title="Delete Conversation"
         message={`Delete "${menu.deleteConfirm?.conv.title || 'this conversation'}"? This cannot be undone.`}
         confirmLabel="Delete"

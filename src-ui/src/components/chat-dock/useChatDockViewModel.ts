@@ -22,6 +22,7 @@ import {
   connectionStatusLabel,
   resolveBindingStatus,
   resolveModelProviderLabel,
+  resolveSessionEngineConnectionId,
   resolveSessionExecutionSummary,
   runtimeCatalogVisibleModels,
 } from '../../utils/execution';
@@ -236,17 +237,14 @@ export function useChatDockViewModel({
     (layout: any) => layout.type === 'coding',
   );
 
-  const observedExecution =
-    activeSessionForHook?.conversationOpenState?.status === 'resolved'
-      ? activeSessionForHook.conversationOpenState.execution
-      : undefined;
-  const agentConnectionId =
-    observedExecution &&
-    observedExecution.sessionId === activeSessionForHook?.currentSessionId
-      ? (observedExecution?.engineConnectionId ?? null)
-      : (activeSessionForHook?.agentConnectionId ??
-        agentForHook?.execution?.agentConnectionId ??
-        null);
+  // Shared with the send path so the approval chip and the dispatched
+  // posture can never be resolved off different bindings (round 2 LOW-5).
+  const agentConnectionId = resolveSessionEngineConnectionId({
+    conversationOpenState: activeSessionForHook?.conversationOpenState,
+    currentSessionId: activeSessionForHook?.currentSessionId,
+    chatStateConnectionId: activeSessionForHook?.agentConnectionId,
+    agentBoundConnectionId: agentForHook?.execution?.agentConnectionId,
+  });
   const runtimeConnection = agentConnections.find(
     (connection) => connection.id === agentConnectionId,
   );

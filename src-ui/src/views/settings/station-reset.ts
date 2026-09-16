@@ -29,6 +29,14 @@
  * - `firstRun` is not rendered anywhere and the route refuses it as well.
  */
 import type {
+  DeviceSettingDefinition,
+  DeviceSettings,
+} from '@kontourai/station-contracts/device-settings';
+import {
+  DEVICE_SETTINGS_REGISTRY,
+  PREFERENCE_DEVICE_KEYS,
+} from '@kontourai/station-contracts/device-settings';
+import type {
   SettingDefinition,
   SettingProvenanceEntry,
 } from '@kontourai/station-contracts/settings-registry';
@@ -121,5 +129,98 @@ export function buildStationResetPlan(
     delta: Object.fromEntries(
       keys.map((key) => [key, null]),
     ) as Partial<AppConfig>,
+  };
+}
+
+/**
+ * What "Restore device defaults" would actually change (epic #2144 slice 6
+ * item F).
+ *
+ * Candidates are `PREFERENCE_DEVICE_KEYS` — the settings somebody CHOSE.
+ * `DIRECT_MANIPULATION_DEVICE_KEYS` (dock size, region arrangement, panel
+ * open state, first-run progress) are excluded at the contracts layer, and
+ * `device-settings.test.ts` asserts every registered key is in exactly one
+ * of the two, so a new device setting cannot land unclassified.
+ *
+ * Only keys whose CURRENT value differs from the registry default are
+ * listed: the confirmation names what changes, and clearing a key that
+ * already holds its default changes nothing while implying it did. This
+ * mirrors `buildStationResetPlan`'s `source === 'file'` filter, with the
+ * device store's own resolved snapshot standing in for provenance — it has
+ * none, because it never round-trips to a server.
+ *
+ * `undefined` for a key reads as "not stored", i.e. equal to the default:
+ * the live store folds defaults in, so `undefined` only appears for a
+ * partial snapshot and must not be reported as a difference.
+ */
+export interface DeviceResetPlan {
+  /** Preference keys currently holding something other than their default. */
+  keys: (keyof DeviceSettings)[];
+  /** Their registry labels, for the confirmation copy. */
+  labels: string[];
+}
+
+const DEVICE_REGISTRY_BY_KEY: ReadonlyMap<
+  keyof DeviceSettings,
+  DeviceSettingDefinition
+> = new Map(
+  DEVICE_SETTINGS_REGISTRY.map((definition) => [
+    definition.key,
+    definition as DeviceSettingDefinition,
+  ]),
+);
+
+/**
+ * Structural equality for a stored device value against its registry
+ * default. Needed because half the preference keys are composites
+ * (`featureSettings`, `shortcutOverrides`, `modelPickerPreferences`,
+ * `sidebarSections`) where `===` is false for every snapshot, which would
+ * report every device as having changed everything.
+ *
+ * Key ORDER is deliberately not significant, and arrays are compared
+ * positionally (`modelPickerPreferences.order` is a real sequence).
+ */
+function sameDeviceValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length)
+      return false;
+    return a.every((entry, index) => sameDeviceValue(entry, b[index]));
+  }
+  if (
+    typeof a !== 'object' ||
+    typeof b !== 'object' ||
+    a === null ||
+    b === null
+  ) {
+    return false;
+  }
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  for (const key of keys) {
+    if (!sameDeviceValue(left[key], right[key])) return false;
+  }
+  return true;
+}
+
+export function buildDeviceResetPlan(
+  settings: Partial<DeviceSettings> | undefined,
+): DeviceResetPlan {
+  const keys = (PREFERENCE_DEVICE_KEYS as readonly (keyof DeviceSettings)[])
+    .filter((key) => DEVICE_REGISTRY_BY_KEY.has(key))
+    .filter((key) => {
+      const value = settings?.[key];
+      if (value === undefined) return false;
+      return !sameDeviceValue(
+        value,
+        DEVICE_REGISTRY_BY_KEY.get(key)?.defaultValue,
+      );
+    });
+  return {
+    keys,
+    labels: keys.map(
+      (key) => DEVICE_REGISTRY_BY_KEY.get(key)?.label ?? (key as string),
+    ),
   };
 }
