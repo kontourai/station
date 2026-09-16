@@ -409,12 +409,23 @@ test.describe('compatibility-aware reconnect', () => {
       // it sorts below the connection notice and becomes the hidden one the
       // collapsed cap describes — and the one an expanded stack renders low
       // enough to meet a bottom dock.
+      //
+      // The shape matters and used to be wrong (#2111). `CoreUpdateLaunchCheck`
+      // derives this banner from a source checkout's own comparison counts and
+      // says so — "never from `updateAvailable` alone", because a stamped
+      // build's SHA inequality is not an installable release. A body carrying
+      // only `updateAvailable: true` publishes NOTHING on a desktop viewport,
+      // so there was no second banner, so no cap, so nine tests failed on a
+      // missing test id while claiming to measure occlusion.
       await page.route('**/api/system/core-update', (route) =>
         route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
             updateAvailable: true,
+            installKind: 'source-checkout',
+            behind: 3,
+            ahead: 0,
             currentVersion: '1.0.0',
             latestVersion: '1.1.0',
             remoteHash: 'e2e-dock-occlusion',
@@ -544,15 +555,25 @@ test.describe('compatibility-aware reconnect', () => {
       maxInFlight: 0,
     };
     await installTransport(page, state);
-    await page.route('**/api/system/core-update', (route) =>
+    // A second REAL banner, and NOT the update notice the desktop cases use
+    // (#2111). Since #2032 the update banner is unreachable on a mobile
+    // viewport by design — `CoreUpdateLaunchCheck` disables the server
+    // comparison when `isMobile` and takes its release feed from props the
+    // web app never passes — so routing `core-update` here stubbed an
+    // endpoint nothing on this path reads, and the cap below never appeared.
+    //
+    // `chrome:home-recovery` is the one that fits: it reads `/api/system/status`,
+    // which this suite already routes; it sits in the `setup` band, well under
+    // the connection notice, so the offline banner stays the front and this
+    // becomes the hidden one the cap describes; and it does not dismiss itself
+    // when the connection drops, which `chrome:plugins:registry` does.
+    await page.route('**/api/system/status', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          updateAvailable: true,
-          currentVersion: '1.0.0',
-          latestVersion: '1.1.0',
-          remoteHash: 'e2e-dock-occlusion-mobile',
+          ...JSON.parse(STATUS_READY),
+          homeRecovery: { kind: 'unavailable' },
         }),
       }),
     );

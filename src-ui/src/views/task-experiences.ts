@@ -1,3 +1,5 @@
+import { settingsDeepLinkUrl } from './settings/settings-deep-link';
+
 export type TaskExperienceId = 'direct' | 'deliver' | 'learn' | 'operate';
 
 type TaskExperienceAvailability = 'available' | 'unavailable';
@@ -44,8 +46,10 @@ const TASK_EXPERIENCE_DEFINITIONS: readonly TaskExperienceDefinition[] = [
       'Open a Knowledge-owned record with its published provenance and freshness.',
     unavailableDescription:
       'No trusted Knowledge Kit contract is attached. Station does not invent knowledge, provenance, or freshness.',
-    alternativeHref:
-      '/settings?view=knowledge&highlight=personal-knowledge-store',
+    alternativeHref: settingsDeepLinkUrl({
+      view: 'knowledge',
+      highlight: 'personal-knowledge-store',
+    }),
     alternativeLabel: 'Configure knowledge',
   },
   {

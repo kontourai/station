@@ -23,7 +23,7 @@
   padding: var(--space-2, 8px);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm, 6px);
-  font-size: var(--font-size-sm, 13px);
+  font-size: var(--text-md);
   transition-property: border-color, background-color;
   transition-duration: var(--motion-fast);
   transition-timing-function: var(--ease-standard);
@@ -44,7 +44,7 @@
 }
 
 .first-run-engines__note {
-  font-size: var(--font-size-xs, 11px);
+  font-size: var(--text-sm);
   line-height: 1.5;
   font-weight: 400;
   color: var(--color-text-secondary);
@@ -52,7 +52,7 @@
 
 .first-run-engines__more {
   margin: 0 0 var(--space-4, 16px);
-  font-size: var(--font-size-xs, 11px);
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
 
@@ -68,7 +68,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1, 4px);
-  font-size: var(--font-size-xs, 11px);
+  font-size: var(--text-sm);
   line-height: 1.5;
 }
 
@@ -105,7 +105,7 @@
    flapping probe changes this text and nothing else. */
 .first-run-engines__loading {
   margin: 0 0 var(--space-4, 16px);
-  font-size: var(--font-size-sm, 13px);
+  font-size: var(--text-md);
   line-height: 1.5;
   color: var(--color-text-secondary);
 }
@@ -113,7 +113,7 @@
 /* Batch progress / summary live region. */
 .first-run-engines__status {
   margin: 0;
-  font-size: var(--font-size-xs, 11px);
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--color-text-secondary);
 }

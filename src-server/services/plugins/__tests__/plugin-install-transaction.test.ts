@@ -334,7 +334,10 @@ describe('dependency approval from the real preview route', () => {
       },
     );
     const app = new Hono();
-    registerPluginInstallRoutes(app, installDeps);
+    registerPluginInstallRoutes(app, {
+      ...installDeps,
+      projectVisiblePlugins: () => (installed) => installed,
+    });
     const response = await app.request('/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -539,7 +542,10 @@ describe('dependency approval from the real preview route', () => {
         });
       }
       const app = new Hono();
-      registerPluginInstallRoutes(app, deps(root));
+      registerPluginInstallRoutes(app, {
+        ...deps(root),
+        projectVisiblePlugins: () => (installed) => installed,
+      });
       const response = await app.request('/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -587,7 +593,10 @@ describe('dependency approval from the real preview route', () => {
       { id: 'middle', source: middle },
     ]);
     const app = new Hono();
-    registerPluginInstallRoutes(app, deps(root));
+    registerPluginInstallRoutes(app, {
+      ...deps(root),
+      projectVisiblePlugins: () => (installed) => installed,
+    });
     const response = await app.request('/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -198,6 +198,22 @@ export const pluginGrantSchema = z.object({
 });
 
 /**
+ * A per-principal plugin visibility grant or revocation (#2067).
+ *
+ * `principalId` is the TARGET of the change, never the authority for it: the
+ * route resolves the caller from the request's own authentication and refuses
+ * a non-operator before this body is read
+ * (`routes/plugins/plugin-visibility-routes.ts`). Both fields are bounded
+ * here for shape only; `PluginVisibilityService` re-validates each against
+ * the principal-id grammar and the canonical plugin-name grammar, because the
+ * store must not depend on which route reached it.
+ */
+export const pluginVisibilityGrantSchema = z.object({
+  principalId: z.string().trim().min(1).max(512),
+  plugin: z.string().trim().min(1).max(64),
+});
+
+/**
  * Both plugin-override write routes copy caller-supplied values VERBATIM into
  * `<home>/config/plugin-overrides.json` — `PUT /:name/settings` keeps every
  * undeclared settings key, `PUT /:name/overrides` keeps `disabled` as given —

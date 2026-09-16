@@ -97,6 +97,14 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
     Object.freeze(['scripts/generate-basis-mcp-apps.mjs']),
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'verification:policy:gate'])]),
+  // Governance, lint and readiness (2026-09-14). Each was composed only by
+  // the nightly full-regression gate or by a per-machine pre-push hook, so
+  // none of the three could red a pull request; see run-ci-fast.mjs for the
+  // two violations that reached main while the Nightly that owned them was
+  // itself red, and for why readiness runs last of the three.
+  Object.freeze(['npm', Object.freeze(['run', 'proof:repo-governance'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'lint:check'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'veritas:readiness'])]),
   // station#4273: the typecheck invariant and its stated precondition. This
   // allowlist is the CANONICAL declaration — `run-ci-fast.mjs` must match it
   // exactly, which is what keeps "what the gate says it runs" and "what the
@@ -208,7 +216,7 @@ export function renderVerificationSchedulingSection(lanes = LANES) {
     '',
     renderLaneCatalogTable(lanes),
     '',
-    `\`ci:fast\` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, and **typecheck** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every \`typecheck:*\` lane through \`scripts/typecheck-aggregate.mjs\` (station#4273), preceded by \`build:connect\` because \`typecheck:ui\` resolves \`@kontourai/station-connect\` through its \`dist\`. It was added because the lane was previously uncovered per-PR: a red \`main\` displayed green on every contributor's checks, twice in 24 hours. Its ${ciFast?.weight ?? 'unknown'}-unit reservation overlaps each ${ordinary?.weight ?? 'unknown'}-unit ordinary shard phase so feedback can admit while completion work runs.`,
+    `\`ci:fast\` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every \`typecheck:*\` lane through \`scripts/typecheck-aggregate.mjs\` (station#4273), preceded by \`build:connect\` because \`typecheck:ui\` resolves \`@kontourai/station-connect\` through its \`dist\`. It was added because the lane was previously uncovered per-PR: a red \`main\` displayed green on every contributor's checks, twice in 24 hours. \`lint:check\`, \`proof:repo-governance\`, and \`veritas:readiness\` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached \`main\` unobserved while that Nightly was itself red. Its ${ciFast?.weight ?? 'unknown'}-unit reservation overlaps each ${ordinary?.weight ?? 'unknown'}-unit ordinary shard phase so feedback can admit while completion work runs.`,
     '',
     '`full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:',
     renderFullRegressionPhaseSchedule(lanes),

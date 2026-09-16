@@ -79,6 +79,18 @@
       "minimum": 10,
       "maximum": 24
     },
+    "defaultApprovalMode": {
+      "type": "string",
+      "enum": ["connection-default", "ask", "auto", "never"],
+      "description": "Approval posture a new chat starts in when neither the chat nor its engine connection names one. \"connection-default\" states no posture. Default: connection-default",
+      "default": "connection-default"
+    },
+    "defaultWorkspaceIsolation": {
+      "type": "string",
+      "enum": ["shared", "worktree"],
+      "description": "Workspace mode a new project chat starts in when the project does not name one. Default: shared",
+      "default": "shared"
+    },
     "gitRemote": {
       "type": "string",
       "description": "Git remote URL resolved on first build, used for update checks"

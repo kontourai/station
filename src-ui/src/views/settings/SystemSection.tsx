@@ -1,5 +1,11 @@
 import { useSystemStatusForApiBaseQuery } from '@kontourai/station-sdk';
+import { useState } from 'react';
 import { SettingsGlyph } from '../../components/icons/Glyph';
+import { ConfirmModal } from '../../components/modals/ConfirmModal';
+import {
+  useDeviceSettings,
+  useDeviceSettingsActions,
+} from '../../contexts/DeviceSettingsContext';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { AppConfig } from '../../types';
 import {
@@ -10,6 +16,7 @@ import { ConnectedServerUpdates } from './ConnectedServerUpdates';
 import { DesktopUpdateCheck } from './DesktopUpdateCheck';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
+import { buildDeviceResetPlan } from './station-reset';
 
 export function SystemSection({
   apiBase,
@@ -18,6 +25,7 @@ export function SystemSection({
   onExport,
   onImport,
   onResetToDefaults,
+  hasUnsavedChanges = false,
 }: {
   apiBase: string;
   config: AppConfig;
@@ -25,12 +33,26 @@ export function SystemSection({
   onExport: () => void;
   onImport: (file: File) => Promise<void>;
   onResetToDefaults: () => void;
+  /**
+   * A reset writes what the server currently stores; the draft on screen is
+   * not part of it. Pressing Save afterwards would re-store exactly the
+   * values the reset just cleared, so the reset is refused until the form
+   * agrees with the server.
+   */
+  hasUnsavedChanges?: boolean;
 }) {
   const { data: systemStatus } = useSystemStatusForApiBaseQuery(
     apiBase,
     60_000,
   );
   const platformProfile = usePlatformProfile();
+  // #2144 slice 6 item F. Local state and local hooks: unlike the Station
+  // reset, this needs neither the draft config nor a server request, so
+  // threading it through the page would buy nothing.
+  const deviceSettings = useDeviceSettings();
+  const { resetDeviceSettings } = useDeviceSettingsActions();
+  const [showDeviceResetModal, setShowDeviceResetModal] = useState(false);
+  const deviceResetPlan = buildDeviceResetPlan(deviceSettings);
 
   return (
     <SettingsSection
@@ -138,6 +160,52 @@ export function SystemSection({
         </span>
       </div>
 
+      {/* #2144 slice 6 item F. Its own control beside the Station reset,
+          because the two clear different stores: the Station reset says in
+          its own hint that settings on this device are not affected, and
+          before this there was no way to undo a device's choices at all. */}
+      <div
+        className="settings__danger"
+        {...settingsRow('reset-device-defaults')}
+        tabIndex={-1}
+      >
+        {/* Shaped like its Station-scope sibling below: the button carries
+            the row's visible name, and the hint explains it. A separate
+            label span would have repeated the button's own words. */}
+        <button
+          type="button"
+          className="settings__danger-btn"
+          disabled={deviceResetPlan.keys.length === 0}
+          onClick={() => setShowDeviceResetModal(true)}
+        >
+          Restore device defaults
+        </button>
+        <span className="settings__field-hint">
+          {deviceResetPlan.keys.length === 0
+            ? // Scoped to what the plan computes: it considers
+              // PREFERENCE_DEVICE_KEYS only, so "every setting on this
+              // device" claimed more than it had looked at.
+              'Every setting you can restore here is already at its default.'
+            : `Restores ${deviceResetPlan.keys.length} setting${deviceResetPlan.keys.length === 1 ? '' : 's'} you have changed on this device. Window layout, panel sizes and guided-run progress are not touched, and nothing on the Station changes.`}
+        </span>
+      </div>
+
+      <ConfirmModal
+        isOpen={showDeviceResetModal}
+        title="Restore device defaults"
+        message={`This restores ${deviceResetPlan.keys.length} ${deviceResetPlan.keys.length === 1 ? 'setting on this device to its default' : 'settings on this device to their defaults'}: ${deviceResetPlan.labels.join(', ')}. Window layout, panel sizes and guided-run progress are left as they are, and no Station setting changes. This cannot be undone.`}
+        confirmLabel="Restore"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={() => {
+          setShowDeviceResetModal(false);
+          // One envelope write for the whole plan: N sequential resets
+          // published N partly-restored snapshots.
+          resetDeviceSettings(deviceResetPlan.keys);
+        }}
+        onCancel={() => setShowDeviceResetModal(false)}
+      />
+
       <div
         className="settings__danger"
         {...settingsRow('reset-defaults')}
@@ -146,13 +214,22 @@ export function SystemSection({
         <button
           type="button"
           className="settings__danger-btn"
+          disabled={hasUnsavedChanges}
           onClick={onResetToDefaults}
         >
-          Reset to Defaults
+          Reset Station settings
         </button>
         <span className="settings__field-hint">
-          Restore all settings to factory defaults. Cannot be undone.
+          Clear the settings shown under Station configuration and Defaults that
+          have a stored value, so Station uses its defaults again. Settings on
+          this device are not affected. Cannot be undone.
         </span>
+        {hasUnsavedChanges && (
+          <span className="settings__field-hint">
+            Save or discard your unsaved changes first. Discard is always
+            available.
+          </span>
+        )}
       </div>
     </SettingsSection>
   );

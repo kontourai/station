@@ -39,6 +39,8 @@ const PUBLIC_QUERY_DOMAINS = [
   'featurePreviews',
   'flowRuns',
   'peerCredentials',
+  'personalLayouts',
+  'pluginVisibility',
   'knowledgeStores',
   'knownEnvironments',
   'notifications',
@@ -89,6 +91,8 @@ const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
     'lazy-only developer-surface hooks, intentionally published only from the `@kontourai/station-sdk/developer-runtime` subpath to keep them out of the root entry bundle.',
   actionOperations:
     'Activity-only operation query, intentionally published from the `@kontourai/station-sdk/action-operations` subpath to preserve the lazy Activity bundle boundary.',
+  mobileDevices:
+    '#1969: the Device pane\u2019s inventory/capture hooks, published only from the `@kontourai/station-sdk/mobile-devices-query` subpath. The client it wraps (`mobile-device.ts`) is itself subpath-only for the same reason: the root barrel is eager in every consumer, and a device host is reached by one lazy dock pane.',
   liveActivity:
     'station#3819: Activity-only roster query, intentionally published from the `@kontourai/station-sdk/live-activity` subpath to preserve the lazy Activity bundle boundary.',
   resourcePosture:

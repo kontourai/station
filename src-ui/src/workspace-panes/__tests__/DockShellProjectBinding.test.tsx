@@ -12,7 +12,7 @@
  * onto the persistent shell, where the content's remounts cannot reach it.
  *
  * These tests mount the REAL `DockShell` (the same component
- * `AmbientChatDockPaneHost` wraps Chat in) and read the binding through the
+ * `RegionPaneHost` wraps Chat in) and read the binding through the
  * REAL `DockShellChrome` it hands its render prop — not a hand-built chrome
  * object. Chat's own content is stubbed (see `DockShellControlParity.test.tsx`
  * on why the full, heavy `ChatWorkspacePane` is not mounted here): the one
@@ -60,6 +60,9 @@ vi.mock('../../contexts/ProjectsContext', () => ({
     projects: projectsForBinding,
     isConfirmedLoaded: projectsConfirmedLoadedForBinding,
   }),
+  // #2047: the region host resolves the dock's project through this read;
+  // no project here, so the panes that need one derive none.
+  useProject: () => ({ project: undefined, isLoading: false }),
 }));
 
 const DEVICE_SETTINGS_KEY = 'station-device-settings-v1';

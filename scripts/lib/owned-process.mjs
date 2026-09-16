@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
-import { exactProcessIdentity } from '../../packages/shared/src/process-identity.mjs';
+import {
+  exactProcessIdentity,
+  isWindowsRoundTripUtcIso,
+} from '../../packages/shared/src/process-identity.mjs';
 import { buildWindowsOwnedGuard } from './windows-owned-guard-build.mjs';
 
 const TERMINATION_FORCE_MS = 5_000;
@@ -34,6 +37,22 @@ function errorDetails(error) {
 }
 
 /** Terminates exactly the supplied Windows process tree, never a name pattern. */
+/**
+ * `taskkill`'s exit status for a pid it cannot find.
+ *
+ * The Windows twin of ESRCH, and it matters for the same reason (#2133):
+ * `terminateSuiteExecution` checks `isAlive()` and signals afterwards, so a
+ * child that ends on its own in between is reported as a failure to terminate
+ * it -- when a process that has already exited is precisely the outcome
+ * termination is asking for.
+ *
+ * `taskkill` documents 128 as "there is no running instance of the task", so
+ * it is the one non-zero status that means success here. Every other non-zero
+ * status stays a failure: 1 covers access-denied, which is a genuine inability
+ * to terminate a live process and must not be swallowed.
+ */
+const TASKKILL_PROCESS_NOT_FOUND = 128;
+
 export function runWindowsTaskkill(
   pid,
   force,
@@ -65,7 +84,7 @@ export function runWindowsTaskkill(
     taskkill.once('error', finish);
     taskkill.once('close', (code) =>
       finish(
-        code === 0
+        code === 0 || code === TASKKILL_PROCESS_NOT_FOUND
           ? undefined
           : new Error(`taskkill exited with status ${code ?? 'unknown'}`),
       ),
@@ -86,11 +105,45 @@ async function sendTreeSignal(
     await (runtime.runWindowsTaskkill ?? runWindowsTaskkill)(child.pid, force);
     return;
   }
+  const kill = runtime.kill ?? ((pid, value) => process.kill(pid, value));
   try {
-    process.kill(-child.pid, signal);
+    kill(-child.pid, signal);
   } catch {
-    if (!child.kill(signal))
-      throw new Error(`failed to signal ${processLabel} with ${signal}`);
+    if (child.kill(signal)) return;
+    // A process that has already exited cannot be signalled, and that is the
+    // outcome termination is asking for -- not a failure to produce it.
+    //
+    // `terminateSuiteExecution` checks `isAlive()` and signals afterwards, so
+    // a child that ends on its own in between lands exactly here: the group
+    // kill throws ESRCH because the group is gone, and `child.kill()` returns
+    // false because there is nothing left to signal. Reporting that as an
+    // error made a completed teardown fail its own `errors` assertion
+    // (#2133), which is a benign race dressed as a defect -- the inverse of
+    // the rule that a caught error must not become success.
+    //
+    // Neither `child.kill()`'s false nor `child.exitCode` distinguishes the
+    // two cases: false also means "could not deliver", and `exitCode` and
+    // `signalCode` are both still null in the window between the process
+    // dying and Node reaping it. Signal 0 asks the OS directly and answers
+    // for the process rather than for Node's bookkeeping.
+    if (processIsGone(child.pid, kill)) return;
+    throw new Error(`failed to signal ${processLabel} with ${signal}`);
+  }
+}
+
+/**
+ * Whether the OS no longer knows `pid`.
+ *
+ * Signal 0 performs the permission and existence checks without delivering
+ * anything. Only ESRCH means the process is gone; EPERM means it exists and
+ * is someone else's, which is a real failure to signal and must stay one.
+ */
+function processIsGone(pid, kill) {
+  try {
+    kill(pid, 0);
+    return false;
+  } catch (error) {
+    return error?.code === 'ESRCH';
   }
 }
 
@@ -206,6 +259,41 @@ function failedExecution(error) {
   };
 }
 
+function windowsSettlementState(value) {
+  const booleanKeys = [
+    'complete',
+    'guardClosed',
+    'stdoutEof',
+    'stderrEof',
+    'stdoutDrained',
+    'stderrDrained',
+    'acknowledged',
+    'aborted',
+  ];
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    !booleanKeys.every((key) => typeof value[key] === 'boolean') ||
+    !(
+      value.completeStatus === null || Number.isInteger(value.completeStatus)
+    ) ||
+    !(value.guardCloseOk === null || typeof value.guardCloseOk === 'boolean')
+  )
+    return null;
+  return Object.fromEntries([
+    ...booleanKeys.map((key) => [key, value[key]]),
+    ['completeStatus', value.completeStatus],
+    ['guardCloseOk', value.guardCloseOk],
+  ]);
+}
+
+function settlementIdentity(value, { allowUnknownStart = false } = {}) {
+  if (!Number.isInteger(value?.pid) || value.pid < 1) return null;
+  if (typeof value?.start === 'string' && isWindowsRoundTripUtcIso(value.start))
+    return { pid: value.pid, start: value.start };
+  return allowUnknownStart ? { pid: value.pid, start: null } : null;
+}
+
 function deferred() {
   let resolveDeferred;
   const promise = new Promise((resolve) => {
@@ -307,6 +395,39 @@ export function executeOwnedCommand(
     );
 
   const treeSettlement = { proven: false, abortRequested: false };
+  const settlementEvidence = {
+    kind: 'windows-owned-settlement',
+    version: 1,
+    identities: {
+      coordinator: null,
+      wrapper: null,
+      target: null,
+      guard: null,
+    },
+    barriers: {
+      complete: false,
+      completeStatus: null,
+      guardClosed: false,
+      guardCloseOk: null,
+      stdoutEof: false,
+      stderrEof: false,
+      // Drain flags are only ever observed from a launcher state message.
+      // They default to `null` (unknown), never `true`, so a record written
+      // after the launcher died or IPC broke before any state arrived cannot
+      // read as a drained snapshot nothing observed.
+      stdoutDrained: null,
+      stderrDrained: null,
+      acknowledged: false,
+      aborted: false,
+      receiverOutputEof: false,
+      treeSettlementAcknowledged: false,
+      settlementProven: false,
+    },
+    // Count of validated `owned-command-settlement-state` messages folded into
+    // `barriers`. Zero means the barrier fields above are coordinator
+    // defaults, not an observed launcher snapshot.
+    stateMessagesObserved: 0,
+  };
   const abortSettlement = deferred();
   let completeSettledJob = false;
   let resolveInner;
@@ -323,6 +444,7 @@ export function executeOwnedCommand(
         'Windows owned command cannot start without an exact round-trip UTC coordinator CreationDate identity',
       ),
     );
+  settlementEvidence.identities.coordinator = settlementIdentity(parent);
   let guard;
   try {
     guard = spawnOptions.guardExecutable
@@ -356,10 +478,27 @@ export function executeOwnedCommand(
         }
       },
       onSpawn: (child, _identity) => {
+        settlementEvidence.identities.wrapper = settlementIdentity(
+          {
+            pid: _identity?.pid ?? child.pid,
+            start: _identity?.processStart ?? null,
+          },
+          { allowUnknownStart: true },
+        );
         child.on('message', (message) => {
           if (message?.type === 'owned-command-tree-settled') {
             treeSettlement.proven = true;
+            settlementEvidence.barriers.treeSettlementAcknowledged = true;
+            settlementEvidence.barriers.settlementProven = true;
             abortSettlement.resolve();
+            return;
+          }
+          if (message?.type === 'owned-command-settlement-state') {
+            const state = windowsSettlementState(message.state);
+            if (state) {
+              Object.assign(settlementEvidence.barriers, state);
+              settlementEvidence.stateMessagesObserved += 1;
+            }
             return;
           }
           if (message?.type === 'owned-command-bound') {
@@ -384,6 +523,13 @@ export function executeOwnedCommand(
               });
               return;
             }
+            settlementEvidence.identities.target = settlementIdentity({
+              pid: message.pid,
+              start: message.processStart,
+            });
+            settlementEvidence.identities.guard = settlementIdentity(
+              message.guard,
+            );
             try {
               callerOnSpawn?.(child, {
                 pid: message.pid,
@@ -452,7 +598,11 @@ export function executeOwnedCommand(
   ]).then(async (result) => {
     try {
       await outputEOF.wait(spawnOptions.outputEofTimeoutMs);
-      if (completeSettledJob && !result.error) treeSettlement.proven = true;
+      settlementEvidence.barriers.receiverOutputEof = true;
+      if (completeSettledJob && !result.error) {
+        treeSettlement.proven = true;
+        settlementEvidence.barriers.settlementProven = true;
+      }
       return result;
     } catch (error) {
       return {
@@ -525,6 +675,7 @@ export function executeOwnedCommand(
     completionRequiresCleanup: true,
     terminate: () => settleTree(false),
     forceTerminate: () => settleTree(true),
+    settlementEvidence: () => JSON.parse(JSON.stringify(settlementEvidence)),
   };
 }
 

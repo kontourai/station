@@ -6,34 +6,31 @@ import {
   useIsMobile,
 } from '../../hooks/useIsMobile';
 import {
+  DOCK_REGION_IDS,
+  type DockRegionId,
   foldedDockRegion,
   isDockRegion,
-  occupiedDockRegion,
   occupiedRegion,
-  placeSurface as placeSurfaceInArrangement,
-  type RegionArrangement,
   type RegionId,
   type RegisteredSurface,
   regionLabel,
+  resolveRegionSurface,
 } from '../../regions/region-model';
 import type { DockMode } from '../../types';
 
 /**
- * The Layout picker's segment order: the three dock edges as they sit on screen
- * (left, bottom, right), then the primary area, then `Hidden` — which the row
- * appends rather than listing here, since it is not a region.
- *
- * `satisfies readonly RegionId[]` pins the members to the region union, and
- * `useRegionSurfaceMenu.placement.test.tsx` pins the converse: every member of
- * `REGION_IDS` appears here, so adding a region to the model without deciding
- * where its segment goes reds rather than silently dropping the segment.
+ * The toolbar's toggle order: the three dock edges as they sit on screen —
+ * left, bottom, right (#2143). `satisfies` pins the members to the dock
+ * union; `useRegionSurfaceMenu.toggles.test.tsx` pins the converse, that every
+ * member of `DOCK_REGION_IDS` has a toggle, so adding a dock region to the
+ * model without deciding where its toggle goes reds rather than silently
+ * leaving the region with no control.
  */
-const SEGMENT_REGION_ORDER = [
+const TOGGLE_REGION_ORDER = [
   'left',
   'bottom',
   'right',
-  'main',
-] as const satisfies readonly RegionId[];
+] as const satisfies readonly DockRegionId[];
 
 /** One row of the folded region menu, wherever that menu is hosted. */
 interface RegionSurfaceMenuItem {
@@ -57,40 +54,55 @@ interface RegionSurfaceMenuItem {
 }
 
 /**
- * One segment of a surface's placement row — a region it may occupy, or the
- * `Hidden` segment every row ends with.
- *
- * `checked` is DERIVED from the arrangement, never stored: a segment is pressed
- * when the surface occupies that region and the region is showing it. Exactly
- * one segment of a row is checked, `Hidden` being the else.
+ * One thing an EMPTY region's control offers to show there: a shell surface
+ * that declares the region (#2143). Choosing it is the model's own
+ * `placeSurface` — a surface held elsewhere moves, a surface in `main` hands
+ * the primary area back to Home — never a second placement rule here.
  */
-interface RegionPlacementSegment {
-  key: string;
-  /** `regionLabel(region)` — "Main", "Left", "Right", "Bottom" — or "Hidden". */
-  label: string;
-  /** `null` for the `Hidden` segment. */
-  region: RegionId | null;
-  checked: boolean;
-  /**
-   * What choosing this segment does to the region's CURRENT occupant, worded
-   * from what `placeSurface` will actually do rather than from a guess about
-   * it — the model relocates a displaced surface into the region the incoming
-   * one vacates, else its own default region, else the first free one in the
-   * model's search order, else nowhere. `undefined` when nothing is
-   * displaced.
-   */
-  displaces?: string;
-  onSelect: () => void;
-}
-
-/** One surface's row of the Layout picker. */
-export interface RegionPlacementRow {
+export interface RegionToggleOffer {
   surfaceId: string;
   /** The surface's title — "Chat", "Activity". */
   label: string;
-  /** `RegisteredSurface.icon` — the glyph key the picker renders. */
+  /** `RegisteredSurface.icon`, for the row's 16px glyph slot. */
   icon: string;
-  segments: RegionPlacementSegment[];
+  onSelect: () => void;
+}
+
+/**
+ * One dock region's toolbar control (#2143): a show/hide TOGGLE while the
+ * region holds panes, and an offer of what can be placed there while it holds
+ * none.
+ *
+ * `visible` is DERIVED from the arrangement, never stored: pressed means the
+ * region is visible. Since #2153 that is all it means — an empty region may be
+ * visible, and one that is shows its bar over a placeholder, so pressed is
+ * exactly "on screen". A hidden region holding two panes is one unpressed
+ * toggle, and pressing it brings both tabs back with the same selection,
+ * because the toggle writes the REGION's visibility and nothing about its
+ * panes.
+ */
+export interface RegionToggle {
+  region: DockRegionId;
+  /** `regionLabel(region)` — "Left", "Bottom", "Right". */
+  label: string;
+  /** The titles of the panes the region holds, in tab order; empty when none. */
+  paneTitles: string[];
+  visible: boolean;
+  /**
+   * Show or hide the region — the model's `setRegion(region, { visible })`.
+   * The region bar's chevron reaches the SAME model write through
+   * `applyDockSnap`, which also records the shell's snap and height and
+   * passes `maximized` (a chevron collapse clears it); this toggle writes
+   * `visible` alone, so a region hidden here keeps its maximize memory and
+   * comes back maximized, while one hidden from its chevron comes back at
+   * the snap the chevron stored. Since #2153 it acts on an EMPTY region too —
+   * showing one opens it empty, on its placeholder — though the toolbar
+   * button still opens `offers` on a press while the region holds nothing
+   * (#2155 decides what that control becomes).
+   */
+  onToggle: () => void;
+  /** What an EMPTY region's control offers; empty for an occupied region. */
+  offers: RegionToggleOffer[];
 }
 
 interface RegionSurfaceMenu {
@@ -122,25 +134,24 @@ interface RegionSurfaceMenu {
   /** The folded device's rows; empty on a fine pointer, which has buttons. */
   menuItems: RegionSurfaceMenuItem[];
   /**
-   * The fine pointer's Layout picker: one row per surface that declares regions,
-   * each row a segmented choice over the regions that surface may occupy plus
-   * `Hidden`. Empty on a folded device, which has `menuItems`.
+   * The fine pointer's per-region toggles (#2143), one per dock region this
+   * device can use, in screen order. Empty on a folded device, which has
+   * `menuItems`.
    *
-   * #1552 D2 replaced a per-region list of VERBS ("Place Activity here", "Swap
-   * in Activity", "Hide Chat") with this. Every command that list carried is
-   * still reachable and is now a state rather than an imperative: "Swap in
-   * Activity" is choosing Activity's segment for that region, "Hide Chat" is
-   * choosing Chat's `Hidden` segment. What it adds is the answer to the
-   * question the verb list could not put on screen — where each surface
-   * currently IS.
+   * #1552 D2's placement picker — one row per SURFACE, a segmented choice of
+   * regions — answered "where is Chat?"; every other control the epic shipped
+   * (#2046's tab strip, #2047's "+", the region bar's grab, maximize and
+   * chevron) answers "what does this REGION hold, and is it open?". The
+   * toolbar now asks the region's question too, the way every comparable
+   * shell's layout toggles do, and a surface's placement is the tab's own
+   * affordance (`RegionChromeBar`'s move menu) rather than the toolbar's.
    *
-   * Derived here rather than in the toolbar because the placement guard (a
-   * region this device cannot use, a surface the registry does not hold), the
-   * `main`-occupant rule and the show/hide derivation are the same rules
-   * `toggleSurface` above owns; a second copy in the toolbar is what drifted
-   * twice in #1420.
+   * Derived here rather than in the toolbar because the device guard (a
+   * region this device cannot use) and the surface filter (`surfaceList`) are
+   * the same rules the chords and the folded menu use; a second copy in the
+   * toolbar is what drifted twice in #1420.
    */
-  placementRows: RegionPlacementRow[];
+  regionToggles: RegionToggle[];
 }
 
 /**
@@ -178,14 +189,17 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
     [model],
   );
 
-  const surfaceList = [...surfaces.values()].filter((surface) =>
-    surface.regions.some(isDockRegion),
+  // The surfaces the SHELL offers: those declaring a dock region, minus the
+  // catalog-only ones (#2047, `RegisteredSurface.exposure`) — a region's "+"
+  // is their only offer, so they get no picker row, no chord and no unplaced
+  // Show row. A placed one still appears where it is placed: the per-region
+  // loop in `foldedMenuItems` reads `region.panes`, not this list.
+  const surfaceList = [...surfaces.values()].filter(
+    (surface) =>
+      surface.regions.some(isDockRegion) && surface.exposure !== 'catalog',
   );
   const foldedRegion = foldedDockRegion(regions, lastShownRegion);
 
-  // A null `main` occupant IS Home on screen (`MainRegionSurface`).
-  const occupantOf = (id: RegionId) =>
-    id === 'main' ? (regions.main.occupant ?? 'home') : regions[id].occupant;
   const place = (surfaceId: string, id: RegionId) => {
     if (id !== 'main' && !(available as readonly RegionId[]).includes(id))
       return;
@@ -194,118 +208,121 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
   };
 
   /**
-   * The regions a surface may be placed into on THIS device, in the picker's
-   * segment order — intersected with what the surface itself declares, so no
-   * segment ever offers a placement `placeSurface` would refuse.
-   */
-  const segmentRegions = (surface: RegisteredSurface): RegionId[] =>
-    SEGMENT_REGION_ORDER.filter(
-      (id) =>
-        surface.regions.includes(id) &&
-        (id === 'main' || (available as readonly RegionId[]).includes(id)),
-    );
-
-  /**
-   * Where a surface sits in an arrangement, and whether that means the reader
-   * can SEE it. The one derivation behind both the pressed segment and the
-   * displacement note below, so the two cannot disagree about the same surface
-   * in the same arrangement (#1552 review M3: the note promised "moves to Right"
-   * for a relocation `placeSurface` makes with `visible: false`, and the picker
-   * then showed that surface as Hidden).
+   * The folded device's rows, per REGION (#2046 2b, D2). Each occupied dock
+   * region contributes its panes in tab order: the SELECTED pane's row is
+   * the region's Show/Hide — hiding it hides the region, every pane of it —
+   * and each pane behind a tab gets a `Show <title> in the dock` row whose
+   * toggle selects it (`toggleSurface`, #2046 2a). Grouped by region so the
+   * rows say what the toggle acts on: two surfaces sharing a region are two
+   * rows of one region, not two independent toggles that happen to move the
+   * same shell. After them, the `main` occupant's "Move … to the dock" row
+   * and a `Show` row for each unplaced dock surface, in registry order.
    *
-   * `main` is always visible, so holding it is always showing.
+   * "… the dock", for the same reason on every row: these rows exist only on
+   * a BOTTOM-ONLY device (`availablePlacements`: a coarse pointer or a
+   * viewport at or under 768px, so a narrow desktop window too), where the
+   * fold gives the whole shell one dock slot.
+   *
+   * #1386: the bare `Hide Activity` was the accessible name of the SHELL
+   * HEADER's own visibility control at the same time — two buttons, one name,
+   * both on screen (pinned by `RegionShellParity.test.tsx`, and the reason
+   * `project-architecture.spec.ts` has to scope its query to the pane). The
+   * shell's control is the one a user points at, so the row is what says
+   * which shell it means.
    */
-  const placementOf = (
-    arrangement: RegionArrangement,
-    surfaceId: string,
-  ): { region: RegionId | undefined; shown: boolean } => {
-    const region = occupiedRegion(arrangement, surfaceId);
+  const foldedMenuItems = (): RegionSurfaceMenuItem[] => {
+    const rows: RegionSurfaceMenuItem[] = [];
+    const placed = new Set<string>();
+    for (const regionId of DOCK_REGION_IDS) {
+      const region = regions[regionId];
+      for (const paneId of region.panes) {
+        // Resolved rather than registry-read, so a placed instance-keyed
+        // pane (#2049) gets its Hide/Show row here too; its title is the
+        // prefix's generic one ("Pull request", "File"), since the folded
+        // menu has no instance in hand.
+        const surface = resolveRegionSurface(paneId);
+        if (!surface) continue;
+        placed.add(paneId);
+        // Shown only when this IS the folded region's selected pane — the
+        // one visible dock a coarse device has — not merely when its region
+        // is marked visible, nor when the region shows another pane's tab.
+        const shown =
+          regionId === foldedRegion &&
+          region.visible &&
+          region.occupant === paneId;
+        rows.push({
+          key: `${regionId}:${paneId}`,
+          label: shown
+            ? `Hide ${surface.title} from the dock`
+            : `Show ${surface.title} in the dock`,
+          icon: surface.icon,
+          checked: shown,
+          onSelect: () => toggleSurface(surface),
+        });
+      }
+    }
+    for (const surface of surfaceList) {
+      if (placed.has(surface.id)) continue;
+      // A surface occupying `main` is not a dock toggle: "Show" would reveal
+      // it where it already is (nothing happens) and "Hide" has no meaning
+      // for the always-visible primary area. Its row names what the toggle
+      // does — return it to the dock (#1523).
+      if (occupiedRegion(regions, surface.id) === 'main') {
+        rows.push({
+          key: surface.id,
+          label: `Move ${surface.title} to the dock`,
+          icon: surface.icon,
+          onSelect: () => toggleSurface(surface),
+        });
+        continue;
+      }
+      rows.push({
+        key: surface.id,
+        label: `Show ${surface.title} in the dock`,
+        icon: surface.icon,
+        checked: false,
+        onSelect: () => toggleSurface(surface),
+      });
+    }
+    return rows;
+  };
+
+  const regionToggle = (region: DockRegionId): RegionToggle => {
+    const state = regions[region];
+    const held = state.panes.length > 0;
     return {
       region,
-      shown: Boolean(
-        region && (region === 'main' || arrangement[region].visible),
+      label: regionLabel(region),
+      // Resolved rather than registry-read, so an instance-keyed pane (#2049)
+      // names itself in the tooltip by its prefix's generic title.
+      paneTitles: state.panes.map(
+        (id) => resolveRegionSurface(id)?.title ?? id,
       ),
-    };
-  };
-
-  /**
-   * What happens to the region's current occupant if `surfaceId` takes the
-   * region — computed by running the model's own `placeSurface` over the
-   * arrangement and reading the result, not by restating its rules here.
-   *
-   * This is the honest form of what the retired verb list called "Swap in X".
-   * The rules are not obvious (a swap back into the vacated region, else the
-   * displaced surface's own default region, else the model's search order,
-   * else unplaced; and into `main` the displaced surface
-   * is always unplaced), and a hand-written sentence about them is a claim
-   * nothing derives — the class of defect this arc exists to remove. Pure
-   * function, no state touched.
-   *
-   * A relocation can also arrive HIDDEN — `placeSurface` carries the target
-   * region's previous visibility across to the displaced surface — so a landing
-   * region alone does not mean the reader will see it there. Three outcomes,
-   * three sentences.
-   */
-  const displacementNote = (
-    surfaceId: string,
-    id: RegionId,
-  ): string | undefined => {
-    const displaced = occupantOf(id);
-    if (!displaced || displaced === surfaceId) return undefined;
-    const displacedTitle = surfaces.get(displaced)?.title ?? displaced;
-    const next = placeSurfaceInArrangement(regions, surfaceId, id);
-    const landed = placementOf(next, displaced);
-    if (!landed.region) return `${displacedTitle} is hidden`;
-    return landed.shown
-      ? `${displacedTitle} moves to ${regionLabel(landed.region)}`
-      : `${displacedTitle} moves to ${regionLabel(landed.region)}, hidden`;
-  };
-
-  const placementRow = (surface: RegisteredSurface): RegionPlacementRow => {
-    // Showing, not merely placed: a surface in a hidden dock region is Hidden as
-    // far as this picker is concerned, which is the same question the folded
-    // menu's `checked` answers — and the same `placementOf` the displacement
-    // note reads, so a segment and a tooltip can never describe one surface two
-    // ways.
-    const { region: held, shown } = placementOf(regions, surface.id);
-    return {
-      surfaceId: surface.id,
-      label: surface.title,
-      icon: surface.icon,
-      segments: [
-        ...segmentRegions(surface).map((id) => ({
-          key: `${surface.id}:${id}`,
-          label: regionLabel(id),
-          region: id as RegionId | null,
-          checked: shown && held === id,
-          displaces: displacementNote(surface.id, id),
-          onSelect: () => {
-            // Already there but hidden: this is a reveal, not a move — the same
-            // command the retired "Show <surface>" row issued.
-            if (held === id) {
-              if (!shown) model.setRegion(id, { visible: true });
-              return;
-            }
-            place(surface.id, id);
-          },
-        })),
-        {
-          key: `${surface.id}:hidden`,
-          label: 'Hidden',
-          region: null,
-          checked: !shown,
-          onSelect: () => {
-            if (!held) return;
-            // A dock region hides. `main` cannot: it is always visible, and the
-            // only thing "hidden" can mean for its occupant is that Home has it
-            // back — which is `placeSurface`'s own documented rule for `main`
-            // (the displaced surface is UNPLACED, never relocated), so this
-            // takes that route rather than inventing an unplace primitive.
-            if (held === 'main') model.placeSurface('home', 'main');
-            else model.setRegion(held, { visible: false });
-          },
-        },
-      ],
+      // The REGION's visibility, not "visible and occupied" (#2153): a
+      // visible empty region is on screen — its bar over a placeholder — so
+      // reporting it unpressed would have the control contradict what the
+      // user can see.
+      visible: state.visible,
+      onToggle: () => {
+        // No longer refused for an empty region (#2153): showing one is now a
+        // thing that happens — the region appears, empty, with its own bar —
+        // so the write that shows it must not be swallowed.
+        model.setRegion(region, { visible: !state.visible });
+      },
+      // An occupied region offers nothing here: its "+" (#2047) is where more
+      // panes come from, and a toggle that also placed would be two controls
+      // under one name. An empty one offers the shell surfaces declaring it,
+      // in registry order — the same `surfaceList` the chords are built from.
+      offers: held
+        ? []
+        : surfaceList
+            .filter((surface) => surface.regions.includes(region))
+            .map((surface) => ({
+              surfaceId: surface.id,
+              label: surface.title,
+              icon: surface.icon,
+              onSelect: () => place(surface.id, region),
+            })),
     };
   };
 
@@ -315,56 +332,14 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
     commandsInOverflowMenu: bottomOnly && isMobile,
     surfaceList,
     toggleSurface,
-    menuItems: bottomOnly
-      ? surfaceList.map((surface) => {
-          // A surface occupying `main` is not a dock toggle: "Show" would
-          // reveal it where it already is (nothing happens) and "Hide" has no
-          // meaning for the always-visible primary area. Its row names what
-          // the toggle does — return it to the dock (#1523).
-          if (occupiedRegion(regions, surface.id) === 'main') {
-            return {
-              key: surface.id,
-              label: `Move ${surface.title} to the dock`,
-              icon: surface.icon,
-              onSelect: () => toggleSurface(surface),
-            };
-          }
-          const occupied = occupiedDockRegion(regions, surface.id);
-          // The surface is shown only when it IS the folded region — the one
-          // visible dock a coarse device has — not merely when its own region
-          // is marked visible.
-          const shown = Boolean(
-            occupied && occupied === foldedRegion && regions[occupied].visible,
-          );
-          // "… the dock", like the `main`-occupant row above, and for the
-          // same reason it is honest here: these rows exist only on a
-          // BOTTOM-ONLY device (`availablePlacements`: a coarse pointer or a
-          // viewport at or under 768px, so a narrow desktop window too), where
-          // the fold gives the whole shell one dock slot.
-          //
-          // #1386: the bare `Hide Activity` was the accessible name of the
-          // SHELL HEADER's own visibility control at the same time — two
-          // buttons, one name, both on screen (pinned by
-          // `RegionShellParity.test.tsx`, and the reason
-          // `project-architecture.spec.ts` has to scope its query to the
-          // pane). The shell's control is the one a user points at, so the
-          // row is what says which shell it means.
-          return {
-            key: surface.id,
-            label: shown
-              ? `Hide ${surface.title} from the dock`
-              : `Show ${surface.title} in the dock`,
-            icon: surface.icon,
-            checked: shown,
-            onSelect: () => toggleSurface(surface),
-          };
-        })
-      : [],
-    // One row per surface that declares a DOCK region — `surfaceList`, the same
-    // set the chords and the folded menu use. Home is excluded by that filter
-    // and correctly so: its only placement is `main`, so its row would be a
-    // segmented control with one segment and a `Hidden` that means "put
-    // something else in the primary area".
-    placementRows: bottomOnly ? [] : surfaceList.map(placementRow),
+    menuItems: bottomOnly ? foldedMenuItems() : [],
+    // One toggle per dock region THIS device can use, in screen order. A
+    // folded device has one dock and no toggles: its folded menu is the
+    // per-region control there.
+    regionToggles: bottomOnly
+      ? []
+      : TOGGLE_REGION_ORDER.filter((id) =>
+          (available as readonly RegionId[]).includes(id),
+        ).map(regionToggle),
   };
 }

@@ -57,13 +57,43 @@ const chatWorkspaceLayoutMock = vi.hoisted(() => vi.fn());
 const telemetryTrackMock = vi.hoisted(() => vi.fn());
 const trustedPluginLayoutMock = vi.hoisted(() => vi.fn());
 const pluginBoundaryMock = vi.hoisted(() => vi.fn());
+/** Every call to a layout-PLACEMENT seam, in call order. Asserted empty by the
+ *  unplaced-Review case; hoisted because the SDK mock factory closes over it. */
+const placementCalls = vi.hoisted(() => [] as string[]);
 
 vi.mock('@kontourai/station-sdk', () => ({
   FullScreenError: ({ description }: { description: string }) => (
     <div>{description}</div>
   ),
   LayoutHeader: () => null,
+  // Real shape, because `isLayoutRecordAbsent` discriminates on `instanceof`
+  // AND on `status`: a stub without a status would make every error read as a
+  // 404 and the unplaced-builtin fallback fire on a transport failure.
+  StationHttpError: class StationHttpError extends Error {
+    status: number;
+    constructor(status: number, message = 'http error') {
+      super(message);
+      this.status = status;
+    }
+  },
   telemetry: { track: telemetryTrackMock },
+  // The two seams a "materialize the builtin" implementation would actually
+  // reach for — `POST /:slug/layouts/apply` is only callable through these.
+  // Recorded rather than stubbed silently, so "places nothing" is a claim
+  // about the placement API and not about a `fetch` the mocked SDK can never
+  // reach (#2065 delta review MED-C).
+  applyProjectLayout: (...args: unknown[]) => {
+    placementCalls.push(`applyProjectLayout(${args.slice(1).join(', ')})`);
+    return Promise.resolve({});
+  },
+  useApplyProjectLayoutMutation: (projectSlug: string) => ({
+    mutate: (layoutId: string) => {
+      placementCalls.push(
+        `useApplyProjectLayoutMutation(${projectSlug}).mutate(${layoutId})`,
+      );
+    },
+    isPending: false,
+  }),
   useProjectLayoutQuery: (...args: unknown[]) => {
     const result = layoutQueryMock(...args);
     return result?.data
@@ -261,10 +291,18 @@ vi.mock('../../components/session/SessionBoardLayout', () => ({
     <div>Session board rendered for {projectSlug}</div>
   ),
 }));
+vi.mock('../../components/review/ReviewLayout', () => ({
+  ReviewLayout: ({ projectSlug }: { projectSlug: string }) => (
+    <div>Review rendered for {projectSlug}</div>
+  ),
+}));
 vi.mock('../../views/LayoutView', () => ({
   LayoutView: () => <div>Current layout view</div>,
 }));
 
+// The mocked class above — the same constructor `isLayoutRecordAbsent`
+// compares against at runtime, so `instanceof` really discriminates here.
+import { StationHttpError } from '@kontourai/station-sdk';
 import {
   ProjectLayoutRenderer,
   resolveBuiltinCodingPanePopOut,
@@ -371,6 +409,172 @@ describe('ProjectLayoutRenderer', () => {
     );
 
     expect(screen.getByText('Session board rendered for demo')).toBeTruthy();
+  });
+
+  test('dispatches the review layout type to the ReviewLayout adapter (#2065)', () => {
+    layoutQueryMock.mockReturnValue({ data: { type: 'review', config: {} } });
+
+    render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="review" />);
+
+    expect(screen.getByText('Review rendered for demo')).toBeTruthy();
+  });
+
+  /**
+   * #2065 HIGH-2. Nothing materializes the builtin layouts: a project gains
+   * `layouts/review.json` only after someone runs Add layout, and a real
+   * project carries `coding.json` and nothing else. So every href the inbox,
+   * Starter work and the retired `/review-queue` redirect mint into Review
+   * pointed at a 404 — a route the global queue answered for every project.
+   *
+   * The half this case does NOT carry: that the mounted layout opens on the
+   * receipt the link names. That is ReviewLayout's own reading of
+   * `window.location.search`, pinned by "opens a ?receipt= deep link on that
+   * receipt's findings" in `components/review/__tests__/ReviewLayout.test.tsx`
+   * — asserting it against this file's stub adapter would assert the stub.
+   */
+  test('a Project that never placed Review still opens the deep link, and places nothing (#2065)', () => {
+    placementCalls.length = 0;
+    try {
+      window.history.replaceState(
+        {},
+        '',
+        '/projects/demo/layouts/review?receipt=receipt-7',
+      );
+      // Exactly what the API answers for a Project with no `review.json`.
+      layoutQueryMock.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        error: new StationHttpError(404, 'Layout not found'),
+      });
+
+      render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="review" />);
+
+      expect(screen.getByText('Review rendered for demo')).toBeTruthy();
+      expect(screen.queryByText('Current layout view')).toBeNull();
+      // No silent placement: the Project's layout chips must still list only
+      // what somebody actually added, so resolving the definition may not
+      // write one. Asserted against the placement API itself — the mocked
+      // SDK is the only route to `POST /:slug/layouts/apply`, so a `fetch`
+      // spy here would observe nothing whatever the implementation did.
+      expect(placementCalls).toEqual([]);
+    } finally {
+      window.history.replaceState({}, '', '/');
+    }
+  });
+
+  test('an unplaced Review is the API\u2019s 404, never a request still in flight (#2065)', () => {
+    // The discriminating case for the `isLayoutRecordAbsent` gate. Without it
+    // the first render of ANY review link — before the query answers — mounts
+    // the builtin, which would flash it over a placed plugin layout and make
+    // the hijack case above pass only after a round trip.
+    layoutQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+    });
+
+    render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="review" />);
+
+    expect(screen.getByText('Current layout view')).toBeTruthy();
+    expect(screen.queryByText('Review rendered for demo')).toBeNull();
+  });
+
+  test('a Review request that failed for any other reason is not an unplaced layout (#2065)', () => {
+    // A 500 or a dead server means Station could not ASK whether the layout is
+    // placed. Substituting the builtin there would answer a question nobody
+    // answered, and hide the outage behind a working-looking page.
+    layoutQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new StationHttpError(500, 'boom'),
+    });
+
+    render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="review" />);
+
+    expect(screen.getByText('Current layout view')).toBeTruthy();
+    expect(screen.queryByText('Review rendered for demo')).toBeNull();
+  });
+
+  test('a 200 envelope saying the layout is missing counts as unplaced (#2065)', () => {
+    // NOT a StationHttpError: on a 200 carrying `{"success":false,...}`,
+    // `unwrapProjectResponse` throws a plain Error with the envelope message
+    // and no status. The substring tail is the only thing that classifies it,
+    // and it is a real path — so it gets a case rather than a footnote.
+    layoutQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Layout not found'),
+    });
+
+    render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="review" />);
+
+    expect(screen.getByText('Review rendered for demo')).toBeTruthy();
+  });
+
+  test('a missing PROJECT is not a Project with an unplaced Review (#2065)', () => {
+    // `projectReadFailure` answers 404 for both resources and names which one
+    // in the envelope. A link into a deleted or renamed Project must say so,
+    // not render an empty Review workbench for a Project that is not there.
+    layoutQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new StationHttpError(404, 'Project not found'),
+    });
+
+    render(<ProjectLayoutRenderer projectSlug="gone" layoutSlug="review" />);
+
+    expect(screen.getByText('Current layout view')).toBeTruthy();
+    expect(screen.queryByText('Review rendered for gone')).toBeNull();
+  });
+
+  test('a 200 envelope saying the PROJECT is missing is not unplaced (#2065)', () => {
+    // The fourth corner: the other two cases cover a status-carrying missing
+    // Project and a status-less missing Layout. This is the one the predicate
+    // reads entirely off the message, with no status to fall back on, so it is
+    // where a wording change would land first.
+    layoutQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Project not found'),
+    });
+
+    render(<ProjectLayoutRenderer projectSlug="gone" layoutSlug="review" />);
+
+    expect(screen.getByText('Current layout view')).toBeTruthy();
+    expect(screen.queryByText('Review rendered for gone')).toBeNull();
+  });
+
+  test('only Review resolves unplaced \u2014 a missing coding layout is still missing (#2065)', () => {
+    // The scope line. `coding` and `tasks` read persisted configuration, so an
+    // absent record is not an empty one for them; if this ever goes green the
+    // fallback has generalized past what its docblock claims.
+    layoutQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new StationHttpError(404, 'Layout not found'),
+    });
+
+    render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="coding" />);
+
+    expect(screen.getByText('Current layout view')).toBeTruthy();
+  });
+
+  test('keeps a plugin-contributed review type on its declared component path', () => {
+    // The `review` string alone is a label. A contributed layout carrying it
+    // must still render its own declared tabs, exactly as `chat` does below —
+    // otherwise adding the builtin kind silently hijacks a plugin's layout.
+    layoutQueryMock.mockReturnValue({
+      data: {
+        type: 'review',
+        config: {},
+        catalogContribution: { provenance: { origin: 'plugin' } },
+      },
+    });
+
+    render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="review" />);
+
+    expect(screen.getByText('Current layout view')).toBeTruthy();
+    expect(screen.queryByText('Review rendered for demo')).toBeNull();
   });
 
   test('dispatches existing chat layouts to the shared Chat workspace placement', () => {

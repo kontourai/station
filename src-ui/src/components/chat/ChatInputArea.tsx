@@ -143,6 +143,8 @@ interface ChatInputAreaProps {
   // Approval mode (archive#727) — External-agent sessions only
   executionMode?: ExecutionMode;
   approvalModeConnectionDefault?: unknown;
+  /** This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6). */
+  approvalModeStationDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
   lastAppliedApprovalMode?: unknown;
   acpSessionModes?: AdvertisedAcpMode[];
@@ -247,6 +249,7 @@ export function ChatInputArea({
   modelRuntimeOptions,
   executionMode,
   approvalModeConnectionDefault,
+  approvalModeStationDefault,
   toolPolicyDelivery,
   lastAppliedApprovalMode,
   acpSessionModes = [],
@@ -535,6 +538,7 @@ export function ChatInputArea({
               toolPolicyDelivery={toolPolicyDelivery}
               sessionOverride={modelRuntimeOptions?.approvalMode}
               connectionDefault={approvalModeConnectionDefault}
+              stationDefault={approvalModeStationDefault}
               lastAppliedApprovalMode={lastAppliedApprovalMode}
               onChange={onApprovalModeChange}
             />

@@ -44,7 +44,7 @@
 
 .first-run-chapter__lede {
   margin: 0 0 var(--space-4, 16px);
-  font-size: var(--font-size-sm, 13px);
+  font-size: var(--text-md);
   line-height: 1.5;
   color: var(--color-text-secondary);
 }
@@ -61,7 +61,7 @@
 .first-run-disclosure__inventory > summary {
   cursor: pointer;
   padding: var(--space-2, 8px) 0;
-  font-size: var(--font-size-sm, 13px);
+  font-size: var(--text-md);
   color: var(--color-text-secondary, var(--text-secondary));
 }
 
@@ -78,7 +78,7 @@
   overflow-y: auto;
   margin-bottom: var(--space-4, 16px);
   padding-right: var(--space-2, 8px);
-  font-size: var(--font-size-sm, 13px);
+  font-size: var(--text-md);
 }
 
 /* The step region's own focus ring — it takes focus when a step swaps, so it

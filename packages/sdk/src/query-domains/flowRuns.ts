@@ -41,8 +41,21 @@ export interface SurveyFlowReviewItemVM {
     keptCurrent: number;
     rejected: number;
     escalated: number;
+    /**
+     * Survey's own bucket, and NOT the number of items awaiting a decision:
+     * an undecided `escalated` item counts under `escalated` and an undecided
+     * `resolved` item under `accepted` (station#2064 review MED-2). Use
+     * `pendingDecisions` for anything that means "still needs a person".
+     */
     unresolved: number;
   };
+  /**
+   * Items with no recorded decision — what `continuePausedGate` is waiting
+   * for, derived server-side by the continuation's own
+   * `deriveServerReviewSessionApplyResult`
+   * (`src-server/services/flow/survey-flow-review-service.ts`).
+   */
+  pendingDecisions: number;
   items: Array<{
     target: string;
     targetLabel: string;

@@ -1,7 +1,9 @@
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import type { ComponentType } from 'react';
 import {
+  AgentGlyph,
   BoardGlyph,
+  BranchGlyph,
   ChartGlyph,
   CheckGlyph,
   CodeGlyph,
@@ -13,6 +15,7 @@ import {
   GlobeGlyph,
   HomeGlyph,
   MessageGlyph,
+  PhoneGlyph,
   PinGlyph,
   PlayGlyph,
   ShieldGlyph,
@@ -54,8 +57,18 @@ const BUILTIN_PANE_GLYPHS = {
   'workspace-trust': ShieldGlyph,
   'workspace-browser-preview': GlobeGlyph,
   'workspace-file-preview': DocumentGlyph,
+  // A branch, not the Diff pane's glyph: a pull-request pane and the Diff
+  // pane are two tiles a reader chooses between (#2049).
+  'workspace-pull-request': BranchGlyph,
+  // The sidebar's Boards glyph: a docked Board or project Layout is the
+  // same object the sidebar's pill names (#2157).
+  'workspace-layout': BoardGlyph,
   'workspace-home': HomeGlyph,
   'workspace-activity': ChartGlyph,
+  'workspace-agents': AgentGlyph,
+  // A handset, not the Browser Preview globe: the tile names a simulator
+  // or emulator screen, not a page (#1969).
+  'workspace-device': PhoneGlyph,
   'workspace-spatial-board': PinGlyph,
   'workspace-board': BoardGlyph,
   'workspace-basis': DatabaseGlyph,

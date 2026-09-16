@@ -252,6 +252,7 @@ describe('useDockShellChrome reads its open state from the region model', () => 
 
     act(() =>
       result.current.setRegion('right', {
+        panes: ['fixture'],
         occupant: 'fixture',
         visible: true,
       }),
@@ -401,6 +402,7 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     );
     act(() =>
       result.current.model.setRegion('right', {
+        panes: ['fixture'],
         occupant: 'fixture',
         visible: true,
       }),
@@ -576,7 +578,10 @@ describe('useDockShellChrome reads its open state from the region model', () => 
         }),
         { wrapper },
       );
-      act(() => result.current.model.placeSurface('activity', 'right'));
+      // Chat to `right`, Activity to the vacated `bottom` — two moves, since
+      // a placement into an occupied dock region joins it rather than
+      // swapping (#2046 2a).
+      act(() => result.current.model.placeSurface('chat', 'right'));
       act(() => result.current.model.placeSurface('activity', 'bottom'));
       expect(result.current.model.regions.bottom.occupant).toBe('activity');
       expect(result.current.model.regions.right.occupant).toBe('chat');

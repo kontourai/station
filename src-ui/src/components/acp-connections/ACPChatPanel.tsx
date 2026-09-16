@@ -19,6 +19,7 @@ import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
+import { useConfig } from '../../contexts/ConfigContext';
 import { useACPConnections } from '../../hooks/useACPConnections';
 import { useCreateChatSession } from '../../hooks/useActiveChatSessions';
 import { useChatInput } from '../../hooks/useChatInput';
@@ -172,6 +173,8 @@ export function ACPChatPanel({
     typeof runtimeConnection?.config.approvalMode === 'string'
       ? runtimeConnection.config.approvalMode
       : undefined;
+  // #2144 slice 6: the Station-scope layer below that connection default.
+  const stationApprovalModeDefault = useConfig()?.defaultApprovalMode;
   const { data: acpConnections = [] } = useACPConnections();
   const advertisedAcpSession = useMemo(
     () =>
@@ -310,6 +313,7 @@ export function ACPChatPanel({
         }
         executionMode={activeSession.executionMode}
         approvalModeConnectionDefault={connectionApprovalModeDefault}
+        approvalModeStationDefault={stationApprovalModeDefault}
         toolPolicyDelivery={
           runtimeConnection
             ? resolveEngineCapabilityMatrix(

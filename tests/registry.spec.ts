@@ -277,10 +277,30 @@ test.describe('Registry page', () => {
     await expect(detail.getByRole('button', { name: 'Use' })).toBeVisible();
   });
 
-  test('sidebar shows Registry nav item', async ({ page }) => {
-    await expect(page.getByRole('button', { name: 'Registry' })).toBeVisible({
-      timeout: 5_000,
-    });
+  // #2059: Registry is configuration, so it left the left panel for Settings'
+  // Manage group. The guarantee is unchanged — an advertised control someone
+  // can press reaches this surface — and it is asserted where that control
+  // now is, by pressing it rather than only seeing it.
+  test('Settings shows a Registry entry that opens the surface', async ({
+    page,
+  }) => {
+    await expect(
+      page.getByRole('navigation', { name: 'Primary navigation' }),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Primary navigation' })
+        .getByRole('button', { name: 'Registry', exact: true }),
+    ).toHaveCount(0);
+
+    await page
+      .getByRole('navigation', { name: 'Primary navigation' })
+      .getByRole('button', { name: 'Settings', exact: true })
+      .click();
+    const manage = page.getByRole('region', { name: 'Manage' });
+    await expect(manage).toBeVisible({ timeout: 10_000 });
+    await manage.getByRole('button', { name: 'Registry', exact: true }).click();
+    await expect(page).toHaveURL(/\/registry$/);
   });
 
   test('skill cards open preview details before explicit install', async ({

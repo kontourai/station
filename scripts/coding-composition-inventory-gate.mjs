@@ -35,6 +35,15 @@ const expectedDependencies = new Map(
     'packages/sdk/src/query-domains/projectData.ts': 'sdk-route-adapter',
     'src-server/routes/projects/coding.ts': 'privileged-route',
     'src-server/routes/projects/layout-working-directory.ts': 'persistence',
+    // #2062: the admission `POST /api/projects/:slug/layouts` applies before
+    // writing, extracted so promote (`/api/me/layouts/:slug/promote`) derives
+    // the same answer instead of carrying a second copy that drifts. The scan
+    // sees it because one of the two refusals is the Coding working-directory
+    // rule, which it enforces by calling this module's neighbour rather than
+    // by reimplementing it. `persistence`, alongside that neighbour: it
+    // decides what may be written and normalizes the record, and it grants
+    // nothing and renders nothing.
+    'src-server/routes/projects/project-layout-admission.ts': 'persistence',
     'src-server/routes/projects/projects.ts': 'project-route',
     'src-server/runtime/routes/runtime-routes.ts': 'route-registration',
     'src-server/security/pairing-route-scopes.ts': 'route-authorization',
@@ -48,6 +57,15 @@ const expectedDependencies = new Map(
     // the same derivation without importing the host or its renderers. It
     // renders nothing and grants nothing; it is the host's own branch table.
     'src-ui/src/app-shell/project-layout-kind.ts': 'aggregate-host',
+    // #2157: a Board or a project Layout as a dock pane. The scan sees it
+    // because it reads `project-layout-kind`'s dispatch to REFUSE the Coding
+    // kind — a Coding layout is a whole `WorkspacePaneHost` keyed on the
+    // same `(projectId, layoutId)` as the main region's, so a docked copy
+    // would share its persisted document — and renders "Open this Layout
+    // in Main" whose action is `setLayout`. `navigation`, ProjectPage's
+    // category: it chooses the host (Main) rather than being one; it mounts
+    // no Coding surface and grants nothing.
+    'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx': 'navigation',
     'src-ui/src/app-shell/codingFileCompositionTelemetry.ts':
       'operation-receipt',
     'src-ui/src/app-shell/codingDiffCompositionTelemetry.ts':
@@ -75,6 +93,13 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/CodingInspectorPanel.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/CodingLayout.css': 'presentation',
+    // #2064: independent-review receipts moved from /review-queue into the
+    // Coding inspector's Reviews tab. This is the tab's content: it lists a
+    // project's receipts and opens the run modal. Privileged like the
+    // inspector panel that mounts it, because running a review POSTs a
+    // receipt-producing job.
+    'src-ui/src/components/coding-layout/IndependentReviewInspectorContent.tsx':
+      'privileged-renderer',
     'src-ui/src/components/coding-layout/BranchToolbar.css': 'presentation',
     'src-ui/src/components/coding-layout/BranchToolbar.tsx': 'git-review',
     'src-ui/src/components/coding-layout/CodingTerminalPane.tsx':
@@ -130,7 +155,21 @@ const expectedDependencies = new Map(
     // accepted layout types AND retained-LayoutTab/parser adaptation checks;
     // a UI-only field would make contributed routing metadata unverifiable.
     'src-ui/src/views/ProjectPage.tsx': 'navigation',
-    'src-ui/src/views/ReviewQueueView.tsx': 'navigation',
+    // #2047: the region model registers the three coding panes as dock
+    // surfaces (`coding:terminal`, `coding:diff`, `coding:file-browser`);
+    // the semantic scan sees the `sourceFile` paths the architecture ratchet
+    // reads. It is pure over ids — no pane contract, no renderer — and
+    // grants nothing; which pane a surface renders as is the inventory's.
+    'src-ui/src/regions/region-model.ts': 'pane-declaration',
+    // #2047: the surface → pane inventory joins those surfaces to the
+    // coding pane contracts' fixed per-project instances and canonical
+    // predicates (`workspace-coding-panels.ts`), the same contract role
+    // `builtinWorkspacePaneCanonical.ts` plays for the built-in host.
+    'src-ui/src/regions/region-surface-panes.ts': 'pane-contract',
+    // #2047: a docked coding pane's renderer, behind the region host's lazy
+    // boundary — it hands the region's project-bound instance to
+    // `getBuiltinWorkspacePaneRenderer`, the registry declared below.
+    'src-ui/src/workspace-panes/RegionBuiltinPane.tsx': 'private-import',
     'src-ui/src/views/TaskWorkspaceView.tsx': 'private-import',
     'src-ui/src/workspace-panes/BrowserPreviewPaneLauncher.tsx': 'presentation',
     'src-ui/src/workspace-panes/FilePreviewPane.tsx': 'privileged-renderer',

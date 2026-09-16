@@ -3,6 +3,7 @@ import {
   WORKSPACE_BASIS_PANE_DESCRIPTOR,
   WORKSPACE_BASIS_PANE_DESCRIPTOR_ID,
 } from '@kontourai/station-basis-pane/workspace-basis-pane';
+import { BUILTIN_REVIEW_LAYOUT } from '@kontourai/station-contracts/layout';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
   type CodingDiffCompositionControl,
@@ -103,6 +104,7 @@ import { trackCodingDiffCompositionReceipt } from './codingDiffCompositionTeleme
 import { trackCodingEvidenceCompositionReceipt } from './codingEvidenceCompositionTelemetry';
 import { codingEvidenceUnavailableCopy } from './codingEvidenceUnavailableCopy';
 import { trackCodingFileCompositionReceipt } from './codingFileCompositionTelemetry';
+import { isUnplacedLayoutRecord } from './layout-record-absent';
 import { layoutTypeRegistry } from './layoutRegistry';
 import { resolveProjectLayoutRendererKind } from './project-layout-kind';
 
@@ -1301,7 +1303,61 @@ export function ProjectLayoutRenderer({
   projectSlug: string;
   layoutSlug: string;
 }) {
-  const { data: layoutConfig } = useProjectLayoutQuery(projectSlug, layoutSlug);
+  const {
+    data: persistedLayout,
+    isLoading: layoutLoading,
+    error: layoutQueryError,
+  } = useProjectLayoutQuery(projectSlug, layoutSlug);
+
+  /**
+   * #2065: a builtin layout kind whose configuration is empty needs no
+   * persisted record to render.
+   *
+   * Nothing materializes the builtins — a project only gains
+   * `layouts/review.json` after someone runs Add layout — so a fresh project
+   * has `coding.json` and nothing else. Without this, every link the inbox,
+   * Starter work and the retired `/review-queue` redirect mint into Review
+   * would land on `LayoutView`'s "Layout not found", for a route the global
+   * queue served on every project. Resolving the definition here is what
+   * keeps that promise WITHOUT writing a file: nothing is placed, so the
+   * project's layout chips still list only what someone actually added.
+   *
+   * Deliberately `review` alone rather than every builtin. `coding` and
+   * `tasks` read persisted configuration (composition controls, filters), so
+   * for them an absent record is not the same thing as an empty one and
+   * substituting a default would answer a question the project never
+   * answered; `session-board` is reached by its own route. Review reads no
+   * persisted configuration at all and takes its owner from the route, so
+   * there is no question an absent record leaves unanswered.
+   *
+   * Gated on `isUnplacedLayoutRecord` and not merely on `!persistedLayout`:
+   * while the request is in flight, or when it failed for any other reason,
+   * this must not run — a placed plugin layout that happens to be called
+   * `review` still owns its own rendering, and flashing the builtin over it
+   * is exactly the hijack `project-layout-kind.ts` exists to prevent. That
+   * predicate also excludes the 404 that means the PROJECT is missing, which
+   * would otherwise render an empty Review workbench for a Project that does
+   * not exist.
+   *
+   * The empty `config` is not read off `BUILTIN_REVIEW_LAYOUT` — that
+   * descriptor declares no `config` field. `{}` is what the apply path
+   * persists for a non-plugin builtin (`projects.ts`, the
+   * `resolved.pluginName ? {...} : {}` branch), so the `config` this
+   * synthesizes is the value that path would have written, without writing
+   * it. Only `config` matches: the apply path persists eleven fields and
+   * this record carries two, which is enough because the only readers are
+   * the dispatch (`type`, `config`, `catalogContribution`) and the review
+   * renderer (`projectSlug`, `layoutSlug`, `config`). A consumer that starts
+   * reading `id` or `name` off a layout record needs more than this.
+   */
+  const unplacedBuiltinReview =
+    layoutSlug === BUILTIN_REVIEW_LAYOUT.slug &&
+    isUnplacedLayoutRecord(layoutQueryError, layoutLoading);
+  const layoutConfig =
+    persistedLayout ??
+    (unplacedBuiltinReview
+      ? ({ type: BUILTIN_REVIEW_LAYOUT.type, config: {} } as const)
+      : undefined);
 
   if (!layoutConfig) {
     return <LayoutView projectSlug={projectSlug} layoutSlug={layoutSlug} />;

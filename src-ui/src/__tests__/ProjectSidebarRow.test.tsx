@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
 
@@ -53,9 +53,16 @@ describe('ProjectSidebarRow', () => {
     });
   });
 
-  test('defers the layouts request until the row is expanded', () => {
+  /**
+   * #2063 moved the gate from the row's own `expanded` state to selection:
+   * the chip row renders for the project the reader is in. The property the
+   * old gate existed for is the one under test — rows all mount with the
+   * project list, so an ungated read is one layouts request per project on
+   * every boot.
+   */
+  test('defers the layouts request until the row is the selected project', () => {
     layoutsQueryMock.mockReturnValue({ data: [] });
-    render(
+    const { rerender } = render(
       <ProjectSidebarRow
         project={project}
         isActive={false}
@@ -68,12 +75,53 @@ describe('ProjectSidebarRow', () => {
       enabled: false,
     });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Expand Demo Project layouts' }),
+    rerender(
+      <ProjectSidebarRow
+        project={project}
+        isActive
+        activeLayout={null}
+        collapsed={false}
+      />,
     );
     expect(layoutsQueryMock).toHaveBeenLastCalledWith('demo', {
       enabled: true,
     });
+  });
+
+  /** The collapsed rail shows no chips, so it asks for none either. */
+  test('asks for no layouts on the collapsed rail even for the selected project', () => {
+    layoutsQueryMock.mockReturnValue({ data: [] });
+    render(
+      <ProjectSidebarRow
+        project={project}
+        isActive
+        activeLayout={null}
+        collapsed
+      />,
+    );
+
+    expect(layoutsQueryMock).toHaveBeenLastCalledWith('demo', {
+      enabled: false,
+    });
+  });
+
+  test('renders no chip row for a project that is not selected', () => {
+    layoutsQueryMock.mockReturnValue({
+      data: [{ slug: 'coding', name: 'Coding', type: 'coding' }],
+    });
+
+    render(
+      <ProjectSidebarRow
+        project={project}
+        isActive={false}
+        activeLayout={null}
+        collapsed={false}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('toolbar', { name: 'Demo Project layouts' }),
+    ).toBeNull();
   });
 
   /**
@@ -171,8 +219,8 @@ describe('ProjectSidebarRow', () => {
       />,
     );
 
-    // The strip itself renders — this is the absence of one entry inside it,
-    // not the absence of the whole sidebar.
+    // The chip row itself renders — this is the absence of one chip inside
+    // it, not the absence of the whole sidebar.
     expect(screen.getByRole('button', { name: 'Coding' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Board' })).toBeNull();
   });
@@ -180,9 +228,9 @@ describe('ProjectSidebarRow', () => {
   /**
    * The availability read is gated exactly like the layouts read beside it:
    * the server answers it by scanning the project's workflow sidecar
-   * directory, and the entry it decides only exists inside an expanded row.
+   * directory, and the entry it decides only exists inside the chip row.
    */
-  test('defers the board-availability request until the row is expanded', () => {
+  test('defers the board-availability request until the row is the selected project', () => {
     layoutsQueryMock.mockReturnValue({ data: [] });
     render(
       <ProjectSidebarRow

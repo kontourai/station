@@ -1,6 +1,9 @@
 /** @vitest-environment jsdom */
 
-import { DEFAULT_NOTIFICATION_SOUND_PREFERENCES } from '@kontourai/station-contracts/device-settings';
+import {
+  DEFAULT_NOTIFICATION_SOUND_PREFERENCES,
+  DEVICE_SETTINGS_REGISTRY,
+} from '@kontourai/station-contracts/device-settings';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -8,6 +11,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -39,8 +43,41 @@ vi.mock('@kontourai/station-sdk', () => ({
   StationReadOnlyError: class extends Error {},
   useEngineConnectionsQuery: () => ({ data: [] }),
   useAnswerSharesQuery: () => ({ data: [] }),
+  // #2067: the plugin-visibility section. The ORDINARY operator case — a
+  // directory in hand with one paired person — because the state under test
+  // here is the settings catalog, and a refusal would legitimately render
+  // nothing and make the enumeration disagree for a reason unrelated to the
+  // catalog.
+  usePluginVisibilityQuery: () => ({
+    data: {
+      principals: [
+        {
+          id: 'human:device:paired',
+          display: 'Paired device',
+          revoked: false,
+          plugins: [],
+          operator: false,
+        },
+      ],
+    },
+  }),
+  usePluginsQuery: () => ({ data: [] }),
+  useSetPluginVisibilityMutation: () => ({ mutate: vi.fn(), isError: false }),
+  isPluginVisibilityForbidden: () => false,
   useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
-  useConfigProvenanceQuery: () => ({ data: {} }),
+  // #2144 slice 3: the hook takes the selected project's slug, and the
+  // server reports DIFFERENT provenance for a scoped read (`scope: 'project'`
+  // on whatever the project overrides). The mock keys on the slug for the
+  // same reason the cache does — serving the Station answer for a project
+  // read is the exact confusion the key exists to prevent.
+  useConfigProvenanceQuery: (slug?: string) => ({
+    data: slug ? projectProvenance : configProvenance,
+  }),
+  useProjectsQuery: () => ({ data: projectList }),
+  useProjectQuery: (slug: string) => ({
+    data: slug ? projectRecord : undefined,
+  }),
+  useUpdateProjectMutation: () => ({ mutateAsync: updateProjectAsync }),
   // Settings mounts `UsageTelemetryDisclosure`, and #1608 made its decision
   // hook read the shared `['config']` query and its write path so the offered
   // choice cannot contradict a setting changed since the inventory was
@@ -53,7 +90,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   // about.
   useConfigQuery: () => ({ data: { telemetryEnabled: true } }),
   useUpdateConfigMutation: () => ({ mutate: vi.fn(), isPending: false }),
-  useInvalidateQuery: () => vi.fn(),
+  useInvalidateQuery: () => invalidateQuery,
   useSystemStatusForApiBaseQuery: () => ({
     data: {
       build: {},
@@ -108,6 +145,19 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 const updateConfig = vi.fn();
 const INITIAL_CONFIG = { logLevel: 'info', templateVariables: [] };
+// Per-field provenance. Mutable because "which settings are stored" is what
+// decides what a reset clears, and it has to differ between tests.
+let configProvenance: Record<string, { source: string }> = {};
+// #2144 slice 3: what a `?project=<slug>` read reports, and the project the
+// selector offers. Mutable for the same reason `configProvenance` is — which
+// keys a project overrides is what every assertion below varies.
+let projectProvenance: Record<string, { source: string; scope?: string }> = {};
+let projectList: { slug: string; name?: string }[] = [];
+let projectRecord: Record<string, unknown> | undefined;
+const updateProjectAsync = vi.fn(async () => ({}));
+// Returns a promise, because the save path AWAITS the project refetch before
+// clearing the override draft. A test can hand back one that never settles.
+const invalidateQuery = vi.fn((_key: unknown) => Promise.resolve());
 // The reconciliation effect reads the fetch generation, not just the values, so
 // tests drive both: `config` is what the server last returned and
 // `dataUpdatedAt` is when that fetch succeeded.
@@ -122,12 +172,64 @@ vi.mock('../contexts/ConfigContext', () => ({
   useConfig: () => configSnapshot.config,
   useConfigActions: () => ({ updateConfig, isSaving: false }),
 }));
+// `chatFontSize` is mutable because `null` (no device value) and a number
+// are two different rows: the "Use Station default" action exists only in
+// the second. `setDeviceSetting`/`resetDeviceSetting` are module-level spies
+// rather than fresh `vi.fn()`s per call, so a test can assert what a click
+// actually reached.
+let deviceChatFontSize: number | null = 14;
+const setDeviceSetting = vi.fn();
+const resetDeviceSetting = vi.fn();
+const resetDeviceSettings = vi.fn();
+/**
+ * #2144 slice 6 item D: what the disclosure query reports about a telemetry
+ * DESTINATION. Partial mock — only the shared hook is replaced, so the real
+ * `UsageTelemetryDisclosure` card and the real summary function still run.
+ */
+let telemetryEndpointConfigured: boolean | undefined;
+/** The read's own state, which the row must not speak ahead of. */
+let telemetryDisclosureSettled = true;
+let telemetryDisclosureIsError = false;
+vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../components/UsageTelemetryDisclosure')
+    >();
+  return {
+    ...actual,
+    useUsageTelemetryDisclosureState: () => ({
+      data:
+        telemetryEndpointConfigured === undefined
+          ? undefined
+          : { endpointConfigured: telemetryEndpointConfigured },
+      isError: telemetryDisclosureIsError,
+      settled: telemetryDisclosureSettled,
+      outstanding: false,
+    }),
+  };
+});
+
+/**
+ * The device store folds registry defaults in, so the harness starts from
+ * the real default object rather than `{}` — an empty object is a device
+ * that differs from its defaults in every field, which is not what an
+ * untouched device looks like (#2144 slice 6 items B and F).
+ */
+const DEFAULT_DEVICE_FEATURE_SETTINGS = DEVICE_SETTINGS_REGISTRY.find(
+  (definition) => definition.key === 'featureSettings',
+)!.defaultValue as unknown as Record<string, unknown>;
+let deviceFeatureSettings: Record<string, unknown> =
+  DEFAULT_DEVICE_FEATURE_SETTINGS;
 vi.mock('../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({
-    chatFontSize: 14,
+    chatFontSize: deviceChatFontSize,
+    // #2144 slice 6 item B: the Answer delivery row reads this.
+    featureSettings: deviceFeatureSettings,
     hapticsEnabled: true,
     accentColor: null,
     developerToolsEnabled: false,
+    // #2144 slice 6 item E: the Confirmations group in Appearance.
+    confirmConversationDelete: true,
     sidebarSections: {
       openChatsCollapsed: false,
       openChatsHidden: false,
@@ -135,7 +237,11 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
       draftsHidden: false,
     },
   }),
-  useDeviceSettingsActions: () => ({ setDeviceSetting: vi.fn() }),
+  useDeviceSettingsActions: () => ({
+    setDeviceSetting,
+    resetDeviceSetting,
+    resetDeviceSettings,
+  }),
 }));
 let isMobile = false;
 let isDesktop = false;
@@ -144,6 +250,11 @@ vi.mock('../platform/PlatformProfileContext', () => ({
 }));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
+  // #2059: the page's Manage group navigates to other DESTINATIONS (Agents,
+  // Connections, …) rather than to a `?view=` section of this page, so it
+  // reads the navigation actions directly. Its own behaviour is covered by
+  // SettingsManageSection.test.tsx; here it only has to mount.
+  useNavigationActions: () => ({ navigate: vi.fn() }),
 }));
 vi.mock('../contexts/KeyboardShortcutsContext', () => {
   const store = {
@@ -205,6 +316,21 @@ describe('settings catalog completeness', () => {
     updateConfig.mockReset();
     updateAppLogLevel.mockReset();
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
+    configProvenance = {};
+    projectProvenance = {};
+    projectList = [{ slug: 'atlas', name: 'Atlas' }];
+    projectRecord = undefined;
+    updateProjectAsync.mockClear();
+    invalidateQuery.mockReset();
+    invalidateQuery.mockImplementation(() => Promise.resolve());
+    deviceChatFontSize = 14;
+    deviceFeatureSettings = DEFAULT_DEVICE_FEATURE_SETTINGS;
+    telemetryEndpointConfigured = undefined;
+    telemetryDisclosureSettled = true;
+    telemetryDisclosureIsError = false;
+    setDeviceSetting.mockClear();
+    resetDeviceSetting.mockClear();
+    resetDeviceSettings.mockClear();
     window.history.replaceState({}, '', '/settings');
   });
 
@@ -290,20 +416,34 @@ describe('settings catalog completeness', () => {
     const { SettingsView } = await import('../views/SettingsView');
     expect(String(SettingsView)).toContain('configData');
     const rendered = await renderedCatalogIds();
-    const expected = visibleCatalogIds({ isMobile: false, isDesktop });
+    const expected = visibleCatalogIds({
+      isMobile: false,
+      isDesktop,
+      isOperator: true,
+    });
     expectExactCatalog(rendered, expected);
     // 37 at the merge base; +2 from archive#3313 (feature-previews,
     // enable-developer-tools) and +1 from the chat-dock lane's
     // sidebar-sections, +1 from station#585 smooth answer reveal, +1 from the
-    // update-ownership split (desktop-app-updates). Counted from the merged
-    // catalog, not added up.
-    expect(SETTINGS_CATALOG).toHaveLength(42);
+    // update-ownership split (desktop-app-updates). This slice: -1
+    // (knowledge-stores-preview, whose setting changes nothing and is no
+    // longer user-facing) and +2 (workspace-checkpoints,
+    // default-chat-font-size). #2144 slice 2: +1
+    // (default-workspace-isolation). Counted from the merged catalog, not
+    // added up. #2144 slice 6: +4 (default-approval-mode,
+    // telemetry-destination, confirm-conversation-delete,
+    // reset-device-defaults).
+    expect(SETTINGS_CATALOG).toHaveLength(49);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
     isMobile = true;
     const rendered = await renderedCatalogIds();
-    const expected = visibleCatalogIds({ isMobile: true, isDesktop });
+    const expected = visibleCatalogIds({
+      isMobile: true,
+      isDesktop,
+      isOperator: true,
+    });
     expectExactCatalog(rendered, expected);
     expect(rendered).toContain('haptic-feedback');
   });
@@ -665,7 +805,7 @@ describe('settings catalog completeness', () => {
     const rendered = await renderedCatalogIds();
     expectExactCatalog(
       rendered,
-      visibleCatalogIds({ isMobile: false, isDesktop }),
+      visibleCatalogIds({ isMobile: false, isDesktop, isOperator: true }),
     );
     expect(window.location.search).toBe('');
   });
@@ -808,7 +948,11 @@ describe('settings catalog completeness', () => {
     expect(window.location.search).toBe('?view=appearance');
   });
 
-  test('opens the Defaults disclosure before focusing a deep-linked editable field', async () => {
+  test('focuses a deep-linked editable field in the Defaults section', async () => {
+    // The `.agent-defaults__disclosure` assertion that used to close this
+    // test is gone with the disclosure itself: these fields render directly
+    // under the section intro, so there is nothing left to open. The focus
+    // assertion is the part that was ever about the deep link.
     window.history.replaceState(
       {},
       '',
@@ -821,10 +965,7 @@ describe('settings catalog completeness', () => {
         container.querySelector<HTMLInputElement>('#region'),
       ),
     );
-    expect(
-      container.querySelector<HTMLDetailsElement>('.agent-defaults__disclosure')
-        ?.open,
-    ).toBe(true);
+    expect(container.querySelector('.agent-defaults__disclosure')).toBeNull();
   });
 
   test('removes an invalid highlight without disturbing route and shell query state', async () => {
@@ -985,6 +1126,740 @@ describe('settings catalog completeness', () => {
       ),
     );
     expect(window.location.search).toBe('?view=host-runtime');
+  });
+
+  // The reset button used to send `updateConfig({})`: an empty body the route
+  // sanitizes to an empty accepted set, so the dialog promised a factory reset
+  // and the request wrote nothing. These two assert the wiring — the button
+  // reaches the delta builder, and the delta reaches the write.
+  describe('Reset Station settings', () => {
+    test('clears the stored Station settings and nothing else', async () => {
+      configProvenance = {
+        terminalShell: { source: 'file' },
+        systemPrompt: { source: 'file' },
+        // Already the factory resolution; clearing it would change nothing.
+        mcpUiHost: { source: 'default' },
+        // Required: the sanitizer refuses `null` for it.
+        defaultModel: { source: 'file' },
+      };
+      updateConfig.mockResolvedValueOnce({ data: {} });
+      await renderSettings();
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset Station settings' }),
+      );
+      // A bare string name is an exact full-string match in RTL, so this is
+      // the danger button and not `Close Reset Station settings`.
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+      await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
+      expect(updateConfig).toHaveBeenCalledWith({
+        terminalShell: null,
+        systemPrompt: null,
+      });
+    });
+
+    test('is refused while the form holds an unsaved draft', async () => {
+      // A reset writes what the SERVER stores; the draft is not part of it,
+      // so a Save afterwards would re-store the very values just cleared.
+      configProvenance = { terminalShell: { source: 'file' } };
+      await renderSettings();
+
+      fireEvent.change(screen.getByLabelText('Default max turns'), {
+        target: { value: '201' },
+      });
+      await waitFor(() => expect(screen.getByText('Unsaved changes')));
+
+      const reset = screen.getByRole('button', {
+        name: 'Reset Station settings',
+      }) as HTMLButtonElement;
+      expect(reset.disabled).toBe(true);
+      expect(
+        screen.getByText(
+          'Save or discard your unsaved changes first. Discard is always available.',
+        ),
+      ).toBeTruthy();
+      fireEvent.click(reset);
+      expect(updateConfig).not.toHaveBeenCalled();
+    });
+
+    test('refuses to confirm when no Station setting is stored', async () => {
+      await renderSettings();
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset Station settings' }),
+      );
+      const confirm = screen.getByRole('button', {
+        name: 'Reset',
+      }) as HTMLButtonElement;
+      expect(confirm.disabled).toBe(true);
+      fireEvent.click(confirm);
+      expect(updateConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * The Appearance slider writes a DEVICE value that then shadows the
+   * Station default for this browser alone. "Use Station default" is the
+   * only way back, and it is meaningless before a device value exists — so
+   * the row offers it only then.
+   */
+  describe('Use Station default', () => {
+    test('is absent while this device follows the Station default', async () => {
+      deviceChatFontSize = null;
+      const { container } = await renderSettings();
+
+      expect(container.querySelector('#chatFontSize')).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: 'Use Station default' }),
+      ).toBeNull();
+    });
+
+    test('appears once this device has its own size, and clears it', async () => {
+      deviceChatFontSize = 18;
+      await renderSettings();
+
+      const button = screen.getByRole('button', {
+        name: 'Use Station default',
+      });
+      fireEvent.click(button);
+
+      // `reset`, not `setDeviceSetting(…, 14)`: writing the Station's
+      // current value would pin this device to today's number and stop it
+      // following a later change to the Station default.
+      expect(resetDeviceSetting).toHaveBeenCalledTimes(1);
+      expect(resetDeviceSetting).toHaveBeenCalledWith('chatFontSize');
+      expect(setDeviceSetting).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * #585 / #2144 slice 6 item B. The chat gear panel's half of this is in
+   * ChatSettingsPanel.test.tsx; this is the Settings row, and the point of
+   * having both is that they write the SAME device key with the same
+   * meaning rather than two controls that happen to look alike.
+   */
+  describe('Answer delivery', () => {
+    test('writes smoothReveal in both directions from the Appearance row', async () => {
+      const { unmount } = await renderSettings();
+      const select = screen.getByLabelText(
+        'Answer delivery',
+      ) as HTMLSelectElement;
+      expect(select.value).toBe('token');
+
+      fireEvent.change(select, { target: { value: 'smooth' } });
+      expect(setDeviceSetting).toHaveBeenCalledWith(
+        'featureSettings',
+        expect.objectContaining({ smoothReveal: true }),
+      );
+
+      setDeviceSetting.mockClear();
+      deviceFeatureSettings = { smoothReveal: true };
+      unmount();
+      const second = await renderSettings();
+      const reopened = screen.getByLabelText(
+        'Answer delivery',
+      ) as HTMLSelectElement;
+      expect(reopened.value).toBe('smooth');
+      fireEvent.change(reopened, { target: { value: 'token' } });
+      expect(setDeviceSetting).toHaveBeenCalledWith(
+        'featureSettings',
+        expect.objectContaining({ smoothReveal: false }),
+      );
+      second.unmount();
+    });
+
+    test('the retired mechanism-named toggle is gone', async () => {
+      await renderSettings();
+      expect(
+        screen.queryByRole('switch', { name: 'Smooth answer reveal' }),
+      ).toBeNull();
+    });
+  });
+
+  /**
+   * #2144 slice 6 item D. The toggle beside this row decides whether Station
+   * WOULD send; this row says whether there is anywhere to send to. Both
+   * answers are the host's, and the host itself is never named.
+   */
+  describe('Telemetry destination', () => {
+    test('reports a configured destination without naming it', async () => {
+      telemetryEndpointConfigured = true;
+      await renderSettings();
+      expect(
+        screen.getByText('Destination: configured by the operator.'),
+      ).toBeTruthy();
+    });
+
+    test('reports that nothing is sent when no destination exists', async () => {
+      telemetryEndpointConfigured = false;
+      await renderSettings();
+      expect(
+        screen.getByText('No destination configured; nothing is sent.'),
+      ).toBeTruthy();
+    });
+
+    test('a host that did not report the field is not folded into either answer', async () => {
+      telemetryEndpointConfigured = undefined;
+      await renderSettings();
+      expect(
+        screen.getByText(
+          'This Station has not reported whether a destination is configured.',
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText('No destination configured; nothing is sent.'),
+      ).toBeNull();
+    });
+
+    test('an in-flight read claims nothing about the host', async () => {
+      // Fix round 1: every fresh Settings mount starts here, and the row
+      // used to state "has not reported" before the request had landed.
+      telemetryDisclosureSettled = false;
+      telemetryEndpointConfigured = undefined;
+      const { container } = await renderSettings();
+
+      expect(
+        screen.queryByText(
+          'This Station has not reported whether a destination is configured.',
+        ),
+      ).toBeNull();
+      expect(
+        screen.queryByText('No destination configured; nothing is sent.'),
+      ).toBeNull();
+      // The row itself stays, so the catalog still enumerates it.
+      expect(
+        container.querySelector('[data-catalog-id="telemetry-destination"]'),
+      ).toBeTruthy();
+    });
+
+    test('a failed read says the read failed, not what the host holds', async () => {
+      telemetryDisclosureIsError = true;
+      telemetryEndpointConfigured = undefined;
+      await renderSettings();
+
+      expect(
+        screen.getByText('Could not read whether a destination is configured.'),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText(
+          'This Station has not reported whether a destination is configured.',
+        ),
+      ).toBeNull();
+    });
+  });
+
+  /**
+   * #2144 slice 6 item E. The consumer half — that ConversationHistory
+   * actually skips the modal — is in ConversationHistory.test.tsx; this is
+   * the control that writes it.
+   */
+  describe('Ask before deleting a conversation', () => {
+    test('renders on by default under a Confirmations group and round-trips', async () => {
+      const { container } = await renderSettings();
+      expect(
+        [...container.querySelectorAll('.settings__group-title')].map(
+          (node) => node.textContent,
+        ),
+      ).toContain('Confirmations');
+      const toggle = screen.getByRole('switch', {
+        name: 'Ask before deleting a conversation',
+      });
+      expect(toggle.getAttribute('aria-checked')).toBe('true');
+      fireEvent.click(toggle);
+      expect(setDeviceSetting).toHaveBeenCalledWith(
+        'confirmConversationDelete',
+        false,
+      );
+    });
+  });
+
+  /**
+   * #2144 slice 6 item F. The plan builder's own cases are in
+   * settings-station-reset.test.ts; these assert the wiring — the button
+   * reflects the plan, names it in the dialog, and confirming reaches the
+   * device store once per listed key.
+   */
+  describe('Restore device defaults', () => {
+    function button() {
+      return screen.getByRole('button', {
+        name: 'Restore device defaults',
+      }) as HTMLButtonElement;
+    }
+
+    test('is refused, and says so, on a device that has changed nothing', async () => {
+      deviceChatFontSize = null as unknown as number;
+      await renderSettings();
+      expect(button().disabled).toBe(true);
+      // Scoped to what the plan computes (PREFERENCE_DEVICE_KEYS), not to
+      // every setting the device holds.
+      expect(
+        screen.getByText(
+          'Every setting you can restore here is already at its default.',
+        ),
+      ).toBeTruthy();
+    });
+
+    test('names exactly the changed settings and restores each one', async () => {
+      // This device follows its defaults everywhere except the chat font.
+      deviceChatFontSize = 20;
+      await renderSettings();
+      expect(button().disabled).toBe(false);
+
+      fireEvent.click(button());
+      const dialog = screen.getByText(/This restores 1 setting on this device/);
+      expect(dialog.textContent).toContain('Chat font size');
+      // Not a list of everything: a plan that over-reported would promise to
+      // undo choices nobody made.
+      expect(dialog.textContent).not.toContain('Theme');
+      expect(dialog.textContent).not.toContain('Chat dock height');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
+      // One envelope write for the whole plan, not one per key.
+      expect(resetDeviceSettings.mock.calls).toEqual([[['chatFontSize']]]);
+    });
+
+    test('a multi-setting plan reads as plural in the dialog', async () => {
+      deviceChatFontSize = 20;
+      deviceFeatureSettings = {
+        ...DEFAULT_DEVICE_FEATURE_SETTINGS,
+        mobilePairingEnabled: true,
+      };
+      await renderSettings();
+
+      fireEvent.click(button());
+      const dialog = screen.getByText(
+        /This restores 2 settings on this device to their defaults/,
+      );
+      // The composite names the member a reader would not expect it to
+      // restore.
+      expect(dialog.textContent).toContain(
+        'Features, including notification sounds',
+      );
+    });
+
+    test('cancelling restores nothing', async () => {
+      deviceChatFontSize = 20;
+      await renderSettings();
+      fireEvent.click(button());
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(resetDeviceSettings).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * #2144 slice 3 — the project scope selector and the override draft it
+   * owns. `defaultWorkspaceIsolation` is the exercised row because it is the
+   * one overridable key that renders through the generic registry row; the
+   * setting-key-to-record-field mapping the other two need is proven in
+   * `project-override-draft.test.ts`, which is where that rule lives.
+   */
+  describe('project scope', () => {
+    const WORKSPACE_ROW = 'New chat workspace';
+
+    function selectAtlas() {
+      fireEvent.change(screen.getByLabelText('Show settings for:'), {
+        target: { value: 'atlas' },
+      });
+    }
+
+    test('changing the selector with a dirty Station draft asks before discarding', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, registryUrl: 'https://one.test' },
+        dataUpdatedAt: 1,
+      };
+      await renderSettings();
+
+      const registry = screen.getByLabelText('Registry URL');
+      fireEvent.change(registry, { target: { value: 'https://two.test' } });
+      expect(screen.getByText('Unsaved changes')).toBeTruthy();
+
+      selectAtlas();
+      // The selector is a LOCAL state change, so it arbitrates through the
+      // guard's explicit callback rather than the navigation store.
+      expect(screen.getByText('Unsaved Changes')).toBeTruthy();
+      expect(
+        (screen.getByLabelText('Show settings for:') as HTMLSelectElement)
+          .value,
+      ).toBe('');
+
+      // The page's save pill also offers "Discard"; this one is the modal's.
+      fireEvent.click(
+        within(screen.getByRole('dialog')).getByRole('button', {
+          name: 'Discard',
+        }),
+      );
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText('Show settings for:') as HTMLSelectElement)
+            .value,
+        ).toBe('atlas'),
+      );
+      expect((registry as HTMLInputElement).value).toBe('https://one.test');
+    });
+
+    test('an overridden row reads the project’s value and says the project owns it', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas', defaultWorkspaceIsolation: 'worktree' };
+      projectProvenance = {
+        defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
+        registryUrl: { source: 'file', scope: 'station' },
+      };
+      await renderSettings();
+
+      const workspace = screen.getByLabelText(
+        WORKSPACE_ROW,
+      ) as HTMLSelectElement;
+      expect(workspace.value).toBe('shared');
+
+      selectAtlas();
+
+      await waitFor(() => expect(workspace.value).toBe('worktree'));
+      const row = workspace.closest('.page-row')!;
+      expect(row.querySelector('.setting-row-status')!.textContent).toContain(
+        'Project',
+      );
+      const stationRow = screen
+        .getByLabelText('Registry URL')
+        .closest('.page-row')!;
+      expect(
+        stationRow.querySelector('.setting-row-status')!.textContent,
+      ).toContain('Station');
+    });
+
+    test('an override edit saves to the project, not to the Station config', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas' };
+      projectProvenance = {};
+      await renderSettings();
+
+      selectAtlas();
+      fireEvent.change(screen.getByLabelText(WORKSPACE_ROW), {
+        target: { value: 'worktree' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(updateProjectAsync).toHaveBeenCalledTimes(1));
+      expect(updateProjectAsync).toHaveBeenCalledWith({
+        slug: 'atlas',
+        defaultWorkspaceIsolation: 'worktree',
+      });
+      // The Station document is untouched: the edit was the project's.
+      expect(updateConfig).not.toHaveBeenCalled();
+    });
+
+    test('reset to inherited sends null, which is what drops the override', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas', defaultWorkspaceIsolation: 'worktree' };
+      projectProvenance = {
+        defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
+      };
+      await renderSettings();
+
+      selectAtlas();
+      const resets = await screen.findAllByRole('button', {
+        name: 'Reset to inherited',
+      });
+      expect(resets).toHaveLength(1);
+      fireEvent.click(resets[0]);
+      // Pending, not applied: the row falls back to the Station value and the
+      // save pill arms.
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText(WORKSPACE_ROW) as HTMLSelectElement).value,
+        ).toBe('shared'),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(updateProjectAsync).toHaveBeenCalledTimes(1));
+      expect(updateProjectAsync).toHaveBeenCalledWith({
+        slug: 'atlas',
+        defaultWorkspaceIsolation: null,
+      });
+    });
+
+    test('a Station reset never offers a project override as a stored Station value', async () => {
+      // The Station stores NOTHING for the workspace key; the project
+      // overrides it. A scoped provenance read reports that override as
+      // `{ source: 'file' }` for the same key, so a reset plan built from it
+      // would list a Station setting nobody stored and send `null` for it to
+      // the Station document.
+      configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
+      configProvenance = { terminalShell: { source: 'file' } };
+      projectProvenance = {
+        terminalShell: { source: 'file', scope: 'station' },
+        defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
+      };
+      projectRecord = { slug: 'atlas', defaultWorkspaceIsolation: 'worktree' };
+      updateConfig.mockResolvedValueOnce({ data: {} });
+      await renderSettings();
+
+      selectAtlas();
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText(WORKSPACE_ROW) as HTMLSelectElement).value,
+        ).toBe('worktree'),
+      );
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset Station settings' }),
+      );
+      const dialog = screen.getByRole('dialog');
+      expect(dialog.textContent).not.toContain(WORKSPACE_ROW);
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+      await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
+      expect(updateConfig).toHaveBeenCalledWith({ terminalShell: null });
+    });
+
+    test('Discard clears the project draft as well as the Station draft', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas', defaultWorkspaceIsolation: 'worktree' };
+      projectProvenance = {
+        defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
+      };
+      await renderSettings();
+
+      selectAtlas();
+      const workspace = screen.getByLabelText(
+        WORKSPACE_ROW,
+      ) as HTMLSelectElement;
+      await waitFor(() => expect(workspace.value).toBe('worktree'));
+
+      // One edit per draft, so each half has its own witness.
+      fireEvent.change(workspace, { target: { value: 'shared' } });
+      const registry = screen.getByLabelText(
+        'Registry URL',
+      ) as HTMLInputElement;
+      fireEvent.change(registry, { target: { value: 'https://two.test' } });
+      expect(screen.getByText('Unsaved changes')).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+
+      // The project row is back to its SAVED override and the Station row is
+      // back to `savedConfig`; the pill going means BOTH drafts are empty,
+      // not merely that one of them is.
+      await waitFor(() => expect(workspace.value).toBe('worktree'));
+      expect(registry.value).toBe('');
+      expect(screen.queryByText('Unsaved changes')).toBeNull();
+    });
+
+    test('a refused project write keeps its draft while the Station write still lands', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas' };
+      updateConfig.mockResolvedValueOnce({ data: {} });
+      updateProjectAsync.mockRejectedValueOnce(
+        new Error('project write failed'),
+      );
+      await renderSettings();
+
+      selectAtlas();
+      fireEvent.change(screen.getByLabelText(WORKSPACE_ROW), {
+        target: { value: 'worktree' },
+      });
+      fireEvent.change(screen.getByLabelText('Registry URL'), {
+        target: { value: 'https://two.test' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() =>
+        expect(
+          screen.getByText(
+            "This project's overrides could not be saved. Your changes to them are kept here until you retry.",
+          ),
+        ).toBeTruthy(),
+      );
+      // The Station document was written; only the project's was refused.
+      expect(updateConfig).toHaveBeenCalledWith({
+        registryUrl: 'https://two.test',
+      });
+      // And the refused edit is still here to retry, not silently dropped.
+      expect(
+        (screen.getByLabelText(WORKSPACE_ROW) as HTMLSelectElement).value,
+      ).toBe('worktree');
+      expect(screen.getByText('Unsaved changes')).toBeTruthy();
+    });
+
+    test('reset to inherited disappears once the draft already resets the key', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas', defaultWorkspaceIsolation: 'worktree' };
+      projectProvenance = {
+        defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
+      };
+      await renderSettings();
+
+      selectAtlas();
+      const reset = await screen.findByRole('button', {
+        name: 'Reset to inherited',
+      });
+      fireEvent.click(reset);
+
+      // The row already shows the inherited value; a second click would write
+      // the same `null` again and report an action with no work to do.
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: 'Reset to inherited' }),
+        ).toBeNull(),
+      );
+    });
+
+    test('an unsettled project read never becomes "this project overrides nothing"', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      // The record has not arrived. `savedOverrides` is derived from it, so
+      // writing now would compare a real draft against an empty baseline.
+      projectRecord = undefined;
+      await renderSettings();
+
+      selectAtlas();
+      fireEvent.change(screen.getByLabelText(WORKSPACE_ROW), {
+        target: { value: 'worktree' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(screen.queryByText('Saving…')).toBeNull());
+      expect(updateProjectAsync).not.toHaveBeenCalled();
+    });
+
+    test('a project refetch that never settles still lets Save finish', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas' };
+      // The write LANDS; only the re-read never comes back. Waiting on it
+      // happens after the save deadline's race is already decided, so
+      // without its own deadline `Save` would spin with nothing left to
+      // wait for.
+      invalidateQuery.mockImplementation((key) =>
+        Array.isArray(key) && key[0] === 'projects'
+          ? new Promise<void>(() => {})
+          : Promise.resolve(),
+      );
+      await renderSettings();
+
+      selectAtlas();
+      fireEvent.change(screen.getByLabelText(WORKSPACE_ROW), {
+        target: { value: 'worktree' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(updateProjectAsync).toHaveBeenCalledTimes(1));
+      // The button comes back and the draft clears against a record this page
+      // never re-read. This exercises the SLOW case only: the invalidation
+      // never settles, so the deadline is what releases Save. A refetch that
+      // FAILS settles on its own (errors included) and never reaches the
+      // deadline, yet leaves the same picture — the pre-save value with no
+      // pill and no error until something else refetches the project. That
+      // gap is the accepted cost of not stranding Save forever.
+      await waitFor(
+        () => expect(screen.queryByText('Unsaved changes')).toBeNull(),
+        { timeout: 8000 },
+      );
+    }, 20000);
+
+    test('a clean override draft issues no project write, however dirty the Station draft is', async () => {
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, registryUrl: 'https://one.test' },
+        dataUpdatedAt: 1,
+      };
+      // Settled, and carrying a real override — so "nothing was sent" cannot
+      // be explained by an unread record or by there being nothing to send.
+      projectRecord = { slug: 'atlas', defaultWorkspaceIsolation: 'worktree' };
+      projectProvenance = {
+        defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
+      };
+      updateConfig.mockResolvedValueOnce({ data: {} });
+      await renderSettings();
+
+      selectAtlas();
+      const workspace = screen.getByLabelText(
+        WORKSPACE_ROW,
+      ) as HTMLSelectElement;
+      await waitFor(() => expect(workspace.value).toBe('worktree'));
+
+      // Touched and put BACK. An untouched row would make "no project write"
+      // true by construction; this reaches the delta's equality
+      // normalisation, which is the thing that has to hold.
+      fireEvent.change(workspace, { target: { value: 'shared' } });
+      expect(screen.getByText('Unsaved changes')).toBeTruthy();
+      fireEvent.change(workspace, { target: { value: 'worktree' } });
+
+      fireEvent.change(screen.getByLabelText('Registry URL'), {
+        target: { value: 'https://two.test' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
+      expect(updateConfig).toHaveBeenCalledWith({
+        registryUrl: 'https://two.test',
+      });
+      // Re-writing an unchanged override would restate the project's values
+      // on every unrelated Station save.
+      expect(updateProjectAsync).not.toHaveBeenCalled();
+    });
+
+    test('an unsaved override makes the row’s own popover say so', async () => {
+      // The whole path, once: SettingsView derives the pending map,
+      // StationConfigSection routes it per key, registry-row hands it to the
+      // status strip, and the lazily-loaded layer list withholds its "in
+      // effect" claim. Every layer of that is unit-tested; nothing else
+      // proves they are actually wired to each other.
+      configSnapshot = {
+        config: { ...INITIAL_CONFIG, defaultWorkspaceIsolation: 'shared' },
+        dataUpdatedAt: 1,
+      };
+      projectRecord = { slug: 'atlas', defaultWorkspaceIsolation: 'worktree' };
+      projectProvenance = {
+        defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
+      };
+      await renderSettings();
+
+      selectAtlas();
+      const workspace = screen.getByLabelText(
+        WORKSPACE_ROW,
+      ) as HTMLSelectElement;
+      await waitFor(() => expect(workspace.value).toBe('worktree'));
+
+      const trigger = within(workspace.closest('.page-row')!).getByRole(
+        'button',
+        { name: `Where ${WORKSPACE_ROW} comes from` },
+      );
+
+      // Saved state first: the project layer is claimed as in effect.
+      fireEvent.click(trigger);
+      expect(await screen.findByText('in effect')).toBeTruthy();
+      fireEvent.click(trigger);
+
+      fireEvent.change(workspace, { target: { value: 'shared' } });
+      fireEvent.click(trigger);
+      expect(
+        await screen.findByText(
+          'Unsaved change: the layers above describe what is saved.',
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText('in effect')).toBeNull();
+    });
   });
 
   test('falls back to the labeled Backup and Reset rows, never hidden or destructive controls', async () => {

@@ -65,6 +65,42 @@ describe('connection service pure helpers', () => {
     ).toEqual({ defaultModel: 'override', useAppHome: false });
   });
 
+  test('station#2072: persists sanitized env + configHome for claude/codex connections', () => {
+    expect(
+      sanitizeRuntimeConfig('claude', {
+        env: {
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          ANTHROPIC_API_KEY: '',
+          TMPDIR: '/refused',
+          'BAD-NAME': 'dropped',
+        },
+        configHome: '  ~/.claude_vibe ',
+      }),
+    ).toEqual({
+      provideSkills: [],
+      useAppHome: false,
+      env: {
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+        ANTHROPIC_API_KEY: '',
+      },
+      configHome: '~/.claude_vibe',
+    });
+    // All-invalid overrides stay absent — the config shape is unchanged.
+    expect(
+      sanitizeRuntimeConfig('codex', {
+        env: { TMPDIR: '/refused' },
+        configHome: '   ',
+      }),
+    ).toEqual({ useAppHome: false });
+    // Other engines never gain the keys.
+    expect(
+      sanitizeRuntimeConfig('muse', {
+        env: { FINE: 'kept-elsewhere' },
+        configHome: '~/.somewhere',
+      } as any),
+    ).toEqual({});
+  });
+
   test('derives public connection identity only at the Adapter seam', () => {
     expect(
       connectionIdForAdapter({

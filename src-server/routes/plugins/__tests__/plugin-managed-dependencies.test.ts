@@ -158,7 +158,10 @@ describe('managed dependency graph uses canonical lifecycle owners', () => {
       packageMcpJournal: store.createPackageMcpAdmissionJournal(),
     };
     const app = new Hono();
-    registerPluginInstallRoutes(app, installDeps);
+    registerPluginInstallRoutes(app, {
+      ...installDeps,
+      projectVisiblePlugins: () => (installed) => installed,
+    });
     const response = await app.request('/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -405,7 +408,10 @@ test('retained diamond recovery checks every version edge before deduplicating s
     packageMcpJournal: store.createPackageMcpAdmissionJournal(),
   };
   const app = new Hono();
-  registerPluginInstallRoutes(app, installDeps);
+  registerPluginInstallRoutes(app, {
+    ...installDeps,
+    projectVisiblePlugins: () => (installed) => installed,
+  });
   const source = (
     name: string,
     dependencies: Array<{ name: string; version: string }>,

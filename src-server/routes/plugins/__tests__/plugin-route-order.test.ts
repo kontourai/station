@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { Logger } from '../../../utils/logger.js';
+import { workspaceHomeRoleEventFrame } from '../plugin-identity-enumeration.js';
 import { createPluginRoutes } from '../plugins.js';
 
 const cleanup: string[] = [];
@@ -53,9 +54,17 @@ describe('composed plugin route order', () => {
     // handler received the request.
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ success: true });
-    expect(emit).toHaveBeenCalledWith(SERVER_EVENTS.PLUGINS_GRANTS_CHANGED, {
-      name: 'workspace-home-role',
-    });
+    // Built from the ONE constructor the emitters call, not a hand-copied
+    // literal. #2095 added the `homeRoleSlot` marker the collaborator relay
+    // requires, and this expectation still spelled the two-field payload out
+    // by hand — so it went red on a frame that was correct. That is the exact
+    // drift `workspaceHomeRoleEventFrame`'s docblock exists to prevent, and a
+    // test is not exempt from it: a literal here has to be kept in step with
+    // the emitters by somebody remembering to.
+    expect(emit).toHaveBeenCalledWith(
+      SERVER_EVENTS.PLUGINS_GRANTS_CHANGED,
+      workspaceHomeRoleEventFrame(),
+    );
   });
 
   test('the lifecycle catch-all still answers for ordinary plugin names after the reorder', async () => {

@@ -589,6 +589,30 @@ function adoptionTitle(threadId: string): string {
   return `Station continuation ${threadId}`;
 }
 
+const CLAUDE_CONFIG_DIR_ENV_KEY = 'CLAUDE_CONFIG_DIR';
+
+/**
+ * station#2072: the connection env's config-home key applies only to
+ * spawns whose config root is Station's to choose (fresh sessions,
+ * discovery). Adoption and source-affinity resume deliberately pin the
+ * GLOBAL config root (archive#896 decision 2 — forking/continuing under a
+ * different config home orphans the child there), so those drop ONLY the
+ * home key and keep the connection's routing keys, exactly the line the
+ * login-PATH augmentation draws.
+ */
+function claudeConnectionEnvForSpawn(
+  connectionEnv: Record<string, string> | undefined,
+  configHomeKeyApplies: boolean,
+): Record<string, string> | undefined {
+  if (!connectionEnv) return undefined;
+  if (configHomeKeyApplies || !(CLAUDE_CONFIG_DIR_ENV_KEY in connectionEnv)) {
+    return connectionEnv;
+  }
+  const { [CLAUDE_CONFIG_DIR_ENV_KEY]: _droppedConfigHome, ...rest } =
+    connectionEnv;
+  return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
 /** Matches the `any`-typed logger convention used across `providers/adapters` (e.g. AcpAdapterOptions.logger). */
 type ClaudeAdapterLogger = any;
 
@@ -664,6 +688,21 @@ export interface ClaudeAdapterOptions {
   getAppHomeEnv?: (
     credentialProfileRef?: string,
   ) => Promise<Record<string, string> | undefined>;
+  /**
+   * station#2072: per-connection env overrides + explicit config home,
+   * resolved from `AgentConnectionSettings.config` (`env` map and
+   * `configHome`, sanitized and tilde-expanded by the runtime's closure —
+   * see `connection-env.ts`). `undefined` when the connection configured
+   * neither; the adapter then keeps today's byte-identical env. Layered
+   * after the process/augmented env and before the app-home env: the
+   * connection's routing keys always win over the ambient env, while a
+   * selected credential profile (or source affinity) still owns the
+   * `CLAUDE_CONFIG_DIR` key. Model discovery DOES receive this layer — a
+   * proxy-routed connection's catalog must reflect the proxy. A resolution
+   * failure degrades to `undefined` with a warning; this layer asserts no
+   * credentials, so it never blocks a session start.
+   */
+  getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
   /**
    * Station#1157 review fix (MEDIUM): the running instance's own
    * station-control operational env (`stationControlSpawnEnv(port)`'s
@@ -953,6 +992,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const appHomeEnv = sourceCursor
       ? undefined
       : await this.resolveAppHomeEnv(input.credentialProfileRef);
+    // station#2072: the connection env's routing keys apply to every SDK
+    // spawn, but its config-home key must NOT apply where the app-home env
+    // is deliberately absent (adoption and source-affinity resume —
+    // archive#896 decision 2's config-root orphaning concern: running the
+    // child under a different config home would strand it there).
+    const connectionEnv = claudeConnectionEnvForSpawn(
+      await this.resolveConnectionEnv(),
+      !sourceCursor,
+    );
     const augmentedEnv = await this.resolveAugmentedSpawnEnv();
     const preToolPolicy = await this.resolvePreToolPolicy(input);
     const claudeExecutable = launchedClaudeExecutable(
@@ -963,6 +1011,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       input.persistSession === true,
       skillsReport,
       appHomeEnv,
+      connectionEnv,
       overlayDir,
       augmentedEnv,
       preToolPolicy,
@@ -1024,7 +1073,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // different config home would orphan it there (archive#896, decision 2). The
       // login-PATH augmentation (archive#1156) is unrelated to that
       // config-root concern and DOES still apply here — an adopted session
-      // spawns MCP servers exactly like a fresh one.
+      // spawns MCP servers exactly like a fresh one. station#2072 draws
+      // the same line for the connection env: its routing keys apply, its
+      // config-home key does not (same orphaning concern as the app-home
+      // env above).
+      const connectionEnv = claudeConnectionEnvForSpawn(
+        await this.resolveConnectionEnv(),
+        false,
+      );
       const augmentedEnv = await this.resolveAugmentedSpawnEnv();
       const preToolPolicy = await this.resolvePreToolPolicy(input);
       const claudeExecutable = launchedClaudeExecutable(
@@ -1035,6 +1091,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         true,
         skillsReport,
         undefined,
+        connectionEnv,
         overlayDir,
         augmentedEnv,
         preToolPolicy,
@@ -1143,6 +1200,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     persistSession: boolean,
     skillsReport?: CapabilityDeliveryChannelReport,
     appHomeEnv?: Record<string, string>,
+    connectionEnv?: Record<string, string>,
     skillsOverlayDir?: string,
     augmentedEnv?: Record<string, string | undefined>,
     preToolPolicy?: StagedPreToolPolicyEvaluator,
@@ -1160,6 +1218,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         persistSession,
         permissionMode,
         appHomeEnv,
+        connectionEnv,
         toolServers.mcpServers,
         skillsOverlayDir,
         augmentedEnv,
@@ -1872,6 +1931,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       await this.resolveClaudeExecutable(),
     );
     options?.signal?.throwIfAborted();
+    // station#2072: discovery sees the connection env + config home, so a
+    // proxy-routed connection lists the proxy's catalog, not the global
+    // config's — the same connection-scoped routing the session spawn
+    // applies. (Unlike the credential-profile app-home env, which stays
+    // session-scoped by archive#896 design.)
+    const connectionEnv = await this.resolveConnectionEnv();
     const promptQueue = new AsyncUserMessageQueue();
     const sdkQuery = query({
       prompt: promptQueue,
@@ -1885,7 +1950,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // Station-owned tmp directory as an interactive session; otherwise a
         // systemd PrivateTmp namespace makes Claude's extracted payloads
         // invisible to Station's reaper.
-        env: childProcessEnvironment({ TMPDIR: ensureEngineSpawnTmpDir() }),
+        env: childProcessEnvironment({
+          ...connectionEnv,
+          TMPDIR: ensureEngineSpawnTmpDir(),
+        }),
         mcpServers: {},
         persistSession: false,
         plugins: [],
@@ -2060,6 +2128,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     persistSession = false,
     permissionMode?: PermissionMode,
     appHomeEnv?: Record<string, string>,
+    connectionEnv?: Record<string, string>,
     mcpServers?: Record<string, McpServerConfig>,
     skillsOverlayDir?: string,
     augmentedEnv?: Record<string, string | undefined>,
@@ -2164,8 +2233,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // TMPDIR must be final: both augmentedEnv and appHomeEnv can contain a
       // caller/ambient value, but every Claude SDK spawn must use Station's
       // reaped engine-spawn directory (archive#1908).
+      //
+      // station#2072: the per-connection env layer (proxy routing) merges
+      // BEFORE the app-home layer, so the connection's routing keys always
+      // win over the ambient env while a selected credential profile (or
+      // source affinity) still owns the CLAUDE_CONFIG_DIR key — an explicit
+      // configHome beats useAppHome because the runtime resolves only one
+      // of the two into these layers. TMPDIR stays final even over this
+      // layer; the sanitizer refuses a configured TMPDIR outright.
       env: scrubBootInternalSecrets({
         ...(augmentedEnv ?? process.env),
+        ...connectionEnv,
         ...appHomeEnv,
         TMPDIR: ensureEngineSpawnTmpDir(),
       }),
@@ -2533,6 +2611,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       }
       (this.options.logger ?? console).warn?.(
         `Claude app-home profile lookup failed; continuing with the global Claude Code config: ${errorMessage(error)}`,
+      );
+      return undefined;
+    }
+  }
+
+  /**
+   * station#2072: resolves the per-connection env layer (see the option's
+   * doc comment). Degrades to `undefined` with a warning on failure — this
+   * layer asserts no credentials, so a routing-lookup failure must never
+   * block a session start (the credential-profile branch of
+   * `resolveAppHomeEnv` above stays the only fail-closed one).
+   */
+  private async resolveConnectionEnv(): Promise<
+    Record<string, string> | undefined
+  > {
+    try {
+      return await this.options.getConnectionEnv?.();
+    } catch (error) {
+      (this.options.logger ?? console).warn?.(
+        `Claude connection env lookup failed; continuing with the unaugmented connection env: ${errorMessage(error)}`,
       );
       return undefined;
     }

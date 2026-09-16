@@ -6,7 +6,6 @@ import {
   installE2EWorkspacePaneCatalog,
 } from './current-station-contract';
 import { rejectUnexpectedFixtureRequest } from './fixture-audit';
-import { placeSurfaceThroughLayoutPicker } from './region-placement';
 
 type ConversationLookupFixture = {
   id: string;
@@ -33,159 +32,143 @@ const conversationSessionReaders = new WeakMap<
 const CHAT_REGION_LABELS = ['Left', 'Right', 'Bottom'] as const;
 type ChatRegionLabel = (typeof CHAT_REGION_LABELS)[number];
 
+/**
+ * Whether a Playwright rejection is a STRICT-MODE VIOLATION — a locator that
+ * matched more than one element.
+ *
+ * This file used to answer `false`/`null` for it 17 times over, and
+ * `agents-journey.ts:265-277` records what that costs: a broad
+ * `/^Expand chat/` matched three unrelated controls, the surrounding
+ * `.catch(() => false)` swallowed the violation as "not visible", and a real
+ * ambiguity became a silent no-op instead of a loud failure. The sixteen
+ * `isVisible()` reads below no longer catch at all — `isVisible()` returns
+ * immediately and answers `false` for an absent element, so absence never
+ * needed a catch, and a violation, a closed page and an invalid selector were
+ * the only things one could ever have hidden. This predicate exists for the
+ * one read whose catch has a legitimate case to keep.
+ */
+function isAmbiguousLocator(error: unknown): boolean {
+  return (
+    error instanceof Error && error.message.includes('strict mode violation')
+  );
+}
+
 async function activeChatRegion(page: Page): Promise<ChatRegionLabel | null> {
   const className = await page
     .getByRole('region', { name: 'Dock', exact: true })
     .getAttribute('class')
-    .catch(() => null);
+    // NOT a bare `() => null`, unlike the `isVisible()` reads below, and the
+    // difference is real: `getAttribute` DOES auto-wait, so its timeout means
+    // "no Dock region", which is this function's documented `null` answer. A
+    // strict-mode violation is not that — it means the NAME matched several
+    // regions, and answering `null` would report "no dock" for "too many
+    // docks", then pick a layout branch from it.
+    .catch((error: unknown) => {
+      if (isAmbiguousLocator(error)) throw error;
+      return null;
+    });
   const region = className?.match(/\bchat-dock--(left|right|bottom)\b/)?.[1];
   if (!region) return null;
   return `${region[0]?.toUpperCase()}${region.slice(1)}` as ChatRegionLabel;
 }
 
 /**
- * The toolbar's one folded region control, under whichever name this
- * breakpoint gives it: "Layout regions" on a fine pointer, "Regions" on a
- * coarse one too wide to be mobile. `null` where neither renders — a phone,
- * where #917 moved the region commands into the `⋯` overflow.
+ * The toolbar's folded region control on a coarse device too wide to be
+ * mobile ("Regions"); `null` on a fine pointer, which has per-region toggles
+ * (#2143), and on a phone, where #917 moved the region commands into the `⋯`
+ * overflow.
  */
 async function regionControlTrigger(page: Page) {
-  for (const name of ['Layout regions', 'Regions'] as const) {
-    const trigger = page.getByRole('button', { name, exact: true });
-    if (await trigger.isVisible().catch(() => false)) return trigger;
-  }
-  return null;
+  const trigger = page.getByRole('button', { name: 'Regions', exact: true });
+  return (await trigger.isVisible()) ? trigger : null;
 }
 
 /**
- * Opens Chat through the folded region control, whichever surface it opens.
+ * Opens Chat through the shell's region controls, whichever chrome this
+ * breakpoint draws.
  *
- * #1536 F folded the five per-region buttons into one control, and #1552 D2
- * replaced what the fine pointer's branch opens: a `role="group"` placement
- * PICKER whose rows are `radiogroup`s of region segments, not a `role="menu"`
- * of Show/Hide verbs. The coarse branch still opens the flat menu. Both are
- * handled here so a journey does not have to know which chrome it drew.
+ * FINE POINTER (#2143): one toggle per dock region, `aria-pressed` from the
+ * model. Chat's region is read off the Dock's own class; if that region's
+ * toggle is not pressed, pressing it shows the region; then, if Chat is
+ * behind another pane's tab in that region, its tab is selected. An
+ * unplaced Chat has no region: the empty Bottom region (Chat's default) is
+ * then a menu, and "Show Chat here" is the placement.
  *
- * The post-condition differs with the surface but says the same thing — that
- * the model now shows Chat where it was asked to. The menu re-offers `Hide
- * Chat`; the picker re-opens with that region's segment `aria-checked`. Each
- * is read after REOPENING the panel, because selecting closes it, so the
- * assertion sees freshly derived state rather than the DOM it just clicked.
+ * COARSE, WIDE: the flat "Region surfaces" menu, unchanged since #1536 F.
  *
- * Three popups, one trigger. The picker is what #1552 D2 renders on a fine
- * pointer; the grouped verb menu is what the toolbar branch renders on one
- * (a7936006e's path, absorbed here so there is a single place that decides);
- * the flat "Region surfaces" menu is the coarse branch on both.
+ * The post-condition is read after the write settles — the toggle's pressed
+ * state re-derived from the arrangement, or the menu reopened — never the
+ * DOM just clicked.
  *
  * Returns false when no region control is on screen, or when the one that is
  * opened a surface it could not act on, leaving the caller's remaining
  * fallbacks to run.
  */
 async function openChatThroughRegionControl(page: Page): Promise<boolean> {
+  const region = await activeChatRegion(page);
+  const toggle = page.getByRole('button', {
+    name: `${region ?? 'Bottom'} region`,
+    exact: true,
+  });
+  if (await toggle.isVisible()) {
+    const pressed = await toggle.getAttribute('aria-pressed');
+    if (pressed === 'false') {
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    }
+    if (pressed !== null) {
+      // The region is showing, but "Dock" names the region whose panes
+      // INCLUDE Chat, selected or not (#2046 D3) — so Chat may be behind
+      // another pane's tab. The strip renders only for two or more panes;
+      // if it is there and Chat's tab is not selected, select it, and read
+      // `aria-selected` back rather than trusting the click. `count()` does
+      // not wait, so the strip is given the region's own settle first.
+      const chatTab = page
+        .getByRole('tablist', { name: 'Region panes' })
+        .getByRole('tab', { name: 'Chat', exact: true });
+      await page.getByRole('region', { name: 'Dock', exact: true }).waitFor();
+      if (
+        (await chatTab.count()) > 0 &&
+        (await chatTab.getAttribute('aria-selected')) !== 'true'
+      ) {
+        await chatTab.click();
+        await expect(chatTab).toHaveAttribute('aria-selected', 'true');
+      }
+      return true;
+    }
+    // No pressed state: the region is empty and the control is a menu.
+    await toggle.click();
+    const menu = page.getByRole('menu', {
+      name: `Show in ${region ?? 'Bottom'} region`,
+    });
+    await expect(menu).toBeVisible();
+    const show = menu.getByRole('menuitem', {
+      name: 'Show Chat here',
+      exact: true,
+    });
+    if (!(await show.isVisible())) {
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+      return false;
+    }
+    await show.click();
+    await expect(menu).toBeHidden();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    return true;
+  }
+
   const trigger = await regionControlTrigger(page);
   if (!trigger) return false;
   await trigger.click();
 
-  const picker = page.getByRole('group', { name: 'Layout regions' });
-  if (await picker.isVisible().catch(() => false)) {
-    // The Dock's own region class is the live shell state; a surface registry
-    // can retain a dormant Chat registration elsewhere. Bottom is the
-    // registry's `defaultRegion` for Chat, so it is where an unplaced Chat is
-    // asked to go.
-    const region = (await activeChatRegion(page)) ?? 'Bottom';
-    const segment = picker
-      .getByRole('radiogroup', { name: 'Chat placement' })
-      .getByRole('radio', { name: region, exact: true });
-
-    // Already showing Chat there: this helper's job is done, and clicking a
-    // pressed segment would assert a placement that did not happen. Leave the
-    // portalled panel closed the way it was found — its dismiss backdrop
-    // covers the viewport.
-    if ((await segment.getAttribute('aria-checked')) === 'true') {
-      await page.keyboard.press('Escape');
-      await expect(picker).toBeHidden();
-      return true;
-    }
-    await page.keyboard.press('Escape');
-    await expect(picker).toBeHidden();
-
-    // One implementation of choose → reopen → read the freshly derived
-    // pressed state → dismiss (#1541). The picker branch only renders on a
-    // fine pointer, where `regionControlTrigger` resolves to the same
-    // "Layout regions" button this opens; a coarse pointer gets the flat menu
-    // handled below, so the two cannot disagree about which control to press.
-    await placeSurfaceThroughLayoutPicker(page, 'Chat', region);
-    return true;
-  }
-
-  // The GROUPED VERB MENU (a7936006e, the toolbar branch's own chrome): rows
-  // grouped by region, Chat's row in its own region a Show/Hide checkbox, or
-  // "Place Chat here" while another surface holds the region. Kept whole
-  // because the two branches can diverge again, and a helper that only knows
-  // the newer surface would then fail on the older one with a selector error
-  // rather than a statement about Chat.
-  const layoutMenu = page.getByRole('menu', { name: 'Layout regions' });
-  if (await layoutMenu.isVisible().catch(() => false)) {
-    const reopen = async () => {
-      const again = await regionControlTrigger(page);
-      if (!again) {
-        throw new Error('The region control disappeared while opening Chat.');
-      }
-      await again.click();
-      const menu = page.getByRole('menu', { name: 'Layout regions' });
-      await expect(menu).toBeVisible();
-      return menu;
-    };
-    const expectHideRow = async () => {
-      const menu = await reopen();
-      await expect(
-        menu.getByRole('menuitemcheckbox', { name: 'Hide Chat', exact: true }),
-      ).toBeVisible();
-      await page.keyboard.press('Escape');
-      await expect(menu).toBeHidden();
-    };
-
-    const hide = layoutMenu.getByRole('menuitemcheckbox', {
-      name: 'Hide Chat',
-      exact: true,
-    });
-    if (await hide.isVisible().catch(() => false)) {
-      await page.keyboard.press('Escape');
-      await expect(layoutMenu).toBeHidden();
-      return true;
-    }
-    const show = layoutMenu.getByRole('menuitemcheckbox', {
-      name: 'Show Chat',
-      exact: true,
-    });
-    if (await show.isVisible().catch(() => false)) {
-      await show.click();
-      await expectHideRow();
-      return true;
-    }
-    const activeRegion = await activeChatRegion(page);
-    if (activeRegion) {
-      const place = layoutMenu
-        .getByRole('group', { name: activeRegion, exact: true })
-        .getByRole('menuitem', { name: 'Place Chat here', exact: true });
-      if (await place.isVisible().catch(() => false)) {
-        await place.click();
-        await expectHideRow();
-        return true;
-      }
-    }
-    await page.keyboard.press('Escape');
-    return false;
-  }
-
   // The folded rows name the dock since #1386 ("Hide Chat from the dock"),
   // because the bare verb collided with the docked shell's own control.
   const menu = page.getByRole('menu', { name: 'Region surfaces' });
-  if (await menu.isVisible().catch(() => false)) {
+  if (await menu.isVisible()) {
     const hide = menu.getByRole('menuitemcheckbox', {
       name: 'Hide Chat from the dock',
     });
-    if (!(await hide.isVisible().catch(() => false))) {
+    if (!(await hide.isVisible())) {
       await menu
         .getByRole('menuitemcheckbox', { name: 'Show Chat in the dock' })
         .click();
@@ -233,7 +216,7 @@ export async function openChatRegion(page: Page): Promise<void> {
       name: `Hide Chat ${region} region`,
       exact: true,
     });
-    if (await hide.isVisible().catch(() => false)) {
+    if (await hide.isVisible()) {
       await expect(hide).toBeVisible();
       return;
     }
@@ -254,7 +237,7 @@ export async function openChatRegion(page: Page): Promise<void> {
       name: `Show Chat ${activeRegion} region`,
       exact: true,
     });
-    if (await show.isVisible().catch(() => false)) {
+    if (await show.isVisible()) {
       await show.click();
       await expect(
         page.getByRole('button', {
@@ -269,7 +252,7 @@ export async function openChatRegion(page: Page): Promise<void> {
       name: `Place Chat in ${activeRegion} region`,
       exact: true,
     });
-    if (await place.isVisible().catch(() => false)) {
+    if (await place.isVisible()) {
       await place.click();
       await expect(
         page.getByRole('button', {
@@ -281,68 +264,10 @@ export async function openChatRegion(page: Page): Promise<void> {
     }
   }
 
-  // Since #1552 the desktop toolbar carries one "Layout regions" menu instead
-  // of per-region Show/Hide/Place buttons: rows are grouped by region (the
-  // group's accessible name is the region label) and Chat's row in its own
-  // region is a Show/Hide checkbox, or "Place Chat here" while another surface
-  // holds the region. The complementary Hide row is the post-condition here
-  // too; the menu is reopened to read it because selecting a row closes it.
-  const layout = page.getByRole('button', {
-    name: 'Layout regions',
-    exact: true,
-  });
-  if (await layout.isVisible().catch(() => false)) {
-    const openLayoutMenu = async () => {
-      await layout.click();
-      const menu = page.getByRole('menu', { name: 'Layout regions' });
-      await expect(menu).toBeVisible();
-      return menu;
-    };
-    const expectHideRow = async () => {
-      const menu = await openLayoutMenu();
-      await expect(
-        menu.getByRole('menuitemcheckbox', { name: 'Hide Chat', exact: true }),
-      ).toBeVisible();
-      await page.keyboard.press('Escape');
-      await expect(menu).toBeHidden();
-    };
-
-    const menu = await openLayoutMenu();
-    const hide = menu.getByRole('menuitemcheckbox', {
-      name: 'Hide Chat',
-      exact: true,
-    });
-    if (await hide.isVisible().catch(() => false)) {
-      await page.keyboard.press('Escape');
-      await expect(menu).toBeHidden();
-      return;
-    }
-    const show = menu.getByRole('menuitemcheckbox', {
-      name: 'Show Chat',
-      exact: true,
-    });
-    if (await show.isVisible().catch(() => false)) {
-      await show.click();
-      await expectHideRow();
-      return;
-    }
-    if (activeRegion) {
-      const place = menu
-        .getByRole('group', { name: activeRegion, exact: true })
-        .getByRole('menuitem', { name: 'Place Chat here', exact: true });
-      if (await place.isVisible().catch(() => false)) {
-        await place.click();
-        await expectHideRow();
-        return;
-      }
-    }
-    await page.keyboard.press('Escape');
-  }
-
   const expand = page.getByRole('button', {
     name: /^Expand chat(?: dock)?$/,
   });
-  if (await expand.isVisible().catch(() => false)) {
+  if (await expand.isVisible()) {
     await expand.click();
     await expect(
       page.getByRole('button', { name: /^Collapse chat(?: dock)?$/ }),

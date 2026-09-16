@@ -1,0 +1,164 @@
+/* The Boards section (#2062). The row reuses `.sidebar__project-btn` so a
+   Board and a project read as peers in the same list; only the affordances
+   that are Boards-specific — the rename input and the row menu — are here. */
+
+.sidebar__board-row {
+  position: relative;
+}
+
+/* The row's own line: the Board button (or rename input) plus the absolutely
+   positioned menu trigger. The menus are siblings of this box, not children,
+   which is the whole point — an open menu grows `.sidebar__board-row` from
+   44px to ~138px, and a trigger centred on THAT would slide down onto the
+   menu's first item and swallow taps meant for Rename (#2062 review F1).
+   Mirrors `.sidebar__project-row-main`, which contains the projects list's
+   absolute controls for the same reason. */
+.sidebar__board-row-main {
+  position: relative;
+}
+
+.sidebar__board-glyph {
+  display: inline-flex;
+  width: 18px;
+  justify-content: center;
+  flex: 0 0 18px;
+}
+
+/* The rename input replaces the row in place, so it has to carry the row's
+   own box metrics: a differently-sized control would make the list jump on
+   every rename. */
+.sidebar__board-rename {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-family: inherit;
+}
+
+.sidebar__board-menu-trigger {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 24px is the POINTER target. Touch gets its own treatment below, because
+     a trigger revealed by hover is no trigger at all on a phone. */
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+}
+
+/* Revealed on hover or focus, the same treatment `.sidebar__section-remove`
+   uses — and `focus-within` is what keeps it reachable by keyboard, since a
+   control at `opacity: 0` is still focusable and would otherwise take a tab
+   stop nobody can see. */
+.sidebar__board-row:hover .sidebar__board-menu-trigger,
+.sidebar__board-row:focus-within .sidebar__board-menu-trigger {
+  opacity: 1;
+}
+
+/* No hover on touch: the row menu is always visible, at the 44px floor the
+   rest of the mobile sidebar controls use — the same answer
+   `.sidebar__section-remove` and `.sidebar__reorder-handle` already give for
+   this exact problem in `ProjectSidebar.css`.
+
+   This is load-bearing rather than polish (#2062 review M1). The row menu is
+   the ONLY rename affordance a phone has: the section is hidden when the
+   viewer owns no Boards, so the `+` inside it is unreachable, and the command
+   palette — the entry point that exists for that viewer — deliberately does
+   not open rename on touch, because the panel sits in a drawer that is
+   normally closed. A Board created that way arrives named `Untitled Board`,
+   and before this block the control for renaming it sat at `opacity: 0`,
+   tappable and invisible. `:focus-within` could not rescue it either: tapping
+   the row navigates and closes the drawer.
+
+   `pointer: coarse` rather than the drawer's width breakpoint, following
+   `.sidebar__reorder-handle`: the defect is the absence of hover, not a
+   narrow viewport. The 44px box fits without the row surgery that handle
+   needed — on coarse pointers `.sidebar__project-btn`, which the Board row
+   reuses, is already `min-height: 44px` with `padding-right: 66px`, so the
+   trigger's target sits inside a band the label never enters. */
+@media (pointer: coarse) {
+  .sidebar__board-menu-trigger {
+    min-width: 44px;
+    min-height: 44px;
+    opacity: 1;
+  }
+}
+
+.sidebar__board-menu-trigger:hover,
+.sidebar__board-menu-trigger:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* WHERE the menu sits, and nothing else (#2083).
+
+   Its surface and its rows are `.menu-surface` / `.menu-row` from index.css —
+   the one spec #1552 D4 gave every menu in the app — so what used to live here
+   is gone: a 6px radius, a 4px pad, `bg-tertiary`, and `padding: 6px 8px` at
+   `--text-sm` rows, which measured about 26px against the 44px touch floor
+   src-ui/AGENTS.md requires. Adopting the shared row is what supplies that
+   floor, through `.menu-row.menu-row { min-height: 44px }` in the
+   `(pointer: coarse)` block of components/chat/chat.css. Writing a fourth
+   coarse block HERE would have re-answered a question the family already
+   answers, and answered it only for this menu.
+
+   `.menu-surface` owns the box; positioning stays with each menu, which is the
+   split that section documents. This one is in flow rather than portalled, so
+   its position is an inset. */
+.sidebar__board-menu {
+  margin: 2px 12px 6px;
+  /* The one declaration of the spec this menu cannot take. `.menu-surface`
+     fills with `--bg-secondary`, which is `--k-panel` — the EXACT fill of
+     `.sidebar` itself. Every other member of the family floats over content of
+     some other colour, where the surface's border and `--shadow-menu` are
+     enough; this one renders in flow on the panel it belongs to, so the spec's
+     fill would leave the menu reading as an unfilled outline drawn on the rail.
+     `--bg-tertiary` is `--k-panel-raised`, which is the raised-on-panel answer
+     the token set already has, and is what this menu used before #2083. */
+  background: var(--bg-tertiary);
+}
+
+/* The family's rows carry NO vertical padding (`.menu-row`, index.css): a 32px
+   `min-height` around one line of text needs none. This menu is the first
+   member whose labels can wrap — the project picker renders arbitrary project
+   names into a 240px rail — and a wrapped label fills the 32px row edge to
+   edge with only the surface's 4px gap outside it. Measured in Chromium
+   against the built assets during #2083's review.
+
+   Padding rather than truncation: a project name is how the user tells two
+   projects apart, and an ellipsis in a picker hides exactly the tail that
+   distinguishes them. This changes nothing for a single-line row, where the
+   32px floor still governs the height, and nothing on a coarse pointer, where
+   the 44px floor already leaves room. */
+.sidebar__board-menu .menu-row {
+  padding-block: var(--space-2);
+}
+
+/* The confirm's question, above the two rows that answer it. No bottom margin:
+   `.menu-surface`'s own `gap` separates it from them, and a margin on top of
+   that gap would space it differently from every other pair in the family. */
+.sidebar__board-confirm {
+  margin: 0;
+  padding: 4px var(--space-6);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.sidebar--collapsed .sidebar__board-menu,
+.sidebar--collapsed .sidebar__board-rename {
+  display: none;
+}

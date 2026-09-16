@@ -763,6 +763,35 @@ describe('CommandPalette', () => {
     }
   });
 
+  /**
+   * #2062 review MED-6: the Boards section is hidden when the viewer owns
+   * none, and its `+` lives inside it, so this row is the ONLY way to make a
+   * first Board. The panel half — what the dispatch does — is asserted in
+   * `ProjectSidebarBoards.test.tsx` against the real `ProjectSidebar`; both
+   * sides import the trigger itself rather than writing the event name down,
+   * so they cannot drift apart silently.
+   */
+  test('registers New Board and dispatches its create request', async () => {
+    const { NEW_BOARD_REQUEST_EVENT } = await import(
+      '../components/project-sidebar/new-board-events'
+    );
+    const listener = vi.fn();
+    window.addEventListener(NEW_BOARD_REQUEST_EVENT, listener);
+    try {
+      await renderCommandPalette();
+      open();
+      fireEvent.change(screen.getByRole('combobox'), {
+        target: { value: 'new board' },
+      });
+      fireEvent.click(screen.getByRole('option', { name: /New Board/ }));
+      expect(listener).toHaveBeenCalledTimes(1);
+      // The palette closes so the panel's rename input is what has focus next.
+      expect(screen.queryByRole('dialog')).toBeNull();
+    } finally {
+      window.removeEventListener(NEW_BOARD_REQUEST_EVENT, listener);
+    }
+  });
+
   test('Enter runs the highlighted command then closes', async () => {
     await renderCommandPalette();
     open();

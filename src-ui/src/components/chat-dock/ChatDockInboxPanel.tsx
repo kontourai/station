@@ -67,6 +67,13 @@ export interface ChatDockInboxPanelProps {
    * below for why it has to be the caller's stable reference.
    */
   agents?: InboxGroupListProps['agents'];
+  /**
+   * Local session working directories by thread id, for the rows' hover
+   * cards' git section (see `InboxGroupListProps.cwdByThreadId`). Absent
+   * renders cards without a git section. Referentially stable, like the
+   * other shared props — the `memo()` wrap compares shallowly.
+   */
+  cwdByThreadId?: InboxGroupListProps['cwdByThreadId'];
 }
 
 /**
@@ -90,6 +97,7 @@ function ChatDockInboxPanelImpl({
   exiting = false,
   now: suppliedNow,
   agents,
+  cwdByThreadId,
 }: ChatDockInboxPanelProps) {
   const now = suppliedNow ?? Date.now();
   const panelRef = useRef<HTMLElement>(null);
@@ -135,6 +143,7 @@ function ChatDockInboxPanelImpl({
             openChatIds={openChatIds}
             now={now}
             agents={agents}
+            cwdByThreadId={cwdByThreadId}
             collapsible={{ sections, onToggle: toggleSection }}
             onActivate={(item) => {
               // station#3687 seam 4: acknowledge only after the click did

@@ -101,10 +101,9 @@ describe('first-run tour anchors resolve to canonical routes', () => {
     // against the actual nav registry, which is what decides whether that
     // element renders at all.
     const sources = [
-      'views/ReviewQueueView.tsx',
       'views/ScheduleView.tsx',
       'views/SessionsView.tsx',
-      'components/project-sidebar/ProjectSidebarStatus.tsx',
+      'components/project-sidebar/ProjectSidebarFooter.tsx',
     ]
       .map((relative) =>
         readFileSync(join(__dirname, '../../..', relative), 'utf8'),

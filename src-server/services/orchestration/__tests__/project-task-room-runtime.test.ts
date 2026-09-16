@@ -1272,6 +1272,67 @@ describe('ProjectTaskRoomRuntime', () => {
     });
   });
 
+  // The other way a participant leaves, and the one that actually happens:
+  // `depart` above is only ever sent by a button
+  // (`src-ui/src/workspace-panes/ProjectTaskRoomPresence.tsx`), never on tab
+  // close, so an ordinary browser that goes away leaves nothing behind but a
+  // stale lease. What removes it is TTL expiry — `expiresAt` is renewed by the
+  // heartbeat and `#prune` drops the participant on the next read.
+  //
+  // This is the server half of the sidebar presence tray's claim (#2066). The
+  // tray tells the user a participant that stops heartbeating is dropped "up
+  // to about forty seconds" later: THIS bound plus the client's poll
+  // (`LIVE_ACTIVITY_POLL_INTERVAL_MS`, pinned in
+  // `packages/sdk/src/__tests__/live-activity.test.ts`). An earlier version of
+  // the copy said "about half a minute", which quoted this constant alone and
+  // omitted the poll — so quoting the copy here means quoting the CURRENT one.
+  // Nothing else in the projection's chain expires a human participant.
+  test('liveActivity: a participant that stops heartbeating expires from the projection', async () => {
+    // Only `Date` is faked: the runtime reads the clock through `Date.now()`
+    // and its sqlite/async work must keep running for real.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-20T00:00:00.000Z'));
+    const { runtime } = fixture();
+    const request = new Request('http://station');
+    await runtime.live({ taskId: task.id, request, command: 'join' });
+    await runtime.live({ taskId: task.id, request, command: 'announce' });
+    await expect(runtime.liveActivity({ request })).resolves.toMatchObject({
+      kind: 'available',
+      projection: { participants: [{ actor: { kind: 'human' } }] },
+    });
+
+    // Still present one tick BEFORE the lease runs out — without this the test
+    // would pass against a projection that dropped the participant instantly,
+    // which is the opposite of the bound the tray describes.
+    vi.setSystemTime(Date.now() + DEFAULT_LIVE_WORK_BOUNDS.ttlMs - 1);
+    await expect(runtime.liveActivity({ request })).resolves.toMatchObject({
+      kind: 'available',
+      projection: { participants: [{ actor: { kind: 'human' } }] },
+    });
+
+    // The expiry INSTANT itself, which the pair above brackets without
+    // pinning: `#prune` drops on `expiresAt <= now`, so the lease is over at
+    // exactly `ttlMs`, not one tick later. Asserting only `ttlMs + 1` would
+    // leave an off-by-one at the boundary free to move in either direction.
+    vi.setSystemTime(Date.now() + 1);
+    await expect(runtime.liveActivity({ request })).resolves.toMatchObject({
+      kind: 'available',
+      projection: { participants: [] },
+    });
+
+    // And past it, with no heartbeat and no `depart`: still gone.
+    vi.setSystemTime(Date.now() + 1);
+    await expect(runtime.liveActivity({ request })).resolves.toMatchObject({
+      kind: 'available',
+      projection: { participants: [] },
+    });
+
+    // The literal the tray's copy is written against, pinned alongside the
+    // derived arithmetic above so widening the bound cannot quietly keep this
+    // test green while the copy goes stale.
+    expect(DEFAULT_LIVE_WORK_BOUNDS.ttlMs).toBe(30_000);
+  });
+
   test('liveActivity: returns unavailable after close or in hosted mode', async () => {
     const hosted = fixture({ hosted: true }).runtime;
     await expect(

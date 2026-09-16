@@ -26,7 +26,10 @@ import {
   unsupportedModelOptionKeys,
 } from '@kontourai/station-contracts/provider';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
-import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
+import {
+  resolveWorkspaceIsolationMode,
+  type WorkspaceIsolationMode,
+} from '@kontourai/station-contracts/workspace-isolation';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { expandTilde } from '../../utils/paths.js';
 
@@ -74,6 +77,24 @@ export interface ExecutionTargetResolverDependencies {
     access: EnvironmentAccess,
     slug: string,
   ) => Promise<ResolvedProjectView | undefined>;
+  /**
+   * This Station's `AppConfig.defaultWorkspaceIsolation` (#2144 slice 2) —
+   * the fallback a project that names no workspace mode of its own lands on,
+   * ahead of `'shared'`.
+   *
+   * Takes `access` because the project it qualifies comes from `getProject`,
+   * which reads the SELECTED Station. A wiring that answered from the local
+   * config for a remote Environment would describe the wrong host's setting,
+   * so the production wirings answer only for `access.kind === 'current'`
+   * and leave a remote Environment on `'shared'` unless its own project
+   * record names a mode — which is exactly today's behavior there.
+   *
+   * Optional: absent is indistinguishable from "this Station has no default",
+   * and both resolve to `'shared'`.
+   */
+  getStationDefaultWorkspaceIsolation?: (
+    access: EnvironmentAccess,
+  ) => Promise<WorkspaceIsolationMode | undefined>;
   /**
    * Registered adapter lookup on the selected Station. Model-launch support
    * belongs to the adapter declaration; it is not a provider-name policy.
@@ -322,8 +343,15 @@ async function resolveWorkspace(
       projectSlug: slug,
       cwd,
       workspaceIsolation: workspace.workspaceIsolation ?? {
-        // An unset project record preserves today's shared-checkout launch.
-        mode: project.defaultWorkspaceIsolation ?? 'shared',
+        // A project that names no mode falls through to this Station's
+        // default, then to the shared checkout (#2144 slice 2). Resolved by
+        // the shared helper, not inline: the plugin foreground-invocation
+        // admission re-checks this same question as a provisioning
+        // precondition, and the two must not be able to disagree.
+        mode: resolveWorkspaceIsolationMode(
+          project.defaultWorkspaceIsolation,
+          await deps.getStationDefaultWorkspaceIsolation?.(access),
+        ),
       },
     },
     ...(access.verifiedProjectPath

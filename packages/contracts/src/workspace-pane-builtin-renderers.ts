@@ -37,8 +37,23 @@ export const BUILTIN_WORKSPACE_PANE_RENDERER_NAMES = [
   'workspace-trust',
   'workspace-browser-preview',
   'workspace-file-preview',
+  // One pull request as its own dock tab (#2049). Its descriptor lives in
+  // `workspace-pull-request-pane.ts`; the renderer mounts the same review
+  // surface the Diff pane's list opens.
+  'workspace-pull-request',
+  // One Board or project Layout as its own dock tab (#2157). Its descriptor
+  // lives in `workspace-layout-pane.ts`; the renderer mounts the same
+  // `LayoutRenderer` the main region uses for the layout the id names.
+  'workspace-layout',
   'workspace-home',
   'workspace-activity',
+  // This conversation's running tool calls, delegated sessions and provider
+  // subagents as a dock tab (#2050). Its descriptor lives in
+  // `workspace-agents-pane.ts`.
+  'workspace-agents',
+  // One captured frame of a simulator or emulator, as a dock tab (#1969).
+  // Its descriptor lives in `workspace-device-pane.ts`.
+  'workspace-device',
   'workspace-spatial-board',
   // The Console Board (epic station#4142 M4a). Its descriptor lives in
   // `@kontourai/station-board-pane`, not here — the name alone joins this

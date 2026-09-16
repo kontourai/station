@@ -1,5 +1,11 @@
+import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
+import {
+  resolveWorkspaceIsolationMode,
+  type WorkspaceIsolationMode,
+} from '@kontourai/station-contracts/workspace-isolation';
 import {
   useDeleteProjectMutation,
+  useModelConnectionsQuery,
   useProjectQuery,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
@@ -18,6 +24,7 @@ import { PageSection } from '../components/PageSection';
 import { PathAutocomplete } from '../components/PathAutocomplete';
 import { SectionNav } from '../components/SectionNav';
 import { ErrorState, Skeleton } from '../components/state';
+import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import type { ProjectConfig } from '../contexts/ProjectsContext';
 import { useShowSurface } from '../contexts/useShowSurface';
@@ -52,7 +59,92 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['danger', 'Danger zone'],
 ] as const;
 
+/** How each stored workspace mode reads in this picker. */
+const WORKSPACE_MODE_LABELS: Record<WorkspaceIsolationMode, string> = {
+  worktree: 'a fresh git worktree',
+  shared: 'the current checkout',
+};
+
+/**
+ * The inherit option's label, naming the mode it currently resolves to when —
+ * and only when — the Station config has actually been read.
+ *
+ * `useConfig()` returns `null` while the read is in flight or has failed, and
+ * "currently: the current checkout" is a claim about a value nobody has
+ * looked at yet: `shared` is the resolver's fallback, so an unloaded config
+ * and a Station that really is on `shared` produce the same string from
+ * different amounts of knowledge. The bare label is what we can say then.
+ */
+function inheritOptionLabel(
+  stationDefault: WorkspaceIsolationMode | undefined,
+  configLoaded: boolean,
+): string {
+  if (!configLoaded) return 'Follow the Station default';
+  return `Use the Station default (currently: ${
+    WORKSPACE_MODE_LABELS[
+      resolveWorkspaceIsolationMode(undefined, stationDefault)
+    ]
+  })`;
+}
+
+/** A connection's own catalog, in the shape `ModelSelector` takes. */
+function connectionModelOptions(
+  connection: ModelConnectionConfig | undefined,
+): Array<{ id: string; name: string; originalId: string }> | undefined {
+  const raw = connection?.config.modelOptions;
+  if (!Array.isArray(raw)) return undefined;
+  return (
+    raw as Array<{ id?: unknown; name?: unknown; originalId?: unknown }>
+  ).flatMap((model) =>
+    typeof model?.id === 'string'
+      ? [
+          {
+            id: model.id,
+            name: typeof model.name === 'string' ? model.name : model.id,
+            originalId:
+              typeof model.originalId === 'string'
+                ? model.originalId
+                : model.id,
+          },
+        ]
+      : [],
+  );
+}
+
+/**
+ * The model id this field STARTS at when a connection is chosen — an opening
+ * value the person can change, not an authoritative default.
+ *
+ * Only the first branch is a declared default (`config.defaultModel`). The
+ * second is the connection's catalog in whatever order the provider listed
+ * it, which is a model the connection offers and nothing stronger; the
+ * copy beside the field says exactly that rather than calling it "the
+ * connection's default".
+ *
+ * Why pre-fill at all: `ProviderService.resolve` requires BOTH
+ * `defaultProviderId` and `defaultModel` (provider-service.ts) and silently
+ * falls through to the Station default when either is missing — while the
+ * browser-side resolver would fall back to the connection's own default, so
+ * the two disagree about the same project. And a model id left over from a
+ * previously chosen connection is refused outright ("Model '…' is not
+ * available on provider connection").
+ *
+ * Returns `''` when the connection declares no default and offers no
+ * catalog. That leaves the pair genuinely half-set, and it is the one case
+ * this cannot fix from here: there is no model id to commit. The field
+ * renders empty and its hint still says the Station default applies.
+ */
+function connectionInitialModelId(
+  connection: ModelConnectionConfig | undefined,
+): string {
+  if (!connection) return '';
+  const declared = connection.config.defaultModel;
+  if (typeof declared === 'string' && declared) return declared;
+  return connectionModelOptions(connection)?.[0]?.id ?? '';
+}
+
 export function ProjectSettingsView({ slug }: { slug: string }) {
+  const stationConfig = useConfig();
   const { navigate } = useNavigation();
   const showSurface = useShowSurface();
 
@@ -102,6 +194,27 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
       )
       ?.scrollIntoView?.({ block: 'nearest', inline: 'start' });
   }, [activeSection, form]);
+
+  // Connections a project default could actually run through. `status` on a
+  // model connection is derived from "a non-empty key is saved", so `ready`
+  // is the weakest honest filter available here; offering a disabled or
+  // unconfigured connection would persist a pair that resolves to nothing.
+  const { data: modelConnections = [] } = useModelConnectionsQuery() as {
+    data?: ModelConnectionConfig[];
+  };
+  const selectableModelConnections = modelConnections.filter(
+    (connection) =>
+      connection.kind === 'model' &&
+      connection.enabled &&
+      connection.status === 'ready',
+  );
+  const selectedConnection = selectableModelConnections.find(
+    (connection) => connection.id === form?.defaultProviderId,
+  );
+  // Undefined (not an empty array) when there is no catalog to offer, so the
+  // picker falls back to the global model list rather than rendering empty,
+  // and an off-catalog id typed into it still commits.
+  const selectedConnectionModels = connectionModelOptions(selectedConnection);
 
   const saveMutation = useUpdateProjectMutation();
 
@@ -351,14 +464,74 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           className="project-settings__section"
           eyebrow="Conversation default"
           title="AI model"
-          description="Choose the starting model for new work in this project."
+          description="Choose the starting model for new work in this project. Both a model connection and a model are needed — with only one of them set, this project falls back to the Station default."
         >
           <PageRow
+            label="Model connection"
+            description="Which configured model connection this project's chats run through."
+            control={
+              <select
+                id="project-default-provider"
+                className="editor-input"
+                aria-label="Model connection"
+                value={form.defaultProviderId ?? ''}
+                onChange={(event) => {
+                  const providerId = event.target.value;
+                  // A model id only means something against the connection
+                  // that offers it. Choosing or switching a connection
+                  // commits a model THAT connection offers, so the field
+                  // never carries the previous connection's id (which the
+                  // server refuses outright). Clearing the connection clears
+                  // the model with it.
+                  //
+                  // One case still leaves the pair half-set: a ready
+                  // connection that declares no `config.defaultModel` and
+                  // lists no `modelOptions` has no id to commit, so the
+                  // field lands empty. The server then resolves this project
+                  // to the Station default, which is what the model field's
+                  // own hint says happens when either half is missing.
+                  setForm((current) =>
+                    current
+                      ? {
+                          ...current,
+                          defaultProviderId: providerId,
+                          defaultModel: connectionInitialModelId(
+                            selectableModelConnections.find(
+                              (connection) => connection.id === providerId,
+                            ),
+                          ),
+                        }
+                      : current,
+                  );
+                }}
+              >
+                <option value="">Station default</option>
+                {selectableModelConnections.map((connection) => (
+                  <option key={connection.id} value={connection.id}>
+                    {connection.name}
+                  </option>
+                ))}
+              </select>
+            }
+          />
+          <PageRow
             label="Default model"
-            description="Leave empty to use the system default."
+            // Derived from what the field actually holds. A connection that
+            // offered nothing to pre-fill leaves this empty, and saying
+            // "pre-filled" over an empty box is the class of claim this whole
+            // change exists to remove.
+            description={
+              !form.defaultProviderId
+                ? 'Choose a model connection first. Without one, chats in this project use the Station default.'
+                : form.defaultModel
+                  ? 'Pre-filled with a model this connection offers. Both the connection and a model are needed; with either missing, this project uses the Station default.'
+                  : 'This connection offers no model to pre-fill. Choose one, or this project uses the Station default.'
+            }
             control={
               <ModelSelector
                 value={form.defaultModel ?? ''}
+                models={selectedConnectionModels}
+                disabled={!form.defaultProviderId}
                 onChange={(modelId) => setField('defaultModel', modelId)}
                 placeholder="System default"
               />
@@ -380,13 +553,13 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           />
           <PageRow
             label="Execution environment"
-            description="Fresh worktrees isolate changes; the current checkout shares this project's working directory."
+            description="Fresh worktrees isolate changes; the current checkout shares this project's working directory. Leave it on the Station default and this project follows whatever Settings says."
             control={
               <select
                 id="project-default-workspace-isolation"
                 className="editor-input"
                 aria-label="Execution environment"
-                value={form.defaultWorkspaceIsolation ?? 'shared'}
+                value={form.defaultWorkspaceIsolation}
                 onChange={(event) =>
                   setField(
                     'defaultWorkspaceIsolation',
@@ -395,6 +568,12 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                   )
                 }
               >
+                <option value="inherit">
+                  {inheritOptionLabel(
+                    stationConfig?.defaultWorkspaceIsolation,
+                    stationConfig !== null,
+                  )}
+                </option>
                 <option value="worktree">Use a fresh git worktree</option>
                 <option value="shared">Use the current checkout</option>
               </select>

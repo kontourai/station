@@ -10,7 +10,7 @@ import { gateReport } from '../gate-for.mjs';
 const baseSha = 'f'.repeat(40);
 
 describe('gate-for report', () => {
-  it('marks every scoped gate RUNS for a surface that feeds all four', () => {
+  it('marks every scoped gate RUNS for a surface that feeds all five', () => {
     const report = gateReport({
       changedPaths: [
         'src-ui/src/App.tsx',
@@ -27,6 +27,7 @@ describe('gate-for report', () => {
     expect(report).toContain(
       'node scripts/check-prepush-orchestration-transfer.mjs',
     );
+    expect(report).toContain('node scripts/check-prepush-typecheck.mjs');
   });
 
   it('marks every scoped gate skipped for a docs-only surface', () => {
@@ -43,6 +44,8 @@ describe('gate-for report', () => {
     const report = gateReport({ changedPaths: [], baseSha });
     for (const always of [
       'lint:check',
+      'proof:repo-governance',
+      'veritas:readiness',
       'commit-message-gate.mjs --prepush-stdin',
       'test:changed -- --base=origin/main --explain',
       'ci:fast',

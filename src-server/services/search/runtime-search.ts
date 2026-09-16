@@ -12,10 +12,22 @@ import {
   type UnifiedSearchProvider,
   type UnifiedSearchRequest,
 } from '@kontourai/station-contracts/unified-search';
+import { createLogger, type Logger } from '../../utils/logger.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
 import type { TaskGraphService } from '../projects/task-graph-service.js';
 import { createStationMessageSearchProvider } from './station-search-providers.js';
 import { UnifiedSearchService } from './unified-search-service.js';
+
+/**
+ * Where the unified-search logger is actually constructed.
+ *
+ * `unified-search-service.ts` deliberately takes its logger as an input and
+ * imports the seam type-only: a value import puts pino into the standalone
+ * Task-reader bundle that `server-build-portability` builds and runs, and pino
+ * cannot survive that bundle. This module is not part of any portable probe,
+ * so it is the right edge to own the logger.
+ */
+const defaultLogger = createLogger({ name: 'unified-search' });
 
 interface SearchReadContext {
   authority: SessionReadAuthority;
@@ -32,6 +44,8 @@ export function createRuntimeSearch(input: {
     | 'createIsolatedTranscriptSearch'
     | 'retireIsolatedTranscriptSearchAfterFailedInitialization'
   >;
+  /** Overridden in tests; production uses this module's own logger. */
+  logger?: Logger;
 }) {
   const tasks = input.tasks.createPersonalSearchReader(input.stationId);
   const transcripts = input.transcripts.createIsolatedTranscriptSearch();
@@ -246,10 +260,9 @@ export function createRuntimeSearch(input: {
             },
           },
         });
-        return new UnifiedSearchService([taskProvider, messages]).search(
-          request,
-          bound.signal,
-        );
+        return new UnifiedSearchService([taskProvider, messages], {
+          logger: input.logger ?? defaultLogger,
+        }).search(request, bound.signal);
       });
     },
     open(

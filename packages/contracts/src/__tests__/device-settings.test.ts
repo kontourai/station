@@ -13,7 +13,9 @@ import {
   DEFAULT_REGION_ARRANGEMENT_RECORD,
   DEVICE_SETTINGS_PRIOR_KEYS,
   DEVICE_SETTINGS_REGISTRY,
+  DIRECT_MANIPULATION_DEVICE_KEYS,
   extractPriorDeviceSettingsRoot,
+  PREFERENCE_DEVICE_KEYS,
 } from '../device-settings.js';
 
 describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
@@ -135,7 +137,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
     expect(byKey.get('modelPickerPreferences')).toBe('station.device-settings');
   });
 
-  test('registers exactly the twenty-seven documented DeviceSettings fields', () => {
+  test('registers exactly the twenty-eight documented DeviceSettings fields', () => {
     const keys = DEVICE_SETTINGS_REGISTRY.map(
       (definition) => definition.key as string,
     ).sort();
@@ -177,6 +179,8 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'chatDockProjectSlug',
         // #928 D — which surface occupies which region on this device.
         'regionArrangement',
+        // #2144 slice 6 — whether deleting a conversation asks first.
+        'confirmConversationDelete',
       ].sort(),
     );
   });
@@ -283,5 +287,103 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
     expect(extractPriorDeviceSettingsRoot({})).toEqual({});
     expect(extractPriorDeviceSettingsRoot(null)).toEqual({});
     expect(extractPriorDeviceSettingsRoot('not an object')).toEqual({});
+  });
+});
+
+/**
+ * `help` shape (epic #2144 slice 2). The compiler already guarantees the
+ * field EXISTS on every descriptor — `defineSetting`/`defineDeviceSetting`
+ * are generic over the definition interface, so a registration without one
+ * does not typecheck. These are the properties a type cannot state: that the
+ * sentence is a sentence, that it is short enough to sit beside a control,
+ * and that it is not the label wearing a period. The last one is the whole
+ * point of the field: a "help" string that restates its label is the class of
+ * copy this slice exists to replace, and nothing but an assertion catches it.
+ */
+describe('DEVICE_SETTINGS_REGISTRY help copy', () => {
+  test('every help value is one trimmed sentence ending in a period', () => {
+    for (const definition of DEVICE_SETTINGS_REGISTRY) {
+      const help = definition.help;
+      expect(help, definition.key as string).toBe(help.trim());
+      expect(help.length, definition.key as string).toBeGreaterThan(0);
+      expect(help.endsWith('.'), `${definition.key as string}: ${help}`).toBe(
+        true,
+      );
+      // One sentence: no interior terminator, and no second sentence started
+      // after one. `. ` also catches an abbreviation mid-string, which is
+      // what we want here — this copy should not need one.
+      expect(
+        help.slice(0, -1),
+        `${definition.key as string}: more than one sentence`,
+      ).not.toMatch(/[.!?]/);
+    }
+  });
+
+  test('every help value fits beside a control', () => {
+    for (const definition of DEVICE_SETTINGS_REGISTRY) {
+      expect(
+        definition.help.length,
+        `${definition.key as string}: ${definition.help}`,
+      ).toBeLessThanOrEqual(160);
+    }
+  });
+
+  test('no help value is its own label restated', () => {
+    const flatten = (value: string) =>
+      value
+        .toLowerCase()
+        .replace(/[.]+$/, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+    for (const definition of DEVICE_SETTINGS_REGISTRY) {
+      expect(flatten(definition.help), definition.key as string).not.toBe(
+        flatten(definition.label),
+      );
+    }
+  });
+});
+
+/**
+ * Epic #2144 slice 6 item F. "Restore device defaults" restores the settings
+ * somebody CHOSE and leaves the residue of using the app alone. That split
+ * is only trustworthy if it is total: a device setting in neither list would
+ * be silently un-restorable (or silently restored) with nothing saying so.
+ */
+describe('device setting classification', () => {
+  const registered = DEVICE_SETTINGS_REGISTRY.map(
+    (definition) => definition.key as string,
+  );
+
+  test('every registered device setting is classified exactly once', () => {
+    const classified = [
+      ...DIRECT_MANIPULATION_DEVICE_KEYS,
+      ...PREFERENCE_DEVICE_KEYS,
+    ] as readonly string[];
+    const unclassified = registered.filter((key) => !classified.includes(key));
+    expect(
+      unclassified,
+      `Unclassified device setting(s): ${unclassified.join(', ')}. Add each to DIRECT_MANIPULATION_DEVICE_KEYS (a record of direct manipulation) or PREFERENCE_DEVICE_KEYS (something somebody chose).`,
+    ).toEqual([]);
+    // The other direction: a list naming a key the registry no longer has.
+    expect(classified.filter((key) => !registered.includes(key))).toEqual([]);
+    // And no key in both, which would make "excluded" and "restored" true at
+    // once for the same setting.
+    expect(classified).toHaveLength(new Set(classified).size);
+    expect(classified).toHaveLength(registered.length);
+  });
+
+  test('every preference key has a registry default to restore it to', () => {
+    const byKey = new Map(
+      DEVICE_SETTINGS_REGISTRY.map((definition) => [
+        definition.key as string,
+        definition,
+      ]),
+    );
+    for (const key of PREFERENCE_DEVICE_KEYS) {
+      expect(byKey.get(key), key).toBeDefined();
+      // `undefined` would mean "no factory value" — a reset could not say
+      // what it restored. `null` IS a value (accentColor, chatFontSize).
+      expect(byKey.get(key)!.defaultValue, key).not.toBeUndefined();
+    }
   });
 });

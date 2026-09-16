@@ -110,7 +110,10 @@ try {
       { type: 'pluginRegistry', provider, source: 'restart-catalog' },
     ]);
     const app = new Hono();
-    registerPluginInstallRoutes(app, deps);
+    registerPluginInstallRoutes(app, {
+      ...deps,
+      projectVisiblePlugins: () => (installed) => installed,
+    });
     const response = await app.request('/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
