@@ -260,7 +260,7 @@
 /* ── Section Headers ── */
 .page__section-label {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -687,10 +687,6 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
-}
-
-.section-nav__group-label:first-child {
-  margin-left: 0;
 }
 
 /* Shared Guidance/section tab-strip primitive: tabs grow to a 44px touch
