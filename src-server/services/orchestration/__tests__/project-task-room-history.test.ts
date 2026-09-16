@@ -554,6 +554,57 @@ describe('ProjectTaskRoomHistory v2', () => {
       await reopened.close();
     });
 
+    it('a record written before the port exists stays retryable once a port is attached', async () => {
+      const path = databasePath();
+      let beginCalls = 0;
+      let finishCalls = 0;
+
+      // The room writes this record with NO port. Nothing mints an admission
+      // for it, because there is nothing to ask.
+      const unmanaged = history(path);
+      await unmanaged.open({ grant: grant('discover') });
+      await expect(
+        unmanaged.append(message('predates-the-port')),
+      ).resolves.toMatchObject({ kind: 'committed' });
+      await unmanaged.close();
+
+      // A home is adopted later and a port appears. `bind` requires only an
+      // owner row — nothing requires the room to be empty, and adopting an
+      // existing room's home is the point of a transfer. So a client's
+      // idempotent retry of the pre-adoption proposal now reaches the
+      // settlement path for an admission that was never begun.
+      const port: ProjectTaskRoomWriteAdmissionPort = {
+        async begin() {
+          beginCalls += 1;
+          return { kind: 'admitted' };
+        },
+        async finish() {
+          finishCalls += 1;
+          return { kind: 'nothing-to-settle' };
+        },
+      };
+      const adopted = history(path, { roomWriteAdmissions: port });
+      await adopted.open({ grant: grant('discover') });
+      for (const attempt of [1, 2, 3]) {
+        // The record is durably present, so every retry must keep reporting
+        // the duplicate. Reporting `unavailable` would make an existing
+        // record permanently unretryable — the opposite of what a write
+        // fence is for — and no later call could ever change that answer.
+        await expect(
+          adopted.append(message('predates-the-port')),
+          `attempt ${attempt}`,
+        ).resolves.toMatchObject({
+          kind: 'duplicate',
+          receipt: { proposalId: 'predates-the-port' },
+        });
+      }
+      // The duplicate short-circuit runs before the admit phase, so the port
+      // is asked to settle and never asked to admit.
+      expect(beginCalls).toBe(0);
+      expect(finishCalls).toBe(3);
+      await adopted.close();
+    });
+
     it('asks for no admission when the transaction cannot reach its first write', async () => {
       const authority = new DatabaseSync(databasePath());
       authority.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL');
