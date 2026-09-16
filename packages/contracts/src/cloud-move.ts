@@ -93,6 +93,45 @@ export interface PairedHomeIdentityObservation {
   executionResumeAvailable: false;
 }
 
+/** Sensitive memory-only proof for one private personal-home control session. */
+export interface HomeControlSessionCapability {
+  readonly homeRef: string;
+  readonly openId: string;
+  readonly generation: number;
+  readonly token: string;
+}
+
+/** A control-session handshake result. This is not room or execution authority. */
+export interface HomeControlSessionOpenObservation {
+  schemaVersion: 'station.home-control-session-open/v1';
+  capability: HomeControlSessionCapability;
+  replayed: boolean;
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+}
+
+/** Operator-only review projection; capability material is always omitted. */
+export interface HomeControlSessionInspectionObservation {
+  schemaVersion: 'station.home-control-session-inspection/v1';
+  homeRef: string;
+  openId: string;
+  generation: number;
+  state: 'active' | 'retired';
+  unresolvedAdmissionCount: number;
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+}
+
+/** Operator-only exact-generation retirement result. */
+export interface HomeControlSessionRetirementObservation {
+  schemaVersion: 'station.home-control-session-retirement/v1';
+  homeRef: string;
+  generation: number;
+  state: 'retired';
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+}
+
 /** Personal controller decisions only: these records never enable execution. */
 export type PersonalHomeDecisionObservation = {
   schemaVersion: 'station.personal-home-decision/v1';

@@ -247,29 +247,31 @@ integration remain prerequisites for enabling sustained Agent execution.
 The private control-session authority adds a separate `home:control` pairing
 permission. An operator must add it to an already-paired home. Operator
 currentness is rechecked after body buffering and parsing, so credential
-rotation while a scope-change request is pending prevents the promotion. It is absent
-from the default grant and every pairing preset, including `home-transfer`.
+rotation while a scope-change request is pending prevents the promotion. It is
+absent from the default grant and every pairing preset, including `home-transfer`.
 Transfer participation cannot open or bind a control session, and a control
 session does not authorize room access or Agent execution.
 
 The controller stores one session record per paired home, bounded to 4,096
-records in the external authority database. The record stores capability and replay secrets only as SHA-256 digests,
-alongside their identity and generation metadata. The controller mints the
-256-bit capability. The replay secret is supplied by the caller as a 64-character
-hex string; the controller checks only its format, never its entropy, so a
-caller must generate it with a cryptographically secure random source. Both
-values remain in runtime memory and must never be written to a Station home,
-Project, peer record, log or portable archive. A new open or same-process retry
-supplies the open ID and replay secret. Knowing the inspectable open ID or
-copying the pairing credential is insufficient to recover the cached
-capability only to the extent the caller's replay secret is unguessable. After restart, a caller may
+records in the external authority database. The record stores capability and
+replay secrets only as SHA-256 digests, alongside their identity and generation
+metadata. The controller mints the 256-bit capability. The replay secret is
+supplied by the caller as a 64-character hex string; the controller checks only
+its format, never its entropy, so a caller must generate it with a
+cryptographically secure random source. Both values remain in runtime memory
+and must never be written to a Station home, Project, peer record, log or
+portable archive. A new open or same-process retry supplies the open ID and
+replay secret. Knowing the inspectable open ID or copying the pairing
+credential is insufficient to recover the cached capability, but only to the
+extent the caller's replay secret is unguessable. After restart, a caller may
 instead present the exact retained capability. If the controller loses its
 replay cache and the runtime has no retained capability, the result is
-`recovery-required`, even if the runtime still knows the replay secret. A different open cannot replace an active
-session. There is no timeout, process-ID expiry or automatic deletion path.
-Removing and re-granting `home:control` advances the grant revision: the
-existing session no longer binds, and a new open is refused as a conflict until
-an operator retires the old generation.
+`recovery-required`, even if the runtime still knows the replay secret. A
+different open cannot replace an active session. There is no timeout,
+process-ID expiry or automatic deletion path. Removing and re-granting
+`home:control` advances the grant revision: the existing session no longer
+binds, and a new open is refused as a conflict until an operator retires the
+old generation.
 
 Operator retirement names the exact paired device and expected session
 generation. It refuses while any admission for that home remains unresolved.
@@ -292,9 +294,23 @@ Binding also fixes the admission kind and requires the exact current owner
 channel/revision plus a separate caller-owned synchronous local-authority guard.
 Historical finished admission replay returns `settled`, never permission to
 repeat an effect. The caller must verify a durable local effect receipt before
-finishing; a stored receipt digest
-does not independently verify it. This is private foundation only: no HTTP
-route, bootstrap composition, room writer or Agent launch path uses it yet.
+finishing; a stored receipt digest does not independently verify it.
+
+The personal-controller prototype exposes only these control-session endpoints:
+
+| Method and path | Authority and result |
+| --- | --- |
+| `POST /api/home-authority/control-sessions/open` | A current `home:control` participant submits an exact open/replay body and receives a no-store capability observation. |
+| `POST /api/home-authority/control-sessions/:deviceId/inspect` | The current operator reads the home reference, open ID, generation, state and unresolved count. No capability or digest of one. |
+| `POST /api/home-authority/control-sessions/:deviceId/retire` | The current operator conditionally retires the exact expected generation. |
+
+Every successful OBSERVATION carries execution-transfer and resume flags, and
+both are always false; a refusal carries only its `kind` and has no such
+flags, so it is not a place those flags could be true. A malformed body is
+refused with 400 before any authority runs, so a payload that can never
+succeed is distinguishable from a 409 the caller can act on. There is no
+admission begin/finish endpoint, room writer, Agent launch or target
+activation in this slice.
 
 ## Private operator receipt reconciliation
 
@@ -325,6 +341,7 @@ From an isolated repository worktree with managed dependencies installed:
 
 ```bash
 npm run test:focused -- \
+  src-server/routes/environments/__tests__/home-control-session-routes.test.ts \
   src-server/services/orchestration/__tests__/planned-home-control-session-authority.test.ts \
   src-server/services/orchestration/__tests__/planned-home-admission-reconciliation.test.ts \
   src-server/services/orchestration/__tests__/planned-home-admission-store.test.ts \
