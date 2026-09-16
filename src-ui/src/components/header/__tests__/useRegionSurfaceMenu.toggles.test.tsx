@@ -14,7 +14,7 @@
  */
 
 import { renderHook } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const harness = vi.hoisted(() => ({
   regions: {
@@ -66,9 +66,24 @@ import {
   DOCK_REGION_IDS,
   REGION_SURFACE_REGISTRY,
 } from '../../../regions/region-model';
+import { registerRegionVisibilityApplier } from '../../../regions/region-visibility-appliers';
 import { useRegionSurfaceMenu } from '../useRegionSurfaceMenu';
 
-describe('the toolbar offers a toggle for every dock region the model declares', () => {
+/** Unregisters for the appliers a test published, run after every test. */
+const publishedAppliers: (() => void)[] = [];
+
+afterEach(() => {
+  while (publishedAppliers.length) publishedAppliers.pop()?.();
+});
+
+/** Publishes a shell's applier for `region`, as a mounted shell does. */
+function publishApplier(region: 'left' | 'right' | 'bottom') {
+  const applier = vi.fn();
+  publishedAppliers.push(registerRegionVisibilityApplier(region, applier));
+  return applier;
+}
+
+describe('the toolbar has a toggle for every dock region the model declares', () => {
   test('one toggle per DOCK_REGION_IDS member, each derived from the region', () => {
     const { result } = renderHook(() => useRegionSurfaceMenu());
 
@@ -81,15 +96,14 @@ describe('the toolbar offers a toggle for every dock region the model declares',
     );
     expect(toggles).toHaveLength(DOCK_REGION_IDS.length);
 
-    // Bottom holds Chat and is visible: a pressed toggle, no offers. Left
-    // and right are empty: unpressed, and offering the shell surfaces that
-    // declare them.
+    // Bottom holds Chat and is visible: a pressed toggle naming its pane.
+    // Left is empty and hidden. Since #2155 the two differ only in those
+    // facts — there is no third shape, no offer list and no inert state.
     const bottom = toggles.find((toggle) => toggle.region === 'bottom');
     expect(bottom).toMatchObject({
       label: 'Bottom',
       paneTitles: ['Chat'],
       visible: true,
-      offers: [],
     });
     const left = toggles.find((toggle) => toggle.region === 'left');
     expect(left).toMatchObject({
@@ -97,10 +111,81 @@ describe('the toolbar offers a toggle for every dock region the model declares',
       paneTitles: [],
       visible: false,
     });
-    expect(left?.offers.map((offer) => offer.surfaceId)).toEqual([
-      'chat',
-      'activity',
+    // #2155 retired `offers` outright: every key a toggle carries is one of
+    // these five, so a re-added offer list fails here rather than shipping a
+    // second answer to "what goes in this region" beside the chooser (#2154).
+    expect(Object.keys(left ?? {}).sort()).toEqual([
+      'label',
+      'onToggle',
+      'paneTitles',
+      'region',
+      'visible',
     ]);
+  });
+
+  /**
+   * #2155 D3: the toggle's write is the mounted shell's own show/hide, so the
+   * toolbar and that region's chevron are the one act. Replacing the applier
+   * lookup in `useRegionSurfaceMenu.ts` with the bare `model.setRegion` this
+   * used to do reds both assertions: the shell's snap and maximize handling
+   * would be skipped and the model written behind its back.
+   */
+  test('a mounted shell’s applier is the toggle’s route, and the model is not written behind it', () => {
+    const applier = publishApplier('bottom');
+    const { result } = renderHook(() => useRegionSurfaceMenu());
+    harness.setRegion.mockClear();
+
+    result.current.regionToggles
+      .find((toggle) => toggle.region === 'bottom')
+      ?.onToggle();
+
+    // Bottom is visible in the fixture, so the press asks for closed.
+    expect(applier).toHaveBeenCalledWith(false);
+    expect(harness.setRegion).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The fallback, and the state that makes it the only possible path: a
+   * HIDDEN EMPTY region mounts no host (#2153), so nothing has published an
+   * applier for it and the model is written directly. `maximized: false`
+   * rides along — a region with no shell has no maximized rendering to come
+   * back to, and nothing may carry a maximize across a hide.
+   */
+  test('with no shell mounted for the region, the toggle writes the model itself', () => {
+    const { result } = renderHook(() => useRegionSurfaceMenu());
+    harness.setRegion.mockClear();
+
+    result.current.regionToggles
+      .find((toggle) => toggle.region === 'left')
+      ?.onToggle();
+
+    expect(harness.setRegion).toHaveBeenCalledWith('left', {
+      visible: true,
+      maximized: false,
+    });
+  });
+
+  /**
+   * The lookup is at PRESS time, not at render time. A shell mounts and
+   * unmounts under a toolbar that does not re-render for it, so a toggle
+   * holding an applier captured when it was built would keep calling a dead
+   * shell's closure after its region's host went away.
+   */
+  test('a shell that unmounts after the toggle was built hands the press back to the model', () => {
+    const unregister = registerRegionVisibilityApplier('bottom', vi.fn());
+    const { result } = renderHook(() => useRegionSurfaceMenu());
+    const bottom = result.current.regionToggles.find(
+      (toggle) => toggle.region === 'bottom',
+    );
+    unregister();
+    harness.setRegion.mockClear();
+
+    bottom?.onToggle();
+
+    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
+      visible: false,
+      maximized: false,
+    });
   });
 
   /**
@@ -111,7 +196,9 @@ describe('the toolbar offers a toggle for every dock region the model declares',
    * `useRegionSurfaceMenu.ts` reds the first assertion: the region is on
    * screen and its control would report unpressed. Restoring the
    * `if (!held) return;` guard in `onToggle` reds the second: the write that
-   * hides a visible empty region would be swallowed.
+   * hides a visible empty region would be swallowed. A VISIBLE empty region
+   * does mount a host, so this drives the fallback deliberately — no applier
+   * is published here — to keep the assertion on the model write.
    */
   test('a visible EMPTY region reports visible, and its toggle writes', () => {
     harness.regions.left = {
@@ -130,6 +217,7 @@ describe('the toolbar offers a toggle for every dock region the model declares',
       left?.onToggle();
       expect(harness.setRegion).toHaveBeenCalledWith('left', {
         visible: false,
+        maximized: false,
       });
     } finally {
       harness.regions.left = {
@@ -142,13 +230,15 @@ describe('the toolbar offers a toggle for every dock region the model declares',
   });
 
   /**
-   * #2047 (`RegisteredSurface.exposure`): a catalog-only surface is never an
-   * empty region's offer and is not in the list the chords read, even though
-   * it declares every dock region. Deleting the `exposure !== 'catalog'`
-   * clause from `surfaceList` fails both assertions; dropping the flag from a
-   * registry entry fails the precondition, which points at the registry.
+   * #2047 (`RegisteredSurface.exposure`): a catalog-only surface is not in
+   * the list the chords and the folded menu read, even though it declares
+   * every dock region — the region's own chooser is what offers it (#2154),
+   * and since #2155 the toolbar offers nothing at all. Deleting the
+   * `exposure !== 'catalog'` clause from `surfaceList` fails the assertion;
+   * dropping the flag from a registry entry fails the precondition, which
+   * points at the registry.
    */
-  test('a catalog-only surface is never offered and is not in the shell’s surface list', () => {
+  test('a catalog-only surface is not in the shell’s surface list', () => {
     const catalogOnly = [...REGION_SURFACE_REGISTRY.values()].filter(
       (surface) => surface.exposure === 'catalog',
     );
@@ -169,29 +259,9 @@ describe('the toolbar offers a toggle for every dock region the model declares',
       ).toBe(true);
 
     const { result } = renderHook(() => useRegionSurfaceMenu());
-    // Exact, per region: a negated `arrayContaining` would pass with four of
-    // five catalog ids leaked. An occupied region offers nothing; an empty
-    // one offers exactly the two shell surfaces.
-    for (const toggle of result.current.regionToggles)
-      expect(
-        toggle.offers.map((offer) => offer.surfaceId),
-        toggle.region,
-      ).toEqual(toggle.paneTitles.length ? [] : ['chat', 'activity']);
     expect(result.current.surfaceList.map((surface) => surface.id)).toEqual([
       'chat',
       'activity',
     ]);
-  });
-
-  test('a region is never offered a surface that does not declare it', () => {
-    const { result } = renderHook(() => useRegionSurfaceMenu());
-    for (const toggle of result.current.regionToggles)
-      for (const offer of toggle.offers)
-        expect(
-          REGION_SURFACE_REGISTRY.get(offer.surfaceId)?.regions.includes(
-            toggle.region,
-          ),
-          `${toggle.region} is offered ${offer.surfaceId}, which does not declare it`,
-        ).toBe(true);
   });
 });

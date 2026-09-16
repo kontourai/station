@@ -1204,3 +1204,148 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     ).not.toBeNull();
   });
 });
+
+/**
+ * #2155 D3. The toolbar's per-region toggle used to write `visible` alone
+ * while the region bar's chevron went through `applyDockSnap` — so a region
+ * hidden from the toolbar kept its maximize memory and came back MAXIMIZED,
+ * while one hidden from its own chevron came back at the snap the chevron
+ * stored. The #2143 docblock recorded that as an open gap; this is the pin
+ * that closes it.
+ *
+ * The real `RegionShells` → `RegionPaneHost` → `DockShell` →
+ * `useDockShellChrome` path is what publishes the applier the toggle calls
+ * (`region-visibility-appliers.ts`), so nothing here can pass on a mock.
+ *
+ * THE ROUTES ARE CROSSED, and that is what gives this its power. Comparing
+ * toolbar-hide/toolbar-show against chevron-hide/chevron-show does NOT
+ * discriminate: a hide that writes the region directly can clear `maximized`
+ * on the way past and reach the same record — measured, by injecting exactly
+ * that and watching the same-route comparison stay green. What it cannot
+ * reach is the shell's own SNAP, which is not in the region record at all:
+ * a direct write leaves the shell still holding `full`, so the chevron's next
+ * show reopens the region maximized. Hiding by one control and showing by the
+ * other is the sequence that reads it, and the persisted snap below says the
+ * same thing absolutely.
+ */
+describe('the toolbar toggle and the region bar chevron are one act (#2155)', () => {
+  const SNAP_KEY = 'station.chatDock.snap';
+
+  /**
+   * Maximize Chat's region, hide it by one route, show it by another, and
+   * hand back what the model records for that region afterwards.
+   */
+  async function maximizeHideShow(
+    hideBy: 'toolbar' | 'chevron',
+    showBy: 'toolbar' | 'chevron',
+  ) {
+    // The shell seeds its snap from this key when its region holds Chat, so a
+    // previous run's `full` would decide the next run's reopen.
+    window.localStorage.removeItem(SNAP_KEY);
+    seedPlacement('right', 'open');
+    const shell = await renderShellsSettled();
+    const toolbarToggle = () =>
+      screen.getByRole('button', { name: 'Right region' });
+    const press = (
+      route: 'toolbar' | 'chevron',
+      label: 'Hide Chat' | 'Show Chat',
+    ) =>
+      route === 'toolbar'
+        ? fireEvent.click(toolbarToggle())
+        : fireEvent.click(within(shell).getByLabelText(label));
+
+    fireEvent.click(
+      within(shell).getByLabelText('Expand dock region to workspace'),
+    );
+    await waitFor(() =>
+      expect(currentRegionModel().regions.right.maximized).toBe(true),
+    );
+    expect(window.localStorage.getItem(SNAP_KEY)).toBe('full');
+
+    press(hideBy, 'Hide Chat');
+    await waitFor(() =>
+      expect(currentRegionModel().regions.right.visible).toBe(false),
+    );
+    // Absolute, not by agreement: the hide went through the shell's own
+    // `applyDockSnap`, which is the only thing that records the collapse.
+    // A hide that wrote the region directly leaves this at `full` — and the
+    // next show, by either control, reopens the region maximized.
+    expect(
+      window.localStorage.getItem(SNAP_KEY),
+      `hiding from the ${hideBy} did not record the collapse on the shell's snap`,
+    ).toBe('collapsed');
+    expect(currentRegionModel().regions.right.maximized).toBe(false);
+    expect(toolbarToggle().getAttribute('aria-pressed')).toBe('false');
+
+    press(showBy, 'Show Chat');
+    await waitFor(() =>
+      expect(currentRegionModel().regions.right.visible).toBe(true),
+    );
+    const record = { ...currentRegionModel().regions.right };
+    cleanup();
+    return record;
+  }
+
+  /**
+   * #2155 review M7: the UNREGISTER, through the mount it belongs to.
+   *
+   * `region-visibility-appliers.test`-style coverage that calls the registry
+   * API by hand cannot prove this — `tests/AGENTS.md` says as much, and the
+   * hazard is precisely a shell that went away leaving its closure behind. A
+   * region emptied by a MOVE hides and unmounts its host (#2153), so the
+   * toolbar's next press has no applier to find and must write the model
+   * itself. Dropping the effect's returned cleanup in `useDockShellChrome`
+   * reds this: the departed shell's `setRegionOpen` would answer instead, and
+   * `setRegion` would never be called.
+   */
+  test('a shell that unmounts takes its applier with it, and the toggle writes the model', async () => {
+    seedPlacement('right', 'open');
+    await renderShellsSettled();
+    expect(currentRegionModel().regions.right.occupant).toBe('chat');
+
+    // A MOVE empties `right` and hides it, so `RegionShells` mounts no host
+    // there at all — the state in which no applier can exist.
+    act(() => currentRegionModel().placeSurface('chat', 'bottom'));
+    await waitFor(() =>
+      expect(document.querySelector('[data-region="right"]')).toBeNull(),
+    );
+    expect(currentRegionModel().regions.right).toMatchObject({
+      panes: [],
+      visible: false,
+    });
+
+    const wrote = vi.spyOn(currentRegionModel(), 'setRegion');
+    fireEvent.click(screen.getByRole('button', { name: 'Right region' }));
+
+    expect(
+      wrote,
+      'the toolbar found an applier for a region with no mounted shell',
+    ).toHaveBeenCalledWith('right', { visible: true, maximized: false });
+    await waitFor(() =>
+      expect(currentRegionModel().regions.right.visible).toBe(true),
+    );
+  });
+
+  test('maximize, hide and show leave the identical region record, whichever control does which half', async () => {
+    const records = {
+      'toolbar → toolbar': await maximizeHideShow('toolbar', 'toolbar'),
+      'toolbar → chevron': await maximizeHideShow('toolbar', 'chevron'),
+      'chevron → toolbar': await maximizeHideShow('chevron', 'toolbar'),
+      'chevron → chevron': await maximizeHideShow('chevron', 'chevron'),
+    };
+
+    // The precondition: the sequence really did put Chat in `right` and bring
+    // it back on screen, un-maximized. Without it "every route agrees" would
+    // be satisfied by four routes that all did nothing.
+    expect(records['toolbar → toolbar']).toMatchObject({
+      panes: ['chat'],
+      occupant: 'chat',
+      visible: true,
+      maximized: false,
+    });
+    for (const [route, record] of Object.entries(records))
+      expect(record, `${route} left a different arrangement`).toEqual(
+        records['chevron → chevron'],
+      );
+  });
+});

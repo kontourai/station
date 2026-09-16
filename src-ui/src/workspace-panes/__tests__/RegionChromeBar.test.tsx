@@ -72,6 +72,7 @@ function chromeStub(overrides: Partial<DockShellChrome> = {}): DockShellChrome {
     selectRegionPane: noop,
     ownsMaximizeShortcut: true,
     applyDockSnap: vi.fn(),
+    setRegionOpen: vi.fn(),
     commitDesktopBottomHeight: noop,
     commitDockPlacement: vi.fn(),
     restoreDockToDocked: noop,
@@ -709,34 +710,32 @@ describe('the region controls (from ChatDockHeader, #795 / #1385)', () => {
   // maximized flag through a collapse left the dock at full height with an
   // emptied body — a blank full-screen shell that only Restore or a reload
   // recovered.
-  test('collapsing a maximized region clears the maximized flag', () => {
-    const chrome = chromeStub({ isDockMaximized: true });
-    renderBar({ chrome });
+  /**
+   * The chevron presses `setRegionOpen`, the chrome's own show/hide, rather
+   * than a snap expression written here (#2155): the toolbar's toggle for the
+   * same region presses the SAME derivation, so "hidden from the toolbar" and
+   * "hidden from the chevron" cannot mean two different things. What that
+   * derivation DOES with a snap — collapse clears `maximized`, and a reopen
+   * follows the shell's own snap so a Full-height collapse comes back Full
+   * (archive#795) while Chat's persisted Full can never maximize Activity
+   * (#1385) — is the chrome's, tested against the real hook through both
+   * controls in `RegionShellParity.test.tsx`. What is this bar's to prove is
+   * that its chevron asks for the opposite of the current state, in both
+   * directions, and asks for nothing else.
+   */
+  test('the chevron asks the chrome to flip the region, and decides no snap itself', () => {
+    const open = chromeStub({ isDockMaximized: true });
+    const { unmount } = renderBar({ chrome: open });
     fireEvent.click(screen.getByLabelText('Hide Chat'));
-    expect(chrome.applyDockSnap).toHaveBeenCalledWith('collapsed');
-  });
-
-  test('expanding follows the shell’s own snap: Half, or Full when it collapsed from Full', () => {
-    const half = chromeStub({ isDockOpen: false, dockSnap: 'half' });
-    const { unmount } = renderBar({ chrome: half });
-    fireEvent.click(screen.getByLabelText('Show Chat'));
-    expect(half.applyDockSnap).toHaveBeenCalledWith('half');
+    expect(open.setRegionOpen).toHaveBeenCalledWith(false);
+    expect(open.applyDockSnap).not.toHaveBeenCalled();
     unmount();
 
-    // archive#795: the reopened dock takes its height from the persisted snap
-    // (the shell seeds `dockSnap` from Chat's key), so expanding after a
-    // Full-height collapse comes back Full — with its extent control reading
-    // Restore. #1385: a non-Chat shell reads ITS chrome's snap the same way,
-    // so Chat's persisted Full can never maximize Activity.
-    const full = chromeStub({
-      isDockOpen: false,
-      dockSnap: 'full',
-      surfaceTitle: 'Activity',
-      surfaceShortcutId: 'activity.toggle',
-    });
-    renderBar({ chrome: full, selected: 'activity' });
-    fireEvent.click(screen.getByLabelText('Show Activity'));
-    expect(full.applyDockSnap).toHaveBeenCalledWith('full');
+    const collapsed = chromeStub({ isDockOpen: false, dockSnap: 'full' });
+    renderBar({ chrome: collapsed });
+    fireEvent.click(screen.getByLabelText('Show Chat'));
+    expect(collapsed.setRegionOpen).toHaveBeenCalledWith(true);
+    expect(collapsed.applyDockSnap).not.toHaveBeenCalled();
   });
 
   test('routes explicit maximize and restore through the snap owner', () => {

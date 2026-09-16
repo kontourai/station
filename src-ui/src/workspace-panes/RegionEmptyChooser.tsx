@@ -3,6 +3,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useRef,
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -203,6 +204,25 @@ function ChooserRowButton({
  * `top` to the toolbar's height); this one anchors under a button inside a
  * dock region and flips above it when there is no room below, the way a
  * tab's move menu does (#2112's rule: never slide up over the trigger).
+ *
+ * A RELEASE DISMISSES ONLY AFTER THIS BACKDROP SAW THE PRESS — the `pressed`
+ * ref, the shape `RegionTabMoveMenu` already carries for the same reason
+ * (`RegionChromeBar.tsx`). The "+" opens on `click`, whose press and release
+ * are both spent before the panel exists; since #2155 a HOLD on a region's
+ * toolbar toggle opens this same panel from a timer, WHILE THE POINTER IS
+ * STILL DOWN, so the backdrop mounts between that gesture's press and its
+ * release. Without the guard the release lands on the full-viewport backdrop
+ * and dismisses the panel the hold just opened, by two different events:
+ *
+ *   on a MOUSE with no capture, `pointerup` itself, which hit-tests to the
+ *   backdrop now covering the toggle;
+ *   on a TOUCH, the compatibility `click`. Implicit capture sends that
+ *   gesture's `pointerup` back to the toggle, so the first path is closed —
+ *   but the compatibility click is dispatched by hit test, and the topmost
+ *   element under the finger is the backdrop.
+ *
+ * Which is why all three of `pointerup`, `pointercancel` and `click` are
+ * guarded rather than the first two: each is the only route on some device.
  */
 function ChooserPanel({
   regionId,
@@ -217,6 +237,7 @@ function ChooserPanel({
 }) {
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
   useEscapeClosesPanel(onClose);
+  const pressed = useRef(false);
   const [position, setPosition] = useState({
     right: Math.max(0, window.innerWidth - anchor.right),
     top: anchor.bottom + GAP,
@@ -242,6 +263,10 @@ function ChooserPanel({
     event.stopPropagation();
     onClose();
   };
+  const dismissIfPressed = (event: { stopPropagation: () => void }) => {
+    if (!pressed.current) return;
+    dismiss(event);
+  };
   const label = regionLabel(regionId);
   return createPortal(
     <>
@@ -253,10 +278,11 @@ function ChooserPanel({
         onPointerDown={(event) => {
           event.preventDefault();
           event.stopPropagation();
+          pressed.current = true;
         }}
-        onPointerUp={dismiss}
-        onPointerCancel={dismiss}
-        onClick={dismiss}
+        onPointerUp={dismissIfPressed}
+        onPointerCancel={dismissIfPressed}
+        onClick={dismissIfPressed}
       />
       <div
         ref={menuRef}
@@ -313,10 +339,13 @@ export function RegionEmptyChooser({
   /** Closes the panel; ignored inline. */
   onClose?: () => void;
   /**
-   * The dock's project read is in flight (inline only): the sentence
-   * renders with NO rows, the rule the host's "+" applies — a projectless
+   * The dock's project read is in flight: NO rows, because a projectless
    * `context` during the read would list the coding rows disabled with a
-   * remedy for a state the user is not in, then flip them enabled.
+   * remedy for a state the user is not in, and then flip them enabled.
+   * Inline that is the placeholder sentence alone; in the PANEL it is one
+   * line saying so, because a panel the user just held open must not be
+   * empty air (#2155 review M3 — the "+" can decline to render at all while
+   * the read is in flight, and a toggle that has already been held cannot).
    */
   pending?: boolean;
 }) {
@@ -345,14 +374,22 @@ export function RegionEmptyChooser({
     }
     return (
       <ChooserPanel regionId={regionId} anchor={anchor} onClose={onClose}>
-        {rows.map((row) => (
-          <ChooserRowButton
-            key={row.surface.id}
-            row={row}
-            menuitem
-            onSelect={() => select(row.surface.id)}
-          />
-        ))}
+        {pending ? (
+          // The panel opened, and says what it is waiting for. Not a
+          // skeleton of rows: the count is unknown until the read settles,
+          // and drawing three grey bars would be a claim about how many
+          // there are.
+          <p className="region-chooser__notice">Reading this dock’s project…</p>
+        ) : (
+          rows.map((row) => (
+            <ChooserRowButton
+              key={row.surface.id}
+              row={row}
+              menuitem
+              onSelect={() => select(row.surface.id)}
+            />
+          ))
+        )}
         {alert}
       </ChooserPanel>
     );
