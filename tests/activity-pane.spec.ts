@@ -31,10 +31,8 @@ import {
   chooseSurfaceInEmptyRegion,
   documentFitsViewportWidth,
   expectBoxWithinViewport,
-  expectRegionTabs,
   FIRST_RENDER_TIMEOUT_MS,
-  moveRegionThroughGrab,
-  moveTabToRegion,
+  moveLonePaneToRegion,
   showSurfaceInEmptyRegion,
   surfaceDockShell,
 } from './helpers/region-placement';
@@ -91,17 +89,12 @@ test.describe('Activity surface deep link', () => {
   test('places the revealed surface in the primary area, keeps it across a reload, and gives the area back to Home', async ({
     page,
   }) => {
-    // #2143: a pane's placement is its tab's menu, and a tab strip renders
-    // only for a region holding two or more panes — so Activity first joins
-    // Chat's region through the region bar's own grab (every pane of `right`
-    // moves; Activity is the only one), then its tab moves to Main.
-    await moveRegionThroughGrab(
-      page,
-      surfaceDockShell(page, 'Activity'),
-      'Bottom',
-    );
-    await expectRegionTabs(page, ['Chat', 'Activity'], 'Activity');
-    await moveTabToRegion(page, 'Activity', 'Main');
+    // #2160: Activity is alone in `right`, so it renders no tab strip — and
+    // the bar's own "Move Activity" button opens the same menu a tab would,
+    // with Main among its rows. That is the whole route: no detour through
+    // another region to acquire a tab first, and no ⋮⋮ grab, which moves the
+    // region and offers dock edges only.
+    await moveLonePaneToRegion(page, 'Activity', 'Main');
 
     // In `main` the surface is the page: `ActivityRegionShell` renders it
     // through a `PageFrame`, whose title is the registry's, so the primary

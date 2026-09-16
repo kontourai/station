@@ -182,7 +182,8 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  /* --text-tertiary for the same measured reason as the chips (#2150). */
+  color: var(--text-tertiary);
 }
 
 .sidebar--collapsed .sidebar__section-label {
@@ -281,7 +282,7 @@
   border: none;
   border-radius: 3px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text-tertiary);
   cursor: pointer;
 }
 
@@ -466,6 +467,21 @@
    button reserves both the width and the height so a project name never runs
    underneath it and adjacent handles never overlap. */
 @media (pointer: coarse) {
+  /* The section `+` keeps its 18px glyph but gets the 44px hit floor this
+     block already holds the reorder handle to (#2150, same class as
+     #2113/#2124). Grown via a pseudo-element so the label's line does not
+     move. Lives in this block, not its own: the mobile-css ratchet counts
+     at-rules per file, and a fourth would have been a ceiling raise for a
+     rule that belongs here anyway. */
+  .sidebar__section-add {
+    position: relative;
+  }
+  .sidebar__section-add::before {
+    content: "";
+    position: absolute;
+    inset: -13px;
+  }
+
   .sidebar__reorder-handle {
     opacity: 1;
     width: 28px;
@@ -566,9 +582,22 @@
    rail and a closed drawer both render no chip row to hide. */
 .sidebar__layout-chips {
   display: flex;
-  flex-wrap: wrap;
+  /* One row that scrolls, not a wrap (#2150). Four layouts wrapped to two
+     lines at the panel's 240px and five to three; the design record left
+     "the visual" undecided and this decides it: the chip row is a single
+     line, like `.region-tabs`, and overflow scrolls sideways with the
+     scrollbar hidden. The roving tab stop is unaffected -- every chip is
+     still in the DOM, so Arrow keys reach the off-screen ones and the
+     browser scrolls them into view on focus. */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
   gap: 4px;
   padding: 2px 12px 4px 30px;
+}
+
+.sidebar__layout-chips::-webkit-scrollbar {
+  display: none;
 }
 
 .sidebar__layout-chip {
@@ -580,12 +609,18 @@
   padding: 3px 8px;
   background: var(--bg-tertiary);
   border: 1px solid transparent;
-  color: var(--text-muted);
+  /* --text-tertiary, not --text-muted (#2150). Measured on the light theme,
+     --text-muted (#707782) is 4.33:1 on the chip's own fill -- under the
+     4.5:1 text floor -- and 4.52:1 on the panel. --text-tertiary (#5b626b)
+     is 5.9:1 and 6.2:1. Scoped to the panel's rows rather than darkening
+     --text-muted's 500 consumers. */
+  color: var(--text-tertiary);
   cursor: pointer;
   font-size: var(--text-sm);
   line-height: 1.4;
   border-radius: 999px;
   white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .sidebar__layout-chip:hover {
@@ -622,7 +657,9 @@
   padding: 6px 12px;
   background: transparent;
   border: none;
-  color: var(--text-muted);
+  /* --text-tertiary (#2150): the Activity row measured 4.52:1 on light with
+     --text-muted -- at the AA floor, not above it. Same rung as the labels. */
+  color: var(--text-tertiary);
   cursor: pointer;
   font-size: var(--text-md);
   text-align: left;

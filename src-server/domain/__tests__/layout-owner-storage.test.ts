@@ -18,6 +18,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -490,3 +491,123 @@ function writeLayoutFile(dir: string, slug: string, value: unknown): void {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, `${slug}.json`), JSON.stringify(value), 'utf8');
 }
+
+/**
+ * #2076: the sweeps list directories by what an entry IS on disk, not by
+ * what `readdir` says the entry is. `Dirent.isDirectory()` is false for a
+ * symlink, so a symlinked project or principal root was dropped from
+ * `listProjects` and `findLayoutsUsingAgent` while `getLayout` /
+ * `getOwnedLayout` on the same path read it fine -- the delete guard
+ * answering "no dependents" about a Board it could otherwise see. The
+ * mirror gap: a DIRECTORY named `x.json` passed the suffix filter and every
+ * lister opened it as a record and threw `EISDIR`.
+ */
+describe('layout sweeps see through symlinks and past directories named *.json (#2076)', () => {
+  let home: string;
+  let adapter: FileStorageAdapter;
+  let elsewhere: string;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), 'station-layout-symlink-'));
+    elsewhere = mkdtempSync(join(tmpdir(), 'station-layout-elsewhere-'));
+    adapter = new FileStorageAdapter(home);
+  });
+  afterEach(() => {
+    rmSync(home, { recursive: true, force: true });
+    rmSync(elsewhere, { recursive: true, force: true });
+  });
+
+  test('a symlinked principal root is swept for agent dependents', async () => {
+    // Write the Board into a real directory elsewhere, then link it in as
+    // the principal's key directory -- a home restored via symlink.
+    const key = principalLayoutStorageKey(alice);
+    const realKeyDir = join(elsewhere, key);
+    writeLayoutFile(realKeyDir, 'my-board', {
+      ...board(),
+      config: { tabs: [{ id: 'a', skills: [{ agent: 'claude' }] }] },
+    });
+    mkdirSync(join(home, 'layouts', 'personal'), { recursive: true });
+    symlinkSync(realKeyDir, join(home, 'layouts', 'personal', key));
+
+    const owner = { kind: 'principal' as const, principal: alice };
+    // The direct read already worked before the fix; the sweep did not.
+    expect(adapter.getOwnedLayout(owner, 'my-board').slug).toBe('my-board');
+    expect(adapter.findLayoutsUsingAgent('claude')).toEqual([
+      { owner, layoutSlug: 'my-board' },
+    ]);
+  });
+
+  test('a symlinked project directory is listed and swept', async () => {
+    const realProject = join(elsewhere, 'acme');
+    mkdirSync(realProject, { recursive: true });
+    writeFileSync(
+      join(realProject, 'project.json'),
+      JSON.stringify(project()),
+      'utf8',
+    );
+    writeLayoutFile(join(realProject, 'layouts'), 'coding', {
+      ...projectLayout(),
+      config: { defaultAgent: 'claude' },
+    });
+    mkdirSync(join(home, 'projects'), { recursive: true });
+    symlinkSync(realProject, join(home, 'projects', 'acme'));
+
+    expect(adapter.listProjects().map((p) => p.slug)).toEqual(['acme']);
+    expect(adapter.listProjects()[0]?.layoutCount).toBe(1);
+    expect(adapter.findLayoutsUsingAgent('claude')).toEqual([
+      {
+        owner: { kind: 'project', projectSlug: 'acme' },
+        projectSlug: 'acme',
+        layoutSlug: 'coding',
+      },
+    ]);
+  });
+
+  test('a dangling symlink is nothing, not an error', async () => {
+    mkdirSync(join(home, 'projects'), { recursive: true });
+    symlinkSync(join(elsewhere, 'gone'), join(home, 'projects', 'ghost'));
+    mkdirSync(join(home, 'layouts', 'personal'), { recursive: true });
+    symlinkSync(
+      join(elsewhere, 'gone-too'),
+      join(home, 'layouts', 'personal', 'ghost-key'),
+    );
+    expect(adapter.listProjects()).toEqual([]);
+    expect(adapter.findLayoutsUsingAgent('claude')).toEqual([]);
+  });
+
+  test('a directory named *.json is not a record, in every lister', async () => {
+    await adapter.createProject(project());
+    await adapter.createLayout('acme', projectLayout());
+    const owner = { kind: 'principal' as const, principal: alice };
+    await adapter.createOwnedLayout(owner, board());
+    await adapter.createOwnedLayout(INSTANCE_LAYOUT_OWNER, {
+      ...board('shared'),
+      id: 'instance-1',
+      owner: INSTANCE_LAYOUT_OWNER,
+    });
+
+    // One impostor under each root the listers walk.
+    mkdirSync(join(home, 'projects', 'acme', 'layouts', 'dir.json'));
+    mkdirSync(
+      join(
+        home,
+        'layouts',
+        'personal',
+        principalLayoutStorageKey(alice),
+        'dir.json',
+      ),
+    );
+    mkdirSync(join(home, 'layouts', 'instance', 'dir.json'));
+
+    expect(adapter.listLayouts('acme').map((l) => l.slug)).toEqual(['coding']);
+    expect(adapter.listOwnedLayouts(owner).map((l) => l.slug)).toEqual([
+      'my-board',
+    ]);
+    expect(
+      adapter.listOwnedLayouts(INSTANCE_LAYOUT_OWNER).map((l) => l.slug),
+    ).toEqual(['shared']);
+    expect(adapter.listProjects()[0]?.layoutCount).toBe(1);
+    // The sweep walks all three roots; before the fix it threw EISDIR.
+    expect(() => adapter.findLayoutsUsingAgent('claude')).not.toThrow();
+  });
+});

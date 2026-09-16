@@ -14,6 +14,7 @@ import {
   useConnectedServerUpdateContext,
 } from '../hooks/useConnectedServerUpdateContext';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
+import { settingsDeepLinkUrl } from '../views/settings/settings-deep-link';
 
 interface NativeUpdateFeed {
   channel: string;
@@ -261,7 +262,10 @@ export function CoreUpdateLaunchCheck({
         actions: [
           {
             label: 'Review update',
-            href: '/settings?view=system&highlight=core-app-updates',
+            href: settingsDeepLinkUrl({
+              view: 'system',
+              highlight: 'core-app-updates',
+            }),
           },
         ],
       });

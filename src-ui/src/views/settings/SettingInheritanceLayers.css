@@ -1,0 +1,45 @@
+/* #2144 slice 3 — the on-demand layer list inside the inheritance popover.
+   Imported HERE rather than by the row so it travels in the same lazy chunk
+   as the body it styles. */
+.setting-inheritance {
+  min-width: 16rem;
+  max-width: 22rem;
+}
+.setting-inheritance__help {
+  margin: 0 0 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+.setting-inheritance__layers {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.setting-inheritance__layer {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+.setting-inheritance__layer--in-effect {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.setting-inheritance__layer-value {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.setting-inheritance__layer-effect {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.setting-inheritance__note {
+  margin: 0.5rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}

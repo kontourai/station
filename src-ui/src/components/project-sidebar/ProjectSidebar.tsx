@@ -342,7 +342,10 @@ function ProjectSidebarImpl() {
               </svg>
             </button>
           )}
-          <div className="sidebar__section-label">Work</div>
+          {/* No "Work" header above Home and Activity (#2150). The panel
+              lists places, and a category label over its two unlabelled
+              places reintroduced the taxonomy #2059 removed. It was the one
+              header the design record (D3) does not draw. */}
           <button
             type="button"
             className={`sidebar__project-btn${isHomeActive ? ' sidebar__project-btn--active' : ''}`}

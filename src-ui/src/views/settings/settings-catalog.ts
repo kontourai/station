@@ -471,6 +471,19 @@ const REGISTRY_BY_KEY = new Map(
   ]),
 );
 
+/**
+ * The registry definitions a catalog entry's config keys resolve to, in key
+ * order. One lookup, two consumers: `matchingSettingsRows` (the Settings
+ * search corpus) and `settingsPaletteCommands` (the palette's keywords). A
+ * key with no definition yields nothing here; the key itself is still
+ * searchable through each caller's own key list.
+ */
+function registryDefinitionsFor(entry: SettingsCatalogEntry) {
+  return (entry.configKeys ?? [])
+    .map((key) => REGISTRY_BY_KEY.get(key))
+    .filter((definition) => definition !== undefined);
+}
+
 export function settingsRow(id: string) {
   const entry = CATALOG_BY_ID.get(id);
   return {
@@ -511,16 +524,21 @@ export function matchingSettingsRows(
     if (entry.conditional === 'operator' && options.isOperator !== true) {
       return false;
     }
-    const registryText = (entry.configKeys ?? []).flatMap((key) => {
-      const definition = REGISTRY_BY_KEY.get(key);
-      return definition
-        ? [definition.label, definition.description, key]
-        : [key];
-    });
+    // `help` is the sentence the row renders beside its control, so it is the
+    // phrasing somebody who remembers the CONSEQUENCE rather than the name
+    // will type ("agent run steps", not "defaultMaxTurns"). Searching the
+    // label and description but not the help text made the one sentence the
+    // UI actually shows the one sentence search could not find.
+    const registryText = registryDefinitionsFor(entry).flatMap((definition) => [
+      definition.label,
+      definition.description,
+      definition.help,
+    ]);
     return [
       entry.title,
       ...(entry.keywords ?? []),
       ...(entry.searchKeywords ?? []),
+      ...(entry.configKeys ?? []),
       ...registryText,
     ]
       .join(' ')
@@ -581,6 +599,12 @@ export function settingsPaletteCommands(options: {
         ...(entry.keywords ?? []),
         ...(entry.searchKeywords ?? []),
         ...(entry.configKeys ?? []),
+        // The same consequence sentences the Settings search matches on, so
+        // the two entry points answer the same query. Labels/descriptions are
+        // deliberately NOT lifted here: the palette already carries
+        // `entry.title` and the config keys, and the registry label is
+        // usually the title restated.
+        ...registryDefinitionsFor(entry).map((definition) => definition.help),
       ],
       ...(unavailable
         ? { unavailable: true, unavailableReason: unavailable }

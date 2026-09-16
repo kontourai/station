@@ -131,12 +131,31 @@ export function surfaceMayOccupy(
   return surface ? surface.regions.includes(regionId) : isDockRegion(regionId);
 }
 
+/**
+ * The dock region a surface with no placement of its own lands in: its
+ * `preferred` one when that is empty, else the first empty region in the
+ * fallback order.
+ *
+ * The fallback tries `right` BEFORE `bottom` (#2156). Only an EMPTY region
+ * is ever returned, so under either order nothing lands beside a pane that
+ * is already there; what the order decides is which empty edge a surface
+ * takes when its own default is taken. Bottom is Chat's by default, and an
+ * empty Bottom is where Chat will land next (a closed Chat tab re-placed by
+ * `dock=open`, `focusSession`, or ⌘D), so a surface with nowhere of its own
+ * to go takes the right edge and leaves Bottom for Chat. The one journey
+ * the order changes today is Chat itself: unplaced, with a remembered
+ * `left` placement that is occupied and both other edges free, it now lands
+ * right rather than bottom (`syncRegionArrangementFromDock`) — accepted, so
+ * the rule has no Chat-shaped exception. A default, not a rule: Bottom
+ * refuses nothing, and an explicit placement (a move from a tab, a region's
+ * "+") still puts any surface there.
+ */
 export function firstFreeDockRegion(
   arrangement: RegionArrangement,
   preferred: DockRegionId,
 ): DockRegionId | undefined {
   if (regionIsEmpty(arrangement[preferred])) return preferred;
-  return (['bottom', 'right', 'left'] as const).find((id) =>
+  return (['right', 'bottom', 'left'] as const).find((id) =>
     regionIsEmpty(arrangement[id]),
   );
 }
@@ -796,7 +815,9 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     title: 'Terminal',
     icon: 'terminal',
     regions: DOCK_REGION_IDS,
-    defaultRegion: 'right',
+    // Bottom, beside Chat — the owner's 2026-09-15 direction (#2156); a
+    // default, not a rule.
+    defaultRegion: 'bottom',
     exposure: 'catalog',
     sourceFile: 'src-ui/src/components/coding-layout/CodingTerminalPane.tsx',
   },
