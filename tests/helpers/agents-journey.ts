@@ -296,7 +296,15 @@ export async function ensureChatDockOpen(page: Page): Promise<void> {
   const expand = page.getByRole('button', {
     name: /^Expand chat( dock)?$/,
   });
-  if (await expand.isVisible({ timeout: 3_000 }).catch(() => false)) {
+  // No `.catch(() => false)`, and no `{ timeout }`. `isVisible()` returns
+  // IMMEDIATELY and answers `false` for an absent element — Playwright's own
+  // types mark the timeout option `@deprecated This option is ignored` — so the
+  // 3_000 bought nothing, and absence never needed a catch. The only things the
+  // catch could hide were a strict-mode violation, a closed page and an invalid
+  // selector, and the violation is precisely the defect the comment above
+  // records: the narrowed name fixed WHICH controls match, while the catch that
+  // turned a genuine ambiguity into a silent no-op stayed.
+  if (await expand.isVisible()) {
     await expand.click();
     // Settled-state guard: the SAME button relabels to its
     // 'Collapse …' form on toggle — asserting the NEW label directly
@@ -325,6 +333,7 @@ export async function waitForDispatchThroughCapacityRetries(
 ): Promise<void> {
   const deadline = Date.now() + overallTimeoutMs;
   const retryButton = page.getByRole('button', { name: 'Retry' });
+  let lastRetryFailure: unknown;
   while (Date.now() < deadline) {
     if (requests.length >= targetCount) return;
     const remaining = Math.max(1_000, deadline - Date.now());
@@ -335,16 +344,22 @@ export async function waitForDispatchThroughCapacityRetries(
         .toBeGreaterThanOrEqual(targetCount);
       return;
     } catch {
-      if (
-        await retryButton
-          .first()
-          .isVisible()
-          .catch(() => false)
-      ) {
-        await retryButton
-          .first()
-          .click()
-          .catch(() => undefined);
+      // `.first()` makes a strict-mode violation impossible here, so the
+      // removed `.catch(() => false)` could only ever have hidden a closed
+      // page — which is not a reason to report "no Retry".
+      if (await retryButton.first().isVisible()) {
+        try {
+          await retryButton.first().click();
+        } catch (error) {
+          // The click failure is KEPT rather than discarded. Swallowing it and
+          // `continue`-ing spent every remaining iteration pretending a click
+          // had happened, and then ended on a sentence asserting there was no
+          // visible Retry — which this branch has just established is false.
+          // A present-but-unclickable Retry (covered by an overlay, detached
+          // between the check and the click) is a different fault from a host
+          // at capacity, and the reader was being told it was the latter.
+          lastRetryFailure = error;
+        }
         continue;
       }
       if (Date.now() >= deadline)
@@ -355,7 +370,11 @@ export async function waitForDispatchThroughCapacityRetries(
   }
   expect(
     requests.length,
-    'final dispatch count after retrying through capacity refusals',
+    'final dispatch count after retrying through capacity refusals' +
+      (lastRetryFailure === undefined
+        ? ''
+        : `. A visible Retry was found but could not be clicked, which is NOT ` +
+          `a host-at-capacity refusal: ${String(lastRetryFailure)}`),
   ).toBeGreaterThanOrEqual(targetCount);
 }
 

@@ -31,7 +31,6 @@
     "examples/**/plugin.mjs",
     "examples/**/providers/*.{js,ts}",
     "examples/**/src/index.{ts,tsx}",
-    "examples/minimal-layout/scripts/install-plugin.js",
     "src-ui/public/sw.js",
     "src-ui/public/voice-processor.js"
   ],

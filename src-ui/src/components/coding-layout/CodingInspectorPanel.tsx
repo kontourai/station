@@ -4,6 +4,7 @@ import {
   useInitFlowMutation,
   useInitReadinessMutation,
   useReadinessQuery,
+  useReviewEvidenceQuery,
   useTrustBundlesQuery,
 } from '@kontourai/station-sdk';
 import { ProductIcon, type ProductIconSlug } from '@kontourai/ui/react';
@@ -18,13 +19,17 @@ import { ReadinessPanel } from '../readiness/ReadinessPanel';
 import { Empty } from '../state';
 import { TrustPanel } from '../trust/TrustPanel';
 import './CodingInspectorPanel.css';
+import { IndependentReviewInspectorContent } from './IndependentReviewInspectorContent';
 
-export type InspectorTabId = 'plan' | 'readiness' | 'trust';
+// #2064 (D4): independent-review receipts and the run action live next to the
+// Git range they judge, not on the global Review page.
+export type InspectorTabId = 'plan' | 'readiness' | 'trust' | 'reviews';
 
 const TAB_LABELS: Record<InspectorTabId, string> = {
   plan: 'Plan',
   readiness: 'Readiness',
   trust: 'Trust',
+  reviews: 'Reviews',
 };
 
 // Each inspector tab carries its owning Kontour product's mark: Plan → Flow,
@@ -34,6 +39,10 @@ const TAB_PRODUCTS: Record<InspectorTabId, ProductIconSlug> = {
   plan: 'flow',
   readiness: 'veritas',
   trust: 'surface',
+  // Independent review evidence is Station's own module
+  // (`src-server/services/evidence/review-evidence-module.ts`), not a sibling
+  // product's, so the tab wears Station's mark rather than borrowing one.
+  reviews: 'station',
 };
 
 const FLOW_DOCS_URL = 'https://kontourai.io/flow';
@@ -73,6 +82,13 @@ export function useInspectorTabs(projectSlug: string): {
   const { data: bundles } = useTrustBundlesQuery(projectSlug, {
     keepPreviousData: false,
   });
+  // #2064: the aggregate is not project-scoped, so the count is filtered here
+  // — the same filter the tab's own content applies, for the same reason a
+  // project row must not claim another project's receipts.
+  const { data: reviewEvidence } = useReviewEvidenceQuery();
+  const reviewReceiptCount = (reviewEvidence?.receipts ?? []).filter(
+    (receipt) => receipt.target.projectSlug === projectSlug,
+  ).length;
 
   return useMemo(() => {
     const planConfigured = !!flow.data?.initialized;
@@ -90,6 +106,14 @@ export function useInspectorTabs(projectSlug: string): {
         attention: readinessAttention,
       },
       { id: 'trust', configured: trustConfigured, attention: false },
+      {
+        id: 'reviews',
+        // "Configured" here means this project has produced review evidence.
+        // The tab is never a dead end without it: the run action is the
+        // setup CTA, which is why it carries no separate one.
+        configured: reviewReceiptCount > 0,
+        attention: false,
+      },
     ];
 
     return {
@@ -101,6 +125,7 @@ export function useInspectorTabs(projectSlug: string): {
     readiness.data?.configured,
     readiness.data?.overall,
     bundles?.length,
+    reviewReceiptCount,
   ]);
 }
 
@@ -431,6 +456,9 @@ export function CodingInspectorPanel({
         )}
         {active.id === 'trust' && (
           <TrustInspectorContent projectSlug={projectSlug} />
+        )}
+        {active.id === 'reviews' && (
+          <IndependentReviewInspectorContent projectSlug={projectSlug} />
         )}
       </div>
     </div>

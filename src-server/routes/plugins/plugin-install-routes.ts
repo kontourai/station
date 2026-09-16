@@ -2,10 +2,11 @@ import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PluginComponent } from '@kontourai/station-contracts/plugin';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
+import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import {
   describePluginManifestRejection,
@@ -27,11 +28,12 @@ import {
   type PluginInstallConsent,
 } from '../../services/plugins/plugin-install-consent.js';
 import {
+  capturePluginRegistryAcquisition,
   installPluginFromSource,
   type PluginInstallTransactionDeps,
   previewInstalledPluginRecovery,
   recoverInstalledPlugin,
-  resolvePluginRegistrySource,
+  resolvePluginRegistryInstall,
 } from '../../services/plugins/plugin-install-transaction.js';
 import { localPluginInstallationState } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
@@ -53,6 +55,14 @@ import {
   PluginPreviewUnsupportedDependencyError,
   resolvePluginDependencies,
 } from '../../services/plugins/plugin-source.js';
+import {
+  isRegistryAcquisitionRefusal,
+  RegistryAcquisitionRefused,
+  registryAcquisitionRefusalDetails,
+  registryAcquisitionRevision,
+  verifyRetainedRegistryAcquisition,
+} from '../../services/plugins/registry-acquisition.js';
+import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   errorMessage,
@@ -72,6 +82,7 @@ import { capturePluginConfigurationMutation } from './plugin-configuration-activ
 
 interface PluginInstallRouteDeps {
   installationHost?: PluginInstallationHost;
+  registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: {
@@ -90,6 +101,30 @@ interface PluginInstallRouteDeps {
   quiesceEventSubscriptions?: (
     pluginName: string,
   ) => Promise<{ release(): void }>;
+  /**
+   * The caller's plugin-visibility projection (#2067). REQUIRED, and
+   * deliberately not optional-with-a-permissive-default: `GET /` IS the
+   * instance plugin enumeration the membership record requires a collaborator's
+   * first-member journey to be refused
+   * (`docs/design/project-membership.md`), so a composition that forgot to
+   * supply it must fail to typecheck rather than quietly serve the whole
+   * instance's inventory to everybody.
+   *
+   * It is handed the request context and returns a PROJECTOR bound to that
+   * caller: given the installed plugin names this response would carry, it
+   * returns the subset the caller may see. The intersection — rather than a
+   * pointwise predicate — is the derivation itself, and it is what makes a
+   * grant naming an uninstalled plugin inert instead of merely unused.
+   *
+   * Resolving the caller is separated from applying the projection so the
+   * handler can refuse an unattributable caller BEFORE the inventory scan and
+   * its per-plugin Git observation, rather than paying for the whole
+   * enumeration and then discarding it. It throws `PrincipalUnresolvedError`
+   * at resolution time for exactly that reason.
+   */
+  projectVisiblePlugins(
+    c: Context,
+  ): (installed: readonly string[]) => readonly string[];
 }
 
 export function registerPluginInstallRoutes(
@@ -122,6 +157,20 @@ export function registerPluginInstallRoutes(
   });
 
   app.get('/', async (c) => {
+    // #2067: resolve the caller first. An unattributable caller is refused
+    // before the inventory scan below, not after it.
+    let projectVisible: (installed: readonly string[]) => readonly string[];
+    try {
+      projectVisible = deps.projectVisiblePlugins(c);
+    } catch (error) {
+      if (error instanceof PrincipalUnresolvedError) {
+        return c.json(
+          { success: false, error: errorMessage(error), code: error.code },
+          400,
+        );
+      }
+      throw error;
+    }
     const readEntries = () => {
       const inventory = scanInstalledPluginInventory(pluginsDir, logger);
       const selected = deps.packageMcpJournal?.selectedInstallations();
@@ -240,7 +289,30 @@ export function registerPluginInstallRoutes(
           );
         }
       }
-      return c.json({ plugins });
+      let visible: Set<string>;
+      try {
+        visible = new Set(projectVisible(plugins.map((plugin) => plugin.name)));
+      } catch (error) {
+        // The grant record could not be read (oversized, corrupt, mid-write).
+        // Withhold the list — the fail-closed direction — but say which thing
+        // failed: inside the outer catch this became a 503 about the plugin
+        // INVENTORY, which is fine and would send the reader to the wrong
+        // store.
+        logger.error?.('Plugin visibility record could not be read', {
+          error: errorMessage(error),
+        });
+        return c.json(
+          {
+            success: false,
+            error: 'Plugin visibility is unavailable',
+            visibilityUnavailable: true,
+          },
+          503,
+        );
+      }
+      return c.json({
+        plugins: plugins.filter((plugin) => visible.has(plugin.name)),
+      });
     } catch (error) {
       if (error instanceof PluginGrantsUnavailableError)
         return c.json(
@@ -265,6 +337,7 @@ export function registerPluginInstallRoutes(
     logger,
     eventBus,
     installationHost: deps.installationHost,
+    registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
     packageMcpJournal: deps.packageMcpJournal,
     buildPlugin: (directory, name, manifest) =>
       buildPlugin(directory, name, logger, manifest),
@@ -340,13 +413,14 @@ export function registerPluginInstallRoutes(
       const grantRevisions = observePluginGrantRevisions(projectHomeDir);
       const { source: bodySource, registryId } = getBody(c);
       let source = bodySource;
+      let registryKey: string | undefined;
       // The Registry view previews by catalog id: its listings carry provider
       // labels, not source paths, so the server resolves the id through the
       // same registry providers the install itself would use. `code` lets a
       // caller distinguish "this id is not a plugin" (an agent-face entry it
       // should install as before) from a broken plugin source.
-      if (!source && registryId) {
-        const resolved = await resolvePluginRegistrySource(registryId);
+      if (registryId) {
+        const resolved = await resolvePluginRegistryInstall(registryId);
         if (!resolved) {
           return c.json(
             {
@@ -359,7 +433,26 @@ export function registerPluginInstallRoutes(
             404,
           );
         }
-        source = resolved;
+        // A caller that pins a source AND a registry id is asserting the two
+        // still agree. They disagree when the registry moved the listing
+        // between the caller's last preview and this one, which is the
+        // caller's state going stale, not a server fault: refuse it as a
+        // conflict the caller can act on rather than as an unhandled throw,
+        // which this route surfaces as a 500.
+        if (source && source !== resolved.source) {
+          return c.json(
+            {
+              valid: false,
+              error: `Registry source for '${registryId}' changed since this preview; preview again`,
+              code: 'registry-source-changed',
+              components: [],
+              conflicts: [],
+            },
+            409,
+          );
+        }
+        source = resolved.source;
+        registryKey = resolved.registryKey;
       }
       if (!source) {
         return c.json(
@@ -499,6 +592,75 @@ export function registerPluginInstallRoutes(
           logger,
           undefined,
           source,
+          undefined,
+          {
+            beforeResolve: () => {},
+            async resolved(entry, evidence) {
+              if (!entry.consent || !evidence.manifest) return;
+              const selection = deps.packageMcpJournal?.currentInstallation(
+                entry.id,
+              );
+              const trust =
+                selection?.state === 'observed'
+                  ? deps.packageMcpJournal!.registryAcquisition(
+                      selection.installation,
+                    )
+                  : undefined;
+              if (trust?.state === 'unavailable')
+                throw new RegistryAcquisitionRefused();
+              const policy =
+                await deps.registryTrustPolicyAuthority?.captureAdmission();
+              if (entry.status === 'installed' && trust?.receipt) {
+                if (!policy) throw new RegistryAcquisitionRefused();
+                entry.consent.registryTrustRevision =
+                  registryAcquisitionRevision(
+                    await verifyRetainedRegistryAcquisition(
+                      policy,
+                      trust.receipt,
+                    ),
+                  );
+                return;
+              }
+              const required =
+                policy?.configuration?.profiles.some(
+                  (profile) =>
+                    profile.registryKey === registryKey &&
+                    profile.signatures === 'required',
+                ) === true;
+              if (entry.status === 'installed') {
+                if (required) throw new RegistryAcquisitionRefused();
+                return;
+              }
+              const registry =
+                !entry.source || required
+                  ? await resolvePluginRegistryInstall(entry.id)
+                  : undefined;
+              if (!evidence.source) {
+                if (required) throw new RegistryAcquisitionRefused();
+                return;
+              }
+              if (required && !registry) throw new RegistryAcquisitionRefused();
+              const verified = await capturePluginRegistryAcquisition(
+                evidence.source,
+                evidence.manifest,
+                entry.consent.contentDigest,
+                deps,
+                registry ? entry.id : undefined,
+                registry?.registryKey,
+                trust?.receipt ?? undefined,
+              );
+              if (required && !verified.registryAcquisition)
+                throw new RegistryAcquisitionRefused();
+              if (
+                verified.registryAcquisition &&
+                evidence.format !== 'agent-plugin-1.0'
+              )
+                throw new RegistryAcquisitionRefused();
+              if (verified.registryAcquisition)
+                entry.consent.registryTrustRevision =
+                  registryAcquisitionRevision(verified.registryAcquisition);
+            },
+          },
         );
         const git = await getPluginGitInfo(tempDir, logger);
         // archive#4288: the preview already staged and validated everything a
@@ -518,6 +680,31 @@ export function registerPluginInstallRoutes(
           );
         }
 
+        const selection = deps.packageMcpJournal?.currentInstallation(
+          manifest.name,
+        );
+        const priorTrust =
+          selection?.state === 'observed'
+            ? deps.packageMcpJournal!.registryAcquisition(
+                selection.installation,
+              )
+            : undefined;
+        if (priorTrust?.state === 'unavailable')
+          throw new RegistryAcquisitionRefused();
+        const { registryAcquisition } = await capturePluginRegistryAcquisition(
+          source,
+          manifest,
+          consentBasis.contentDigest,
+          deps,
+          registryId,
+          registryKey,
+          priorTrust?.receipt ?? undefined,
+        );
+        if (registryAcquisition && format !== 'agent-plugin-1.0')
+          throw new RegistryAcquisitionRefused();
+        const registryTrustRevision = registryAcquisition
+          ? registryAcquisitionRevision(registryAcquisition)
+          : undefined;
         const installationRevision =
           format !== 'agent-plugin-1.0'
             ? undefined
@@ -534,6 +721,7 @@ export function registerPluginInstallRoutes(
           valid: true,
           manifest,
           installationRevision,
+          registryTrustRevision,
           grantRevision: grantRevisions.revisionFor(manifest.name),
           existingDataScope: installationRevision != null,
           components,
@@ -561,6 +749,16 @@ export function registerPluginInstallRoutes(
         rmSync(tempDir, { recursive: true, force: true });
       }
     } catch (error: unknown) {
+      if (isRegistryAcquisitionRefusal(error))
+        return c.json(
+          {
+            valid: false,
+            ...registryAcquisitionRefusalDetails(error),
+            components: [],
+            conflicts: [],
+          },
+          409,
+        );
       if (error instanceof PluginPreviewUnsupportedDependencyError) {
         return c.json(
           {
@@ -621,6 +819,7 @@ export function registerPluginInstallRoutes(
       }
       const operatorDecision: PluginInstallConsent = {
         kind: 'operator-decision',
+        registryTrustRevision: consent.registryTrustRevision,
         grantRevision: consent.grantRevision,
         permissions: consent.permissions,
         contentDigest: consent.contentDigest,
@@ -637,6 +836,7 @@ export function registerPluginInstallRoutes(
             skip,
             {
               agentsDir,
+              registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
               packageMcpJournal: deps.packageMcpJournal,
               installationHost: deps.installationHost,
               beginConfigurationMutation: beginMutation,
@@ -679,6 +879,14 @@ export function registerPluginInstallRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      if (isRegistryAcquisitionRefusal(error))
+        return c.json(
+          {
+            success: false,
+            ...registryAcquisitionRefusalDetails(error),
+          },
+          409,
+        );
       if (error instanceof PluginInstallationPending)
         return c.json(
           {

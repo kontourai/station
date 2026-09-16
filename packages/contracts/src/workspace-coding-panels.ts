@@ -43,6 +43,18 @@ function descriptor(value: unknown): WorkspacePaneDescriptor {
   return parsed;
 }
 
+/**
+ * `docked` (#2047): each of the three coding panes may occupy a shell dock
+ * region as a registered surface. The readers are `REGION_SURFACE_REGISTRY`
+ * (`coding:file-browser`, `coding:diff`, `coding:terminal`) and the dock
+ * catalog's `supportedRegions.includes('docked')` filter; the claim is pinned
+ * to the registry in both directions by
+ * `src-ui/src/__tests__/docked-capability-derivation.test.ts` and over the
+ * server's declarations by `workspace-pane-known-declarations.test.ts`.
+ * A docked coding pane is the PROJECT's, not a layout's: the fixed instance
+ * below binds a project and no layout, and the renderer treats a layout
+ * binding as optional.
+ */
 export const WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR = descriptor({
   version: WORKSPACE_PANE_CONTRACT_VERSION,
   id: WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID,
@@ -54,7 +66,7 @@ export const WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR = descriptor({
     name: WORKSPACE_CODING_FILE_BROWSER_PANE_RENDERER_NAME,
   },
   placement: {
-    supportedRegions: ['primary', 'secondary', 'standalone'],
+    supportedRegions: ['primary', 'secondary', 'standalone', 'docked'],
     preferredRegion: 'primary',
   },
   modes: [
@@ -78,7 +90,7 @@ export const WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR = descriptor({
     name: WORKSPACE_CODING_DIFF_PANE_RENDERER_NAME,
   },
   placement: {
-    supportedRegions: ['primary', 'secondary', 'standalone'],
+    supportedRegions: ['primary', 'secondary', 'standalone', 'docked'],
     preferredRegion: 'primary',
   },
   modes: [
@@ -102,7 +114,7 @@ export const WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR = descriptor({
     name: WORKSPACE_CODING_TERMINAL_PANE_RENDERER_NAME,
   },
   placement: {
-    supportedRegions: ['primary', 'secondary', 'standalone'],
+    supportedRegions: ['primary', 'secondary', 'standalone', 'docked'],
     preferredRegion: 'secondary',
   },
   modes: [

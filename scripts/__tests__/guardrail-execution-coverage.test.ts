@@ -194,6 +194,10 @@ const NOT_EXECUTED: ReadonlyArray<readonly [string, string]> = [
     'a TypeScript entry point invoked through tsx, so a `node scripts/...` child would not reach it',
   ],
   [
+    'gen-settings-registry.ts',
+    'a TypeScript entry point invoked through tsx; its --check verdict is proven in-process by gen-settings-registry.test.ts (stale, missing, current), which is stronger than a process-boundary accept run would be',
+  ],
+  [
     'docs-truth-gate-aggregate.mjs',
     'spawns twelve `npm run` lanes; executing it under test would run most of this table again as grandchildren',
   ],

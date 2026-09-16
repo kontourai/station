@@ -390,6 +390,42 @@ curl -sS -X POST "${BASE}/api/orchestration/commands" \
 ```
 
 
+## Review work in the attention inbox
+
+`/api/attention` carries every item whose meaning is "a human must decide",
+including the two that used to be reachable only from `/review-queue`:
+
+- `kind: 'proposed-change'` — one pending proposed change, derived from
+  `status: 'pending'` on the proposed-change store. Its `source.proposedChangeId`
+  is what the existing `POST /api/proposed-changes/:id/approve|reject` routes
+  act on; the projection itself decides nothing.
+- `kind: 'gate-review'` — one paused Survey/Flow gate review session with
+  unresolved items, derived from `summary.unresolved > 0` on the same aggregate
+  `GET /api/survey-flow-reviews` serves. It carries no decision affordance:
+  continuation runs through the review workbench
+  (`POST /api/projects/:slug/flow/runs/:runId/reviews/continue`).
+
+Neither is projected for a hosted tenant read. The proposed-change store and
+the review aggregate carry no tenancy predicate, so a tenant-scoped read has no
+standing to see them.
+
+Items carry `projectSlug` when the projection could derive one from the item's
+own source. It is absent, never guessed, for a generic notification-backed
+approval or a project-less session. Per-project counts are derived from
+`items` by counting that field under the same pending predicate as
+`pendingCount` (`attentionCountForProject`, `@kontourai/station-contracts/attention`);
+the server publishes no per-project number for a client to trust.
+
+Both kinds link into the item's own Project Review layout at the exact item —
+`/projects/<projectSlug>/layouts/review?change=<id>` and
+`?review=<reviewSessionRef>`, alongside Starter work's
+`?receipt=<receiptId>`. All three are minted by one derivation,
+`projectReviewLayoutHref` (`@kontourai/station-contracts/layout`); the Project
+is the path, so the layout is already scoped to it and the selector names only
+the item. The retired `/review-queue?…&project=<p>` spellings redirect there,
+and one naming no Project goes to `/notifications`. A stale link shows a
+notice; Station does not open a different item in its place.
+
 ## Inspect an exact attention request
 
 Request-backed approval and permission items in `/api/attention` may carry

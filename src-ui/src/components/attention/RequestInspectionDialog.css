@@ -22,7 +22,7 @@
   overflow-wrap: anywhere;
 }
 .request-inspection-identity {
-  font-size: var(--font-size-sm, 13px);
+  font-size: var(--text-md);
 }
 .request-inspection-identity dd {
   margin: 0 0 var(--space-2, 8px);

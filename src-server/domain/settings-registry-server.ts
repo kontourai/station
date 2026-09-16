@@ -17,12 +17,17 @@
  */
 
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import type { ProjectSettingsOverrides } from '@kontourai/station-contracts/project-settings-overrides';
 import {
   APP_SETTINGS_REGISTRY,
   acceptsSettingValue,
   type SettingProvenanceEntry,
   type SettingProvenanceSource,
 } from '@kontourai/station-contracts/settings-registry';
+import {
+  isSeededAppConfigValue,
+  SEEDED_APP_CONFIG_KEYS,
+} from './app-config-seed.js';
 
 export {
   type SanitizeAppConfigUpdateResult,
@@ -44,11 +49,24 @@ export type { SettingProvenanceEntry, SettingProvenanceSource };
  * made Settings report "Set by operator: AWS_REGION" for a value the resolver
  * discards — the surface re-deriving "absent" for itself, which is the entire
  * thing the shared resolver exists to stop.
+ *
+ * Exported for `settings-effective.ts` (#2144 slice 2). An effective-value
+ * resolver and a provenance builder that disagreed about what "absent" means
+ * would report a source for a value the other one discards, which is the
+ * defect this predicate was written to fix in the first place.
  */
-function isStoredValue(value: unknown): boolean {
+export function isStoredValue(value: unknown): boolean {
   if (value === undefined) return false;
   if (typeof value === 'string') return value.trim().length > 0;
   return true;
+}
+
+const SEEDED_KEY_SET: ReadonlySet<string> = new Set(SEEDED_APP_CONFIG_KEYS);
+
+function isSeededKey(
+  key: string,
+): key is (typeof SEEDED_APP_CONFIG_KEYS)[number] {
+  return SEEDED_KEY_SET.has(key);
 }
 
 /**
@@ -63,6 +81,13 @@ function isStoredValue(value: unknown): boolean {
  * file/env source simply has no provenance entry — there is nothing honest
  * to report.
  *
+ * One exception to "stored means `'file'`": the loader SEEDS several keys
+ * into `config/app.json` itself (`app-config-seed.ts`), and the file keeps
+ * no record that it did. A loaded value byte-equal to its seed is reported
+ * as `'default'` — it is the factory value written for the operator, not a
+ * decision — which is what lets a reset reach "nothing is stored" instead of
+ * naming the same re-seeded keys on every read.
+ *
  * archive#1557: provenance now reports where the value ACTUALLY comes from
  * rather than which env vars happen to be set. A stored value is `'file'`
  * whatever the environment says, because the resolvers read the stored value
@@ -74,13 +99,39 @@ function isStoredValue(value: unknown): boolean {
  */
 export function buildAppConfigProvenance(
   config: AppConfig,
-  opts: { injected: Record<string, string> },
+  opts: {
+    injected: Record<string, string>;
+    /**
+     * The overrides a PROJECT carries, when the caller named one
+     * (`GET /config/app?project=<slug>`). Absent means no project was named,
+     * and the output is byte-identical to what it was before #2144 slice 2 —
+     * no `scope` field anywhere. A read that was not asked about a project
+     * has no project to attribute a value to, and stamping every file entry
+     * `scope: 'station'` regardless would be a claim the caller never asked
+     * for and cannot act on.
+     */
+    projectOverrides?: ProjectSettingsOverrides;
+  },
 ): Record<string, SettingProvenanceEntry> {
   const provenance: Record<string, SettingProvenanceEntry> = {};
+  const projectOverrides = opts.projectOverrides;
 
   for (const key of Object.keys(config)) {
-    if (!isStoredValue(config[key as keyof AppConfig])) continue;
-    provenance[key] = { source: 'file' };
+    const value = config[key as keyof AppConfig];
+    if (!isStoredValue(value)) continue;
+    // A value the LOADER wrote is not a decision the operator made, and
+    // `config/app.json` records no difference between the two — see
+    // `app-config-seed.ts`. Reporting the seed as `'file'` made "Reset
+    // Station settings" list the seeded prompt and variables among the
+    // values it would clear, clear them, and find them re-seeded (and listed
+    // again) on the very next read.
+    if (isSeededKey(key) && isSeededAppConfigValue(key, value)) {
+      provenance[key] = { source: 'default' };
+      continue;
+    }
+    provenance[key] = projectOverrides
+      ? { source: 'file', scope: 'station' }
+      : { source: 'file' };
   }
 
   for (const [key, envVar] of Object.entries(opts.injected)) {
@@ -108,6 +159,20 @@ export function buildAppConfigProvenance(
     }
     if (definition.defaultValue === undefined) continue;
     provenance[key] = { source: 'default' };
+  }
+
+  // The project record is the innermost stored document, so it supersedes
+  // whatever the Station file, the environment, or a registry default would
+  // have reported. Placed last for that reason, and unconditional on what
+  // came before: `readProjectOverrides` has already dropped absent and blank
+  // fields, so anything still here is a decision someone made.
+  //
+  // None of `PROJECT_OVERRIDABLE_APP_SETTING_KEYS` declares an `envFallback`
+  // today, so this never silently reverses an env-sourced value; the
+  // registry test in `packages/contracts` pins that, because the day one
+  // does, this precedence needs deciding rather than inheriting.
+  for (const key of Object.keys(projectOverrides ?? {})) {
+    provenance[key] = { source: 'file', scope: 'project' };
   }
 
   return provenance;

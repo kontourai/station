@@ -23,6 +23,10 @@ import {
 } from '../../services/plugins/plugin-activation-composition.js';
 import { createLocalPluginInstallationHost } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import {
+  createLocalRegistryTrustPolicyAuthority,
+  type RegistryTrustPolicyAuthority,
+} from '../../services/plugins/registry-trust-policy.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
@@ -107,6 +111,10 @@ import { makeUnattendedGrantResolver } from '../../services/agents/unattended-gr
 import { UnattendedGrantStore } from '../../services/agents/unattended-grant-store.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import {
+  appHomeActive,
+  connectionSpawnEnv,
+} from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import {
@@ -725,8 +733,9 @@ export class StationRuntime {
           );
           return claudeAppHomeEnv(dir);
         }
-        const useAppHome =
-          appConfig.agentConnections?.claude?.config?.useAppHome === true;
+        const useAppHome = appHomeActive(
+          appConfig.agentConnections?.claude?.config,
+        );
         if (!useAppHome) return undefined;
         const { dir } = await ensureAppHomeProfile('claude');
         return claudeAppHomeEnv(dir);
@@ -741,6 +750,21 @@ export class StationRuntime {
         );
         return undefined;
       }
+    },
+    // station#2072: per-connection env overrides + explicit config home
+    // (`config.env`, `config.configHome`) — re-sanitized and tilde-expanded
+    // by `connectionSpawnEnv`, so a hand-edited config file meets the same
+    // rules the write-time sanitizer enforced. `undefined` when the
+    // connection configured neither — the adapter then keeps today's
+    // byte-identical spawn env. Lazy-captured posture identical to
+    // `getAppHomeEnv` above: only invoked at spawn time, well after
+    // construction.
+    getConnectionEnv: async () => {
+      const appConfig = await this.configLoader.loadAppConfig();
+      return connectionSpawnEnv(
+        appConfig.agentConnections?.claude?.config,
+        'claude',
+      );
     },
     // Station#1157 review fix (MEDIUM): the built-in station-control MCP
     // server needs THIS instance's actual bound port, not
@@ -789,8 +813,9 @@ export class StationRuntime {
           );
           return codexAppHomeEnv(dir);
         }
-        const useAppHome =
-          appConfig.agentConnections?.codex?.config?.useAppHome === true;
+        const useAppHome = appHomeActive(
+          appConfig.agentConnections?.codex?.config,
+        );
         if (!useAppHome) return undefined;
         const { dir } = await ensureAppHomeProfile('codex');
         return codexAppHomeEnv(dir);
@@ -805,6 +830,16 @@ export class StationRuntime {
         );
         return undefined;
       }
+    },
+    // station#2072: codex counterpart of claudeAdapter's getConnectionEnv
+    // closure above — same sanitization, same lazy capture, `CODEX_HOME`
+    // as the config-home key.
+    getConnectionEnv: async () => {
+      const appConfig = await this.configLoader.loadAppConfig();
+      return connectionSpawnEnv(
+        appConfig.agentConnections?.codex?.config,
+        'codex',
+      );
     },
     // archive#1195: the wire-safe substitution for the built-in
     // station-control server (see codex-mcp-passthrough.ts's header
@@ -862,6 +897,7 @@ export class StationRuntime {
   private attachedSessionFollowService?: AttachedSessionFollowService;
   private consoleBridgeService?: ConsoleBridgeService;
   private orchestrationEventStore: EventStore;
+  private registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   /**
    * The store `startStoreIntegrityVerification` verifies on a schedule. Held
    * because the constructor's own derivation is a local, and re-deriving it at
@@ -1162,6 +1198,11 @@ export class StationRuntime {
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
       // than its publisher.
+      this.registryTrustPolicyAuthority =
+        createLocalRegistryTrustPolicyAuthority(
+          projectHomeDir,
+          this.orchestrationEventStore.createRegistryTrustPolicyDecisions(),
+        );
       this.pluginInstallationHost =
         options.pluginInstallationHost ??
         createLocalPluginInstallationHost(
@@ -2264,6 +2305,8 @@ export class StationRuntime {
   ): Promise<void> {
     const configurationBefore =
       this.captureAgentConfigurationRevisions(composition);
+    const registryPolicyApplication =
+      await this.registryTrustPolicyAuthority?.captureApplication();
     this.loadedProviderLaunchabilityRevision = null;
     this.loadedAppConfigLaunchabilityRevision = null;
     const preparationState: RuntimeAgentPreparationState = {
@@ -2400,6 +2443,11 @@ export class StationRuntime {
     this.appConfig = appConfig;
     this.usageTelemetry?.reconfigure(appConfig);
     applyConfiguredLogLevel(appConfig.logLevel, this.logger);
+    if (registryPolicyApplication)
+      await this.registryTrustPolicyAuthority!.publishApplied(
+        registryPolicyApplication,
+        appConfig.registryTrust,
+      );
     this.recordLoadedConfigurationRevisions(configurationBefore);
   }
 
@@ -3315,6 +3363,7 @@ export class StationRuntime {
           reloadAgents: async () => this.reloadAgents(),
           captureAgentConfigurationRevisions: () =>
             this.captureAgentConfigurationRevisions(),
+          registryTrustPolicyAuthority: this.registryTrustPolicyAuthority,
           onAgentConfigurationReady: (revisions) =>
             this.recordLoadedConfigurationRevisions(revisions),
           guardDefaultAgentTools: (tools) => this.guardDefaultAgentTools(tools),
@@ -3463,6 +3512,13 @@ export class StationRuntime {
     // Never delay a usable runtime for optional telemetry.
     void this.usageTelemetry.stationStarted();
     this.observeRuntimeConfigurationSources();
+    // This is the last awaited startup step. Failed listeners/services above
+    // cannot leave an accepted policy decision from an incomplete startup.
+    if (initialized.registryPolicyApplication)
+      await this.registryTrustPolicyAuthority!.publishApplied(
+        initialized.registryPolicyApplication,
+        initialized.appConfig.registryTrust,
+      );
     this.recordRuntimeLifecycle('ready');
 
     // archive#1575: detected native engines (claude/codex CLIs) become registry

@@ -39,12 +39,22 @@ const loadDiff = () =>
     default: module.ObservedDiffPanel,
   }));
 
+/**
+ * One pull request's review surface.
+ *
+ * `onBack` is the Diff pane's list: this panel is reached from
+ * `PullRequestsPanel`, and Back returns to it. It is OPTIONAL because #2049
+ * places the same panel as a dock tab of its own, where there is no list to
+ * go back to — a "Back to pull requests" button there would name a
+ * destination the placement does not have. Without it the button is not
+ * rendered; Refresh, and the tab's own close, are what that placement offers.
+ */
 export function PullRequestReviewPanel({
   target,
   onBack,
 }: {
   target: PullRequestReviewTarget;
-  onBack: () => void;
+  onBack?: () => void;
 }) {
   const scope = useHostRequestAuthorityScope();
   const identity = JSON.stringify([
@@ -71,7 +81,7 @@ function ReviewOwner({
   identity,
 }: {
   target: PullRequestReviewTarget;
-  onBack: () => void;
+  onBack?: () => void;
   scope: ReturnType<typeof useHostRequestAuthorityScope>;
   identity: string;
 }) {
@@ -201,7 +211,9 @@ function ReviewOwner({
   return (
     <section className="pull-request-review" aria-label="Pull request review">
       <ResponsiveSurfaceActions className="pull-request-review__actions">
-        <Button onClick={() => guard(onBack)}>Back to pull requests</Button>
+        {onBack && (
+          <Button onClick={() => guard(onBack)}>Back to pull requests</Button>
+        )}
         <Button
           disabled={review.isFetching || pending || !scope?.isCurrent()}
           onClick={() => void review.refetch()}

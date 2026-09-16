@@ -64,6 +64,39 @@ export function useChatBackgroundTasks(
   return useSyncExternalStore(subscribeBoth, getSnapshot, getSnapshot);
 }
 
+/**
+ * The active-chats STORE KEY a chat id names, or null for no chat.
+ *
+ * Navigation carries a chat's DURABLE id (`activeChatDurableId` =
+ * `conversationId ?? sessionId`), and the store is keyed by the SESSION key
+ * a reopen mints (`useActiveChatSessionLifecycle`: `conversationId` when the
+ * reopen carries a provider execution, `${agentSlug}:${Date.now()}` when it
+ * does not). The two are the same string on one path only, so a reader that
+ * hands `navigation.activeChat` straight to `useChatBackgroundTasks` finds
+ * nothing for every conversation reopened without an execution — an empty
+ * pane beside a badge counting three running tasks.
+ *
+ * The rule is the store's own (`getChatKeyForExecutionSession`, which
+ * `updateChat` already resolves through and which the dock's
+ * `useChatDockActiveChatSync` mirrors against the session inventory), not a
+ * third copy. An id the store does not know falls through unchanged: a
+ * thread that carries entries but no chat still reads its own.
+ */
+export function useChatStoreKey(chatId: string | null): string | null {
+  const getSnapshot = useCallback(
+    () =>
+      chatId
+        ? (activeChatsStore.getChatKeyForExecutionSession(chatId) ?? chatId)
+        : null,
+    [chatId],
+  );
+  return useSyncExternalStore(
+    activeChatsStore.subscribe,
+    getSnapshot,
+    getSnapshot,
+  );
+}
+
 /** Running-count only, for the entry-point badge. */
 export function useChatBackgroundTasksRunningCount(
   chatThreadId: string | null,

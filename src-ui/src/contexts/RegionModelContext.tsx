@@ -12,7 +12,11 @@ import {
   useRef,
   useState,
 } from 'react';
-import { availablePlacements, useDockSlotDevice } from '../hooks/useIsMobile';
+import {
+  availablePlacements,
+  dockFoldsToOneRegion,
+  useDockSlotDevice,
+} from '../hooks/useIsMobile';
 import {
   isDefaultRegionArrangementRecord,
   parseRegionArrangementRecord,
@@ -24,13 +28,19 @@ import {
   DOCK_REGION_IDS,
   type DockRegionId,
   dockMirrorDiff,
+  isDockRegion,
+  moveRegionPanes as moveRegionPanesInArrangement,
+  occupiedRegion,
   placeSurface as placeSurfaceInArrangement,
   REGION_SURFACE_REGISTRY,
   type RegionArrangement,
   type RegionId,
   type RegionState,
+  removeRegionPane,
+  resolveRegionSurface,
   revealSurface,
   seedRegionArrangementFromDock,
+  selectRegionPane,
   showSurfaceAlone,
   surfaceMayOccupy,
   syncRegionArrangementFromDock,
@@ -57,6 +67,53 @@ export interface SurfaceIntentRecord extends SurfaceIntent {
 
 type SurfaceIntents = Partial<Record<string, SurfaceIntentRecord>>;
 
+/**
+ * What a caller may ask of `openInRegion` (#2048). `region` names a target;
+ * absent, the surface's own rule applies (its default region, the first free
+ * dock region when that one is taken — `revealSurface`). `placement` is the
+ * host-open vocabulary (`WorkspacePaneHostOpenPlacement`); a region holds one
+ * tab group in this batch, so only `add` opens and `split` is refused rather
+ * than silently added. `focusExisting` (default true) reveals a pane already
+ * in some region WHERE IT IS — but it never overrides an explicit `region`:
+ * naming a different one MOVES the pane there (the reveal branch requires
+ * `region` to be absent or the region the pane is already in). So pressing a
+ * region's "+" for a singleton surface held elsewhere takes it from the
+ * other region. `focusExisting: false` changes one case only: a held pane
+ * targeting the region it is already in is re-placed rather than revealed.
+ * With no target it is the surface's own rule either way.
+ */
+export interface OpenInRegionOptions {
+  region?: RegionId;
+  placement?: 'add' | 'split';
+  focusExisting?: boolean;
+}
+
+/**
+ * Why `openInRegion` did not place (#2048), each derived from the branch that
+ * produced it: `no-surface` — the instance is no region surface's canonical
+ * pane, or the id is neither a registered surface nor one an instance prefix
+ * describes (#2049); `unsupported-placement` —
+ * `split` asked of a tab-group region; `region-unavailable` — a dock region
+ * this device's fold does not offer (a side region on a bottom-only device);
+ * `refused` — the surface does not declare the region (`surfaceMayOccupy`).
+ * A refusal changes no state and navigates nowhere.
+ */
+export type OpenInRegionRefusal =
+  | 'no-surface'
+  | 'unsupported-placement'
+  | 'region-unavailable'
+  | 'refused';
+
+export type OpenInRegionOutcome =
+  | {
+      readonly ok: true;
+      readonly region: RegionId;
+      readonly surfaceId: string;
+      /** The pane was already in `region` and was revealed there. */
+      readonly existing: boolean;
+    }
+  | { readonly ok: false; readonly reason: OpenInRegionRefusal };
+
 function withoutSurfaceIntent(
   current: SurfaceIntents,
   surfaceId: string,
@@ -72,8 +129,60 @@ interface RegionModelValue {
   lastShownRegion: RegionId | null;
   surfaces: typeof REGION_SURFACE_REGISTRY;
   setRegion(id: RegionId, patch: Partial<RegionState>): void;
+  /**
+   * Place a surface (`placeSurface` in region-model.ts, #2046 2a): into a
+   * dock region it joins the panes there, selected; into `main` it replaces;
+   * into a region already holding it, it is selected and the region shown.
+   */
   placeSurface(surfaceId: string, regionId: RegionId): void;
+  /**
+   * Reveal a surface where it is — its region shown and its tab selected —
+   * or place it where it belongs (`revealSurface`/`showSurfaceAlone`): the
+   * surface-keyed form of `openInRegion` with no options, plus the intent
+   * outbox. Since #2048 it is `openSurfaceInRegion` underneath.
+   */
   showSurface(surfaceId: string, intent?: SurfaceIntent): void;
+  /**
+   * Open a surface in a dock region (#2048): the model half of
+   * `openInRegion` (`useOpenInRegion.ts`), which is the one producer callers
+   * use for a cross-region open so that no caller reaches a region host's
+   * own open action and reproduces the model's placement rules. Resolves the
+   * target region (explicit, else the surface's rule), reveals it and places
+   * or selects through the model — the host derives its document from the
+   * arrangement, so a placement IS the open. Never a history entry: a dock
+   * region's selection is the record's, and `main` is reached by the same
+   * outlet navigation `placeSurface` makes. Returns a typed outcome; a
+   * refusal leaves the arrangement as it was.
+   *
+   * Surface-keyed here, instance-keyed in `useOpenInRegion`: the instance →
+   * surface fold (`regionSurfaceOfPane`) needs the pane contracts, which are
+   * not in this provider's entry chunk — importing them here measured
+   * +1,820 B gzip against a 527 B headroom — and `showSurface` needs the
+   * surface form anyway (a projectless coding surface has no instance).
+   */
+  openSurfaceInRegion(
+    surfaceId: string,
+    options?: OpenInRegionOptions,
+  ): OpenInRegionOutcome;
+  /**
+   * Select a pane the region holds (#2046 2a): it becomes the region's
+   * `occupant`, the pane `RegionPaneHost` shows. Places nothing and changes
+   * no visibility; a surface the region does not hold is ignored.
+   */
+  selectPane(regionId: RegionId, surfaceId: string): void;
+  /**
+   * Close a pane's tab (#2046 2b, `removeRegionPane`): the surface leaves the
+   * region and is placed nowhere; the region keeps its other panes. A
+   * surface the region does not hold is ignored.
+   */
+  removePane(regionId: RegionId, surfaceId: string): void;
+  /**
+   * Move a dock region's whole pane set — tab order and selection — into
+   * another dock region (#2046 2b, `moveRegionPanes`): the region bar's
+   * placement control. The destination is shown and becomes the last shown
+   * region.
+   */
+  moveRegionPanes(from: DockRegionId, to: DockRegionId): void;
   /**
    * The surface's toggle — its chord, its row in the folded Regions menu, its
    * dock control's show/hide half. Decided once here, by the pure
@@ -140,11 +249,14 @@ const REGION_ARRANGEMENT_PERSIST_DELAY_MS = 150;
  * Where the arrangement starts (#928 D). Precedence, highest first:
  *
  * 1. A URL deep link, for Chat only: `dockSlotPlacement` PLACES Chat there
- *    (`placeSurface`, relocating whatever held the region by the model's own
- *    rule — the previous Chat region when it may, else the displaced
- *    surface's own default region, else the model's search order), and
- *    `dock=open` shows it. Read from the URL itself, not from
- *    navigation's blended `dockMode`, which falls back to the device setting.
+ *    (`placeSurface`: joining the panes the region holds, selected, since
+ *    #2046 2a — nothing is displaced from a dock region any more), and
+ *    `dock=open` shows it. Both are Chat's links, so when either CHANGES
+ *    the record — places or shows Chat — Chat's tab is selected in the
+ *    region it acts on (2a review); a param that merely remembers what the
+ *    record holds, the reload case, leaves the record's selection alone.
+ *    Read from the URL itself, not from navigation's blended `dockMode`,
+ *    which falls back to the device setting.
  * 2. The `regionArrangement` record: every surface's placement, every size,
  *    every visibility — Chat's included when the URL says nothing. A record
  *    equal to the registry default is one this device has never written and
@@ -157,8 +269,10 @@ const REGION_ARRANGEMENT_PERSIST_DELAY_MS = 150;
  *
  * Maximize follows the same order (#928 slice iii): the URL's `maximize=true`
  * is a Chat deep-link fact and maximizes Chat's region whichever path placed
- * it; otherwise the record's own `maximized` stands; the legacy seed carries
- * none of its own (navigation's flag IS the URL param).
+ * it — with Chat's tab selected there when the maximize is the URL's doing,
+ * since a maximized region showing another pane is not what the link named;
+ * otherwise the record's own `maximized` (and selection) stands; the legacy
+ * seed carries none of its own (navigation's flag IS the URL param).
  *
  * A mount is not a write: nothing here reaches navigation or device settings.
  * A record and legacy keys that disagree are reconciled by the mirror on the
@@ -173,11 +287,16 @@ function initialRegionArrangement(
   const arrangement = initialRegionPlacement(settings, dockMode, isDockOpen);
   if (!isDockMaximized) return arrangement;
   const chatAt = chatRegion(arrangement);
+  if (!chatAt) return arrangement;
   // `updateRegion` holds the invariants: a hidden Chat stays restored even
-  // if a hand-typed URL says `maximize=true` without `dock=open`.
-  return chatAt
-    ? updateRegion(arrangement, chatAt, { maximized: true })
-    : arrangement;
+  // if a hand-typed URL says `maximize=true` without `dock=open`. A
+  // maximize the record already holds is the URL remembering, and the
+  // record's selection stands; one the URL adds is Chat's link, and Chat's
+  // tab is what it maximizes (see `initialRegionPlacement`).
+  const maximized = updateRegion(arrangement, chatAt, { maximized: true });
+  return maximized === arrangement
+    ? arrangement
+    : selectRegionPane(maximized, chatAt, 'chat');
 }
 
 function initialRegionPlacement(
@@ -199,20 +318,30 @@ function initialRegionPlacement(
   // `isDockOpen` is a URL fact (`dock=open`; navigation-store.ts), so an
   // absent param defers to the record's own visibility for Chat.
   const chatVisible = isDockOpen || (chatAt ? stored[chatAt].visible : false);
-  if (linkedPlacement) {
-    return placeSurfaceInArrangement(
+  // The URL's Chat params persist across reloads (`setDockMode` and
+  // `setDockState` write them), so at load they are usually the URL
+  // REMEMBERING what the record already holds. Only a param that changes
+  // Chat's placement or visibility is acting as a link — and a link names
+  // Chat, so Chat's tab is what it shows (#2046 2b, 2a review); a param that
+  // changes nothing leaves the record's selection, which is the user's last
+  // tab choice, alone. A placement naming the region Chat is already in is
+  // therefore not re-placed (`placeSurface` would select it), only shown.
+  let next = stored;
+  if (linkedPlacement && chatAt !== linkedPlacement) {
+    next = placeSurfaceInArrangement(
       stored,
       'chat',
       linkedPlacement,
       chatVisible,
     );
-  }
-  if (isDockOpen) {
-    return chatAt
+  } else if (isDockOpen) {
+    next = chatAt
       ? updateRegion(stored, chatAt, { visible: true })
       : placeSurfaceInArrangement(stored, 'chat', dockMode, true);
   }
-  return stored;
+  if (next === stored) return stored;
+  const placed = chatRegion(next);
+  return placed ? selectRegionPane(next, placed, 'chat') : next;
 }
 
 function recordOf(value: unknown): RegionArrangementRecord | null {
@@ -231,7 +360,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     setDockState,
     updateParams,
   } = useNavigation();
-  const bottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
+  const available = availablePlacements(useDockSlotDevice());
+  const bottomOnly = dockFoldsToOneRegion(available);
   const { setDeviceSetting } = useDeviceSettingsActions();
   const [regions, setRegions] = useState<RegionArrangement>(() =>
     initialRegionArrangement(settings, dockMode, isDockOpen, isDockMaximized),
@@ -279,6 +409,17 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     setRegions(next);
   }, []);
 
+  /**
+   * Apply an arrangement a reveal or open produced: the fold's last shown
+   * region follows it, and a landing in `main` navigates to the outlet.
+   */
+  const commit = useCallback((next: RegionArrangement, region: RegionId) => {
+    regionsRef.current = next;
+    setLastShownRegion(region);
+    setRegions(next);
+    if (region === 'main') navigateToMainOutlet();
+  }, []);
+
   const placeSurface = useCallback((surfaceId: string, regionId: RegionId) => {
     // A refused placement (the surface does not declare this region) must not
     // navigate either: nothing was placed, so there is nothing to go and see.
@@ -296,17 +437,98 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     if (regionId === 'main') navigateToMainOutlet();
   }, []);
 
+  const selectPane = useCallback((regionId: RegionId, surfaceId: string) => {
+    const next = selectRegionPane(regionsRef.current, regionId, surfaceId);
+    if (next === regionsRef.current) return;
+    regionsRef.current = next;
+    setRegions(next);
+  }, []);
+
+  const removePane = useCallback((regionId: RegionId, surfaceId: string) => {
+    const next = removeRegionPane(regionsRef.current, regionId, surfaceId);
+    if (next === regionsRef.current) return;
+    regionsRef.current = next;
+    setRegions(next);
+  }, []);
+
+  const moveRegionPanes = useCallback(
+    (from: DockRegionId, to: DockRegionId) => {
+      const next = moveRegionPanesInArrangement(regionsRef.current, from, to);
+      if (next === regionsRef.current) return;
+      regionsRef.current = next;
+      setLastShownRegion(to);
+      setRegions(next);
+    },
+    [],
+  );
+
+  const openSurfaceInRegion = useCallback(
+    (
+      surfaceId: string,
+      options: OpenInRegionOptions = {},
+    ): OpenInRegionOutcome => {
+      // The id-keyed resolution, not the shell registry: an instance-keyed
+      // pane (#2049) is a surface its prefix describes, and this is the one
+      // gate a link click passes through.
+      const surface = resolveRegionSurface(surfaceId);
+      if (!surface) return { ok: false, reason: 'no-surface' };
+      if (options.placement === 'split')
+        return { ok: false, reason: 'unsupported-placement' };
+      const current = regionsRef.current;
+      const held = occupiedRegion(current, surfaceId);
+      const target = options.region;
+      // Already open somewhere, and not asked to go elsewhere: reveal it
+      // there (region shown, tab selected) rather than opening a second time.
+      if (
+        held !== undefined &&
+        options.focusExisting !== false &&
+        (target === undefined || target === held)
+      ) {
+        const shown = bottomOnly
+          ? showSurfaceAlone(current, surfaceId, held)
+          : revealSurface(current, surfaceId, held);
+        commit(shown.arrangement, shown.region);
+        return { ok: true, region: shown.region, surfaceId, existing: true };
+      }
+      if (target !== undefined) {
+        if (!surfaceMayOccupy(surfaceId, target))
+          return { ok: false, reason: 'refused' };
+        if (
+          isDockRegion(target) &&
+          !(available as readonly RegionId[]).includes(target)
+        )
+          return { ok: false, reason: 'region-unavailable' };
+        let next = placeSurfaceInArrangement(current, surfaceId, target);
+        if (bottomOnly && isDockRegion(target))
+          for (const id of DOCK_REGION_IDS)
+            if (id !== target)
+              next = updateRegion(next, id, { visible: false });
+        commit(next, target);
+        return { ok: true, region: target, surfaceId, existing: false };
+      }
+      // No target: the surface's own rule — its region if it has one, else
+      // its default (the first free dock region when that is taken); on a
+      // bottom-only device the revealed region becomes the only visible one.
+      const shown = bottomOnly
+        ? showSurfaceAlone(current, surfaceId, surface.defaultRegion)
+        : revealSurface(current, surfaceId, surface.defaultRegion);
+      commit(shown.arrangement, shown.region);
+      return {
+        ok: true,
+        region: shown.region,
+        surfaceId,
+        existing: held !== undefined,
+      };
+    },
+    [available, bottomOnly, commit],
+  );
+
   const showSurface = useCallback(
     (surfaceId: string, intent?: SurfaceIntent) => {
-      const surface = REGION_SURFACE_REGISTRY.get(surfaceId);
-      if (!surface) return;
-      const shown = bottomOnly
-        ? showSurfaceAlone(regionsRef.current, surfaceId, surface.defaultRegion)
-        : revealSurface(regionsRef.current, surfaceId, surface.defaultRegion);
-      regionsRef.current = shown.arrangement;
-      setLastShownRegion(shown.region);
-      setRegions(shown.arrangement);
-      if (shown.region === 'main') navigateToMainOutlet();
+      const opened = openSurfaceInRegion(surfaceId);
+      // An unregistered id was never a reveal; the intent outbox is left
+      // alone for it, as before #2048.
+      if (!opened.ok) return;
       if (intent) {
         const token = ++surfaceIntentTokenRef.current;
         // The record is exactly what this caller asked for. It used to
@@ -328,12 +550,16 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       // dropping it cannot undo a delivery already made (#928).
       setSurfaceIntents((current) => withoutSurfaceIntent(current, surfaceId));
     },
-    [bottomOnly],
+    [openSurfaceInRegion],
   );
 
   const toggleSurface = useCallback(
     (surfaceId: string) => {
-      const surface = REGION_SURFACE_REGISTRY.get(surfaceId);
+      // Resolved, not registry-read: the folded Regions menu renders a
+      // Hide/Show row for every pane a region HOLDS, instance-keyed ones
+      // included, and a row whose toggle is a no-op would be a control that
+      // says it does something it does not.
+      const surface = resolveRegionSurface(surfaceId);
       if (!surface) return;
       const toggled = toggleSurfaceInArrangement(
         regionsRef.current,
@@ -545,7 +771,15 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     // it, and Chat's region is what the shell renders.
     const chatAfterSync = chatRegion(next);
     if (chatAfterSync && next[chatAfterSync].maximized !== isDockMaximized) {
-      next = updateRegion(next, chatAfterSync, { maximized: isDockMaximized });
+      // A maximize is Chat's: its tab comes to the front of the region it
+      // maximizes. A restore leaves the selection alone.
+      next = updateRegion(
+        next,
+        chatAfterSync,
+        isDockMaximized
+          ? { maximized: true, occupant: 'chat' }
+          : { maximized: false },
+      );
     }
     if (next === current) return;
     regionsRef.current = next;
@@ -598,6 +832,10 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       setRegion,
       placeSurface,
       showSurface,
+      openSurfaceInRegion,
+      selectPane,
+      removePane,
+      moveRegionPanes,
       toggleSurface,
       surfaceIntents,
       consumeSurfaceIntent,
@@ -610,6 +848,10 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       setRegion,
       placeSurface,
       showSurface,
+      openSurfaceInRegion,
+      selectPane,
+      removePane,
+      moveRegionPanes,
       toggleSurface,
       surfaceIntents,
       consumeSurfaceIntent,

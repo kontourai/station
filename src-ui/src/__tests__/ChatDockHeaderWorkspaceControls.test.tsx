@@ -64,16 +64,10 @@ function renderHeader(
       onNewChat: vi.fn(),
       setShowChatSettings: vi.fn(),
     },
-    isDragging: false,
-    onDockSnap: vi.fn(),
-    availableDockSlotPlacements: ['left', 'bottom', 'right'],
-    effectiveDockSlotPlacement: 'bottom',
-    onDockPlacementChange: vi.fn(),
+    // The region's controls (placement, maximize, visibility) left this
+    // header for the region bar with #2046 2b; only the pane's own toolbar
+    // props remain.
     regionVisible: true,
-    shellMaximized: false,
-    // Chat's shell. Required since #1386, which retired the "dock region"
-    // fallback that only Chat's own header ever rendered.
-    surfaceTitle: 'Chat',
     ...overrides,
   };
   return {
@@ -156,6 +150,31 @@ describe('header background tasks button (from #1064 AC3)', () => {
     });
     expect(row.getAttribute('aria-haspopup')).toBe('dialog');
     expect(row.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(row);
+    expect(controls.onToggleBackgroundTasks).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * #2050: where a side dock region exists the row places the Agents PANE,
+   * so the dialog semantics must go with the sheet. A row announcing
+   * `haspopup="dialog"` and an expanded state while it opens a tab would
+   * describe an interaction that does not happen — and `aria-expanded`
+   * would then be a state nothing ever changes. Reverting the conditional
+   * spread in `ChatDockHeader` reds both assertions.
+   */
+  test('drops the dialog semantics when the row opens the Agents pane', async () => {
+    const controls = workspaceControls({
+      isBackgroundTasksOpen: true,
+      backgroundTasksOpensPane: true,
+    });
+    renderHeader({ workspaceControls: controls });
+    openMoreMenu();
+
+    const row = await screen.findByRole('menuitem', {
+      name: 'Background tasks',
+    });
+    expect(row.getAttribute('aria-haspopup')).toBeNull();
+    expect(row.getAttribute('aria-expanded')).toBeNull();
     fireEvent.click(row);
     expect(controls.onToggleBackgroundTasks).toHaveBeenCalledTimes(1);
   });
@@ -422,16 +441,17 @@ describe('one-bar rule (#3309)', () => {
             button.getAttribute('aria-label') ?? button.textContent ?? '',
         ),
     ).toEqual([
-      'Move the dock',
       // Open/New are labelled by their visible text; their chords are in the
       // tooltips ("Open Conversation", "New Chat"), which is where every
       // shortcut in this bar lives since #1536 F retired the keycap spans.
+      // The placement grab, maximize and the visibility chevron that used to
+      // bracket these are the REGION's since #2046 2b and render in the
+      // region bar (`RegionChromeBar.test.tsx` pins them there).
       'Open',
       'New',
       'More dock actions',
-      'Expand dock region to workspace',
-      'Hide Chat',
     ]);
+    expect(screen.queryByLabelText('Hide Chat')).toBeNull();
     // The gear is a row of that one menu now, not a control of its own.
     expect(screen.queryByRole('button', { name: 'Chat settings' })).toBeNull();
   });

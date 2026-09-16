@@ -4,16 +4,17 @@
   "private": true,
   "description": "Minimal workspace plugin example for Station",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./src/index.tsx",
   "files": [
+    "src",
     "dist",
-    "plugin.json"
+    "plugin.json",
+    "tsconfig.json",
+    "README.md"
   ],
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch",
-    "postinstall": "node scripts/install-plugin.js"
+    "dev": "tsc --watch"
   },
   "peerDependencies": {
     "@kontourai/station-sdk": "*",

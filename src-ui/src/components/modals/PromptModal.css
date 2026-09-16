@@ -20,7 +20,7 @@
 }
 
 .prompt-modal__input:focus {
-  border-color: var(--accent-primary, var(--border-focus));
+  border-color: var(--accent-primary);
 }
 
 .prompt-modal__error {

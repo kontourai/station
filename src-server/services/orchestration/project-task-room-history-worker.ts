@@ -85,6 +85,8 @@ interface WorkerInit {
   retentionRecords: number;
   retentionBytes: number;
   maxIdentities: number;
+  /** SQLite busy wait; derived by the owner from the admission deadline. */
+  lockWaitMs: number;
   faultAfterCommitOnce?: boolean;
   unavailableAfterCommitOnce?: boolean;
 }
@@ -145,6 +147,7 @@ if (
     'retentionRecords',
     'retentionBytes',
     'maxIdentities',
+    'lockWaitMs',
     'faultAfterCommitOnce',
     'unavailableAfterCommitOnce',
   ]) ||
@@ -157,6 +160,8 @@ if (
   Number(workerData.retentionBytes) < 48 * 1024 ||
   !Number.isSafeInteger(workerData.maxIdentities) ||
   Number(workerData.maxIdentities) < Number(workerData.retentionRecords) ||
+  !Number.isSafeInteger(workerData.lockWaitMs) ||
+  Number(workerData.lockWaitMs) < 1 ||
   (workerData.faultAfterCommitOnce !== undefined &&
     typeof workerData.faultAfterCommitOnce !== 'boolean') ||
   (workerData.unavailableAfterCommitOnce !== undefined &&
@@ -493,7 +498,9 @@ function validRequest(value: unknown): value is Request {
     }).ok
   );
 }
-const db = new DatabaseSync(init.databasePath, { timeout: 175 });
+// `sqliteLockWaitMs` in project-task-room-history.ts says why this is
+// derived rather than a literal (#1531).
+const db = new DatabaseSync(init.databasePath, { timeout: init.lockWaitMs });
 // archive#3661: bounded retry rather than a silent swallow — see
 // `enableWalJournalMode` for why `busy_timeout` does not cover this pragma.
 applyWalJournalMode(db, { store: 'project task room history' });
@@ -1122,8 +1129,11 @@ async function append(request: AppendRequest, requestId: number) {
     // lookup — is computation over rows this transaction has only read, so a
     // deterministic refusal there rolls back without having asked the
     // controller for anything. Nothing between this call and COMMIT can fail
-    // on its own inputs; only process death can, and settling that is the
-    // reconciliation path's job, not a reordering's.
+    // on its own inputs; what remains is process death and storage faults —
+    // COMMIT can still return SQLITE_FULL or SQLITE_IOERR, and the record
+    // INSERT would collide on its primary key if a room's head_seq ever
+    // lagged its rows. Both strand an unresolved admission and both are
+    // reconciliation's job, not a reordering's.
     if (request.writeAdmissionRequired) {
       const admission = await authorizeCommit(
         requestId,

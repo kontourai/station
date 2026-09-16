@@ -2,7 +2,7 @@
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect } from '@playwright/test';
-import { build } from 'esbuild';
+import { build, type OnLoadResult } from 'esbuild';
 import { test } from './helpers/fixture-audit';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -15,11 +15,24 @@ test.beforeAll(async () => {
       loader: 'tsx',
       contents: `
         import { createRoot } from 'react-dom/client';
+        import { ConnectionsProvider } from '@kontourai/station-connect';
+        import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
         import { ProviderConnectionForm } from './src-ui/src/views/provider-settings/ProviderConnectionForm';
         const noop = () => {};
         const form = { kind: 'model', type: 'anthropic', name: 'Example provider', enabled: true, capabilities: ['llm'], status: 'ready', prerequisites: [], lastCheckedAt: null,
           config: { defaultModel: 'shared', modelOptions: [{ id: 'shared', name: 'Shared model' }, { id: 'custom', name: 'Custom model' }] } };
-        createRoot(document.getElementById('root')).render(<ProviderConnectionForm form={form} selectedProviderId="example" isNew={false} testResult={null} testError={null} isTesting={false} onSetField={noop} onSetConfigField={noop} onTypeChange={noop} onTestConnection={noop} />);
+        // The form reads devicePresentation, which resolves an api base from
+        // the connection store and queries it. Both providers are the real
+        // ones; the query is left to fail (every request but the document is
+        // aborted below), which is the 'server has not answered' state the
+        // hook documents and the state this fixture wants.
+        createRoot(document.getElementById('root')).render(
+          <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+            <ConnectionsProvider>
+              <ProviderConnectionForm form={form} selectedProviderId="example" isNew={false} testResult={null} testError={null} isTesting={false} onSetField={noop} onSetConfigField={noop} onTypeChange={noop} onTestConnection={noop} />
+            </ConnectionsProvider>
+          </QueryClientProvider>
+        );
       `,
     },
     bundle: true,
@@ -31,17 +44,45 @@ test.beforeAll(async () => {
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [
       {
+        /**
+         * Shadows ONE SDK export. The first version of this replaced the whole
+         * module with that single binding, which is not what the file's first
+         * line claims and not what it needs: the form's graph reaches
+         * `useDevicePresentation` too, so when that import arrived the bundle
+         * stopped building and the spec reported a failure that named no
+         * behaviour (#2110). Re-exporting the real module keeps the stub's
+         * blast radius equal to its description — a local export outranks a
+         * `export *` of the same name, so only the AWS read is replaced and
+         * every other SDK binding stays real.
+         */
         name: 'unused-provider-query',
         setup(builder) {
-          builder.onResolve({ filter: /^@kontourai\/station-sdk$/ }, () => ({
-            path: 'unused-provider-query',
-            namespace: 'fixture',
-          }));
-          builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
-            contents:
-              'export const useAwsProfilesQuery = () => ({data:undefined,isLoading:false,isError:false});',
-            loader: 'js',
-          }));
+          builder.onResolve({ filter: /^@kontourai\/station-sdk$/ }, (args) =>
+            // The re-export below resolves the same specifier; without this
+            // the stub would resolve to itself.
+            args.pluginData?.passthrough
+              ? null
+              : { path: 'unused-provider-query', namespace: 'fixture' },
+          );
+          builder.onLoad(
+            { filter: /.*/, namespace: 'fixture' },
+            async (): Promise<OnLoadResult> => {
+              const real = await builder.resolve('@kontourai/station-sdk', {
+                resolveDir: ROOT,
+                kind: 'import-statement',
+                pluginData: { passthrough: true },
+              });
+              if (real.errors.length > 0) return { errors: real.errors };
+              return {
+                contents: [
+                  `export * from ${JSON.stringify(real.path)};`,
+                  'export const useAwsProfilesQuery = () => ({data:undefined,isLoading:false,isError:false});',
+                ].join('\n'),
+                loader: 'js',
+                resolveDir: ROOT,
+              };
+            },
+          );
         },
       },
     ],
@@ -71,6 +112,12 @@ for (const theme of ['light', 'dark']) {
     page,
   }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
+    // Everything the fixture needs is inlined, so any other request is the
+    // device-presentation query reaching for a connection that does not
+    // exist. Aborting keeps this offline and off DNS rather than waiting for
+    // a name to fail to resolve. Registered FIRST: Playwright matches the
+    // most recently registered route, so the document route below wins.
+    await page.route('**/*', (route) => route.abort());
     await page.route('http://station.test/', (route) =>
       route.fulfill({
         contentType: 'text/html',

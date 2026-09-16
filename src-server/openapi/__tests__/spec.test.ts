@@ -51,6 +51,21 @@ describe('buildOpenApiSpec', () => {
     expect(schema.properties.consent.required).toContain('grantRevision');
   });
 
+  test('documents registry trust refusal at acquisition and recovery seams', () => {
+    const spec = buildOpenApiSpec();
+    for (const path of [
+      '/api/registry/plugins/install',
+      '/api/plugins/preview',
+      '/api/plugins/install',
+      '/api/plugins/{name}/update',
+      '/api/plugins/{name}/recover',
+    ]) {
+      expect(spec.paths[path]!.post!.responses).toMatchObject({
+        409: { description: expect.stringMatching(/trust/i) },
+      });
+    }
+  });
+
   test('includes the first-pass portability route set', () => {
     const spec = buildOpenApiSpec();
 

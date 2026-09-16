@@ -7,47 +7,46 @@ import {
 } from '../destination-registry';
 
 describe('DestinationRegistry', () => {
-  test('drives the exact sidebar and command-palette inventories from one authority', () => {
-    // archive#3313 (Settings IA, option A): Settings holds a System slot;
-    // Feature Previews is a Settings section (palette deep link only); the
-    // Developer destinations advertise only with the developer-tools flag on.
-    //
-    // UX audit RT-13 / SHELL-08: Agents, Connections and Activity lead as a
-    // flat `primary` band. The order below is also the assertion that
-    // `primary` sorts FIRST — sections used to be ordered by
-    // `String.localeCompare`, under which 'primary' would have landed between
-    // 'customize' and 'system' and put the top-level band in the middle.
+  test('drives the exact panel, Manage and command-palette inventories from one authority', () => {
+    // #2059 (design record D3): the left panel lists PLACES only. Activity is
+    // the sole `sidebar` row — Home is `hiddenFromNav` and the panel renders
+    // it directly, Notifications and Settings became the footer's bell and
+    // gear, and the seven configuration destinations moved to `management`.
     expect(
       APP_DESTINATION_REGISTRY.getSidebar().map(
         (destination) => destination.id,
       ),
-    ).toEqual([
-      'agents',
-      'connections',
-      'activity',
-      'guidance',
-      'registry',
-      'review-queue',
-      'plugins',
-      'notifications',
-      'schedule',
-      'settings',
-    ]);
+    ).toEqual(['activity']);
+    // The developer-tools flag must not put a row back in the panel: it
+    // gates Developer's MANAGE entry now.
     expect(
       APP_DESTINATION_REGISTRY.getSidebar(new Set([DEVELOPER_TOOLS_FLAG])).map(
         (destination) => destination.id,
       ),
+    ).toEqual(['activity']);
+    expect(
+      APP_DESTINATION_REGISTRY.getManagement().map(
+        (destination) => destination.id,
+      ),
     ).toEqual([
       'agents',
-      'connections',
-      'activity',
       'guidance',
+      'connections',
       'registry',
-      'review-queue',
       'plugins',
-      'notifications',
       'schedule',
-      'settings',
+    ]);
+    expect(
+      APP_DESTINATION_REGISTRY.getManagement(
+        new Set([DEVELOPER_TOOLS_FLAG]),
+      ).map((destination) => destination.id),
+    ).toEqual([
+      'agents',
+      'guidance',
+      'connections',
+      'registry',
+      'plugins',
+      'schedule',
       'developer',
     ]);
     expect(
@@ -99,6 +98,80 @@ describe('DestinationRegistry', () => {
     ]);
   });
 
+  // #2059 acceptance: "Every removed destination remains reachable from the
+  // palette and from a Settings entry point." This is the palette half. It
+  // asserts the ROUTE, not the id, because Guidance reaches the palette under
+  // two entries of its own (`Commands` and `Skills`) rather than its own id —
+  // an id-keyed check would have called it unreachable.
+  test('every destination behind the gear is also reachable from the palette', () => {
+    const flags = new Set([DEVELOPER_TOOLS_FLAG]);
+    const paletteRoutes = new Set(
+      APP_DESTINATION_REGISTRY.getPalette(flags).map(
+        (destination) => destination.route,
+      ),
+    );
+    for (const destination of APP_DESTINATION_REGISTRY.getManagement(flags)) {
+      expect(
+        paletteRoutes,
+        `${destination.id} left the panel with no palette entry for ${destination.route}`,
+      ).toContain(destination.route);
+    }
+  });
+
+  // A destination is a place or a managed setting, never both: two entry
+  // points advertising one surface as both a panel row and a Settings item is
+  // exactly the split the panel change removes.
+  test('refuses a destination that is both a panel place and a managed setting', () => {
+    expect(() =>
+      createDestinationRegistry([
+        {
+          id: 'both',
+          route: '/both',
+          label: () => 'Both',
+          sidebar: { order: 1 },
+          management: { order: 1 },
+        },
+      ]),
+    ).toThrow(/both a panel place and a managed setting/);
+  });
+
+  // `hiddenFromNav` filters `getManagement`, so the pair would declare a
+  // Manage entry and then withhold it — the destination would be gone from
+  // the panel AND from the group that is supposed to hold what left it, with
+  // no error anywhere.
+  test('refuses a managed setting that is also hidden from nav', () => {
+    expect(() =>
+      createDestinationRegistry([
+        {
+          id: 'hidden-manage',
+          route: '/hidden-manage',
+          label: () => 'Hidden',
+          hiddenFromNav: true,
+          management: { order: 1 },
+        },
+      ]),
+    ).toThrow(/cannot be hidden from nav and a managed setting/);
+  });
+
+  test('refuses two managed settings in the same slot', () => {
+    expect(() =>
+      createDestinationRegistry([
+        {
+          id: 'one',
+          route: '/one',
+          label: () => 'One',
+          management: { order: 1 },
+        },
+        {
+          id: 'two',
+          route: '/two',
+          label: () => 'Two',
+          management: { order: 1 },
+        },
+      ]),
+    ).toThrow(/Duplicate management destination order: 1/);
+  });
+
   test('keeps registered preview surfaces wired while advertising only enabled ones', () => {
     const preview: DestinationDefinition = {
       id: 'preview',
@@ -139,7 +212,7 @@ describe('DestinationRegistry', () => {
           labelCalls += 1;
           return 'Localized later';
         },
-        sidebar: { section: 'system', order: 1 },
+        sidebar: { order: 1 },
       },
     ]);
 
@@ -169,7 +242,7 @@ describe('DestinationRegistry', () => {
         route: '/one',
         label: () => 'One',
         keywords: ['first'],
-        sidebar: { section: 'customize', order: 1 },
+        sidebar: { order: 1 },
         palette: { order: 1, params: { tab: 'one' } },
       },
     ]);

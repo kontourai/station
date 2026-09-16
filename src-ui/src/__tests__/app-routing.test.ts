@@ -44,9 +44,32 @@ const LEGACY_PATH_CASES = [
   // #765 D2: bare /tasks has no collection view; tasks surface on Home.
   ['/tasks', '/'],
   ['/tasks/', '/'],
-  // #765 residue (D2 class): nav label "Review", canonical route /review-queue.
-  ['/review', '/review-queue'],
-  ['/review/', '/review-queue'],
+  // #2065: Review is a layout kind a Project places, so the bare spellings —
+  // and the retired queue's own two — land on the attention inbox, the one
+  // surface that still lists review work across Projects.
+  ['/review', '/notifications'],
+  ['/review/', '/notifications'],
+  ['/review-queue', '/notifications'],
+  ['/review-queue/', '/notifications'],
+  // A stored link that names its Project keeps its item selector and resolves
+  // into that Project's Review layout.
+  ['/review-queue?project=alpha', '/projects/alpha/layouts/review'],
+  [
+    '/review-queue?receipt=r-1&project=alpha',
+    '/projects/alpha/layouts/review?receipt=r-1',
+  ],
+  [
+    '/review-queue?change=change-1&project=alpha',
+    '/projects/alpha/layouts/review?change=change-1',
+  ],
+  [
+    '/review-queue?review=review-session-1&project=alpha',
+    '/projects/alpha/layouts/review?review=review-session-1',
+  ],
+  // No Project, no guess: the pre-#2065 inbox minted these with no project,
+  // and opening a different Project's item would be worse than landing one
+  // step away.
+  ['/review-queue?change=change-1', '/notifications'],
   ['/manage/agents', '/agents'],
   ['/manage/agents/planner', '/agents/planner'],
   ['/manage/prompts', '/guidance?tab=skills'],
@@ -86,7 +109,6 @@ const CANONICAL_VIEWS = [
   { type: 'connections-computers' },
   { type: 'plugins' },
   { type: 'registry', tab: 'plugins' },
-  { type: 'review-queue' },
   { type: 'developer', tab: 'telemetry' },
   { type: 'schedule' },
   { type: 'settings' },
@@ -111,6 +133,10 @@ const CANONICAL_VIEWS = [
   { type: 'project-new' },
   { type: 'project-edit', slug: 'project' },
   { type: 'layout', projectSlug: 'project', layoutSlug: 'coding' },
+  // #2062. The slug carries a character `encodeURIComponent` escapes, so the
+  // round-trip below proves the builder and the matcher agree on ENCODING and
+  // not merely on the two literal segments.
+  { type: 'personal-board', boardSlug: 'daily brief' },
 ] as const satisfies readonly NavigationView[];
 type EnumeratedViewType =
   | (typeof CANONICAL_VIEWS)[number]['type']
@@ -248,7 +274,6 @@ describe('app-shell routing', () => {
     ['connections'],
     ['guidance'],
     ['plugins'],
-    ['review-queue'],
     ['developer'],
     ['schedule'],
     ['notifications'],
@@ -341,6 +366,49 @@ describe('app-shell routing', () => {
     expect(resolveViewFromPath('/projects/demo/session-board')).toEqual({
       type: 'project-session-board',
       slug: 'demo',
+    });
+    // #2062 review LOW-9 — `parseBoardPath`'s two documented refusals, neither
+    // of which had ever executed. Both answer `not-found` rather than throwing
+    // or matching a truncated slug.
+    expect(resolveViewFromPath('/boards/daily')).toEqual({
+      type: 'personal-board',
+      boardSlug: 'daily',
+    });
+    // Trailing slash is the SAME Board — the matcher's one tolerated variant.
+    expect(resolveViewFromPath('/boards/daily/')).toEqual({
+      type: 'personal-board',
+      boardSlug: 'daily',
+    });
+    // EXACT: a deeper path must not resolve to `daily` with the rest
+    // discarded, which is the failure mode the project matcher was fixed for.
+    expect(resolveViewFromPath('/boards/daily/extra')).toEqual({
+      type: 'not-found',
+      path: '/boards/daily/extra',
+    });
+    expect(resolveViewFromPath('/boards')).toEqual({
+      type: 'not-found',
+      path: '/boards',
+    });
+    expect(resolveViewFromPath('/boards/')).toEqual({
+      type: 'not-found',
+      path: '/boards/',
+    });
+    // A malformed escape: `decodeURIComponent` throws on this, and the catch
+    // is what keeps the throw out of a route parse. Without it this call
+    // raises `URIError` instead of returning a view.
+    expect(resolveViewFromPath('/boards/%E0%A4%A')).toEqual({
+      type: 'not-found',
+      path: '/boards/%E0%A4%A',
+    });
+    // `%20` decodes to a SPACE, not to nothing — an earlier comment here said
+    // "decodes to the empty string", which this assertion plainly contradicts
+    // (review F4). A decode cannot produce an empty string for a segment the
+    // regex matched, so there is no such case to cover; what this pins is that
+    // an escaped character round-trips into the slug rather than being
+    // truncated or rejected.
+    expect(resolveViewFromPath('/boards/%20')).toEqual({
+      type: 'personal-board',
+      boardSlug: ' ',
     });
     expect(resolveViewFromPath('/tasks/task%2Falpha')).toEqual({
       type: 'task',

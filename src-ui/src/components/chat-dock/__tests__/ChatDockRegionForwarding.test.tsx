@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ChatDock } from '../ChatDock';
 
 const probe = vi.fn();
-vi.mock('../../../workspace-panes/AmbientChatDockPaneHost', () => ({
-  AmbientChatDockPaneHost: (props: unknown) => {
+vi.mock('../../../workspace-panes/RegionPaneHost', () => ({
+  RegionPaneHost: (props: unknown) => {
     probe(props);
     return null;
   },
@@ -21,7 +21,7 @@ describe('ChatDock region forwarding', () => {
   });
 
   // A second mount in the same document (kontourai/station#1301):
-  // `loadAmbientChatDockPaneHost` must hand each `lazy()` its own promise or
+  // `loadRegionPaneHost` must hand each `lazy()` its own promise or
   // this render never returns. The spin is synchronous, so vitest's 30s
   // `testTimeout` never gets to fire: a regression hangs the file rather
   // than failing it.

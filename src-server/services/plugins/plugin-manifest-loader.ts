@@ -7,6 +7,7 @@ import {
   isCanonicalPluginId,
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
+import { RESERVED_EVENT_SENTINEL_PLUGIN_NAMES } from '@kontourai/station-contracts/plugin-visibility';
 import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import {
   type AgentPluginManifestReport,
@@ -41,6 +42,25 @@ export class PluginManifestValidationError extends Error {
     message: string,
   ) {
     super(message);
+  }
+}
+
+/**
+ * #2067, third reservation axis, reached from BOTH manifest readers.
+ *
+ * `workspace-home-role` satisfies `isCanonicalPluginId` and is not a
+ * reserved object key, so without this a plugin could take the name Station
+ * emits as its Home-role event sentinel. The relay does not depend on this
+ * alone — it also requires a payload marker no plugin frame sets — but this
+ * is the axis that exists so the other need not be load-bearing, and an axis
+ * that covers one of two manifest formats is not that.
+ */
+function assertPluginNameIsNotReserved(name: string): void {
+  if (RESERVED_EVENT_SENTINEL_PLUGIN_NAMES.has(name)) {
+    invalidManifest(
+      'reserved-plugin-name',
+      `Plugin manifest name '${name}' is reserved: Station emits it as a sentinel on its plugin event channels`,
+    );
   }
 }
 
@@ -142,6 +162,12 @@ function readAgentPluginManifest(
         : `Unsupported Agent Plugins manifest schema '${schema}'`,
     );
   }
+  // #2067: BEFORE `base` reaches either return below. This reader has two
+  // exits that never pass through `parsePluginManifest` — the
+  // no-extension branch and the normalization catch — so checking the
+  // reservation only there certified a rule the forward manifest format
+  // skipped entirely. One call here covers every path out of this function.
+  assertPluginNameIsNotReserved(loaded.manifest.name);
   const base: PluginManifest = {
     name: loaded.manifest.name,
     version: loaded.manifest.version ?? '0.0.0-agent-plugin-unversioned',
@@ -278,7 +304,9 @@ function parsePluginManifest(
   // read. Two independent axes, because neither covers the other:
   // `isCanonicalPluginId` refuses `__proto__` (underscores fail the pattern)
   // but `constructor` and `prototype` SATISFY it, and the reserved-key set
-  // refuses those three but not `../evil` or `Name With Spaces`.
+  // refuses those three but not `../evil` or `Name With Spaces`. A third
+  // axis — event-sentinel names — is asserted below AND in the Agent Plugins
+  // reader, which returns without reaching this function.
   if (!isCanonicalPluginId(candidate.name)) {
     invalidManifest(
       'invalid-plugin-name',
@@ -291,6 +319,15 @@ function parsePluginManifest(
       `Plugin manifest name '${candidate.name}' is a reserved object key and cannot name a plugin`,
     );
   }
+  // #2067, third axis: names Station itself emits on a plugin event channel
+  // as a SENTINEL. `workspace-home-role` satisfies `isCanonicalPluginId` and
+  // is not a reserved object key, so a plugin could take it — and then every
+  // `plugins:*` frame Station emits for that plugin would carry the sentinel
+  // name and ride the relay exemption meant for the Home-role slot, carrying
+  // the plugin's non-secret setting VALUES to subscribers who cannot see it.
+  // Reserved here so the collision cannot exist; the relay ALSO requires a
+  // payload discriminator, because neither axis alone should be load-bearing.
+  assertPluginNameIsNotReserved(candidate.name);
   if (typeof candidate.version !== 'string' || !candidate.version.trim()) {
     invalidManifest(
       'missing-version',

@@ -3,6 +3,10 @@ import { basename, dirname, join } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import { agentAvailableInProject } from '@kontourai/station-contracts/project-reference-integrity';
+import {
+  resolveWorkspaceIsolationMode,
+  type WorkspaceIsolationMode,
+} from '@kontourai/station-contracts/workspace-isolation';
 import type { WorkspacePaneHostAgentRef } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { capturePluginAgentInvocation } from '../../domain/config-loader-agents.js';
 import { readRegularFileNoFollow } from '../../domain/home-schema-gate.js';
@@ -134,6 +138,15 @@ export function createWorkspacePaneHostAdmission(input: {
   journal?: PackageMcpAdmissionJournal;
   projects: Pick<IStorageAdapter, 'projectRevision'>;
   nativeAgentAvailable?(agentId: string, spec: AgentSpec): boolean;
+  /**
+   * This Station's `AppConfig.defaultWorkspaceIsolation` (#2144 slice 2) —
+   * the fallback for a project that names no workspace mode. Read here, at
+   * capture time, so the precondition below and the execution-target
+   * resolver judge the same invocation by the same answer.
+   */
+  stationDefaultWorkspaceIsolation?(): Promise<
+    WorkspaceIsolationMode | undefined
+  >;
   /** Production grant gate wraps the short final Project/Agent admission. */
   withInvocationPermission?<T>(
     pluginId: string,
@@ -205,6 +218,10 @@ export function createWorkspacePaneHostAdmission(input: {
         const project = structuredClone(projectRevision.value);
         if (project.slug !== projectSlug)
           throw new ForegroundInvocationUnavailableError();
+        const workspaceIsolationMode = resolveWorkspaceIsolationMode(
+          project.defaultWorkspaceIsolation,
+          await input.stationDefaultWorkspaceIsolation?.(),
+        );
         const agentSnapshot = await capturePluginAgentInvocation(
           projectHomeDir,
           agent.agentId,
@@ -267,6 +284,7 @@ export function createWorkspacePaneHostAdmission(input: {
           get project() {
             return structuredClone(project);
           },
+          workspaceIsolationMode,
           message,
           get provisionedWorkspace() {
             return provisionedWorkspace;
@@ -299,7 +317,7 @@ export function createWorkspacePaneHostAdmission(input: {
                       !agentSpec.execution?.agentConnectionId &&
                       !nativeRelayInvoked) ||
                     (phase === 'provision'
-                      ? project.defaultWorkspaceIsolation !== 'worktree' ||
+                      ? workspaceIsolationMode !== 'worktree' ||
                         provisionedThread !== undefined ||
                         thread !== undefined
                       : phase === 'start'
@@ -308,7 +326,7 @@ export function createWorkspacePaneHostAdmission(input: {
                             actual.cwd !== provisionedWorkspace.cwd) ||
                           (provisionedThread !== undefined &&
                             provisionedThread !== actual.threadId) ||
-                          (project.defaultWorkspaceIsolation === 'worktree' &&
+                          (workspaceIsolationMode === 'worktree' &&
                             provisionedWorkspace === undefined)
                         : thread !== actual.threadId ||
                           turnInvoked ||

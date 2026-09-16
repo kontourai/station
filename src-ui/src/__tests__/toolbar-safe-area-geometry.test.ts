@@ -83,10 +83,17 @@ describe('toolbar geometry accounts for the top safe-area inset', () => {
     expect(helper).toContain('--safe-top');
   });
 
-  it('keeps header snap actions delegated to the measured dock owner', () => {
-    const header = read('components/chat-dock/ChatDockHeader.tsx');
-    expect(header).toContain('onDockSnap');
-    expect(header).not.toContain('setDockHeight');
+  it('keeps region-bar snap actions delegated to the measured dock owner', () => {
+    // #2046 2b: the maximize and visibility controls moved from Chat's header
+    // to the region bar; the rule moved with them. The bar asks the chrome
+    // for a snap and never sizes the dock itself, and the pane header that
+    // no longer carries the controls carries no height write either.
+    const bar = read('workspace-panes/RegionChromeBar.tsx');
+    expect(bar).toContain('applyDockSnap');
+    expect(bar).not.toContain('setDockHeight');
+    expect(read('components/chat-dock/ChatDockHeader.tsx')).not.toContain(
+      'setDockHeight',
+    );
   });
 
   it('keeps expanded region geometry below the app toolbar', () => {

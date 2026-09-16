@@ -75,6 +75,20 @@ function buildHarness() {
   ]);
 }
 
+export const SHELL_E2E_LANES = [
+  {
+    name: 'plugin-host-security',
+    spec: 'tests/tauri-shell/plugin-host-security.e2e.ts',
+  },
+  {
+    // #1969: the Device pane against a real Station route and a fixture
+    // device helper. Deliberately a named lane rather than a PR-smoke
+    // addition — it needs a built shell binary and boots the whole app.
+    name: 'device-pane',
+    spec: 'tests/tauri-shell/device-pane.e2e.ts',
+  },
+];
+
 function main() {
   if (process.argv.slice(2).includes('--build')) buildHarness();
   const explicit = process.env.STATION_TAURI_E2E_BINARY;
@@ -93,17 +107,39 @@ function main() {
   });
   if (revision.status !== 0)
     throw new Error('Could not resolve the Tauri E2E source revision.');
-  run(
-    process.execPath,
-    ['--import', 'tsx', 'tests/tauri-shell/plugin-host-security.e2e.ts'],
-    {
+  // Named lanes, each a separate process so one lane's app fixture cannot
+  // outlive it into the next. `--lane=<name>` runs one; the default runs all.
+  //
+  // "All" became TWO with #1969's Device lane, and they run SERIALLY, so a
+  // bare `npm run test:tauri-shell` now costs the sum of both (#2091). Each
+  // lane boots the whole shell, waits on a real WebView and tears a fixture
+  // home down, so that is minutes rather than seconds.
+  //
+  // And `run` exits the process on a non-zero lane, so the FIRST failure ends
+  // the sweep: a red `plugin-host-security` means `device-pane` did not run at
+  // all rather than passing. Use `--lane=<name>` to reach a later lane while an
+  // earlier one is red, and to iterate on one without paying for the other.
+  const requested = process.argv
+    .slice(2)
+    .find((argument) => argument.startsWith('--lane='))
+    ?.slice('--lane='.length);
+  const lanes = requested
+    ? SHELL_E2E_LANES.filter((lane) => lane.name === requested)
+    : SHELL_E2E_LANES;
+  if (lanes.length === 0) {
+    throw new Error(
+      `Unknown Tauri shell lane '${requested}'. Known lanes: ${SHELL_E2E_LANES.map((lane) => lane.name).join(', ')}.`,
+    );
+  }
+  for (const lane of lanes) {
+    run(process.execPath, ['--import', 'tsx', lane.spec], {
       env: {
         ...process.env,
         STATION_TAURI_E2E_BINARY: binary,
         STATION_TAURI_E2E_SOURCE_SHA: revision.stdout.trim(),
       },
-    },
-  );
+    });
+  }
 }
 
 if (

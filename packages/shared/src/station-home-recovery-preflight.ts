@@ -37,6 +37,16 @@ export const STATION_HOME_RECOVERY_CATALOG = {
   },
   history: { disposition: 'history-not-resume-authority', fields: [] },
   projects: { disposition: 'bindings-require-review', fields: [] },
+  /**
+   * The Station home's own `layouts/` root: personal Boards
+   * (`layouts/personal/<principal-key>/`) and instance-shared ones
+   * (`layouts/instance/`), which live outside `projects/` by design
+   * (station#2060/#2061). Same disposition as project layouts — a Board names
+   * agents and panes whose bindings a recovered home must re-review — but its
+   * own row, because a personal record is not a project's and counting it as
+   * one would misreport whose data was found.
+   */
+  layouts: { disposition: 'bindings-require-review', fields: [] },
   grants: { disposition: 'consent-requires-revalidation', fields: [] },
   credentials: { disposition: 'opaque-account-storage', fields: [] },
   scheduler: { disposition: 'do-not-reactivate-jobs', fields: [] },
@@ -601,6 +611,14 @@ export function inspectStationHomeRecovery(
           ['project.json', 'layouts', 'documents'].includes(leaf)
         )
           return 'projects';
+      }
+      if (root === 'layouts') {
+        // `layouts/personal/<principal-key>/<slug>.json` and
+        // `layouts/instance/<slug>.json`. Classified at the root, exactly as
+        // `projects/<slug>/layouts` is: the plan counts the store and does not
+        // walk into records it will not inspect, so a principal key never
+        // reaches the inventory.
+        if (s.length === 1) return 'layouts';
       }
       if (
         root === 'data' &&

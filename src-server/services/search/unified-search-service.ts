@@ -24,6 +24,42 @@ import {
   type UnifiedSearchScope,
   type UnifiedSearchSourceState,
 } from '@kontourai/station-contracts/unified-search';
+import type { Logger } from '../../utils/logger.js';
+
+/**
+ * The logger arrives as a constructor input and this import stays TYPE-ONLY,
+ * which is a packaging constraint rather than a style preference.
+ *
+ * `isolated-task-search.ts` imports `parseUnifiedSearchProviderPage` from this
+ * module, and `scripts/__tests__/server-build-portability.test.ts` bundles
+ * that file into a standalone ESM probe and executes it. A value import of
+ * `utils/logger.js` puts pino in that bundle, and pino reaches `node:os`
+ * through a dynamic `require` esbuild cannot express in ESM -- so the packaged
+ * Task reader dies at import with `Dynamic require of "node:os" is not
+ * supported`. The type disappears at build; a value import would not.
+ *
+ * `runtime-search.ts` -- the one production caller, and not part of any
+ * portable probe -- owns the real logger and passes it in.
+ */
+
+/**
+ * The rejection this module raises for its own deadline and cancellation
+ * paths, and the only way to tell those apart from a provider that threw.
+ *
+ * It is a distinct class rather than `new Error('search-aborted')` on
+ * purpose. The provider-facing catch has to decide whether the caught value
+ * is Station's own abort or an arbitrary failure inside a third-party
+ * provider, and a message comparison cannot decide it: a provider is free to
+ * throw an error carrying any message, including that one. `instanceof`
+ * against a class this module never exports cannot be spoofed from outside
+ * it.
+ */
+class SearchAborted extends Error {
+  constructor() {
+    super('search-aborted');
+    this.name = 'SearchAborted';
+  }
+}
 
 export const UNIFIED_SEARCH_LIMITS = Object.freeze({
   providers: 8,
@@ -626,8 +662,13 @@ function responseState(
 export class UnifiedSearchService {
   private readonly providers: readonly BoundProvider[];
   private readonly continuationKey = randomBytes(32);
+  private readonly logger: Logger | undefined;
 
-  constructor(providers: readonly UnifiedSearchProvider[]) {
+  constructor(
+    providers: readonly UnifiedSearchProvider[],
+    options?: { logger?: Logger },
+  ) {
+    this.logger = options?.logger;
     const providerValues = denseDataArray(
       providers,
       UNIFIED_SEARCH_LIMITS.providers,
@@ -868,7 +909,7 @@ export class UnifiedSearchService {
       performance.now() + UNIFIED_SEARCH_LIMITS.providerTimeoutMs;
     const requireWithinDeadline = () => {
       if (controller.signal.aborted || performance.now() >= deadline) {
-        throw new Error('search-aborted');
+        throw new SearchAborted();
       }
     };
     const abort = () => controller.abort();
@@ -876,7 +917,7 @@ export class UnifiedSearchService {
     const timer = setTimeout(abort, UNIFIED_SEARCH_LIMITS.providerTimeoutMs);
     let rejectAbort: () => void = () => {};
     const aborted = new Promise<never>((_resolve, reject) => {
-      rejectAbort = () => reject(new Error('search-aborted'));
+      rejectAbort = () => reject(new SearchAborted());
       controller.signal.addEventListener('abort', rejectAbort, { once: true });
       if (controller.signal.aborted) rejectAbort();
     });
@@ -978,12 +1019,52 @@ export class UnifiedSearchService {
         },
         results,
       };
-    } catch {
+    } catch (error) {
+      const cancelled = outerSignal?.aborted === true;
+      // `provider-timeout-or-error` stays the caller-facing summary: a search
+      // response must not carry provider-authored failure text. But the
+      // summary is two causes joined by "or", and until #2102 it was the ONLY
+      // record -- the caught value was discarded here, so nothing downstream
+      // or in a log could separate a provider that exceeded its deadline from
+      // one that threw. #1707 had to reconstruct exactly that distinction
+      // from surrounding evidence. Both causes are now named in the log, and
+      // the thrown value is preserved with the one that needs it.
+      //
+      // The error text goes to the LOG and never to the response, and the two
+      // are different boundaries on purpose. A response crosses to any caller,
+      // which is why `UnifiedSearchProviderReason` is a closed vocabulary and
+      // why a test in this service's suite pins that provider-authored detail
+      // never appears in one. The server log is the local operator's own:
+      // `utils/logger.ts` sanitizes free text and redacts paths on the way to
+      // stdout, the durable NDJSON store is 0700/0600, and `ServerLogReader`
+      // redacts at read for every remote or paired caller. Preserving the
+      // message there is the widening this fix makes, and it is the whole
+      // point of it.
+      if (error instanceof SearchAborted) {
+        // A cancellation is routine -- a caller abandoning a query it no
+        // longer wants is the normal path, and logging it would bury the two
+        // conditions worth reading. A deadline is not routine.
+        if (!cancelled) {
+          this.logger?.warn('Unified search provider exceeded its deadline', {
+            providerId: provider.descriptor.id,
+            owner: provider.descriptor.owner,
+            timeoutMs: UNIFIED_SEARCH_LIMITS.providerTimeoutMs,
+          });
+        }
+      } else {
+        this.logger?.warn('Unified search provider threw', {
+          providerId: provider.descriptor.id,
+          owner: provider.descriptor.owner,
+          // Logged even when the search was cancelled: the provider still
+          // failed for a reason of its own, and the cancellation did not
+          // cause it.
+          cancelled,
+          err: error,
+        });
+      }
       return {
         source: unavailableSource(
-          outerSignal?.aborted
-            ? 'search-cancelled'
-            : 'provider-timeout-or-error',
+          cancelled ? 'search-cancelled' : 'provider-timeout-or-error',
         ),
         results: [],
       };

@@ -126,6 +126,10 @@ export const pluginPreviewSchema = z.object({
  */
 export const pluginInstallConsentSchema = z.object({
   grantRevision: z.string().min(1).max(256).optional(),
+  registryTrustRevision: z
+    .string()
+    .regex(/^sha256:[a-f0-9]{64}$/)
+    .optional(),
   permissions: z.array(z.string()).max(256),
   contentDigest: z.string().min(1).max(256),
   dependencies: z.array(z.string()).max(256).optional(),
@@ -134,6 +138,10 @@ export const pluginInstallConsentSchema = z.object({
       z.object({
         id: z.string().min(1).max(128),
         grantRevision: z.string().min(1).max(256).optional(),
+        registryTrustRevision: z
+          .string()
+          .regex(/^sha256:[a-f0-9]{64}$/)
+          .optional(),
         permissions: z.array(z.string()).max(256),
         contentDigest: z.string().min(1).max(256),
         dependencies: z.array(z.string()).max(256),
@@ -195,6 +203,22 @@ export const registryPluginInstallSchema = registryInstallSchema.extend({
 
 export const pluginGrantSchema = z.object({
   permissions: z.array(z.string()),
+});
+
+/**
+ * A per-principal plugin visibility grant or revocation (#2067).
+ *
+ * `principalId` is the TARGET of the change, never the authority for it: the
+ * route resolves the caller from the request's own authentication and refuses
+ * a non-operator before this body is read
+ * (`routes/plugins/plugin-visibility-routes.ts`). Both fields are bounded
+ * here for shape only; `PluginVisibilityService` re-validates each against
+ * the principal-id grammar and the canonical plugin-name grammar, because the
+ * store must not depend on which route reached it.
+ */
+export const pluginVisibilityGrantSchema = z.object({
+  principalId: z.string().trim().min(1).max(512),
+  plugin: z.string().trim().min(1).max(64),
 });
 
 /**

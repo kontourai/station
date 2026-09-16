@@ -52,6 +52,34 @@ describe('resolveProjectLayoutRendererKind', () => {
     },
   );
 
+  test('a withheld plugin binding still renders the layout view (#2090)', () => {
+    // The response this dispatch sees has had `config.plugin` AND
+    // `catalogContribution` withheld — the two facts every other branch here
+    // reads. Without the verdict as the replacement signal, this layout falls
+    // through to its `type` and reaches the BUILT-IN coding host, which never
+    // renders the per-tab placeholder the withholding exists to produce.
+    expect(
+      resolveProjectLayoutRendererKind({
+        type: 'coding',
+        config: { tabs: [{ id: 'notes' }] },
+        paneReferences: { unavailableTabIds: ['notes'] },
+      }),
+    ).toBe('layout-view');
+    // A layout with no tabs stored still carries the verdict, with an empty
+    // list: presence, not length, is what says the binding was withheld.
+    expect(
+      resolveProjectLayoutRendererKind({
+        type: 'coding',
+        config: {},
+        paneReferences: { unavailableTabIds: [] },
+      }),
+    ).toBe('layout-view');
+    // The control: the same record with nothing withheld is a coding layout.
+    expect(
+      resolveProjectLayoutRendererKind({ type: 'coding', config: {} }),
+    ).toBe('coding');
+  });
+
   test('a persisted plugin layout without catalog provenance renders the layout view', () => {
     expect(
       resolveProjectLayoutRendererKind({

@@ -119,9 +119,14 @@ const FEATURE_META: Array<{
   {
     catalogId: 'mobile-pairing',
     key: 'mobilePairingEnabled',
-    description:
-      'Show QR code and LAN discovery for connecting mobile devices to this server.',
-    privacyNote: 'Detects your local IP address via WebRTC when enabled.',
+    // The toggle's only effect is mounting `MobilePairingSection` below it —
+    // it enables no pairing capability on the server, which is what the
+    // description used to imply. The WebRTC consequence keeps its own
+    // `privacyNote` element (`.settings__toggle-privacy`) rather than being
+    // folded into the description as an ordinary sentence.
+    description: 'Show the pairing QR code and LAN discovery panel below.',
+    privacyNote:
+      'Detects this device’s local IP address via WebRTC while the panel is shown.',
   },
   {
     catalogId: 'tts-readback',
@@ -147,12 +152,17 @@ function FeatureToggle({
   onToggle: (key: BooleanFeatureSetting) => void;
 }) {
   const descId = `feature-desc-${featureKey}`;
+  const privacyId = `feature-privacy-${featureKey}`;
   return (
     <SettingsToggle
       className="settings__feature-toggle"
       checked={checked}
       onChange={() => onToggle(featureKey)}
-      describedBy={descId}
+      // The privacy note is a consequence of flipping this switch, not
+      // decoration beside it. Left out of the description, a screen-reader
+      // user hears the toggle described without the one sentence that says
+      // what turning it on makes this device do.
+      describedBy={privacyNote ? `${descId} ${privacyId}` : descId}
       label={label}
     >
       <div>
@@ -161,7 +171,9 @@ function FeatureToggle({
           {description}
         </div>
         {privacyNote && (
-          <div className="settings__toggle-privacy">{privacyNote}</div>
+          <div className="settings__toggle-privacy" id={privacyId}>
+            {privacyNote}
+          </div>
         )}
       </div>
     </SettingsToggle>

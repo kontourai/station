@@ -160,3 +160,15 @@ test('keeps simultaneous human rows distinct with opaque roster keys', () => {
   render(<LiveCollaboratorsSection />);
   expect(screen.getAllByText('Brian')).toHaveLength(2);
 });
+
+// `useLiveActivityQuery` now answers `null` — not `undefined` — when the
+// Station does not publish live work, so that a query can hold the absence as
+// a value instead of throwing and reporting a working Station as failing
+// (`packages/sdk/src/query-domains/liveActivity.ts`). This section reads only
+// `data` and both are falsy, but "both are falsy" is a claim about the code as
+// written, which is exactly the kind of claim that stops being true quietly.
+test('renders nothing when the Station does not publish live work', () => {
+  mocks.data = null;
+  const { container } = render(<LiveCollaboratorsSection />);
+  expect(container.innerHTML).toBe('');
+});

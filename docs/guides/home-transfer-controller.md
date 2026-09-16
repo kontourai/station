@@ -214,8 +214,16 @@ finished admission carrying a receipt digest, so an admission recorded for a
 write that never committed stays unresolved until an operator acts. Losing the
 response to a timeout does not clear the controller's record either. Rooms
 without the port write through the same transaction without requesting
-admission; the identifier alphabet is the same for both, because the room
-refuses control characters in an identifier whether or not a port is attached.
+admission, and the legal alphabet does not depend on whether a room is
+controlled: the room's own identifier check refuses code points below 32 and
+127 whether or not a port is attached, so a `proposalId` like `"line\nbreak"`
+is refused as `malformed` by both. Every identifier the room accepts is
+therefore one the controller's `plannedHomeAdmissionIdentifier` accepts too.
+The relation is containment, not equality — the room is the narrower of the
+two, because it also refuses lone surrogates, which that validator accepts —
+and containment is the direction that matters: attaching a port can never turn
+an append the room already allowed into a `denied` that reads as a permission
+decision.
 For every room, with or without the port, a commit-time local authority check
 that is unavailable now returns unavailable rather than denied.
 
@@ -249,16 +257,22 @@ session does not authorize room access or Agent execution.
 
 The controller stores one session record per paired home, bounded to 4,096
 records in the external authority database. The record stores capability and replay secrets only as SHA-256 digests,
-alongside their identity and generation metadata. The fresh
-256-bit capability and 256-bit replay secret remain in runtime memory and must
-never be written to a Station home, Project, peer record, log or portable
-archive. A new open or same-process retry supplies the open ID and replay
-secret. Knowing the inspectable open ID or copying the pairing credential is
-insufficient to recover the cached capability. After restart, a caller may
+alongside their identity and generation metadata. The controller mints the
+256-bit capability. The replay secret is supplied by the caller as a 64-character
+hex string; the controller checks only its format, never its entropy, so a
+caller must generate it with a cryptographically secure random source. Both
+values remain in runtime memory and must never be written to a Station home,
+Project, peer record, log or portable archive. A new open or same-process retry
+supplies the open ID and replay secret. Knowing the inspectable open ID or
+copying the pairing credential is insufficient to recover the cached
+capability only to the extent the caller's replay secret is unguessable. After restart, a caller may
 instead present the exact retained capability. If the controller loses its
 replay cache and the runtime has no retained capability, the result is
 `recovery-required`, even if the runtime still knows the replay secret. A different open cannot replace an active
 session. There is no timeout, process-ID expiry or automatic deletion path.
+Removing and re-granting `home:control` advances the grant revision: the
+existing session no longer binds, and a new open is refused as a conflict until
+an operator retires the old generation.
 
 Operator retirement names the exact paired device and expected session
 generation. It refuses while any admission for that home remains unresolved.

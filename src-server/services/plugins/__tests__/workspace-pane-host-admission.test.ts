@@ -1119,6 +1119,78 @@ describe('Workspace Pane host invocation admission', () => {
     });
   });
 
+  /**
+   * #2144 slice 2. The execution-target resolver falls a project that names
+   * no workspace mode through to the Station default, so this precondition
+   * has to reach the same answer. Read against `project.
+   * defaultWorkspaceIsolation` alone it refuses the provision phase outright
+   * — the resolver asks for a worktree and admission says the project never
+   * wanted one — which is the state this test exists to keep out.
+   */
+  test('the Station default admits provisioning for a project that names no workspace mode', async () => {
+    const stationDefault = createWorkspacePaneHostAdmission({
+      projectHomeDir: home,
+      projects: storage,
+      journal: store.createPackageMcpAdmissionJournal(),
+      stationDefaultWorkspaceIsolation: async () => 'worktree',
+    });
+    expect(
+      storage.projectRevision(projectSlug).value.defaultWorkspaceIsolation,
+    ).toBeUndefined();
+    const prepared = await stationDefault.prepare({
+      pluginId,
+      projectSlug,
+      actionId: 'literal',
+    });
+    const provision = vi.fn(async () => ({
+      path: join(home, 'station-default-worktree'),
+    }));
+    await prepared.run(async (admission) => {
+      expect(admission.workspaceIsolationMode).toBe('worktree');
+      await admission.invoke(
+        'provision',
+        { threadId: 'station-default-thread', agentId: slug, projectSlug },
+        provision,
+      );
+    });
+    expect(provision).toHaveBeenCalledOnce();
+  });
+
+  test('no Station default leaves a project that names no workspace mode shared, and provisioning stays refused', async () => {
+    const prepared = await prepare();
+    const provision = vi.fn(async () => ({ path: join(home, 'never') }));
+    // The mode is observed OUTSIDE the rejection assertion. An `expect()`
+    // inside the callback throws, the rejection wrapper catches it as "the
+    // promise rejected", and the test then passes whether the mode was
+    // 'shared' or anything else at all — the assertion would be reporting on
+    // itself.
+    let observed: string | undefined;
+    let caught: unknown;
+    await prepared
+      .run(async (admission) => {
+        observed = admission.workspaceIsolationMode;
+        await admission.invoke(
+          'provision',
+          { threadId: 'shared-thread', agentId: slug, projectSlug },
+          provision,
+        );
+      })
+      .catch((error) => {
+        caught = error;
+      });
+    expect(observed).toBe('shared');
+    // Named, not `toThrow()`: the admission's refusal reaches the caller
+    // WRAPPED — the project-storage mutation lease it was refused inside
+    // reports its own `file_storage_unavailable`, and the refusal is the
+    // cause. A bare toThrow() here passes for a storage fault, a fixture
+    // mistake, or a typo in the fixture's own setup.
+    expect(caught).toMatchObject({ code: 'file_storage_unavailable' });
+    expect((caught as { cause?: Error }).cause?.message).toBe(
+      'The captured Workspace Pane action is unavailable or changed before invocation.',
+    );
+    expect(provision).not.toHaveBeenCalled();
+  });
+
   test('a changed Project refuses captured provisioning before the Git effect', async () => {
     const revision = storage.projectRevision(projectSlug);
     await revision.replace({

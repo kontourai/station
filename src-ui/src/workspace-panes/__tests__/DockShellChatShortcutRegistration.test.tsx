@@ -187,16 +187,16 @@ vi.mock('../../components/chat/ShareIntakeController', () => ({
   ShareIntakeController: () => null,
 }));
 
-// `ChatDock.tsx` pre-warms `AmbientChatDockPaneHost`'s lazy chunk at module
-// load (`void loadAmbientChatDockPaneHost`), which this test never
+// `ChatDock.tsx` pre-warms `RegionPaneHost`'s lazy chunk at module
+// load (`void loadRegionPaneHost`), which this test never
 // actually needs (it imports `DockShell` directly, not through the ambient
 // host). Left real, that dynamic import cascades into `HomeWorkspacePane` /
 // `HomeSurface` and can resolve AFTER this test file's environment tears
 // down, throwing an unhandled rejection that Vitest warns can produce false
 // positives elsewhere. Stubbed to a no-op component so the prewarm has
 // nothing async to chase.
-vi.mock('../../workspace-panes/AmbientChatDockPaneHost', () => ({
-  AmbientChatDockPaneHost: () => null,
+vi.mock('../../workspace-panes/RegionPaneHost', () => ({
+  RegionPaneHost: () => null,
 }));
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
@@ -239,7 +239,7 @@ function isMaximizedInDom(): boolean {
 /**
  * `DockShell` stays mounted across `occupant` changes (its React position
  * never moves) while its leaf swaps — the same shape a real occupant switch
- * has (`AmbientChatDockPaneHost` mounts `DockShell` once; `WorkspacePaneHost`
+ * has (`RegionPaneHost` mounts `DockShell` once; `WorkspacePaneHost`
  * swaps which occupant renders inside it). A placeholder div stands in for
  * Home/Activity: this test is only proving Chat's OWN local instance stays
  * silent, which does not require the real Home/Activity stack.

@@ -54,6 +54,11 @@ export function createWorkspacePaneHostActions(input: {
   projects: Pick<IStorageAdapter, 'projectRevision'>;
   getConnection(id: string): Promise<ConnectionConfig | null>;
   nativeAgentAvailable?(agentId: string, spec: AgentSpec): boolean;
+  /** This Station's default workspace mode; see the admission's own input. */
+  stationDefaultWorkspaceIsolation?(): Promise<
+    | import('@kontourai/station-contracts/workspace-isolation').WorkspaceIsolationMode
+    | undefined
+  >;
   execute(
     actor: WorkspacePaneHostActionActor,
     admission: ForegroundInvocationAdmission,
@@ -71,6 +76,12 @@ export function createWorkspacePaneHostActions(input: {
     journal: input.journal,
     projects: input.projects,
     nativeAgentAvailable: input.nativeAgentAvailable,
+    ...(input.stationDefaultWorkspaceIsolation
+      ? {
+          stationDefaultWorkspaceIsolation:
+            input.stationDefaultWorkspaceIsolation,
+        }
+      : {}),
     withInvocationPermission: (pluginId, invoke, artifact) =>
       withPluginPermissionInvocation(
         input.projectHomeDir,

@@ -1,6 +1,8 @@
 import { WORKSPACE_BASIS_PANE_RENDERER_NAME } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import { WORKSPACE_BOARD_PANE_RENDERER_NAME } from '@kontourai/station-board-pane/workspace-board-pane';
+import type { ConversationPullRequestLinkObservation } from '@kontourai/station-contracts/conversation-pull-request-links';
 import { WORKSPACE_ACTIVITY_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_AGENTS_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
   isCanonicalWorkspaceChatPaneInstance,
@@ -15,6 +17,10 @@ import {
   WORKSPACE_CODING_TERMINAL_PANE_RENDERER_NAME,
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import {
+  isCanonicalWorkspaceDevicePaneInstance,
+  WORKSPACE_DEVICE_PANE_RENDERER_NAME,
+} from '@kontourai/station-contracts/workspace-device-pane';
+import {
   isCanonicalWorkspacePlanPaneInstance,
   isCanonicalWorkspaceReadinessPaneInstance,
   isCanonicalWorkspaceTrustPaneInstance,
@@ -24,11 +30,18 @@ import {
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { WORKSPACE_FILE_PREVIEW_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-file-preview';
 import { WORKSPACE_HOME_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-home-pane';
+import { WORKSPACE_LAYOUT_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-layout-pane';
 import type {
   WorkspacePaneDescriptor,
   WorkspacePaneInstance,
 } from '@kontourai/station-contracts/workspace-pane';
 import type { WorkspacePaneAvailability } from '@kontourai/station-contracts/workspace-pane-availability';
+import {
+  isCanonicalWorkspacePullRequestPaneInstance,
+  parseWorkspacePullRequestPaneId,
+  pullRequestProviderForHost,
+  WORKSPACE_PULL_REQUEST_PANE_RENDERER_NAME,
+} from '@kontourai/station-contracts/workspace-pull-request-pane';
 import {
   isCanonicalWorkspaceSpatialBoardPaneInstance,
   WORKSPACE_SPATIAL_BOARD_PANE_RENDERER_NAME,
@@ -50,6 +63,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { Button } from '../components/Button';
 import { ChatWorkspacePane } from '../components/chat-dock/ChatDock';
@@ -76,6 +90,10 @@ import {
   SkeletonBlock,
 } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
+import {
+  useOpenFilePreviewInRegion,
+  useOpenPullRequestInRegion,
+} from '../contexts/useOpenInRegion';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
 import { BrowserPreviewWorkspacePane } from './BrowserPreviewWorkspacePane';
 import {
@@ -90,7 +108,8 @@ import {
 } from './filePreviewPaneInstance';
 import {
   createFilePreviewPaneStatePreparation,
-  readFilePreviewPaneState,
+  filePreviewPaneStateSnapshot,
+  subscribeFilePreviewPaneState,
 } from './filePreviewPaneStateStorage';
 import type { OpenFilePreviewIntent } from './openFilePreviewIntent';
 import { ProjectTaskRoomConversation } from './ProjectTaskRoomConversation';
@@ -234,11 +253,35 @@ function CodingPane({
   );
 }
 
+/**
+ * A coding pane's `boundContext.layoutId` is OPTIONAL (#2047 D5): a pane in
+ * a coding layout binds the layout it was placed in; a pane in a dock region
+ * is the PROJECT's and binds none (`REGION_SURFACE_PANES` mints it that way).
+ * The same rule `ChatPane` already applies. A layout binding that IS present
+ * still has to resolve — a dangling one is `layout-unresolvable`, not
+ * silently a project pane.
+ */
+function codingPaneNeedsLayout(instance: WorkspacePaneInstance): boolean {
+  return Boolean(instance.boundContext?.layoutId);
+}
+
+/**
+ * Where a coding pane works (#2047 D5): the layout's `workingDirectory`
+ * where the pane is layout-bound and the layout says, else the project's —
+ * one derivation for all three panes, so a docked Terminal, Diff and Files
+ * agree on the directory. Empty when neither names one (the panes render
+ * "Workspace directory needed"). `project` is the resolved identity's; a
+ * pane still resolving passes none and reads as empty, which the panes gate
+ * on `identity.state` before showing.
+ */
 function codingWorkingDirectory(
   layout: { config?: Record<string, unknown> } | undefined,
+  project: { workingDirectory?: string } | undefined,
 ): string {
-  const value = layout?.config?.workingDirectory;
-  return typeof value === 'string' ? value.trim() : '';
+  const fromLayout = layout?.config?.workingDirectory;
+  if (typeof fromLayout === 'string' && fromLayout.trim())
+    return fromLayout.trim();
+  return project?.workingDirectory?.trim() ?? '';
 }
 
 /**
@@ -272,7 +315,10 @@ function CodingLayoutReadFailure({
 }
 
 function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
-  const identity = useResolvedPaneIdentity(instance, true);
+  const identity = useResolvedPaneIdentity(
+    instance,
+    codingPaneNeedsLayout(instance),
+  );
   const projectSlug =
     identity.state === 'resolved' ? identity.project.slug : '';
   const layoutSlug =
@@ -286,9 +332,19 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
     enabled: identity.state === 'resolved',
   });
   const paneHostOpen = useWorkspacePaneHostOpenAction();
+  // #2049 (batch-A review M1): in a dock region this pane has no layout to
+  // navigate to, and the host's own open refuses a preview the region does
+  // not already hold — so before #2049 a file click in a docked Files pane
+  // selected the row and opened nothing. The region opener places the
+  // preview as a sibling tab instead. Null in a layout mount, where the
+  // host route below is still the one that works.
+  const openPreviewInRegion = useOpenFilePreviewInRegion();
   const { openFilePreviewIntent, setLayout } = useNavigation();
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const workingDir = codingWorkingDirectory(layout);
+  const workingDir = codingWorkingDirectory(
+    layout,
+    identity.state === 'resolved' ? identity.project : undefined,
+  );
   useEffect(() => {
     if (openFilePreviewIntent?.projectSlug === projectSlug)
       setSelectedPath(openFilePreviewIntent.path);
@@ -299,7 +355,21 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
       // Compact pane navigation unmounts inactive renderers. Keep the selected
       // file in the navigation contract so returning to this pane restores the
       // exact row while the host independently opens the preview occurrence.
-      setLayout(projectSlug, layoutSlug, { openFilePreviewIntent: intent });
+      // A layout-less pane (a dock region, #2047) has no layout route to
+      // keep it in: navigating to `setLayout(project, '')` would leave the
+      // dock for a route that is not this pane's, so it keeps the row in
+      // its own state only.
+      if (layoutSlug)
+        setLayout(projectSlug, layoutSlug, { openFilePreviewIntent: intent });
+      if (!layoutSlug && openPreviewInRegion) {
+        openPreviewInRegion({
+          projectId,
+          projectSlug: intent.projectSlug,
+          path: intent.path,
+          ...(intent.lineRange ? { lineRange: intent.lineRange } : {}),
+        });
+        return;
+      }
       if (!paneHostOpen) {
         return;
       }
@@ -319,6 +389,12 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
       // navigation intent above are what the reader sees, and they happen
       // whether or not the preview occurrence is admitted. Reporting a
       // refusal here needs a place in this pane's own chrome to put it.
+      // In a DOCK region (#2047) the refusal is certain, not incidental: File
+      // Preview is no region surface, so the region host's admission refuses
+      // it and there is no `setLayout` to fall back on — a file click in a
+      // docked Files pane selects the row and opens nothing until #2049
+      // gives regions instance-keyed panes. `docs/design/placement.md` says
+      // so in the #2047 paragraph.
       paneHostOpen.open(
         preview,
         createFilePreviewPaneStatePreparation(
@@ -334,7 +410,14 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
         ),
       );
     },
-    [layoutSlug, paneHostOpen, projectId, projectSlug, setLayout],
+    [
+      layoutSlug,
+      openPreviewInRegion,
+      paneHostOpen,
+      projectId,
+      projectSlug,
+      setLayout,
+    ],
   );
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
@@ -372,7 +455,10 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
 }
 
 function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
-  const identity = useResolvedPaneIdentity(instance, true);
+  const identity = useResolvedPaneIdentity(
+    instance,
+    codingPaneNeedsLayout(instance),
+  );
   const projectSlug =
     identity.state === 'resolved' ? identity.project.slug : '';
   const layoutSlug =
@@ -385,7 +471,44 @@ function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
     enabled: identity.state === 'resolved',
   });
   const [activeRepoRoot, setActiveRepoRoot] = useState<string | null>(null);
-  const workingDir = codingWorkingDirectory(layout);
+  // #2049: a layout-less Diff pane is a dock region's, where a linked pull
+  // request has somewhere better to go than this panel's own inner view —
+  // its own tab, beside the conversation that linked it. In a coding layout
+  // `layoutSlug` is set and this stays undefined, so the list keeps the
+  // back-and-forth it was built for.
+  const openPullRequest = useOpenPullRequestInRegion();
+  const projectId = identity.state === 'resolved' ? identity.project.id : '';
+  const openLinkedAsPane =
+    !layoutSlug && openPullRequest
+      ? (link: ConversationPullRequestLinkObservation) =>
+          // The outcome is the answer to "did a tab open?", and the panel
+          // falls back to its own inline review when it did not. Discarding
+          // it would make a refusal a click that does nothing, where before
+          // #2049 the row always opened the review.
+          //
+          // The reachable refusals here are the model's own — no dock region
+          // free, a side region on a bottom-only device, an undeclared
+          // region. NOT the `''` projectId sentinel above: this callback is
+          // only ever invoked from JSX rendered past the
+          // `identity.state !== 'resolved'` early return, so `projectId` is
+          // a real id by the time anyone can click. (Were it reachable the
+          // opener would answer `no-surface`, not `unsupplied` — that name
+          // is reserved for a `null` project, and `''` falls through to the
+          // instance factory's own guard.)
+          openPullRequest(
+            {
+              host: link.host,
+              owner: link.repository.owner,
+              repository: link.repository.name,
+              ref: link.ref,
+            },
+            projectId,
+          ).ok
+      : undefined;
+  const workingDir = codingWorkingDirectory(
+    layout,
+    identity.state === 'resolved' ? identity.project : undefined,
+  );
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   if (!isCanonicalWorkspaceCodingDiffPaneInstance(instance))
@@ -421,6 +544,7 @@ function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
         <PullRequestsPanel
           projectSlug={projectSlug}
           activeRepoRoot={activeRepoRoot ?? workingDir}
+          onOpenLinkedAsPane={openLinkedAsPane}
         />
         <DiffPanel
           workingDir={activeRepoRoot ?? workingDir}
@@ -432,7 +556,10 @@ function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
 }
 
 function CodingTerminalWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
-  const identity = useResolvedPaneIdentity(instance, true);
+  const identity = useResolvedPaneIdentity(
+    instance,
+    codingPaneNeedsLayout(instance),
+  );
   const projectSlug =
     identity.state === 'resolved' ? identity.project.slug : '';
   const layoutSlug =
@@ -444,7 +571,10 @@ function CodingTerminalWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   } = useProjectLayoutQuery(projectSlug, layoutSlug, {
     enabled: identity.state === 'resolved',
   });
-  const workingDir = codingWorkingDirectory(layout);
+  const workingDir = codingWorkingDirectory(
+    layout,
+    identity.state === 'resolved' ? identity.project : undefined,
+  );
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   if (!isCanonicalWorkspaceCodingTerminalPaneInstance(instance))
@@ -552,10 +682,20 @@ function WorkspaceTrustPane({ instance }: BuiltinWorkspacePaneProps) {
 
 function FilePreviewWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   const identity = useResolvedPaneIdentity(instance, false);
-  const state = readFilePreviewPaneState(
-    window.localStorage,
-    instance.stateKey,
+  const stateKey = instance.stateKey;
+  // SUBSCRIBED, not read at render time (#2085). The read was never stale —
+  // it is the re-render that was missing. `openFilePreviewInRegion` writes a
+  // newly requested line range onto a preview it already holds and then
+  // reveals it; when that pane is already the selected tab of an
+  // already-visible region the reveal produces an identical arrangement and
+  // the region model's setters bail, so nothing rendered and the new range
+  // waited for an unrelated render. The write is what notifies now, and the
+  // write-then-roll-back discipline on the opener side is unchanged.
+  const readState = useCallback(
+    () => filePreviewPaneStateSnapshot(window.localStorage, stateKey),
+    [stateKey],
   );
+  const state = useSyncExternalStore(subscribeFilePreviewPaneState, readState);
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   if (
@@ -579,6 +719,125 @@ function FilePreviewWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
         stateKey={instance.stateKey}
         state={state}
       />
+    </Suspense>
+  );
+}
+
+const LazyPullRequestReviewPanel = lazy(() =>
+  import('../components/coding-layout/PullRequestReviewPanel').then(
+    ({ PullRequestReviewPanel }) => ({ default: PullRequestReviewPanel }),
+  ),
+);
+
+/**
+ * One pull request as its own pane (#2049): the SAME review surface the Diff
+ * pane's list opens, given a target rebuilt from the pane's identity rather
+ * than from a selected row. Everything in that target comes from the instance
+ * — host, owner, repository and number from its id, the Project from its
+ * binding, the provider from the host by Station's own two rules
+ * (`pullRequestProviderForHost`) — so the pane is a function of what the
+ * region holds and nothing on screen.
+ *
+ * No `onBack`: there is no list behind a tab. No `repositoryRootHint`
+ * either — that hint is the Diff pane's observed repository root, and a link
+ * click has no such observation to offer; inventing the Project's own root
+ * would be a claim about where the repository is that nothing here made.
+ */
+function PullRequestWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
+  const identity = useResolvedPaneIdentity(instance, false);
+  const key = parseWorkspacePullRequestPaneId(String(instance.instanceId));
+  if (identity.state !== 'resolved')
+    return <WorkspacePaneBindingUnavailable identity={identity} />;
+  if (!key || !isCanonicalWorkspacePullRequestPaneInstance(instance))
+    return (
+      <WorkspacePaneBindingUnavailable
+        identity={{ state: 'pane-instance-invalid' }}
+      />
+    );
+  return (
+    <Suspense fallback={<SkeletonBlock label="Opening pull request review" />}>
+      <LazyPullRequestReviewPanel
+        target={{
+          provider: pullRequestProviderForHost(key.host),
+          host: key.host,
+          owner: key.owner,
+          repository: key.repository,
+          ref: key.ref,
+          project: identity.project.slug,
+        }}
+      />
+    </Suspense>
+  );
+}
+
+const LazyLayoutWorkspacePane = lazy(() =>
+  import('./LayoutWorkspacePane').then(({ LayoutWorkspacePane }) => ({
+    default: LayoutWorkspacePane,
+  })),
+);
+
+/**
+ * One Board or project Layout as a dock tab (#2157). Lazy because the
+ * renderer imports the whole layout graph (`LayoutRenderer`, `SDKAdapter`)
+ * — the same chunk the main region's `LayoutView` rides — and a host that
+ * never docks a Layout should not download it to have it in the table.
+ */
+function LayoutWorkspacePaneEntry({ instance }: BuiltinWorkspacePaneProps) {
+  return (
+    <Suspense fallback={<SkeletonBlock count={3} label="Loading Layout" />}>
+      <LazyLayoutWorkspacePane instance={instance} />
+    </Suspense>
+  );
+}
+
+const LazyAgentsWorkspacePane = lazy(() =>
+  import('./AgentsWorkspacePane').then(({ AgentsWorkspacePane }) => ({
+    default: AgentsWorkspacePane,
+  })),
+);
+
+/**
+ * The Agents pane (#2050). It takes no instance data — the conversation it
+ * lists is navigation state, not pane identity — so unlike every pane above
+ * it there is nothing here to resolve or refuse.
+ */
+function AgentsWorkspacePaneEntry() {
+  return (
+    <Suspense fallback={<SkeletonBlock count={3} label="Loading Agents" />}>
+      <LazyAgentsWorkspacePane />
+    </Suspense>
+  );
+}
+
+const LazyDeviceWorkspacePane = lazy(() =>
+  import('./DeviceWorkspacePane').then(({ DeviceWorkspacePane }) => ({
+    default: DeviceWorkspacePane,
+  })),
+);
+
+/**
+ * The Device pane (#1969). It takes no instance ARGUMENTS — which device it
+ * shows is bounded pane state the renderer reads, not part of the occurrence
+ * — but it still refuses a non-canonical occurrence, the way the Work Board's
+ * entry does: an occurrence carrying a Project is not this pane, and
+ * rendering it as though it were would place a Station-wide device list under
+ * a tab that claims to be a Project's.
+ *
+ * Lazy for the reason Home and Activity are, with one extra: the pane pulls
+ * the mobile-device SDK client and its own stylesheet, and a region holding
+ * only a Terminal must not download either to have this row in the table.
+ */
+function DeviceWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
+  if (!isCanonicalWorkspaceDevicePaneInstance(props.instance))
+    return (
+      <ErrorState
+        title="Device is unavailable"
+        description="This pane isn’t set up as the Device snapshot view."
+      />
+    );
+  return (
+    <Suspense fallback={<SkeletonBlock count={3} label="Loading Device" />}>
+      <LazyDeviceWorkspacePane />
     </Suspense>
   );
 }
@@ -701,8 +960,12 @@ const builtinWorkspacePaneRegistry: Record<
   [WORKSPACE_TRUST_PANE_RENDERER_NAME]: WorkspaceTrustPane,
   [WORKSPACE_BROWSER_PREVIEW_PANE_RENDERER_NAME]: BrowserPreviewWorkspacePane,
   [WORKSPACE_FILE_PREVIEW_PANE_RENDERER_NAME]: FilePreviewWorkspacePane,
+  [WORKSPACE_PULL_REQUEST_PANE_RENDERER_NAME]: PullRequestWorkspacePane,
+  [WORKSPACE_LAYOUT_PANE_RENDERER_NAME]: LayoutWorkspacePaneEntry,
   [WORKSPACE_HOME_PANE_RENDERER_NAME]: HomeWorkspacePaneEntry,
   [WORKSPACE_ACTIVITY_PANE_RENDERER_NAME]: ActivityWorkspacePaneEntry,
+  [WORKSPACE_AGENTS_PANE_RENDERER_NAME]: AgentsWorkspacePaneEntry,
+  [WORKSPACE_DEVICE_PANE_RENDERER_NAME]: DeviceWorkspacePaneEntry,
   [WORKSPACE_SPATIAL_BOARD_PANE_RENDERER_NAME]: SpatialBoardWorkspacePaneEntry,
   [WORKSPACE_BOARD_PANE_RENDERER_NAME]: BoardWorkspacePaneEntry,
   [WORKSPACE_BASIS_PANE_RENDERER_NAME]: BasisWorkspacePaneEntry,

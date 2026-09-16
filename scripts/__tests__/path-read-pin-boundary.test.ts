@@ -134,6 +134,13 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'src-server/routes/__tests__/smart-routing-plugin.test.ts',
   'src-server/routes/__tests__/sse-response-tripwire.test.ts',
   'src-server/routes/chat/__tests__/chat-turn-dedup.test.ts',
+  // #2067's enumeration inventory. Its citation guard reads whichever file a
+  // row cites, to require that the file actually REQUESTS the route rather
+  // than merely mentioning it — so the path comes from a data structure and
+  // the scanner refuses it by construction, the same shape as this file's own
+  // entry above. Anchoring is not available: the point of the read is that the
+  // path is the citation. Growing this list is a decision, and this is it.
+  'src-server/routes/plugins/__tests__/plugin-identity-enumeration.test.ts',
   'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
   'src-server/security/__tests__/svg-response-tripwire.test.ts',
   'src-server/services/__tests__/flow-agents-skills.test.ts',

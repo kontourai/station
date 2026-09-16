@@ -1,10 +1,5 @@
-import {
-  type LayoutComponent,
-  type LayoutComponentProps,
-  useAgents,
-  useNavigation,
-  useToast,
-} from '@kontourai/station-sdk';
+import { useAgents, useNavigation, useToast } from '@kontourai/station-sdk';
+import type { ComponentType } from 'react';
 import './layout.css';
 
 /**
@@ -15,14 +10,13 @@ import './layout.css';
  * - Controlling chat dock via useNavigation()
  * - Showing notifications via useToast()
  */
-function MinimalWorkspace({ layout, onShowChat }: LayoutComponentProps) {
+function MinimalWorkspace() {
   const agents = useAgents();
   const { setDockState } = useNavigation();
   const { showToast } = useToast();
 
   const handleOpenChat = () => {
     setDockState(true);
-    onShowChat?.();
     showToast({
       type: 'info',
       message: 'Chat dock opened',
@@ -33,8 +27,8 @@ function MinimalWorkspace({ layout, onShowChat }: LayoutComponentProps) {
     <main className="minimal-shell">
       <section className="minimal-panel">
         <p className="minimal-kicker">Minimal plugin starter</p>
-        <h1>{layout?.name || 'Minimal Layout'}</h1>
-        <p>{layout?.description || 'A minimal layout plugin example'}</p>
+        <h1>Minimal Workspace</h1>
+        <p>Discover Agent definitions and open the existing chat dock.</p>
 
         <div className="minimal-section">
           <h2>Discovered agents</h2>
@@ -65,6 +59,6 @@ function MinimalWorkspace({ layout, onShowChat }: LayoutComponentProps) {
 
 export const components = {
   'minimal-workspace': MinimalWorkspace,
-} satisfies Record<string, LayoutComponent>;
+} satisfies Record<string, ComponentType>;
 
 export default MinimalWorkspace;

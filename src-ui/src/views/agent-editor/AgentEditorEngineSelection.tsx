@@ -12,6 +12,7 @@ import {
   connectionStatusLabel,
   isAgentConnectionSelectable,
 } from '../../utils/execution';
+import { settingsDeepLinkUrl } from '../settings/settings-deep-link';
 import type { AgentEditorFormProps, AgentFormData } from './types';
 
 /** Creation-only branch state: Station, or an external engine not named yet. */
@@ -149,7 +150,10 @@ export function AgentEditorEngineSelection({
             className="agent-editor__capability-banner-action"
             onClick={() =>
               navigationStore.navigate(
-                '/settings?view=station-config&highlight=builtin-agent-engine',
+                settingsDeepLinkUrl({
+                  view: 'station-config',
+                  highlight: 'builtin-agent-engine',
+                }),
               )
             }
           >

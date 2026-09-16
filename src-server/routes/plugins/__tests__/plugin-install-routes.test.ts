@@ -10,6 +10,7 @@ import { PluginConsentRefusedError } from '../../../services/plugins/plugin-inst
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 
 const installPluginFromSource = vi.hoisted(() => vi.fn());
+const resolvePluginRegistryInstall = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../providers/registries/registry.js', () => ({
   getAgentRegistryProvider: vi.fn().mockReturnValue({
@@ -32,9 +33,21 @@ vi.mock('../../../providers/registries/registry.js', () => ({
   ]),
 }));
 
-vi.mock('../../../services/plugins/plugin-install-transaction.js', () => ({
-  installPluginFromSource,
-}));
+// Only the installer is replaced. Preview reaches the real
+// capturePluginRegistryAcquisition from the same module (#1521); with no
+// registry id, no claim and no policy authority it yields no acquisition, so a
+// local source previews exactly as before. A bare-object mock would turn that
+// call into `undefined is not a function` and every preview into a 500.
+vi.mock(
+  '../../../services/plugins/plugin-install-transaction.js',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../../../services/plugins/plugin-install-transaction.js')
+    >()),
+    installPluginFromSource,
+    resolvePluginRegistryInstall,
+  }),
+);
 
 const cleanupDirs: string[] = [];
 
@@ -43,6 +56,10 @@ beforeEach(() => {
   // called is asserting against every test that ran before it unless the
   // record is cleared here (archive#4288).
   installPluginFromSource.mockReset();
+  // Every preview that passes no registry id must reach the route's
+  // `if (registryId)` branch as a no-op, so the default resolution is null.
+  resolvePluginRegistryInstall.mockReset();
+  resolvePluginRegistryInstall.mockResolvedValue(null);
 });
 
 afterEach(async () => {
@@ -56,6 +73,7 @@ afterEach(async () => {
 function createApp(projectHomeDir: string) {
   const app = new Hono();
   registerPluginInstallRoutes(app, {
+    projectVisiblePlugins: () => (installed) => installed,
     agentsDir: join(projectHomeDir, 'agents'),
     logger: {
       debug: vi.fn(),
@@ -121,6 +139,69 @@ describe('plugin-install-routes', () => {
       ],
       conflicts: [],
     });
+  });
+
+  test('preview refuses a registry id whose source no longer matches the pinned one as a conflict, not a fault', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-plugin-preview-'));
+    cleanupDirs.push(root);
+    resolvePluginRegistryInstall.mockResolvedValueOnce({
+      source: join(root, 'moved-plugin'),
+      registryKey: 'test-registry',
+    });
+
+    const response = await createApp(root).request('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        registryId: 'p1',
+        source: join(root, 'pinned-plugin'),
+      }),
+    });
+    const body = await readJson(response);
+
+    // 409, not the 500 an unhandled throw produced: the caller's pinned
+    // source went stale against the registry, which is the caller's state to
+    // refresh. The `code` is what lets a client re-preview rather than report
+    // the Station as broken.
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({
+      valid: false,
+      code: 'registry-source-changed',
+      error: expect.stringContaining('changed since this preview'),
+      components: [],
+      conflicts: [],
+    });
+  });
+
+  test('preview accepts a registry id whose source still matches the pinned one', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-plugin-preview-'));
+    cleanupDirs.push(root);
+    const sourceDir = join(root, 'source-plugin');
+    mkdirSync(sourceDir, { recursive: true });
+    writeFileSync(
+      join(sourceDir, 'plugin.json'),
+      JSON.stringify({ name: 'preview-plugin', version: '1.0.0' }),
+    );
+    resolvePluginRegistryInstall.mockResolvedValueOnce({
+      source: sourceDir,
+      registryKey: 'test-registry',
+    });
+
+    const response = await createApp(root).request('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ registryId: 'p1', source: sourceDir }),
+    });
+    const body = await readJson(response);
+
+    // The refusal above is CONDITIONAL on disagreement: an agreeing pair
+    // reaches the acquisition path instead. This harness stubs the registry
+    // providers with one that cannot install, so the request ends there rather
+    // than at a 200 — what it proves is that the source check let it through,
+    // which is what makes the 409 a real discriminator rather than "a registry
+    // id and a source can never be sent together".
+    expect(response.status).not.toBe(409);
+    expect(body.code).toBeUndefined();
   });
 
   test('preview reports a missing source without creating a false-valid result', async () => {

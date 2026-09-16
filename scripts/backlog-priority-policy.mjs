@@ -130,6 +130,69 @@ export function evaluateBacklogPriorityPolicy(
   };
 }
 
+/**
+ * How many times to re-read the backlog before giving up.
+ *
+ * A mismatch is usually the endpoint truncating (see `readIssues`), which the
+ * next attempt clears. It can also be a genuine concurrent change — this gate
+ * runs ON issue events, so an issue opening between the count and the listing
+ * is a real race. Both resolve by reading again; only a persistent mismatch
+ * fails, and the message prints every attempt so a 374-vs-375 race is legible
+ * as such rather than as a truncation.
+ */
+/**
+ * Issues only — GraphQL's `repository.issues` excludes pull requests, unlike
+ * the REST listing — with the label names the policy classifies on, and the
+ * server's own `totalCount` in the same response so completeness is checked
+ * against the same source that produced the page.
+ */
+const BACKLOG_QUERY = `query($owner:String!,$name:String!,$after:String){
+  repository(owner:$owner,name:$name){
+    issues(states:OPEN, first:100, after:$after){
+      totalCount
+      pageInfo{ hasNextPage endCursor }
+      nodes{ number labels(first:100){ nodes{ name } } }
+    }
+  }
+}`;
+
+/**
+ * The policy reads `state` and `pull_request` because its other caller is a
+ * saved REST list (`--input`). GraphQL returns neither: the query already
+ * filters to `states:OPEN`, and `repository.issues` never contains a pull
+ * request. Stamping `state` here keeps one shape flowing into the evaluator
+ * rather than teaching it a second one.
+ */
+export function backlogIssueFromNode(node) {
+  return {
+    number: node.number,
+    state: 'open',
+    labels: node.labels.nodes,
+  };
+}
+
+export function backlogReadIsComplete(issues, totalCount) {
+  return issues.length >= totalCount;
+}
+
+function runQuery(repository, after) {
+  const [owner, name] = repository.split('/');
+  const args = [
+    'api',
+    'graphql',
+    '-f',
+    `query=${BACKLOG_QUERY}`,
+    '-F',
+    `owner=${owner}`,
+    '-F',
+    `name=${name}`,
+  ];
+  if (after) args.push('-F', `after=${after}`);
+  return JSON.parse(
+    execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }),
+  ).data.repository.issues;
+}
+
 function readIssues(inputPath) {
   if (inputPath) return JSON.parse(readFileSync(inputPath, 'utf8'));
   const repository = process.env.GITHUB_REPOSITORY;
@@ -142,18 +205,47 @@ function readIssues(inputPath) {
         'or pass --input <file> to evaluate a saved issue list.',
     );
   }
-  return JSON.parse(
-    execFileSync(
-      'gh',
-      [
-        'api',
-        '--paginate',
-        '--slurp',
-        `repos/${repository}/issues?state=open&per_page=100`,
-      ],
-      { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 },
-    ),
-  ).flat();
+
+  // Read through GraphQL rather than `repos/:owner/:repo/issues?state=open`.
+  // That REST listing truncates: it answers 200 with a SHORT page and no
+  // `Link: rel="next"`, so a walk cannot tell a truncated list from a
+  // finished one, and `gh` exits 0 with nothing on stderr. Measured on
+  // 2026-09-15 against 361 open issues, consecutive identical reads returned
+  // 5, 96, 100, 109, 192, 200, 300 and 375 items; sometimes a short final
+  // page claiming completeness, sometimes an empty page behind a cursor.
+  // Retrying does not converge, because a truncated read is a prefix and the
+  // short page presents itself as the end. The same walk over GraphQL
+  // returned 361 on every attempt.
+  //
+  // The damage was one-directional, which is why nobody saw it. Every finding
+  // this policy produces is existential — "these issues are unclassified" —
+  // so a short read produces FEWER findings and an empty read produces none.
+  // The gate printed `{"open":0,"actionableP1":0,"unclassified":0}` and
+  // exited 0 against a backlog of 361 open issues: a clean bill of health for
+  // a backlog it had not read.
+  //
+  // `totalCount` comes back in the same response as the first page, so the
+  // completeness check below is against the server's own count rather than a
+  // second endpoint that could disagree for its own reasons.
+  const issues = [];
+  let after;
+  let totalCount = 0;
+  for (;;) {
+    const connection = runQuery(repository, after);
+    totalCount = connection.totalCount;
+    issues.push(...connection.nodes.map(backlogIssueFromNode));
+    if (!connection.pageInfo.hasNextPage) break;
+    after = connection.pageInfo.endCursor;
+  }
+
+  if (backlogReadIsComplete(issues, totalCount)) return issues;
+
+  throw new Error(
+    `Read ${issues.length} of ${totalCount} open issues from the ` +
+      `${repository} backlog.\n\n` +
+      'Evaluating a partial read would report FEWER unclassified issues than ' +
+      'exist, so this fails rather than passing on a short read.',
+  );
 }
 
 function parseInputPath(argv) {

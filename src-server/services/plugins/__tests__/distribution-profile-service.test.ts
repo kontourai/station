@@ -301,13 +301,32 @@ describe('DistributionProfileService', () => {
         'builtin:session-board': { visible: false },
       },
     });
+    // Every builtin the policy did NOT hide, in `listLayouts`' own
+    // name order — not just the one the policy names. #2065 added a fourth
+    // builtin (`builtin:review`) and this list silently grew by a row, which
+    // is the whole reason it is asserted exhaustively: the claim is that a
+    // policy hides exactly what it names and leaves the rest installable, and
+    // an expectation naming one row cannot tell "the others are hidden" from
+    // "the others were never there".
     expect(service.listLayouts()).toEqual([
+      expect.objectContaining({
+        id: 'builtin:review',
+        lifecycle: expect.objectContaining({ state: 'installable' }),
+        enabled: false,
+      }),
       expect.objectContaining({
         id: 'builtin:tasks',
         lifecycle: expect.objectContaining({ state: 'installable' }),
         enabled: false,
       }),
     ]);
+    // Named, not merely implied by the exhaustive list above — that list
+    // fails first on any membership change, so read these as what the
+    // exhaustive expectation MEANS rather than as independent coverage of a
+    // future builtin. (They are reached only when the list already agrees.)
+    const visibleIds = service.listLayouts().map((item) => item.id);
+    expect(visibleIds).not.toContain('builtin:coding');
+    expect(visibleIds).not.toContain('builtin:session-board');
   });
 
   test('persists only an explicit built-in lifecycle override atomically', () => {

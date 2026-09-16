@@ -53,6 +53,7 @@ clearly mark the stale document.
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
 - **[Mobile device inspection](guides/mobile-device-workspace.md)** — configure an explicit device host and capture native app screens through the authenticated API/SDK.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
+- **[Settings deep links](reference/settings-deep-links.md)** — the `?view=&highlight=` URL shape, the registry endpoint that enumerates every control, and the rule for answering with one.
 - **[Architecture](architecture/)** — current module boundaries and ownership.
 - **[Cloud move](design/cloud-move.md)** — setup preview, AWS preparation, and
   the staged path to verified execution handoff.

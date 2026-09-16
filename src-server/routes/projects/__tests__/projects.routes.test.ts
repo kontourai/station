@@ -10,6 +10,7 @@ import {
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID,
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID,
 } from '@kontourai/station-contracts/workspace-coding-panels';
+import { WORKSPACE_DEVICE_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-device-pane';
 import {
   WORKSPACE_PLAN_PANE_DESCRIPTOR,
   WORKSPACE_PLAN_PANE_INSTANCE_ID,
@@ -23,12 +24,14 @@ import {
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { resolveWorkspacePaneAvailability } from '@kontourai/station-contracts/workspace-pane-availability';
 import { WORKSPACE_SPATIAL_BOARD_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-spatial-board';
+import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import {
   loadAgentConfig,
   saveAgentConfig,
 } from '../../../domain/config-loader-agents.js';
+import { setGrantedPairingScope } from '../../../security/pairing-route-scopes.js';
 
 const projectOps = { add: vi.fn() };
 const projectPaneCatalogDuration = { record: vi.fn() };
@@ -38,6 +41,11 @@ const routesLogger = { error: vi.fn() };
 const FIXED_PROJECT_PANE_DESCRIPTOR_IDS = [
   WORKSPACE_CHAT_PANE_DESCRIPTOR_ID,
   WORKSPACE_SPATIAL_BOARD_PANE_DESCRIPTOR_ID,
+  // #1969: Device is a fixed pane the route both declares and issues an
+  // occurrence for, so it belongs in both populations — but its occurrence
+  // binds NO project (see the projectless assertion below), which is why it
+  // is named here rather than folded into a count.
+  WORKSPACE_DEVICE_PANE_DESCRIPTOR_ID,
 ];
 
 /**
@@ -431,6 +439,180 @@ describe('Project Routes', () => {
       body: JSON.stringify({ name: 'Test', slug: 'test' }),
     });
     expect(res.status).toBe(201);
+  });
+
+  describe('PUT /:slug settings overrides (#2144 slice 2)', () => {
+    async function seeded() {
+      const service = createMockProjectService();
+      const app = createProjectRoutes(
+        service as any,
+        createMockStorageAdapter() as any,
+        '/tmp',
+      );
+      await app.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Atlas', slug: 'atlas' }),
+      });
+      return { service, app };
+    }
+
+    /** Mounts the routes behind a middleware that presents `scope`. */
+    function withPresentedScope(
+      app: Awaited<ReturnType<typeof seeded>>['app'],
+      scope: string,
+    ) {
+      const outer = new Hono();
+      outer.use('*', async (c, next) => {
+        setGrantedPairingScope(c, scope);
+        await next();
+      });
+      outer.route('/', app);
+      return outer;
+    }
+
+    const put = async (
+      app: {
+        request: (
+          path: string,
+          init: RequestInit,
+        ) => Response | Promise<Response>;
+      },
+      body: unknown,
+    ) =>
+      await app.request('/atlas', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+    test('the model pair is accepted', async () => {
+      const { service, app } = await seeded();
+      const res = await put(app, {
+        defaultModel: 'claude-sonnet',
+        defaultProviderId: 'anthropic-local',
+      });
+      expect(res.status).toBe(200);
+      expect(service.updateProject).toHaveBeenCalledWith(
+        'atlas',
+        expect.objectContaining({
+          defaultModel: 'claude-sonnet',
+          defaultProviderId: 'anthropic-local',
+        }),
+      );
+    });
+
+    test('null reaches the service as null, which is its drop signal', async () => {
+      const { service, app } = await seeded();
+      const res = await put(app, {
+        defaultModel: null,
+        defaultProviderId: null,
+      });
+      expect(res.status).toBe(200);
+      expect(service.updateProject).toHaveBeenCalledWith(
+        'atlas',
+        expect.objectContaining({
+          defaultModel: null,
+          defaultProviderId: null,
+        }),
+      );
+    });
+
+    test('a workspace mode outside the enum is refused before the file layer', async () => {
+      const { service, app } = await seeded();
+      const res = await put(app, { defaultWorkspaceIsolation: 'sandbox' });
+      expect(res.status).toBe(400);
+      expect(service.updateProject).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The guard's rejection path, executed. `PUT /api/projects/:slug` already
+     * requires `orchestration:operate` at the auth boundary, so a caller
+     * presenting less never reaches this handler in production — which is
+     * exactly why the path needs a test that drives the handler directly. A
+     * guard whose refusal has never run is a guard nobody has seen work.
+     */
+    test('a presented scope below the Station config write scope cannot change the workspace mode', async () => {
+      const { service, app } = await seeded();
+      const scoped = withPresentedScope(app, 'orchestration:read');
+      const res = await put(scoped, {
+        defaultWorkspaceIsolation: 'worktree',
+      });
+      expect(res.status).toBe(403);
+      expect((await json(res)).error).toContain('Station setting');
+      expect(service.updateProject).not.toHaveBeenCalled();
+    });
+
+    test('the same caller may still change the model pair', async () => {
+      const { service, app } = await seeded();
+      const scoped = withPresentedScope(app, 'orchestration:read');
+      const res = await put(scoped, { defaultModel: 'claude-sonnet' });
+      expect(res.status).toBe(200);
+      expect(service.updateProject).toHaveBeenCalledOnce();
+    });
+
+    test('a caller holding the Station config write scope may change it', async () => {
+      const { service, app } = await seeded();
+      const scoped = withPresentedScope(app, 'orchestration:operate');
+      const res = await put(scoped, {
+        defaultWorkspaceIsolation: 'worktree',
+      });
+      expect(res.status).toBe(200);
+      expect(service.updateProject).toHaveBeenCalledWith(
+        'atlas',
+        expect.objectContaining({ defaultWorkspaceIsolation: 'worktree' }),
+      );
+    });
+
+    /**
+     * M3: naming the workspace mode at CREATE pins it exactly as durably as
+     * naming it on update, so the two entry points must not disagree about
+     * what authority that field takes. The refusal path is executed here for
+     * the same reason it is on the update path — in production the auth
+     * boundary gets there first, which is precisely why nothing else would
+     * ever run it.
+     */
+    test('POST / refuses a workspace mode from a caller below the Station config write scope', async () => {
+      const service = createMockProjectService();
+      const app = createProjectRoutes(
+        service as any,
+        createMockStorageAdapter() as any,
+        '/tmp',
+      );
+      const outer = new Hono();
+      outer.use('*', async (c, next) => {
+        setGrantedPairingScope(c, 'orchestration:read');
+        await next();
+      });
+      outer.route('/', app);
+
+      const refused = await outer.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Atlas',
+          slug: 'atlas',
+          defaultWorkspaceIsolation: 'worktree',
+        }),
+      });
+      expect(refused.status).toBe(403);
+      expect(service.createProject).not.toHaveBeenCalled();
+
+      const allowed = await outer.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Atlas', slug: 'atlas' }),
+      });
+      expect(allowed.status).toBe(201);
+      expect(service.createProject).toHaveBeenCalledOnce();
+    });
+
+    test("Station's own internal attestation presents no scope and is not refused", async () => {
+      const { service, app } = await seeded();
+      const res = await put(app, { defaultWorkspaceIsolation: 'worktree' });
+      expect(res.status).toBe(200);
+      expect(service.updateProject).toHaveBeenCalledOnce();
+    });
   });
 
   // archive#3315: the static /order segment must reach the reorder handler,
@@ -942,11 +1124,25 @@ describe('Project Routes', () => {
         }),
       ]),
     );
+    // #1969: every issued occurrence binds this Project EXCEPT Device's,
+    // which binds nothing at all — a device list is a fact about the
+    // Station's host, not about a checkout, so an occurrence claiming a
+    // Project would be a binding nothing reads. Asserted as an exact split
+    // rather than by relaxing the rule, so a SECOND projectless pane
+    // arriving unnoticed still reds this.
     expect(
-      body.data.instances.every(
-        (pane: any) => pane.boundContext.projectId === 'test',
-      ),
+      body.data.instances
+        .filter(
+          (pane: any) =>
+            pane.descriptorId !== WORKSPACE_DEVICE_PANE_DESCRIPTOR_ID,
+        )
+        .every((pane: any) => pane.boundContext.projectId === 'test'),
     ).toBe(true);
+    const devicePane = body.data.instances.find(
+      (pane: any) => pane.descriptorId === WORKSPACE_DEVICE_PANE_DESCRIPTOR_ID,
+    );
+    expect(devicePane).toBeDefined();
+    expect(devicePane.boundContext.projectId).toBeUndefined();
     const descriptor = body.data.descriptors.find(
       (pane: any) => pane.provenance.origin === 'builtin',
     );
