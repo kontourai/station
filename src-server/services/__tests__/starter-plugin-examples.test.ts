@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { toWorkspacePaneDescriptorId } from '@kontourai/station-contracts/workspace-pane';
 import ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 import { readPluginManifestFile } from '../plugins/plugin-manifest-loader.js';
@@ -241,13 +242,24 @@ describe('starter plugin examples', () => {
       'renderer:plugin%3Acoding-starter:plugin-component:coding-workspace',
     ]);
     const byId = new Map(panes.map((pane) => [pane.id, pane]));
+    // Descriptor ids are branded, so a lookup key is constructed through the
+    // contracts constructor rather than cast: a literal that is not a valid
+    // descriptor id fails here instead of silently missing the map.
     expect(
-      byId.get('pane:plugin%3Acoding-starter:coding:workspace'),
+      byId.get(
+        toWorkspacePaneDescriptorId(
+          'pane:plugin%3Acoding-starter:coding:workspace',
+        ),
+      ),
     ).toMatchObject({
       name: 'Coding Workspace',
       renderer: { kind: 'plugin-component', name: 'coding-workspace' },
     });
-    expect(byId.get('pane:plugin%3Acoding-starter:coding:diff')).toMatchObject({
+    expect(
+      byId.get(
+        toWorkspacePaneDescriptorId('pane:plugin%3Acoding-starter:coding:diff'),
+      ),
+    ).toMatchObject({
       name: 'Coding Diff Review',
       renderer: { kind: 'plugin-component', name: 'coding-diff-review' },
     });
