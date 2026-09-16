@@ -110,13 +110,25 @@ test('#2144 slice 6: the default approval mode row renders its effective value a
   );
 });
 
-test('#2144 slice 6: the row states that engines without the knob ignore it', () => {
+test('#2144 slice 6: the row states who ignores it and when it applies', () => {
   render(<StationConfigSection config={{}} onChange={vi.fn()} />);
-  // The condition itself, not a paraphrase: the two engines whose adapters
-  // read `approvalMode` are named, so the row cannot imply a floor Station
-  // does not impose on the others.
+  // The conditions themselves, not a paraphrase: the two engines whose
+  // adapters read `approvalMode` are named, so the row cannot imply a floor
+  // Station does not impose on the others; Station-mode chats are named
+  // because they keep a knob-capable connection id and still get nothing
+  // (round 2 M2).
   expect(
-    screen.getByText(/Engines with no approval knob of their own/),
+    screen.getByText(/engines with no approval knob of their own/),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(/Chats that run on Station’s own engine/),
+  ).toBeTruthy();
+  // The WHEN, which is what makes the row's own promise checkable: it is
+  // sent at session start and never re-sent (round 2 M3).
+  expect(
+    screen.getByText(
+      /sent when a chat starts its session and is not re-sent afterwards/,
+    ),
   ).toBeTruthy();
 });
 
