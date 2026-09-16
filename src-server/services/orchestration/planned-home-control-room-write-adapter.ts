@@ -1,10 +1,10 @@
-import { createHash } from 'node:crypto';
 import type { ProjectTaskRoomScope } from '@kontourai/station-contracts/project-task-room';
 import { plainDataObject } from './bounded-json.js';
 import {
   plannedHomeAdmissionIdentifier,
   plannedHomeAdmissionRecordValid,
 } from './planned-home-admission-schema.js';
+import { plannedHomeControlRoomWriteAdmissionId } from './planned-home-control-room-write-identity.js';
 import type {
   createPlannedHomeControlSessionAuthority,
   PlannedHomeControlAdmissionPort,
@@ -17,8 +17,6 @@ import {
   projectTaskRoomChannelId,
 } from './project-task-room-history.js';
 
-const ROOM_WRITE_ADMISSION_NAMESPACE =
-  'station.planned-home-room-write-admission/v1';
 const DIGEST = /^[a-f0-9]{64}$/;
 
 type ControlAuthority = Pick<
@@ -89,16 +87,7 @@ function validIdentity(
   );
 }
 
-export function plannedHomeControlRoomWriteAdmissionId(
-  channelId: string,
-  proposalId: string,
-): string {
-  return createHash('sha256')
-    .update(
-      JSON.stringify([ROOM_WRITE_ADMISSION_NAMESPACE, channelId, proposalId]),
-    )
-    .digest('hex');
-}
+export { plannedHomeControlRoomWriteAdmissionId } from './planned-home-control-room-write-identity.js';
 
 function blocked(
   kind: 'conflict' | 'denied' | 'unavailable',

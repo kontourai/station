@@ -4,9 +4,11 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { channelProposalDigestInput } from '@kontourai/station-contracts/channel-log';
-import type {
-  ProjectTaskRoomGrant,
-  ProjectTaskRoomGrantKind,
+import {
+  isProjectTaskRoomAppendReceipt,
+  type ProjectTaskRoomAppendReceipt,
+  type ProjectTaskRoomGrant,
+  type ProjectTaskRoomGrantKind,
 } from '@kontourai/station-contracts/project-task-room';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -20,6 +22,7 @@ import {
 } from '../planned-home-admission-schema.js';
 import { createPlannedHomeAdmissionStore } from '../planned-home-admission-store.js';
 import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
+import { projectTaskRoomReceiptLookupIdentifier } from '../project-task-room-append-receipt.js';
 import {
   createProjectTaskRoomHistoryForTest,
   PROJECT_TASK_ROOM_LIMITS,
@@ -678,11 +681,19 @@ describe('ProjectTaskRoomHistory v2', () => {
 
     it('accepts no room identifier the controller validator would refuse', async () => {
       // Containment, derived rather than asserted in prose: every string this
-      // room accepts as a proposal id must also pass
-      // plannedHomeAdmissionIdentifier, or an append that is legal on an
-      // uncontrolled room becomes denied the moment a port is attached. The
-      // acceptance side is read from a real append, not from a copy of the
-      // predicate, so the two cannot drift apart.
+      // room accepts as a proposal id must also pass every reader's predicate,
+      // or an append that is legal on an uncontrolled room becomes denied the
+      // moment a port is attached, or commits durably and then replays as
+      // `unavailable`. Four predicates are in play and the writer's `id()`
+      // must be the narrowest:
+      //   - plannedHomeAdmissionIdentifier (the controller's admission port),
+      //   - projectTaskRoomReceiptLookupIdentifier (EventStore's receipt read),
+      //   - the contract's `roomId`, which is private; its exported surface is
+      //     isProjectTaskRoomAppendReceipt, run here over the receipt the
+      //     append actually committed, so `roomId(proposalId)` is evaluated on
+      //     the candidate itself.
+      // The acceptance side is read from a real append, not from a copy of
+      // the predicate, so the predicates cannot drift apart unnoticed.
       const candidates = [
         'plain',
         'task-a',
@@ -703,25 +714,54 @@ describe('ProjectTaskRoomHistory v2', () => {
       ];
       const room = history();
       await room.open({ grant: grant('discover') });
-      const accepted: string[] = [];
+      const accepted: {
+        identifier: string;
+        receipt: ProjectTaskRoomAppendReceipt;
+      }[] = [];
       for (const candidate of candidates) {
         const outcome = await room.append(message(candidate, 'body'));
-        const malformed =
-          outcome.kind === 'rejected' && outcome.reason === 'malformed';
-        if (!malformed) accepted.push(candidate);
+        if (outcome.kind === 'rejected' && outcome.reason === 'malformed')
+          continue;
+        if (outcome.kind !== 'committed')
+          throw new Error(
+            `unexpected ${outcome.kind} for ${JSON.stringify(candidate)}`,
+          );
+        accepted.push({ identifier: candidate, receipt: outcome.receipt });
       }
       await room.close();
       // The containment itself, asserted before any spot check so that it is
-      // what fails when the two predicates drift apart.
-      for (const identifier of accepted)
+      // what fails when any reader's predicate drifts narrower than id().
+      for (const { identifier, receipt } of accepted)
         expect([
           identifier,
           plannedHomeAdmissionIdentifier(identifier),
-        ]).toEqual([identifier, true]);
+          projectTaskRoomReceiptLookupIdentifier(identifier),
+          isProjectTaskRoomAppendReceipt(receipt),
+        ]).toEqual([identifier, true, true, true]);
       // Containment would also hold if the room accepted nothing at all.
-      expect(accepted).toContain('plain');
-      expect(accepted).toContain('emoji-\u{1f600}');
-      expect(accepted).not.toContain('line\nbreak');
+      const identifiers = accepted.map((entry) => entry.identifier);
+      expect(identifiers).toContain('plain');
+      expect(identifiers).toContain('emoji-\u{1f600}');
+      expect(identifiers).not.toContain('line\nbreak');
+      expect(identifiers).not.toContain('tab\there');
+    });
+
+    it('refuses a control-character proposal id at the front door', async () => {
+      // The review's reproduction: while the writer still admitted control
+      // characters, `"tab\tproposal"` appended as `committed` and every
+      // durable reader then answered `unavailable`, so a real write became
+      // unrecoverable. It must fail closed at id(), before any durable write.
+      const room = history();
+      await room.open({ grant: grant('discover') });
+      expect(await room.append(message('tab\tproposal', 'body'))).toEqual({
+        kind: 'rejected',
+        reason: 'malformed',
+      });
+      expect(await room.append(message('del\u007fproposal', 'body'))).toEqual({
+        kind: 'rejected',
+        reason: 'malformed',
+      });
+      await room.close();
     });
 
     it('asks for no admission when the transaction cannot reach its first write', async () => {
