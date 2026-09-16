@@ -19,7 +19,9 @@ import { writeFilePreviewPaneState } from '../../workspace-panes/filePreviewPane
 import {
   DOCK_REGION_IDS,
   INSTANCE_SURFACE_PREFIXES,
+  isInstanceSurface,
   REGION_IDS,
+  REGION_SURFACE_REGISTRY,
   resolveRegionSurface,
   surfaceMayOccupy,
 } from '../region-model';
@@ -194,6 +196,49 @@ describe('instance-keyed dock panes (#2049)', () => {
       expect(resolveRegionSurface(id), id).toBeUndefined();
       expect(regionSurfacePane(id), id).toBeUndefined();
     }
+  });
+
+  /**
+   * #2159 slice A: `isInstanceSurface` is the one predicate every site that
+   * treats the two kinds differently asks — today the record parser's
+   * cross-region de-dup, which exempts exactly the ids this admits.
+   *
+   * The WHOLE registry is driven rather than a sample, because the property
+   * that matters is a total partition: a shell surface must never be read as
+   * instance-keyed by a caller deciding whether a pane may live in two
+   * regions at once. Chat is the one the product cares about (it stays
+   * single-placement until it is per-conversation) and is named below as
+   * well as covered by the loop.
+   *
+   * Making the function `return false` reds the admitted rows here and the
+   * two-region parser tests in `region-arrangement-record.test.ts`; making it
+   * admit by `startsWith` reds the refused rows.
+   */
+  test('`isInstanceSurface` admits the families and refuses every registry key', () => {
+    expect(isInstanceSurface('chat')).toBe(false);
+    for (const id of REGION_SURFACE_REGISTRY.keys())
+      expect(isInstanceSurface(id), id).toBe(false);
+    // Registry-first has no discriminating case TODAY — no registry key is a
+    // shape any family mints, pinned here — so the clause is a guard against
+    // a future collision rather than live behaviour. This is what keeps it
+    // inert: a registry id a family also matched would red here, and the
+    // answer would be to rename one, not to reorder the predicate.
+    for (const id of REGION_SURFACE_REGISTRY.keys())
+      expect(
+        INSTANCE_SURFACE_PREFIXES.some((entry) => entry.matches(id)),
+        id,
+      ).toBe(false);
+    for (const family of FAMILIES) {
+      for (const id of family.admitted)
+        expect(isInstanceSurface(id), id).toBe(true);
+      // A malformed id of the family is NOT an instance surface: the parser
+      // drops it entirely, so admitting it here would exempt an id from a
+      // de-dup it never reaches — a rule about a pane that cannot exist.
+      for (const id of family.refused)
+        expect(isInstanceSurface(id), id).toBe(false);
+    }
+    for (const id of ['', 'browser-preview:abc', 'home'])
+      expect(isInstanceSurface(id), id).toBe(false);
   });
 
   test('no id an opener can mint carries a comma', () => {
