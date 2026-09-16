@@ -212,10 +212,17 @@ function ChooserRowButton({
  * toolbar toggle opens this same panel from a timer, WHILE THE POINTER IS
  * STILL DOWN, so the backdrop mounts between that gesture's press and its
  * release. Without the guard the release lands on the full-viewport backdrop
- * and dismisses the panel the hold just opened — on a mouse through
- * `pointerup`, and on a touch through the compatibility `click` that follows
- * a `pointerup` implicit capture retargets to the toggle. `click` is guarded
- * too for exactly that second path.
+ * and dismisses the panel the hold just opened, by two different events:
+ *
+ *   on a MOUSE with no capture, `pointerup` itself, which hit-tests to the
+ *   backdrop now covering the toggle;
+ *   on a TOUCH, the compatibility `click`. Implicit capture sends that
+ *   gesture's `pointerup` back to the toggle, so the first path is closed —
+ *   but the compatibility click is dispatched by hit test, and the topmost
+ *   element under the finger is the backdrop.
+ *
+ * Which is why all three of `pointerup`, `pointercancel` and `click` are
+ * guarded rather than the first two: each is the only route on some device.
  */
 function ChooserPanel({
   regionId,

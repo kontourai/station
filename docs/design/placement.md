@@ -957,14 +957,19 @@ goes in this region" standing beside the region's own chooser.
   written for the "+", whose press and release are both spent before the panel
   exists. Under a hold the backdrop mounts BETWEEN the press and the release,
   so the release landed on it and dismissed the panel the hold had just
-  opened — on a mouse through `pointerup`, and on a touch through the
-  compatibility `click` that follows the `pointerup` implicit capture
-  retargets to the toggle. Two halves fix it, and both are load-bearing:
+  opened, by two different events. On a MOUSE with no capture it is
+  `pointerup` itself, which hit-tests to the backdrop now covering the
+  toggle. On a TOUCH that path is already closed — implicit capture sends the
+  gesture's `pointerup` back to the toggle — and it is the compatibility
+  `click` instead, which is dispatched by hit test, and the topmost element
+  under the finger is the backdrop. Two halves fix it, and both are
+  load-bearing:
 
   1. the backdrop dismisses only a release it saw the PRESS for (a `pressed`
-     ref — the shape `RegionTabMoveMenu` already carries, for the same reason:
-     a tab's move menu opens on `contextmenu`, which fires on the press). This
-     alone fixes both pointer types, and it now serves #2154's "+" too.
+     ref — the shape `RegionTabMoveMenu` already carries, for the same
+     reason: a tab's move menu opens on `contextmenu`, which fires on the
+     press). This alone fixes both pointer types, and it now serves #2154's
+     "+" too.
   2. The toggle takes `setPointerCapture` on its `pointerdown` and gives it
      back on the release, so the release returns to the control that began the
      gesture — which is what consumes the click-suppression flag, and what
@@ -972,10 +977,24 @@ goes in this region" standing beside the region's own chooser.
      press dragged away cancels. Where an engine has no capture (jsdom, or a
      refused id) `pointerleave` supplies that second job.
 
-  The `contextmenu` route suppresses a trailing click as well: a mouse's
-  right-click produces none, but Android and iOS fire `contextmenu` from their
-  own long-press recogniser, before this control's threshold, and do deliver
-  one.
+  The capture makes the dragged-away press an ACTIVATION unless it is
+  suppressed, and that is the one place this design had to follow the browser
+  rather than the other way round (delta review F2). Measured in Chromium: a
+  press dragged 350px off the toggle and released there still delivers
+  `pointerdown, pointerup, click` ON THE TOGGLE with the capture, and no click
+  at all without it. So the cancel past the tolerance sets the same
+  swallow-exactly-one flag a completed hold does, and the sentence above —
+  press, slide off, release, nothing happens — stays true of the shipped
+  control rather than only of the one that predates the capture.
+
+  The `contextmenu` route suppresses a trailing click as well, but ONLY when
+  it interrupted a press already in progress (delta review F1). Android and
+  iOS fire `contextmenu` from their own long-press recogniser, before this
+  control's threshold, and do deliver a trailing click. A mouse's right-click
+  delivers none, and the keyboard's context-menu key has no pointer sequence
+  at all — and for those two a standing flag would swallow the user's next
+  activation, which for the keyboard is plausibly Enter on this same button
+  a moment later. The condition reads whether the press timer was live.
 - **D3 — the toolbar hide IS the chevron's hide.** Each mounted region shell
   publishes its own `setRegionOpen` — the expression its chevron presses,
   which goes through `applyDockSnap` — into
@@ -1002,10 +1021,10 @@ goes in this region" standing beside the region's own chooser.
   workspace layout). It is also true for ONE FRAME of a host that is mounting
   — the shell publishes from an effect behind a lazy chunk — so a press
   landing in that window makes the same visibility change without the snap and
-  height the shell would have recorded (review L5). Only the ambient per-region host publishes — a fullscreen
-  Chat pane's own chrome instance reads Chat's region without rendering it,
-  and letting it publish would give one region two appliers whose unmount
-  order decided which survived.
+  height the shell would have recorded (review L5). Only the ambient
+  per-region host publishes — a fullscreen Chat pane's own chrome instance
+  reads Chat's region without rendering it, and letting it publish would give
+  one region two appliers whose unmount order decided which survived.
 - **D4 — three states, because "hidden" was two.** The toggles get room for
   them: a 32px box, a 1.75 stroke, a 4px gap. `is-pressed` is visible (the
   region's edge filled); `is-holding` is hidden WITH panes (the same edge in

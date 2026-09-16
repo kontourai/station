@@ -139,8 +139,26 @@ export function useLongPress({
       if (
         Math.abs(event.clientX - start.x) > MOVE_TOLERANCE_PX ||
         Math.abs(event.clientY - start.y) > MOVE_TOLERANCE_PX
-      )
+      ) {
         cancel();
+        // AND suppress the click, which the capture above now delivers here
+        // whatever the pointer did in between. MEASURED in Chromium: with
+        // capture, a press dragged 350px off this button and released there
+        // still produces `pointerdown, pointerup, click` ON THE BUTTON;
+        // without capture it produces no click at all. So before the capture
+        // existed a dragged-away press simply did not activate, and after it
+        // the control would have toggled the region — which is neither the
+        // platform convention for a button nor what this design records
+        // (`docs/design/placement.md`: a press dragged away cancels).
+        //
+        // Reuses the swallow-exactly-one flag, with the consequence stated:
+        // a pointer that wanders past the tolerance and comes BACK before
+        // releasing is also refused, where a native button would re-arm. The
+        // tolerance is 8px on a 32px control, so that is a deliberate
+        // gesture away and back, and refusing it is the reading that matches
+        // the sentence above.
+        completed.current = true;
+      }
     },
     onPointerUp: release,
     onPointerCancel: release,
@@ -187,14 +205,29 @@ export function useLongPress({
     },
     onContextMenu: (event) => {
       event.preventDefault();
+      // Whether this `contextmenu` interrupted a press IN PROGRESS, read
+      // before `cancel()` clears the evidence. It decides whether a trailing
+      // click is coming, and the three routes here answer differently:
+      //
+      //   mid-press  — a mobile engine's own long-press recogniser, which
+      //                begins with a primary `pointerdown` (so the timer and
+      //                the origin are both live) and DOES deliver a trailing
+      //                click. Suppressed, or that click would toggle the
+      //                region under the panel the platform just opened.
+      //   right-click — its `pointerdown` early-returns on `button !== 0`
+      //                before the origin is set, and it produces no click.
+      //   the keyboard's context-menu key — no pointer sequence at all, and
+      //                the user's very next act is plausibly Enter on this
+      //                same button.
+      //
+      // Flagging the last two would swallow that Enter: the flag is cleared
+      // in `onClick` or at the next `pointerdown`, and a keyboard activation
+      // is a click with no pointer sequence to clear it at. The code this
+      // replaced set no flag at all and named that hazard as its reason; the
+      // condition is what keeps both halves.
+      const midPress = timer.current !== null || origin.current !== null;
       cancel();
-      // Suppress the click this may still be followed by. A mouse's
-      // right-click produces none, so on a desktop this flag is cleared by
-      // the next press and costs nothing; a mobile engine's own long-press
-      // recogniser fires `contextmenu` BEFORE this hook's threshold and then
-      // delivers a trailing click, which without this would toggle the region
-      // under the panel the platform just opened.
-      completed.current = true;
+      if (midPress) completed.current = true;
       onLongPress(event.currentTarget);
     },
   };

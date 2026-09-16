@@ -46,6 +46,14 @@ type ChatRegionLabel = (typeof CHAT_REGION_LABELS)[number];
  * needed a catch, and a violation, a closed page and an invalid selector were
  * the only things one could ever have hidden. This predicate exists for the
  * one read whose catch has a legitimate case to keep.
+ *
+ * A read that is NOT one of those sixteen is the chooser wait in
+ * `openChatThroughRegionControl`: it asks for an element that appears as a
+ * consequence of a click it just made, behind a lazy boundary, so it
+ * auto-waits and fails loudly rather than answering `false` (#2155 delta
+ * review F3). The distinction to keep is the page's state, not the API: a
+ * probe on a settled page may read immediately; a probe on a page that is
+ * still becoming what the probe asks about may not.
  */
 function isAmbiguousLocator(error: unknown): boolean {
   return (
@@ -133,10 +141,28 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
       // Chat is placed nowhere, so the region just opened is empty and its
       // body is the chooser. Its "Chat" row is `openSurfaceInRegion`, which
       // places Chat here; the list going away is the placement landing.
+      //
+      // AUTO-WAITING, unlike the `isVisible()` reads elsewhere in this file
+      // (#2155 delta review F3). Those are branch-selection probes on a
+      // SETTLED page — "which chrome does this breakpoint draw" — and answer
+      // a question that is already decided when they run. This one asks for
+      // an element that appears as a CONSEQUENCE of the click three lines
+      // above, through `RegionShells` → a `LazyBoundary` whose `pending` is
+      // `null`: there is a real window in which the region is open and its
+      // body renders nothing at all, and the pre-warm that usually closes it
+      // has no reason to have run on a route that never mounted Chat. A
+      // non-waiting probe there does not report "no chooser", it reports
+      // "not yet" — and returning `false` for it would send 43 importing
+      // specs down their fallbacks for a timing accident.
       const chooser = page.getByRole('list', {
         name: `Add to ${label} region`,
       });
-      if (!(await chooser.isVisible())) return false;
+      await expect(
+        chooser,
+        `the ${label} region opened but never rendered its chooser, so Chat cannot be placed from it`,
+      ).toBeVisible();
+      // Settled now, so this one IS a branch-selection probe: whether the
+      // registry offers Chat for this region at all.
       const row = chooser.getByRole('button', { name: /^Chat( |$)/ });
       if (!(await row.isVisible())) return false;
       await row.click();

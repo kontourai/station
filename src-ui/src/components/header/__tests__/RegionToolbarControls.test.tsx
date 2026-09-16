@@ -735,7 +735,8 @@ describe('RegionToolbarControls', () => {
    * leaves the element, so the 8px tolerance alone cannot see a press dragged
    * away — which is the whole of the gesture on an engine that refused the
    * capture (and all of it in jsdom, which has none). `pointerleave` is that
-   * departure.
+   * departure. A leave cancels before the threshold, so nothing opens; what
+   * the RELEASE then does is the next test's.
    */
   test('a press dragged off the control opens nothing', async () => {
     render(<RegionToolbarControls />);
@@ -785,14 +786,27 @@ describe('RegionToolbarControls', () => {
     expect(chooserPanel('Left')).toBeTruthy();
     expect(harness.setRegion).not.toHaveBeenCalled();
 
-    // And the next ordinary PRESS is not swallowed: the suppression the
-    // contextmenu set is cleared at the next `pointerdown`, which is what
-    // every pointer-driven press begins with.
+    // And the next activation is not swallowed — asserted with a BARE click,
+    // no pointer sequence, because that is what a keyboard activation is and
+    // it is the case a suppression flag can strand (#2155 delta review F1).
+    // This assertion was here before the flag existed; a round that made it a
+    // full pointer sequence to agree with the flag would have retired the
+    // question it asks. Both routes are pinned: the pointer one below, and
+    // the mid-press one in its own test.
     fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(regionToggle('Left'));
+    expect(
+      harness.setRegion,
+      'the keyboard activation after a contextmenu was swallowed',
+    ).toHaveBeenCalledWith('left', { visible: true, maximized: false });
+
+    // The pointer route to the same place, so neither is proved by the other.
+    harness.setRegion.mockClear();
+    harness.regions.left.visible = true;
     const next = pressToggle('Left');
     releaseOn(next);
     expect(harness.setRegion).toHaveBeenCalledWith('left', {
-      visible: true,
+      visible: false,
       maximized: false,
     });
   });
@@ -828,7 +842,23 @@ describe('RegionToolbarControls', () => {
    * A press that WANDERS is not a hold. A finger resting on a 32px control
    * moves a little; a finger that has started scrolling has left.
    */
-  test('a press that moves past the tolerance opens nothing and stays a toggle', async () => {
+  /**
+   * #2155 delta review F2: a press dragged past the tolerance opens NOTHING
+   * and toggles NOTHING — press, slide off, release, and the button has not
+   * acted, which is both the platform convention and what
+   * `docs/design/placement.md` records.
+   *
+   * WHAT MAKES THIS REACHABLE IS THE CAPTURE, and this test cannot see it.
+   * jsdom computes no geometry, so nothing here says the release happened
+   * 350px away; what it drives is the SUPPRESSION, which is the whole of the
+   * mechanism. The fact it compensates for was measured in Chromium: with
+   * `setPointerCapture` a press released far off the button still delivers
+   * `pointerdown, pointerup, click` ON THE BUTTON, where without capture no
+   * click arrives at all. So this assertion was the opposite way round one
+   * round ago and was right then — the capture is what turned a dragged-away
+   * press from inert into an activation.
+   */
+  test('a press that moves past the tolerance opens nothing and toggles nothing', async () => {
     render(<RegionToolbarControls />);
 
     const trigger = regionToggle('Right');
@@ -842,6 +872,15 @@ describe('RegionToolbarControls', () => {
     await settleChooserChunk();
 
     expect(screen.queryByRole('menu')).toBeNull();
+    expect(
+      harness.setRegion,
+      'a press dragged off the control still toggled the region',
+    ).not.toHaveBeenCalled();
+
+    // And exactly one click is swallowed: the NEXT press, made properly,
+    // acts. Without this the suppression could stand forever and read green.
+    const next = pressToggle('Right');
+    releaseOn(next);
     expect(harness.setRegion).toHaveBeenCalledWith('right', {
       visible: true,
       maximized: false,
