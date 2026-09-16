@@ -1286,6 +1286,46 @@ describe('the toolbar toggle and the region bar chevron are one act (#2155)', ()
     return record;
   }
 
+  /**
+   * #2155 review M7: the UNREGISTER, through the mount it belongs to.
+   *
+   * `region-visibility-appliers.test`-style coverage that calls the registry
+   * API by hand cannot prove this — `tests/AGENTS.md` says as much, and the
+   * hazard is precisely a shell that went away leaving its closure behind. A
+   * region emptied by a MOVE hides and unmounts its host (#2153), so the
+   * toolbar's next press has no applier to find and must write the model
+   * itself. Dropping the effect's returned cleanup in `useDockShellChrome`
+   * reds this: the departed shell's `setRegionOpen` would answer instead, and
+   * `setRegion` would never be called.
+   */
+  test('a shell that unmounts takes its applier with it, and the toggle writes the model', async () => {
+    seedPlacement('right', 'open');
+    await renderShellsSettled();
+    expect(currentRegionModel().regions.right.occupant).toBe('chat');
+
+    // A MOVE empties `right` and hides it, so `RegionShells` mounts no host
+    // there at all — the state in which no applier can exist.
+    act(() => currentRegionModel().placeSurface('chat', 'bottom'));
+    await waitFor(() =>
+      expect(document.querySelector('[data-region="right"]')).toBeNull(),
+    );
+    expect(currentRegionModel().regions.right).toMatchObject({
+      panes: [],
+      visible: false,
+    });
+
+    const wrote = vi.spyOn(currentRegionModel(), 'setRegion');
+    fireEvent.click(screen.getByRole('button', { name: 'Right region' }));
+
+    expect(
+      wrote,
+      'the toolbar found an applier for a region with no mounted shell',
+    ).toHaveBeenCalledWith('right', { visible: true, maximized: false });
+    await waitFor(() =>
+      expect(currentRegionModel().regions.right.visible).toBe(true),
+    );
+  });
+
   test('maximize, hide and show leave the identical region record, whichever control does which half', async () => {
     const records = {
       'toolbar → toolbar': await maximizeHideShow('toolbar', 'toolbar'),
