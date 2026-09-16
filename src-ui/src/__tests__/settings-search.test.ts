@@ -1,3 +1,5 @@
+import { DEVICE_SETTINGS_REGISTRY } from '@kontourai/station-contracts/device-settings';
+import { APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import { describe, expect, test } from 'vitest';
 import { rankCommands } from '../components/command-palette-utils';
 import { pseudoLocalize } from '../i18n/pseudo';
@@ -6,6 +8,13 @@ import {
   SETTINGS_CATALOG,
   settingsPaletteCommands,
 } from '../views/settings/settings-catalog';
+
+const SETTINGS_REGISTRY_BY_KEY = new Map(
+  [...APP_SETTINGS_REGISTRY, ...DEVICE_SETTINGS_REGISTRY].map((entry) => [
+    String(entry.key),
+    entry,
+  ]),
+);
 
 describe('settings catalog search', () => {
   test('empty and unknown queries match nothing', () => {
@@ -36,6 +45,54 @@ describe('settings catalog search', () => {
         entry.id,
       ).toContain(entry.id);
     }
+  });
+
+  // `help` is the consequence sentence the registry row renders beside its
+  // control, so it is the wording somebody types when they remember what a
+  // setting DOES and not what it is called. "quieter" occurs in exactly one
+  // help string (`logLevel`) and, as the first assertion proves, nowhere in
+  // any title, keyword, config key, registry label or registry description —
+  // so a match on it can only have come from the help text. Without that
+  // first assertion the case would pass on any corpus that happened to
+  // contain the word for some other reason.
+  const HELP_ONLY_TERM = 'quieter';
+
+  test('help text is searchable, and the term proving it is help-only', () => {
+    const nonHelpCorpus = SETTINGS_CATALOG.flatMap((entry) => [
+      entry.id,
+      entry.title,
+      entry.section,
+      ...(entry.keywords ?? []),
+      ...(entry.searchKeywords ?? []),
+      ...(entry.configKeys ?? []).flatMap((key) => {
+        const definition = SETTINGS_REGISTRY_BY_KEY.get(key);
+        return definition
+          ? [key, definition.label, definition.description]
+          : [key];
+      }),
+    ])
+      .join(' ')
+      .toLowerCase();
+    expect(nonHelpCorpus).not.toContain(HELP_ONLY_TERM);
+
+    expect(
+      SETTINGS_REGISTRY_BY_KEY.get('logLevel')?.help.toLowerCase(),
+    ).toContain(HELP_ONLY_TERM);
+    expect(
+      matchingSettingsRows(HELP_ONLY_TERM, { isOperator: true }).map(
+        ({ id }) => id,
+      ),
+    ).toEqual(['log-level']);
+  });
+
+  test('the palette answers the same help-only query the search does', () => {
+    const command = settingsPaletteCommands({
+      isMobile: false,
+      isDesktop: false,
+    }).find((entry) => entry.id === 'settings:log-level');
+    expect(
+      command?.keywords.join(' ').toLowerCase().includes(HELP_ONLY_TERM),
+    ).toBe(true);
   });
 
   test('projects stable settings commands from the catalog without DOM text', () => {
