@@ -716,7 +716,17 @@ test('the region bar’s placement moves both panes to the chosen region', async
       document.querySelector<HTMLElement>('.chat-dock')?.dataset.region,
     ).toBe('right'),
   );
-  expect(document.querySelectorAll('.chat-dock')).toHaveLength(1);
+  // Two shells: `right`, which took both panes, and the emptied `bottom`,
+  // which stays open on its placeholder (#2153). `shell()` reads the first
+  // in DOM order, which is `right` (`DOCK_REGION_IDS`: left, right, bottom),
+  // so the tab assertion below is the destination's.
+  expect(document.querySelectorAll('.chat-dock')).toHaveLength(2);
+  const vacated = document.querySelector<HTMLElement>(
+    '.chat-dock[data-region="bottom"]',
+  );
+  if (!vacated) throw new Error('the vacated region must stay on screen');
+  expect(within(vacated).getByText('Nothing in the Bottom region yet'));
+  expect(within(vacated).queryAllByRole('tab')).toHaveLength(0);
   expect(tabs()).toEqual([
     ['Chat', 'false'],
     ['Activity', 'true'],
