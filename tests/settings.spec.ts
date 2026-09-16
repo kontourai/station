@@ -229,8 +229,11 @@ test.describe('Settings', () => {
       'Permissions',
       'Agent runs',
     ]) {
+      // `exact`: a substring match lets "Usage telemetry" (a row) satisfy
+      // "Telemetry" (the section), so reverting the section title would stay
+      // green — the one change this assertion exists to catch (#2182 L-f).
       await expect(
-        page.getByRole('heading', { name: title }).first(),
+        page.getByRole('heading', { name: title, exact: true }).first(),
       ).toBeVisible();
     }
   });

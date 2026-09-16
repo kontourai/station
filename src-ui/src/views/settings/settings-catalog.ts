@@ -631,11 +631,16 @@ const SCOPE_BY_CONFIG_KEY: ReadonlyMap<
 function scopeForKeylessSection(
   section: SettingsSectionId,
 ): NonNullable<SettingsCatalogEntry['scope']> {
-  // No `agent-runs` branch. It used to return 'defaults' and could never
-  // execute: `defaults` is a closed six-key list in the registry
-  // (`settings-registry.test.ts`), every one of those keys has a row, and a
-  // row with a key never reaches this function. A branch that cannot run is
-  // a claim nothing checks.
+  // No `agent-runs` branch. It used to return 'defaults', and it could never
+  // execute because every Agent runs row names a config key that one of the
+  // two registries defines — so each takes its scope from that definition in
+  // `scopeForEntry` and none reaches this fallback. (What DOES reach it: a
+  // row with no key, and a row whose first key neither registry defines.
+  // Today that is fifteen keyless rows, none of them in Agent runs.) A branch
+  // that cannot run is a claim nothing checks; a keyless Agent runs row added
+  // later would get `station` from the default below, which is right for
+  // anything that is not one of the registry's six `defaults` keys — and those
+  // six all have keys.
   if (
     section === 'appearance' ||
     section === 'chat' ||

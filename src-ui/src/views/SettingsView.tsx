@@ -118,16 +118,17 @@ import {
  * surfaces, docs/design/settings-architecture.md §3) stays its own
  * top-level card outside every scope group.
  */
-// The page body renders its sections in `SETTINGS_SECTIONS` order, which is
-// the order the nav strip lists them (archive#1826 ordered that list by what
-// a person came here to do: the sections with controls first — System, Shared
-// answers — then the read-mostly surfaces, the Station host report and the
-// Diagnostics bundle). The two orders are one fact stated once: a body that
-// mounted in a different sequence would desynchronise a nav a reader skims
-// from the page they scroll, which is what #2182 briefly did by mounting its
-// two new cards at the top of This Station while listing them near the
-// bottom. `settings-catalog-completeness.test.tsx` derives the expectation
-// from the catalog, so neither order can move alone.
+// The nav strip lists sections in `SETTINGS_SECTIONS` order (archive#1826
+// ordered that list by what a person came here to do: the sections with
+// controls first — System, Shared answers — then the read-mostly surfaces,
+// the Station host report and the Diagnostics bundle), and the page body
+// below must mount them in the SAME order. That is two statements, not one:
+// the nav derives its order from the catalog, but the body's order is the
+// sequence of JSX blocks in this file, written by hand. Nothing forces them
+// to agree — #2182 briefly mounted its two new cards at the top of This
+// Station while the nav listed them near the bottom — so
+// `settings-catalog-completeness.test.tsx` holds them together, comparing the
+// rendered anchors against what `settingsSectionNavItems` actually lists.
 const ALL_LEAF_SECTION_IDS = SETTINGS_SECTIONS.map(({ id }) => id);
 const ALL_SETTINGS_VIEWS = ['overview', ...ALL_LEAF_SECTION_IDS];
 
@@ -333,19 +334,35 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   // direction, and matches the section, which renders nothing until then.
   const pluginVisibilityDirectory = usePluginVisibilityQuery();
   const isOperator = pluginVisibilityDirectory.data !== undefined;
+  // Keyed on the CONDITIONAL, not on one section id: a second
+  // operator-conditional section would otherwise leak the day somebody adds
+  // it.
+  const operatorMayView = (section: string) =>
+    isOperator || !OPERATOR_ONLY_SECTION_IDS.has(section);
   const visibleSections = new Set(
     searchQuery.trim()
       ? matchingSettingsRows(searchQuery, { isOperator }).map(
           (entry) => entry.section,
         )
       : activeSection === 'overview'
-        ? ALL_LEAF_SECTION_IDS.filter(
-            // Keyed on the CONDITIONAL, not on one section id: a second
-            // operator-conditional section would otherwise leak into the
-            // overview the day somebody adds it.
-            (section) => isOperator || !OPERATOR_ONLY_SECTION_IDS.has(section),
-          )
-        : [activeSection],
+        ? ALL_LEAF_SECTION_IDS.filter(operatorMayView)
+        : // #2182 review M-b: the SAME gate on the direct-view path. It used
+          // to select `[activeSection]` unconditionally, so a non-operator on
+          // `?view=plugin-visibility` had the section "selected" while
+          // `PluginVisibilitySection` rendered nothing for them — and the
+          // This Station caption printed over the empty box. With the gate the
+          // view selects nothing: the body is empty, which is what the
+          // section's own refusal already rendered, and no caption claims a
+          // box that is not there.
+          //
+          // `isOperator` is not known synchronously: it is false until the
+          // directory query resolves. For an OPERATOR landing here that
+          // interval now renders no section and no caption, then the section
+          // once the answer arrives. It rendered no section before this fix
+          // either (the section returns null while pending), so the only
+          // change in the interval is that the caption no longer precedes
+          // content that may never come. Fail-closed, and no content flashes.
+          [activeSection].filter(operatorMayView),
   );
   const sectionVisible = (section: string) =>
     visibleSections.has(section as never);
@@ -360,9 +377,16 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
    * promise about a box with no contents, twice over.
    *
    * Derived from the catalog rather than listed, so a new section joins its
-   * group's visibility the day it is added; `sectionVisible` already carries
-   * the search filter, the active `?view=` and the operator gate, which is
-   * why this can be a plain `some` over it.
+   * group's visibility the day it is added. It can be a plain `some` over
+   * `sectionVisible` because that set already carries the search filter, the
+   * active `?view=`, and the operator gate on all three paths (search,
+   * overview, direct view — the last since review M-b).
+   *
+   * What it does NOT know is whether a selected section will render anything.
+   * It counts SELECTION, not content: a selected section whose component
+   * returns null (for instance while its own data loads) still makes its
+   * group visible, so the caption can precede it for that interval. That
+   * transient is accepted; this function claims only what it computes.
    */
   const groupVisible = (group: SettingsNavGroup) =>
     SETTINGS_SECTIONS.some(
@@ -1125,31 +1149,39 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               >
                 {/* #2182. This box holds ELEVEN rows and they are not all the
               same kind of rule, which is why the caption has three clauses
-              rather than one. Each clause is true of at least one row, and
-              the three together cover all eleven — so a row added here has to
-              pick one, or the caption needs a fourth.
+              rather than one. Each clause is true of at least one row and the
+              three together cover all eleven, so a row added here has to pick
+              one — or the caption needs a fourth. Assigned from what the
+              RUNTIME does with each value, not from its help text:
 
-                • "what agents may do without asking" — the two Permissions
-                  rows: `approval-guardian` (an always-on screener, not a
-                  fallback) and `default-approval-mode`.
-                • "what every run gets" — `default-max-turns`,
-                  `default-max-output-tokens`, `workspace-checkpoints` and
-                  `builtin-agent-engine`. Their registry `help` sentences say
-                  it plainly ("Station stops an agent run once it has taken
-                  this many steps", "may produce at most", "snapshots the
-                  workspace each turn", "keep using it until you change it").
-                  These are not inherited when nothing closer names a value;
-                  nothing closer can name one.
+                • "what agents may do without asking" (2) —
+                  `approval-guardian`, an always-on screener; and
+                  `default-approval-mode`, which is ALSO a fallback: a chat or
+                  its engine connection that names its own posture wins.
+                • "what every run gets" (4) —
+                  `default-agent-instructions`, prepended to the agent's own
+                  prompt and never replaced by it
+                  (`runtime-agent-builder.ts` `createRuntimeInstructions`,
+                  `routes/chat/chat.ts`); `template-variables`, one
+                  Station-wide list substituted into those prompts
+                  (`runtime-template-variables.ts`); `workspace-checkpoints`,
+                  read straight off the Station config each turn
+                  (`turn-checkpoint-capture.ts`); and `builtin-agent-engine`,
+                  which applies to every run of a BUILT-IN agent only — an
+                  agent bound to its own engine is not carried by it. The
+                  first two reach runs Station builds itself; an external
+                  engine receives its own prompt.
                 • "the values a chat, project or agent inherits when it does
-                  not name its own" — `default-model`, `default-region`,
-                  `default-agent-instructions`, `template-variables` and
-                  `default-workspace-isolation`. This is the only clause the
-                  pre-#2182 caption had, and it was about to be printed over
-                  the other six rows as a false sentence.
+                  not name its own" (5) — `default-model`, `default-region`,
+                  `default-workspace-isolation`, and the two run ceilings:
+                  `default-max-turns` (`resolveMaxSteps` in `constants.ts`:
+                  agent guardrails, then agent spec, then this) and
+                  `default-max-output-tokens` (`voltagent-adapter.ts`:
+                  `spec.guardrails.maxTokens ?? defaultMaxOutputTokens`).
 
-              No "device" clause: the one Station row a DEVICE overrides is
-              `default-chat-font-size`, and that row is in the Chat box, not
-              this one. */}
+              2 + 4 + 5 = 11. No "device" clause: the one Station row a DEVICE
+              overrides is `default-chat-font-size`, and that row is in the
+              Chat box, not this one. */}
                 <p className="settings__scope-caption">
                   Saved to this Station — what agents may do without asking,
                   what every run gets, and the values a chat, project or agent

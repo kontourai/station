@@ -19,6 +19,7 @@ import {
   DEVELOPER_TOOLS_FLAG,
 } from '../app-shell/destination-registry';
 import {
+  OPERATOR_ONLY_SECTION_IDS,
   SETTINGS_CATALOG,
   SETTINGS_SECTIONS,
   visibleCatalogIds,
@@ -54,22 +55,34 @@ vi.mock('@kontourai/station-sdk', () => ({
   // here is the settings catalog, and a refusal would legitimately render
   // nothing and make the enumeration disagree for a reason unrelated to the
   // catalog.
-  usePluginVisibilityQuery: () => ({
-    data: {
-      principals: [
-        {
-          id: 'human:device:paired',
-          display: 'Paired device',
-          revoked: false,
-          plugins: [],
-          operator: false,
+  //
+  // #2182 review M-b adds the REFUSED case, driven by `pluginVisibilityRefused`:
+  // the route's answer to a non-operator, which is how the real query reports
+  // one (no data, a forbidden error, settled).
+  usePluginVisibilityQuery: () =>
+    pluginVisibilityRefused
+      ? {
+          data: undefined,
+          error: new Error('forbidden'),
+          isLoading: false,
+          isPending: false,
+        }
+      : {
+          data: {
+            principals: [
+              {
+                id: 'human:device:paired',
+                display: 'Paired device',
+                revoked: false,
+                plugins: [],
+                operator: false,
+              },
+            ],
+          },
         },
-      ],
-    },
-  }),
   usePluginsQuery: () => ({ data: [] }),
   useSetPluginVisibilityMutation: () => ({ mutate: vi.fn(), isError: false }),
-  isPluginVisibilityForbidden: () => false,
+  isPluginVisibilityForbidden: (error: unknown) => Boolean(error),
   useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
   // #2144 slice 3: the hook takes the selected project's slug, and the
   // server reports DIFFERENT provenance for a scoped read (`scope: 'project'`
@@ -270,6 +283,7 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
 }));
 let isMobile = false;
 let isDesktop = false;
+let pluginVisibilityRefused = false;
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isMobile, isDesktop }),
 }));
@@ -340,6 +354,7 @@ describe('settings catalog completeness', () => {
   beforeEach(() => {
     isMobile = false;
     isDesktop = false;
+    pluginVisibilityRefused = false;
     updateConfig.mockReset();
     updateAppLogLevel.mockReset();
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
@@ -482,26 +497,25 @@ describe('settings catalog completeness', () => {
    * is what `containerScope` exists for (#2144 slice 7): the chip is a
    * DIFFERENCE from the caption, not a label printed on every line.
    *
-   * WHAT THIS PINS, AND WHAT IT CANNOT. `scopeBadgeLabel` reads an absent
-   * container as the pre-slice-7 always-label behaviour, so for a STATION
-   * row `containerScope="device"` and no `containerScope` at all produce the
-   * identical chip. The Chat mount renders exactly one row and it is a
-   * station row, so no DOM assertion can tell those two apart: this test
-   * catches the Chat mount naming the WRONG box (proved by injection —
-   * `containerScope="station"` there makes the chip vanish and this go red)
-   * and cannot catch it naming NO box. The review asked for a device row in
-   * the Chat box to close that gap; there is not one — `chat-font-size` is a
-   * `PageRow`, which renders no status strip at all, and the Chat mount's
-   * key list (`STATION_SETTING_KEYS_BY_SECTION.chat`) holds one station key.
-   * The absent-prop case is left uncovered and said so rather than covered
-   * by an assertion that would pass either way.
+   * WHAT THIS PINS. `scopeBadgeLabel` reads an absent container as the
+   * pre-slice-7 always-label behaviour, so for a STATION row
+   * `containerScope="device"` and no `containerScope` at all print the same
+   * chip, and no rendered assertion can tell them apart. This test catches
+   * the Chat mount naming the WRONG box (`"station"` there makes the chip
+   * vanish). The absent-prop case is caught by the compiler instead:
+   * `containerScope` is required on `StationConfigSection`.
+   *
+   * Every test in this block awaits the element it reads rather than querying
+   * synchronously after `renderSettings()`: run alone with `-t`, a synchronous
+   * query reads a page that has not mounted yet and fails for a reason that
+   * has nothing to do with the assertion.
    */
   test('a Station row in the device box prints a Station chip', async () => {
     await renderSettings();
 
-    const stationDefault = screen
-      .getByLabelText('Default chat font size')
-      .closest('.page-row');
+    const stationDefault = (
+      await screen.findByLabelText('Default chat font size')
+    ).closest('.page-row');
     expect(stationDefault).toBeTruthy();
     expect(
       stationDefault?.querySelector('.setting-row-status')?.textContent,
@@ -518,7 +532,9 @@ describe('settings catalog completeness', () => {
   test('a Station row in the Station box prints no chip', async () => {
     const { container } = await renderSettings();
 
-    const row = screen.getByLabelText('Registry URL').closest('.page-row');
+    const row = (await screen.findByLabelText('Registry URL')).closest(
+      '.page-row',
+    );
     expect(
       row?.querySelector('.setting-row-status'),
       'the assertion below is vacuous without a status strip to read',
@@ -536,44 +552,51 @@ describe('settings catalog completeness', () => {
   });
 
   /**
-   * #2182 review M2. The nav strip and the page body are one order stated
-   * once: `SETTINGS_SECTIONS`. A body that mounts in a different sequence
+   * #2182 review M2 / L-d. The nav strip and the page body must list sections
+   * in the same order: a body that mounts in a different sequence
    * desynchronises the strip a reader skims from the page they scroll, and
-   * nothing else on this page would say so — every section still renders,
-   * every deep link still resolves, only the sequence lies. (This branch did
-   * exactly that for one commit, mounting Sources and Telemetry at the top of
-   * This Station while listing them near the bottom.)
+   * nothing else would say so — every section still renders, every deep link
+   * still resolves, only the sequence lies. (This branch did exactly that for
+   * one commit.)
    *
-   * DERIVED from the catalog, never a literal list: a pinned sequence would
-   * have to be edited by whoever adds a section, which is the same person who
-   * would move the body, so it would agree with them by construction.
+   * The expectation comes from `settingsSectionNavItems` — what the nav
+   * ACTUALLY lists — not from `SETTINGS_SECTIONS`, so the test means what its
+   * name says. And it is exact: the sections this fixture should NOT render
+   * are removed by id (`OPERATOR_ONLY_SECTION_IDS`, for a non-operator), not
+   * absorbed by a count tolerance, so a section that fails to mount is named
+   * in the diff instead of being forgiven anonymously.
    */
   test('the page body mounts its sections in the order the nav lists them', async () => {
     const { container } = await renderSettings();
+    const { settingsSectionNavItems } = await import('../views/SettingsView');
 
-    const catalogAnchors = new Set(
-      SETTINGS_SECTIONS.map((section) => `section-${section.id}`),
-    );
-    const rendered = [...container.querySelectorAll('[id^="section-"]')]
-      .map((element) => element.id)
-      .filter((id) => catalogAnchors.has(id));
-    // The overview renders every section, so an empty or short list would be
-    // a broken harness rather than a passing assertion.
-    expect(rendered.length).toBeGreaterThanOrEqual(
-      SETTINGS_SECTIONS.length - 1,
-    );
-    expect(rendered).toEqual(
-      SETTINGS_SECTIONS.map((section) => `section-${section.id}`).filter((id) =>
-        rendered.includes(id),
-      ),
-    );
+    const operator = !pluginVisibilityRefused;
+    const expected = settingsSectionNavItems((id) => id, [])
+      .map((item) => item.key)
+      .filter((key) => key !== 'overview')
+      .filter((key) => operator || !OPERATOR_ONLY_SECTION_IDS.has(key))
+      .map((key) => `section-${key}`);
+    // The expectation itself must not be empty, or the comparison below is
+    // satisfied by an empty page.
+    expect(expected.length).toBeGreaterThan(10);
+
+    // Every catalog section anchor the page rendered — including any it
+    // should NOT have, so an operator-only section leaking to a non-operator
+    // fails this as surely as a missing one does.
+    const rendered = () =>
+      [...container.querySelectorAll('[id^="section-"]')]
+        .map((element) => element.id)
+        .filter((id) =>
+          SETTINGS_SECTIONS.some((section) => `section-${section.id}` === id),
+        );
+    await waitFor(() => expect(rendered()).toEqual(expected));
   });
 
   /**
    * `station-reset.ts` says its key list is "in the order the page renders
    * them". That was a claim about the catalog, and the catalog only agrees
-   * with the page while the bodies mount in section order — which M2 is what
-   * restored. Checked here against the DOM rather than restated.
+   * with the page while the bodies mount in section order. Checked here
+   * against the DOM rather than restated.
    */
   test('the reset key order is the order those rows appear on the page', async () => {
     const { container } = await renderSettings();
@@ -587,22 +610,29 @@ describe('settings catalog completeness', () => {
       (key) => idForKey.get(key as string) as string,
     );
     expect(expected.filter(Boolean)).toHaveLength(expected.length);
-    const domOrder = [...container.querySelectorAll('[data-catalog-id]')]
-      .map((element) => element.getAttribute('data-catalog-id'))
-      .filter((id): id is string => id !== null);
-    expect(domOrder.filter((id) => expected.includes(id))).toEqual(expected);
+    const domOrder = () =>
+      [...container.querySelectorAll('[data-catalog-id]')]
+        .map((element) => element.getAttribute('data-catalog-id'))
+        .filter((id): id is string => id !== null)
+        .filter((id) => expected.includes(id));
+    await waitFor(() => expect(domOrder()).toEqual(expected));
   });
 
   /**
    * #2182 review L7. Each `.settings__scope-group` opens with the storage
    * rule its sections are saved under. Three of the four rendered that
    * caption unconditionally, so opening ONE section printed the other groups'
-   * promises over nothing: on `?view=permissions` a reader saw "Saved to this
-   * Station — every client sees the same values" and "Saved to this device
-   * only" with no box under either. A caption is a claim about contents; with
-   * no contents it is a claim about nothing.
+   * promises over nothing. A caption is a claim about contents; with no
+   * contents it is a claim about nothing.
    */
   describe('scope-group captions', () => {
+    const CONTROL_CAPTION =
+      'Saved to this Station — what agents may do without asking, what every run gets, and the values a chat, project or agent inherits when it does not name its own.';
+    const STATION_CAPTION =
+      'Saved to this Station — every client sees the same values.';
+    const DEVICE_CAPTION =
+      'Saved to this device only — these choices won’t follow you to another device.';
+
     function captions(container: HTMLElement) {
       return [...container.querySelectorAll('.settings__scope-caption')].map(
         (node) => node.textContent?.replace(/\s+/g, ' ').trim(),
@@ -613,27 +643,57 @@ describe('settings catalog completeness', () => {
       window.history.replaceState({}, '', '/settings?view=permissions');
       const { container } = await renderSettings();
 
-      const shown = captions(container);
-      expect(shown).toHaveLength(1);
-      expect(shown[0]).toBe(
-        'Saved to this Station — what agents may do without asking, what every run gets, and the values a chat, project or agent inherits when it does not name its own.',
+      // The section body first, so the caption count below is read from a
+      // mounted page rather than one that has not rendered anything yet.
+      await waitFor(() =>
+        expect(container.querySelector('#section-permissions')).toBeTruthy(),
       );
+      expect(captions(container)).toEqual([CONTROL_CAPTION]);
     });
 
     test('a This device view shows only the device caption', async () => {
       window.history.replaceState({}, '', '/settings?view=chat');
       const { container } = await renderSettings();
 
-      const shown = captions(container);
-      expect(shown).toHaveLength(1);
-      expect(shown[0]).toBe(
-        'Saved to this device only — these choices won’t follow you to another device.',
+      await waitFor(() =>
+        expect(container.querySelector('#section-chat')).toBeTruthy(),
       );
+      expect(captions(container)).toEqual([DEVICE_CAPTION]);
     });
 
     test('the overview shows every group, which is what makes the two above a filter and not a break', async () => {
       const { container } = await renderSettings();
+      await waitFor(() =>
+        expect(container.querySelector('#section-knowledge')).toBeTruthy(),
+      );
       expect(captions(container).length).toBeGreaterThanOrEqual(4);
+    });
+
+    /**
+     * #2182 review M-b. An operator-only view for a caller who is not the
+     * operator selects NOTHING, so no caption is printed over the box the
+     * section refuses to fill. The "loaded" signal is the project selector,
+     * which renders only once the page has its config — without it, "no
+     * caption" would also be true of a page that had not mounted.
+     */
+    test('a non-operator on the Plugin visibility view sees no caption over an empty box', async () => {
+      pluginVisibilityRefused = true;
+      window.history.replaceState({}, '', '/settings?view=plugin-visibility');
+      const { container } = await renderSettings();
+
+      await screen.findByLabelText('Show settings for:');
+      expect(captions(container)).toEqual([]);
+      expect(container.querySelector('#section-plugin-visibility')).toBeNull();
+    });
+
+    /** The same URL for the operator still opens the section under its caption. */
+    test('the operator on the Plugin visibility view sees it under the Station caption', async () => {
+      window.history.replaceState({}, '', '/settings?view=plugin-visibility');
+      const { container } = await renderSettings();
+
+      await waitFor(() =>
+        expect(captions(container)).toEqual([STATION_CAPTION]),
+      );
     });
   });
 
@@ -641,8 +701,10 @@ describe('settings catalog completeness', () => {
    * #2182 dissolved the `station-config` section across six others. A link
    * carrying a real `highlight` is healed to the section its control is in
    * NOW; that is the whole reason a section id is allowed to move while a row
-   * id is not. Two rows, landing in two different sections, because a healer
-   * that happened to send everything to one place would satisfy one case.
+   * id is not. Two rows, landing in two different sections, each asserted to
+   * the same depth — URL, section, focused control, no unavailable notice —
+   * because a healer that sent everything to one place, or that corrected
+   * the URL without revealing the row, would satisfy a weaker case.
    */
   describe('links to the retired station-config view', () => {
     test('a host setting heals to Station host and is focused', async () => {
@@ -667,7 +729,7 @@ describe('settings catalog completeness', () => {
       ).toBeNull();
     });
 
-    test('a per-run ceiling heals to Agent runs', async () => {
+    test('a per-run ceiling heals to Agent runs and is focused', async () => {
       window.history.replaceState(
         {},
         '',
@@ -679,6 +741,11 @@ describe('settings catalog completeness', () => {
         expect(window.location.search).toBe('?view=agent-runs'),
       );
       expect(container.querySelector('#section-agent-runs')).toBeTruthy();
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByLabelText('Default max turns'),
+        ),
+      );
       expect(
         screen.queryByText('That Settings target is no longer available.'),
       ).toBeNull();
