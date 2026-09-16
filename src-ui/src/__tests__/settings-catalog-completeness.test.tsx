@@ -1197,6 +1197,29 @@ describe('settings catalog completeness', () => {
     person.remove();
   });
 
+  // The persistence behaviour `settings-save-model.test.ts` used to guard by
+  // scanning SettingsView source for a call with an exact indentation. That
+  // pinned formatting, not behaviour: nesting the control one level deeper
+  // reddened Nightly while the call itself was untouched and correct. The
+  // property is asserted here instead, where the control is really driven.
+  test('the Appearance font-size control persists through device settings', async () => {
+    window.history.replaceState({}, '', '/settings?view=chat');
+    const { container } = await renderSettings();
+    const input = await waitFor(() => {
+      const found = container.querySelector<HTMLInputElement>('#chatFontSize');
+      if (!found) throw new Error('font-size control never mounted');
+      return found;
+    });
+
+    fireEvent.change(input, { target: { value: '18' } });
+
+    // The number matters as much as the key: an earlier shape wrote the
+    // Station-wide `defaultChatFontSize` through updateConfig instead, so a
+    // device-scoped write with a parsed integer is the whole property.
+    expect(setDeviceSetting).toHaveBeenCalledWith('chatFontSize', 18);
+    expect(updateConfig).not.toHaveBeenCalled();
+  });
+
   test('a cold section choice cancels its pending leaf before config mounts', async () => {
     configSnapshot = { config: null, dataUpdatedAt: 0 };
     window.history.replaceState(

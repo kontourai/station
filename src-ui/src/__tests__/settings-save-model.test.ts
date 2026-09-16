@@ -31,10 +31,19 @@ describe('/settings save models', () => {
     expect(systemSection).not.toContain('Queued');
   });
 
-  test('persists the Appearance font-size control through device settings', () => {
-    expect(settingsView).toContain(
-      "setDeviceSetting(\n                          'chatFontSize'",
-    );
+  // What the font-size control *does* on change is asserted behaviourally in
+  // settings-catalog-completeness.test.tsx (the control is driven and
+  // `setDeviceSetting('chatFontSize', 18)` is observed). This test only
+  // guards the vocabulary that must stay out: the control once wrote the
+  // Station-wide `defaultChatFontSize` through the config payload, and
+  // nothing else pins that it is gone.
+  //
+  // The positive half used to live here as a source scan for a call with an
+  // exact 26-space indentation. That asserted formatting rather than
+  // behaviour -- nesting the control one level deeper reddened Nightly while
+  // the call itself was untouched and correct -- so it moved to the test that
+  // actually drives the control.
+  test('keeps the Station-wide font-size write out of Settings', () => {
     expect(settingsView).not.toContain(
       'defaultChatFontSize: parseInt(e.target.value, 10)',
     );
