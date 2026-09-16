@@ -464,13 +464,32 @@ export function useConfigQuery(config?: QueryConfig<any>) {
  * of that hook never see a shape change. Both hooks hit the same route; the
  * provenance map is a sibling top-level field on the same response
  * (`{ success, data, provenance }`), not a separate endpoint.
+ *
+ * #2144 slice 3: an optional project slug asks the SAME route for MORE
+ * provenance — `GET /config/app?project=<slug>` stamps a `scope` on each
+ * file-sourced entry and reports the project as the source of whatever it
+ * overrides. The slug is part of the cache key (`null` when absent) because
+ * two projects genuinely have different answers, and sharing one entry would
+ * let a project's attribution be served for another one — or for the
+ * Station-only read, whose response has no `scope` field at all.
+ *
+ * The no-argument call is unchanged in every respect a caller can observe:
+ * same URL, and `['config', 'provenance', null]` still invalidates under the
+ * `['config']` prefix the save path already uses.
  */
-export function useConfigProvenanceQuery(config?: QueryConfig<any>) {
+export function useConfigProvenanceQuery(
+  slug?: string,
+  config?: QueryConfig<any>,
+) {
   return useApiQuery(
-    ['config', 'provenance'],
+    ['config', 'provenance', slug ?? null],
     async () => {
       const apiBase = await _getApiBase();
-      const response = await authenticatedFetch(`${apiBase}/config/app`);
+      const response = await authenticatedFetch(
+        slug
+          ? `${apiBase}/config/app?project=${encodeURIComponent(slug)}`
+          : `${apiBase}/config/app`,
+      );
       const result = await response.json();
       if (!result.success) {
         throw new Error(result.error);
