@@ -1056,11 +1056,19 @@ describe('settings catalog completeness', () => {
 
   // #2144 slice 4. Turning developer tools on changes nothing where the switch
   // is: it adds a row to the navigation strip at the top of the page, under a
-  // heading four groups above, in a strip that scrolls sideways. So the row
-  // has to say where to look — and the sentence has to be checked against the
-  // placement, or it goes on describing the old one after a move. Both halves
-  // are DERIVED here: the row's label from the registry projection, the
-  // heading from the nav the page actually builds.
+  // different group heading, in a strip that scrolls sideways. So the row has
+  // to say where to look — and the sentence has to be checked against the
+  // placement, or it goes on describing the old one after a move.
+  //
+  // The heading half is DERIVED: the projection below is built by the
+  // production `getSettingsNav` and `settingsSectionNavItems` against the real
+  // registry, then walked back to the group label the row would sit under.
+  // The flag set is synthetic because this render has developer tools OFF —
+  // the page as rendered here has no Developer row at all, which is the state
+  // a reader is in when they read this description.
+  //
+  // That the row is FIRST within the group is not asserted here; it is pinned
+  // in `SettingsSectionNav.test.tsx` ('opens each group at its first item').
   test('the developer-tools row names the row it reveals and the group it opens', async () => {
     window.history.replaceState({}, '', '/settings?view=developer-tools');
     const { settingsSectionNavItems } = await import('../views/SettingsView');
@@ -1134,10 +1142,14 @@ describe('settings catalog completeness', () => {
     expect(container.querySelector('#section-chat')).toBeTruthy();
   });
 
-  // #2144 slice 4 renamed these. They are the only place the page states which
-  // persistence rule a run of sections is under to someone who cannot see the
-  // caption's position, and nothing asserted them — so the rename was free.
-  test('each scope group carries its persistence rule as a landmark name', async () => {
+  // #2144 slice 4 renamed these, and nothing asserted them — so the rename was
+  // free. Each box also opens with a caption stating its rule in words
+  // (`tests/settings.spec.ts` pins those); the landmark name is what a reader
+  // moving by region hears WITHOUT entering the box, which is the only way to
+  // tell which run of sections you are about to walk into. Two of the four
+  // name something other than a storage location: `Control` is an authority
+  // relationship and `Knowledge` is a topic.
+  test('each scope group is a landmark named for what it holds', async () => {
     window.history.replaceState({}, '', '/settings');
     const { container } = await renderSettings();
 

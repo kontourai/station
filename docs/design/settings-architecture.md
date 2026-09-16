@@ -155,11 +155,13 @@ them — the two that used to sit under Appearance (`chat-font-size`,
 `smooth-answer-reveal`) plus the five that had a device-settings contract row
 and no Settings row at all (`chat-show-reasoning`, `chat-show-tool-details`,
 `chat-dock-auto-hide`, `diff-style`, `diff-wrap`). The panel was the only
-surface for the first three; `diff-style` and `diff-wrap` were never on it,
-and were reachable only from `DiffPanel`'s own style toggle and Wrap button,
-which write the same two device keys. The panel keeps the handful someone changes mid-conversation and
-links to the section for the rest; both surfaces write the same device-settings
-keys through the same store, so neither holds a copy of the other's state.
+surface for `chat-show-reasoning`, `chat-show-tool-details` and
+`chat-dock-auto-hide`; `diff-style` and `diff-wrap` were never on it, and were
+reachable only from `DiffPanel`'s own style toggle and Wrap button, which write
+the same two device keys. The panel keeps the handful someone changes
+mid-conversation and links to the section for the rest; every one of these
+surfaces writes the same device-settings key through the same store, so none of
+them holds a copy of another's state.
 
 The Settings section navigation groups those sections under four names —
 Set up, This Station, Control, This device — plus Knowledge, which keeps a group of its

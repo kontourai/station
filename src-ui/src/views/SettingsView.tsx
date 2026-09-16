@@ -791,8 +791,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             config read. Its rows are derived from the destination registry,
             the device flags and `SETTINGS_SECTIONS`, so it is complete before
             `/api/config/app` answers — and a failed or slow read must not be
-            able to strand the only in-app way back to Agents, Skills, Engines
-            & Models, Plugins, Schedule or Developer. */}
+            able to strand this page's own way back to Agents, Skills, Engines
+            & Models, Plugins, Schedule or Developer. (The command palette
+            reaches each of them too; `destination-registry.test.ts` pins
+            that. This is about not stranding a reader who is already here.)
+            */}
         <SettingsSectionNav
           activeSection={activeSection}
           hrefForSection={hrefForSection}
@@ -1147,13 +1150,15 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               Only THREE of those five had the gear panel as their one
               surface — Show reasoning, Show tool details and Auto-hide chat
               dock. The panel has never offered the diff rows; those were
-              changed from `DiffPanel`'s own toolbar and nowhere else, which
-              is what the note above them says.
+              changed from `DiffPanel`'s own toolbar, which the note beside
+              them names.
 
-              Both surfaces write the SAME device-settings keys through the
-              same store, so neither is a copy of the other's state: the gear
-              panel is a shortcut to the handful used mid-conversation, and
-              links here for the rest.
+              Every one of these surfaces writes the SAME device-settings key
+              through the same store, so none of them is a copy of another's
+              state: the gear panel is a shortcut to the handful used
+              mid-conversation, `DiffPanel`'s toolbar to the two that only
+              mean anything over a diff, and Settings is where all of them
+              have a home and a search term.
 
               The icon is one already on the glyph-coverage allowlist rather
               than a new one: that list is recorded debt (#1704 is shrinking
@@ -1340,10 +1345,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 {...settingsRow('enable-developer-tools')}
                 // Where the result APPEARS, because it is not here: the row
                 // this adds opens the This Station group of the navigation
-                // strip at the top of this page, four headings above the
-                // switch being pressed, and the strip scrolls sideways.
-                // Nothing else on the page moves, so without the sentence the
-                // press reads as having done nothing.
+                // strip at the top of this page, while the switch itself sits
+                // in This device further down, and the strip scrolls
+                // sideways. Nothing else on the page moves, so without the
+                // sentence the press reads as having done nothing.
                 description="Show the Developer surface (logs, system, telemetry, memory, archive) on this device. A Developer row appears in the navigation at the top of this page, first under This Station, and Developer joins the sidebar and the command palette. Deep links to /developer keep working either way."
                 control={
                   <Toggle

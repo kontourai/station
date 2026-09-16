@@ -102,7 +102,7 @@ describe('settingsSectionNavItems', () => {
     expect(sectionKeys.has(colliding!.key)).toBe(false);
   });
 
-  test('opens each group at its first item, in page order, and never over an empty group', () => {
+  test('opens each group at its first item, in page order', () => {
     const items = settingsSectionNavItems(hrefForSection);
     const labelled = items.filter((item) => item.groupLabel);
     expect(labelled.map((item) => item.groupLabel)).toEqual([

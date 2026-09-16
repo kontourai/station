@@ -248,9 +248,8 @@ describe('e2e manifest', () => {
       // instance API, so it cannot run beside another stateful product spec.
       'tests/work-board.spec.ts',
       // #2144 slice 4 (#2146): Settings' persistence journeys PUT /config/app
-      // on the shared instance and read the value back, and one drives the
-      // reset confirmation — the boot configuration every sibling journey
-      // reads.
+      // on the shared instance and read the value back — the boot
+      // configuration every sibling journey reads.
       'tests/settings.spec.ts',
     ]);
   });

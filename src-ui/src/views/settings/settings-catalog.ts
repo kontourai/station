@@ -344,8 +344,9 @@ const SETTINGS_CATALOG_SOURCE = [
   // Settings' own search could not find them at all. Where they COULD be
   // changed splits: the in-chat gear panel was the only surface for
   // `chat-show-reasoning`, `chat-show-tool-details` and `chat-dock-auto-hide`
-  // (`components/chat/ChatSettingsPanel.tsx` renders those three, plus font
-  // size and answer delivery, and nothing else). `diff-style` and `diff-wrap`
+  // (`components/chat/ChatSettingsPanel.tsx` renders those three alongside
+  // font size and answer delivery; its other controls act on the session
+  // rather than setting a device key). `diff-style` and `diff-wrap`
   // were never on that panel at all — they were reachable only from
   // `DiffPanel`'s own toolbar, whose style toggle and Wrap button write these
   // same two device keys, and had no Settings home.
