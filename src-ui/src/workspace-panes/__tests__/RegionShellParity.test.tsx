@@ -1215,23 +1215,41 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
  *
  * The real `RegionShells` → `RegionPaneHost` → `DockShell` →
  * `useDockShellChrome` path is what publishes the applier the toggle calls
- * (`region-visibility-appliers.ts`), so nothing here can pass on a mock: the
- * two routes are compared by running the SAME sequence through each and
- * asserting the region records are deep-equal, plus one absolute assertion —
- * the maximize is cleared — so that two identically broken paths cannot agree
- * their way to green.
+ * (`region-visibility-appliers.ts`), so nothing here can pass on a mock.
+ *
+ * THE ROUTES ARE CROSSED, and that is what gives this its power. Comparing
+ * toolbar-hide/toolbar-show against chevron-hide/chevron-show does NOT
+ * discriminate: a hide that writes the region directly can clear `maximized`
+ * on the way past and reach the same record — measured, by injecting exactly
+ * that and watching the same-route comparison stay green. What it cannot
+ * reach is the shell's own SNAP, which is not in the region record at all:
+ * a direct write leaves the shell still holding `full`, so the chevron's next
+ * show reopens the region maximized. Hiding by one control and showing by the
+ * other is the sequence that reads it, and the persisted snap below says the
+ * same thing absolutely.
  */
 describe('the toolbar toggle and the region bar chevron are one act (#2155)', () => {
+  const SNAP_KEY = 'station.chatDock.snap';
+
   /**
-   * Maximize Chat's region, hide it, show it again — through one route — and
+   * Maximize Chat's region, hide it by one route, show it by another, and
    * hand back what the model records for that region afterwards.
    */
-  async function maximizeHideShow(route: 'toolbar' | 'chevron') {
+  async function maximizeHideShow(
+    hideBy: 'toolbar' | 'chevron',
+    showBy: 'toolbar' | 'chevron',
+  ) {
+    // The shell seeds its snap from this key when its region holds Chat, so a
+    // previous run's `full` would decide the next run's reopen.
+    window.localStorage.removeItem(SNAP_KEY);
     seedPlacement('right', 'open');
     const shell = await renderShellsSettled();
     const toolbarToggle = () =>
       screen.getByRole('button', { name: 'Right region', exact: true });
-    const press = (label: 'Hide Chat' | 'Show Chat') =>
+    const press = (
+      route: 'toolbar' | 'chevron',
+      label: 'Hide Chat' | 'Show Chat',
+    ) =>
       route === 'toolbar'
         ? fireEvent.click(toolbarToggle())
         : fireEvent.click(within(shell).getByLabelText(label));
@@ -1242,20 +1260,24 @@ describe('the toolbar toggle and the region bar chevron are one act (#2155)', ()
     await waitFor(() =>
       expect(currentRegionModel().regions.right.maximized).toBe(true),
     );
+    expect(window.localStorage.getItem(SNAP_KEY)).toBe('full');
 
-    press('Hide Chat');
+    press(hideBy, 'Hide Chat');
     await waitFor(() =>
       expect(currentRegionModel().regions.right.visible).toBe(false),
     );
-    // The gap's own symptom, asserted absolutely rather than only by
-    // agreement: a hide that wrote `visible` alone leaves this true.
+    // Absolute, not by agreement: the hide went through the shell's own
+    // `applyDockSnap`, which is the only thing that records the collapse.
+    // A hide that wrote the region directly leaves this at `full` — and the
+    // next show, by either control, reopens the region maximized.
     expect(
-      currentRegionModel().regions.right.maximized,
-      `hiding from the ${route} left the region's maximize memory set, so showing it again re-maximizes it`,
-    ).toBe(false);
+      window.localStorage.getItem(SNAP_KEY),
+      `hiding from the ${hideBy} did not record the collapse on the shell's snap`,
+    ).toBe('collapsed');
+    expect(currentRegionModel().regions.right.maximized).toBe(false);
     expect(toolbarToggle().getAttribute('aria-pressed')).toBe('false');
 
-    press('Show Chat');
+    press(showBy, 'Show Chat');
     await waitFor(() =>
       expect(currentRegionModel().regions.right.visible).toBe(true),
     );
@@ -1264,19 +1286,26 @@ describe('the toolbar toggle and the region bar chevron are one act (#2155)', ()
     return record;
   }
 
-  test('maximize, hide and show leave the identical region record either way', async () => {
-    const viaToolbar = await maximizeHideShow('toolbar');
-    const viaChevron = await maximizeHideShow('chevron');
+  test('maximize, hide and show leave the identical region record, whichever control does which half', async () => {
+    const records = {
+      'toolbar → toolbar': await maximizeHideShow('toolbar', 'toolbar'),
+      'toolbar → chevron': await maximizeHideShow('toolbar', 'chevron'),
+      'chevron → toolbar': await maximizeHideShow('chevron', 'toolbar'),
+      'chevron → chevron': await maximizeHideShow('chevron', 'chevron'),
+    };
 
     // The precondition: the sequence really did put Chat in `right` and bring
-    // it back on screen, un-maximized. Without it "both routes agree" would be
-    // satisfied by two routes that both did nothing.
-    expect(viaToolbar).toMatchObject({
+    // it back on screen, un-maximized. Without it "every route agrees" would
+    // be satisfied by four routes that all did nothing.
+    expect(records['toolbar → toolbar']).toMatchObject({
       panes: ['chat'],
       occupant: 'chat',
       visible: true,
       maximized: false,
     });
-    expect(viaToolbar).toEqual(viaChevron);
+    for (const [route, record] of Object.entries(records))
+      expect(record, `${route} left a different arrangement`).toEqual(
+        records['chevron → chevron'],
+      );
   });
 });
