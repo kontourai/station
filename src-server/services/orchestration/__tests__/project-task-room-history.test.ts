@@ -605,6 +605,34 @@ describe('ProjectTaskRoomHistory v2', () => {
       await adopted.close();
     });
 
+    it('a committed write whose admission vanished is unavailable, not settled', async () => {
+      const path = databasePath();
+      let finishCalls = 0;
+      const port: ProjectTaskRoomWriteAdmissionPort = {
+        async begin() {
+          return { kind: 'admitted' };
+        },
+        async finish() {
+          finishCalls += 1;
+          return { kind: 'nothing-to-settle' };
+        },
+      };
+      const room = history(path, { roomWriteAdmissions: port });
+      await room.open({ grant: grant('discover') });
+
+      // This append DID begin an admission — it is not a duplicate — so the
+      // controller reporting that it holds none is a real inconsistency, not
+      // a record predating the port. Widening the duplicate-only branch to
+      // cover `committed` would make this read as a clean write, which is
+      // what the branch's comment claims it refuses to do. Nothing else in
+      // the suite holds that scoping in place.
+      await expect(room.append(message('admitted-then-lost'))).resolves.toEqual(
+        { kind: 'unavailable' },
+      );
+      expect(finishCalls).toBe(1);
+      await room.close();
+    });
+
     it('asks for no admission when the transaction cannot reach its first write', async () => {
       const authority = new DatabaseSync(databasePath());
       authority.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL');

@@ -214,8 +214,13 @@ finished admission carrying a receipt digest, so an admission recorded for a
 write that never committed stays unresolved until an operator acts. Losing the
 response to a timeout does not clear the controller's record either. Rooms
 without the port write through the same transaction without requesting
-admission; the identifier alphabet is the same for both, because the room
-refuses control characters in an identifier whether or not a port is attached.
+admission. Requesting admission is not the only difference: the controller's
+`plannedHomeAdmissionIdentifier` refuses code points below 32 and 127, which
+the room's own identifier check accepts, so a `proposalId` like `"line\nbreak"`
+writes into an uncontrolled room and is refused once a port is attached — and
+refused as `denied`, which reads as a permission decision. The legal alphabet
+therefore depends on whether a room is controlled. Narrowing the room to match
+belongs with the controller lane that introduces that validator, not here.
 For every room, with or without the port, a commit-time local authority check
 that is unavailable now returns unavailable rather than denied.
 

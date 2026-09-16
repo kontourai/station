@@ -98,6 +98,13 @@ export interface ProjectTaskRoomWriteAdmissionPort {
    * whose record predates the port reaches exactly that state, and it is the
    * only result that lets the history tell "there was never anything here"
    * apart from "the controller could not answer".
+   *
+   * AN ADAPTER MUST PRODUCE IT. `createPlannedHomeAdmissionStore.finish`
+   * answers `not-found` for precisely this case, and an adapter that folds
+   * `not-found` into `unavailable` — which is what the obvious "anything but
+   * stored+finished is unavailable" mapping does — reproduces the defect this
+   * result exists to fix: a durably present record that no retry can ever
+   * settle. Map the store's `not-found` here, not to `unavailable`.
    */
   finish(
     input: ProjectTaskRoomWriteAdmissionIdentity & {
