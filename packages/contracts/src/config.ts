@@ -2,6 +2,7 @@ import type { EngineConnectionId } from './agent-identity.js';
 import type { ContributionConfig } from './contribution.js';
 import type { DistributionProfileSelection } from './distribution.js';
 import type { FleetContributionConfig } from './fleet-contribution.js';
+import type { ApprovalMode } from './provider.js';
 import type { AgentConnectionSettings } from './tool.js';
 import type { UserProfileSettings } from './user-profile.js';
 import type { WorkspaceIsolationMode } from './workspace-isolation.js';
@@ -33,6 +34,23 @@ export interface AppConfig {
    * applies the same order.
    */
   defaultWorkspaceIsolation?: WorkspaceIsolationMode;
+  /**
+   * Approval posture a new chat starts in when neither the chat itself nor
+   * its engine connection names one (epic #2144 slice 6).
+   *
+   * Read by `resolveEffectiveApprovalMode`
+   * (`src-ui/src/utils/approvalMode.ts`) as the layer BELOW a session
+   * override and the engine connection's own default, and ABOVE the
+   * adapter default. It changes nothing for an engine whose adapter exposes
+   * no native approval knob — `approvalModeKnobSupported` names the two
+   * that do (claude, codex), and `PROVIDER_MODEL_OPTION_SUPPORT` in
+   * `provider.ts` is the authority the server applies.
+   *
+   * `'connection-default'` is a real, canonical value here and means "this
+   * Station states no posture" — it is NOT a fourth posture. The resolver
+   * skips it exactly as it skips a session override holding it.
+   */
+  defaultApprovalMode?: ApprovalMode;
   logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   /** Default on, but nothing is sent unless an endpoint is configured. */
   telemetryEnabled?: boolean;

@@ -417,6 +417,29 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: 'shared',
   }),
   defineSetting({
+    key: 'defaultApprovalMode',
+    scope: 'station',
+    // The canonical list is `APPROVAL_MODES` in `provider.ts`; it is restated
+    // here rather than imported because a descriptor's `values` must be a
+    // literal the schema-parity test can compare against
+    // `schemas/app.schema.json`'s enum. Keep the two in step with that list.
+    descriptor: {
+      kind: 'enum',
+      values: ['connection-default', 'ask', 'auto', 'never'],
+    },
+    label: 'Default approval mode',
+    help: 'New chats start in this approval posture unless the chat or its engine connection names its own.',
+    description:
+      'The third step of the approval chain: the chat’s own override, then the engine connection’s default, then this, then whatever the engine already does. Connection default states no posture and leaves the engine’s own behaviour in place. Engines with no approval knob of their own (everything but Claude and Codex) ignore this value.',
+    // `'connection-default'` IS the honest fallback, not a placeholder for
+    // one: `adapterDefaultApprovalMode` returns undefined for every engine
+    // (station#1950 — Station no longer guesses Ask/Never), so "defer to the
+    // connection" is exactly what Station does with nothing stored. Declaring
+    // it keeps the generic enum row rendering the value that is in force
+    // instead of an empty select that reads as the first option by accident.
+    defaultValue: 'connection-default',
+  }),
+  defineSetting({
     key: 'runtime',
     scope: 'station',
     descriptor: { kind: 'enum', values: ['voltagent', 'strands'] },

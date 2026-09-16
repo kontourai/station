@@ -207,6 +207,101 @@ describe('resolveEffectiveApprovalMode', () => {
     );
   });
 
+  /**
+   * #2144 slice 6 added `AppConfig.defaultApprovalMode` as a FOURTH layer,
+   * between the connection default and the adapter default. Each case below
+   * pins one boundary of the order, and the last two pin where the Station
+   * value must NOT apply.
+   */
+  describe('the Station default (#2144 slice 6)', () => {
+    test('a session override wins over it', () => {
+      expect(
+        resolveEffectiveApprovalMode({
+          engineConnectionId: 'codex',
+          sessionOverride: 'ask',
+          stationDefault: 'never',
+        }),
+      ).toEqual({
+        mode: 'ask',
+        label: 'Ask first',
+        source: 'session override',
+      });
+    });
+
+    test('the connection default wins over it', () => {
+      expect(
+        resolveEffectiveApprovalMode({
+          engineConnectionId: 'codex',
+          connectionDefault: 'auto',
+          stationDefault: 'never',
+        }),
+      ).toEqual({
+        mode: 'auto',
+        label: 'Auto — default',
+        source: 'connection default',
+      });
+    });
+
+    test('it wins over the adapter default when nothing above it is set', () => {
+      expect(
+        resolveEffectiveApprovalMode({
+          engineConnectionId: 'codex',
+          stationDefault: 'auto',
+        }),
+      ).toEqual({
+        mode: 'auto',
+        label: 'Auto — default',
+        source: 'station default',
+      });
+    });
+
+    test('an engine with no approval knob ignores it', () => {
+      // `acp` is in no branch of `approvalModeKnobSupported`, so a Station
+      // posture here would be a claim nothing applies.
+      expect(
+        resolveEffectiveApprovalMode({
+          engineConnectionId: 'acp',
+          stationDefault: 'never',
+        }),
+      ).toEqual({
+        mode: 'connection-default',
+        label: 'Connection default',
+        source: 'adapter default',
+      });
+      // The same value on a supporting engine DOES resolve — without this
+      // half, the assertion above would pass for a resolver that ignored the
+      // Station layer entirely.
+      expect(
+        resolveEffectiveApprovalMode({
+          engineConnectionId: 'claude',
+          stationDefault: 'never',
+        }).source,
+      ).toBe('station default');
+    });
+
+    test('connection-default stored at Station scope states no posture', () => {
+      expect(
+        resolveEffectiveApprovalMode({
+          engineConnectionId: 'codex',
+          stationDefault: 'connection-default',
+        }),
+      ).toEqual({
+        mode: 'connection-default',
+        label: 'Connection default',
+        source: 'adapter default',
+      });
+    });
+
+    test('an unrecognized Station value is ignored, not surfaced as-is', () => {
+      expect(
+        resolveEffectiveApprovalMode({
+          engineConnectionId: 'codex',
+          stationDefault: 'yolo',
+        }).source,
+      ).toBe('adapter default');
+    });
+  });
+
   test('an unrecognized override/default value is ignored, not surfaced as-is', () => {
     expect(
       resolveEffectiveApprovalMode({

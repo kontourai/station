@@ -137,6 +137,7 @@ export function approvalModeChipLabel(mode: ApprovalMode): string {
 type ApprovalModeSource =
   | 'session override'
   | 'connection default'
+  | 'station default'
   | 'adapter default';
 
 interface EffectiveApprovalMode {
@@ -147,8 +148,9 @@ interface EffectiveApprovalMode {
 
 /**
  * The effective approval mode for a session, in priority order: a concrete
- * session override, then the engine connection's configured default,
- * then the adapter's own built-in default. `'connection-default'` is only
+ * session override, then the engine connection's configured default, then
+ * this Station's `AppConfig.defaultApprovalMode` (#2144 slice 6), then the
+ * adapter's own built-in default. `'connection-default'` is only
  * ever a *selectable* value meaning "clear my override" — it is never
  * itself displayed as a resolved posture when a concrete adapter default
  * is known (archive#727).
@@ -161,10 +163,17 @@ export function resolveEffectiveApprovalMode({
   engineConnectionId,
   sessionOverride,
   connectionDefault,
+  stationDefault,
 }: {
   engineConnectionId?: string | null;
   sessionOverride?: unknown;
   connectionDefault?: unknown;
+  /**
+   * This Station's `AppConfig.defaultApprovalMode`. Applies only to an
+   * engine whose adapter reads the knob at all — passing it for any other
+   * engine would report a posture nothing enforces.
+   */
+  stationDefault?: unknown;
 }): EffectiveApprovalMode {
   const override = isApprovalMode(sessionOverride)
     ? sessionOverride
@@ -187,6 +196,25 @@ export function resolveEffectiveApprovalMode({
       mode: connDefault,
       label: `${approvalModeLabel(connDefault)} — default`,
       source: 'connection default',
+    };
+  }
+
+  // #2144 slice 6. Gated on `approvalModeKnobSupported`: an engine whose
+  // adapter never reads `approvalMode` would otherwise display a Station
+  // posture as its resolved one, which is a claim nothing applies. The
+  // Settings row's own copy says so too, but the gate is here because this
+  // is what every surface reads.
+  const stationDefaultMode =
+    approvalModeKnobSupported(engineConnectionId) &&
+    isApprovalMode(stationDefault) &&
+    stationDefault !== 'connection-default'
+      ? stationDefault
+      : undefined;
+  if (stationDefaultMode) {
+    return {
+      mode: stationDefaultMode,
+      label: `${approvalModeLabel(stationDefaultMode)} — default`,
+      source: 'station default',
     };
   }
 

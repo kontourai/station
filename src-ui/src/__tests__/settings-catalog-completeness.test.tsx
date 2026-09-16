@@ -345,8 +345,8 @@ describe('settings catalog completeness', () => {
     // longer user-facing) and +2 (workspace-checkpoints,
     // default-chat-font-size). #2144 slice 2: +1
     // (default-workspace-isolation). Counted from the merged catalog, not
-    // added up.
-    expect(SETTINGS_CATALOG).toHaveLength(45);
+    // added up. #2144 slice 6: +1 (default-approval-mode).
+    expect(SETTINGS_CATALOG).toHaveLength(46);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {

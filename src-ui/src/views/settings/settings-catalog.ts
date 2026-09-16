@@ -150,6 +150,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['defaultWorkspaceIsolation'],
   },
   {
+    id: 'default-approval-mode',
+    title: 'Default approval mode',
+    section: 'station-config',
+    keywords: ['approval', 'permissions', 'auto approve', 'ask first'],
+    configKeys: ['defaultApprovalMode'],
+  },
+  {
     id: 'registry-url',
     title: 'Registry URL',
     section: 'station-config',

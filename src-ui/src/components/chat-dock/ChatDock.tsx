@@ -2449,6 +2449,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       connectionApprovalModeDefault={
                         connectionApprovalModeDefault
                       }
+                      stationApprovalModeDefault={
+                        appConfig?.defaultApprovalMode
+                      }
                       toolPolicyDelivery={toolPolicyDelivery}
                       availableModels={effectiveModels}
                       modelsLoading={modelsLoading}

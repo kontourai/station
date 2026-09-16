@@ -82,3 +82,56 @@ test('#1582 D9: a field with no host default keeps its registry placeholder', ()
     '/opt/homebrew/bin/fish',
   );
 });
+
+/**
+ * #2144 slice 6 item A: `defaultApprovalMode` is the Station-scope layer
+ * `resolveEffectiveApprovalMode` reads between the engine connection's own
+ * default and the adapter default. Its precedence is pinned on the resolver
+ * (`approvalMode.test.ts`); this pins the row that writes it.
+ */
+test('#2144 slice 6: the default approval mode row renders its effective value and round-trips', () => {
+  const onChange = vi.fn();
+  render(<StationConfigSection config={{}} onChange={onChange} />);
+  const select = screen.getByRole('combobox', {
+    name: 'Default approval mode',
+  }) as HTMLSelectElement;
+  // Nothing stored: the row shows the value that IS in force, which is
+  // "defer to the connection", not a blank box.
+  expect(select.value).toBe('connection-default');
+  expect([...select.options].map((option) => option.value)).toEqual([
+    'connection-default',
+    'ask',
+    'auto',
+    'never',
+  ]);
+  fireEvent.change(select, { target: { value: 'ask' } });
+  expect(onChange).toHaveBeenCalledWith(
+    expect.objectContaining({ defaultApprovalMode: 'ask' }),
+  );
+});
+
+test('#2144 slice 6: the row states that engines without the knob ignore it', () => {
+  render(<StationConfigSection config={{}} onChange={vi.fn()} />);
+  // The condition itself, not a paraphrase: the two engines whose adapters
+  // read `approvalMode` are named, so the row cannot imply a floor Station
+  // does not impose on the others.
+  expect(
+    screen.getByText(/Engines with no approval knob of their own/),
+  ).toBeTruthy();
+});
+
+test('#2144 slice 6: a stored value is what the row shows', () => {
+  render(
+    <StationConfigSection
+      config={{ defaultApprovalMode: 'never' }}
+      onChange={vi.fn()}
+    />,
+  );
+  expect(
+    (
+      screen.getByRole('combobox', {
+        name: 'Default approval mode',
+      }) as HTMLSelectElement
+    ).value,
+  ).toBe('never');
+});
