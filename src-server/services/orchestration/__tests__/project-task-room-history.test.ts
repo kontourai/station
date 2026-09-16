@@ -831,6 +831,14 @@ describe('ProjectTaskRoomHistory v2', () => {
       });
       await new Promise<void>((resolve) => setTimeout(resolve, 200));
       const database = new DatabaseSync(path);
+      // The room is still open, so its worker may hold the file when this
+      // second connection reads. The 200ms above is a settle, not a lock
+      // release, and on a slower runner SQLite answers `database is locked`
+      // immediately rather than waiting — which surfaced as this test failing
+      // on CI while passing locally. Wait for the lock instead of racing it:
+      // the assertion is about what the worker recorded, not about who holds
+      // the file at this instant.
+      database.exec('PRAGMA busy_timeout = 5000');
       expect(
         database
           .prepare(
