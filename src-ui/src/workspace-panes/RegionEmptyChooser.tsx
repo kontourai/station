@@ -181,7 +181,7 @@ function ChooserRowButton({
           <>
             {/* Real text for `textContent` (selection, find-in-page), clipped
                 from view because the layout already separates the two. */}
-            <span className="region-chooser__separator">{': '}</span>
+            <span className="sr-only">{': '}</span>
             <span id={detailId} className="region-chooser__detail">
               {row.detail}
             </span>

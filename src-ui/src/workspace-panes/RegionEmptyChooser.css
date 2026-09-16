@@ -44,16 +44,6 @@
   font-size: var(--text-sm);
 }
 
-/* Real text for the accessible name and for find-in-page, clipped from view
-   because the layout already separates title from detail (#1868). */
-.region-chooser__separator {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
-
 /* A row that cannot be chosen yet keeps its place and its name; only the
    affordance dims. `aria-disabled`, not `disabled`, so `:disabled` from the
    family does not apply and this rule carries it. */
