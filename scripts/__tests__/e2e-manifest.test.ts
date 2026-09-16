@@ -166,9 +166,14 @@ describe('e2e manifest', () => {
       'tests/project-task-room-collaboration.spec.ts',
       'tests/interactive-workspace-performance-bridge.spec.ts',
     ]);
-    // #2144 slice 4 (#2146): Settings left `extended` for `product`. The
-    // placeholder bucket ran in no ordinary lane, which is how its Manage-group
-    // assertion went on naming a destination #2065 had retired.
+    // #2144 slice 4 (#2146): Settings left `extended` for `product` so that
+    // its shared-instance exclusivity is DECLARED. Both buckets run in the
+    // same lane (`scripts/run-e2e-coverage.mjs` via `verify:e2e:full`), so the
+    // move buys no extra execution; what it buys is the classification
+    // asserted below, which `validateE2EManifest` requires of every product
+    // spec. `extended` would serialize this spec too — `run-e2e-suite.mjs`
+    // gives every non-product suite one `workers: 1` phase — but nothing
+    // there records the requirement or would notice it being withdrawn.
     expect(getSpecsForSuite('extended')).not.toContain(
       'tests/settings.spec.ts',
     );
