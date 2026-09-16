@@ -102,6 +102,8 @@ vi.mock('../../core/SDKAdapter', () => ({
 const renderer = vi.hoisted(() => ({
   layouts: [] as { slug: string }[],
   boundProjectSlug: [] as unknown[],
+  canLaunchPrompts: [] as unknown[],
+  onLaunchPrompt: [] as unknown[],
 }));
 vi.mock('../../layouts', () => ({
   LayoutRenderer: ({
@@ -109,14 +111,20 @@ vi.mock('../../layouts', () => ({
     activeTabId,
     onTabChange,
     boundProjectSlug,
+    canLaunchPrompts,
+    onLaunchPrompt,
   }: {
     layout: { slug: string; name: string; tabs: { id: string }[] };
     activeTabId?: string;
     onTabChange?: (id: string) => void;
     boundProjectSlug?: string;
+    canLaunchPrompts?: boolean;
+    onLaunchPrompt?: unknown;
   }) => {
     renderer.layouts.push(layout);
     renderer.boundProjectSlug.push(boundProjectSlug);
+    renderer.canLaunchPrompts.push(canLaunchPrompts);
+    renderer.onLaunchPrompt.push(onLaunchPrompt);
     return (
       <div data-testid="layout-renderer" data-active-tab={activeTabId}>
         {layout.name}
@@ -137,6 +145,10 @@ vi.mock('../../layouts', () => ({
 const navigation = vi.hoisted(() => ({
   navigate: vi.fn(),
   setLayout: vi.fn(),
+  // The ROUTE's project, which is not the docked Layout's (#2171 A1): the
+  // pane never reads it, and these tests hold it at a different project so
+  // that a binding to the route would show up as 'beta' in the probes.
+  activeProject: 'beta',
 }));
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigation: () => navigation,
@@ -205,6 +217,8 @@ beforeEach(() => {
   adapter.boundProjectSlug = [];
   renderer.layouts = [];
   renderer.boundProjectSlug = [];
+  renderer.canLaunchPrompts = [];
+  renderer.onLaunchPrompt = [];
   navigation.navigate.mockReset();
   navigation.setLayout.mockReset();
   window.localStorage.clear();
@@ -440,4 +454,67 @@ test('an impostor occurrence under the Layout descriptor renders the invalid-pan
   render(<LayoutWorkspacePane instance={impostor} />);
   expect(screen.getByText('This pane can’t open here')).toBeTruthy();
   expect(screen.queryByTestId('layout-renderer')).toBeNull();
+});
+
+/**
+ * #2171: a docked Layout carrying prompts declares to the renderer that it
+ * cannot launch them, and hands it no launcher. The choice was to withhold
+ * the control rather than wire a launch to the bound project (the design
+ * record says why); what these pin is that the declaration is made, for
+ * both families, and that nothing here ever binds the route's project.
+ */
+describe('a docked Layout carrying prompts (#2171)', () => {
+  const prompts = {
+    actions: [{ type: 'prompt', label: 'Summarise', data: 'summarise' }],
+    globalSkills: [{ id: 'g', label: 'Global', prompt: 'g' }],
+  };
+
+  /**
+   * A1. The route is at project `beta` (the navigation mock) and the layout
+   * belongs to `alpha` (through its id). The renderer gets `alpha` as the
+   * binding and `false` as the launch declaration, with no handler. Passing
+   * a launcher, or omitting `canLaunchPrompts`, reds this.
+   */
+  test('a project Layout with prompts: bound to its OWN project, declares no launch, hands no launcher', () => {
+    sdk.layoutRecords['alpha/notes'] = {
+      ...(sdk.layoutRecords['alpha/notes'] as object),
+      config: { tabs: [{ id: 'n', label: 'N', ...prompts }], ...prompts },
+    };
+    render(
+      <LayoutWorkspacePane
+        instance={instanceFor({
+          kind: 'project',
+          projectId: PROJECT,
+          layoutId: LAYOUT,
+        })}
+      />,
+    );
+    // The shape still CARRIES the prompts — the host withholds the control,
+    // it does not strip the declaration.
+    expect(renderer.layouts[0]).toMatchObject({
+      actions: prompts.actions,
+      globalSkills: prompts.globalSkills,
+    });
+    expect(renderer.boundProjectSlug).toEqual(['alpha']);
+    expect(adapter.boundProjectSlug).toEqual(['alpha']);
+    expect(renderer.canLaunchPrompts).toEqual([false]);
+    expect(renderer.onLaunchPrompt).toEqual([undefined]);
+  });
+
+  /** A2. A Board has no project; the same declaration, with no binding. */
+  test('a Board with prompts: no project bound, declares no launch, hands no launcher', () => {
+    sdk.boardRecords['my-board'] = {
+      ...(sdk.boardRecords['my-board'] as object),
+      config: { tabs: [{ id: 'one', label: 'One', ...prompts }], ...prompts },
+    };
+    render(
+      <LayoutWorkspacePane
+        instance={instanceFor({ kind: 'board', layoutId: LAYOUT })}
+      />,
+    );
+    expect(renderer.layouts[0]).toMatchObject({ actions: prompts.actions });
+    expect(renderer.boundProjectSlug).toEqual([undefined]);
+    expect(renderer.canLaunchPrompts).toEqual([false]);
+    expect(renderer.onLaunchPrompt).toEqual([undefined]);
+  });
 });
