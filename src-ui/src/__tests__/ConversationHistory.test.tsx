@@ -57,12 +57,23 @@ vi.mock('../hooks/useSessionManagementViewModel', () => ({
   }),
 }));
 
+/**
+ * #2144 slice 6 item E: the delete-confirm state the component decides what
+ * to do with. Hoisted so a test can put a delete in flight.
+ */
+const menuState = vi.hoisted(() => ({
+  deleteConfirm: null as { conv: { title: string } } | null,
+  regenerateConfirm: null as { conv: { title: string } } | null,
+  showClearAllConfirm: false,
+  confirmDelete: vi.fn(),
+}));
+
 vi.mock('../hooks/useSessionManagementMenu', () => ({
   useSessionManagementMenu: () => ({
     setShowClearAllConfirm: vi.fn(),
-    deleteConfirm: null,
-    regenerateConfirm: null,
-    showClearAllConfirm: false,
+    deleteConfirm: menuState.deleteConfirm,
+    regenerateConfirm: menuState.regenerateConfirm,
+    showClearAllConfirm: menuState.showClearAllConfirm,
     renamingId: null,
     newTitle: '',
     inputRef: { current: null },
@@ -71,7 +82,7 @@ vi.mock('../hooks/useSessionManagementMenu', () => ({
     cancelRename: vi.fn(),
     handleDelete: vi.fn(),
     setNewTitle: vi.fn(),
-    confirmDelete: vi.fn(),
+    confirmDelete: menuState.confirmDelete,
     cancelDelete: vi.fn(),
     confirmRegenerateTitle: vi.fn(),
     cancelRegenerateTitle: vi.fn(),
@@ -94,19 +105,31 @@ vi.mock('../components/session/SessionConversationItem', () => ({
   ),
 }));
 
+/**
+ * Renders a marker only when OPEN, so a test can tell "the modal is on
+ * screen" from "the modal exists but is closed" (#2144 slice 6 item E). It
+ * rendered `null` unconditionally before, which cannot distinguish them.
+ */
 vi.mock('../components/modals/ConfirmModal', () => ({
-  ConfirmModal: () => null,
+  ConfirmModal: ({ isOpen, title }: { isOpen: boolean; title: string }) =>
+    isOpen ? <div data-testid="confirm-modal">{title}</div> : null,
 }));
 
 const { ConversationHistory } = await import(
   '../components/chat/ConversationHistory'
 );
+const { deviceSettingsStore } = await import('../lib/device-settings-store');
 
 describe('ConversationHistory', () => {
   afterEach(() => {
     pagingState.hasMore = true;
     pagingState.loadingMore = false;
     pagingState.loadMoreError = false;
+    menuState.deleteConfirm = null;
+    menuState.regenerateConfirm = null;
+    menuState.showClearAllConfirm = false;
+    menuState.confirmDelete.mockClear();
+    deviceSettingsStore.reset('confirmConversationDelete');
   });
 
   test('offers a next step when conversation history is empty', () => {
@@ -214,5 +237,78 @@ describe('ConversationHistory', () => {
     ).toContain('Alpha Project');
     expect(screen.getByText('Legacy project-less conversation')).not.toBeNull();
     expect(screen.queryByText(/Other project conversation/)).toBeNull();
+  });
+
+  /**
+   * #2144 slice 6 item E. `confirmConversationDelete` decides whether a
+   * requested delete parks in the confirm modal or resolves immediately.
+   * Both directions are asserted: a consumer that always skipped the modal,
+   * and one that never did, each fail exactly one of these.
+   */
+  describe('confirmConversationDelete', () => {
+    function renderHistory() {
+      return render(
+        <ConversationHistory
+          sessions={[]}
+          activeSessionId={null}
+          agents={[{ slug: 'claude', name: 'Claude' }]}
+          projects={[]}
+          onTitleUpdate={vi.fn()}
+          onDelete={vi.fn()}
+          onSelect={vi.fn()}
+          onOpenConversation={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      );
+    }
+
+    test('asks first by default, and does not delete while it asks', () => {
+      expect(deviceSettingsStore.get('confirmConversationDelete')).toBe(true);
+      menuState.deleteConfirm = { conv: { title: 'Doomed conversation' } };
+      renderHistory();
+      expect(screen.getByTestId('confirm-modal').textContent).toBe(
+        'Delete Conversation',
+      );
+      expect(menuState.confirmDelete).not.toHaveBeenCalled();
+    });
+
+    test('deletes without the modal when the device has turned the ask off', () => {
+      deviceSettingsStore.set('confirmConversationDelete', false);
+      menuState.deleteConfirm = { conv: { title: 'Doomed conversation' } };
+      renderHistory();
+      expect(screen.queryByTestId('confirm-modal')).toBeNull();
+      // The SAME `confirmDelete` the modal's confirm button calls — the
+      // immediate path is not a second delete implementation.
+      expect(menuState.confirmDelete).toHaveBeenCalledTimes(1);
+    });
+
+    test('with the ask off and nothing pending, nothing is deleted', () => {
+      deviceSettingsStore.set('confirmConversationDelete', false);
+      menuState.deleteConfirm = null;
+      renderHistory();
+      expect(menuState.confirmDelete).not.toHaveBeenCalled();
+    });
+
+    test('clearing every conversation still asks, with the ask off', () => {
+      // The setting is named for ONE action. This drives the OTHER
+      // destructive confirm in this component with the setting off and
+      // asserts it is still on screen — a gate applied to the wrong modal,
+      // or to all of them, fails here.
+      deviceSettingsStore.set('confirmConversationDelete', false);
+      menuState.showClearAllConfirm = true;
+      renderHistory();
+      expect(screen.getByTestId('confirm-modal').textContent).toBe(
+        'Clear All Conversations',
+      );
+    });
+
+    test('replacing a manual title still asks, with the ask off', () => {
+      deviceSettingsStore.set('confirmConversationDelete', false);
+      menuState.regenerateConfirm = { conv: { title: 'Hand-written title' } };
+      renderHistory();
+      expect(screen.getByTestId('confirm-modal').textContent).toBe(
+        'Replace manual title?',
+      );
+    });
   });
 });

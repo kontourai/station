@@ -188,6 +188,8 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
     hapticsEnabled: true,
     accentColor: null,
     developerToolsEnabled: false,
+    // #2144 slice 6 item E: the Confirmations group in Appearance.
+    confirmConversationDelete: true,
     sidebarSections: {
       openChatsCollapsed: false,
       openChatsHidden: false,
@@ -375,9 +377,9 @@ describe('settings catalog completeness', () => {
     // longer user-facing) and +2 (workspace-checkpoints,
     // default-chat-font-size). #2144 slice 2: +1
     // (default-workspace-isolation). Counted from the merged catalog, not
-    // added up. #2144 slice 6: +2 (default-approval-mode,
-    // telemetry-destination).
-    expect(SETTINGS_CATALOG).toHaveLength(47);
+    // added up. #2144 slice 6: +3 (default-approval-mode,
+    // telemetry-destination, confirm-conversation-delete).
+    expect(SETTINGS_CATALOG).toHaveLength(48);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
@@ -1254,6 +1256,31 @@ describe('settings catalog completeness', () => {
       expect(
         screen.queryByText('No destination configured; nothing is sent.'),
       ).toBeNull();
+    });
+  });
+
+  /**
+   * #2144 slice 6 item E. The consumer half — that ConversationHistory
+   * actually skips the modal — is in ConversationHistory.test.tsx; this is
+   * the control that writes it.
+   */
+  describe('Ask before deleting a conversation', () => {
+    test('renders on by default under a Confirmations group and round-trips', async () => {
+      const { container } = await renderSettings();
+      expect(
+        [...container.querySelectorAll('.settings__group-title')].map(
+          (node) => node.textContent,
+        ),
+      ).toContain('Confirmations');
+      const toggle = screen.getByRole('switch', {
+        name: 'Ask before deleting a conversation',
+      });
+      expect(toggle.getAttribute('aria-checked')).toBe('true');
+      fireEvent.click(toggle);
+      expect(setDeviceSetting).toHaveBeenCalledWith(
+        'confirmConversationDelete',
+        false,
+      );
     });
   });
 

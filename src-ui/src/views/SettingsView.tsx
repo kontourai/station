@@ -135,6 +135,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     hapticsEnabled,
     developerToolsEnabled,
     sidebarSections,
+    confirmConversationDelete,
   } = useDeviceSettings();
   const { setDeviceSetting, resetDeviceSetting } = useDeviceSettingsActions();
   const { isMobile, isDesktop } = usePlatformProfile();
@@ -971,6 +972,24 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 />
               )}
               <AccentColorPicker />
+              {/* #2144 slice 6 item E. A group, not a new section: slice 4
+                  owns the navigation, and only ONE destructive confirm has
+                  an action behind it today — archive and quit do not exist,
+                  and "Clear all conversations" deliberately keeps asking. */}
+              <h3 className="settings__group-title">Confirmations</h3>
+              <PageRow
+                {...settingsRow('confirm-conversation-delete')}
+                description="Deleting a conversation cannot be undone. Turn this off to delete immediately. Clearing all conversations always asks."
+                control={
+                  <Toggle
+                    checked={confirmConversationDelete}
+                    onChange={(checked) =>
+                      setDeviceSetting('confirmConversationDelete', checked)
+                    }
+                    label={settingsRow('confirm-conversation-delete').title}
+                  />
+                }
+              />
             </Section>
           )}
 

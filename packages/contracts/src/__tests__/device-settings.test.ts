@@ -135,7 +135,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
     expect(byKey.get('modelPickerPreferences')).toBe('station.device-settings');
   });
 
-  test('registers exactly the twenty-seven documented DeviceSettings fields', () => {
+  test('registers exactly the twenty-eight documented DeviceSettings fields', () => {
     const keys = DEVICE_SETTINGS_REGISTRY.map(
       (definition) => definition.key as string,
     ).sort();
@@ -177,6 +177,8 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'chatDockProjectSlug',
         // #928 D — which surface occupies which region on this device.
         'regionArrangement',
+        // #2144 slice 6 — whether deleting a conversation asks first.
+        'confirmConversationDelete',
       ].sort(),
     );
   });

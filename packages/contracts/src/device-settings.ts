@@ -293,6 +293,19 @@ export interface DeviceSettings {
    */
   firstRunProgress: FirstRunProgress;
   /**
+   * Whether deleting a conversation asks first on this device (epic #2144
+   * slice 6 item E). Default true — the delete is not undoable, so the
+   * confirm is the honest default and turning it off is an explicit choice.
+   *
+   * Consumer: `src-ui/src/components/chat/ConversationHistory.tsx` resolves
+   * the pending delete immediately instead of parking it in the confirm
+   * modal. It deliberately covers ONE action: "Clear all conversations" and
+   * every other destructive confirm keep asking, because nothing here says
+   * otherwise and a setting named for one action must not widen to others.
+   * Never had a prior key: the confirm was unconditional.
+   */
+  confirmConversationDelete: boolean;
+  /**
    * archive#3313: show the Developer surface (logs, system, telemetry,
    * memory, archive) in this device's sidebar and command palette. Gates
    * navigation advertisement only — /developer deep links keep working when
@@ -842,6 +855,19 @@ export const DEVICE_SETTINGS_REGISTRY = [
     description:
       'Light selection pulses while an assistant reply streams, plus feedback on copy, pairing success, and destructive confirms. Mobile native shells only.',
     // archive#1954: default on; desktop/web no-op via capability gate.
+    defaultValue: true,
+  }),
+  defineDeviceSetting({
+    key: 'confirmConversationDelete',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Ask before deleting a conversation',
+    help: 'Deleting a conversation on this device asks for confirmation first, and deleting it is not undoable.',
+    description:
+      'Show a confirmation before deleting a conversation. Turning this off deletes immediately, which cannot be undone. Clearing all conversations always asks.',
+    // #2144 slice 6: default on. The delete is not undoable and the confirm
+    // was previously unconditional, so `false` here is a choice somebody
+    // made rather than a state a fresh device can fall into.
     defaultValue: true,
   }),
   defineDeviceSetting({

@@ -313,6 +313,13 @@ const SETTINGS_CATALOG_SOURCE = [
     conditional: 'mobile',
   },
   {
+    id: 'confirm-conversation-delete',
+    title: 'Ask before deleting a conversation',
+    section: 'appearance',
+    keywords: ['confirm', 'confirmation', 'delete', 'undo', 'destructive'],
+    configKeys: ['confirmConversationDelete'],
+  },
+  {
     id: 'accent-color',
     title: 'Accent color',
     section: 'appearance',
