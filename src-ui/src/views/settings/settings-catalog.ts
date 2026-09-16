@@ -12,7 +12,12 @@ export type SettingsSectionId =
   | 'plugin-visibility'
   | 'host-runtime'
   | 'diagnostics'
-  | 'agent-defaults'
+  // #2182: renamed from 'agent-defaults'. "Defaults" named a precedence
+  // rule and said nothing about what the rule applies TO; these are the
+  // values a new agent run inherits. Section ids are the one identity in
+  // this module that CAN move — `SettingsView` heals a stale `view=` from
+  // the row's own catalog entry whenever the link carries a highlight.
+  | 'agent-runs'
   | 'appearance'
   // #2144 slice 4: chat behaviour owns its rows now, rather than borrowing
   // Appearance's. The only new section id this slice adds.
@@ -89,7 +94,7 @@ export const SETTINGS_SECTIONS = [
   },
   { id: 'host-runtime', title: 'Station host', group: 'this-station' },
   { id: 'diagnostics', title: 'Diagnostics', group: 'this-station' },
-  { id: 'agent-defaults', title: 'Defaults', group: 'control' },
+  { id: 'agent-runs', title: 'Agent runs', group: 'control' },
   { id: 'appearance', title: 'Appearance', group: 'you' },
   // #2144 decision 2: chat behaviour is per-device, so it sits beside the
   // other choices this device makes for the person using it.
@@ -293,25 +298,25 @@ const SETTINGS_CATALOG_SOURCE = [
   {
     id: 'default-model',
     title: 'Default model',
-    section: 'agent-defaults',
+    section: 'agent-runs',
     configKeys: ['defaultModel'],
   },
   {
     id: 'default-region',
     title: 'Default Region',
-    section: 'agent-defaults',
+    section: 'agent-runs',
     configKeys: ['region'],
   },
   {
     id: 'default-agent-instructions',
     title: 'Default Agent Instructions',
-    section: 'agent-defaults',
+    section: 'agent-runs',
     configKeys: ['systemPrompt'],
   },
   {
     id: 'template-variables',
     title: 'Template Variables',
-    section: 'agent-defaults',
+    section: 'agent-runs',
     configKeys: ['templateVariables'],
   },
   // ── Chat (#2144 decision 2) ──────────────────────────────────────────────
@@ -562,7 +567,7 @@ const SCOPE_BY_CONFIG_KEY: ReadonlyMap<
 function scopeForKeylessSection(
   section: SettingsSectionId,
 ): NonNullable<SettingsCatalogEntry['scope']> {
-  if (section === 'agent-defaults') return 'defaults';
+  if (section === 'agent-runs') return 'defaults';
   if (
     section === 'appearance' ||
     section === 'chat' ||

@@ -55,12 +55,11 @@ export function AgentDefaultsSection({
     !config.defaultLLMProvider && runtimeModels.length > 0;
 
   return (
-    <SettingsSection icon="▾" title="Defaults" id="section-agent-defaults">
+    <SettingsSection icon="▾" title="Agent runs" id="section-agent-runs">
       <p className="settings__field-hint agent-defaults__intro">
-        Default values used only when a chat or agent doesn't specify its own
-        model, instructions, or region. Most agents and connections override
-        these — nothing here is injected into every conversation
-        unconditionally.
+        What an agent run starts with when nothing closer to it says otherwise.
+        Most agents and connections name their own — nothing here is injected
+        into every conversation unconditionally.
       </p>
 
       <div className="agent-defaults__panel">

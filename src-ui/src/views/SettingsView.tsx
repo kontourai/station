@@ -1046,7 +1046,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 doesn’t set its own value.
               </p>
 
-              {sectionVisible('agent-defaults') && (
+              {sectionVisible('agent-runs') && (
                 <AgentDefaultsSection
                   config={config}
                   validationErrors={validationErrors}

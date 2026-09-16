@@ -1034,7 +1034,7 @@ describe('settings catalog completeness', () => {
     expect(container.querySelector('#section-appearance')).toBeTruthy();
   });
 
-  test('focuses a deep-linked editable field in the Defaults section', async () => {
+  test('focuses a deep-linked editable field in the Agent runs section', async () => {
     // The `.agent-defaults__disclosure` assertion that used to close this
     // test is gone with the disclosure itself: these fields render directly
     // under the section intro, so there is nothing left to open. The focus
@@ -1042,7 +1042,7 @@ describe('settings catalog completeness', () => {
     window.history.replaceState(
       {},
       '',
-      '/settings?view=agent-defaults&highlight=default-region',
+      '/settings?view=agent-runs&highlight=default-region',
     );
     const { container } = await renderSettings();
 
@@ -1052,6 +1052,59 @@ describe('settings catalog completeness', () => {
       ),
     );
     expect(container.querySelector('.agent-defaults__disclosure')).toBeNull();
+  });
+
+  /**
+   * #2182 renamed the section id `agent-defaults` to `agent-runs`. A section
+   * id is the one identity in the catalog that is allowed to move, and these
+   * two tests are what makes that a decision rather than an accident: a link
+   * carrying a real highlight is healed to the new section, and a link
+   * carrying only the stale view is NOT — it lands on the overview, silently.
+   */
+  test('a deep link to the retired agent-defaults view heals when it carries a highlight', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/settings?view=agent-defaults&highlight=default-region',
+    );
+    const { container } = await renderSettings();
+
+    // The view is corrected to the section the control is in now; the
+    // highlight is then consumed by the reveal, which is why it is not in
+    // the final URL.
+    await waitFor(() =>
+      expect(window.location.search).toBe('?view=agent-runs'),
+    );
+    expect(container.querySelector('#section-agent-runs')).toBeTruthy();
+    expect(
+      screen.getByText('Default Region revealed in Settings.'),
+    ).toBeTruthy();
+    // The healer's other branch announces this for an unknown HIGHLIGHT, and
+    // a stale VIEW must not reach it.
+    expect(
+      screen.queryByText('That Settings target is no longer available.'),
+    ).toBeNull();
+  });
+
+  test('a bare retired view lands on the overview, which is the documented cost of renaming a section', async () => {
+    window.history.replaceState({}, '', '/settings?view=agent-defaults');
+    const { container } = await renderSettings();
+
+    // Every section renders, which IS the overview — not the one section the
+    // stale link named. `useSectionNavigation` also drops the unresolvable
+    // `view` from the URL (it preserves any other query state), so nothing is
+    // left saying the reader asked for somewhere else.
+    await waitFor(() =>
+      expect(container.querySelector('#section-agent-runs')).toBeTruthy(),
+    );
+    expect(container.querySelector('#section-appearance')).toBeTruthy();
+    await waitFor(() => expect(window.location.search).toBe(''));
+    // No announcement: nothing failed from the reader's point of view, and
+    // that silence is exactly what makes this a soft break rather than an
+    // error. It is the cost of letting a section be renamed at all.
+    expect(
+      screen.queryByText('That Settings target is no longer available.'),
+    ).toBeNull();
   });
 
   // #2144 slice 4. Turning developer tools on changes nothing where the switch

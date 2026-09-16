@@ -16,19 +16,18 @@ async function goToSettings(page: import('@playwright/test').Page) {
 }
 
 /**
- * Navigate to "Defaults", where Default Model, Default Region, Default Agent
+ * Navigate to "Agent runs", where Default Model, Default Region, Default Agent
  * Instructions, and Template Variables live. They used to sit behind a closed
  * <details> disclosure that had to be opened first; they now render directly
  * under the section intro, so navigating is the whole step.
  */
 async function openAgentDefaults(page: import('@playwright/test').Page) {
-  // station#settings-revamp slice 3: "Agent defaults" was renamed "Defaults"
-  // when it was promoted to its own top-level scope section; the leaf DOM id
-  // (#section-agent-defaults) is unchanged.
-  await page.getByRole('link', { name: 'Defaults', exact: true }).click();
-  await page
-    .locator('#section-agent-defaults .agent-defaults__panel')
-    .waitFor();
+  // #2182: the section was "Agent defaults", then "Defaults" when it was
+  // promoted to its own top-level scope, and is now "Agent runs" — a name for
+  // the thing the values apply to rather than for the precedence rule. The
+  // leaf DOM id follows the section id (`section-<id>`), so it moved too.
+  await page.getByRole('link', { name: 'Agent runs', exact: true }).click();
+  await page.locator('#section-agent-runs .agent-defaults__panel').waitFor();
 }
 
 /**
@@ -224,7 +223,7 @@ test.describe('Settings', () => {
       'Diagnostics',
       'System',
       'Station configuration',
-      'Defaults',
+      'Agent runs',
     ]) {
       await expect(
         page.getByRole('heading', { name: title }).first(),
@@ -240,7 +239,7 @@ test.describe('Settings', () => {
       nav.getByRole('link', { name: 'Station configuration', exact: true }),
     ).toBeVisible();
     await expect(
-      nav.getByRole('link', { name: 'Defaults', exact: true }),
+      nav.getByRole('link', { name: 'Agent runs', exact: true }),
     ).toBeVisible();
     await expect(
       nav.getByRole('link', { name: 'Appearance', exact: true }),
@@ -287,8 +286,8 @@ test.describe('Settings', () => {
     await page.reload();
     await expect(page.locator('#section-system')).toBeInViewport();
 
-    await page.getByRole('link', { name: 'Defaults', exact: true }).click();
-    await expect(page).toHaveURL(/[?&]view=agent-defaults/);
+    await page.getByRole('link', { name: 'Agent runs', exact: true }).click();
+    await expect(page).toHaveURL(/[?&]view=agent-runs/);
     await page.goBack();
     await expect(page).toHaveURL(/[?&]view=system/);
     await expect(page.locator('#section-system')).toBeInViewport();
@@ -476,7 +475,7 @@ test.describe('Settings', () => {
     await expect(dialog).not.toBeVisible();
   });
 
-  test('Defaults shows the generic region field', async ({ page }) => {
+  test('Agent runs shows the generic region field', async ({ page }) => {
     await openAgentDefaults(page);
     await expect(
       page.getByText(
@@ -588,11 +587,11 @@ test.describe('Settings', () => {
   test('search filters sections', async ({ page }) => {
     await page.fill('.settings__search', 'theme');
     await expect(page.locator('#section-appearance')).toBeVisible();
-    await expect(page.locator('#section-agent-defaults')).not.toBeVisible();
+    await expect(page.locator('#section-agent-runs')).not.toBeVisible();
     await expect(page.locator('#section-system')).not.toBeVisible();
     // Clear restores all
     await page.fill('.settings__search', '');
-    await expect(page.locator('#section-agent-defaults')).toBeVisible();
+    await expect(page.locator('#section-agent-runs')).toBeVisible();
     await expect(page.locator('#section-system')).toBeVisible();
   });
 

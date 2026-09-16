@@ -241,8 +241,8 @@
       "label": "Default model",
       "help": "The Station-level fallback uses this model when neither the agent, the project, nor the model connection names one.",
       "scope": "defaults",
-      "section": "agent-defaults",
-      "route": "/settings?view=agent-defaults&highlight=default-model",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=default-model",
       "configKey": "defaultModel"
     },
     {
@@ -250,8 +250,8 @@
       "label": "Default Region",
       "help": "Station picks this AWS region for Bedrock models when an agent does not name its own.",
       "scope": "defaults",
-      "section": "agent-defaults",
-      "route": "/settings?view=agent-defaults&highlight=default-region",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=default-region",
       "configKey": "region"
     },
     {
@@ -259,8 +259,8 @@
       "label": "Default Agent Instructions",
       "help": "Every agent starts its context with these instructions, ahead of its own.",
       "scope": "defaults",
-      "section": "agent-defaults",
-      "route": "/settings?view=agent-defaults&highlight=default-agent-instructions",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=default-agent-instructions",
       "configKey": "systemPrompt"
     },
     {
@@ -268,8 +268,8 @@
       "label": "Template Variables",
       "help": "Agent instructions can reference these values as {{key}} instead of repeating them.",
       "scope": "defaults",
-      "section": "agent-defaults",
-      "route": "/settings?view=agent-defaults&highlight=template-variables",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=template-variables",
       "configKey": "templateVariables"
     },
     {
