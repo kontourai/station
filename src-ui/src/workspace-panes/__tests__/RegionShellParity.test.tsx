@@ -375,38 +375,115 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
 
       const destination: DockMode = placement === 'right' ? 'left' : 'right';
       act(() => currentRegionModel().placeSurface('chat', destination));
-      await waitFor(() =>
-        expect(shells()[0]?.dataset.region).toBe(destination),
-      );
-      expect(shells()).toHaveLength(1);
+      const destinationShell = await waitFor(() => {
+        const element = document.querySelector<HTMLElement>(
+          `[data-region="${destination}"]`,
+        );
+        if (!element) throw new Error('the destination must render a shell');
+        return element;
+      });
       // #2045: the host is the REGION's (`ambient:<region>` document), so a
-      // move is a leave-and-join — the vacated region's shell is gone and
-      // the destination's is a new node. Before #2045 the shell was keyed by
-      // occupant and this asserted the same node; that pin is retired with
-      // the per-occupant shell it described.
-      expect(shells()[0]).not.toBe(shell);
-      expect(shell.isConnected).toBe(false);
+      // move is a leave-and-join and the destination's shell is a NEW node.
+      // Before #2045 the shell was keyed by occupant and this asserted the
+      // same node; that pin is retired with the per-occupant shell it
+      // described.
+      expect(destinationShell).not.toBe(shell);
+      // Chat's shell — `#chat-dock`, "Dock" — is the destination's and there
+      // is exactly one of it, which is what "one shell per region" protects.
       expect(document.querySelectorAll('#chat-dock')).toHaveLength(1);
-      expect(shells()[0]?.classList.contains(`chat-dock--${destination}`)).toBe(
-        true,
-      );
+      expect(destinationShell.id).toBe('chat-dock');
+      expect(
+        destinationShell.classList.contains(`chat-dock--${destination}`),
+      ).toBe(true);
+      // #2153: the VACATED region stays on screen, empty — the same node,
+      // now the region's bar over its placeholder rather than unmounted. It
+      // is a second shell, so the count is two; before #2153 the vacated
+      // shell disconnected and this read one.
+      expect(shell.isConnected).toBe(true);
+      expect(shell.dataset.region).toBe(placement);
+      expect(shells()).toHaveLength(2);
+      expect(
+        within(shell).getByText(
+          `Nothing in the ${placement[0]?.toUpperCase()}${placement.slice(1)} region yet`,
+        ),
+      ).toBeTruthy();
       // The re-propped instance republishes clearance for its new region.
-      await waitFor(() => expect(clearance('--dock-slot-size')).toBe('0px'));
-      // Per-region clearance follows the shell: the vacated region's
-      // variable is withdrawn, the destination's is written.
+      // `--dock-slot-size` is the BOTTOM edge's clearance: a move between two
+      // side regions leaves nothing at the bottom and it falls to 0, but a
+      // move OUT of `bottom` leaves that region on screen and empty (#2153),
+      // so the workspace still clears its height.
+      await waitFor(() =>
+        expect(clearance('--dock-slot-size')).toBe(
+          placement === 'bottom' ? '320px' : '0px',
+        ),
+      );
+      // Per-region clearance follows the RENDERED regions, and the vacated
+      // one still renders, so it keeps a clearance of its own.
       expect(clearance(`--region-${destination}-size`)).toBe('400px');
-      expect(clearance(`--region-${placement}-size`)).toBe('');
+      expect(clearance(`--region-${placement}-size`)).not.toBe('');
     },
   );
 
-  test('an empty region renders no section at all', async () => {
+  test('an empty HIDDEN region renders no section at all', async () => {
     seedPlacement('right', 'open');
     await renderShellsSettled();
+    // Empty AND hidden, which since #2153 is what it takes to render
+    // nothing: an empty region that is VISIBLE gets a host (next test).
+    expect(currentRegionModel().regions.bottom).toMatchObject({
+      panes: [],
+      visible: false,
+    });
     expect(document.querySelector('[data-region="bottom"]')).toBeNull();
     expect(document.querySelector('[data-region="left"]')).toBeNull();
     expect(
       document.querySelectorAll('section[aria-label="Dock"]'),
     ).toHaveLength(1);
+  });
+
+  /**
+   * #2153: a dock region may be visible while empty. It renders its own
+   * section — named for the REGION, since it has no pane to be named after —
+   * with the chrome bar over a placeholder, and no tab strip.
+   *
+   * Reverting `RegionShells`' mount condition to
+   * `occupant && resolveRegionSurface(occupant)` reds the first assertion
+   * (no section renders at all); reverting `RegionPaneHost`'s `emptyRegion`
+   * branch reds the placeholder assertion.
+   */
+  test('a visible EMPTY region renders a section named for the region, with the placeholder and no tabs', async () => {
+    seedPlacement('right', 'open');
+    await renderShellsSettled();
+    act(() => currentRegionModel().setRegion('left', { visible: true }));
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
+
+    const left = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>(
+        '[data-region="left"]',
+      );
+      if (!element) throw new Error('the visible empty region must render');
+      return element;
+    });
+    expect(currentRegionModel().regions.left).toMatchObject({
+      panes: [],
+      occupant: null,
+      visible: true,
+    });
+    // The landmark is the region's own name, not "Dock" — that is Chat's,
+    // and Chat is in `right`.
+    expect(left.getAttribute('aria-label')).toBe('Left region');
+    expect(left.id).toBe('');
+    expect(document.querySelectorAll('#chat-dock')).toHaveLength(1);
+    expect(
+      within(left).getByText('Nothing in the Left region yet'),
+    ).toBeTruthy();
+    // No tabs, and no "+" yet (the chooser is #2154).
+    expect(within(left).queryAllByRole('tab')).toHaveLength(0);
+    expect(within(left).queryByLabelText(/^Add pane to/)).toBeNull();
+    // The chevron names the region too, so one name reaches the reader from
+    // the landmark, the control and the placeholder alike.
+    expect(within(left).getByLabelText('Hide Left region')).toBeTruthy();
   });
 
   test('an occupant without a registered shell renders nothing', async () => {
@@ -818,8 +895,11 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
 
     act(() => currentRegionModel().placeSurface('activity', 'bottom'));
 
-    await waitFor(() => expect(shells()).toHaveLength(1));
-    // The one shell is Chat's region's, showing Activity's tab (D3).
+    // Two shells still: `bottom`, which now holds both panes, and the
+    // vacated `right`, which stays open and empty (#2153). Exactly one of
+    // them is Chat's — `#chat-dock` — which is what this repro turns on.
+    await waitFor(() => expect(shells()).toHaveLength(2));
+    expect(document.querySelectorAll('#chat-dock')).toHaveLength(1);
     const activityShell = document.querySelector<HTMLElement>('#chat-dock');
     if (!activityShell) throw new Error('the joined shell never rendered');
     expect(activityShell.dataset.region).toBe('bottom');
@@ -837,9 +917,11 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       visible: true,
       maximized: false,
     });
+    // Vacated and still open (#2153), and — the point of this repro —
+    // RESTORED: an empty region is never maximized.
     expect(currentRegionModel().regions.right).toMatchObject({
       panes: [],
-      visible: false,
+      visible: true,
       maximized: false,
     });
     await waitFor(() =>
