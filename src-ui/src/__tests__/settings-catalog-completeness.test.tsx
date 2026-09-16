@@ -479,10 +479,18 @@ describe('settings catalog completeness', () => {
    * makes it the first row on the page whose own scope DIFFERS from its
    * container's caption, which is the entire reason `containerScope` exists
    * (#2144 slice 7): the chip is a difference, not a label printed on every
-   * line. Both directions are asserted, because a chip that appeared on
-   * everything would satisfy the first half alone.
+   * line.
+   *
+   * Both directions are asserted against the SAME scope, because only one of
+   * them has power on its own. An absent `containerScope` still prints the
+   * chip — `scopeBadgeLabel` treats "no container named" as the pre-slice-7
+   * always-label behaviour — so "it prints Station" is satisfied by a mount
+   * that passes nothing at all. What proves the wiring is that the identical
+   * Station scope prints NOTHING in the box whose caption already said it,
+   * and that is the second half here. (Found by injection: dropping the prop
+   * on the Chat mount left this test green until the pair was added.)
    */
-  test('a Station row inside the device box prints a Station chip, and its device neighbours print none', async () => {
+  test('a Station row prints a Station chip in the device box and none in the Station box', async () => {
     await renderSettings();
 
     const stationDefault = screen
@@ -493,14 +501,18 @@ describe('settings catalog completeness', () => {
       stationDefault?.querySelector('.setting-row-status')?.textContent,
     ).toContain('Station');
 
-    // Its neighbour in the same card writes this device's store, which is
-    // exactly what the box's caption already promised, so it says nothing.
-    const deviceNeighbour = screen
-      .getByLabelText('Chat font size')
+    // Same scope (`station`), different box. Registry URL is under Sources,
+    // inside "Saved to this Station — every client sees the same values",
+    // so the chip would only restate the caption and is withheld.
+    const inStationBox = screen
+      .getByLabelText('Registry URL')
       .closest('.page-row');
-    expect(deviceNeighbour).toBeTruthy();
     expect(
-      deviceNeighbour?.querySelector('.setting-row-status')?.textContent ?? '',
+      inStationBox?.querySelector('.setting-row-status'),
+      'the control assertion below is vacuous without a status strip to read',
+    ).toBeTruthy();
+    expect(
+      inStationBox?.querySelector('.setting-row-status')?.textContent,
     ).not.toContain('Station');
   });
 
