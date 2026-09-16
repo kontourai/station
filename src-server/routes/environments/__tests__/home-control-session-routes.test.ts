@@ -152,23 +152,45 @@ test.skipIf(process.platform === 'win32')(
     const app = f.createApp();
     const replaySecret = 'a'.repeat(64);
 
-    expect(
-      (
-        await f.post(app, '/control-sessions/open', transferOnly.credential, {
-          openId: 'open-a',
-          replaySecret,
-        })
-      ).status,
-    ).toBe(403);
+    // The BODY, not just the status. Both refusals below come from the SCOPE
+    // MIDDLEWARE — neither credential carries `home:control` — and
+    // `insufficient_scope` is the only thing that says so. A bare 403 proves
+    // nothing here: delete the `home:control` rule from
+    // PAIRING_SCOPE_ROUTE_TABLE and both requests still 403, because the
+    // handler's own participant gate then denies them, also before any
+    // database is opened. Verified by deleting the rule: the suite stayed
+    // 6/6 green. Pinning the body is what makes the rule's presence
+    // observable through the enforcement path rather than only through
+    // `requiredPairingScope`, which is a pure function call.
+    //
+    // NOT covered here, and deliberately said out loud: no case in this
+    // suite clears the scope gate on `open` and is then refused by the
+    // participant gate, so the handler's own check is asserted on `inspect`
+    // (below) but not on `open`.
+    const refusedForScope = await f.post(
+      app,
+      '/control-sessions/open',
+      transferOnly.credential,
+      { openId: 'open-a', replaySecret },
+    );
+    expect(refusedForScope.status).toBe(403);
+    await expect(refusedForScope.json()).resolves.toEqual({
+      error: { code: 'insufficient_scope' },
+    });
     expect(f.databases).toHaveLength(0);
-    expect(
-      (
-        await f.post(app, '/control-sessions/open', f.controller.credential, {
-          openId: 'open-a',
-          replaySecret,
-        })
-      ).status,
-    ).toBe(403);
+    // The operator credential is not a control participant either: operator
+    // standing authorizes `inspect`/`retire`, never `open`. It is refused at
+    // the same gate, for the same reason.
+    const refusedOperator = await f.post(
+      app,
+      '/control-sessions/open',
+      f.controller.credential,
+      { openId: 'open-a', replaySecret },
+    );
+    expect(refusedOperator.status).toBe(403);
+    await expect(refusedOperator.json()).resolves.toEqual({
+      error: { code: 'insufficient_scope' },
+    });
     expect(f.databases).toHaveLength(0);
     const inheritedManager = f.pair();
     expect(
