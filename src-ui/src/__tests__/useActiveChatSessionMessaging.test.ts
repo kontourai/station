@@ -55,6 +55,17 @@ vi.mock('../hooks/useStreamingMessage', () => ({
 }));
 
 const agentConnectionsMock = vi.fn(() => ({ data: [] as unknown[] }));
+// #2144 slice 6: the hook reads `AppConfig.defaultApprovalMode` through
+// ConfigContext, which reads this query.
+const stationAppConfig = vi.hoisted(
+  () => ({ current: undefined }) as { current: unknown },
+);
+const configQueryMock = vi.fn(() => ({
+  data: stationAppConfig.current,
+  error: null,
+  dataUpdatedAt: 0,
+  refetch: vi.fn(),
+}));
 const cooperativeStop = {
   outcome: 'cooperative' as const,
   threadId: 'server-thread-1',
@@ -81,6 +92,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
       inventory: () => ({ queryKey: ['conversation-inventory'] }),
     },
     useEngineConnectionsQuery: () => agentConnectionsMock(),
+    useConfigQuery: () => configQueryMock(),
     useInvalidateQuery: () => invalidateMock,
     interruptOrchestrationTurn: (...args: unknown[]) =>
       interruptOrchestrationTurnMock(...args),
@@ -290,6 +302,108 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(sendExecutionMessageMock.mock.calls[0][1].target).not.toHaveProperty(
       'model',
     );
+  });
+
+  /**
+   * #2144 slice 6 fix round 1. This is the ENFORCEMENT seam: the chip's
+   * `resolveEffectiveApprovalMode` only ever decided a label, and both
+   * default layers under a session override reached nothing else. These
+   * assert the payload `sendExecutionMessage` is called with, not the
+   * resolver.
+   */
+  describe('approval-mode defaults reaching the wire', () => {
+    beforeEach(() => {
+      // A knob-supporting engine (claude/codex are the two adapters that
+      // read `modelOptions.approvalMode`), with nothing session-scoped.
+      activeChatsStore.updateChat(sessionId, {
+        agentConnectionId: 'claude',
+        requestedProviderOptions: undefined,
+        providerOptions: {},
+      });
+      stationAppConfig.current = undefined;
+    });
+
+    afterEach(() => {
+      stationAppConfig.current = undefined;
+      // `vi.clearAllMocks` clears calls, not implementations — a
+      // `mockReturnValue` set below would otherwise leak into later files'
+      // expectations of an empty connection list.
+      agentConnectionsMock.mockReturnValue({ data: [] });
+    });
+
+    it("sends this Station's default when neither the chat nor its connection names one", async () => {
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+
+      expect(
+        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
+      ).toMatchObject({ approvalMode: 'never' });
+    });
+
+    it('lets the session override win over the Station default', async () => {
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      activeChatsStore.updateChat(sessionId, {
+        requestedProviderOptions: { approvalMode: 'ask' },
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+
+      expect(
+        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
+      ).toMatchObject({ approvalMode: 'ask' });
+    });
+
+    it("lets the connection's own default win over the Station default", async () => {
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      agentConnectionsMock.mockReturnValue({
+        data: [{ id: 'claude', config: { approvalMode: 'auto' } }],
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+
+      expect(
+        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
+      ).toMatchObject({ approvalMode: 'auto' });
+    });
+
+    it('sends nothing to an engine whose adapter has no approval knob', async () => {
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      activeChatsStore.updateChat(sessionId, {
+        agentConnectionId: 'some-acp-runtime',
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+
+      expect(
+        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
+      ).not.toHaveProperty('approvalMode');
+    });
+
+    it('sends nothing when this Station states no posture', async () => {
+      stationAppConfig.current = { defaultApprovalMode: 'connection-default' };
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+
+      expect(
+        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
+      ).not.toHaveProperty('approvalMode');
+    });
   });
 
   it('uses the receipt conversation identity and preserves SSE-owned completion', async () => {

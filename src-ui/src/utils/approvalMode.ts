@@ -236,3 +236,35 @@ export function resolveEffectiveApprovalMode({
     source: 'adapter default',
   };
 }
+
+/**
+ * The approval mode this send must put ON THE WIRE, or `undefined` for "send
+ * nothing and let the engine keep whatever it already does".
+ *
+ * `resolveEffectiveApprovalMode` answers what to DISPLAY. This answers what to
+ * ENFORCE, and the two have to agree or the chip narrates a posture nothing
+ * applies (#2144 slice 6 fix round 1: both the Station default and the
+ * connection default were display-only — the only value that reached
+ * `modelOptions.approvalMode`, which is the single thing the server reads
+ * (`readApprovalMode`, provider.ts), was the session override).
+ *
+ * Returns `undefined` when:
+ * - the engine's adapter has no approval knob (`approvalModeKnobSupported`) —
+ *   sending a posture there would be a request nothing can honour;
+ * - the resolution came from a session override, which the dispatcher already
+ *   carries in `requestedProviderOptions`;
+ * - nothing concrete resolved (`'connection-default'`), which is Station
+ *   deliberately stating no posture.
+ */
+export function approvalModeForDispatch(input: {
+  engineConnectionId?: string | null;
+  sessionOverride?: unknown;
+  connectionDefault?: unknown;
+  stationDefault?: unknown;
+}): ApprovalMode | undefined {
+  if (!approvalModeKnobSupported(input.engineConnectionId)) return undefined;
+  const resolved = resolveEffectiveApprovalMode(input);
+  if (resolved.source === 'session override') return undefined;
+  if (resolved.mode === 'connection-default') return undefined;
+  return resolved.mode;
+}

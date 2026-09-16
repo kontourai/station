@@ -12,6 +12,7 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
+import { useConfig } from '../contexts/ConfigContext';
 import {
   type ChatMessage,
   isTurnInFlight,
@@ -29,6 +30,7 @@ import {
   type ChatErrorTranslation,
   translateChatError,
 } from '../utils/chatErrorTranslation';
+import { approvalModeForDispatch } from '../utils/approvalMode';
 import { sessionAdapterSupportsSteering } from '../utils/execution';
 import { steerRefusalMessage } from '../utils/steerTurn';
 import { isReplayThread } from './orchestration/replay/replay-registry';
@@ -145,6 +147,12 @@ export function useSendMessage(
     data: ConnectionConfig[];
   };
   const invalidate = useInvalidateQuery();
+  // #2144 slice 6 fix round 1: the two default layers below a session
+  // override (the engine connection's own default, then this Station's
+  // `defaultApprovalMode`) were display-only — the composer chip read them
+  // and nothing put them on the wire. This is the one send path that starts a
+  // conversation, so it is where the whole resolved chain becomes a request.
+  const stationApprovalModeDefault = useConfig()?.defaultApprovalMode;
   const sendMessage = useCallback(
     async (
       sessionId: string,
@@ -310,11 +318,28 @@ export function useSendMessage(
         const { dispatchForeground } = await import(
           '../lib/foregroundMessageDispatch'
         );
+        const dispatchedProviderOptions = options?.executionSnapshot
+          ? (options.executionSnapshot.requestedProviderOptions ??
+            options.executionSnapshot.providerOptions)
+          : (currentState?.requestedProviderOptions ??
+            currentState?.providerOptions);
         const receipt = await dispatchForeground({
           apiBase,
           sessionId,
           agentSlug,
           projectSlug: currentState?.projectSlug,
+          // The layers below the session override, resolved here because this
+          // is where the engine identity, the connection record and the app
+          // config all exist at once. `undefined` for any engine whose
+          // adapter has no approval knob.
+          approvalModeFallback: approvalModeForDispatch({
+            engineConnectionId: currentState?.agentConnectionId,
+            sessionOverride: dispatchedProviderOptions?.approvalMode,
+            connectionDefault: agentConnections.find(
+              (connection) => connection.id === currentState?.agentConnectionId,
+            )?.config.approvalMode,
+            stationDefault: stationApprovalModeDefault,
+          }),
           requestedModel: options?.executionSnapshot
             ? options.executionSnapshot.requestedModel
             : currentState?.requestedModel,
@@ -622,6 +647,7 @@ export function useSendMessage(
       invalidate,
       onActiveSessionChange,
       onError,
+      stationApprovalModeDefault,
       updateChat,
     ],
   );

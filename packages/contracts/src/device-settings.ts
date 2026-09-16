@@ -606,8 +606,14 @@ export const DEVICE_SETTINGS_REGISTRY = [
     key: 'featureSettings',
     scope: 'device',
     descriptor: { kind: 'composite' },
-    label: 'Features',
-    help: 'Only the optional features turned on here are active on this device.',
+    // Named for everything the composite holds, because it is listed by
+    // label in the "Restore device defaults" confirmation and restoring it
+    // also restores `notificationSounds` — a member nothing else in that
+    // dialog named (#2144 slice 6 fix round 1). The single label is the
+    // smaller honest change than splitting a composite every consumer,
+    // migration and `priorStorageKey` reads as one value.
+    label: 'Features, including notification sounds',
+    help: 'Only the optional features turned on here are active on this device, and this is where each notification category’s sound is kept.',
     description: 'Per-device feature toggles.',
     priorStorageKey: 'station-feature-settings',
     // Confirmed against useFeatureSettings.ts's own DEFAULTS: all off
@@ -862,7 +868,9 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'boolean' },
     label: 'Ask before deleting a conversation',
-    help: 'Deleting a conversation on this device asks for confirmation first, and deleting it is not undoable.',
+    // Renders beside the control in BOTH states, so it cannot describe only
+    // the on state (#2144 slice 6 fix round 1).
+    help: 'When on, deleting a conversation on this device asks for confirmation first; deleting is not undoable either way.',
     description:
       'Show a confirmation before deleting a conversation. Turning this off deletes immediately, which cannot be undone. Clearing all conversations always asks.',
     // #2144 slice 6: default on. The delete is not undoable and the confirm

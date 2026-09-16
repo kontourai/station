@@ -18,6 +18,20 @@ export async function dispatchForeground(input: {
   requestedProviderOptions?: Record<string, unknown>;
   model?: string;
   providerOptions?: Record<string, unknown>;
+  /**
+   * The approval posture resolved from the layers BELOW a session override —
+   * the engine connection's default, then this Station's
+   * `AppConfig.defaultApprovalMode` (#2144 slice 6). Supplied already
+   * resolved (`approvalModeForDispatch`) so this module stays a mapper.
+   *
+   * It is folded into the outgoing `model.options` because
+   * `modelOptions.approvalMode` is the only channel the server reads
+   * (`readApprovalMode`, packages/contracts/src/provider.ts;
+   * `resolveClaudePermissionMode`, src-server/providers/adapters/
+   * claude-approval-mode.ts). A concrete override already present in the
+   * options bag outranks it and is left untouched.
+   */
+  approvalModeFallback?: string;
   message: string;
   attachments?: FileAttachment[];
   attachmentStages?: ComposerAttachmentStageSnapshot[];
@@ -28,9 +42,23 @@ export async function dispatchForeground(input: {
 }) {
   const resolved = resolveTurnModel(input);
   const defaultRequested = resolved.kind === 'engine-selected';
-  const modelOptions = defaultRequested
-    ? undefined
-    : (input.requestedProviderOptions ?? input.providerOptions);
+  const modelOptions = ((): Record<string, unknown> | undefined => {
+    const requested = defaultRequested
+      ? undefined
+      : (input.requestedProviderOptions ?? input.providerOptions);
+    if (!input.approvalModeFallback) return requested;
+    // A session override travels in the options bag itself and wins; the
+    // fallback fills only the gap. `'connection-default'` in the bag is the
+    // user CLEARING their override, so the layer below it applies.
+    const override = requested?.approvalMode;
+    if (typeof override === 'string' && override !== 'connection-default') {
+      return requested;
+    }
+    // Deliberately survives the `engine-selected` branch above: dropping the
+    // whole bag with no model override is about not claiming a model, and
+    // must not silently drop the posture the Station does state.
+    return { ...(requested ?? {}), approvalMode: input.approvalModeFallback };
+  })();
   const requestedModel = defaultRequested ? undefined : resolved.modelId;
   const attachments = input.attachments ?? [];
   const stages = input.attachmentStages ?? [];

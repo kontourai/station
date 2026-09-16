@@ -157,12 +157,16 @@ vi.mock('../contexts/ConfigContext', () => ({
 let deviceChatFontSize: number | null = 14;
 const setDeviceSetting = vi.fn();
 const resetDeviceSetting = vi.fn();
+const resetDeviceSettings = vi.fn();
 /**
  * #2144 slice 6 item D: what the disclosure query reports about a telemetry
  * DESTINATION. Partial mock — only the shared hook is replaced, so the real
  * `UsageTelemetryDisclosure` card and the real summary function still run.
  */
 let telemetryEndpointConfigured: boolean | undefined;
+/** The read's own state, which the row must not speak ahead of. */
+let telemetryDisclosureSettled = true;
+let telemetryDisclosureIsError = false;
 vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -175,8 +179,8 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
         telemetryEndpointConfigured === undefined
           ? undefined
           : { endpointConfigured: telemetryEndpointConfigured },
-      isError: false,
-      settled: true,
+      isError: telemetryDisclosureIsError,
+      settled: telemetryDisclosureSettled,
       outstanding: false,
     }),
   };
@@ -210,7 +214,11 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
       draftsHidden: false,
     },
   }),
-  useDeviceSettingsActions: () => ({ setDeviceSetting, resetDeviceSetting }),
+  useDeviceSettingsActions: () => ({
+    setDeviceSetting,
+    resetDeviceSetting,
+    resetDeviceSettings,
+  }),
 }));
 let isMobile = false;
 let isDesktop = false;
@@ -289,8 +297,11 @@ describe('settings catalog completeness', () => {
     deviceChatFontSize = 14;
     deviceFeatureSettings = DEFAULT_DEVICE_FEATURE_SETTINGS;
     telemetryEndpointConfigured = undefined;
+    telemetryDisclosureSettled = true;
+    telemetryDisclosureIsError = false;
     setDeviceSetting.mockClear();
     resetDeviceSetting.mockClear();
+    resetDeviceSettings.mockClear();
     window.history.replaceState({}, '', '/settings');
   });
 
@@ -1271,6 +1282,42 @@ describe('settings catalog completeness', () => {
         screen.queryByText('No destination configured; nothing is sent.'),
       ).toBeNull();
     });
+
+    test('an in-flight read claims nothing about the host', async () => {
+      // Fix round 1: every fresh Settings mount starts here, and the row
+      // used to state "has not reported" before the request had landed.
+      telemetryDisclosureSettled = false;
+      telemetryEndpointConfigured = undefined;
+      const { container } = await renderSettings();
+
+      expect(
+        screen.queryByText(
+          'This Station has not reported whether a destination is configured.',
+        ),
+      ).toBeNull();
+      expect(
+        screen.queryByText('No destination configured; nothing is sent.'),
+      ).toBeNull();
+      // The row itself stays, so the catalog still enumerates it.
+      expect(
+        container.querySelector('[data-catalog-id="telemetry-destination"]'),
+      ).toBeTruthy();
+    });
+
+    test('a failed read says the read failed, not what the host holds', async () => {
+      telemetryDisclosureIsError = true;
+      telemetryEndpointConfigured = undefined;
+      await renderSettings();
+
+      expect(
+        screen.getByText('Could not read whether a destination is configured.'),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText(
+          'This Station has not reported whether a destination is configured.',
+        ),
+      ).toBeNull();
+    });
   });
 
   /**
@@ -1315,9 +1362,11 @@ describe('settings catalog completeness', () => {
       deviceChatFontSize = null as unknown as number;
       await renderSettings();
       expect(button().disabled).toBe(true);
+      // Scoped to what the plan computes (PREFERENCE_DEVICE_KEYS), not to
+      // every setting the device holds.
       expect(
         screen.getByText(
-          'Every setting on this device is already at its default.',
+          'Every setting you can restore here is already at its default.',
         ),
       ).toBeTruthy();
     });
@@ -1337,7 +1386,27 @@ describe('settings catalog completeness', () => {
       expect(dialog.textContent).not.toContain('Chat dock height');
 
       fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
-      expect(resetDeviceSetting.mock.calls).toEqual([['chatFontSize']]);
+      // One envelope write for the whole plan, not one per key.
+      expect(resetDeviceSettings.mock.calls).toEqual([[['chatFontSize']]]);
+    });
+
+    test('a multi-setting plan reads as plural in the dialog', async () => {
+      deviceChatFontSize = 20;
+      deviceFeatureSettings = {
+        ...DEFAULT_DEVICE_FEATURE_SETTINGS,
+        mobilePairingEnabled: true,
+      };
+      await renderSettings();
+
+      fireEvent.click(button());
+      const dialog = screen.getByText(
+        /This restores 2 settings on this device to their defaults/,
+      );
+      // The composite names the member a reader would not expect it to
+      // restore.
+      expect(dialog.textContent).toContain(
+        'Features, including notification sounds',
+      );
     });
 
     test('cancelling restores nothing', async () => {
@@ -1345,7 +1414,7 @@ describe('settings catalog completeness', () => {
       await renderSettings();
       fireEvent.click(button());
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-      expect(resetDeviceSetting).not.toHaveBeenCalled();
+      expect(resetDeviceSettings).not.toHaveBeenCalled();
     });
   });
 

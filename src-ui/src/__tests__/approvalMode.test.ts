@@ -4,6 +4,7 @@ import {
   adapterDefaultApprovalMode,
   approvalModeChipLabel,
   approvalModeDescription,
+  approvalModeForDispatch,
   approvalModeKnobSupported,
   approvalModeLabel,
   resolveEffectiveApprovalMode,
@@ -314,5 +315,62 @@ describe('resolveEffectiveApprovalMode', () => {
       label: 'Connection default',
       source: 'adapter default',
     });
+  });
+});
+
+/**
+ * The ENFORCEMENT counterpart of `resolveEffectiveApprovalMode`. What the
+ * chip displays and what the send path requests must not diverge; the payload
+ * assertions live in `foregroundMessageDispatch.test.ts` and
+ * `useActiveChatSessionMessaging.test.ts`, which reach the wire.
+ */
+describe('approvalModeForDispatch', () => {
+  test("the Station default becomes this turn's request", () => {
+    expect(
+      approvalModeForDispatch({
+        engineConnectionId: 'codex',
+        stationDefault: 'never',
+      }),
+    ).toBe('never');
+  });
+
+  test("the connection's default outranks the Station default", () => {
+    expect(
+      approvalModeForDispatch({
+        engineConnectionId: 'codex',
+        connectionDefault: 'auto',
+        stationDefault: 'never',
+      }),
+    ).toBe('auto');
+  });
+
+  test('a session override is already on the wire, so nothing is added', () => {
+    expect(
+      approvalModeForDispatch({
+        engineConnectionId: 'codex',
+        sessionOverride: 'ask',
+        stationDefault: 'never',
+      }),
+    ).toBeUndefined();
+  });
+
+  test('an engine with no approval knob is asked for nothing', () => {
+    expect(
+      approvalModeForDispatch({
+        engineConnectionId: 'acp',
+        connectionDefault: 'auto',
+        stationDefault: 'never',
+      }),
+    ).toBeUndefined();
+  });
+
+  test('stating no posture sends no posture', () => {
+    expect(
+      approvalModeForDispatch({
+        engineConnectionId: 'codex',
+        stationDefault: 'connection-default',
+      }),
+    ).toBeUndefined();
+    expect(approvalModeForDispatch({ engineConnectionId: 'codex' })).toBeUndefined();
   });
 });

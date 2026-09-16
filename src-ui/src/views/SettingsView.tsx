@@ -709,13 +709,20 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               <PageRow
                 {...settingsRow('telemetry-destination')}
                 description="Usage telemetry has somewhere to go only when the operator has configured a destination for this Station. Station does not show where that is."
-                control={
-                  <span className="settings__field-hint">
-                    {usageTelemetryDestinationSummary(
+                control={(() => {
+                  // `null` is the in-flight read: the row keeps its place
+                  // (and its catalog identity) while saying nothing, rather
+                  // than asserting the host reported nothing.
+                  const summary = usageTelemetryDestinationSummary({
+                    endpointConfigured:
                       telemetryDisclosure.data?.endpointConfigured,
-                    )}
-                  </span>
-                }
+                    settled: telemetryDisclosure.settled,
+                    isError: telemetryDisclosure.isError,
+                  });
+                  return summary === null ? null : (
+                    <span className="settings__field-hint">{summary}</span>
+                  );
+                })()}
               />
               <UsageTelemetryDisclosure />
               <LocalAccountsSection />

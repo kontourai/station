@@ -50,7 +50,7 @@ export function SystemSection({
   // reset, this needs neither the draft config nor a server request, so
   // threading it through the page would buy nothing.
   const deviceSettings = useDeviceSettings();
-  const { resetDeviceSetting } = useDeviceSettingsActions();
+  const { resetDeviceSettings } = useDeviceSettingsActions();
   const [showDeviceResetModal, setShowDeviceResetModal] = useState(false);
   const deviceResetPlan = buildDeviceResetPlan(deviceSettings);
 
@@ -182,7 +182,10 @@ export function SystemSection({
         </button>
         <span className="settings__field-hint">
           {deviceResetPlan.keys.length === 0
-            ? 'Every setting on this device is already at its default.'
+            ? // Scoped to what the plan computes: it considers
+              // PREFERENCE_DEVICE_KEYS only, so "every setting on this
+              // device" claimed more than it had looked at.
+              'Every setting you can restore here is already at its default.'
             : `Restores ${deviceResetPlan.keys.length} setting${deviceResetPlan.keys.length === 1 ? '' : 's'} you have changed on this device. Window layout, panel sizes and guided-run progress are not touched, and nothing on the Station changes.`}
         </span>
       </div>
@@ -190,13 +193,15 @@ export function SystemSection({
       <ConfirmModal
         isOpen={showDeviceResetModal}
         title="Restore device defaults"
-        message={`This restores ${deviceResetPlan.keys.length} setting${deviceResetPlan.keys.length === 1 ? '' : 's'} on this device to its default: ${deviceResetPlan.labels.join(', ')}. Window layout, panel sizes and guided-run progress are left as they are, and no Station setting changes. This cannot be undone.`}
+        message={`This restores ${deviceResetPlan.keys.length} ${deviceResetPlan.keys.length === 1 ? 'setting on this device to its default' : 'settings on this device to their defaults'}: ${deviceResetPlan.labels.join(', ')}. Window layout, panel sizes and guided-run progress are left as they are, and no Station setting changes. This cannot be undone.`}
         confirmLabel="Restore"
         cancelLabel="Cancel"
         variant="danger"
         onConfirm={() => {
           setShowDeviceResetModal(false);
-          for (const key of deviceResetPlan.keys) resetDeviceSetting(key);
+          // One envelope write for the whole plan: N sequential resets
+          // published N partly-restored snapshots.
+          resetDeviceSettings(deviceResetPlan.keys);
         }}
         onCancel={() => setShowDeviceResetModal(false)}
       />

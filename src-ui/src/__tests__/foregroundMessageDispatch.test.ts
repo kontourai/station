@@ -224,6 +224,97 @@ describe('dispatchForeground target', () => {
     });
   });
 
+  /**
+   * #2144 slice 6 fix round 1. `modelOptions.approvalMode` is the only
+   * channel the server reads (`readApprovalMode` in
+   * packages/contracts/src/provider.ts, consumed by
+   * `resolveClaudePermissionMode` — proved at the adapter boundary by
+   * src-server/providers/__tests__/claude-approval-mode.test.ts:30). Before
+   * this, a Station-scope default reached the composer chip's label and
+   * nothing else.
+   */
+  describe('the resolved approval-mode fallback', () => {
+    test('rides the payload when the session names none', async () => {
+      await dispatchForeground(
+        baseInput({
+          projectSlug: 'alpha',
+          requestedModel: 'claude-sonnet-4-20250514',
+          requestedProviderOptions: { effort: 'high' },
+          approvalModeFallback: 'never',
+        }),
+      );
+
+      expect(dispatchedTarget()).toMatchObject({
+        model: {
+          override: 'claude-sonnet-4-20250514',
+          options: { effort: 'high', approvalMode: 'never' },
+        },
+      });
+    });
+
+    test('survives an engine-selected turn, which carries no other options', async () => {
+      // The `engine-selected` branch drops the options bag so the turn claims
+      // no model. A posture the Station DOES state must not go with it.
+      await dispatchForeground(
+        baseInput({
+          requestedModel: null,
+          approvalModeFallback: 'ask',
+        }),
+      );
+
+      expect(dispatchedTarget()).toMatchObject({
+        model: { options: { approvalMode: 'ask' } },
+      });
+      expect(
+        (dispatchedTarget().model as Record<string, unknown>),
+      ).not.toHaveProperty('override');
+    });
+
+    test('never outranks the session override already in the bag', async () => {
+      await dispatchForeground(
+        baseInput({
+          requestedModel: 'claude-sonnet-4-20250514',
+          requestedProviderOptions: { approvalMode: 'ask' },
+          approvalModeFallback: 'never',
+        }),
+      );
+
+      expect(dispatchedTarget()).toMatchObject({
+        model: { options: { approvalMode: 'ask' } },
+      });
+    });
+
+    test("applies under a cleared override ('connection-default')", async () => {
+      // Selecting "Connection default" clears the session override; the
+      // layers below it are then exactly what should apply.
+      await dispatchForeground(
+        baseInput({
+          requestedModel: 'claude-sonnet-4-20250514',
+          requestedProviderOptions: { approvalMode: 'connection-default' },
+          approvalModeFallback: 'auto',
+        }),
+      );
+
+      expect(dispatchedTarget()).toMatchObject({
+        model: { options: { approvalMode: 'auto' } },
+      });
+    });
+
+    test('absent, the turn carries no approvalMode at all', async () => {
+      await dispatchForeground(
+        baseInput({
+          requestedModel: 'claude-sonnet-4-20250514',
+          requestedProviderOptions: { effort: 'high' },
+        }),
+      );
+
+      expect(
+        (dispatchedTarget().model as { options: Record<string, unknown> })
+          .options,
+      ).not.toHaveProperty('approvalMode');
+    });
+  });
+
   test('the target never leaks transport or credential identity', async () => {
     await dispatchForeground(
       baseInput({
