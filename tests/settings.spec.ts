@@ -224,7 +224,8 @@ test.describe('Settings', () => {
       'Diagnostics',
       'System',
       'Sources',
-      'Usage telemetry',
+      // The SECTION heading. Its first ROW is "Usage telemetry" (#2182 L8).
+      'Telemetry',
       'Permissions',
       'Agent runs',
     ]) {
@@ -254,7 +255,7 @@ test.describe('Settings', () => {
     ).toBeVisible();
     await expect(
       page.getByText(
-        'Saved to this Station — what agents may do without asking, and the values used when a chat, project, agent or device does not set its own.',
+        'Saved to this Station — what agents may do without asking, what every run gets, and the values a chat, project or agent inherits when it does not name its own.',
       ),
     ).toBeVisible();
     await expect(

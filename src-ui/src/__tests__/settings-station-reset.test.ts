@@ -128,10 +128,12 @@ describe('buildStationResetPlan', () => {
     // the only thing that can see that, because "derived" keeps reading as
     // derived while the thing it derives from shrinks.
     //
-    // Order is render order, which is catalog order — so it moved when
-    // #2182 redistributed the rows across six sections. The SET is asserted
-    // separately below and is unchanged; that is the property a reset
-    // depends on.
+    // Order is catalog order, which moved when #2182 redistributed the rows
+    // across six sections. That it is ALSO the order the page renders these
+    // rows in is a separate claim, checked against the DOM in
+    // `settings-catalog-completeness.test.tsx` — it is not something this
+    // file can see. The SET is asserted below and is unchanged across the
+    // whole slice; that is the property a reset depends on.
     expect([...RESETTABLE_STATION_SETTING_KEYS]).toEqual([
       // Station host
       'terminalShell',

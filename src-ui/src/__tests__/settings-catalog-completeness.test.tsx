@@ -20,8 +20,10 @@ import {
 } from '../app-shell/destination-registry';
 import {
   SETTINGS_CATALOG,
+  SETTINGS_SECTIONS,
   visibleCatalogIds,
 } from '../views/settings/settings-catalog';
+import { RESETTABLE_STATION_SETTING_KEYS } from '../views/settings/station-reset';
 
 vi.mock('@kontourai/station-connect', () => ({
   QRDisplay: () => <div />,
@@ -474,23 +476,27 @@ describe('settings catalog completeness', () => {
   });
 
   /**
-   * #2182. The Station default for chat font size now renders inside the
-   * "This device" box, beside the device slider that falls back to it. That
-   * makes it the first row on the page whose own scope DIFFERS from its
-   * container's caption, which is the entire reason `containerScope` exists
-   * (#2144 slice 7): the chip is a difference, not a label printed on every
-   * line.
+   * #2182. The Station default for chat font size renders inside the "This
+   * device" box, beside the device slider that falls back to it — the one row
+   * on the page whose own scope differs from its container's caption, which
+   * is what `containerScope` exists for (#2144 slice 7): the chip is a
+   * DIFFERENCE from the caption, not a label printed on every line.
    *
-   * Both directions are asserted against the SAME scope, because only one of
-   * them has power on its own. An absent `containerScope` still prints the
-   * chip — `scopeBadgeLabel` treats "no container named" as the pre-slice-7
-   * always-label behaviour — so "it prints Station" is satisfied by a mount
-   * that passes nothing at all. What proves the wiring is that the identical
-   * Station scope prints NOTHING in the box whose caption already said it,
-   * and that is the second half here. (Found by injection: dropping the prop
-   * on the Chat mount left this test green until the pair was added.)
+   * WHAT THIS PINS, AND WHAT IT CANNOT. `scopeBadgeLabel` reads an absent
+   * container as the pre-slice-7 always-label behaviour, so for a STATION
+   * row `containerScope="device"` and no `containerScope` at all produce the
+   * identical chip. The Chat mount renders exactly one row and it is a
+   * station row, so no DOM assertion can tell those two apart: this test
+   * catches the Chat mount naming the WRONG box (proved by injection —
+   * `containerScope="station"` there makes the chip vanish and this go red)
+   * and cannot catch it naming NO box. The review asked for a device row in
+   * the Chat box to close that gap; there is not one — `chat-font-size` is a
+   * `PageRow`, which renders no status strip at all, and the Chat mount's
+   * key list (`STATION_SETTING_KEYS_BY_SECTION.chat`) holds one station key.
+   * The absent-prop case is left uncovered and said so rather than covered
+   * by an assertion that would pass either way.
    */
-  test('a Station row prints a Station chip in the device box and none in the Station box', async () => {
+  test('a Station row in the device box prints a Station chip', async () => {
     await renderSettings();
 
     const stationDefault = screen
@@ -500,20 +506,183 @@ describe('settings catalog completeness', () => {
     expect(
       stationDefault?.querySelector('.setting-row-status')?.textContent,
     ).toContain('Station');
+  });
 
-    // Same scope (`station`), different box. Registry URL is under Sources,
-    // inside "Saved to this Station — every client sees the same values",
-    // so the chip would only restate the caption and is withheld.
-    const inStationBox = screen
-      .getByLabelText('Registry URL')
-      .closest('.page-row');
+  /**
+   * The other half of the difference rule, and the half with full power: the
+   * SAME `station` scope prints NOTHING inside the box whose caption already
+   * said it. This pins the Sources mount's `containerScope="station"` — drop
+   * it and Registry URL grows a chip that only restates the caption above it,
+   * which is the per-row noise #2144 slice 7 removed.
+   */
+  test('a Station row in the Station box prints no chip', async () => {
+    const { container } = await renderSettings();
+
+    const row = screen.getByLabelText('Registry URL').closest('.page-row');
     expect(
-      inStationBox?.querySelector('.setting-row-status'),
-      'the control assertion below is vacuous without a status strip to read',
+      row?.querySelector('.setting-row-status'),
+      'the assertion below is vacuous without a status strip to read',
     ).toBeTruthy();
     expect(
-      inStationBox?.querySelector('.setting-row-status')?.textContent,
+      row?.querySelector('.setting-row-status')?.textContent,
     ).not.toContain('Station');
+    // The caption this row is being compared against, so "no chip" is read as
+    // "the box already said it" rather than "no box said anything".
+    expect(
+      container.querySelector(
+        '[aria-label="This Station settings"] .settings__scope-caption',
+      )?.textContent,
+    ).toContain('Saved to this Station');
+  });
+
+  /**
+   * #2182 review M2. The nav strip and the page body are one order stated
+   * once: `SETTINGS_SECTIONS`. A body that mounts in a different sequence
+   * desynchronises the strip a reader skims from the page they scroll, and
+   * nothing else on this page would say so — every section still renders,
+   * every deep link still resolves, only the sequence lies. (This branch did
+   * exactly that for one commit, mounting Sources and Telemetry at the top of
+   * This Station while listing them near the bottom.)
+   *
+   * DERIVED from the catalog, never a literal list: a pinned sequence would
+   * have to be edited by whoever adds a section, which is the same person who
+   * would move the body, so it would agree with them by construction.
+   */
+  test('the page body mounts its sections in the order the nav lists them', async () => {
+    const { container } = await renderSettings();
+
+    const catalogAnchors = new Set(
+      SETTINGS_SECTIONS.map((section) => `section-${section.id}`),
+    );
+    const rendered = [...container.querySelectorAll('[id^="section-"]')]
+      .map((element) => element.id)
+      .filter((id) => catalogAnchors.has(id));
+    // The overview renders every section, so an empty or short list would be
+    // a broken harness rather than a passing assertion.
+    expect(rendered.length).toBeGreaterThanOrEqual(
+      SETTINGS_SECTIONS.length - 1,
+    );
+    expect(rendered).toEqual(
+      SETTINGS_SECTIONS.map((section) => `section-${section.id}`).filter((id) =>
+        rendered.includes(id),
+      ),
+    );
+  });
+
+  /**
+   * `station-reset.ts` says its key list is "in the order the page renders
+   * them". That was a claim about the catalog, and the catalog only agrees
+   * with the page while the bodies mount in section order — which M2 is what
+   * restored. Checked here against the DOM rather than restated.
+   */
+  test('the reset key order is the order those rows appear on the page', async () => {
+    const { container } = await renderSettings();
+
+    const idForKey = new Map(
+      SETTINGS_CATALOG.filter((entry) => entry.configKeys?.length).map(
+        (entry) => [entry.configKeys?.[0] as string, entry.id],
+      ),
+    );
+    const expected: string[] = RESETTABLE_STATION_SETTING_KEYS.map(
+      (key) => idForKey.get(key as string) as string,
+    );
+    expect(expected.filter(Boolean)).toHaveLength(expected.length);
+    const domOrder = [...container.querySelectorAll('[data-catalog-id]')]
+      .map((element) => element.getAttribute('data-catalog-id'))
+      .filter((id): id is string => id !== null);
+    expect(domOrder.filter((id) => expected.includes(id))).toEqual(expected);
+  });
+
+  /**
+   * #2182 review L7. Each `.settings__scope-group` opens with the storage
+   * rule its sections are saved under. Three of the four rendered that
+   * caption unconditionally, so opening ONE section printed the other groups'
+   * promises over nothing: on `?view=permissions` a reader saw "Saved to this
+   * Station — every client sees the same values" and "Saved to this device
+   * only" with no box under either. A caption is a claim about contents; with
+   * no contents it is a claim about nothing.
+   */
+  describe('scope-group captions', () => {
+    function captions(container: HTMLElement) {
+      return [...container.querySelectorAll('.settings__scope-caption')].map(
+        (node) => node.textContent?.replace(/\s+/g, ' ').trim(),
+      );
+    }
+
+    test("a single-section view shows only that section group's caption", async () => {
+      window.history.replaceState({}, '', '/settings?view=permissions');
+      const { container } = await renderSettings();
+
+      const shown = captions(container);
+      expect(shown).toHaveLength(1);
+      expect(shown[0]).toBe(
+        'Saved to this Station — what agents may do without asking, what every run gets, and the values a chat, project or agent inherits when it does not name its own.',
+      );
+    });
+
+    test('a This device view shows only the device caption', async () => {
+      window.history.replaceState({}, '', '/settings?view=chat');
+      const { container } = await renderSettings();
+
+      const shown = captions(container);
+      expect(shown).toHaveLength(1);
+      expect(shown[0]).toBe(
+        'Saved to this device only — these choices won’t follow you to another device.',
+      );
+    });
+
+    test('the overview shows every group, which is what makes the two above a filter and not a break', async () => {
+      const { container } = await renderSettings();
+      expect(captions(container).length).toBeGreaterThanOrEqual(4);
+    });
+  });
+
+  /**
+   * #2182 dissolved the `station-config` section across six others. A link
+   * carrying a real `highlight` is healed to the section its control is in
+   * NOW; that is the whole reason a section id is allowed to move while a row
+   * id is not. Two rows, landing in two different sections, because a healer
+   * that happened to send everything to one place would satisfy one case.
+   */
+  describe('links to the retired station-config view', () => {
+    test('a host setting heals to Station host and is focused', async () => {
+      window.history.replaceState(
+        {},
+        '',
+        '/settings?view=station-config&highlight=terminal-shell',
+      );
+      const { container } = await renderSettings();
+
+      await waitFor(() =>
+        expect(window.location.search).toBe('?view=host-runtime'),
+      );
+      expect(container.querySelector('#section-host-runtime')).toBeTruthy();
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole('textbox', { name: 'Terminal shell' }),
+        ),
+      );
+      expect(
+        screen.queryByText('That Settings target is no longer available.'),
+      ).toBeNull();
+    });
+
+    test('a per-run ceiling heals to Agent runs', async () => {
+      window.history.replaceState(
+        {},
+        '',
+        '/settings?view=station-config&highlight=default-max-turns',
+      );
+      const { container } = await renderSettings();
+
+      await waitFor(() =>
+        expect(window.location.search).toBe('?view=agent-runs'),
+      );
+      expect(container.querySelector('#section-agent-runs')).toBeTruthy();
+      expect(
+        screen.queryByText('That Settings target is no longer available.'),
+      ).toBeNull();
+    });
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {

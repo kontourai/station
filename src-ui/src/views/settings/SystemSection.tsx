@@ -220,9 +220,9 @@ export function SystemSection({
           Reset Station settings
         </button>
         <span className="settings__field-hint">
-          Clear every Station setting on this page that has a stored value, so
-          Station uses its defaults again. Settings on this device are not
-          affected. Cannot be undone.
+          Clear the stored Station settings on this page that a reset may touch,
+          so Station uses its defaults again. The confirmation lists exactly
+          which. Settings on this device are not affected. Cannot be undone.
         </span>
         {hasUnsavedChanges && (
           <span className="settings__field-hint">

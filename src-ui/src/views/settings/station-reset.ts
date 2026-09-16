@@ -79,8 +79,19 @@ const REGISTRY_BY_KEY: ReadonlyMap<keyof AppConfig, SettingDefinition> =
   );
 
 /**
- * Every Settings row that writes the Station document, in the order the page
- * renders them — the catalog IS the render order.
+ * Every Settings row that writes the Station document, in catalog order.
+ *
+ * That is also the order the page renders them, and the dialog's label list
+ * is the reason it has to be: a reader compares the names in the
+ * confirmation against the rows they were just looking at. The agreement is
+ * not automatic — it holds because `SettingsView` mounts its sections in
+ * `SETTINGS_SECTIONS` order and each section renders its rows in catalog
+ * order. Both halves are asserted against the DOM in
+ * `settings-catalog-completeness.test.tsx` ("the page body mounts its
+ * sections in the order the nav lists them" and "the reset key order is the
+ * order those rows appear on the page") rather than restated here, because
+ * this sentence was true, then briefly false when #2182 mounted two new
+ * cards out of order, and nothing said so.
  *
  * A row's FIRST config key, matching what `scripts/gen-settings-registry.ts`
  * publishes as the row's key: a row with several keys is one control over one

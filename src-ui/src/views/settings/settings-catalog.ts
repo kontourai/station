@@ -102,7 +102,11 @@ export const SETTINGS_SECTIONS = [
   // #2182: whether anything is sent, and whether there is anywhere to send
   // it. The disclosure card that lists what a payload contains moved here
   // with the toggle that decides it.
-  { id: 'telemetry', title: 'Usage telemetry', group: 'this-station' },
+  // The SECTION is "Telemetry" and the ROW inside it is "Usage telemetry":
+  // the two were the same words, so the nav offered a destination whose only
+  // apparent content was itself, and the card's heading restated its first
+  // row. The id stays `telemetry`.
+  { id: 'telemetry', title: 'Telemetry', group: 'this-station' },
   { id: 'diagnostics', title: 'Diagnostics', group: 'this-station' },
   // #2182: what agents may do without asking. Two rows, and that is the
   // whole of it today — the epic's other permissions ideas have no consumer
@@ -627,7 +631,11 @@ const SCOPE_BY_CONFIG_KEY: ReadonlyMap<
 function scopeForKeylessSection(
   section: SettingsSectionId,
 ): NonNullable<SettingsCatalogEntry['scope']> {
-  if (section === 'agent-runs') return 'defaults';
+  // No `agent-runs` branch. It used to return 'defaults' and could never
+  // execute: `defaults` is a closed six-key list in the registry
+  // (`settings-registry.test.ts`), every one of those keys has a row, and a
+  // row with a key never reaches this function. A branch that cannot run is
+  // a claim nothing checks.
   if (
     section === 'appearance' ||
     section === 'chat' ||
