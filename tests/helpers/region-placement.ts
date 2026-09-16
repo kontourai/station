@@ -107,11 +107,16 @@ export async function toggleRegionThroughToolbar(
 }
 
 /**
- * Shows a surface in an EMPTY region through that region's toolbar control
- * (#2143): an empty region's button is a menu of the shell surfaces that
- * declare it, and choosing one is the model's `placeSurface`. The
- * post-condition is the control turning into a pressed toggle — which only
- * a region that now holds a visible pane produces.
+ * Shows a surface in a HIDDEN, EMPTY region — the journey a user makes in two
+ * acts since #2155, through the two controls that own them. The toolbar's
+ * toggle opens the region (it only shows and hides now; #2143's offer menu
+ * is retired), and the region's own body is the chooser that fills it
+ * (#2154). The name and signature are the same as the toolbar-menu version
+ * this replaces, so both callers describe the same outcome.
+ *
+ * The post-condition is the toggle reading pressed AND the surface owning
+ * that region's shell — the first says the region opened, the second that
+ * the pane landed in it.
  */
 export async function showSurfaceInEmptyRegion(
   page: Page,
@@ -124,21 +129,56 @@ export async function showSurfaceInEmptyRegion(
   });
   await expect(
     control,
-    `${regionLabel} region is not empty, so it offers no menu; move a tab instead`,
-  ).toHaveAttribute('aria-haspopup', 'menu');
+    `${regionLabel} region is already shown, so this is not the empty-region journey`,
+  ).toHaveAttribute('aria-pressed', 'false');
   await control.click();
-  const menu = page.getByRole('menu', {
-    name: `Show in ${regionLabel} region`,
-  });
-  await expect(menu).toBeVisible();
-  await menu
-    .getByRole('menuitem', { name: `Show ${surfaceTitle} here`, exact: true })
-    .click();
-  await expect(menu).toBeHidden();
   await expect(
     control,
-    `${regionLabel} region did not become a pressed toggle, so ${surfaceTitle} was not placed there`,
+    `${regionLabel} region did not open, so there is no chooser to fill it from`,
   ).toHaveAttribute('aria-pressed', 'true');
+  await chooseSurfaceInEmptyRegion(page, surfaceTitle, regionLabel);
+  await expect(
+    control,
+    `${regionLabel} region closed again, so ${surfaceTitle} did not land there`,
+  ).toHaveAttribute('aria-pressed', 'true');
+}
+
+/**
+ * Opens #2154's chooser from a region's TOOLBAR toggle (#2155): a hold, which
+ * on a coarse pointer is the only route to it, and on a fine one sits beside
+ * the right-click. Held past the control's 500ms threshold with room to
+ * spare, because a hold measured to the millisecond is a flake.
+ *
+ * The toggle's ordinary click shows or hides the region, so a press that
+ * lands short opens nothing and moves the region instead — which is why this
+ * asserts the panel afterwards rather than assuming the gesture took.
+ */
+export async function openChooserFromToggle(
+  page: Page,
+  regionLabel: 'Left' | 'Bottom' | 'Right',
+): Promise<Locator> {
+  const control = page.getByRole('button', {
+    name: `${regionLabel} region`,
+    exact: true,
+  });
+  const box = await control.boundingBox();
+  expect(
+    box,
+    `${regionLabel} region's toggle must have a rendered box`,
+  ).not.toBeNull();
+  await page.mouse.move(
+    (box?.x ?? 0) + (box?.width ?? 0) / 2,
+    (box?.y ?? 0) + (box?.height ?? 0) / 2,
+  );
+  await page.mouse.down();
+  await page.waitForTimeout(600);
+  await page.mouse.up();
+  const menu = page.getByRole('menu', { name: `Add to ${regionLabel} region` });
+  await expect(
+    menu,
+    `the hold on ${regionLabel} region's toggle opened no chooser`,
+  ).toBeVisible();
+  return menu;
 }
 
 /**
