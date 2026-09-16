@@ -184,6 +184,7 @@ async function fixture() {
     capability,
     transfers,
     owner,
+    capabilities,
     adapter,
     openRoom,
   };
@@ -486,4 +487,97 @@ test('lost finish response recovers from the local durable duplicate after reope
   expect(readPlannedHomeAdmissionJournal(f.database)[0]).toMatchObject({
     state: 'finished',
   });
+});
+
+test('a record written before the port exists stays retryable after the home is adopted', async () => {
+  // Adopting an existing room's home is the point of a home transfer, and
+  // nothing requires the room to be empty. The retried write is a duplicate of
+  // a record the controller never admitted, so its settlement finds no journal
+  // row. That has to read as "there is nothing here to settle" rather than as
+  // a failed settlement: the record is durably present, and reporting it
+  // unavailable would make it unretryable for as long as the room exists.
+  const f = await fixture();
+  const roomScope = scope('adopted-room');
+  const path = join(f.root, 'adopted-room.sqlite');
+
+  const localEvents = new EventStore(path);
+  const local = localEvents.createProjectTaskRoomHistory({
+    capabilities: f.capabilities(roomScope),
+  });
+  await local.open({ grant: grant('discover') });
+  expect((await local.append(message('predates-the-port'))).kind).toBe(
+    'committed',
+  );
+  await local.close();
+  localEvents.close();
+
+  expect(f.owner(roomScope).kind).toBe('stored');
+  const adoptedEvents = new EventStore(path);
+  const adopted = adoptedEvents.createProjectTaskRoomHistory({
+    capabilities: f.capabilities(roomScope),
+    roomWriteAdmissions: f.adapter(roomScope),
+  });
+  cleanup.push(async () => {
+    await adopted.close();
+    adoptedEvents.close();
+  });
+  for (const attempt of ['first-retry', 'second-retry']) {
+    expect([
+      attempt,
+      await adopted.append(message('predates-the-port')),
+    ]).toMatchObject([
+      attempt,
+      { kind: 'duplicate', receipt: { proposalId: 'predates-the-port' } },
+    ]);
+  }
+  expect(readPlannedHomeAdmissionJournal(f.database)).toEqual([]);
+
+  // The fence still holds for a write the adopted room has not seen.
+  expect((await adopted.append(message('after-adoption'))).kind).toBe(
+    'committed',
+  );
+  expect(readPlannedHomeAdmissionJournal(f.database)).toMatchObject([
+    { kind: 'room-write', state: 'finished' },
+  ]);
+});
+
+test('an absent journal row is the only settlement result that is not a failure', async () => {
+  const f = await fixture();
+  const roomScope = scope('settlement-kinds');
+  expect(f.owner(roomScope).kind).toBe('stored');
+  const identity = {
+    scope: roomScope,
+    channelId: projectTaskRoomChannelId(roomScope),
+    proposalId: 'never-begun',
+    intentDigest: 'a'.repeat(64),
+  };
+  // Nothing has begun this admission, so the journal has no row for it.
+  expect(
+    await f.adapter(roomScope).finish({
+      ...identity,
+      receiptDigest: 'b'.repeat(64),
+    }),
+  ).toEqual({ kind: 'nothing-to-settle' });
+  // A settlement the controller cannot answer stays unavailable, and a
+  // malformed one stays a conflict: neither collapses into the new result.
+  const unreachable: PlannedHomeControlAdmissionPort = {
+    begin: () => ({ kind: 'unavailable' }),
+    finish: () => ({ kind: 'unavailable' }),
+  };
+  expect(
+    await f
+      .adapter(roomScope, () => true, {
+        bind: (() => ({
+          kind: 'stored',
+          value: unreachable,
+        })) as typeof f.control.bind,
+      })
+      .finish({ ...identity, receiptDigest: 'b'.repeat(64) }),
+  ).toEqual({ kind: 'unavailable' });
+  expect(
+    await f
+      .adapter(roomScope)
+      .finish({ ...identity, receiptDigest: 'not-a-digest' }),
+  ).toEqual({ kind: 'conflict' });
+  expect(readPlannedHomeAdmissionJournal(f.database)).toEqual([]);
 });
