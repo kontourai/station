@@ -199,8 +199,14 @@ async function fixture() {
       ownerRevision: 0,
     },
   });
+  // `reads` counts EventStore receipt reads, which sit behind the verifier's
+  // own pre-checks; `verifies` counts reconciliation's calls into the
+  // verifier, so a test can tell "refused before verify" from "the verifier
+  // refused".
+  let verifies = 0;
   const receipts: PlannedHomeAdmissionReceiptVerifier = {
     verify(admission, signal) {
+      verifies += 1;
       expect(Object.isFrozen(admission)).toBe(true);
       return durable.verify(admission, signal);
     },
@@ -227,6 +233,7 @@ async function fixture() {
     receipt,
     input: { deviceId: paired.device.id, admissionId },
     reads: () => reads,
+    verifies: () => verifies,
   };
 }
 
@@ -365,6 +372,8 @@ test('corrupt routing and a mismatched home fail before receipt lookup', async (
   expect(await recovery.reconcile(f.operator, f.input)).toEqual({
     kind: 'unavailable',
   });
+  // Reconciliation refused on its own; the verifier was never asked.
+  expect(f.verifies()).toBe(0);
   expect(f.reads()).toBe(0);
 });
 

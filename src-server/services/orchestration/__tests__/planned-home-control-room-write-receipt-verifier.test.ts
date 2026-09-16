@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -27,6 +27,7 @@ import { plannedHomeControlRoomWriteAdmissionId } from '../planned-home-control-
 import { createPlannedHomeControlRoomWriteReceiptVerifier } from '../planned-home-control-room-write-receipt-verifier.js';
 import { createPlannedHomeControlSessionAuthority } from '../planned-home-control-session-authority.js';
 import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
+import { PROJECT_TASK_ROOM_APPEND_RECEIPT_LIMITS } from '../project-task-room-append-receipt.js';
 import type { ProjectTaskRoomWriteAdmissionPort } from '../project-task-room-history.js';
 import { projectTaskRoomChannelId } from '../project-task-room-history.js';
 
@@ -238,6 +239,43 @@ test('revoked control reconciles a lost finish from the reopened EventStore rece
       expect(
         reopened.readProjectTaskRoomAppendReceipt({ channelId, proposalId }),
       ).toMatchObject({ kind: 'found', receiptDigest: durable.receiptDigest });
+      // A stored receipt above the byte ceiling answers `unavailable`, never
+      // `found`. The SELECT nulls receipt_json past the ceiling before the
+      // parser sees it, and the parser's own byte bound also refuses this
+      // row; this pins EventStore's answer, not the CASE in isolation. The
+      // row is internally consistent (honest byte count and digest) so that
+      // size is the only thing wrong with it.
+      expect(PROJECT_TASK_ROOM_APPEND_RECEIPT_LIMITS.maxBytes).toBe(4_096);
+      const oversized = `{"padding":"${'x'.repeat(PROJECT_TASK_ROOM_APPEND_RECEIPT_LIMITS.maxBytes)}"}`;
+      expect(Buffer.byteLength(oversized)).toBeGreaterThan(4_096);
+      tamper
+        .prepare(
+          'INSERT INTO project_task_room_identities (channel_id,proposal_id,proposal_digest,epoch,seq,envelope_digest,checkpoint_digest,committed_at,receipt_json,receipt_bytes,receipt_digest) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        )
+        .run(
+          channelId,
+          'oversized-proposal',
+          'a'.repeat(64),
+          durable.receipt.coordinate.epoch,
+          durable.receipt.coordinate.seq + 1_000,
+          'b'.repeat(64),
+          'c'.repeat(64),
+          durable.receipt.committedAt,
+          oversized,
+          Buffer.byteLength(oversized),
+          createHash('sha256').update(oversized).digest('hex'),
+        );
+      expect(
+        reopened.readProjectTaskRoomAppendReceipt({
+          channelId,
+          proposalId: 'oversized-proposal',
+        }),
+      ).toEqual({ kind: 'unavailable' });
+      tamper
+        .prepare(
+          'DELETE FROM project_task_room_identities WHERE channel_id=? AND proposal_id=?',
+        )
+        .run(channelId, 'oversized-proposal');
     } finally {
       tamper.close();
     }
