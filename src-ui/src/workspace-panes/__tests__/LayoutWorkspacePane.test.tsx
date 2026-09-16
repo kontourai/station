@@ -517,4 +517,55 @@ describe('a docked Layout carrying prompts (#2171)', () => {
     expect(renderer.canLaunchPrompts).toEqual([false]);
     expect(renderer.onLaunchPrompt).toEqual([undefined]);
   });
+
+  /**
+   * H1: a record that declares `config.plugin` carries stored actions the
+   * dock cannot admit — `LayoutView` strips its globals and routes its tab
+   * actions through live-contribution admission, and this host has no such
+   * path — so none of them reach the renderer, `external` links included.
+   * The non-plugin case above is the discriminating half: it keeps them.
+   */
+  test('a plugin record: stored globals and tab actions never reach the renderer, a saved link included', () => {
+    sdk.layoutRecords['alpha/notes'] = {
+      ...(sdk.layoutRecords['alpha/notes'] as object),
+      config: {
+        plugin: 'acme-plugin',
+        tabs: [
+          {
+            id: 'n',
+            label: 'N',
+            actions: [
+              { type: 'external', label: 'Acme site', data: 'https://acme/' },
+              { type: 'internal', label: 'Acme page', data: '/acme' },
+            ],
+            skills: [{ id: 's', label: 'Skill', prompt: 's' }],
+          },
+        ],
+        actions: [
+          { type: 'external', label: 'Acme docs', data: 'https://acme/d' },
+        ],
+        globalSkills: [{ id: 'g', label: 'Global', prompt: 'g' }],
+      },
+    };
+    render(
+      <LayoutWorkspacePane
+        instance={instanceFor({
+          kind: 'project',
+          projectId: PROJECT,
+          layoutId: LAYOUT,
+        })}
+      />,
+    );
+    const layout = renderer.layouts[0] as unknown as {
+      actions?: unknown[];
+      globalSkills: unknown[];
+      tabs: { actions: unknown[]; skills: unknown[] }[];
+    };
+    expect(layout.actions).toEqual([]);
+    expect(layout.globalSkills).toEqual([]);
+    expect(layout.tabs).toHaveLength(1);
+    expect(layout.tabs[0].actions).toEqual([]);
+    expect(layout.tabs[0].skills).toEqual([]);
+    expect(JSON.stringify(layout)).not.toContain('acme');
+  });
 });

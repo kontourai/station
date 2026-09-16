@@ -44,8 +44,10 @@ import { layoutWorkspaceShape } from './layout-workspace-shape';
  * So this host renders the Board's panes and no agent-launch surface:
  * `annotateAgentRef` is identity (nothing to filter against),
  * `hostOwnsGlobalActions` is false (there is no project action bar above
- * this), and no `onLaunchPrompt` is supplied — the renderer's own contract
- * for "this host cannot launch". Agent launches from a Board need the
+ * this), no `onLaunchPrompt` is supplied, and the renderer is TOLD so through
+ * `canLaunchPrompts={false}` (#2171) — omitting the handler alone never was
+ * a contract: the SDK header rendered the prompts anyway, wired to a no-op,
+ * which is the defect #2171 closed. Agent launches from a Board need the
  * per-principal capability projection decision D2 describes, which is not
  * this slice. The gap is stated rather than approximated.
  */
@@ -106,6 +108,7 @@ export function PersonalBoardView({ boardSlug }: { boardSlug: string }) {
       >
         <LayoutRenderer
           layout={layout}
+          canLaunchPrompts={false}
           activeTab={activeTab}
           activeTabId={activeTab?.id}
           onTabChange={setActiveTabId}

@@ -69,10 +69,20 @@ vi.mock('../../core/SDKAdapter', () => ({
   SDKAdapter: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-const rendered = vi.hoisted(() => ({ layout: undefined as any }));
+const rendered = vi.hoisted(() => ({
+  layout: undefined as any,
+  canLaunchPrompts: 'unset' as unknown,
+}));
 vi.mock('../../layouts', () => ({
-  LayoutRenderer: ({ layout }: { layout: unknown }) => {
+  LayoutRenderer: ({
+    layout,
+    canLaunchPrompts,
+  }: {
+    layout: unknown;
+    canLaunchPrompts?: boolean;
+  }) => {
     rendered.layout = layout;
+    rendered.canLaunchPrompts = canLaunchPrompts;
     return <div data-testid="layout-renderer" />;
   },
 }));
@@ -108,6 +118,9 @@ describe('PersonalBoardView (#2062, #2082)', () => {
     // shape must not carry one — `hostOwnsGlobalActions: false` is what keeps
     // a Board's own declared actions renderable rather than dropped.
     expect(rendered.layout.actions).toBeUndefined();
+    // #2171 M1: a Board has no launcher and now SAYS so; omitting the handler
+    // alone left the header rendering the prompts wired to a no-op.
+    expect(rendered.canLaunchPrompts).toBe(false);
   });
 
   test('a 404 reads as a missing Board, with no retry to offer', () => {
