@@ -250,12 +250,16 @@ The personal-controller prototype exposes only these control-session endpoints:
 | Method and path | Authority and result |
 | --- | --- |
 | `POST /api/home-authority/control-sessions/open` | A current `home:control` participant submits an exact open/replay body and receives a no-store capability observation. |
-| `POST /api/home-authority/control-sessions/:deviceId/inspect` | The current operator reads generation, state and unresolved count without capability material. |
+| `POST /api/home-authority/control-sessions/:deviceId/inspect` | The current operator reads the home reference, open ID, generation, state and unresolved count. No capability or digest of one. |
 | `POST /api/home-authority/control-sessions/:deviceId/retire` | The current operator conditionally retires the exact expected generation. |
 
-Every response keeps execution-transfer and resume flags false. There is no
-admission begin/finish endpoint, room writer, Agent launch or target activation
-in this slice.
+Every successful OBSERVATION carries execution-transfer and resume flags, and
+both are always false; a refusal carries only its `kind` and has no such
+flags, so it is not a place those flags could be true. A malformed body is
+refused with 400 before any authority runs, so a payload that can never
+succeed is distinguishable from a 409 the caller can act on. There is no
+admission begin/finish endpoint, room writer, Agent launch or target
+activation in this slice.
 
 ## Private operator receipt reconciliation
 
