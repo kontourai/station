@@ -28,4 +28,21 @@ export interface RegistryRowComponentProps {
    * guess.
    */
   runtimeDefault?: string;
+  /**
+   * #2144 slice 3 — the project override context, supplied only by a caller
+   * that holds a project override draft (`SettingsView`'s project selector).
+   * All four are absent on a Station-only page, which is what makes its rows
+   * render exactly as they did before this slice.
+   */
+  projectName?: string;
+  /** The project's override value for this key, when it has one. */
+  projectValue?: unknown;
+  /**
+   * This Station's stored value, when `value` above is the project's. The
+   * control edits `value`; the inheritance list explains both, and cannot
+   * recover the Station's own value from a draft that has replaced it.
+   */
+  stationValue?: unknown;
+  /** Drops this key's project override; see `SettingRowStatus`. */
+  onResetToInherited?: () => void;
 }
