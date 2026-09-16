@@ -219,6 +219,7 @@ test.describe('Settings', () => {
       'Keyboard shortcuts',
       'Notifications',
       'Voice',
+      'Pairing',
       'My knowledge store',
       'Diagnostics',
       'System',

@@ -33,6 +33,7 @@ export type SettingsSectionId =
   | 'keyboard-shortcuts'
   | 'notifications'
   | 'voice'
+  | 'pairing'
   | 'developer-tools'
   | 'knowledge';
 
@@ -123,6 +124,9 @@ export const SETTINGS_SECTIONS = [
   // thing that was not voice — mobile pairing. "Features" named no category
   // a reader could predict; it named the leftovers.
   { id: 'voice', title: 'Voice', group: 'you' },
+  // #2182: reaching this Station from a phone. It was the one non-voice row
+  // of "Voice & Features", which is what made "Features" necessary.
+  { id: 'pairing', title: 'Pairing', group: 'you' },
   // archive#3313: gates the Developer surface's sidebar/palette entries on
   // this device (a device setting — see contracts' developerToolsEnabled).
   { id: 'developer-tools', title: 'Developer tools', group: 'you' },
@@ -513,15 +517,15 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['featureSettings'],
   },
   {
-    id: 'mobile-pairing',
-    title: 'Mobile pairing & network discovery',
+    id: 'tts-readback',
+    title: 'Read replies aloud',
     section: 'voice',
     configKeys: ['featureSettings'],
   },
   {
-    id: 'tts-readback',
-    title: 'Read replies aloud',
-    section: 'voice',
+    id: 'mobile-pairing',
+    title: 'Mobile pairing & network discovery',
+    section: 'pairing',
     configKeys: ['featureSettings'],
   },
   {

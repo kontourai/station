@@ -433,21 +433,21 @@
       "configKey": "featureSettings"
     },
     {
-      "id": "mobile-pairing",
-      "label": "Mobile pairing & network discovery",
-      "help": "Only the optional features turned on here are active on this device, and this is where each notification category’s sound is kept.",
-      "scope": "device",
-      "section": "voice",
-      "route": "/settings?view=voice&highlight=mobile-pairing",
-      "configKey": "featureSettings"
-    },
-    {
       "id": "tts-readback",
       "label": "Read replies aloud",
       "help": "Only the optional features turned on here are active on this device, and this is where each notification category’s sound is kept.",
       "scope": "device",
       "section": "voice",
       "route": "/settings?view=voice&highlight=tts-readback",
+      "configKey": "featureSettings"
+    },
+    {
+      "id": "mobile-pairing",
+      "label": "Mobile pairing & network discovery",
+      "help": "Only the optional features turned on here are active on this device, and this is where each notification category’s sound is kept.",
+      "scope": "device",
+      "section": "pairing",
+      "route": "/settings?view=pairing&highlight=mobile-pairing",
       "configKey": "featureSettings"
     },
     {

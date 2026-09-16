@@ -69,6 +69,7 @@ import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
 import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
+import { PairingSection } from './settings/PairingSection';
 import { PluginVisibilitySection } from './settings/PluginVisibilitySection';
 import {
   buildProjectOverrideUpdate,
@@ -1453,6 +1454,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               )}
 
               {sectionVisible('voice') && <VoiceFeaturesSection />}
+
+              {/* #2182: pairing is not a voice feature, and now says so. */}
+              {sectionVisible('pairing') && <PairingSection />}
 
               {sectionVisible('developer-tools') && (
                 <Section

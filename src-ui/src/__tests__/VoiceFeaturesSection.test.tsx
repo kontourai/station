@@ -67,15 +67,21 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
 }));
 
+import { PairingSection } from '../views/settings/PairingSection';
 import {
   NotificationsSection,
   VoiceFeaturesSection,
 } from '../views/settings/VoiceFeaturesSection';
 
+// #2182 moved mobile pairing into its own section. It is rendered here
+// alongside the others because the contract under test is the SHARED switch
+// shape (`feature-toggle.tsx`), which both sections now draw — splitting the
+// section must not split the guarantee.
 function renderRows() {
   render(
     <>
       <VoiceFeaturesSection />
+      <PairingSection />
       <NotificationsSection apiBase="http://host" />
     </>,
   );
