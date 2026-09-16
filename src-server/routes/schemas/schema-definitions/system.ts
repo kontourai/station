@@ -126,6 +126,10 @@ export const pluginPreviewSchema = z.object({
  */
 export const pluginInstallConsentSchema = z.object({
   grantRevision: z.string().min(1).max(256).optional(),
+  registryTrustRevision: z
+    .string()
+    .regex(/^sha256:[a-f0-9]{64}$/)
+    .optional(),
   permissions: z.array(z.string()).max(256),
   contentDigest: z.string().min(1).max(256),
   dependencies: z.array(z.string()).max(256).optional(),
@@ -134,6 +138,10 @@ export const pluginInstallConsentSchema = z.object({
       z.object({
         id: z.string().min(1).max(128),
         grantRevision: z.string().min(1).max(256).optional(),
+        registryTrustRevision: z
+          .string()
+          .regex(/^sha256:[a-f0-9]{64}$/)
+          .optional(),
         permissions: z.array(z.string()).max(256),
         contentDigest: z.string().min(1).max(256),
         dependencies: z.array(z.string()).max(256),

@@ -48,7 +48,9 @@ function exact(value: unknown, keys: string[]): boolean {
   );
 }
 
-function plannedHomeAdmissionIdentifier(value: unknown): value is string {
+export function plannedHomeAdmissionIdentifier(
+  value: unknown,
+): value is string {
   return (
     typeof value === 'string' &&
     value.length > 0 &&

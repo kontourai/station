@@ -132,6 +132,15 @@ at route composition, publishes after initialization, and retires it at
 replacement or shutdown. No Node socket metadata is synthesized. See
 [protected application dispatch](../design/connection-broker.md#protected-application-dispatch)
 for lifecycle, limits and the remaining encrypted-path acceptance.
+## Registry trust policy decisions
+
+`registry-trust-policy.ts` owns bounded policy identity and EventStore CAS decision
+publication. `registryTrust` in AppConfig is only candidate configuration; the
+existing applied startup/reload owner publishes its epoch after successful
+configuration construction and rechecks the candidate under the existing mutation
+authority. Observations use `observeAppConfigFile` without initialization or
+migration. The journal stores SPKI fingerprints, not PEM keys. The applied decision, acquisition receipt, and local admission fences are described in
+[Applied registry trust policy](../design/registry-trust-policy.md).
 
 ## AgentPluginLoader
 
@@ -844,11 +853,11 @@ Response-independent reconciliation starts without inherited re-entrant content-
 
 ## RegistrySupplyChainPolicy
 
-**Intent and Interface.** `verifyRegistryPackage()` verifies one registry-issued package claim against explicit local policy and returns either a typed refusal or a verified package capability. `finalizeRegistrySupplyChainPin()` produces the exact source/version/package/installed-content record that extends the existing registry-install alias; it does not create another ownership ledger. `RegistryLastKnownGoodStore` archives and re-stages one prior tree by complete content digest but never writes the live plugin directory.
+**Intent and Interface.** `verifyRegistryPackage()` checks a fresh registry claim against host-selected Ed25519 keys and observed source bytes. `registry-acquisition.ts` binds that result to the applied policy epoch and exact signing principal. Public Node leaves own the canonical source-tree digest and signature payload; the server keeps installed-root resolution in its existing wrapper.
 
-**Contract.** The signed payload is domain-separated and binds the canonical Agent Plugins 1.0.0 manifest schema target URL, registry id/key, plugin name, package version, source, and complete source-tree digest. The target field identifies the published schema the claim says its root `plugin.json` uses; this tracer does not itself validate that manifest against the schema. Ed25519 trust anchors come only from Station policy. Required policy refuses unsigned packages; a signed claim whose staged bytes differ reports `signature-mismatch`. Exact pins refuse registry-side source, version, or digest drift unless a separately authorized pin-update intent is present. A permitted provenance change returns `invalidateExistingGrants: true`; the existing installer must consume that before loading replacement providers. Last-known-good publication copies symlinks verbatim, verifies the archived digest, retains one bounded ownership slot, refuses tampered snapshots, and produces only a verified staging source for `installPluginFromSource`.
+**Contract.** Preview and the central installer obtain a fresh coherent host-provider observation. Root and dependency consent carry an opaque trust revision. The existing selected-generation journal binds the activation receipt digest; aliases cannot authenticate or remove this binding. Exact replay remains supported, while changed source/claim/key/policy continuity refuses with retained data. Offline recovery reuses captured built bytes and original verification under the same policy, never a new registry lookup. Source-tree and installed-artifact digests are distinct. Local ready/pending/MCP admission checks the authoritative applied epoch; a candidate edit alone is not completed withdrawal, and no check claims to terminate started effects.
 
-**Seam, Implementation, callers, and tests.** The policy, record, and LKG source seam is implemented and tested, while runtime wiring is intentionally absent: current registry manifests publish no signed package claims, trusted-key configuration has no owner, and no explicit pin-update/rollback intent exists. The next slice must extend registry-provider resolution, preview, and the existing install transaction so verification happens before mutation, the alias pin/LKG reference commits inside the publication lock, provenance changes pass through existing grant rebinding, and rollback re-enters the same installer transaction. Focused tamper, required-signature, pin-drift, provenance-invalidation, alias-validation, byte-identity, and LKG-tamper evidence lives in `registry-supply-chain.test.ts` and `registry-install-aliases.test.ts`. **Do not reintroduce:** registry-supplied trust anchors, legacy top-level manifest coupling, floating updates, a second install ledger, direct live-tree rollback, content-only grants after source provenance changes, or signature success inferred without matching staged bytes.
+**Seam, implementation, callers, and tests.** Runtime configuration publication, registry resolution, preview/install/dependency/recovery routes, provider preparation, and EventStore custody compose these owners. Signed graphs, alias/receipt loss, offline recovery, stale preview, signing-key rotation, provider cleanup, and pinned-provider startup are exercised by the registry policy, installer, loader, and cold-start tests. The older alias-pin/LKG helper remains compatibility/tracer code, not the production pin authority; its `invalidateExistingGrants` flag alone does not establish signing-principal continuity. See [Applied registry trust policy](../design/registry-trust-policy.md) for the supported profile and explicit hosted/migration limits. **Do not reintroduce:** registry-supplied trust anchors, alias authority, content-only signer comparisons, unchecked legacy dependency builds, synchronous remote-cache revocation claims, or direct live-tree rollback.
 
 ## ReviewEvidenceModule
 
@@ -1071,10 +1080,23 @@ real host control surface.
 ## Cloud move preparation
 
 The private [planned home transfer store](../../src-server/services/orchestration/planned-home-transfer-store.ts)
-owns conditional decision persistence for a future centrally served authority.
-It does not authenticate homes, issue leases or activate execution; the
-[channel home authority design](../design/channel-home-authority.md) owns those
-remaining integration requirements.
+owns conditional ownership decisions. The
+[paired authority](../../src-server/services/orchestration/paired-home-transfer-authority.ts)
+binds those decisions to current authenticated participants, while
+[remote room bindings](../../src-server/services/orchestration/home-transfer-room-binding.ts)
+bind checkpoint observations to enrolled endpoints.
+
+The [admission journal](../../src-server/services/orchestration/planned-home-admission-store.ts)
+blocks transfer commits while effects remain unresolved.
+[Control sessions](../../src-server/services/orchestration/planned-home-control-session-authority.ts)
+own private session exclusivity and explicit control-grant checks;
+[operator reconciliation](../../src-server/services/orchestration/planned-home-admission-reconciliation.ts)
+settles existing admissions only through a trusted durable-receipt verifier.
+The [controller guide](../guides/home-transfer-controller.md) owns setup,
+private integration contracts, recovery limits, and reproducible checks.
+Production control-session transport, provider admission, and target activation
+remain integration requirements under the
+[channel home authority design](../design/channel-home-authority.md).
 
 `@kontourai/station-contracts/cloud-move` owns the public preview shape.
 `@kontourai/station-shared/cloud-move` owns bounded read-only setup inventory and

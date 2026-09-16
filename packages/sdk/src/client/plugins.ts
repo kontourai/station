@@ -196,12 +196,14 @@ export async function listPlugins(
  */
 export interface PluginInstallConsent {
   grantRevision?: string;
+  registryTrustRevision?: string;
   permissions: string[];
   contentDigest: string;
   dependencies: string[];
   dependencyApprovals?: Array<{
     id: string;
     grantRevision?: string;
+    registryTrustRevision?: string;
     permissions: string[];
     contentDigest: string;
     dependencies: string[];
@@ -213,9 +215,11 @@ export type PluginRecoveryConsent = Omit<
   'grantRevision' | 'dependencyApprovals'
 > & {
   grantRevision: string;
+  registryTrustRevision?: string;
   dependencyApprovals?: Array<
     NonNullable<PluginInstallConsent['dependencyApprovals']>[number] & {
       grantRevision: string;
+      registryTrustRevision?: string;
     }
   >;
 };
@@ -229,6 +233,7 @@ export interface PluginRecoveryPreview {
   recoveryRevision: string;
   contentDigest: string;
   grantRevision: string;
+  registryTrustRevision?: string;
   permissions: {
     required: string[];
     autoGranted: string[];
@@ -242,6 +247,7 @@ export interface PluginRecoveryPreview {
       permissions: string[];
       dependencies: string[];
       grantRevision: string;
+      registryTrustRevision?: string;
     };
   }>;
   skip: string[];

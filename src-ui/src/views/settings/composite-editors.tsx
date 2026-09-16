@@ -76,12 +76,19 @@ export const COMPOSITE_EDITORS: Readonly<
  *   a shared space", never as a global settings row. This entry DECLARES the
  *   absence rather than leaving the key unclassified, which is what this gate
  *   exists to prevent.
+ * - `registryTrust` (#1521): a CANDIDATE signature policy. Editing it here
+ *   would show trust anchors and a required/optional switch as if they were
+ *   in force, while the applied epoch only changes after configuration is
+ *   re-applied and rechecked under the mutation authority
+ *   (docs/design/registry-trust-policy.md). No row until the UI can show the
+ *   applied decision beside the candidate.
  */
 export const DEFERRED_COMPOSITE_KEYS: readonly string[] = [
   'agentConnections',
   'contribution',
   'firstRun',
   'fleetContribution',
+  'registryTrust',
   'templateVariables',
   'userProfile',
 ];

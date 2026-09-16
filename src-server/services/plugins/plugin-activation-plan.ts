@@ -6,6 +6,10 @@ import {
 } from '@kontourai/station-contracts/plugin';
 import type { PluginInstallConsent } from './plugin-install-consent.js';
 import type { PluginDependencyOwnershipEntry } from './plugin-permissions.js';
+import {
+  type RegistryAcquisitionReceipt,
+  validRegistryAcquisitionReceipt,
+} from './registry-acquisition.js';
 
 /** Recovery evidence contains declarations and ownership, never secret values,
  * package paths, process output, or a permission to replay old consent. */
@@ -21,6 +25,7 @@ export interface PluginActivationPlan {
   agents: Array<{ slug: string; previousProject: string | null }>;
   ownedDependencies: PluginDependencyOwnershipEntry[];
   skipped?: string[];
+  registryAcquisition?: RegistryAcquisitionReceipt;
 }
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 function strings(
@@ -70,9 +75,13 @@ function validConsent(value: unknown): boolean {
       'dependencies',
       'dependencyApprovals',
       'grantRevision',
+      'registryTrustRevision',
     ]) ||
     value.kind !== 'operator-decision' ||
     !optionalRevision(value.grantRevision) ||
+    (value.registryTrustRevision !== undefined &&
+      (typeof value.registryTrustRevision !== 'string' ||
+        !DIGEST.test(value.registryTrustRevision))) ||
     typeof value.contentDigest !== 'string' ||
     !DIGEST.test(value.contentDigest) ||
     !strings(value.permissions, 64, 128) ||
@@ -93,8 +102,12 @@ function validConsent(value: unknown): boolean {
             'permissions',
             'dependencies',
             'grantRevision',
+            'registryTrustRevision',
           ]) &&
           optionalRevision(approval.grantRevision) &&
+          (approval.registryTrustRevision === undefined ||
+            (typeof approval.registryTrustRevision === 'string' &&
+              DIGEST.test(approval.registryTrustRevision))) &&
           typeof approval.id === 'string' &&
           isCanonicalPluginId(approval.id) &&
           typeof approval.contentDigest === 'string' &&
@@ -122,8 +135,11 @@ export function validPluginActivationPlan(
       'ownedDependencies',
       'parent',
       'skipped',
+      'registryAcquisition',
     ]) ||
     value.version !== 1 ||
+    (value.registryAcquisition !== undefined &&
+      !validRegistryAcquisitionReceipt(value.registryAcquisition)) ||
     (value.skipped !== undefined && !strings(value.skipped, 256, 256)) ||
     !['artifactDigest', 'descriptorDigest', 'sourceDigest'].every(
       (key) =>

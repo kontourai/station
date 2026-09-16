@@ -592,6 +592,9 @@
           "400": {
             "description": "Validation or request error"
           },
+          "409": {
+            "description": "Registry trust or reviewed installation state refused; inspect and review again"
+          },
           "500": {
             "description": "Server error"
           }
@@ -666,6 +669,9 @@
           "400": {
             "description": "Validation or request error"
           },
+          "409": {
+            "description": "Registry trust or reviewed installation state refused; inspect and review again"
+          },
           "500": {
             "description": "Server error"
           }
@@ -693,6 +699,9 @@
           },
           "400": {
             "description": "Validation or request error"
+          },
+          "409": {
+            "description": "Registry trust or reviewed installation state refused; inspect and review again"
           },
           "500": {
             "description": "Server error"
@@ -731,7 +740,7 @@
             "description": "Validation or request error"
           },
           "409": {
-            "description": "Installation cannot be recovered in its current state"
+            "description": "Installation or registry trust cannot be recovered in its current state"
           },
           "500": {
             "description": "Server error"
@@ -778,7 +787,7 @@
             "description": "Validation or request error"
           },
           "409": {
-            "description": "Recovery or permission revision changed; review again"
+            "description": "Recovery, permission or registry trust revision refused; review again"
           },
           "500": {
             "description": "Server error"
@@ -810,6 +819,9 @@
           },
           "400": {
             "description": "Validation or request error"
+          },
+          "409": {
+            "description": "Registry trust or reviewed installation state refused; inspect and review again"
           },
           "500": {
             "description": "Server error"
@@ -1340,6 +1352,10 @@
                 "minLength": 1,
                 "maxLength": 256
               },
+              "registryTrustRevision": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              },
               "permissions": {
                 "type": "array",
                 "items": {
@@ -1373,6 +1389,10 @@
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 256
+                    },
+                    "registryTrustRevision": {
+                      "type": "string",
+                      "pattern": "^sha256:[a-f0-9]{64}$"
                     },
                     "permissions": {
                       "type": "array",
@@ -1448,6 +1468,10 @@
                 "minLength": 1,
                 "maxLength": 256
               },
+              "registryTrustRevision": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              },
               "permissions": {
                 "type": "array",
                 "items": {
@@ -1481,6 +1505,10 @@
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 256
+                    },
+                    "registryTrustRevision": {
+                      "type": "string",
+                      "pattern": "^sha256:[a-f0-9]{64}$"
                     },
                     "permissions": {
                       "type": "array",

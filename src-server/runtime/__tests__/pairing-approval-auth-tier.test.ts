@@ -117,6 +117,8 @@ async function createHarness() {
       security.verifyOperatorCredential(credential),
     isApprovalCurrent: (request) =>
       isRuntimeRequestPrincipalCurrent(request, security),
+    isRequestPrincipalCurrent: (request) =>
+      isRuntimeRequestPrincipalCurrent(request, security),
   });
 
   // The attention projection over the SAME pairing service, mounted with the
