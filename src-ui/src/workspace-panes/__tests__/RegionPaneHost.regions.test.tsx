@@ -17,6 +17,7 @@ import { WORKSPACE_ACTIVITY_PANE_INSTANCE } from '@kontourai/station-contracts/w
 import {
   act,
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -565,16 +566,16 @@ test('a region host follows its pane set through the fingerprint path alone: no 
 /**
  * #2153: a VISIBLE region with no panes derives NO host document
  * (`createRegionPaneHostDocument` returns null for an empty pane set) and
- * mounts no `WorkspacePaneHost` at all — the shell and its chrome bar over a
- * placeholder, and nothing else. It writes no region key either: there is no
- * document to reconcile or persist, so an empty region leaves a user's
- * stored panes for that region exactly as they were.
+ * mounts no `WorkspacePaneHost` at all — the shell and its chrome bar over
+ * the chooser (#2154), and nothing else. It writes no region key either:
+ * there is no document to reconcile or persist, so an empty region leaves a
+ * user's stored panes for that region exactly as they were.
  *
  * Reverting `RegionShells`' mount condition to
  * `occupant && resolveRegionSurface(occupant)` reds the first `waitFor`;
- * reverting `RegionPaneHost`'s `emptyRegion` branch reds the placeholder.
+ * reverting `RegionPaneHost`'s `emptyRegion` branch reds the chooser lookup.
  */
-test('a visible region with no panes renders the placeholder, no pane host and no stored document', async () => {
+test('a visible region with no panes renders the chooser, no pane host and no stored document', async () => {
   renderShells();
   await waitFor(() =>
     expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
@@ -598,6 +599,9 @@ test('a visible region with no panes renders the placeholder, no pane host and n
   expect(
     within(rightShell).getByText('Nothing in the Right region yet'),
   ).toBeTruthy();
+  expect(
+    within(rightShell).getByRole('list', { name: 'Add to Right region' }),
+  ).toBeTruthy();
   // No pane host: no pane rendered, and no tab strip to select one with.
   expect(within(rightShell).queryByTestId('ambient-chat-occupant')).toBeNull();
   expect(within(rightShell).queryByTestId('sessions-view')).toBeNull();
@@ -608,4 +612,125 @@ test('a visible region with no panes renders the placeholder, no pane host and n
   // Chat's own region is untouched by any of it.
   expect(document.querySelectorAll('#chat-dock')).toHaveLength(1);
   expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
+});
+
+/**
+ * #2154 A1, through the shipped path: a fresh home's Right region, opened
+ * empty, lists the registry's dock surfaces in its body and choosing
+ * Activity places it there as the region's selected tab — the host's
+ * document is then derived from the arrangement and Activity's pane
+ * renders in that shell. No project is bound in this file, so the coding
+ * rows list disabled with the reason. Reverting the host's inline chooser
+ * to the bare placeholder reds the row lookup; reverting the chooser's
+ * `openSurfaceInRegion` to a no-op reds the `panes` assertion.
+ */
+test('choosing Activity in an empty Right region places it there and renders it', async () => {
+  renderShells();
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+  act(() => currentModel().setRegion('right', { visible: true }));
+  const rightShell = await waitFor(() => {
+    const element = document.querySelector<HTMLElement>(
+      '[data-region="right"]',
+    );
+    if (!element) throw new Error('the visible empty region never rendered');
+    return element;
+  });
+  const list = within(rightShell).getByRole('list', {
+    name: 'Add to Right region',
+  });
+  expect(
+    within(list)
+      .getAllByRole('button')
+      .map((row) => row.querySelector('.region-chooser__title')?.textContent),
+  ).toEqual([
+    'Chat',
+    'Activity',
+    'Agents',
+    'Device',
+    'Terminal',
+    'Diff',
+    'Files',
+  ]);
+  expect(
+    within(list)
+      .getByRole('button', {
+        name: 'Terminal Choose a project for this dock before opening that pane.',
+      })
+      .getAttribute('aria-disabled'),
+  ).toBe('true');
+
+  fireEvent.click(within(list).getByRole('button', { name: 'Activity' }));
+  expect(currentModel().regions.right).toMatchObject({
+    panes: ['activity'],
+    occupant: 'activity',
+    visible: true,
+  });
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+  await waitFor(() =>
+    expect(
+      within(
+        document.querySelector<HTMLElement>('[data-region="right"]') ??
+          rightShell,
+      ).queryByTestId('sessions-view'),
+    ).not.toBeNull(),
+  );
+  expect(
+    screen.queryByRole('list', { name: 'Add to Right region' }),
+  ).toBeNull();
+  // Chat's own region is untouched.
+  expect(currentModel().regions.bottom.panes).toEqual(['chat']);
+});
+
+/**
+ * #2154 A4: a surface placed elsewhere is offered as a MOVE — "Move here
+ * from Bottom" — and choosing it is `placeSurface`'s existing rule: Chat
+ * joins Right, and Bottom, emptied by a move rather than a close, HIDES
+ * (#2153). Reverting the chooser to hide placed surfaces reds the row
+ * lookup; reverting `placeSurface`'s vacate to `'keep'` reds the
+ * `visible: false` assertion.
+ */
+test('choosing Chat from an empty Right region moves it there and hides the Bottom it empties', async () => {
+  renderShells();
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+  expect(currentModel().regions.bottom).toMatchObject({
+    panes: ['chat'],
+    visible: true,
+  });
+  act(() => currentModel().setRegion('right', { visible: true }));
+  const rightShell = await waitFor(() => {
+    const element = document.querySelector<HTMLElement>(
+      '[data-region="right"]',
+    );
+    if (!element) throw new Error('the visible empty region never rendered');
+    return element;
+  });
+  fireEvent.click(
+    within(rightShell).getByRole('button', {
+      name: 'Chat Move here from Bottom',
+    }),
+  );
+  expect(currentModel().regions.right).toMatchObject({
+    panes: ['chat'],
+    occupant: 'chat',
+    visible: true,
+  });
+  expect(currentModel().regions.bottom).toMatchObject({
+    panes: [],
+    occupant: null,
+    visible: false,
+  });
+  await waitFor(() =>
+    expect(
+      document.querySelector(
+        '[data-region="right"] [data-testid="ambient-chat-occupant"]',
+      ),
+    ).not.toBeNull(),
+  );
+  expect(document.querySelector('[data-region="bottom"]')).toBeNull();
 });

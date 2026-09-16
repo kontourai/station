@@ -29,7 +29,6 @@ import {
   type DockRegionId,
   isDockRegion,
   type RegionId,
-  regionLabel,
   resolveRegionSurface,
 } from '../regions/region-model';
 import {
@@ -38,8 +37,10 @@ import {
   regionSurfacePane,
 } from '../regions/region-surface-panes';
 import type { DockMode } from '../types';
+import { LayoutPaneTitles } from './LayoutPaneTitles';
 import { RegionChromeBar, type RegionChromeTab } from './RegionChromeBar';
 import { RegionChromeSlotsContext } from './RegionChromeSlots';
+import { RegionEmptyChooser } from './RegionEmptyChooser';
 import { WorkspacePaneHost } from './WorkspacePaneHost';
 import type { WorkspacePaneHostOpenAction } from './WorkspacePaneHostOpenContext';
 import {
@@ -336,16 +337,6 @@ const loadRegionBuiltinPane = () =>
   }));
 
 /**
- * The region's "+" catalog (#2047 D4), behind its own boundary: the catalog
- * modal, the availability list and the resolved-catalog query join the host
- * chunk only when a "+" is pressed.
- */
-const loadRegionPaneCatalog = () =>
-  import('./RegionPaneCatalog').then((module) => ({
-    default: module.RegionPaneCatalog,
-  }));
-
-/**
  * The project a dock region binds its panes to (#2047 D3/D5): the dock's own
  * remembered binding (`chatDockProjectSlug`, the setting `useDockShellChrome`
  * exposes as `activeProjectSlug` and Chat's project switcher writes), else
@@ -361,8 +352,8 @@ const loadRegionPaneCatalog = () =>
  * otherwise render the "pick one from Chat's project switcher" instruction —
  * an instruction for a state the user is not in — and the mount-time
  * reconcile would write a document derived from it. While it is true the
- * region shows the pane's loading skeleton, the "+" stays hidden (no
- * `projectSlug` yet) and the reconcile is deferred. Narrower than "nothing
+ * region shows the pane's loading skeleton, the "+" stays hidden
+ * (`chooserRegion` reads it) and the reconcile is deferred. Narrower than "nothing
  * is written": a region whose SELECTED pane the dock already supplies (Chat,
  * with a Terminal behind its tab) still mounts the host on the pending-time
  * document and the host persists that until the read settles, when the
@@ -457,30 +448,6 @@ function RegionPaneUnavailable({ title }: { title: string }) {
         variant="compact"
         label={`${title} is not available in this dock`}
         description="It was opened for a different project, or Station no longer remembers which file it showed. Open it again from the chat that linked it."
-      />
-    </div>
-  );
-}
-
-/**
- * What a VISIBLE region with no panes shows (#2153). The region's chrome bar
- * renders above it — placement grab, chevron, maximize — so the region is
- * still a thing the user can move, collapse and hide; this is its body.
- *
- * It names the REGION, not a pane, because there is no pane to name: a
- * reader who closed the last tab and a reader who opened an empty region
- * from the toolbar arrive at the same place and must be told the same thing.
- * It states the region is empty and stops there — the chooser that offers
- * what can go here is #2154, and an instruction naming a control that is not
- * on screen yet would be the "remedy that does nothing" `RegionPaneUnavailable`
- * was written to avoid.
- */
-function RegionEmptyPlaceholder({ regionId }: { regionId: RegionId }) {
-  return (
-    <div className="dock-slot__body">
-      <Empty
-        variant="compact"
-        label={`Nothing in the ${regionLabel(regionId)} region yet`}
       />
     </div>
   );
@@ -653,6 +620,31 @@ export function RegionPaneHost({
     openAction.focusExisting?.(selectedInstanceId);
   }, [liveActiveInstanceId, openAction, selectedInstanceId]);
 
+  // A Board's or Layout's name, resolved from the SDK's metadata lists by
+  // `LayoutPaneTitles` (#2157) — mounted only while the region holds one,
+  // so a region that never does calls no query. Keyed by surface id; an id
+  // the list no longer carries keeps the prefix's fallback title.
+  const [layoutTitles, setLayoutTitles] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  const mergeLayoutTitles = useCallback(
+    (owned: readonly string[], titles: ReadonlyMap<string, string>) =>
+      setLayoutTitles((previous) => {
+        const next = new Map(previous);
+        for (const id of owned) next.delete(id);
+        for (const [id, title] of titles) next.set(id, title);
+        return next;
+      }),
+    [],
+  );
+  const layoutPaneIds = useMemo(
+    () =>
+      panes.filter(
+        (surfaceId) =>
+          surfaceId.startsWith('board:') || surfaceId.startsWith('layout:'),
+      ),
+    [panes],
+  );
   // The region bar's tabs, from the same `panes` the document derives from.
   const tabs = useMemo<RegionChromeTab[]>(
     () =>
@@ -660,12 +652,16 @@ export function RegionPaneHost({
         surfaceId,
         instanceId: pane.instanceId,
         // The pane's own name where it derives one from its identity (a
-        // pull request's number, a file's name, #2049), else the surface's
-        // registered or prefix-described title.
+        // pull request's number, a file's name, #2049; a Layout's name
+        // once its list resolves, #2157), else the surface's registered or
+        // prefix-described title.
         title:
-          pane.title ?? resolveRegionSurface(surfaceId)?.title ?? surfaceId,
+          pane.title ??
+          layoutTitles.get(surfaceId) ??
+          resolveRegionSurface(surfaceId)?.title ??
+          surfaceId,
       })),
-    [paneEntries],
+    [layoutTitles, paneEntries],
   );
   // The id the strip's tabs and the host's panel share: the REGION's, so the
   // pair is stable whatever tab-group id a persisted (adopted) document
@@ -677,6 +673,7 @@ export function RegionPaneHost({
     selected === undefined
       ? ''
       : (selectedEntry?.title ??
+        layoutTitles.get(selected) ??
         resolveRegionSurface(selected)?.title ??
         selected);
   const selectTab = useCallback(
@@ -721,25 +718,30 @@ export function RegionPaneHost({
     () => ({ leading: leadingSlot, trailing: trailingSlot }),
     [leadingSlot, trailingSlot],
   );
-  // The "+" catalog (#2047 D4): offered only where an Open could land a
-  // pane that renders — a region under the model, with a project (D6).
-  const [catalogOpen, setCatalogOpen] = useState(false);
-  const openCatalog = useCallback(() => setCatalogOpen(true), []);
-  const closeCatalog = useCallback(() => setCatalogOpen(false), []);
-  // A visible region with no panes (#2153): the bar over a placeholder. Only
+  // The "+" chooser (#2154, where #2047 D4's catalog modal was): the same
+  // rows the empty region shows in its body, as a menu under the button.
+  // Host-owned state, anchored to the button that opened it.
+  const [chooserAnchor, setChooserAnchor] = useState<{
+    right: number;
+    top: number;
+    bottom: number;
+  } | null>(null);
+  const openChooser = useCallback((trigger: HTMLButtonElement) => {
+    const box = trigger.getBoundingClientRect();
+    setChooserAnchor({ right: box.right, top: box.top, bottom: box.bottom });
+  }, []);
+  const closeChooser = useCallback(() => setChooserAnchor(null), []);
+  // A visible region with no panes (#2153): the bar over the chooser. Only
   // under a model — the model-less mount's `panes` is Chat's, never empty.
   const emptyRegion =
     regionId !== undefined && model !== null && panes.length === 0;
-  const catalogRegion =
-    regionId &&
-    model &&
-    isDockRegion(regionId) &&
-    projectSlug !== null &&
-    // No "+" on an empty region yet: the affordance that fills one is the
-    // placeholder's own chooser (#2154), and offering the catalog here first
-    // would put two answers to "what goes in this region" on screen, one of
-    // them the region's own bar. Re-offered with #2154.
-    !emptyRegion
+  // Offered for every dock region under the model, project or not (#2154:
+  // the rows that need a project list disabled with the reason), and for an
+  // empty region too — both routes open the one chooser. Not while the
+  // project read is in flight (review M3): the rows would name a remedy for
+  // a state the user is not in, for the few frames before the read settles.
+  const chooserRegion =
+    regionId && model && isDockRegion(regionId) && !projectPending
       ? regionId
       : undefined;
   return (
@@ -749,6 +751,12 @@ export function RegionPaneHost({
     >
       {(shellChrome) => (
         <RegionChromeSlotsContext.Provider value={slots}>
+          {layoutPaneIds.length > 0 ? (
+            <LayoutPaneTitles
+              surfaceIds={layoutPaneIds}
+              onResolved={mergeLayoutTitles}
+            />
+          ) : null}
           <RegionChromeBar
             chrome={shellChrome}
             groupId={groupId}
@@ -760,27 +768,37 @@ export function RegionPaneHost({
             }
             onReorderTab={reorderTab}
             onMoveTab={regionId && model ? moveTab : undefined}
-            onAddPane={catalogRegion ? openCatalog : undefined}
+            onAddPane={chooserRegion ? openChooser : undefined}
+            addPaneOpen={chooserAnchor !== null}
             leadingSlotRef={setLeadingSlot}
             trailingSlotRef={setTrailingSlot}
           />
-          {catalogOpen && catalogRegion && projectSlug !== null ? (
-            <LazyBoundary
-              load={loadRegionPaneCatalog}
-              componentProps={{
-                regionId: catalogRegion,
-                projectSlug,
-                onClose: closeCatalog,
-              }}
-              pending={null}
+          {chooserAnchor && chooserRegion ? (
+            <RegionEmptyChooser
+              regionId={chooserRegion}
+              context={context}
+              variant="panel"
+              anchor={chooserAnchor}
+              onClose={closeChooser}
             />
           ) : null}
-          {emptyRegion && regionId ? (
+          {emptyRegion && regionId && isDockRegion(regionId) ? (
             // Before the project branches below: an empty region has no pane
             // whose rendering the project read could be holding up, so a
             // region emptied while that read is in flight must not sit on the
-            // skeleton (it would never resolve into anything).
-            <RegionEmptyPlaceholder regionId={regionId} />
+            // skeleton (it would never resolve into anything). The rows take
+            // the same rule as the "+" (review M3): while the read is in
+            // flight the context is projectless, and a coding row disabled
+            // "until you choose a project" on a dock that HAS one would be a
+            // remedy for a state the user is not in — and a disabled→enabled
+            // flip with the reason in the accessible name. So `pending`
+            // renders the sentence alone, and the rows arrive with the read.
+            <RegionEmptyChooser
+              regionId={regionId}
+              context={context}
+              variant="inline"
+              pending={projectPending}
+            />
           ) : document && selectedSupplied ? (
             <WorkspacePaneHost
               document={document}

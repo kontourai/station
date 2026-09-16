@@ -437,12 +437,15 @@ function RegionTabStrip({
  * while the selected pane is Chat, no bar at all: `ChatDockMobileHeader` is
  * Chat's bar there, with the drag surface and the dock toggle of its own.
  *
- * The "+" (#2047 D4): `onAddPane` opens the region's catalog. Fine pointer
- * only (D2: the app gains no dock control on phones), and absent when the
- * host has nothing to add with (no region model, no active project — D6:
- * a catalog whose every Open would land a pane that cannot render is not
- * offered). It renders for a one-pane region too, the case the acceptance
- * starts from.
+ * The "+" (#2047 D4, #2154): `onAddPane` opens the region's chooser — the
+ * same rows an empty region shows in its body, as a menu anchored to the
+ * button, so the trigger is passed for the anchor and the button claims the
+ * popup (`aria-haspopup="menu"`, `aria-expanded` from `addPaneOpen`). Fine
+ * pointer only (D2: the app gains no dock control on phones), and absent
+ * only when the host has no region model to place with; since #2154 it is
+ * offered without a project (the rows that need one list disabled with the
+ * reason) and for an empty region. It renders for a one-pane region too,
+ * the case the acceptance starts from.
  *
  * The Move button (#2160): opens the selected pane's move menu — the same
  * `RegionTabMoveMenu` a tab's context menu opens — so a lone pane, which
@@ -461,6 +464,7 @@ export function RegionChromeBar({
   onReorderTab,
   onMoveTab,
   onAddPane,
+  addPaneOpen = false,
   leadingSlotRef,
   trailingSlotRef,
 }: {
@@ -474,8 +478,10 @@ export function RegionChromeBar({
   onReorderTab: (surfaceId: string, toIndex: number) => void;
   /** A tab's move to another region (#2143); absent for the model-less mount. */
   onMoveTab?: (surfaceId: string, region: RegionId) => void;
-  /** Opens the region's catalog; absent when there is nothing to add with. */
-  onAddPane?: () => void;
+  /** Opens the region's chooser under the "+"; absent for the model-less mount. */
+  onAddPane?: (trigger: HTMLButtonElement) => void;
+  /** Whether the chooser the "+" opens is open — the button's `aria-expanded`. */
+  addPaneOpen?: boolean;
   leadingSlotRef: (element: HTMLElement | null) => void;
   trailingSlotRef: (element: HTMLElement | null) => void;
 }) {
@@ -623,9 +629,11 @@ export function RegionChromeBar({
           <button
             type="button"
             className="chat-dock__icon-btn"
-            onClick={onAddPane}
+            onClick={(event) => onAddPane(event.currentTarget)}
             title={addLabel}
             aria-label={addLabel}
+            aria-haspopup="menu"
+            aria-expanded={addPaneOpen}
           >
             <RegionAddGlyph />
           </button>

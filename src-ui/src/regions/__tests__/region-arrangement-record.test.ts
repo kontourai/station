@@ -832,6 +832,66 @@ describe('region arrangement record (#928 D)', () => {
         ).toMatchObject({ panes: [], occupant: null });
     });
 
+    /**
+     * #2157: a Board (`board:<layoutId>`) and a project Layout
+     * (`layout:<projectId>/<layoutId>`) round-trip through the same
+     * `{ kind: 'surface', id }` entry, in every dock region and never in
+     * `main`; an id the grammar cannot mint — a bare prefix, a Layout with no
+     * project, a comma (which `regionStatesEqual` joins on) — is dropped, so
+     * the parser's answer stays equal to `regionSurfacePane`'s. Reverting the
+     * prefix table to admit by `startsWith` reds the refused rows.
+     */
+    test('a Board and a project Layout round-trip in every dock region, main refuses them, and malformed ids are dropped', () => {
+      const layoutId = '1d61ce22-7f4b-4282-86f0-019ef1bc223c';
+      const projectId = 'f2e27d8e-dd81-4fe3-9d6e-9de369389b01';
+      const boardId = `board:${layoutId}`;
+      const projectLayoutId = `layout:${projectId}/${layoutId}`;
+      for (const region of ['left', 'right', 'bottom'] as const) {
+        for (const id of [boardId, projectLayoutId]) {
+          const parsed = parseRegionArrangementRecord(
+            recordWith(region, { occupant: { kind: 'surface', id } }),
+          );
+          expect(parsed?.[region], `${id} in ${region}`).toMatchObject({
+            panes: [id],
+            occupant: id,
+          });
+        }
+      }
+      const twoBoards: RegionArrangement = {
+        ...VALID,
+        right: {
+          visible: true,
+          size: 517,
+          panes: ['activity', boardId, projectLayoutId],
+          occupant: projectLayoutId,
+          maximized: false,
+        },
+      };
+      expect(
+        parseRegionArrangementRecord(toRegionArrangementRecord(twoBoards)),
+      ).toEqual(twoBoards);
+      expect(
+        parseRegionArrangementRecord(
+          recordWith('main', { occupant: { kind: 'surface', id: boardId } }),
+        )!.main,
+      ).toMatchObject({ panes: [], occupant: null });
+      for (const id of [
+        'board:',
+        'layout:',
+        `layout:${layoutId}`,
+        `board:${layoutId},${layoutId}`,
+        'board:coding',
+        `board:${layoutId.toUpperCase()}`,
+        `layout:${projectId}/${layoutId}/extra`,
+      ])
+        expect(
+          parseRegionArrangementRecord(
+            recordWith('right', { occupant: { kind: 'surface', id } }),
+          )!.right,
+          id,
+        ).toMatchObject({ panes: [], occupant: null });
+    });
+
     test('a pane-host without an array of panes reads as empty; a documentId a 2a build wrote is ignored', () => {
       for (const occupant of [
         { kind: 'pane-host', panes: 'chat' },

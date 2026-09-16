@@ -199,12 +199,23 @@ jobs:
             | tee "$RUNNER_TEMP/full-regression-audit.log" && status=0 || status=$?
           echo "::notice title=Keep-going diagnostic::lane exit ${status}; it does not decide the gate verdict"
 
+      # The audit's console log holds only the reporter's redacted stdout
+      # TAIL: a failure that lands earlier in the corpus than the last few
+      # kilobytes has its name in `failedCheckTestFiles` and its assertion
+      # text nowhere (#1531 -- three suites reddened, one of them left no
+      # excerpt anywhere in the run). The audit lane writes its own
+      # `verification-output/<key>/` like the gate lane does; retain it the
+      # same way so every enumerated failure can be read, not just counted.
       - name: Retain the keep-going diagnostic
         if: always() && steps.gate.outcome == 'failure'
         timeout-minutes: 10
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: full-regression-audit-${{ inputs.source_sha }}-${{ github.run_id }}
-          path: ${{ runner.temp }}/full-regression-audit.log
+          path: |
+            ${{ runner.temp }}/full-regression-audit.log
+            .kontourai/verification-output/
+            .kontourai/verification-phase-records/
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14

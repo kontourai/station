@@ -1657,6 +1657,11 @@ export function configureRuntimeRoutes(
         ),
       connectedClientPresence,
       clientPresenceAvailable: hostedTenantRegistry === undefined,
+      isRequestPrincipalCurrent: (request) =>
+        isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ),
     },
   );
 
@@ -5940,9 +5945,32 @@ export function configureDevicePairingHostRoutes(
     connectedClientPresence?: ClientConnectionPresence;
     /** Hosted tenants cannot safely share this process-local aggregate. */
     clientPresenceAvailable?: boolean;
+    /** Revalidates the ingress principal against current credential state. */
+    isRequestPrincipalCurrent?: (request: Request) => boolean;
   } = {},
 ): void {
   const audit = options.audit;
+  const isRequestPrincipalCurrent = options.isRequestPrincipalCurrent;
+  const currentOperator = (context: unknown, request: Request): boolean => {
+    const authority = (context as { get: (key: string) => unknown }).get(
+      RUNTIME_CREDENTIAL_AUTHORITY_VAR,
+    );
+    if (
+      authority !== 'operator-credential' ||
+      typeof isRequestPrincipalCurrent !== 'function'
+    )
+      return false;
+    try {
+      const current = isRequestPrincipalCurrent(request);
+      if (current !== true) {
+        void Promise.resolve(current).catch(() => {});
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  };
   app.post('/api/pairing/offers', async (c) => {
     const body = await readPairingOfferJson(c.req.raw);
     if (!body || typeof body.endpoint !== 'string') {
@@ -6165,14 +6193,12 @@ export function configureDevicePairingHostRoutes(
   });
   app.delete('/api/pairing/devices/:deviceId', (c) => {
     try {
-      const authority = (c as unknown as { get: (key: string) => unknown }).get(
-        RUNTIME_CREDENTIAL_AUTHORITY_VAR,
-      );
-      if (authority !== 'operator-credential') {
+      const request = c.req.raw;
+      if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
       const deviceId = c.req.param('deviceId');
-      const device = pairing.revokeDevice(deviceId, authority);
+      const device = pairing.revokeDevice(deviceId, 'operator-credential');
       options.connectedClientPresence?.disconnectDevice(deviceId);
       return c.json(device);
     } catch (error) {
@@ -6194,13 +6220,11 @@ export function configureDevicePairingHostRoutes(
    */
   app.post('/api/pairing/devices/:deviceId/scope', async (c) => {
     try {
-      const authority = (c as unknown as { get: (key: string) => unknown }).get(
-        RUNTIME_CREDENTIAL_AUTHORITY_VAR,
-      );
-      if (authority !== 'operator-credential') {
+      const request = c.req.raw;
+      if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
-      const body = (await c.req.json().catch(() => null)) as {
+      const body = (await request.json().catch(() => null)) as {
         scope?: unknown;
         expectedScope?: unknown;
       } | null;
@@ -6215,6 +6239,9 @@ export function configureDevicePairingHostRoutes(
         typeof body?.expectedScope === 'string'
           ? body.expectedScope
           : undefined;
+      if (!currentOperator(c, request)) {
+        return c.json({ error: 'authentication_required' }, 401);
+      }
       const deviceId = c.req.param('deviceId');
       const device = pairing.setDeviceScope(
         deviceId,
@@ -6260,14 +6287,15 @@ export function configureDevicePairingHostRoutes(
   });
   app.delete('/api/pairing/devices/:deviceId/record', (c) => {
     try {
-      const authority = (c as unknown as { get: (key: string) => unknown }).get(
-        RUNTIME_CREDENTIAL_AUTHORITY_VAR,
-      );
-      if (authority !== 'operator-credential') {
+      const request = c.req.raw;
+      if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
       return c.json(
-        pairing.removeRevokedDevice(c.req.param('deviceId'), authority),
+        pairing.removeRevokedDevice(
+          c.req.param('deviceId'),
+          'operator-credential',
+        ),
       );
     } catch (error) {
       return c.json(

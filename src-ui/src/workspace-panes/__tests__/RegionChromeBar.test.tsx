@@ -98,13 +98,15 @@ function renderBar({
   closable = true,
   movable = true,
   onAddPane,
+  addPaneOpen,
 }: {
   chrome?: DockShellChrome;
   tabs?: readonly RegionChromeTab[];
   selected?: string;
   closable?: boolean;
   movable?: boolean;
-  onAddPane?: () => void;
+  onAddPane?: (trigger: HTMLButtonElement) => void;
+  addPaneOpen?: boolean;
 } = {}) {
   return render(
     <RegionChromeBar
@@ -117,6 +119,7 @@ function renderBar({
       onReorderTab={handlers.onReorderTab}
       onMoveTab={movable ? handlers.onMoveTab : undefined}
       onAddPane={onAddPane}
+      addPaneOpen={addPaneOpen}
       leadingSlotRef={() => {}}
       trailingSlotRef={() => {}}
     />,
@@ -164,12 +167,15 @@ describe('the region bar control set', () => {
    * #2047 D4: the "+" is the region's, in the actions cluster beside
    * maximize, and renders for a ONE-pane region (no strip) — the case the
    * acceptance starts from. Fine pointer only (D2), and only when the host
-   * offers it (D6: no project, no "+"). Reverting the `!chrome.isMobile`
-   * guard fails the coarse assertion; dropping the prop's gate fails the
-   * "absent" one; moving the button out of the cluster fails the ordered
-   * control-set pin.
+   * offers it (a model-less mount has nothing to place with). Since #2154 it
+   * is a MENU TRIGGER: `aria-haspopup="menu"`, `aria-expanded` from the
+   * host's `addPaneOpen`, and the callback receives the button so the
+   * chooser can anchor to it. Reverting the `!chrome.isMobile` guard fails
+   * the coarse assertion; dropping the prop's gate fails the "absent" one;
+   * moving the button out of the cluster fails the ordered control-set pin;
+   * dropping `aria-haspopup` or `aria-expanded` fails the popup assertions.
    */
-  test('the "+" renders beside maximize for a one-pane region on a fine pointer, and calls back; not on a coarse device, not without a host offer', () => {
+  test('the "+" renders beside maximize for a one-pane region on a fine pointer as a menu trigger, and calls back with itself; not on a coarse device, not without a host offer', () => {
     const onAddPane = vi.fn();
     const one = renderBar({ tabs: [TABS[0]!], closable: false, onAddPane });
     expect(controlNames()).toEqual([
@@ -179,13 +185,26 @@ describe('the region bar control set', () => {
       'Expand dock region to workspace',
       'Hide Chat',
     ]);
-    fireEvent.click(screen.getByLabelText('Add pane to Bottom'));
+    const add = screen.getByLabelText('Add pane to Bottom');
+    expect(add.getAttribute('aria-haspopup')).toBe('menu');
+    expect(add.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(add);
     expect(onAddPane).toHaveBeenCalledTimes(1);
+    expect(onAddPane).toHaveBeenCalledWith(add);
     expect(handlers.onSelectTab).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('Add pane to Bottom').title).toBe(
-      'Add pane to Bottom',
-    );
+    expect(add.title).toBe('Add pane to Bottom');
     one.unmount();
+
+    const open = renderBar({
+      tabs: [TABS[0]!],
+      closable: false,
+      onAddPane,
+      addPaneOpen: true,
+    });
+    expect(
+      screen.getByLabelText('Add pane to Bottom').getAttribute('aria-expanded'),
+    ).toBe('true');
+    open.unmount();
 
     const right = renderBar({
       chrome: chromeStub({ effectiveDockSlotPlacement: 'right' }),
@@ -211,8 +230,9 @@ describe('the region bar control set', () => {
    * chrome names the region ("Right region", `useDockShellChrome`'s
    * `surfaceTitle`) and the chevron follows — "Hide Right region" open,
    * "Show Right region" collapsed. `canMaximize` is false for an empty
-   * region, so the bar offers no maximize; there are no tabs and no "+"
-   * (the chooser is #2154), which leaves the grab and the chevron.
+   * region, so the bar offers no maximize; there are no tabs, and the "+"
+   * is the host's to offer (#2154 offers it for an empty region too; this
+   * harness passes none), which leaves the grab and the chevron.
    *
    * Reverting `useDockShellChrome`'s `surfaceTitle` fallback to the bare
    * `'Chat'` puts "Hide Chat" on a region holding no Chat; this file feeds

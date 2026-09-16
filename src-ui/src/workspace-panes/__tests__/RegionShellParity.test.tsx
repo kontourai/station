@@ -428,7 +428,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
   /**
    * #2153: a dock region may be visible while empty. It renders its own
    * section — named for the REGION, since it has no pane to be named after —
-   * with the chrome bar over a placeholder, and no tab strip.
+   * with the chrome bar over the chooser (#2154), and no tab strip.
    *
    * Reverting `RegionShells`' mount condition to
    * `occupant && resolveRegionSurface(occupant)` reds the first assertion
@@ -463,9 +463,13 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     expect(
       within(left).getByText('Nothing in the Left region yet'),
     ).toBeTruthy();
-    // No tabs, and no "+" yet (the chooser is #2154).
+    // No tabs; the body is the chooser (#2154), and the "+" opens the same
+    // rows as a menu — both offered without a project.
     expect(within(left).queryAllByRole('tab')).toHaveLength(0);
-    expect(within(left).queryByLabelText(/^Add pane to/)).toBeNull();
+    expect(
+      within(left).getByRole('list', { name: 'Add to Left region' }),
+    ).toBeTruthy();
+    expect(within(left).getByLabelText('Add pane to Left')).toBeTruthy();
     // The chevron names the region too, so one name reaches the reader from
     // the landmark, the control and the placeholder alike.
     const chevron = within(left).getByLabelText('Hide Left region');

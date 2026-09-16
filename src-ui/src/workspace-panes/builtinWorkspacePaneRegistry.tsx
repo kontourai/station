@@ -30,6 +30,7 @@ import {
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { WORKSPACE_FILE_PREVIEW_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-file-preview';
 import { WORKSPACE_HOME_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-home-pane';
+import { WORKSPACE_LAYOUT_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-layout-pane';
 import type {
   WorkspacePaneDescriptor,
   WorkspacePaneInstance,
@@ -769,6 +770,26 @@ function PullRequestWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   );
 }
 
+const LazyLayoutWorkspacePane = lazy(() =>
+  import('./LayoutWorkspacePane').then(({ LayoutWorkspacePane }) => ({
+    default: LayoutWorkspacePane,
+  })),
+);
+
+/**
+ * One Board or project Layout as a dock tab (#2157). Lazy because the
+ * renderer imports the whole layout graph (`LayoutRenderer`, `SDKAdapter`)
+ * — the same chunk the main region's `LayoutView` rides — and a host that
+ * never docks a Layout should not download it to have it in the table.
+ */
+function LayoutWorkspacePaneEntry({ instance }: BuiltinWorkspacePaneProps) {
+  return (
+    <Suspense fallback={<SkeletonBlock count={3} label="Loading Layout" />}>
+      <LazyLayoutWorkspacePane instance={instance} />
+    </Suspense>
+  );
+}
+
 const LazyAgentsWorkspacePane = lazy(() =>
   import('./AgentsWorkspacePane').then(({ AgentsWorkspacePane }) => ({
     default: AgentsWorkspacePane,
@@ -940,6 +961,7 @@ const builtinWorkspacePaneRegistry: Record<
   [WORKSPACE_BROWSER_PREVIEW_PANE_RENDERER_NAME]: BrowserPreviewWorkspacePane,
   [WORKSPACE_FILE_PREVIEW_PANE_RENDERER_NAME]: FilePreviewWorkspacePane,
   [WORKSPACE_PULL_REQUEST_PANE_RENDERER_NAME]: PullRequestWorkspacePane,
+  [WORKSPACE_LAYOUT_PANE_RENDERER_NAME]: LayoutWorkspacePaneEntry,
   [WORKSPACE_HOME_PANE_RENDERER_NAME]: HomeWorkspacePaneEntry,
   [WORKSPACE_ACTIVITY_PANE_RENDERER_NAME]: ActivityWorkspacePaneEntry,
   [WORKSPACE_AGENTS_PANE_RENDERER_NAME]: AgentsWorkspacePaneEntry,

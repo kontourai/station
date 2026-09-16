@@ -27,6 +27,7 @@ import {
   isPairingScopeSubset,
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_GRANT_PATHS,
+  PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPES,
   type PairedDevice,
   type PairedDeviceKind,
@@ -126,6 +127,7 @@ const DEVICE_RECORD_KEYS = new Set([
   // field the writer persists but this set omits makes the registry
   // UNREADABLE at the next boot — the review caught exactly that.
   'mintKind',
+  'homeControlGrantRevision',
   'principalBinding',
 ]);
 const PRE_ACTIVITY_DEVICE_RECORD_KEYS = new Set([
@@ -170,6 +172,8 @@ interface StoredDevice extends PairedDevice {
    * Never client-supplied; never copied onto the public PairedDevice wire.
    */
   mintKind?: 'local-grant' | 'ui-bootstrap';
+  /** PRIVATE — changes whenever home-control scope membership changes. */
+  homeControlGrantRevision?: number;
 }
 
 interface DeviceRegistry {
@@ -451,6 +455,7 @@ function publicDevice(device: StoredDevice): PairedDevice {
     pushSubscription: _pushSubscription,
     locality: _locality,
     mintKind: _mintKind,
+    homeControlGrantRevision: _homeControlGrantRevision,
     ...safe
   } = device;
   return {
@@ -728,7 +733,11 @@ function validateRegistry(
       (device.mintKind !== undefined &&
         (device.locality !== 'home-possession' ||
           (device.mintKind !== 'local-grant' &&
-            device.mintKind !== 'ui-bootstrap')))
+            device.mintKind !== 'ui-bootstrap'))) ||
+      (device.homeControlGrantRevision !== undefined &&
+        (!Number.isSafeInteger(device.homeControlGrantRevision) ||
+          device.homeControlGrantRevision <= 0 ||
+          device.homeControlGrantRevision >= Number.MAX_SAFE_INTEGER))
     ) {
       throw new Error('Invalid paired-device record');
     }
@@ -915,7 +924,12 @@ export class DevicePairingService {
       throw new DevicePairingError('invalid_request');
     }
     const scope = input.scope ?? DEFAULT_GRANT_PAIRING_SCOPE;
-    if (parsePairingScope(scope) === null) {
+    const parsedScope = parsePairingScope(scope);
+    if (
+      parsedScope === null ||
+      (input.scope !== undefined &&
+        parsedScope.includes(PAIRING_SCOPE_HOME_CONTROL))
+    ) {
       throw new DevicePairingError('invalid_request');
     }
     if (
@@ -1373,6 +1387,16 @@ export class DevicePairingService {
     return this.#registry.devices.map(publicDevice);
   }
 
+  /** Private current incarnation for an explicitly promoted home-control grant. */
+  homeControlGrantRevision(deviceId: string): number | undefined {
+    const device = this.#registry.devices.find((item) => item.id === deviceId);
+    return device?.revokedAt === null &&
+      pairingScopeIncludes(device.scope, PAIRING_SCOPE_HOME_CONTROL) &&
+      typeof device.homeControlGrantRevision === 'number'
+      ? device.homeControlGrantRevision
+      : undefined;
+  }
+
   /**
    * Every principal this instance has a PAIRING RECORD of (#2067).
    *
@@ -1560,6 +1584,17 @@ export class DevicePairingService {
     if (next.length === 0) throw new DevicePairingError('invalid_scope');
     const canonical = next.join(' ');
     if (device.scope === canonical) return publicDevice(device);
+    const hadHomeControl = pairingScopeIncludes(
+      device.scope,
+      PAIRING_SCOPE_HOME_CONTROL,
+    );
+    const hasHomeControl = next.includes(PAIRING_SCOPE_HOME_CONTROL);
+    if (hadHomeControl !== hasHomeControl) {
+      const revision = device.homeControlGrantRevision ?? 0;
+      if (revision >= Number.MAX_SAFE_INTEGER - 1)
+        throw new DevicePairingError('scope_not_grantable');
+      device.homeControlGrantRevision = revision + 1;
+    }
     device.scope = canonical;
     // Persisted before it is exposed in memory, for the same reason the
     // approval-authority setter does it: a write fault must not leave a
