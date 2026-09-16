@@ -22,8 +22,8 @@ import { useMenuFocus } from '../hooks/useMenuFocus';
 import {
   type DockRegionId,
   occupiedRegion,
-  regionLabel,
   type RegisteredSurface,
+  regionLabel,
 } from '../regions/region-model';
 import {
   type RegionPaneContext,
@@ -63,6 +63,22 @@ function SurfaceGlyph({ icon }: { icon: string }) {
 
 /** The gap between the "+" and the panel it opens, above or below. */
 const GAP = 4;
+
+/**
+ * Escape closes the panel, captured at the document so it wins over any
+ * handler under it — the toolbar menus' rule (`ToolbarMenuSurface`).
+ */
+function useEscapeClosesPanel(onClose: () => void) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      onClose();
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [onClose]);
+}
 
 /**
  * One row of the chooser: a surface that declares this region, with what
@@ -121,11 +137,12 @@ function chooserRows(
 
 function ChooserRowButton({
   row,
-  role,
+  menuitem,
   onSelect,
 }: {
   row: ChooserRow;
-  role: 'menuitem' | undefined;
+  /** In the panel a row is a `menuitem`; inline it is a plain button. */
+  menuitem: boolean;
   onSelect: () => void;
 }) {
   const ids = useId();
@@ -134,7 +151,8 @@ function ChooserRowButton({
   return (
     <button
       type="button"
-      role={role}
+      // Spread so an inline row carries no `role` attribute at all.
+      {...(menuitem ? { role: 'menuitem' as const } : {})}
       className="menu-row region-chooser__row"
       // `aria-disabled`, not `disabled`: the row stays in the tab order and
       // its accessible name carries the reason (the same rule the toolbar's
@@ -198,15 +216,7 @@ function ChooserPanel({
   children: ReactNode;
 }) {
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.stopPropagation();
-      onClose();
-    };
-    document.addEventListener('keydown', onKeyDown, true);
-    return () => document.removeEventListener('keydown', onKeyDown, true);
-  }, [onClose]);
+  useEscapeClosesPanel(onClose);
   const [position, setPosition] = useState({
     right: Math.max(0, window.innerWidth - anchor.right),
     top: anchor.bottom + GAP,
@@ -331,7 +341,7 @@ export function RegionEmptyChooser({
           <ChooserRowButton
             key={row.surface.id}
             row={row}
-            role="menuitem"
+            menuitem
             onSelect={() => select(row.surface.id)}
           />
         ))}
@@ -357,7 +367,7 @@ export function RegionEmptyChooser({
             <li key={row.surface.id}>
               <ChooserRowButton
                 row={row}
-                role={undefined}
+                menuitem={false}
                 onSelect={() => select(row.surface.id)}
               />
             </li>
