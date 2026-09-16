@@ -849,6 +849,24 @@ describe('RegionToolbarControls', () => {
   });
 
   /**
+   * The capture taken away mid-press — a system gesture, a navigation. No
+   * release is coming to this element, so a timer left running would open the
+   * panel with nothing held. Without the `lostpointercapture` handler the
+   * hold completes into a gesture the control no longer owns.
+   */
+  test('a capture lost mid-press ends the hold', async () => {
+    render(<RegionToolbarControls />);
+
+    const trigger = pressToggle('Right');
+    fireEvent.lostPointerCapture(trigger, { pointerId: 7 });
+    await holdFor(500);
+    await settleChooserChunk();
+
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(harness.setRegion).not.toHaveBeenCalled();
+  });
+
+  /**
    * A gesture that ends in `pointercancel` — a touch the browser reclaims for
    * a scroll — is the case `click` alone never saw (#1386's shape, one layer
    * down): it produces no click either, so a timer left running would open a
