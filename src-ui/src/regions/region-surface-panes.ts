@@ -83,6 +83,12 @@ import {
   type WorkspaceFilePreviewPaneState,
 } from '@kontourai/station-contracts/workspace-file-preview';
 import {
+  createWorkspaceLayoutPaneInstance,
+  isCanonicalWorkspaceLayoutPaneInstance,
+  parseWorkspaceLayoutPaneId,
+  WORKSPACE_LAYOUT_PANE_DESCRIPTOR,
+} from '@kontourai/station-contracts/workspace-layout-pane';
+import {
   toWorkspacePaneInstanceId,
   type WorkspacePaneDescriptor,
   type WorkspacePaneInstance,
@@ -377,9 +383,34 @@ function filePreviewSurfacePane(
 }
 
 /**
+ * One Layout's pane — a Board or a project Layout — resolved from its id
+ * alone (#2157). No dock-project dependency: a project Layout carries its
+ * project IN the id, so another project's Layout still mounts in this dock
+ * (its occurrence binds THAT project, which is what the host's admission
+ * compares against), and a Board binds none. No `title` here: the Layout's
+ * name is a server record the SDK lists, which this module (read from
+ * node-environment unit tests, no React) cannot read — `RegionPaneHost`
+ * resolves it (`useLayoutPaneTitles`) and falls back to the prefix title
+ * while the list loads.
+ */
+function layoutSurfacePane(surfaceId: string): RegionSurfacePane | undefined {
+  const key = parseWorkspaceLayoutPaneId(surfaceId);
+  if (!key) return undefined;
+  return {
+    surfaceId,
+    descriptorId: WORKSPACE_LAYOUT_PANE_DESCRIPTOR.id,
+    instanceId: toWorkspacePaneInstanceId(surfaceId),
+    instance: () => createWorkspaceLayoutPaneInstance(key),
+    isCanonical: (instance) =>
+      String(instance.instanceId) === surfaceId &&
+      isCanonicalWorkspaceLayoutPaneInstance(instance),
+  };
+}
+
+/**
  * The pane a surface renders as in a region host, if it has one: a registered
  * surface's map entry, else the one occurrence an instance-keyed id names
- * (#2049). The prefixes here are the same two `INSTANCE_SURFACE_PREFIXES`
+ * (#2049). The prefixes here are the same ones `INSTANCE_SURFACE_PREFIXES`
  * declares in `region-model.ts` — that table is the entry chunk's id-keyed
  * half (placement, titles) and this is the host chunk's occurrence-minting
  * half; `region-instance-panes.test.ts` pins them to each other by prefix and
@@ -398,6 +429,8 @@ export function regionSurfacePane(
   if (surfaceId.startsWith('pr:')) return pullRequestSurfacePane(surfaceId);
   if (FILE_PREVIEW_PANE_ID.test(surfaceId))
     return filePreviewSurfacePane(surfaceId);
+  if (surfaceId.startsWith('board:') || surfaceId.startsWith('layout:'))
+    return layoutSurfacePane(surfaceId);
   return undefined;
 }
 

@@ -37,6 +37,7 @@ import {
   regionSurfacePane,
 } from '../regions/region-surface-panes';
 import type { DockMode } from '../types';
+import { LayoutPaneTitles } from './LayoutPaneTitles';
 import { RegionChromeBar, type RegionChromeTab } from './RegionChromeBar';
 import { RegionChromeSlotsContext } from './RegionChromeSlots';
 import { WorkspacePaneHost } from './WorkspacePaneHost';
@@ -628,6 +629,31 @@ export function RegionPaneHost({
     openAction.focusExisting?.(selectedInstanceId);
   }, [liveActiveInstanceId, openAction, selectedInstanceId]);
 
+  // A Board's or Layout's name, resolved from the SDK's metadata lists by
+  // `LayoutPaneTitles` (#2157) — mounted only while the region holds one,
+  // so a region that never does calls no query. Keyed by surface id; an id
+  // the list no longer carries keeps the prefix's fallback title.
+  const [layoutTitles, setLayoutTitles] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  const mergeLayoutTitles = useCallback(
+    (owned: readonly string[], titles: ReadonlyMap<string, string>) =>
+      setLayoutTitles((previous) => {
+        const next = new Map(previous);
+        for (const id of owned) next.delete(id);
+        for (const [id, title] of titles) next.set(id, title);
+        return next;
+      }),
+    [],
+  );
+  const layoutPaneIds = useMemo(
+    () =>
+      panes.filter(
+        (surfaceId) =>
+          surfaceId.startsWith('board:') || surfaceId.startsWith('layout:'),
+      ),
+    [panes],
+  );
   // The region bar's tabs, from the same `panes` the document derives from.
   const tabs = useMemo<RegionChromeTab[]>(
     () =>
@@ -635,12 +661,16 @@ export function RegionPaneHost({
         surfaceId,
         instanceId: pane.instanceId,
         // The pane's own name where it derives one from its identity (a
-        // pull request's number, a file's name, #2049), else the surface's
-        // registered or prefix-described title.
+        // pull request's number, a file's name, #2049; a Layout's name
+        // once its list resolves, #2157), else the surface's registered or
+        // prefix-described title.
         title:
-          pane.title ?? resolveRegionSurface(surfaceId)?.title ?? surfaceId,
+          pane.title ??
+          layoutTitles.get(surfaceId) ??
+          resolveRegionSurface(surfaceId)?.title ??
+          surfaceId,
       })),
-    [paneEntries],
+    [layoutTitles, paneEntries],
   );
   // The id the strip's tabs and the host's panel share: the REGION's, so the
   // pair is stable whatever tab-group id a persisted (adopted) document
@@ -652,6 +682,7 @@ export function RegionPaneHost({
     selected === undefined
       ? ''
       : (selectedEntry?.title ??
+        layoutTitles.get(selected) ??
         resolveRegionSurface(selected)?.title ??
         selected);
   const selectTab = useCallback(
@@ -712,6 +743,12 @@ export function RegionPaneHost({
     >
       {(shellChrome) => (
         <RegionChromeSlotsContext.Provider value={slots}>
+          {layoutPaneIds.length > 0 ? (
+            <LayoutPaneTitles
+              surfaceIds={layoutPaneIds}
+              onResolved={mergeLayoutTitles}
+            />
+          ) : null}
           <RegionChromeBar
             chrome={shellChrome}
             groupId={groupId}
