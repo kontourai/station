@@ -261,6 +261,40 @@ export async function moveRegionThroughGrab(
 }
 
 /**
+ * Drags the dock's ⋮⋮ grab onto one of the fixed edge targets the drag
+ * reveals — the pointer route to the same placement `moveRegionThroughGrab`
+ * reaches through the menu. Promoted out of `dock-mode-preference.spec.ts`
+ * (#2185) so the drag has one driver: the gesture is now shared
+ * (`usePlacementDrag`), and a second spec copying these lines is the drift
+ * this file's docblock names.
+ */
+export async function dragDockTo(
+  page: Page,
+  placement: 'left' | 'right',
+): Promise<void> {
+  const handle = page.getByRole('button', { name: 'Move the dock' });
+  const handleBox = await handle.boundingBox();
+  expect(handleBox, 'Move the dock handle must be measurable').not.toBeNull();
+  await page.mouse.move(
+    handleBox!.x + handleBox!.width / 2,
+    handleBox!.y + handleBox!.height / 2,
+  );
+  await page.mouse.down();
+  const target = page.locator(`[data-dock-placement-target="${placement}"]`);
+  await expect(target).toBeVisible();
+  const targetBox = await target.boundingBox();
+  expect(
+    targetBox,
+    `${placement} drop target must be measurable`,
+  ).not.toBeNull();
+  await page.mouse.move(
+    targetBox!.x + targetBox!.width / 2,
+    targetBox!.y + targetBox!.height / 2,
+  );
+  await page.mouse.up();
+}
+
+/**
  * Opens a SIDEBAR PILL — a Boards row or a project's Layout chip — into a dock
  * region through its context menu (#2158).
  *
