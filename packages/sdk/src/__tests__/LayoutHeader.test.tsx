@@ -91,7 +91,9 @@ describe('LayoutHeader canLaunchPrompts (station#2171)', () => {
         tabPrompts={[{ id: 'q', label: 'Quick one', prompt: 'quick' }]}
       />,
     );
-    expect(screen.getByRole('button', { name: 'Draft a summary' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Draft a summary' }),
+    ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Inline body' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Tab prompt' })).toBeTruthy();
     expect(
@@ -116,7 +118,9 @@ describe('LayoutHeader canLaunchPrompts (station#2171)', () => {
         tabPrompts={[{ id: 'q', label: 'Quick one', prompt: 'quick' }]}
       />,
     );
-    expect(screen.queryByRole('button', { name: 'Draft a summary' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Draft a summary' }),
+    ).toBeNull();
     expect(screen.queryByRole('button', { name: 'Inline body' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Tab prompt' })).toBeNull();
     expect(
