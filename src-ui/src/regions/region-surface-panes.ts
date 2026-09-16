@@ -390,7 +390,7 @@ function filePreviewSurfacePane(
  * compares against), and a Board binds none. No `title` here: the Layout's
  * name is a server record the SDK lists, which this module (read from
  * node-environment unit tests, no React) cannot read — `RegionPaneHost`
- * resolves it (`useLayoutPaneTitles`) and falls back to the prefix title
+ * resolves it (`LayoutPaneTitles`) and falls back to the prefix title
  * while the list loads.
  */
 function layoutSurfacePane(surfaceId: string): RegionSurfacePane | undefined {

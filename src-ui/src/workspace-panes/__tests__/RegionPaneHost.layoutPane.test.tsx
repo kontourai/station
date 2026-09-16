@@ -22,7 +22,7 @@ import {
   waitFor as waitForDefault,
   within,
 } from '@testing-library/react';
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { RegionShells } from '../../app-shell/RegionShells';
 import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
@@ -46,17 +46,35 @@ const sdk = vi.hoisted(() => ({
   boards: [] as { id: string; slug: string; name: string }[],
   projects: [] as { id: string; slug: string; name: string }[],
   layouts: [] as { id: string; slug: string; name: string }[],
+  // Bumped to make every mocked list query re-render its readers — the
+  // stand-in for React Query's own invalidation.
+  version: 0,
+  listeners: new Set<() => void>(),
 }));
+/** The mocked list hooks subscribe here so a fixture change re-renders them. */
+function useSdkVersion() {
+  return useSyncExternalStore(
+    (listener) => {
+      sdk.listeners.add(listener);
+      return () => sdk.listeners.delete(listener);
+    },
+    () => sdk.version,
+  );
+}
+function setBoards(boards: { id: string; slug: string; name: string }[]) {
+  sdk.boards = boards;
+  sdk.version += 1;
+  for (const listener of sdk.listeners) listener();
+}
 // Partial: the registry chunk the region host lazily loads reaches the rest
 // of the SDK, so only the three list queries the title resolver reads are
 // replaced.
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
-  usePersonalLayoutsQuery: () => ({
-    data: sdk.boards,
-    isLoading: false,
-    isError: false,
-  }),
+  usePersonalLayoutsQuery: () => {
+    useSdkVersion();
+    return { data: sdk.boards, isLoading: false, isError: false };
+  },
   useProjectsQuery: () => ({
     data: sdk.projects,
     isLoading: false,
@@ -402,4 +420,68 @@ test("a project Layout mounts with its project bound through the id while the do
   expect(
     openLayoutInRegion(current(), { kind: 'board', layoutId: 'coding' }),
   ).toEqual({ ok: false, reason: 'no-surface' });
+});
+
+/**
+ * Review M2(a): the title map is MERGED per reporter, and a merge that only
+ * adds never forgets. When the personal list stops carrying a Board after
+ * its tab resolved (promoted into a project, deleted elsewhere), the tab
+ * must fall back to the prefix title rather than keep a name for a record
+ * that is gone. Reverting the `next.delete(id)` loop in `mergeLayoutTitles`
+ * reds the second assertion.
+ */
+test('a Board dropped from the list after its tab resolved reverts to the prefix title', async () => {
+  renderShells();
+  await waitFor(() => expect(model).not.toBeNull());
+  act(() => current().placeSurface('chat', 'right'));
+  await waitFor(() =>
+    expect(
+      document.querySelector<HTMLElement>('#chat-dock')?.dataset.region,
+    ).toBe('right'),
+  );
+  act(() => {
+    current().openSurfaceInRegion(BOARD_ID, { region: 'right' });
+  });
+  await settle();
+  await waitFor(() =>
+    expect(within(shell('right')).getByRole('tab', { name: 'My Board' })),
+  );
+
+  act(() => setBoards(sdk.boards.filter((board) => board.id !== LAYOUT)));
+  await waitFor(() =>
+    expect(tabs('right')).toEqual([
+      ['Chat', 'false'],
+      ['Board', 'true'],
+    ]),
+  );
+  // The tab itself stays: closing it is the user's act.
+  expect(current().regions.right.panes).toEqual(['chat', BOARD_ID]);
+});
+
+/**
+ * Review M2(c): the title reporter is mounted by EVERY region host, not the
+ * right one. Gating `<LayoutPaneTitles>` on `regionId === 'right'` reds this.
+ */
+test('a Board docked in bottom is titled by its name too', async () => {
+  renderShells();
+  await waitFor(() => expect(model).not.toBeNull());
+  act(() => current().placeSurface('chat', 'bottom'));
+  await waitFor(() =>
+    expect(
+      document.querySelector<HTMLElement>('#chat-dock')?.dataset.region,
+    ).toBe('bottom'),
+  );
+  act(() => {
+    current().openSurfaceInRegion(OTHER_BOARD_ID, { region: 'bottom' });
+  });
+  await settle();
+  await waitFor(() =>
+    expect(tabs('bottom')).toEqual([
+      ['Chat', 'false'],
+      ['Second Board', 'true'],
+    ]),
+  );
+  expect(screen.getByTestId('layout-pane').closest('.chat-dock')).toBe(
+    shell('bottom'),
+  );
 });

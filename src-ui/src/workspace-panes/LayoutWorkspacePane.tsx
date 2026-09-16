@@ -56,9 +56,23 @@ import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailab
  * because closing a tab is the user's act.
  *
  * A project Layout binds ITS project through the id, never the dock's
- * (`SDKAdapter` gets `boundProjectSlug`), so a region holds another
- * project's Layout as readily as its own. A Board has no project and the
- * adapter is given none — the same call `PersonalBoardView` makes.
+ * (`SDKAdapter` gets `boundProjectSlug`, and so does `LayoutRenderer`, for
+ * the one built-in tab that reads the UI's own navigation rather than the
+ * SDK's — `flow-run-console`), so a region holds another project's Layout as
+ * readily as its own. A Board has no project and the adapter is given none —
+ * the same call `PersonalBoardView` makes.
+ *
+ * ## What a docked Layout deliberately does not carry
+ *
+ * Neither family gets `LayoutView`'s agent affordances: no `annotateAgentRef`
+ * (`agentAvailableInProject`), no `onLaunchPrompt`, no `onShowChat`. For a
+ * Board the reason is `PersonalBoardView`'s — there is no project to filter
+ * against. For a project Layout there IS one, and the gap is deliberate for
+ * this slice: launching a prompt binds a chat session to the route's
+ * project through `LayoutView`'s own handlers and action bar, and a docked
+ * tab beside Chat has no host chrome to launch from. A docked Layout reads
+ * and navigates; it does not launch. Wiring the project family's agent
+ * filter is a follow-up, recorded in `docs/design/placement.md` (#2157).
  *
  * ## Which kinds render, and which are refused
  *
@@ -221,6 +235,7 @@ export function LayoutWorkspacePane({
     >
       <LayoutRenderer
         layout={layout}
+        {...(project ? { boundProjectSlug: projectSlug } : {})}
         activeTab={activeTab}
         activeTabId={activeTab?.id}
         onTabChange={setActiveTabId}

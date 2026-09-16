@@ -65,6 +65,16 @@ vi.mock('../components/mcp-ui/MCPToolUIFrame', () => ({
   MCPToolUIFrame: mcpToolUIFrameMock,
 }));
 
+const { flowRunConsoleMock } = vi.hoisted(() => ({
+  flowRunConsoleMock: vi.fn(),
+}));
+vi.mock('../components/flow/FlowRunConsole', () => ({
+  FlowRunConsole: (props: { projectSlug?: string }) => {
+    flowRunConsoleMock(props);
+    return <div>Flow run console rendered</div>;
+  },
+}));
+
 vi.mock('@/utils/logger', () => ({
   log: {
     api: vi.fn(),
@@ -519,6 +529,53 @@ describe('a layout tab the server would not describe', () => {
 
     expect(screen.getByText('Plugin layout rendered')).toBeTruthy();
     expect(screen.queryByText('This tab is not available.')).toBeNull();
+  });
+
+  /**
+   * #2157 review M1: `SDKAdapter`'s `boundProjectSlug` rewrites the SDK's
+   * navigation, which plugin tabs read — but the built-in `flow-run-console`
+   * tab reads the UI's own `NavigationContext`, so a docked Layout of
+   * project B carrying it showed project A's runs. The registry entry now
+   * passes the renderer's `boundProjectSlug` through; reverting it to the
+   * bare `<FlowRunConsole />` reds the first assertion. The second is the
+   * route-bound hosts' contract: no prop, no rewrite.
+   */
+  test('the flow-run-console tab receives the host-bound project, and none when the host binds none', () => {
+    const layout: LayoutDefinition = {
+      name: 'Runs',
+      slug: 'runs',
+      tabs: [
+        {
+          id: 'runs',
+          label: 'Runs',
+          component: { kind: 'builtin-component', name: 'flow-run-console' },
+        },
+      ],
+    };
+    render(
+      <LayoutRenderer
+        layout={layout}
+        activeTab={layout.tabs[0]}
+        activeTabId="runs"
+        boundProjectSlug="beta"
+      />,
+    );
+    expect(screen.getByText('Flow run console rendered')).toBeTruthy();
+    expect(flowRunConsoleMock).toHaveBeenLastCalledWith({
+      projectSlug: 'beta',
+    });
+
+    flowRunConsoleMock.mockClear();
+    render(
+      <LayoutRenderer
+        layout={layout}
+        activeTab={layout.tabs[0]}
+        activeTabId="runs"
+      />,
+    );
+    expect(flowRunConsoleMock).toHaveBeenLastCalledWith({
+      projectSlug: undefined,
+    });
   });
 
   test('an `unavailable` flag persisted into a stored tab cannot forge one', () => {

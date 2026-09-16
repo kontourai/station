@@ -898,7 +898,7 @@ export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
   // #2157: a Board (a principal-owned Layout) and a project Layout as dock
   // tabs. The titles here are the family's FALLBACK — the tab shows the
   // Layout's own name once `RegionPaneHost` resolves it from the SDK's
-  // metadata lists (`useLayoutPaneTitles`), which this entry chunk may not
+  // metadata lists (`LayoutPaneTitles`), which this entry chunk may not
   // read. `right` by default for the same reason a pull request lands
   // there: a Layout is a page-shaped thing, and the right region is the
   // tall one beside Chat. The `board` glyph is the sidebar's Boards glyph.

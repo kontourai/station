@@ -99,18 +99,24 @@ vi.mock('../../core/SDKAdapter', () => ({
   },
 }));
 
-const renderer = vi.hoisted(() => ({ layouts: [] as { slug: string }[] }));
+const renderer = vi.hoisted(() => ({
+  layouts: [] as { slug: string }[],
+  boundProjectSlug: [] as unknown[],
+}));
 vi.mock('../../layouts', () => ({
   LayoutRenderer: ({
     layout,
     activeTabId,
     onTabChange,
+    boundProjectSlug,
   }: {
     layout: { slug: string; name: string; tabs: { id: string }[] };
     activeTabId?: string;
     onTabChange?: (id: string) => void;
+    boundProjectSlug?: string;
   }) => {
     renderer.layouts.push(layout);
+    renderer.boundProjectSlug.push(boundProjectSlug);
     return (
       <div data-testid="layout-renderer" data-active-tab={activeTabId}>
         {layout.name}
@@ -198,6 +204,7 @@ beforeEach(() => {
   sdk.calls = [];
   adapter.boundProjectSlug = [];
   renderer.layouts = [];
+  renderer.boundProjectSlug = [];
   navigation.navigate.mockReset();
   navigation.setLayout.mockReset();
   window.localStorage.clear();
@@ -225,6 +232,7 @@ describe('a Board as a pane', () => {
     );
     expect(sdk.calls).toContain('board:my-board');
     expect(adapter.boundProjectSlug).toEqual([undefined]);
+    expect(renderer.boundProjectSlug).toEqual([undefined]);
     // The project queries are not enabled for a Board.
     expect(sdk.calls).toContain('projects:false');
     expect(renderer.layouts[0]).toMatchObject({
@@ -293,6 +301,9 @@ describe('a project Layout as a pane', () => {
       'Notes',
     );
     expect(adapter.boundProjectSlug).toEqual(['alpha']);
+    // Review M1: the renderer gets the binding too, for the built-in tab
+    // that reads the UI's navigation rather than the SDK's.
+    expect(renderer.boundProjectSlug).toEqual(['alpha']);
     expect(sdk.calls).toContain('layouts:alpha:true');
     expect(sdk.calls).toContain('layout:alpha/notes');
     // The personal list is not enabled for a project Layout.
@@ -379,6 +390,30 @@ describe('a project Layout as a pane', () => {
     );
     expect(screen.getByText('Layout not found')).toBeTruthy();
     expect(sdk.calls).not.toContain('layouts:alpha:true');
+  });
+
+  /**
+   * Review M2(b): `only()` refuses an AMBIGUOUS list, not just an empty
+   * one. Two entries sharing one id is a record the resolver will not guess
+   * between; loosening `matches.length === 1` to `>= 1` reds this.
+   */
+  test('two listed Layouts sharing one id read as not found rather than the first', () => {
+    sdk.layoutsByProject.alpha = [
+      { id: LAYOUT, slug: 'notes', name: 'Notes', projectSlug: 'alpha' },
+      { id: LAYOUT, slug: 'notes-2', name: 'Notes 2', projectSlug: 'alpha' },
+    ];
+    render(
+      <LayoutWorkspacePane
+        instance={instanceFor({
+          kind: 'project',
+          projectId: PROJECT,
+          layoutId: LAYOUT,
+        })}
+      />,
+    );
+    expect(screen.getByText('Layout not found')).toBeTruthy();
+    expect(screen.queryByTestId('layout-renderer')).toBeNull();
+    expect(sdk.calls).not.toContain('layout:alpha/notes');
   });
 
   test('an id that lists under the project but no longer resolves reads as not found', () => {

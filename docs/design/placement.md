@@ -659,6 +659,26 @@ does not make. An id the list no longer carries — a Board promoted, a Layout
 deleted — renders "not found" in the tab; the tab stays, because closing a
 tab is the user's act.
 
+**A built-in tab that reads the route.** `SDKAdapter`'s `boundProjectSlug`
+rewrites the SDK's navigation, which every plugin tab reads; the built-in
+`flow-run-console` tab reads the UI's own `NavigationContext` instead, so a
+docked Layout of project B would have shown project A's runs. `LayoutRenderer`
+now carries `boundProjectSlug` (`AgentLayoutProps`) and that registry entry
+passes it to `FlowRunConsole`; the route-bound hosts pass none and keep their
+behaviour. No other built-in tab reads a project (audited 2026-09-16:
+`DefaultLayout`, `UnavailableLayoutTab`, `KitStandardViewLayout`,
+`MCPToolUILayout` read none; `UnsupportedLayoutComponent` reads navigation
+only to `navigate('/registry')`).
+
+**Deliberately not carried.** A docked Layout gets none of `LayoutView`'s
+agent affordances — no `annotateAgentRef` (`agentAvailableInProject`), no
+`onLaunchPrompt`, no `onShowChat` — for a Board because there is no project
+to filter against (`PersonalBoardView`'s reason), and for a project Layout
+because a prompt launch binds a chat session to the ROUTE's project through
+`LayoutView`'s handlers and action bar, which a dock tab beside Chat does not
+have. A docked Layout reads and navigates; it does not launch. Wiring the
+project family's agent filter is a follow-up, not an oversight.
+
 **Openers.** `openSurfaceInRegion('board:<id>')` from the model, or
 `openLayoutInRegion(model, key)` in `useOpenInRegion.ts`, which mints the
 occurrence and refuses an id the grammar cannot (`no-surface`). This slice
