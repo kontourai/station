@@ -60,6 +60,85 @@ function recoveryLedger(eventStore: EventStore) {
   return eventStore.createRecoveryLedger();
 }
 
+/**
+ * A pre-#1092 `orchestration_events` table (no `global_sequence` column) with
+ * the given rows, written in ONE transaction (#1531). The multi-batch case
+ * seeds 2,050 rows; in autocommit that was 2,050 fsync-bearing commits --
+ * 864 ms on an APFS laptop and the whole of a 15 s budget on a loaded runner
+ * with a slower disk, which is how a fixture's setup, not the backfill under
+ * test, timed the test out. One transaction writes the same rows in 6 ms.
+ */
+function seedLegacyOrchestrationEvents(
+  path: string,
+  rows: ReadonlyArray<{
+    id: string;
+    threadId: string;
+    method: string;
+    createdAt: string;
+    sequence: number;
+    /**
+     * When any row carries this, the table has the `global_sequence` column
+     * and rows without it are left at 0: a store whose backfill committed
+     * some batches and then the process died.
+     */
+    globalSequence?: number;
+  }>,
+): void {
+  const partiallyBackfilled = rows.some(
+    (row) => row.globalSequence !== undefined,
+  );
+  const legacyDb = new DatabaseSync(path);
+  legacyDb.exec(`
+    CREATE TABLE orchestration_events (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      turn_id TEXT,
+      method TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      sequence INTEGER NOT NULL${
+        partiallyBackfilled
+          ? ',\n      global_sequence INTEGER NOT NULL DEFAULT 0'
+          : ''
+      }
+    );
+  `);
+  const insert = legacyDb.prepare(
+    partiallyBackfilled
+      ? `INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
+         VALUES (?, 'claude', ?, ?, '{}', ?, ?, ?)`
+      : `INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence)
+         VALUES (?, 'claude', ?, ?, '{}', ?, ?)`,
+  );
+  legacyDb.exec('BEGIN');
+  try {
+    for (const row of rows)
+      if (partiallyBackfilled)
+        insert.run(
+          row.id,
+          row.threadId,
+          row.method,
+          row.createdAt,
+          row.sequence,
+          row.globalSequence ?? 0,
+        );
+      else
+        insert.run(
+          row.id,
+          row.threadId,
+          row.method,
+          row.createdAt,
+          row.sequence,
+        );
+    legacyDb.exec('COMMIT');
+  } catch (error) {
+    legacyDb.exec('ROLLBACK');
+    throw error;
+  }
+  legacyDb.close();
+}
+
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
   DatabaseSync: new (
@@ -6840,42 +6919,22 @@ describe('EventStore', () => {
       // AND backfill it in that same order (not just default every row to 0).
       store.close();
       const legacyDbPath = join(dir, 'legacy-orchestration.sqlite');
-      const legacyDb = new DatabaseSync(legacyDbPath);
-      legacyDb.exec(`
-        CREATE TABLE orchestration_events (
-          id TEXT PRIMARY KEY,
-          provider TEXT NOT NULL,
-          thread_id TEXT NOT NULL,
-          turn_id TEXT,
-          method TEXT NOT NULL,
-          payload TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          sequence INTEGER NOT NULL
-        );
-      `);
-      const insert = legacyDb.prepare(
-        `INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      );
-      insert.run(
-        'evt-legacy-1',
-        'claude',
-        'thread-legacy',
-        'session.started',
-        '{}',
-        '2026-01-01T00:00:00.000Z',
-        1,
-      );
-      insert.run(
-        'evt-legacy-2',
-        'claude',
-        'thread-legacy',
-        'session.configured',
-        '{}',
-        '2026-01-01T00:00:01.000Z',
-        2,
-      );
-      legacyDb.close();
+      seedLegacyOrchestrationEvents(legacyDbPath, [
+        {
+          id: 'evt-legacy-1',
+          threadId: 'thread-legacy',
+          method: 'session.started',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          sequence: 1,
+        },
+        {
+          id: 'evt-legacy-2',
+          threadId: 'thread-legacy',
+          method: 'session.configured',
+          createdAt: '2026-01-01T00:00:01.000Z',
+          sequence: 2,
+        },
+      ]);
 
       store = new EventStore(legacyDbPath);
       expect(store.readGlobalSequence('evt-legacy-1')).toBe(1);
@@ -6932,63 +6991,115 @@ describe('EventStore', () => {
       const rowCount = GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE * 2 + 50;
       store.close();
       const legacyDbPath = join(dir, 'legacy-multi-batch.sqlite');
-      const legacyDb = new DatabaseSync(legacyDbPath);
-      legacyDb.exec(`
-        CREATE TABLE orchestration_events (
-          id TEXT PRIMARY KEY,
-          provider TEXT NOT NULL,
-          thread_id TEXT NOT NULL,
-          turn_id TEXT,
-          method TEXT NOT NULL,
-          payload TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          sequence INTEGER NOT NULL
-        );
-      `);
-      const insert = legacyDb.prepare(
-        `INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      );
       const baseMs = Date.parse('2026-01-01T00:00:00.000Z');
-      for (let index = 0; index < rowCount; index += 1) {
-        insert.run(
-          `evt-legacy-${index}`,
-          'claude',
-          'thread-legacy',
-          'content.text-delta',
-          '{}',
-          new Date(baseMs + index).toISOString(),
-          index + 1,
-        );
-      }
-      legacyDb.close();
+      // The backfill orders by `created_at ASC, sequence ASC, id ASC`. Five
+      // rows share each created_at, and within a group `sequence` runs
+      // OPPOSITE to id order, so the second key is what decides and the
+      // third cannot stand in for it (#1531: with distinct timestamps and
+      // ids that happened to sort like sequence, dropping the `sequence` key
+      // from the ORDER BY changed nothing this test could see). Seeded
+      // newest-first so insertion order cannot stand in for it either.
+      const rows = Array.from({ length: rowCount }, (_, index) => {
+        const group = Math.floor(index / 5);
+        const offset = index % 5;
+        return {
+          id: `evt-legacy-${index}`,
+          threadId: 'thread-legacy',
+          method: 'content.text-delta',
+          createdAt: new Date(baseMs + group).toISOString(),
+          sequence: group * 5 + (5 - offset),
+        };
+      });
+      seedLegacyOrchestrationEvents(legacyDbPath, rows.slice().reverse());
+      // The contract, stated once, as the comparator the migration uses.
+      const expected = rows.slice().sort((a, b) => {
+        if (a.createdAt !== b.createdAt)
+          return a.createdAt < b.createdAt ? -1 : 1;
+        if (a.sequence !== b.sequence) return a.sequence - b.sequence;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      });
 
       store = new EventStore(legacyDbPath);
 
       expect(store.headGlobalSequence()).toBe(rowCount);
       // Spot-check across all three batches: start, a row inside the
       // second batch (past the first boundary), and the very last row.
-      expect(store.readGlobalSequence('evt-legacy-0')).toBe(1);
-      expect(
-        store.readGlobalSequence(
-          `evt-legacy-${GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE + 10}`,
-        ),
-      ).toBe(GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE + 11);
-      expect(store.readGlobalSequence(`evt-legacy-${rowCount - 1}`)).toBe(
-        rowCount,
-      );
+      for (const position of [
+        0,
+        GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE + 10,
+        rowCount - 1,
+      ]) {
+        expect(store.readGlobalSequence(expected[position]!.id)).toBe(
+          position + 1,
+        );
+      }
 
-      // Full-order check: every row's global_sequence matches its
-      // created_at-ascending position exactly (no batch-boundary
-      // duplication, skip, or reordering).
+      // Full-order check: every row's global_sequence matches its position
+      // under the contract exactly (no batch-boundary duplication, skip, or
+      // reordering, and the tiebreak honoured within every timestamp).
       const ordered = store.listEvents();
       expect(ordered).toHaveLength(rowCount);
       for (let index = 0; index < rowCount; index += 1) {
         expect(ordered[index]).toMatchObject({
-          id: `evt-legacy-${index}`,
+          id: expected[index]!.id,
           globalSequence: index + 1,
         });
       }
+    });
+
+    test('a backfill interrupted between batches resumes after the highest committed value (#1531)', () => {
+      // The docblock on `backfillGlobalSequence` promises numbering starts
+      // from the current max so a prior partially-completed run -- one
+      // batch committed, the process then restarted -- resumes without
+      // colliding. Nothing pinned that: an injection restarting the cursor
+      // at 1 passed the multi-batch test above, because there every row
+      // starts at 0. `global_sequence` carries no unique index, so a
+      // collision would be silent duplicate numbering, which is the worst
+      // shape for a replay cursor to have.
+      store.close();
+      const legacyDbPath = join(dir, 'legacy-partial-backfill.sqlite');
+      const baseMs = Date.parse('2026-01-01T00:00:00.000Z');
+      const committed = GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE;
+      const total = committed + 30;
+      // The committed values start well above 1: the highest committed
+      // value is not the row count (rows before it may have been pruned),
+      // and a resume that COUNTED rows, or a fixture whose pre-assigned
+      // values happened to equal what a fresh backfill would produce,
+      // could not be told apart from a restart. With the offset, "resumed"
+      // and "restarted from 1" number the tail differently.
+      const offset = 500;
+      seedLegacyOrchestrationEvents(
+        legacyDbPath,
+        Array.from({ length: total }, (_, index) => ({
+          id: `evt-legacy-${index}`,
+          threadId: 'thread-legacy',
+          method: 'content.text-delta',
+          createdAt: new Date(baseMs + index).toISOString(),
+          sequence: index + 1,
+          // The first batch landed; the rest never got numbered.
+          ...(index < committed ? { globalSequence: offset + index + 1 } : {}),
+        })),
+      );
+
+      store = new EventStore(legacyDbPath);
+
+      expect(store.headGlobalSequence()).toBe(offset + total);
+      // The first unassigned row continues after the highest committed
+      // value, not from a fresh 1 and not from the row count.
+      expect(store.readGlobalSequence(`evt-legacy-${committed}`)).toBe(
+        offset + committed + 1,
+      );
+      // Already-numbered rows are untouched.
+      expect(store.readGlobalSequence('evt-legacy-0')).toBe(offset + 1);
+      expect(store.readGlobalSequence(`evt-legacy-${committed - 1}`)).toBe(
+        offset + committed,
+      );
+      // And the numbering is a permutation of offset+1..offset+total: no
+      // duplicates, no gaps.
+      const values = store.listEvents().map((event) => event.globalSequence);
+      expect(new Set(values).size).toBe(total);
+      expect(Math.min(...values)).toBe(offset + 1);
+      expect(Math.max(...values)).toBe(offset + total);
     });
   });
 
