@@ -220,9 +220,28 @@ const DEFAULT_DEVICE_FEATURE_SETTINGS = DEVICE_SETTINGS_REGISTRY.find(
 )!.defaultValue as unknown as Record<string, unknown>;
 let deviceFeatureSettings: Record<string, unknown> =
   DEFAULT_DEVICE_FEATURE_SETTINGS;
+/**
+ * #2144 slice 4: the five chat rows that had a device-settings contract row
+ * and no Settings row. Seeded from the REGISTRY's own defaults rather than
+ * hand-written literals, so the fixture is the shape the real store hands a
+ * device nobody has touched — a hand-picked `true` here would make a row that
+ * silently ignores its stored value look correct.
+ */
+function deviceDefault<T>(key: string): T {
+  return DEVICE_SETTINGS_REGISTRY.find((definition) => definition.key === key)!
+    .defaultValue as unknown as T;
+}
+let deviceChatSettings = {
+  chatShowReasoning: deviceDefault<boolean>('chatShowReasoning'),
+  chatShowToolDetails: deviceDefault<boolean>('chatShowToolDetails'),
+  chatDockAutoHide: deviceDefault<boolean>('chatDockAutoHide'),
+  diffStyle: deviceDefault<'unified' | 'split'>('diffStyle'),
+  diffWrap: deviceDefault<boolean>('diffWrap'),
+};
 vi.mock('../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({
     chatFontSize: deviceChatFontSize,
+    ...deviceChatSettings,
     // #2144 slice 6 item B: the Answer delivery row reads this.
     featureSettings: deviceFeatureSettings,
     hapticsEnabled: true,
@@ -325,6 +344,13 @@ describe('settings catalog completeness', () => {
     invalidateQuery.mockImplementation(() => Promise.resolve());
     deviceChatFontSize = 14;
     deviceFeatureSettings = DEFAULT_DEVICE_FEATURE_SETTINGS;
+    deviceChatSettings = {
+      chatShowReasoning: deviceDefault<boolean>('chatShowReasoning'),
+      chatShowToolDetails: deviceDefault<boolean>('chatShowToolDetails'),
+      chatDockAutoHide: deviceDefault<boolean>('chatDockAutoHide'),
+      diffStyle: deviceDefault<'unified' | 'split'>('diffStyle'),
+      diffWrap: deviceDefault<boolean>('diffWrap'),
+    };
     telemetryEndpointConfigured = undefined;
     telemetryDisclosureSettled = true;
     telemetryDisclosureIsError = false;
@@ -1272,8 +1298,84 @@ describe('settings catalog completeness', () => {
    * having both is that they write the SAME device key with the same
    * meaning rather than two controls that happen to look alike.
    */
+  /**
+   * #2144 slice 4. Each of these five had a device-settings contract row and
+   * no Settings row, so the in-chat gear panel was the only place they could
+   * be changed. Both directions per row, because either half alone passes for
+   * a broken control: a write-only assertion passes for a row that ignores
+   * what is stored, and a read-only one passes for a row that writes
+   * NOTHING — or, the failure an orchestrator injection actually produced
+   * here, writes its NEIGHBOUR's key, which every other test in this file was
+   * blind to.
+   */
+  describe('Chat section device rows', () => {
+    test.each([
+      // label, stored value to seed, device key, value the click must write
+      ['Show reasoning', 'chatShowReasoning', false, true],
+      ['Show tool details', 'chatShowToolDetails', false, true],
+      ['Auto-hide chat dock', 'chatDockAutoHide', true, false],
+      ['Diff line wrap', 'diffWrap', true, false],
+    ] as const)(
+      '%s reads %s and writes it back',
+      async (label, key, stored, written) => {
+        deviceChatSettings = { ...deviceChatSettings, [key]: stored };
+        const { unmount } = await renderSettings();
+
+        const toggle = screen.getByRole('switch', { name: label });
+        // Read direction: the control shows what is STORED, not a literal.
+        expect(toggle.getAttribute('aria-checked')).toBe(String(stored));
+
+        fireEvent.click(toggle);
+        // Write direction, keyed: `toHaveBeenCalledWith` alone would pass for
+        // a row writing a sibling's key with the same boolean.
+        expect(setDeviceSetting.mock.calls).toEqual([[key, written]]);
+        unmount();
+      },
+    );
+
+    test('Diff view style reads and writes diffStyle in both directions', async () => {
+      deviceChatSettings = { ...deviceChatSettings, diffStyle: 'split' };
+      const { unmount } = await renderSettings();
+
+      const select = screen.getByLabelText(
+        'Diff view style',
+      ) as HTMLSelectElement;
+      expect(select.value).toBe('split');
+      expect([...select.options].map((option) => option.value)).toEqual([
+        'unified',
+        'split',
+      ]);
+
+      fireEvent.change(select, { target: { value: 'unified' } });
+      expect(setDeviceSetting.mock.calls).toEqual([['diffStyle', 'unified']]);
+      unmount();
+
+      setDeviceSetting.mockClear();
+      deviceChatSettings = { ...deviceChatSettings, diffStyle: 'unified' };
+      const second = await renderSettings();
+      const reopened = screen.getByLabelText(
+        'Diff view style',
+      ) as HTMLSelectElement;
+      expect(reopened.value).toBe('unified');
+      fireEvent.change(reopened, { target: { value: 'split' } });
+      expect(setDeviceSetting.mock.calls).toEqual([['diffStyle', 'split']]);
+      second.unmount();
+    });
+
+    test('the two rows that moved out of Appearance render under Chat, not Appearance', async () => {
+      window.history.replaceState({}, '', '/settings?view=chat');
+      const { container, unmount } = await renderSettings();
+      const chat = container.querySelector('#section-chat')!;
+      expect(container.querySelector('#section-appearance')).toBeNull();
+      for (const id of ['chat-font-size', 'smooth-answer-reveal']) {
+        expect(chat.querySelector(`[data-catalog-id="${id}"]`)).toBeTruthy();
+      }
+      unmount();
+    });
+  });
+
   describe('Answer delivery', () => {
-    test('writes smoothReveal in both directions from the Appearance row', async () => {
+    test('writes smoothReveal in both directions from the Chat row', async () => {
       const { unmount } = await renderSettings();
       const select = screen.getByLabelText(
         'Answer delivery',
