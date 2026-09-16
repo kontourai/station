@@ -681,8 +681,10 @@ agent affordances — no `annotateAgentRef` (`agentAvailableInProject`), no
 to filter against (`PersonalBoardView`'s reason), and for a project Layout
 because a prompt launch binds a chat session to the ROUTE's project through
 `LayoutView`'s handlers and action bar, which a dock tab beside Chat does not
-have. A docked Layout reads and navigates; it does not launch. Wiring the
-project family's agent filter is a follow-up, not an oversight.
+have. A docked Layout reads and navigates; it does not launch. The SDK
+header still renders the layout's prompt buttons with a no-op launcher, so a
+docked Layout that carries prompts shows inert controls today; wiring the
+launch to the pane's bound project, or hiding the bar, is #2171.
 
 **Openers.** `openSurfaceInRegion('board:<id>')` from the model, or
 `openLayoutInRegion(model, key)` in `useOpenInRegion.ts`, which mints the
@@ -783,8 +785,9 @@ direction of 2026-09-15 settles it: **Bottom is Chat's.** Terminal joins it
 (`coding:terminal`'s `defaultRegion` moves from `right` to `bottom` — a
 terminal belongs under the conversation that is driving it), Files stays on
 the left (`coding:file-browser`), and everything else that is not Home
-defaults to the right: Activity, Agents, Device, Diff, and the two
-instance-keyed families (`pr:`, `file-preview:`). Home's only placement is
+defaults to the right: Activity, Agents, Device, Diff, and the four
+instance-keyed families (`pr:`, `file-preview:`, and #2157's `board:` and
+`layout:`). Home's only placement is
 `main`. The table is pinned in `region-model.test.ts`, so a later change to
 any entry is an argued edit rather than a drift.
 

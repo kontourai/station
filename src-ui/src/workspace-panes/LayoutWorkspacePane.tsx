@@ -71,8 +71,10 @@ import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailab
  * this slice: launching a prompt binds a chat session to the route's
  * project through `LayoutView`'s own handlers and action bar, and a docked
  * tab beside Chat has no host chrome to launch from. A docked Layout reads
- * and navigates; it does not launch. Wiring the project family's agent
- * filter is a follow-up, recorded in `docs/design/placement.md` (#2157).
+ * and navigates; it does not launch. The SDK header still renders the
+ * layout's prompt buttons with a no-op launcher, so a docked Layout that
+ * carries prompts shows inert controls today; wiring the launch to the
+ * pane's bound project, or hiding the bar, is #2171.
  *
  * ## Which kinds render, and which are refused
  *
