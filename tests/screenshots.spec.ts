@@ -1896,37 +1896,35 @@ const SCREENS: Screen[] = [
   // deterministic trigger (never the transient home-route redirect race —
   // see `newProjectOverlay`'s doc comment) so its shot is reproducible.
   {
-    // Renamed from `overlay-dock-picker` (#1541): the overlay it captured —
-    // the dock's own occupant picker — was deleted with the rest of the
-    // surface-owned docking path in #928 C2b, so the screen could not
-    // capture at all. Its successor is the header's Layout picker, which is
-    // where placement is chosen now; the baseline entry was renamed with it
-    // rather than left pointing at a shot nothing can reproduce.
-    name: 'overlay-layout-picker',
-    title: 'Overlay — Layout regions placement picker',
+    // Renamed twice: `overlay-dock-picker` (#1541, the dock's own occupant
+    // picker, deleted in #928 C2b) became `overlay-layout-picker` (#1552 D2's
+    // per-surface placement picker), which #2143 retired for one toggle per
+    // region. What is left to capture as an overlay is an EMPTY region's
+    // offer menu — the only panel the region toolbar opens now.
+    name: 'overlay-region-offer-menu',
+    title: 'Overlay — empty region’s offer menu',
     path: '/?dock=open',
     viewport: DESKTOP,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      // #1552 D2: one folded control in the toolbar opens a `role="group"`
-      // panel of per-surface `radiogroup` rows — a segmented choice over the
-      // regions each surface declares plus `Hidden` — replacing the list of
-      // placement VERBS the dock header used to carry.
+      // #2143: a fresh home holds Chat in Bottom; Left and Right are empty,
+      // so their controls are menus of what can be shown there.
       const trigger = page.getByRole('button', {
-        name: 'Layout regions',
+        name: 'Right region',
         exact: true,
       });
       await trigger.waitFor({ timeout: 10_000 });
+      await expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
       await trigger.click();
-      const picker = page.getByRole('group', { name: 'Layout regions' });
-      await expect(picker).toBeVisible({ timeout: 10_000 });
+      const menu = page.getByRole('menu', { name: 'Show in Right region' });
+      await expect(menu).toBeVisible({ timeout: 10_000 });
       // Rows, not just the panel: an empty panel would still be "visible"
       // and would capture a shot of nothing.
       await expect(
-        picker.getByRole('radiogroup', { name: 'Chat placement' }),
+        menu.getByRole('menuitem', { name: 'Show Chat here' }),
       ).toBeVisible();
       await expect(
-        picker.getByRole('radiogroup', { name: 'Activity placement' }),
+        menu.getByRole('menuitem', { name: 'Show Activity here' }),
       ).toBeVisible();
     },
   },

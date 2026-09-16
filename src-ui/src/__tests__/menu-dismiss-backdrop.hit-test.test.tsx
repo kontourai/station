@@ -233,6 +233,53 @@ vi.mock('../components/header/useHeaderViewModel', () => ({
 
 import { ChatDockHeaderMoreMenu } from '../components/chat-dock/ChatDockHeaderMoreMenu';
 import { Header } from '../components/header/Header';
+import type { DockShellChrome } from '../hooks/useDockShellChrome';
+import { RegionChromeBar } from '../workspace-panes/RegionChromeBar';
+
+/** The chrome a bar needs to render its strip: open, fine pointer, bottom. */
+function tabMoveChrome(): DockShellChrome {
+  const noop = () => {};
+  return {
+    isDockOpen: true,
+    isDockMaximized: true,
+    dockMode: 'bottom',
+    dockHeight: 320,
+    dockWidth: 400,
+    setDockHeight: noop,
+    setDockWidth: noop,
+    previousDockHeight: 320,
+    setPreviousDockHeight: noop,
+    previousDockOpen: true,
+    setPreviousDockOpen: noop,
+    isDragging: false,
+    setIsDragging: noop,
+    dockSnap: 'full',
+    liveDragHeight: null,
+    setLiveDragHeight: noop,
+    isCollapsedDragPreview: false,
+    toolbarHeight: 46,
+    collapsedHeight: 38,
+    isMobile: false,
+    visualViewport: { style: {}, height: 800, offsetTop: 0 } as never,
+    availableDockSlotPlacements: ['left', 'bottom', 'right'],
+    effectiveDockSlotPlacement: 'bottom',
+    surfaceShortcutId: 'dock.toggle',
+    surfaceTitle: 'Activity',
+    canMaximize: true,
+    regionPanes: [],
+    selectRegionPane: noop,
+    ownsMaximizeShortcut: true,
+    applyDockSnap: noop,
+    commitDesktopBottomHeight: noop,
+    commitDockPlacement: noop,
+    restoreDockToDocked: noop,
+    onSidePanelResizePointerDown: noop,
+    onMobileHeaderDragPointerDown: noop,
+    onMobileHeaderDragClickCapture: noop,
+    activeProjectSlug: null,
+    setActiveProjectSlug: noop,
+  };
+}
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../');
@@ -243,7 +290,13 @@ const HEADER_MENU_CSS_PATH = resolve(
   '../components/header/HeaderMenu.css',
 );
 
-type MenuId = 'overflow' | 'profile' | 'help' | 'region' | 'dock-more';
+type MenuId =
+  | 'overflow'
+  | 'profile'
+  | 'help'
+  | 'region'
+  | 'dock-more'
+  | 'tab-move';
 
 interface Shape {
   /** Reads as the test name, so keep it a sentence. */
@@ -303,14 +356,26 @@ const SHAPES: readonly Shape[] = [
     openerLabel: null,
   },
   {
-    name: 'the header’s Layout menu on a desktop, where its trigger exists',
+    name: 'the header’s empty-region menu on a desktop, where its trigger exists',
     menu: 'region',
     viewport: DESKTOP,
     device: 'desktop',
-    backdropLabel: 'Close layout menu',
+    backdropLabel: 'Close region menu',
     // On a phone `commandsInOverflowMenu` renders no region control at all —
     // the commands move into the ⋯ menu — so this control is desktop-only.
-    openerLabel: 'Layout regions',
+    // The fixture's `left` region is empty, so its control opens a menu
+    // (#2143); an occupied region's is a toggle and opens nothing.
+    openerLabel: 'Left region',
+  },
+  {
+    // #2143: a tab's move menu, opened from the region bar's strip. Desktop
+    // only: the strip does not render on the mobile layout.
+    name: 'a tab’s move menu on a desktop, where its tab exists',
+    menu: 'tab-move',
+    viewport: DESKTOP,
+    device: 'desktop',
+    backdropLabel: 'Close move menu for Activity',
+    openerLabel: 'Activity',
   },
   {
     name: 'the dock header’s More menu on a phone',
@@ -400,21 +465,63 @@ async function renderShellMarkup(
           className="chat-dock chat-dock--bottom is-maximized"
           data-region="bottom"
         >
-          <div className="chat-dock__header">
-            <ChatDockHeaderMoreMenu
-              actions={[
-                { key: 'settings', label: 'Chat settings', onSelect: () => {} },
-                { key: 'tasks', label: 'Background tasks', onSelect: () => {} },
+          {shape.menu === 'tab-move' ? (
+            <RegionChromeBar
+              chrome={tabMoveChrome()}
+              groupId="region:bottom"
+              tabs={[
+                {
+                  surfaceId: 'chat',
+                  instanceId: 'workspace-chat',
+                  title: 'Chat',
+                },
+                {
+                  surfaceId: 'activity',
+                  instanceId: 'workspace-activity',
+                  title: 'Activity',
+                },
               ]}
+              selectedSurfaceId="activity"
+              onSelectTab={() => {}}
+              onCloseTab={undefined}
+              onReorderTab={() => {}}
+              onMoveTab={() => {}}
+              leadingSlotRef={() => {}}
+              trailingSlotRef={() => {}}
             />
-          </div>
+          ) : (
+            <div className="chat-dock__header">
+              <ChatDockHeaderMoreMenu
+                actions={[
+                  {
+                    key: 'settings',
+                    label: 'Chat settings',
+                    onSelect: () => {},
+                  },
+                  {
+                    key: 'tasks',
+                    label: 'Background tasks',
+                    onSelect: () => {},
+                  },
+                ]}
+              />
+            </div>
+          )}
         </section>
       </div>
     </div>,
   );
 
   if (geometry) {
-    if (shape.menu === 'region' || shape.menu === 'dock-more') {
+    if (shape.menu === 'tab-move') {
+      // The move menu opens from a `contextmenu` and anchors under the tab;
+      // pass 1's measurement of the tab is what it anchors to.
+      const tab = screen.getByRole('tab', {
+        name: shape.openerLabel as string,
+      });
+      tab.getBoundingClientRect = () => geometry.rect as DOMRect;
+      fireEvent.contextMenu(tab);
+    } else if (shape.menu === 'region' || shape.menu === 'dock-more') {
       const opener = screen.getByLabelText(shape.openerLabel as string, {
         exact: false,
       });
@@ -549,14 +656,20 @@ describe.skipIf(!chromiumAvailable)(
               ...viewport,
             };
           }
-          const opener = [
-            ...document.querySelectorAll<HTMLElement>('[aria-label]'),
-          ].find(
-            (element) =>
-              (element.getAttribute('aria-label') ?? '').startsWith(
-                openerLabel,
-              ) && element.getBoundingClientRect().width > 0,
-          );
+          // A control is found by its `aria-label`, or — for a tab, whose
+          // name is its text (#2143's move menu opens from one) — by role.
+          const opener =
+            [...document.querySelectorAll<HTMLElement>('[aria-label]')].find(
+              (element) =>
+                (element.getAttribute('aria-label') ?? '').startsWith(
+                  openerLabel,
+                ) && element.getBoundingClientRect().width > 0,
+            ) ??
+            [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find(
+              (element) =>
+                (element.textContent ?? '').trim() === openerLabel &&
+                element.getBoundingClientRect().width > 0,
+            );
           if (!opener) {
             throw new Error(
               `the closed shell rendered no laid-out control named ` +
@@ -671,11 +784,16 @@ describe.skipIf(!chromiumAvailable)(
 
             const probes = controls.map(probeFor);
             const opener = openerLabel
-              ? controls.find((control) =>
+              ? (controls.find((control) =>
                   (control.getAttribute('aria-label') ?? '').startsWith(
                     openerLabel,
                   ),
-                )
+                ) ??
+                controls.find(
+                  (control) =>
+                    control.getAttribute('role') === 'tab' &&
+                    (control.textContent ?? '').trim() === openerLabel,
+                ))
               : undefined;
 
             // A panel sitting on a probe point would make that probe report a

@@ -10,7 +10,13 @@
  * select, close, reorder, and when it does not render at all.
  */
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { DockShellChrome } from '../../hooks/useDockShellChrome';
 import { RegionChromeBar, type RegionChromeTab } from '../RegionChromeBar';
@@ -82,6 +88,7 @@ const handlers = {
   onSelectTab: vi.fn(),
   onCloseTab: vi.fn(),
   onReorderTab: vi.fn(),
+  onMoveTab: vi.fn(),
 };
 
 function renderBar({
@@ -89,12 +96,14 @@ function renderBar({
   tabs = TABS,
   selected = 'chat',
   closable = true,
+  movable = true,
   onAddPane,
 }: {
   chrome?: DockShellChrome;
   tabs?: readonly RegionChromeTab[];
   selected?: string;
   closable?: boolean;
+  movable?: boolean;
   onAddPane?: () => void;
 } = {}) {
   return render(
@@ -106,6 +115,7 @@ function renderBar({
       onSelectTab={handlers.onSelectTab}
       onCloseTab={closable ? handlers.onCloseTab : undefined}
       onReorderTab={handlers.onReorderTab}
+      onMoveTab={movable ? handlers.onMoveTab : undefined}
       onAddPane={onAddPane}
       leadingSlotRef={() => {}}
       trailingSlotRef={() => {}}
@@ -124,6 +134,7 @@ beforeEach(() => {
   handlers.onSelectTab.mockClear();
   handlers.onCloseTab.mockClear();
   handlers.onReorderTab.mockClear();
+  handlers.onMoveTab.mockClear();
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -300,6 +311,140 @@ describe('the tab strip writes the model', () => {
     // After the release, a move is not a drag.
     fireEvent.pointerMove(chat, { pointerId: 1, clientX: 60, clientY: 10 });
     expect(handlers.onReorderTab).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * #2143: a tab's placement is the tab's own menu. The rows are the regions
+   * this device can use plus `main`, minus the one the tab is in, filtered by
+   * the model's `surfaceMayOccupy`: Chat declares no `main`, so its menu has
+   * two rows; Activity declares every region, so its has three. Choosing a
+   * row moves that ONE pane (the grab moves the region).
+   */
+  test('a tab’s context menu offers the regions the pane may move to, and a choice moves that pane', () => {
+    renderBar();
+    const chat = screen.getByRole('tab', { name: 'Chat' });
+    fireEvent.contextMenu(chat, { clientX: 40, clientY: 12 });
+    const menu = screen.getByRole('menu', { name: 'Move Chat' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Move to Left', 'Move to Right']);
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: 'Move to Right' }),
+    );
+    expect(handlers.onMoveTab).toHaveBeenCalledWith('chat', 'right');
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(handlers.onSelectTab).not.toHaveBeenCalled();
+    expect(handlers.onReorderTab).not.toHaveBeenCalled();
+
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Activity' }));
+    expect(
+      within(screen.getByRole('menu', { name: 'Move Activity' }))
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Move to Left', 'Move to Right', 'Move to Main']);
+  });
+
+  test('the move menu dismisses on Escape and on its backdrop, and a model-less mount has none', () => {
+    const { unmount } = renderBar();
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chat' }));
+    expect(screen.getByRole('menu', { name: 'Move Chat' })).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    // #1386: every end of a backdrop gesture dismisses, and the press alone
+    // does not — the same contract as the toolbar's menus.
+    const open = () => {
+      fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chat' }));
+      return screen.getByLabelText('Close move menu for Chat');
+    };
+    let backdrop = open();
+    const down = createEvent.pointerDown(backdrop);
+    fireEvent(backdrop, down);
+    expect(down.defaultPrevented).toBe(true);
+    expect(screen.queryByRole('menu')).not.toBeNull();
+    fireEvent.pointerCancel(backdrop);
+    expect(screen.queryByRole('menu')).toBeNull();
+    backdrop = open();
+    // The right-click that OPENED the menu releases onto this backdrop:
+    // Chromium fires `contextmenu` on the press, so the release arrives
+    // with no press of its own. That release must not dismiss.
+    fireEvent.pointerUp(backdrop);
+    expect(screen.queryByRole('menu')).not.toBeNull();
+    fireEvent(backdrop, createEvent.pointerDown(backdrop));
+    fireEvent.pointerUp(backdrop);
+    expect(screen.queryByRole('menu')).toBeNull();
+    backdrop = open();
+    fireEvent.click(backdrop);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(handlers.onMoveTab).not.toHaveBeenCalled();
+    unmount();
+
+    renderBar({ movable: false });
+    const event = fireEvent.contextMenu(
+      screen.getByRole('tab', { name: 'Chat' }),
+    );
+    // Not intercepted: the browser's own context menu is left alone.
+    expect(event).toBe(true);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  /**
+   * Under the tab, whatever the pointer said (the keyboard has none); pulled
+   * back sideways at the right edge; and FLIPPED ABOVE the tab when there is
+   * no room below — never slid up over it, which would put the panel on its
+   * own trigger (#2112). Each branch is asserted against its own geometry so
+   * deleting the clamp, or replacing the flip with a slide, reds here.
+   */
+  test('the move menu sits under its tab, is pulled back from the right edge, and flips above when there is no room below', () => {
+    renderBar();
+    const tab = screen.getByRole('tab', { name: 'Chat' });
+    const viewport = { w: window.innerWidth, h: window.innerHeight };
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 800,
+    });
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 600,
+    });
+    const tabBox = { left: 40, top: 0, bottom: 20, right: 100 };
+    vi.spyOn(tab, 'getBoundingClientRect').mockReturnValue(tabBox as DOMRect);
+    const measure = vi
+      .spyOn(HTMLDivElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ width: 160, height: 100 } as DOMRect);
+    const open = () => {
+      fireEvent.contextMenu(tab, { clientX: 300, clientY: 300 });
+      const menu = screen.getByRole('menu', { name: 'Move Chat' });
+      const at = [menu.style.left, menu.style.top];
+      fireEvent.keyDown(document, { key: 'Escape' });
+      return at;
+    };
+    try {
+      expect(open()).toEqual(['40px', '24px']);
+
+      // At the right edge: pulled back by the menu's own width.
+      tabBox.left = 790;
+      expect(open()).toEqual(['640px', '24px']);
+
+      // Low in the viewport: 100px of menu will not fit under a tab whose
+      // bottom is at 560, so it opens above the tab's top (540 - 4 - 100).
+      tabBox.left = 40;
+      tabBox.top = 540;
+      tabBox.bottom = 560;
+      expect(open()).toEqual(['40px', '436px']);
+    } finally {
+      measure.mockRestore();
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: viewport.w,
+      });
+      Object.defineProperty(window, 'innerHeight', {
+        configurable: true,
+        value: viewport.h,
+      });
+    }
   });
 });
 

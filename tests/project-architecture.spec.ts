@@ -17,8 +17,9 @@ import {
   expectBoxWithinViewport,
   expectRegionTabs,
   FIRST_RENDER_TIMEOUT_MS,
-  placeSurfaceThroughLayoutPicker,
+  moveRegionThroughGrab,
   showRegionThroughOverflowMenu,
+  showSurfaceInEmptyRegion,
   surfaceDockShell,
 } from './helpers/region-placement';
 import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
@@ -996,7 +997,16 @@ test.describe('ChatDock', () => {
     await expect(page.locator('.chat-dock')).toHaveCount(1);
     await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
 
-    await placeSurfaceThroughLayoutPicker(page, 'Activity', 'Bottom');
+    // #2143: an occupied region's toolbar control is a toggle, so a JOIN is
+    // made the way a user makes one — show Activity in the empty Right region
+    // through that region's control, then move the whole region onto Bottom
+    // with its ⋮⋮ grab, which joins Chat's panes (`moveRegionPanes`).
+    await showSurfaceInEmptyRegion(page, 'Activity', 'Right');
+    await moveRegionThroughGrab(
+      page,
+      surfaceDockShell(page, 'Activity'),
+      'Bottom',
+    );
 
     // Activity joined the region rather than taking it. All three halves are
     // asserted, because "Activity is showing at the bottom" would also be
@@ -1022,11 +1032,10 @@ test.describe('ChatDock', () => {
     await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
     await expectRegionTabs(page, ['Chat', 'Activity'], 'Activity');
 
-    // Chat is behind Activity's tab, which the picker reads as Hidden — seen
-    // means the region is visible AND this is the pane it shows
-    // (`useRegionSurfaceMenu.ts` `placementOf`) — so choosing Chat's `Bottom`
-    // segment is a select within the region it already holds.
-    await placeSurfaceThroughLayoutPicker(page, 'Chat', 'Bottom');
+    // Chat is behind Activity's tab. Asking for it again is ⌘D — Chat's
+    // chord, `toggleSurface`, which selects its tab within the region it
+    // already holds (#2046 2a) rather than placing it anywhere.
+    await page.keyboard.press('ControlOrMeta+d');
 
     await expect(
       chatDockShell(page),
