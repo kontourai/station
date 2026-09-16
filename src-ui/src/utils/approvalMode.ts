@@ -259,13 +259,19 @@ export function resolveEffectiveApprovalMode({
  *   Station-mode chat keeps a knob-capable `agentConnectionId` (its model
  *   provider), and `ChatInputArea` renders no approval control for it, so a
  *   posture on the wire would be one no surface offered (round 2 M2);
- * - this chat ALREADY has a live orchestration session. The default is a
- *   posture new chats START in: re-requesting it on a warm session would
- *   make a mid-life edit of the Station setting reconfigure a running chat,
- *   and Claude refuses an escalation to `'never'` on a session that was not
- *   spawned for it — with a `runtime.warning` banner on every later turn
- *   (claude-adapter.ts). A session override is the only thing that may
- *   change a live session's posture, and it travels on its own (round 2 M3);
+ * - this chat's session is LIVE (`chatSessionIsLive`, utils/execution.ts —
+ *   round 3 F1 replaced "an id exists" with a liveness derivation, because a
+ *   `currentSessionId` outlives its session and a reopened conversation is
+ *   marked started while merely continuable). The default is the posture a
+ *   session STARTS in: re-requesting it on a warm session would let a
+ *   mid-life edit of the Station setting reconfigure a running chat, and
+ *   Claude refuses an escalation to `'never'` on a session that was not
+ *   spawned with its bypass flag — with a `runtime.warning` banner on every
+ *   later turn (claude-adapter.ts). A session override is the only thing
+ *   that may change a live session's posture, and it travels on its own
+ *   (round 2 M3). The queued-follow-up drain (`queueDrain.ts`) passes no
+ *   fallback at all and is deliberately left that way: a queued message is
+ *   never the message that starts a session;
  * - the resolution came from that session override, which the dispatcher
  *   already carries in `requestedProviderOptions`;
  * - nothing concrete resolved (`'connection-default'`), which is Station

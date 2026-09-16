@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest';
 import {
   buildProviderOptions,
   canAgentStartChat,
+  chatSessionIsLive,
   connectionEvidenceDetail,
   connectionEvidenceLabel,
   executionStatusLabel,
@@ -1195,5 +1196,73 @@ describe('execution utils', () => {
       false,
     );
     expect(sessionAdapterSupportsSteering('claude-runtime')).toBe(false);
+  });
+});
+
+/**
+ * Round 3 F1. The send path withholds a session-start-only payload on a LIVE
+ * session; every "unsure" answer here must be `false`, because false means
+ * the posture is sent and a re-sent identical posture is a no-op while a
+ * withheld one leaves a new session running something nobody chose.
+ */
+describe('chatSessionIsLive', () => {
+  test('a running session is live', () => {
+    expect(
+      chatSessionIsLive({
+        orchestrationSessionStarted: true,
+        orchestrationStatus: 'running',
+      }),
+    ).toBe(true);
+  });
+
+  test('an open turn is live even before a status lands', () => {
+    expect(
+      chatSessionIsLive({
+        orchestrationSessionStarted: true,
+        orchestrationTurnOpen: true,
+      }),
+    ).toBe(true);
+  });
+
+  test('every settled status is not live', () => {
+    for (const status of [
+      'completed',
+      'failed',
+      'canceled',
+      'aborted',
+      'errored',
+      'exited',
+    ]) {
+      expect(
+        chatSessionIsLive({
+          orchestrationSessionStarted: true,
+          orchestrationStatus: status,
+        }),
+      ).toBe(false);
+    }
+  });
+
+  test('an exited session is not live even though its id remains', () => {
+    // `session.exited` clears the flag and leaves `currentSessionId`; the id
+    // is deliberately not an input here.
+    expect(
+      chatSessionIsLive({
+        orchestrationSessionStarted: false,
+        orchestrationStatus: 'exited',
+      }),
+    ).toBe(false);
+  });
+
+  test('a reopened conversation with no status is not live', () => {
+    // `commitConversationOpen` marks a resolved (continuable) open started
+    // and supplies no status. Unsure answers not-live.
+    expect(chatSessionIsLive({ orchestrationSessionStarted: true })).toBe(
+      false,
+    );
+  });
+
+  test('a chat that never started anything is not live', () => {
+    expect(chatSessionIsLive({})).toBe(false);
+    expect(chatSessionIsLive(undefined)).toBe(false);
   });
 });

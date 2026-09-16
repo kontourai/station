@@ -235,6 +235,14 @@ export function conversationOpenPatch(
     ...executionPatch,
     currentSessionId: undefined,
     orchestrationSessionStarted: false,
+    // `resolved` means the conversation is BOUND and continuable, not that
+    // anything is running: a stopped session resolves too, and its next send
+    // takes the server's `startRequired` path. This flag is this codebase's
+    // "has an orchestration session been established for this chat" (the
+    // transcript rehydration guard, the unavailable-agent banner), so it is
+    // deliberately left as-is; a reader that needs LIVENESS must use
+    // `chatSessionIsLive` (utils/execution.ts), which treats a reopened
+    // conversation's absent `orchestrationStatus` as "not live" (round 3 F1).
     ...(resolution.status === 'resolved'
       ? {
           currentSessionId: resolution.currentSessionId,

@@ -1000,6 +1000,60 @@ export function resolveSessionExecutionSummary(
   };
 }
 
+/**
+ * Orchestration statuses that mean this chat's child session is gone or
+ * permanently settled. Union of the lifecycle states a `session.state-changed`
+ * can carry (`SESSION_LIFECYCLE_STATES`) and the client-written terminal
+ * statuses (`turnHandlers` 'aborted'/'errored', `sessionHandlers` 'exited').
+ */
+const SETTLED_ORCHESTRATION_STATUSES: ReadonlySet<string> = new Set([
+  'completed',
+  'failed',
+  'canceled',
+  'aborted',
+  'errored',
+  'exited',
+]);
+
+/**
+ * Whether the server will CONTINUE this chat's existing session rather than
+ * start a new one — the question "is a session live", asked by the send path
+ * so a session-start-only payload (the resolved approval posture, #2144
+ * slice 6) is withheld only when there is genuinely a live session.
+ *
+ * Deliberately NOT `orchestrationSessionStarted || currentSessionId`, which
+ * was true on two paths where the server really does call `startSession`
+ * (round 3 F1): `currentSessionId` outlives the session it names —
+ * `session.exited` writes `orchestrationSessionStarted: false` and leaves the
+ * id in place — and `commitConversationOpen` sets BOTH for any
+ * `status: 'resolved'` resolution, which means "continuable", not "running"
+ * (a stopped conversation resolves too, and its next send takes the server's
+ * `startRequired: true` path).
+ *
+ * UNSURE ANSWERS "not live", ON PURPOSE. A reopened conversation carries no
+ * `orchestrationStatus` at all, and the client cannot reproduce the server's
+ * `resolveConversationContinuation` (it reads the session lineage and the
+ * process detail). "Not live" means the posture IS sent, which is the safe
+ * side twice over: the value is deterministic per chat, so re-sending it to
+ * an already-configured session is a no-op at the adapter
+ * (`targetPermissionMode !== record.currentPermissionMode`,
+ * claude-adapter.ts), while withholding it leaves a genuinely new session
+ * running a posture the composer is simultaneously claiming.
+ */
+export function chatSessionIsLive(
+  session?: {
+    orchestrationSessionStarted?: boolean;
+    orchestrationStatus?: string;
+    orchestrationTurnOpen?: boolean;
+  } | null,
+): boolean {
+  if (!session) return false;
+  if (session.orchestrationSessionStarted !== true) return false;
+  if (session.orchestrationTurnOpen === true) return true;
+  if (!session.orchestrationStatus) return false;
+  return !SETTLED_ORCHESTRATION_STATUSES.has(session.orchestrationStatus);
+}
+
 export function isSessionExecutionActive(
   session?: SessionExecutionActivity | null,
 ): boolean {

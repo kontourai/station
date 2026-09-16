@@ -163,6 +163,17 @@ describe('buildDeviceResetPlan', () => {
     );
   }
 
+  /** Some value this key cannot already hold, whatever its shape. */
+  function nonDefaultValue(value: unknown): unknown {
+    if (typeof value === 'boolean') return !value;
+    if (typeof value === 'number') return value + 7;
+    if (typeof value === 'string') return `${value}-moved`;
+    if (Array.isArray(value)) return [...value, 'moved'];
+    if (value && typeof value === 'object')
+      return { ...(value as object), movedByTheUser: true };
+    return 'moved';
+  }
+
   test('a pristine device has nothing to restore', () => {
     const plan = buildDeviceResetPlan(pristine() as never);
     expect(plan.keys).toEqual([]);
@@ -199,26 +210,31 @@ describe('buildDeviceResetPlan', () => {
   });
 
   test('a direct-manipulation key that differs is neither listed nor restored', () => {
-    const plan = buildDeviceResetPlan({
+    // EVERY excluded key differs here, derived from the list itself so a new
+    // member is covered the day it is added. Hand-picking four left six
+    // pristine, and a candidate list that had gained `firstRunProgress`
+    // stayed green because the fixture never moved it (round 2 AC6(b),
+    // round 3 F3).
+    const touchedEverything: Record<string, unknown> = {
       ...pristine(),
-      chatDockHeight: 720,
-      inboxOpen: false,
-      // Every excluded key below must differ from its default, or this test
-      // cannot see it being wrongly admitted: a candidate list that gained
-      // `firstRunProgress` stayed green while the fixture left it pristine
-      // (round 2, verifier AC6(b)).
-      firstRunProgress: { chapter: 'about-you', deferred: true },
-      onboardingSetupDismissed: true,
+      ...Object.fromEntries(
+        DIRECT_MANIPULATION_DEVICE_KEYS.map((key) => [
+          key as string,
+          nonDefaultValue(pristine()[key as string]),
+        ]),
+      ),
       theme: 'light',
-    } as never);
-    // Only the preference is listed, and every excluded key is absent even
-    // though all three genuinely differ from their defaults.
-    expect(plan.keys).toEqual(['theme']);
+    };
+    const plan = buildDeviceResetPlan(touchedEverything as never);
+
+    // The fixture's own power: all ten genuinely differ, so admitting any
+    // one of them reddens this equality.
     for (const key of DIRECT_MANIPULATION_DEVICE_KEYS) {
-      expect(plan.keys as readonly string[]).not.toContain(key);
+      expect(touchedEverything[key as string]).not.toEqual(
+        pristine()[key as string],
+      );
     }
-    // The fixture's own power, pinned: four excluded keys genuinely differ
-    // here, so admitting any one of them reddens the equality above.
+    expect(plan.keys).toEqual(['theme']);
     expect(plan.labels).toEqual(['Theme']);
   });
 

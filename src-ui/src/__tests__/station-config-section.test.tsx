@@ -124,12 +124,15 @@ test('#2144 slice 6: the row states who ignores it and when it applies', () => {
     screen.getByText(/Chats that run on Station’s own engine/),
   ).toBeTruthy();
   // The WHEN, which is what makes the row's own promise checkable: it is
-  // sent at session start and never re-sent (round 2 M3).
+  // sent by whichever message starts a session — including a reopened or
+  // exited conversation's next send — and never while one is running
+  // (round 2 M3, corrected in round 3 F1).
   expect(
-    screen.getByText(
-      /sent when a chat starts its session and is not re-sent afterwards/,
-    ),
+    screen.getByText(/sent whenever a message starts a session/),
   ).toBeTruthy();
+  expect(screen.getByText(/never while one is running/)).toBeTruthy();
+  // The queued-drain carve-out is part of the promise, not a footnote.
+  expect(screen.getByText(/A queued follow-up never carries it/)).toBeTruthy();
 });
 
 test('#2144 slice 6: a stored value is what the row shows', () => {

@@ -416,7 +416,15 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       ).not.toHaveProperty('approvalMode');
     });
 
-    it('sends nothing on a warm session, which is not a chat starting', async () => {
+    async function optionsAfterSend() {
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+      return sendExecutionMessageMock.mock.calls[0][1].target.model.options;
+    }
+
+    it('sends nothing on a live session, which is not a chat starting', async () => {
       // Round 2 M3: the setting is the posture a NEW chat starts in.
       // Re-requesting it per turn reconfigures a running session, and
       // Claude refuses a mid-session escalation to 'never' with a
@@ -424,17 +432,50 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       stationAppConfig.current = { defaultApprovalMode: 'never' };
       activeChatsStore.updateChat(sessionId, {
         orchestrationSessionStarted: true,
+        orchestrationStatus: 'running',
         currentSessionId: 'live-session-1',
       });
-      const { result } = renderHook(() => useSendMessage('http://api.test'));
 
-      await act(async () => {
-        await result.current(sessionId, 'codex', undefined, 'go');
+      expect(await optionsAfterSend()).not.toHaveProperty('approvalMode');
+    });
+
+    /**
+     * Round 3 F1. The previous gate was
+     * `orchestrationSessionStarted || currentSessionId`, and each disjunct
+     * was true on a path where the SERVER starts a session — so the posture
+     * was withheld from the very spawn it is for. One test per disjunct.
+     */
+    it('sends the default after the session exited, whose id lingers', async () => {
+      // `session.exited` writes `orchestrationSessionStarted: false` and
+      // leaves `currentSessionId` in place; the id is not the session.
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      activeChatsStore.updateChat(sessionId, {
+        orchestrationSessionStarted: false,
+        orchestrationStatus: 'exited',
+        currentSessionId: 'dead-session-1',
       });
 
-      expect(
-        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
-      ).not.toHaveProperty('approvalMode');
+      expect(await optionsAfterSend()).toMatchObject({
+        approvalMode: 'never',
+      });
+    });
+
+    it('sends the default for a reopened conversation that is merely continuable', async () => {
+      // `commitConversationOpen` marks every `status: 'resolved'` open as
+      // started and carries the child id; a stopped conversation resolves
+      // too, and the next send is the server's `startRequired` path. No
+      // `orchestrationStatus` accompanies a reopen, which is exactly the
+      // "unsure" case `chatSessionIsLive` answers as not-live.
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      activeChatsStore.updateChat(sessionId, {
+        orchestrationSessionStarted: true,
+        orchestrationStatus: undefined,
+        currentSessionId: 'reopened-child-1',
+      });
+
+      expect(await optionsAfterSend()).toMatchObject({
+        approvalMode: 'never',
+      });
     });
 
     it('sends nothing when this Station states no posture', async () => {

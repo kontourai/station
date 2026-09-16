@@ -46,13 +46,17 @@ export interface AppConfig {
    * and under the engine connection's own default, and above the adapter
    * default.
    *
-   * ENFORCEMENT IS NARROWER THAN DISPLAY, by design. It applies only to the
-   * turn that STARTS a chat's session, and only for an `external`-mode chat
-   * on an engine whose adapter has a native knob (`approvalModeKnobSupported`
+   * ENFORCEMENT IS NARROWER THAN DISPLAY, by design. It applies only to a
+   * message that STARTS a session — a new chat, a reopened conversation
+   * whose session has stopped, or one that exited (`chatSessionIsLive` in
+   * `utils/execution.ts` is the derivation, and answers "unsure" as not
+   * live so the posture is sent rather than withheld) — and only for an
+   * `external`-mode chat on an engine whose adapter has a native knob (`approvalModeKnobSupported`
    * — claude and codex; `PROVIDER_MODEL_OPTION_SUPPORT` in `provider.ts` is
    * the server-side authority). Re-requesting a posture on a live session
    * would reconfigure a running chat from a setting edited elsewhere, and
-   * Claude refuses a mid-session escalation to `'never'` outright. Only a
+   * Claude refuses a mid-session escalation to `'never'` on a session
+   * that was not spawned with its bypass flag. Only a
    * session override may change a live chat's posture.
    *
    * `'connection-default'` is a real, canonical value here and means "this

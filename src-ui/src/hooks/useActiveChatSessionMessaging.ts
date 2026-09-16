@@ -33,6 +33,7 @@ import {
   translateChatError,
 } from '../utils/chatErrorTranslation';
 import {
+  chatSessionIsLive,
   resolveSessionEngineConnectionId,
   sessionAdapterSupportsSteering,
 } from '../utils/execution';
@@ -352,13 +353,10 @@ export function useSendMessage(
           approvalModeFallback: approvalModeForDispatch({
             engineConnectionId: sessionEngineConnectionId,
             executionMode: currentState?.executionMode,
-            // `orchestrationSessionStarted` is this chat's own "a session is
-            // live" flag (the same one line 389 reads below); a reopened
-            // conversation carries it, and its child id, from the resolved
-            // open. Either means this turn is not a session start.
-            sessionAlreadyStarted:
-              currentState?.orchestrationSessionStarted === true ||
-              !!currentState?.currentSessionId,
+            // Liveness, not the existence of an id: `currentSessionId`
+            // outlives its session, and a reopened conversation is marked
+            // started whether or not anything is running (round 3 F1).
+            sessionAlreadyStarted: chatSessionIsLive(currentState),
             sessionOverride: dispatchedProviderOptions?.approvalMode,
             connectionDefault: agentConnections.find(
               (connection) => connection.id === sessionEngineConnectionId,
