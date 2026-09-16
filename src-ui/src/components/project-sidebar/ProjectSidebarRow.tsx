@@ -12,6 +12,7 @@ import {
   type ProjectLayoutChip,
   ProjectLayoutChips,
 } from './ProjectLayoutChips';
+import { sidebarLayoutPaneId } from './pill-region-placement';
 import { projectAccent } from './projectAccent';
 import type { ProjectRowReorderProps } from './useProjectListReorder';
 
@@ -99,6 +100,7 @@ export function ProjectSidebarRow({
       });
     }
     for (const layout of layoutList as Array<{
+      id: string;
       slug: string;
       name: string;
       type?: string;
@@ -107,6 +109,23 @@ export function ProjectSidebarRow({
         key: layout.slug,
         name: layout.name,
         current: isActive && activeLayout === layout.slug,
+        /**
+         * #2158: this Layout as a dock pane. The project id comes from the
+         * row's own `project` — `ProjectMetadata.id` is already here, so the
+         * `layout:<projectId>/<layoutId>` grammar needs no second query — and
+         * `sidebarLayoutPaneId` answers null for a record whose ids are not
+         * the lowercase UUIDs the server mints, which leaves the chip with no
+         * placement rows rather than rows that would refuse.
+         *
+         * The synthesized Board chip above deliberately gets none: it is the
+         * project's SESSION board, which is a route, and #2157 declares panes
+         * for Boards and project Layouts only.
+         */
+        dockSurfaceId: sidebarLayoutPaneId({
+          kind: 'project',
+          projectId: project.id,
+          layoutId: layout.id,
+        }),
         // The same call the nested layout row made. A layout of kind `chat`
         // is one chip like any other, and this is why: it routes to the same
         // `/projects/<slug>/layouts/<layout>` the tree routed to, so App's

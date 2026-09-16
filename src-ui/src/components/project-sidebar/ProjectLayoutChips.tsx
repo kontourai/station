@@ -1,4 +1,7 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMenuFocus } from '../../hooks/useMenuFocus';
+import { regionLabel } from '../../regions/region-model';
+import { useSidebarPillRegions } from './pill-region-placement';
 
 /**
  * One entry of a project's chip row. The row renders and navigates chips; it
@@ -18,6 +21,24 @@ export interface ProjectLayoutChip {
    */
   current: boolean;
   activate: () => void;
+  /**
+   * This chip's Layout as a dock pane (#2158), when it has one:
+   * `layout:<projectId>/<layoutId>`, built by `sidebarLayoutPaneId`.
+   *
+   * ABSENT is a real answer and there are two of them. The synthesized
+   * "Board" chip is the project's SESSION board, which is a route and not a
+   * pane at all (#2157 declares panes for Boards and project Layouts only),
+   * and a Layout whose id is not the lowercase UUID the server mints cannot
+   * be named by the grammar. Either way the chip offers no placement rows,
+   * and its `contextmenu` is left to the platform rather than swallowed by a
+   * menu with nothing in it.
+   *
+   * NO `aria-haspopup` on the chip, following `RegionChromeBar`'s tab: the
+   * menu is reachable ONLY by the context-menu gesture, and a chip announcing
+   * that it has a popup would be describing something Enter and Space do not
+   * do — they navigate, which is the chip's primary action and stays so.
+   */
+  dockSurfaceId?: string | null;
 }
 
 /**
@@ -57,6 +78,50 @@ export function ProjectLayoutChips({
     forCurrent: string | undefined;
   } | null>(null);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
+  /**
+   * The chip whose "Open in <region>" menu is open, by key — one at a time,
+   * the shape `ProjectSidebarBoards`' `RowMode` already uses for the rail's
+   * other pill menu (#2158).
+   */
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const pillRegions = useSidebarPillRegions();
+
+  // Derived from the LIST, not trusted from state: a layout deleted or a
+  // project switched under an open menu leaves a key naming no chip, and a
+  // menu whose subject has left the row is a menu about nothing.
+  const menuChip = chips.find((chip) => chip.key === menuFor) ?? null;
+  const menuOpen = menuChip !== null;
+  const closeMenu = useCallback(() => setMenuFor(null), []);
+  const menuRef = useMenuFocus<HTMLDivElement>(menuOpen, closeMenu);
+
+  /**
+   * Outside-pointer dismissal, the same gap and the same answer as
+   * `ProjectSidebarBoards`' row menu: `useMenuFocus`'s focusout covers leaving
+   * by keyboard and pressing another focusable control, but not a press on
+   * ordinary page furniture — the rail's background, a section label — which
+   * moves focus to `<body>` in some engines and nowhere at all in others. This
+   * menu renders IN FLOW inside the scrolling rail, so the portalled header
+   * menus' full-viewport dismiss backdrop is not available to it.
+   *
+   * The chip that opened the menu is exempt for the reason its sibling records:
+   * without it the press closes the menu, React re-renders, and the
+   * `contextmenu` that follows reopens it — a right-click that appears to do
+   * nothing.
+   */
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (menuRef.current?.contains(target)) return;
+      if (menuFor !== null && buttons.current.get(menuFor)?.contains(target))
+        return;
+      setMenuFor(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () =>
+      document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [menuOpen, menuFor, menuRef]);
 
   const currentIndex = chips.findIndex((chip) => chip.current);
   const currentKey = chips[currentIndex]?.key;
@@ -101,37 +166,111 @@ export function ProjectLayoutChips({
 
   // `role="toolbar"` is the composite-widget contract this row implements —
   // one tab stop, arrow-key movement — and no HTML element carries it.
+  //
+  // The menu is the strip's SIBLING, never a descendant (#2158 D5). A
+  // `role="menu"` inside a `role="toolbar"` puts a second focusable structure
+  // inside the composite widget the toolbar promises is one tab stop, and its
+  // rows would land in the strip's own Left/Right roving order. Outside it,
+  // the strip's tab stop and arrow keys are exactly what they were.
   return (
-    <div
-      className="sidebar__layout-chips"
-      role="toolbar"
-      aria-label={`${projectName} layouts`}
-      aria-orientation="horizontal"
-      onKeyDown={onKeyDown}
-    >
-      {chips.map((chip, index) => (
-        <button
-          key={chip.key}
-          type="button"
-          ref={(element) => {
-            if (element) buttons.current.set(chip.key, element);
-            else buttons.current.delete(chip.key);
-          }}
-          className={`sidebar__layout-chip${
-            chip.current ? ' sidebar__layout-chip--current' : ''
-          }`}
-          aria-current={chip.current ? 'page' : undefined}
-          tabIndex={index === rovingIndex ? 0 : -1}
-          onClick={() => {
-            // Recorded against the chip this click is about to make current,
-            // so the activation that follows does not immediately expire it.
-            setMoved({ key: chip.key, forCurrent: chip.key });
-            chip.activate();
+    <>
+      <div
+        className="sidebar__layout-chips"
+        role="toolbar"
+        aria-label={`${projectName} layouts`}
+        aria-orientation="horizontal"
+        onKeyDown={onKeyDown}
+      >
+        {chips.map((chip, index) => (
+          <button
+            key={chip.key}
+            type="button"
+            ref={(element) => {
+              if (element) buttons.current.set(chip.key, element);
+              else buttons.current.delete(chip.key);
+            }}
+            className={`sidebar__layout-chip${
+              chip.current ? ' sidebar__layout-chip--current' : ''
+            }`}
+            aria-current={chip.current ? 'page' : undefined}
+            tabIndex={index === rovingIndex ? 0 : -1}
+            onClick={() => {
+              // Recorded against the chip this click is about to make current,
+              // so the activation that follows does not immediately expire it.
+              setMoved({ key: chip.key, forCurrent: chip.key });
+              chip.activate();
+            }}
+            // #2158: the chip's own "Open in <region>" menu, on the BUTTON
+            // rather than a wrapper (a handler on a static element is what
+            // the a11y ratchet refuses). Anchored below the strip, not at the
+            // pointer, following `RegionChromeBar`'s tab menu: a panel at the
+            // pointer covers the control that opened it.
+            //
+            // Nothing to offer, nothing swallowed — the shape
+            // `RegionChromeBar` uses for a tab that cannot move. The Session
+            // Board chip carries no `dock`, and a folded device offers no
+            // region, so on both the platform keeps its own menu rather than
+            // meeting an empty one.
+            onContextMenu={(event) => {
+              if (!chip.dockSurfaceId || pillRegions.regions.length === 0)
+                return;
+              event.preventDefault();
+              // Moves the roving tab stop onto this chip as it focuses it —
+              // the same pair `focusAt` performs for an arrow key. Focusing
+              // without the stop would leave the strip's `tabIndex={0}` on a
+              // different chip from the one holding focus; not focusing at
+              // all would leave the menu's return focus (`useMenuFocus`
+              // captures whatever is focused when it opens) wherever the
+              // engine happened to put it, and engines disagree about
+              // whether a right-click focuses a button.
+              focusAt(index);
+              setMenuFor(chip.key);
+            }}
+          >
+            {chip.name}
+          </button>
+        ))}
+      </div>
+      {menuChip && (
+        <div
+          ref={menuRef}
+          className="menu-surface sidebar__layout-chip-menu"
+          role="menu"
+          // The subject is the menu's, so its rows read bare — the shape the
+          // Boards row menu beside it uses for Rename and Delete.
+          aria-label={`${menuChip.name} actions`}
+          // Required by `useMenuFocus`: focus lands on the container when the
+          // menu holds nothing focusable. It cannot here (the menu only opens
+          // with at least two regions), but the hook's contract is the
+          // container's, not this caller's.
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            // The shell carries document-level Escape handlers; dismissing a
+            // menu is not also a request to close what is behind it.
+            event.stopPropagation();
+            // `useMenuFocus`'s teardown returns focus to the chip.
+            closeMenu();
           }}
         >
-          {chip.name}
-        </button>
-      ))}
-    </div>
+          {pillRegions.regions.map((region) => (
+            <button
+              key={region}
+              type="button"
+              className="menu-row"
+              role="menuitem"
+              onClick={() => {
+                const surfaceId = menuChip.dockSurfaceId;
+                closeMenu();
+                if (surfaceId) pillRegions.openInRegion(surfaceId, region);
+              }}
+            >
+              Open in {regionLabel(region)}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
