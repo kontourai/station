@@ -704,29 +704,22 @@ test('the region bar’s placement moves both panes to the chosen region', async
       visible: true,
     }),
   );
-  // The grab moved the panes, not the region's openness: the emptied source
-  // stays visible (#2153).
+  // The grab relocated every pane; the emptied source hides (#2153: a move
+  // is not a close, and a placeholder left behind would be a second dock).
   expect(currentModel().regions.bottom).toMatchObject({
     panes: [],
     occupant: null,
-    visible: true,
+    visible: false,
   });
   await waitFor(() =>
     expect(
       document.querySelector<HTMLElement>('.chat-dock')?.dataset.region,
     ).toBe('right'),
   );
-  // Two shells: `right`, which took both panes, and the emptied `bottom`,
-  // which stays open on its placeholder (#2153). `shell()` reads the first
-  // in DOM order, which is `right` (`DOCK_REGION_IDS`: left, right, bottom),
-  // so the tab assertion below is the destination's.
-  expect(document.querySelectorAll('.chat-dock')).toHaveLength(2);
-  const vacated = document.querySelector<HTMLElement>(
-    '.chat-dock[data-region="bottom"]',
-  );
-  if (!vacated) throw new Error('the vacated region must stay on screen');
-  expect(within(vacated).getByText('Nothing in the Bottom region yet'));
-  expect(within(vacated).queryAllByRole('tab')).toHaveLength(0);
+  // One shell: `right`, which took both panes. The emptied `bottom` hid,
+  // so it mounts nothing (an empty region mounts a host only while visible).
+  expect(document.querySelectorAll('.chat-dock')).toHaveLength(1);
+  expect(document.querySelector('.chat-dock[data-region="bottom"]')).toBeNull();
   expect(tabs()).toEqual([
     ['Chat', 'false'],
     ['Activity', 'true'],

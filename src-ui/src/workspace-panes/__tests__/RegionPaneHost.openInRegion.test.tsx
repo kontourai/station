@@ -193,12 +193,12 @@ test('an open from main lands as the selected tab on the right, a second open fo
     ['Chat', 'false'],
     ['Activity', 'true'],
   ]);
-  // Two shells: `right`, holding both panes, and the `bottom` Chat left,
-  // which stays open and empty (#2153). Exactly one of them is Chat's, which
+  // One shell: `right`, holding both panes. The `bottom` Chat left hid with
+  // its last pane (#2153: a move is not a close), and it is Chat's — which
   // is what this open must not duplicate.
-  expect(document.querySelectorAll('.chat-dock')).toHaveLength(2);
+  expect(document.querySelectorAll('.chat-dock')).toHaveLength(1);
   expect(document.querySelectorAll('#chat-dock')).toHaveLength(1);
-  expect(shell('bottom').getAttribute('aria-label')).toBe('Bottom region');
+  expect(document.querySelector('.chat-dock[data-region="bottom"]')).toBeNull();
   expect(screen.queryByTestId('ambient-chat-occupant')).toBeNull();
 
   // Back to Chat's tab, then the same open again: focused, not duplicated.

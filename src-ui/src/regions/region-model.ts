@@ -272,15 +272,15 @@ export function syncRegionArrangementFromDock(
  * and the region made visible; its panes do not change.
  *
  * The region a surface leaves keeps its other panes, selecting the
- * neighbour of the one that left when that was the selected pane; a region
- * left empty KEEPS ITS VISIBILITY (#2153, through `withoutRegionPane`),
- * showing its chrome bar over a placeholder where it was visible, and
- * `main` stays visible showing Home. So a placement made from elsewhere can
- * leave a dock region the user is looking at open and empty rather than
- * closing it under them: that is the same rule the owner set for a closed
- * last tab (#2153), and one rule for "a pane left this region" is what keeps
- * the two paths from disagreeing. Hiding stays the chevron's and the
- * toolbar toggle's act — the two controls named for it.
+ * neighbour of the one that left when that was the selected pane; a dock
+ * region left EMPTY by a placement HIDES (`withoutRegionPane` with
+ * `'hide'`), and `main` stays visible showing Home. This is where a move
+ * differs from a close (#2153): closing a region's last tab leaves the
+ * region open on a placeholder — the owner's rule, so hiding stays the
+ * chevron's and the toggle's act — but a placement is the user putting that
+ * content somewhere else, and a placeholder left behind would be a second
+ * dock nobody asked for (the join journey pins "does not open a second
+ * dock").
  *
  * `main` is always visible; the `visible` argument only applies to a dock
  * region, and only to what the placement itself shows: a placement asked
@@ -323,7 +323,7 @@ export function placeSurface(
     maximized: false,
   });
   if (!previousRegion) return next;
-  return withoutRegionPane(next, previousRegion, surfaceId);
+  return withoutRegionPane(next, previousRegion, surfaceId, 'hide');
 }
 
 /**
@@ -334,19 +334,24 @@ export function placeSurface(
  * leaving is a relocation, and every relocation restores (#1385) — a region
  * left maximized after Chat's close would hide the region the next Chat
  * reveal places into (index.css hides every non-maximized dock shell under
- * a maximized one), with ⌘M no longer registered to undo it. An emptied dock
- * region KEEPS ITS VISIBILITY (#2153, owner decision): closing the last tab
- * leaves the region open and empty, showing its chrome bar over a
- * placeholder, and hiding it stays the chevron's and the toolbar toggle's
- * act. An emptied `main` stays visible as it always has — the outlet treats
- * a null occupant as Home. Shared by `placeSurface` (the region a surface
- * leaves) and `removeRegionPane` (a closed tab), so the two cannot select
+ * a maximized one), with ⌘M no longer registered to undo it. What an EMPTIED
+ * dock region does is the caller's `whenEmpty` (#2153): a CLOSE (`'keep'`,
+ * `removeRegionPane`) leaves it open and empty, showing its chrome bar over
+ * a placeholder — the owner's last-tab rule, so hiding stays the chevron's
+ * and the toggle's act; a MOVE (`'hide'`, `placeSurface`'s vacate and
+ * `moveRegionPanes`) hides it, because a relocation is the user putting
+ * that content somewhere else, and an empty placeholder left behind is a
+ * second dock nobody asked for (the join journey in
+ * `project-architecture.spec.ts` pins "does not open a second dock").
+ * An emptied `main` stays visible as it always has — the outlet treats a
+ * null occupant as Home. Shared by both callers so the two cannot select
  * different neighbours.
  */
 function withoutRegionPane(
   arrangement: RegionArrangement,
   regionId: RegionId,
   surfaceId: string,
+  whenEmpty: 'keep' | 'hide',
 ): RegionArrangement {
   const previous = arrangement[regionId];
   const index = previous.panes.indexOf(surfaceId);
@@ -367,7 +372,8 @@ function withoutRegionPane(
       : {
           panes,
           occupant: null,
-          visible: regionId === 'main' || previous.visible,
+          visible:
+            regionId === 'main' || (whenEmpty === 'keep' && previous.visible),
           maximized: false,
         },
   );
@@ -391,7 +397,7 @@ export function removeRegionPane(
   regionId: RegionId,
   surfaceId: string,
 ): RegionArrangement {
-  return withoutRegionPane(arrangement, regionId, surfaceId);
+  return withoutRegionPane(arrangement, regionId, surfaceId, 'keep');
 }
 
 /**
@@ -438,12 +444,7 @@ export function moveRegionPanes(
           occupant: movedSelected ? staying[0] : source.occupant,
           maximized: false,
         }
-      : {
-          panes: [],
-          occupant: null,
-          visible: source.visible,
-          maximized: false,
-        },
+      : { panes: [], occupant: null, visible: false, maximized: false },
   );
   return next;
 }

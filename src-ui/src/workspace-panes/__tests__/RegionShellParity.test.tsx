@@ -395,32 +395,17 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       expect(
         destinationShell.classList.contains(`chat-dock--${destination}`),
       ).toBe(true);
-      // #2153: the VACATED region stays on screen, empty — the same node,
-      // now the region's bar over its placeholder rather than unmounted. It
-      // is a second shell, so the count is two; before #2153 the vacated
-      // shell disconnected and this read one.
-      expect(shell.isConnected).toBe(true);
-      expect(shell.dataset.region).toBe(placement);
-      expect(shells()).toHaveLength(2);
-      expect(
-        within(shell).getByText(
-          `Nothing in the ${placement[0]?.toUpperCase()}${placement.slice(1)} region yet`,
-        ),
-      ).toBeTruthy();
+      // A MOVE hides the region it vacates (#2153: a move is not a close),
+      // so the vacated shell is gone and there is one shell: the
+      // destination's. A CLOSE would have left it open on a placeholder.
+      expect(shells()).toHaveLength(1);
+      expect(shell.isConnected).toBe(false);
       // The re-propped instance republishes clearance for its new region.
-      // `--dock-slot-size` is the BOTTOM edge's clearance: a move between two
-      // side regions leaves nothing at the bottom and it falls to 0, but a
-      // move OUT of `bottom` leaves that region on screen and empty (#2153),
-      // so the workspace still clears its height.
-      await waitFor(() =>
-        expect(clearance('--dock-slot-size')).toBe(
-          placement === 'bottom' ? '320px' : '0px',
-        ),
-      );
-      // Per-region clearance follows the RENDERED regions, and the vacated
-      // one still renders, so it keeps a clearance of its own.
+      await waitFor(() => expect(clearance('--dock-slot-size')).toBe('0px'));
+      // Per-region clearance follows the shell: the vacated region's
+      // variable is withdrawn, the destination's is written.
       expect(clearance(`--region-${destination}-size`)).toBe('400px');
-      expect(clearance(`--region-${placement}-size`)).not.toBe('');
+      expect(clearance(`--region-${placement}-size`)).toBe('');
     },
   );
 
@@ -916,10 +901,10 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
 
     act(() => currentRegionModel().placeSurface('activity', 'bottom'));
 
-    // Two shells still: `bottom`, which now holds both panes, and the
-    // vacated `right`, which stays open and empty (#2153). Exactly one of
-    // them is Chat's — `#chat-dock` — which is what this repro turns on.
-    await waitFor(() => expect(shells()).toHaveLength(2));
+    // One shell: `bottom`, which now holds both panes; the vacated `right`
+    // hid with its last pane (#2153: a move is not a close). It is Chat's —
+    // `#chat-dock` — which is what this repro turns on.
+    await waitFor(() => expect(shells()).toHaveLength(1));
     expect(document.querySelectorAll('#chat-dock')).toHaveLength(1);
     const activityShell = document.querySelector<HTMLElement>('#chat-dock');
     if (!activityShell) throw new Error('the joined shell never rendered');
@@ -938,11 +923,11 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       visible: true,
       maximized: false,
     });
-    // Vacated and still open (#2153), and — the point of this repro —
+    // Vacated by a move, so hidden (#2153), and — the point of this repro —
     // RESTORED: an empty region is never maximized.
     expect(currentRegionModel().regions.right).toMatchObject({
       panes: [],
-      visible: true,
+      visible: false,
       maximized: false,
     });
     await waitFor(() =>

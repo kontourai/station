@@ -697,13 +697,16 @@ could open and then fill — it was a side effect of a surface being somewhere.
 region visible.** It empties, and stays open showing its chrome bar over a
 placeholder that names it ("Nothing in the Right region yet"). Hiding is the
 chevron's and the toolbar toggle's act — the two controls that are named for
-it — and nothing else writes a region's visibility. `placeSurface` takes the
-same rule for the region a surface LEAVES, because both paths go through
-`withoutRegionPane`: a placement made elsewhere leaves a region the user is
-looking at open and empty rather than closing it under them, and one rule for
-"a pane left this region" is what keeps the close and the move from
-disagreeing. `moveRegionPanes` keeps the source's visibility for the same
-reason.
+it — and nothing else writes a region's visibility. A MOVE is different: a
+region a surface LEAVES by placement (`placeSurface`'s vacate, the ⋮⋮ grab's
+`moveRegionPanes`) hides when it empties, because the user is putting that
+content somewhere else, and an empty placeholder left behind would be a
+second dock nobody asked for — the join journey in
+`project-architecture.spec.ts` pins "does not open a second dock". Both
+paths share `withoutRegionPane`; the caller says which rule applies
+(`whenEmpty: 'keep' | 'hide'`), so the close and the move cannot disagree
+about who selects the neighbour, while disagreeing on purpose about
+visibility.
 
 What this slice does NOT do: the placeholder names the region and stops
 there. The chooser that offers what can go in an empty region is #2154, so
