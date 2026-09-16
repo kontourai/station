@@ -27,6 +27,7 @@ import { readToolbarHeight } from '../lib/toolbarGeometry';
 import {
   chatRegion,
   regionHoldsChat,
+  regionLabel,
   resolveRegionSurface,
 } from '../regions/region-model';
 import type { DockMode } from '../types';
@@ -110,6 +111,11 @@ export interface DockShellChrome {
    * shell never reads a registry to learn which surface it is — and so
    * `ChatDock`, which IS Chat's registered renderer, can be named without
    * importing the region model (`region-surface-boundary.test.ts`).
+   *
+   * An EMPTY region has no surface to be named after and names itself
+   * instead — "Right region", so its chevron reads "Hide Right region"
+   * (#2153). Only under a region model: the model-less ambient dock is
+   * Chat's and keeps "Chat".
    */
   surfaceTitle: string;
   /** Any dock occupant may maximize its region (#928 slice iii). */
@@ -776,7 +782,15 @@ export function useDockShellChrome({
     surfaceTitle:
       regionModel && shellOccupant
         ? (resolveRegionSurface(shellOccupant)?.title ?? shellOccupant)
-        : 'Chat',
+        : // An empty region under a model names ITSELF (#2153): its chevron
+          // reads "Hide Right region", the same name its landmark
+          // (`DockShell`), its placeholder and its toolbar toggle use. Falling
+          // through to 'Chat' here was sound only while an empty region
+          // mounted no shell; now that one does, it would put "Hide Chat" on a
+          // region holding no Chat — #1386's defect, relocated.
+          regionModel && regionId
+          ? `${regionLabel(regionId)} region`
+          : 'Chat',
     canMaximize: shellOccupant !== null,
     regionPanes,
     selectRegionPane,

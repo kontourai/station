@@ -8,6 +8,15 @@ export const DOCK_REGION_IDS = [
   'bottom',
 ] as const satisfies readonly RegionId[];
 export interface RegionState {
+  /**
+   * Whether the region is on screen. INDEPENDENT of whether it holds a pane
+   * since #2153: a dock region may be visible and empty, and the shell mounts
+   * a host for it that renders the region's chrome bar over a placeholder.
+   * Closing a region's last tab therefore empties the region and leaves it
+   * open (owner decision, #2153) — the chevron and the toolbar toggle are
+   * what hide it, and they are the only writers of this that a user drives.
+   * `main` is always visible; its null occupant is Home.
+   */
   visible: boolean;
   size: number;
   /**
@@ -158,18 +167,22 @@ export function foldedDockRegion(
   arrangement: RegionArrangement,
   lastShownRegion: RegionId | null,
 ): DockRegionId | undefined {
-  const visibleOccupied = DOCK_REGION_IDS.filter(
-    (id) => !regionIsEmpty(arrangement[id]) && arrangement[id].visible,
-  );
+  // Every VISIBLE dock region is a fold candidate, empty or not (#2153): a
+  // visible empty region mounts a host of its own (`RegionShells`), so on a
+  // bottom-only device it is as much a thing to fold as an occupied one —
+  // leaving it out would fold to another region while the user is looking at
+  // this one. The occupancy fallbacks below still decide when NOTHING is
+  // visible.
+  const visibleDock = DOCK_REGION_IDS.filter((id) => arrangement[id].visible);
   if (
     lastShownRegion &&
     DOCK_REGION_IDS.includes(lastShownRegion as DockRegionId) &&
-    visibleOccupied.includes(lastShownRegion as DockRegionId)
+    visibleDock.includes(lastShownRegion as DockRegionId)
   ) {
     return lastShownRegion as DockRegionId;
   }
   return (
-    visibleOccupied[0] ??
+    visibleDock[0] ??
     chatRegion(arrangement) ??
     DOCK_REGION_IDS.find((id) => !regionIsEmpty(arrangement[id]))
   );
@@ -260,7 +273,14 @@ export function syncRegionArrangementFromDock(
  *
  * The region a surface leaves keeps its other panes, selecting the
  * neighbour of the one that left when that was the selected pane; a region
- * left empty hides (a dock region) or stays visible showing Home (`main`).
+ * left empty KEEPS ITS VISIBILITY (#2153, through `withoutRegionPane`),
+ * showing its chrome bar over a placeholder where it was visible, and
+ * `main` stays visible showing Home. So a placement made from elsewhere can
+ * leave a dock region the user is looking at open and empty rather than
+ * closing it under them: that is the same rule the owner set for a closed
+ * last tab (#2153), and one rule for "a pane left this region" is what keeps
+ * the two paths from disagreeing. Hiding stays the chevron's and the
+ * toolbar toggle's act — the two controls named for it.
  *
  * `main` is always visible; the `visible` argument only applies to a dock
  * region, and only to what the placement itself shows: a placement asked
@@ -315,10 +335,13 @@ export function placeSurface(
  * left maximized after Chat's close would hide the region the next Chat
  * reveal places into (index.css hides every non-maximized dock shell under
  * a maximized one), with ⌘M no longer registered to undo it. An emptied dock
- * region hides; an emptied `main` stays visible — the outlet treats a null
- * occupant as Home. Shared by `placeSurface` (the region a surface leaves)
- * and `removeRegionPane` (a closed tab), so the two cannot select different
- * neighbours.
+ * region KEEPS ITS VISIBILITY (#2153, owner decision): closing the last tab
+ * leaves the region open and empty, showing its chrome bar over a
+ * placeholder, and hiding it stays the chevron's and the toolbar toggle's
+ * act. An emptied `main` stays visible as it always has — the outlet treats
+ * a null occupant as Home. Shared by `placeSurface` (the region a surface
+ * leaves) and `removeRegionPane` (a closed tab), so the two cannot select
+ * different neighbours.
  */
 function withoutRegionPane(
   arrangement: RegionArrangement,
@@ -344,7 +367,7 @@ function withoutRegionPane(
       : {
           panes,
           occupant: null,
-          visible: regionId === 'main',
+          visible: regionId === 'main' || previous.visible,
           maximized: false,
         },
   );
@@ -379,8 +402,10 @@ export function removeRegionPane(
  * order, and `from`'s selected pane is selected there; `to` is shown, and
  * both ends come out restored, the same rule `placeSurface` applies to a
  * relocation (#1385). A pane that does not declare `to` (`surfaceMayOccupy`)
- * stays behind, so `from` is emptied — and hides — only when everything
- * moved. The same region, or an empty `from`, is returned unchanged.
+ * stays behind, so `from` is emptied only when everything moved — and an
+ * emptied `from` keeps its visibility (#2153), the same rule a closed last
+ * tab takes: the grab moved the panes, not the region's openness.
+ * The same region, or an empty `from`, is returned unchanged.
  */
 export function moveRegionPanes(
   arrangement: RegionArrangement,
@@ -413,7 +438,12 @@ export function moveRegionPanes(
           occupant: movedSelected ? staying[0] : source.occupant,
           maximized: false,
         }
-      : { panes: [], occupant: null, visible: false, maximized: false },
+      : {
+          panes: [],
+          occupant: null,
+          visible: source.visible,
+          maximized: false,
+        },
   );
   return next;
 }

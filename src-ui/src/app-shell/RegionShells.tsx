@@ -155,7 +155,9 @@ function DockRegionHost({ regionId }: { regionId: DockRegionId }) {
 
 /**
  * One `RegionPaneHost` — a `DockShell` around the region's pane-host
- * document — per occupied dock region (#928, #2045). The host is keyed by
+ * document — per dock region that has something to show: one holding a pane,
+ * or (since #2153) a VISIBLE empty one, which renders its bar over a
+ * placeholder and no host document at all (#928, #2045). The host is keyed by
  * its REGION: the document is the region's (`ambient:<region>`), so a
  * surface moving between regions leaves one host and joins another rather
  * than carrying a host with it. A surface occupies at most one region
@@ -183,7 +185,21 @@ export function RegionShells() {
         if (!bottomOnly) return true;
         return id === foldedDockRegion(model.regions, model.lastShownRegion);
       }).map((id) => {
-        const occupant = model.regions[id].occupant;
+        const { occupant, visible } = model.regions[id];
+        // An EMPTY region gets a host while it is VISIBLE (#2153): the
+        // region's chrome bar over a placeholder that names it ("Nothing in
+        // the Right region yet"), so a region the user opened — or emptied
+        // by closing its last tab — is somewhere they can see rather than a
+        // thing that exists only while something occupies it. A hidden empty
+        // region is nothing at all and mounts nothing.
+        //
+        // Visibility gates ONLY the empty case. A region that holds a pane
+        // mounts its host whether or not it is visible, because hidden IS
+        // the collapsed bar for an occupied region (D1: `is-collapsed`,
+        // `useDockShellChrome`'s `isDockOpen` reads this region's `visible`)
+        // — unmounting there would take the bar the chevron collapses to off
+        // screen with it.
+        //
         // A resolvable occupant gets a host; an id neither the registry nor
         // an instance FAMILY'S SHAPE knows (a fixture, a surface a later
         // slice places at runtime, an id a rolled-back build minted) mounts
@@ -195,7 +211,11 @@ export function RegionShells() {
         // `region-instance-panes.test.ts` pins that the resolver and the
         // occurrence minter admit exactly the same instance ids, which is
         // what makes "resolvable" sufficient here.
-        return occupant && resolveRegionSurface(occupant) ? (
+        return (
+          occupant === null
+            ? visible
+            : Boolean(resolveRegionSurface(occupant))
+        ) ? (
           <DockRegionHost key={id} regionId={id} />
         ) : null;
       })}
