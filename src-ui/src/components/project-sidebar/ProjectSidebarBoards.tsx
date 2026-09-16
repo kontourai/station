@@ -594,16 +594,21 @@ export function ProjectSidebarBoards({
                   // `noStaticElementInteractions` rule refuses, and the
                   // button is the control the gesture is aimed at anyway.
                   //
-                  // Gated on the same condition as the `⋯` trigger below.
-                  // A collapsed rail renders no trigger and hides the menu
+                  // Collapsed is refused, which is the `⋯` trigger's own
+                  // gate minus the half that cannot apply here (this button
+                  // does not exist while the row is renaming — the input
+                  // replaces it). A collapsed rail renders no trigger and
+                  // hides the menu
                   // (`.sidebar--collapsed .sidebar__board-menu`), so opening
                   // one here would set a mode whose only exits are inside a
                   // surface nobody can see — the unreachable state #2083
                   // closed for the collapse transition.
                   //
-                  // It does NOT navigate: `preventDefault` stops the
-                  // platform menu, and a context menu is not a click, so the
-                  // handler above never runs for this gesture.
+                  // It does NOT navigate, and `preventDefault` is not what
+                  // makes that true: a context menu is not a click, so the
+                  // handler above never runs for this gesture. What
+                  // `preventDefault` stops is the PLATFORM menu opening over
+                  // this one.
                   onContextMenu={(event) => {
                     if (collapsed) return;
                     event.preventDefault();

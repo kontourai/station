@@ -41,11 +41,6 @@ export interface ProjectLayoutChip {
    * be named by the grammar. Either way the chip offers no placement rows,
    * and its `contextmenu` is left to the platform rather than swallowed by a
    * menu with nothing in it.
-   *
-   * NO `aria-haspopup` on the chip, following `RegionChromeBar`'s tab: the
-   * menu is reachable ONLY by the context-menu gesture, and a chip announcing
-   * that it has a popup would be describing something Enter and Space do not
-   * do — they navigate, which is the chip's primary action and stays so.
    */
   dockSurfaceId?: string | null;
 }
@@ -186,9 +181,15 @@ export function ProjectLayoutChips({
             //
             // Nothing to offer, nothing swallowed — the shape
             // `RegionChromeBar` uses for a tab that cannot move. The Session
-            // Board chip carries no `dock`, and a folded device offers no
-            // region, so on both the platform keeps its own menu rather than
-            // meeting an empty one.
+            // Board chip carries no `dockSurfaceId`, and a folded device
+            // offers no region, so on both the platform keeps its own menu
+            // rather than meeting an empty one.
+            //
+            // NO `aria-haspopup` here either, following that same tab: the
+            // menu is reachable ONLY by the context-menu gesture, and a chip
+            // announcing a popup would be describing something Enter and
+            // Space do not do — they navigate, which is the chip's primary
+            // action and stays so.
             onContextMenu={(event) => {
               if (!chip.dockSurfaceId || pillRegions.regions.length === 0)
                 return;
