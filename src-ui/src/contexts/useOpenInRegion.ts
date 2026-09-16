@@ -2,6 +2,10 @@ import type {
   WorkspaceFilePreviewLineRange,
   WorkspaceFilePreviewPaneState,
 } from '@kontourai/station-contracts/workspace-file-preview';
+import {
+  createWorkspaceLayoutPaneInstance,
+  type WorkspaceLayoutPaneKey,
+} from '@kontourai/station-contracts/workspace-layout-pane';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
   createWorkspacePullRequestPaneInstance,
@@ -122,6 +126,24 @@ export function openPullRequestInRegion(
 ): OpenInRegionOutcome | { ok: false; reason: OpenPaneRefusal } {
   if (projectId === null) return { ok: false, reason: 'unsupplied' };
   const instance = createWorkspacePullRequestPaneInstance(key, projectId);
+  if (!instance) return { ok: false, reason: 'no-surface' };
+  return openInRegion(model, instance, options);
+}
+
+/**
+ * Open one Board or project Layout as a dock pane (#2157). The id the
+ * occurrence carries IS the Layout's identity (its server id, plus its
+ * project's for a project Layout), so a second open of the same one is the
+ * model's own reveal. No Project binding to report as `unsupplied`: a Board
+ * has none and a project Layout carries its own in the key, so the only
+ * refusal beyond the model's is an id the grammar cannot mint (`no-surface`).
+ */
+export function openLayoutInRegion(
+  model: OpenSurfaceInRegionModel,
+  key: WorkspaceLayoutPaneKey,
+  options?: OpenInRegionOptions,
+): OpenInRegionOutcome {
+  const instance = createWorkspaceLayoutPaneInstance(key);
   if (!instance) return { ok: false, reason: 'no-surface' };
   return openInRegion(model, instance, options);
 }

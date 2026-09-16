@@ -21,6 +21,7 @@ import {
   WORKSPACE_PLAN_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-file-preview';
+import { WORKSPACE_LAYOUT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-layout-pane';
 import {
   parseWorkspacePaneDescriptor,
   WORKSPACE_PANE_CONTRACT_VERSION,
@@ -254,9 +255,16 @@ test('an instance-keyed pane is not offered by the "+", even declaring docked', 
       availability: AVAILABLE,
       clientRendererPresence: 'present',
     },
+    // #2157: a Board or Layout is keyed by a layout id; no blank occurrence.
+    {
+      descriptor: WORKSPACE_LAYOUT_PANE_DESCRIPTOR,
+      availability: AVAILABLE,
+      clientRendererPresence: 'present',
+    },
   ]).map((entry) => entry.descriptor.id);
   expect(listed).not.toContain(WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR.id);
   expect(listed).not.toContain(WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR.id);
+  expect(listed).not.toContain(WORKSPACE_LAYOUT_PANE_DESCRIPTOR.id);
   // The filter has power only if it kept the panes that ARE offerable.
   expect(listed).toEqual([
     WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR.id,

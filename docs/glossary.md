@@ -243,14 +243,19 @@ retired names.
   split/tab tree inside a view (that is a pane host). Lowercase "layout" may
   still describe spatial arrangement in developer prose, and internal widget
   names such as `SplitPaneLayout` describe implementation, not another
-  product object.
+  product object. A project Layout may also be held by a dock region as a
+  pane (`layout:<projectId>/<layoutId>`, #2157;
+  [design/placement.md](design/placement.md)) — Coding and Chat kinds render
+  in the main region only.
 - **Board** — a Layout owned by a principal: the viewer's own, project-less
   page, listed in the left panel's `Boards` section between Activity and
   Projects and rendered by the same layout renderer a project Layout is
   (#2062; [design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
   decision D1). A Board can be **promoted** — MOVED into a project, where it
   becomes that project's Layout under the same id; the personal record is gone
-  afterwards, so promote is never a copy.
+  afterwards, so promote is never a copy. A Board may also be held by a dock
+  region as a pane beside Chat (`board:<layoutId>`, #2157;
+  [design/placement.md](design/placement.md)).
 
   The word is overloaded in this codebase and the overload is deliberate to
   name, not to resolve: the **Session Board** (`BUILTIN_SESSION_BOARD_LAYOUT`,

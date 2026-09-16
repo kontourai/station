@@ -26,6 +26,7 @@ import {
   WORKSPACE_FILE_PREVIEW_PANE_RENDERER_NAME,
 } from '@kontourai/station-contracts/workspace-file-preview';
 import { WORKSPACE_HOME_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-home-pane';
+import { WORKSPACE_LAYOUT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-layout-pane';
 import type {
   WorkspacePaneDescriptor,
   WorkspacePaneInstance,
@@ -315,6 +316,17 @@ function isCanonicalBuiltinPullRequestDescriptor(
   );
 }
 
+/**
+ * The Layout pane's declaration (#2157), compared field by field like every
+ * other built-in — a plugin cannot mount an arbitrary Layout through the
+ * built-in renderer by reusing its renderer name.
+ */
+function isCanonicalBuiltinLayoutPaneDescriptor(
+  descriptor: WorkspacePaneDescriptor,
+): boolean {
+  return sameBuiltinDescriptor(descriptor, WORKSPACE_LAYOUT_PANE_DESCRIPTOR);
+}
+
 export function isCanonicalBuiltinSpatialBoardDescriptor(
   descriptor: WorkspacePaneDescriptor,
 ): boolean {
@@ -482,6 +494,11 @@ export function isCanonicalBuiltinWorkspacePaneDescriptor(
   )
     return false;
   if (
+    name === 'workspace-layout' &&
+    !isCanonicalBuiltinLayoutPaneDescriptor(descriptor)
+  )
+    return false;
+  if (
     name === 'workspace-coding-file-browser' &&
     !isCanonicalBuiltinCodingFileBrowserDescriptor(descriptor)
   )
@@ -569,6 +586,7 @@ const BUILTIN_WORKSPACE_PANE_DESCRIPTORS: readonly WorkspacePaneDescriptor[] = [
   WORKSPACE_DEVICE_PANE_DESCRIPTOR,
   WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR,
   WORKSPACE_HOME_PANE_DESCRIPTOR,
+  WORKSPACE_LAYOUT_PANE_DESCRIPTOR,
   WORKSPACE_PLAN_PANE_DESCRIPTOR,
   WORKSPACE_AGENTS_PANE_DESCRIPTOR,
   WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR,

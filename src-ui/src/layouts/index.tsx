@@ -22,6 +22,16 @@ export interface AgentLayoutProps {
   agent?: AgentSummary;
   layout?: LayoutDefinition;
   activeTab?: LayoutTab;
+  /**
+   * The Project a HOST bound this layout to, independently of the route
+   * (#2157: a project Layout docked beside Chat while the route shows another
+   * project). Plugin tabs already read the bound project through
+   * `SDKAdapter`'s rewritten navigation; this exists for the built-in tabs
+   * that read the UI's own `NavigationContext` instead — `flow-run-console`
+   * is the one that does. Absent for the route-bound hosts (`LayoutView`,
+   * `PersonalBoardView`), whose tabs keep reading the route.
+   */
+  boundProjectSlug?: string;
   onLaunchPrompt?: (prompt: AgentQuickPrompt) => void;
   onLaunchWorkflow?: (workflowId: string) => void;
   onShowChat?: () => void;
@@ -311,7 +321,11 @@ const KitStandardViewLayout: AgentLayoutComponent = ({ layout, activeTab }) => {
 builtinRegistry.default = DefaultLayout;
 // Project-wide Flow run console: include in a layout via
 // { kind: 'builtin-component', name: 'flow-run-console' }.
-builtinRegistry['flow-run-console'] = () => <FlowRunConsole />;
+// The bound project where a host supplies one (#2157); the route's otherwise,
+// which is `FlowRunConsole`'s own fallback for an absent prop.
+builtinRegistry['flow-run-console'] = ({ boundProjectSlug }) => (
+  <FlowRunConsole projectSlug={boundProjectSlug} />
+);
 builtinRegistry['kit-standard-view'] = KitStandardViewLayout;
 
 /**
