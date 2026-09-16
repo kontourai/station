@@ -62,19 +62,60 @@ import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailab
  * readily as its own. A Board has no project and the adapter is given none —
  * the same call `PersonalBoardView` makes.
  *
- * ## What a docked Layout deliberately does not carry
+ * ## What a docked Layout deliberately does not carry, and now says so
  *
  * Neither family gets `LayoutView`'s agent affordances: no `annotateAgentRef`
  * (`agentAvailableInProject`), no `onLaunchPrompt`, no `onShowChat`. For a
  * Board the reason is `PersonalBoardView`'s — there is no project to filter
- * against. For a project Layout there IS one, and the gap is deliberate for
- * this slice: launching a prompt binds a chat session to the route's
- * project through `LayoutView`'s own handlers and action bar, and a docked
- * tab beside Chat has no host chrome to launch from. A docked Layout reads
- * and navigates; it does not launch. The SDK header still renders the
- * layout's prompt buttons with a no-op launcher, so a docked Layout that
- * carries prompts shows inert controls today; wiring the launch to the
- * pane's bound project, or hiding the bar, is #2171.
+ * against. For a project Layout the launch is withheld as a SCOPE choice
+ * (#2171), and the record (`docs/design/placement.md`, §#2157) says which
+ * half of it is forced and which is not: a PLUGIN layout's admitted launch
+ * is `focusWorkspacePaneHostAction`, whose inputs are the route host's
+ * `hostActions` query and `hostAuthority` (the live contribution to admit
+ * against), which this pane does not hold — the control it focuses is
+ * `WorkspacePaneHostActions`' (mounted by `WorkspacePaneHostActionsFrame`
+ * for the CURRENT project view, so it is on the page only while Main shows
+ * that project) — so it cannot be wired here; a NON-plugin project layout
+ * could have been wired to its bound
+ * project through `resolveLayoutLaunchAgent`, and that stays open. What was
+ * not available to copy is `LayoutView`'s own tail — it ends
+ * `setDockState(true); setActiveChat(null)`, which reveals Chat and selects
+ * nothing — but the lifecycle hook's `createChatSession → setActiveChat(id)
+ * → setDockState(true)` does select the new session, so a wired launcher had
+ * a working pattern; #2171's review made that distinction, and #2194
+ * tracks `LayoutView`'s tail.
+ *
+ * So a docked Layout reads and navigates; it does not launch — and the
+ * header is told, through `canLaunchPrompts={false}`, rather than handed a
+ * no-op. Before #2171 the SDK header rendered the layout's prompt buttons
+ * anyway, so a docked Layout carrying prompts showed controls that did
+ * nothing. An `external` or `internal` action of a NON-plugin layout still
+ * renders: it opens a link or navigates without a launcher, and its author
+ * is the layout's own owner.
+ *
+ * ## A project plugin record's stored actions are dropped, not rendered
+ *
+ * `LayoutView` never renders a plugin layout's STORED actions as themselves:
+ * its shape strips the stored globals (`hostOwnsGlobalActions: true`) and
+ * rewrites every tab action to a `prompt` (`reviewPluginAction`) so that it
+ * passes through `handleLaunchPrompt`'s `packageId` admission, which honours
+ * only what the LIVE contribution still carries; and the host action bar
+ * renders no `external`/`internal` kind at all. A stored URL or route from a
+ * withdrawn, replaced or never-admitted plugin is therefore never a live link
+ * in the route host. This pane has no admission path, so for a PROJECT
+ * record that declares `config.plugin` it strips the stored globals the same
+ * way and empties each tab's `actions` and `skills` — a link it cannot admit
+ * is not rendered rather than rendered as a link (#2171 review H1). A
+ * project layout with no plugin keeps its own actions: nothing admits them
+ * in the route host either, because their author is the layout's owner.
+ *
+ * A Board is NOT stripped, plugin word or not. A Board's `config.plugin` is
+ * the caller's own input into their own record (`personal-layouts.ts`), not
+ * a contribution a project host admits, and `PersonalBoardView` renders it
+ * with `hostOwnsGlobalActions: false` and no strip. The dock mirrors the
+ * route host of each family; a Board that showed its links at `/boards/…`
+ * and none in a dock would be the two-hosts-one-record divergence this
+ * pane exists not to introduce (#2171 delta review M2).
  *
  * ## Which kinds render, and which are refused
  *
@@ -221,11 +262,29 @@ export function LayoutWorkspacePane({
       );
   }
 
-  const layout = layoutWorkspaceShape(record.data, {
+  // A PROJECT record declaring a plugin: see "A project plugin record's
+  // stored actions are dropped" in the docblock. The same fact `LayoutView`
+  // reads (`typeof config.plugin === 'string'`), read the same way — and
+  // only for the family whose route host reads it; a Board's plugin word is
+  // its owner's own record and `PersonalBoardView` strips nothing.
+  const pluginProjectRecord =
+    project !== null && typeof record.data.config?.plugin === 'string';
+  const shape = layoutWorkspaceShape(record.data, {
     annotateAgentRef: (item) => item,
     reviewPluginAction: (item) => item,
-    hostOwnsGlobalActions: false,
+    hostOwnsGlobalActions: pluginProjectRecord,
   });
+  const layout =
+    shape && pluginProjectRecord
+      ? {
+          ...shape,
+          tabs: shape.tabs.map((tab: { id: string }) => ({
+            ...tab,
+            actions: [],
+            skills: [],
+          })),
+        }
+      : shape;
   if (!layout) return null;
   const activeTab =
     layout.tabs.find((tab: { id: string }) => tab.id === activeTabId) ??
@@ -238,6 +297,7 @@ export function LayoutWorkspacePane({
       <LayoutRenderer
         layout={layout}
         {...(project ? { boundProjectSlug: projectSlug } : {})}
+        canLaunchPrompts={false}
         activeTab={activeTab}
         activeTabId={activeTab?.id}
         onTabChange={setActiveTabId}

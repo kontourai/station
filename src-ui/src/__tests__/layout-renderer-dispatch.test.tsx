@@ -30,16 +30,22 @@ const { mcpToolUIFrameMock } = vi.hoisted(() => ({
 // The header renders what it is GIVEN, so the double renders the tab quick
 // actions it receives: that is the value the renderer has to hand across, and
 // the SDK's own LayoutHeader suite owns how the dropdown looks.
+const { headerProps } = vi.hoisted(() => ({
+  headerProps: [] as Array<{ canLaunchPrompts?: boolean }>,
+}));
 vi.mock('@kontourai/station-sdk', () => ({
   FullScreenError: ({ title }: { title: string }) => <div>{title}</div>,
   LayoutHeader: ({
     title,
     tabPrompts,
+    canLaunchPrompts,
   }: {
     title: string;
     tabPrompts?: Array<{ id?: string; label: string; data?: string }>;
+    canLaunchPrompts?: boolean;
   }) => (
-    <header>
+    <header data-can-launch={String(canLaunchPrompts)}>
+      {headerProps.push({ canLaunchPrompts }) && null}
       {title}
       {tabPrompts?.map((entry) => (
         <button type="button" key={entry.id ?? entry.data ?? entry.label}>
@@ -596,5 +602,62 @@ describe('a layout tab the server would not describe', () => {
 
     expect(screen.getByText('Plugin layout rendered')).toBeTruthy();
     expect(screen.queryByText('This tab is not available.')).toBeNull();
+  });
+});
+
+/**
+ * #2171: the host's `canLaunchPrompts` is ONE declaration the header and the
+ * tabs both obey. The header is told (so it renders no launcher-dependent
+ * control), and a tab is handed no `onLaunchPrompt` even when the host also
+ * passed one — otherwise a plugin tab would launch through a handler the
+ * header was told does not exist.
+ */
+describe('LayoutRenderer canLaunchPrompts (#2171)', () => {
+  const seen: Array<{ onLaunchPrompt: unknown }> = [];
+  function ProbeTab(props: { onLaunchPrompt?: unknown }) {
+    seen.push({ onLaunchPrompt: props.onLaunchPrompt });
+    return <div>Probe tab rendered</div>;
+  }
+  const layout: LayoutDefinition = {
+    name: 'Prompted',
+    slug: 'prompted',
+    tabs: [{ id: 'main', label: 'Main', component: 'probe' }],
+  };
+
+  beforeEach(() => {
+    seen.length = 0;
+    headerProps.length = 0;
+    getLayoutMock.mockImplementation((name: string) =>
+      name === 'probe' ? ProbeTab : undefined,
+    );
+  });
+
+  test('absent: the header is not told and the tab receives the host launcher', () => {
+    const launch = vi.fn();
+    render(
+      <LayoutRenderer
+        layout={layout}
+        activeTab={layout.tabs[0]}
+        activeTabId="main"
+        onLaunchPrompt={launch}
+      />,
+    );
+    expect(headerProps).toEqual([{ canLaunchPrompts: undefined }]);
+    expect(seen).toEqual([{ onLaunchPrompt: launch }]);
+  });
+
+  test('false: the header is told and the tab receives no launcher, even when one was passed', () => {
+    const launch = vi.fn();
+    render(
+      <LayoutRenderer
+        layout={layout}
+        activeTab={layout.tabs[0]}
+        activeTabId="main"
+        canLaunchPrompts={false}
+        onLaunchPrompt={launch}
+      />,
+    );
+    expect(headerProps).toEqual([{ canLaunchPrompts: false }]);
+    expect(seen).toEqual([{ onLaunchPrompt: undefined }]);
   });
 });

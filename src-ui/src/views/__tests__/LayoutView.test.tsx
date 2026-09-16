@@ -18,6 +18,7 @@ const legacyCreate = vi.hoisted(() => vi.fn(() => 'legacy-session'));
 const legacySend = vi.hoisted(() => vi.fn(async () => {}));
 const refetchLayoutMock = vi.hoisted(() => vi.fn());
 const navigateMock = vi.hoisted(() => vi.fn());
+const setDockStateMock = vi.hoisted(() => vi.fn());
 const hostQuery = vi.hoisted(() => ({
   isSuccess: true,
   data: {
@@ -83,7 +84,7 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     activeTab: null,
-    setDockState: vi.fn(),
+    setDockState: setDockStateMock,
     setLayoutTab: vi.fn(),
     setActiveChat: vi.fn(),
     navigate: navigateMock,
@@ -102,17 +103,21 @@ vi.mock('../../hooks/useSlashCommandHandler', () => ({
 const renderedLayout = vi.hoisted(() => ({
   value: undefined as any,
   launch: undefined as any,
+  canLaunchPrompts: 'unset' as unknown,
 }));
 vi.mock('../../layouts', () => ({
   LayoutRenderer: ({
     layout,
     onLaunchPrompt,
+    canLaunchPrompts,
   }: {
     layout: unknown;
     onLaunchPrompt: unknown;
+    canLaunchPrompts?: boolean;
   }) => {
     renderedLayout.value = layout;
     renderedLayout.launch = onLaunchPrompt;
+    renderedLayout.canLaunchPrompts = canLaunchPrompts;
     return <div>Layout rendered</div>;
   },
 }));
@@ -129,7 +134,9 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     legacyCreate.mockClear();
     legacySend.mockClear();
     navigateMock.mockReset();
+    setDockStateMock.mockReset();
     refetchLayoutMock.mockReset();
+    renderedLayout.canLaunchPrompts = 'unset';
     layoutQueryState.data = undefined;
     layoutQueryState.isLoading = false;
     layoutQueryState.error = undefined;
@@ -303,6 +310,11 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
       undefined,
       'my exact body',
     );
+    // #2171 A3: the route-bound host's launch path is untouched — it opens
+    // the dock, and it never declares `canLaunchPrompts` (the docked host's
+    // `false` would strip the very buttons this launch is reached from).
+    expect(setDockStateMock).toHaveBeenCalledWith(true);
+    expect(renderedLayout.canLaunchPrompts).toBeUndefined();
   });
 
   test('unknown host capability does not briefly activate a persisted plugin global action', () => {

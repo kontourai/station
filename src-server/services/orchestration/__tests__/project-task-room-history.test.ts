@@ -4,9 +4,11 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { channelProposalDigestInput } from '@kontourai/station-contracts/channel-log';
-import type {
-  ProjectTaskRoomGrant,
-  ProjectTaskRoomGrantKind,
+import {
+  isProjectTaskRoomAppendReceipt,
+  type ProjectTaskRoomAppendReceipt,
+  type ProjectTaskRoomGrant,
+  type ProjectTaskRoomGrantKind,
 } from '@kontourai/station-contracts/project-task-room';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -14,9 +16,13 @@ import {
   executeOwnedProcess,
 } from '../../../../scripts/lib/owned-process.mjs';
 import { EventStore } from '../event-store.js';
-import { readPlannedHomeAdmissionJournal } from '../planned-home-admission-schema.js';
+import {
+  plannedHomeAdmissionIdentifier,
+  readPlannedHomeAdmissionJournal,
+} from '../planned-home-admission-schema.js';
 import { createPlannedHomeAdmissionStore } from '../planned-home-admission-store.js';
 import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
+import { projectTaskRoomReceiptLookupIdentifier } from '../project-task-room-append-receipt.js';
 import {
   createProjectTaskRoomHistoryForTest,
   PROJECT_TASK_ROOM_LIMITS,
@@ -633,6 +639,131 @@ describe('ProjectTaskRoomHistory v2', () => {
       await room.close();
     });
 
+    it.each([
+      ['newline', 'line\nbreak'],
+      ['tab', 'tab\there'],
+      ['nul', 'nul\u0000byte'],
+      ['delete', 'del\u007fchar'],
+    ])(
+      'refuses a %s in a proposal id whether or not a port is attached',
+      async (_label, proposalId) => {
+        // The controller's admission validator refuses these code points, so
+        // accepting them locally would make the legal alphabet depend on
+        // whether a room happens to be controlled.
+        expect(plannedHomeAdmissionIdentifier(proposalId)).toBe(false);
+        const local = history();
+        await local.open({ grant: grant('discover') });
+        await expect(local.append(message(proposalId))).resolves.toEqual({
+          kind: 'rejected',
+          reason: 'malformed',
+        });
+        await local.close();
+
+        let beginCalls = 0;
+        const controlled = history(databasePath(), {
+          roomWriteAdmissions: {
+            async begin() {
+              beginCalls += 1;
+              return { kind: 'admitted' };
+            },
+            finish: vi.fn(async () => ({ kind: 'finished' as const })),
+          },
+        });
+        await controlled.open({ grant: grant('discover') });
+        await expect(controlled.append(message(proposalId))).resolves.toEqual({
+          kind: 'rejected',
+          reason: 'malformed',
+        });
+        expect(beginCalls).toBe(0);
+        await controlled.close();
+      },
+    );
+
+    it('accepts no room identifier the controller validator would refuse', async () => {
+      // Containment, derived rather than asserted in prose: every string this
+      // room accepts as a proposal id must also pass every reader's predicate,
+      // or an append that is legal on an uncontrolled room becomes denied the
+      // moment a port is attached, or commits durably and then replays as
+      // `unavailable`. Four predicates are in play and the writer's `id()`
+      // must be the narrowest:
+      //   - plannedHomeAdmissionIdentifier (the controller's admission port),
+      //   - projectTaskRoomReceiptLookupIdentifier (EventStore's receipt read),
+      //   - the contract's `roomId`, which is private; its exported surface is
+      //     isProjectTaskRoomAppendReceipt, run here over the receipt the
+      //     append actually committed, so `roomId(proposalId)` is evaluated on
+      //     the candidate itself.
+      // The acceptance side is read from a real append, not from a copy of
+      // the predicate, so the predicates cannot drift apart unnoticed.
+      const candidates = [
+        'plain',
+        'task-a',
+        'a'.repeat(256),
+        'a'.repeat(257),
+        '',
+        'line\nbreak',
+        'tab\there',
+        'nul\u0000byte',
+        'del\u007fchar',
+        'esc\u001bseq',
+        'unit\u001fsep',
+        'space here',
+        'emoji-\u{1f600}',
+        'accent-é',
+        'lone-surrogate-\ud800',
+        `${'x'.repeat(200)}${'\u{1f600}'.repeat(20)}`,
+      ];
+      const room = history();
+      await room.open({ grant: grant('discover') });
+      const accepted: {
+        identifier: string;
+        receipt: ProjectTaskRoomAppendReceipt;
+      }[] = [];
+      for (const candidate of candidates) {
+        const outcome = await room.append(message(candidate, 'body'));
+        if (outcome.kind === 'rejected' && outcome.reason === 'malformed')
+          continue;
+        if (outcome.kind !== 'committed')
+          throw new Error(
+            `unexpected ${outcome.kind} for ${JSON.stringify(candidate)}`,
+          );
+        accepted.push({ identifier: candidate, receipt: outcome.receipt });
+      }
+      await room.close();
+      // The containment itself, asserted before any spot check so that it is
+      // what fails when any reader's predicate drifts narrower than id().
+      for (const { identifier, receipt } of accepted)
+        expect([
+          identifier,
+          plannedHomeAdmissionIdentifier(identifier),
+          projectTaskRoomReceiptLookupIdentifier(identifier),
+          isProjectTaskRoomAppendReceipt(receipt),
+        ]).toEqual([identifier, true, true, true]);
+      // Containment would also hold if the room accepted nothing at all.
+      const identifiers = accepted.map((entry) => entry.identifier);
+      expect(identifiers).toContain('plain');
+      expect(identifiers).toContain('emoji-\u{1f600}');
+      expect(identifiers).not.toContain('line\nbreak');
+      expect(identifiers).not.toContain('tab\there');
+    });
+
+    it('refuses a control-character proposal id at the front door', async () => {
+      // The review's reproduction: while the writer still admitted control
+      // characters, `"tab\tproposal"` appended as `committed` and every
+      // durable reader then answered `unavailable`, so a real write became
+      // unrecoverable. It must fail closed at id(), before any durable write.
+      const room = history();
+      await room.open({ grant: grant('discover') });
+      expect(await room.append(message('tab\tproposal', 'body'))).toEqual({
+        kind: 'rejected',
+        reason: 'malformed',
+      });
+      expect(await room.append(message('del\u007fproposal', 'body'))).toEqual({
+        kind: 'rejected',
+        reason: 'malformed',
+      });
+      await room.close();
+    });
+
     it('asks for no admission when the transaction cannot reach its first write', async () => {
       const authority = new DatabaseSync(databasePath());
       authority.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL');
@@ -740,6 +871,14 @@ describe('ProjectTaskRoomHistory v2', () => {
       });
       await new Promise<void>((resolve) => setTimeout(resolve, 200));
       const database = new DatabaseSync(path);
+      // The room is still open, so its worker may hold the file when this
+      // second connection reads. The 200ms above is a settle, not a lock
+      // release, and on a slower runner SQLite answers `database is locked`
+      // immediately rather than waiting — which surfaced as this test failing
+      // on CI while passing locally. Wait for the lock instead of racing it:
+      // the assertion is about what the worker recorded, not about who holds
+      // the file at this instant.
+      database.exec('PRAGMA busy_timeout = 5000');
       expect(
         database
           .prepare(

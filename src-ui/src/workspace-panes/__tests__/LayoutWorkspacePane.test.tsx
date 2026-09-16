@@ -102,6 +102,8 @@ vi.mock('../../core/SDKAdapter', () => ({
 const renderer = vi.hoisted(() => ({
   layouts: [] as { slug: string }[],
   boundProjectSlug: [] as unknown[],
+  canLaunchPrompts: [] as unknown[],
+  onLaunchPrompt: [] as unknown[],
 }));
 vi.mock('../../layouts', () => ({
   LayoutRenderer: ({
@@ -109,14 +111,20 @@ vi.mock('../../layouts', () => ({
     activeTabId,
     onTabChange,
     boundProjectSlug,
+    canLaunchPrompts,
+    onLaunchPrompt,
   }: {
     layout: { slug: string; name: string; tabs: { id: string }[] };
     activeTabId?: string;
     onTabChange?: (id: string) => void;
     boundProjectSlug?: string;
+    canLaunchPrompts?: boolean;
+    onLaunchPrompt?: unknown;
   }) => {
     renderer.layouts.push(layout);
     renderer.boundProjectSlug.push(boundProjectSlug);
+    renderer.canLaunchPrompts.push(canLaunchPrompts);
+    renderer.onLaunchPrompt.push(onLaunchPrompt);
     return (
       <div data-testid="layout-renderer" data-active-tab={activeTabId}>
         {layout.name}
@@ -137,6 +145,10 @@ vi.mock('../../layouts', () => ({
 const navigation = vi.hoisted(() => ({
   navigate: vi.fn(),
   setLayout: vi.fn(),
+  // The ROUTE's project, which is not the docked Layout's (#2171 A1): the
+  // pane never reads it, and these tests hold it at a different project so
+  // that a binding to the route would show up as 'beta' in the probes.
+  activeProject: 'beta',
 }));
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigation: () => navigation,
@@ -205,6 +217,8 @@ beforeEach(() => {
   adapter.boundProjectSlug = [];
   renderer.layouts = [];
   renderer.boundProjectSlug = [];
+  renderer.canLaunchPrompts = [];
+  renderer.onLaunchPrompt = [];
   navigation.navigate.mockReset();
   navigation.setLayout.mockReset();
   window.localStorage.clear();
@@ -440,4 +454,177 @@ test('an impostor occurrence under the Layout descriptor renders the invalid-pan
   render(<LayoutWorkspacePane instance={impostor} />);
   expect(screen.getByText('This pane can’t open here')).toBeTruthy();
   expect(screen.queryByTestId('layout-renderer')).toBeNull();
+});
+
+/**
+ * #2171: a docked Layout carrying prompts declares to the renderer that it
+ * cannot launch them, and hands it no launcher. The choice was to withhold
+ * the control rather than wire a launch to the bound project (the design
+ * record says why); what these pin is that the declaration is made, for
+ * both families, and that nothing here ever binds the route's project.
+ */
+describe('a docked Layout carrying prompts (#2171)', () => {
+  const prompts = {
+    actions: [{ type: 'prompt', label: 'Summarise', data: 'summarise' }],
+    globalSkills: [{ id: 'g', label: 'Global', prompt: 'g' }],
+  };
+  // Tab-level entries, including a link: the non-plugin half of the
+  // partition has to be pinned HERE, at the tab, or a strip that empties
+  // every record's tabs passes (delta review M1).
+  const tabEntries = {
+    actions: [
+      { type: 'external', label: 'Owner site', data: 'https://owner/' },
+      { type: 'prompt', label: 'Tab prompt', data: 'tab' },
+    ],
+    skills: [{ id: 't', label: 'Tab skill', prompt: 't' }],
+  };
+
+  /**
+   * A1. The route is at project `beta` (the navigation mock) and the layout
+   * belongs to `alpha` (through its id). The renderer gets `alpha` as the
+   * binding and `false` as the launch declaration, with no handler. Passing
+   * a launcher, or omitting `canLaunchPrompts`, reds this.
+   */
+  test('a project Layout with prompts: bound to its OWN project, declares no launch, hands no launcher', () => {
+    sdk.layoutRecords['alpha/notes'] = {
+      ...(sdk.layoutRecords['alpha/notes'] as object),
+      config: { tabs: [{ id: 'n', label: 'N', ...tabEntries }], ...prompts },
+    };
+    render(
+      <LayoutWorkspacePane
+        instance={instanceFor({
+          kind: 'project',
+          projectId: PROJECT,
+          layoutId: LAYOUT,
+        })}
+      />,
+    );
+    // The shape still CARRIES the prompts, at both levels — the host
+    // withholds the control, it does not strip the declaration.
+    expect(renderer.layouts[0]).toMatchObject({
+      actions: prompts.actions,
+      globalSkills: prompts.globalSkills,
+      tabs: [
+        { id: 'n', actions: tabEntries.actions, skills: tabEntries.skills },
+      ],
+    });
+    expect(renderer.boundProjectSlug).toEqual(['alpha']);
+    expect(adapter.boundProjectSlug).toEqual(['alpha']);
+    expect(renderer.canLaunchPrompts).toEqual([false]);
+    expect(renderer.onLaunchPrompt).toEqual([undefined]);
+  });
+
+  /** A2. A Board has no project; the same declaration, with no binding. */
+  test('a Board with prompts: no project bound, declares no launch, hands no launcher', () => {
+    sdk.boardRecords['my-board'] = {
+      ...(sdk.boardRecords['my-board'] as object),
+      config: {
+        tabs: [{ id: 'one', label: 'One', ...tabEntries }],
+        ...prompts,
+      },
+    };
+    render(
+      <LayoutWorkspacePane
+        instance={instanceFor({ kind: 'board', layoutId: LAYOUT })}
+      />,
+    );
+    expect(renderer.layouts[0]).toMatchObject({
+      actions: prompts.actions,
+      tabs: [{ id: 'one', actions: tabEntries.actions }],
+    });
+    expect(renderer.boundProjectSlug).toEqual([undefined]);
+    expect(renderer.canLaunchPrompts).toEqual([false]);
+    expect(renderer.onLaunchPrompt).toEqual([undefined]);
+  });
+
+  /**
+   * H1: a PROJECT record that declares `config.plugin` carries stored
+   * actions the dock cannot admit — `LayoutView` strips its globals and
+   * routes its tab actions through live-contribution admission, and this
+   * host has no such path — so none of them reach the renderer, `external`
+   * links included, on EVERY tab (a strip of index 0 alone passes a one-tab
+   * fixture). The non-plugin A1 case above pins the other half at tab level;
+   * the Board case below pins the other family.
+   */
+  test("a project plugin record: stored globals and every tab's actions never reach the renderer, a saved link included", () => {
+    sdk.layoutRecords['alpha/notes'] = {
+      ...(sdk.layoutRecords['alpha/notes'] as object),
+      config: {
+        plugin: 'acme-plugin',
+        tabs: [
+          {
+            id: 'n',
+            label: 'N',
+            actions: [
+              { type: 'external', label: 'Acme site', data: 'https://acme/' },
+              { type: 'internal', label: 'Acme page', data: '/acme' },
+            ],
+            skills: [{ id: 's', label: 'Skill', prompt: 's' }],
+          },
+          {
+            id: 'm',
+            label: 'M',
+            actions: [
+              { type: 'external', label: 'Acme more', data: 'https://acme/m' },
+            ],
+            skills: [{ id: 's2', label: 'Skill 2', prompt: 's2' }],
+          },
+        ],
+        actions: [
+          { type: 'external', label: 'Acme docs', data: 'https://acme/d' },
+        ],
+        globalSkills: [{ id: 'g', label: 'Global', prompt: 'g' }],
+      },
+    };
+    render(
+      <LayoutWorkspacePane
+        instance={instanceFor({
+          kind: 'project',
+          projectId: PROJECT,
+          layoutId: LAYOUT,
+        })}
+      />,
+    );
+    const layout = renderer.layouts[0] as unknown as {
+      actions?: unknown[];
+      globalSkills: unknown[];
+      tabs: { actions: unknown[]; skills: unknown[] }[];
+    };
+    expect(layout.actions).toEqual([]);
+    expect(layout.globalSkills).toEqual([]);
+    expect(layout.tabs).toHaveLength(2);
+    for (const tab of layout.tabs) {
+      expect(tab.actions).toEqual([]);
+      expect(tab.skills).toEqual([]);
+    }
+  });
+
+  /**
+   * M2: a Board's `config.plugin` is its owner's own input into their own
+   * record, which `PersonalBoardView` renders with no strip; the dock
+   * mirrors that host, or one record would show its links at its route and
+   * none in a dock. Extending the strip to Boards reds this.
+   */
+  test('a Board declaring a plugin keeps its tab actions, links and skills in the dock', () => {
+    sdk.boardRecords['my-board'] = {
+      ...(sdk.boardRecords['my-board'] as object),
+      config: {
+        plugin: 'acme-plugin',
+        tabs: [{ id: 'one', label: 'One', ...tabEntries }],
+        ...prompts,
+      },
+    };
+    render(
+      <LayoutWorkspacePane
+        instance={instanceFor({ kind: 'board', layoutId: LAYOUT })}
+      />,
+    );
+    expect(renderer.layouts[0]).toMatchObject({
+      actions: prompts.actions,
+      globalSkills: prompts.globalSkills,
+      tabs: [
+        { id: 'one', actions: tabEntries.actions, skills: tabEntries.skills },
+      ],
+    });
+  });
 });

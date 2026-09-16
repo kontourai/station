@@ -5958,9 +5958,18 @@ export function configureDevicePairingHostRoutes(
     connectedClientPresence?: ClientConnectionPresence;
     /** Hosted tenants cannot safely share this process-local aggregate. */
     clientPresenceAvailable?: boolean;
-    /** Revalidates the ingress principal against current credential state. */
-    isRequestPrincipalCurrent?: (request: Request) => boolean;
-  } = {},
+    /**
+     * Revalidates the ingress principal against current credential state.
+     *
+     * Required, not optional. Operator pairing management without principal
+     * revalidation is not a mode any caller wants, so an optional field here
+     * encodes a mode that should not exist -- and omitting it used to fail
+     * closed silently, which turned a missing call site into a 401 in a
+     * fixture no pull-request lane runs (#1640, found only by Nightly).
+     * Making it required lets the compiler answer the question instead.
+     */
+    isRequestPrincipalCurrent: (request: Request) => boolean;
+  },
 ): void {
   const audit = options.audit;
   const isRequestPrincipalCurrent = options.isRequestPrincipalCurrent;
@@ -5968,19 +5977,25 @@ export function configureDevicePairingHostRoutes(
     const authority = (context as { get: (key: string) => unknown }).get(
       RUNTIME_CREDENTIAL_AUTHORITY_VAR,
     );
-    if (
-      authority !== 'operator-credential' ||
-      typeof isRequestPrincipalCurrent !== 'function'
-    )
-      return false;
+    if (authority !== 'operator-credential') return false;
     try {
+      // Anything but a literal `true` denies, including a non-boolean from a
+      // malformed implementation: a widened return type must not be able to
+      // read as authorization here. An absent callback throws on call and is
+      // denied by the catch below, so the untyped caller fails closed too.
       const current = isRequestPrincipalCurrent(request);
       if (current !== true) {
-        void Promise.resolve(current).catch(() => {});
         return false;
       }
       return true;
     } catch {
+      // The fail-closed path, not error hygiene: a callback that cannot
+      // answer must deny. Since the option became required this catch is the
+      // only thing between an unanswerable check and a silent allow, so it
+      // must stay broad -- narrowing it to a specific error type, or
+      // deleting it as redundant, re-opens the allow. Pinned by the
+      // 'throwing' row of the current-principal table in
+      // device-pairing-routes.test.ts.
       return false;
     }
   };
