@@ -475,7 +475,7 @@ function RegionPaneUnavailable({ title }: { title: string }) {
  * on screen yet would be the "remedy that does nothing" `RegionPaneUnavailable`
  * was written to avoid.
  */
-export function RegionEmptyPlaceholder({ regionId }: { regionId: RegionId }) {
+function RegionEmptyPlaceholder({ regionId }: { regionId: RegionId }) {
   return (
     <div className="dock-slot__body">
       <Empty
