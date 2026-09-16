@@ -700,7 +700,8 @@ one of them honours. `PersonalBoardView` declares the same `false`: a Board at
 its route could never have been wired either, and its docblock had called the
 absent handler "the renderer's contract for cannot launch", which it never was.
 
-**A plugin record's stored actions are dropped.** `LayoutView` never renders
+**A project plugin record's stored actions are dropped; a Board's are not.**
+`LayoutView` never renders
 a plugin layout's STORED actions as themselves: its shape strips the stored
 globals (`hostOwnsGlobalActions: true`), `reviewPluginAction` rewrites every
 tab action to a `prompt` so it passes through `handleLaunchPrompt`'s
@@ -709,19 +710,30 @@ carries), and `WorkspacePaneHostActions` renders no `external`/`internal`
 kind at all — so a stored URL or route from a withdrawn, replaced or
 never-admitted plugin is never a live link in the route host. The dock has no
 admission path. Since #2171 (review H1) `LayoutWorkspacePane` strips the
-stored globals of a record that declares `config.plugin` the same way and
-empties each of its tabs' `actions` and `skills`; a link the dock cannot admit
-is not rendered rather than rendered as a link. A layout with no plugin keeps
-its own actions, whose author is the layout's owner.
+stored globals of a PROJECT record that declares `config.plugin` the same way
+and empties each of its tabs' `actions` and `skills`; a link the dock cannot
+admit is not rendered rather than rendered as a link. A project layout with no
+plugin keeps its own actions, whose author is the layout's owner. The two
+families differ on purpose (delta review M2): a project layout's plugin actions
+are contributions the project host admits, while a Board's `config.plugin` is
+the caller's own input into their own record (`personal-layouts.ts`) and
+`PersonalBoardView` renders it with `hostOwnsGlobalActions: false` and no
+strip — so the dock strips nothing from a Board either, or the same Board
+would show its links at its route and none in a dock, the two-hosts-one-record
+divergence this record exists to prevent.
 
 **Why the buttons went rather than the launch got wired.** #2171 weighed
 wiring `onLaunchPrompt` to the pane's BOUND project — the pane already holds
 that slug and threads it to `flow-run-console` — and took HIDE for every
 docked Layout. Half of that is forced and half is a scope choice, and the
 record keeps them apart. Forced: for a PLUGIN layout the admitted success
-path is `focusWorkspacePaneHostAction`, which focuses a DOM control only a
-mounted `WorkspacePaneHost` has, and the dock mounts none, so no launcher —
-naive or admission-aware — can complete it there. A choice: for a NON-plugin
+path is `focusWorkspacePaneHostAction`, whose admission inputs are the route
+host's `hostActions` query and `hostAuthority` — the live contribution to
+check the saved action against — and the docked pane holds neither; the
+control it focuses is rendered by `WorkspacePaneHostActions` (mounted through
+`WorkspacePaneHostActionsFrame` for the CURRENT project view), so it is on the
+page only while Main happens to show that project. No launcher — naive or
+admission-aware — can complete that path from the dock. A choice: for a NON-plugin
 project layout, a launcher bound to the layout's project through
 `resolveLayoutLaunchAgent(…, boundProjectSlug, projectAgentFilter)` would
 have worked, and wiring it remains a legitimate later option this record does

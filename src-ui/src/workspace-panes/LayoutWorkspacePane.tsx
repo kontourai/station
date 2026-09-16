@@ -70,9 +70,13 @@ import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailab
  * against. For a project Layout the launch is withheld as a SCOPE choice
  * (#2171), and the record (`docs/design/placement.md`, §#2157) says which
  * half of it is forced and which is not: a PLUGIN layout's admitted launch
- * is `focusWorkspacePaneHostAction`, which focuses a control only a mounted
- * `WorkspacePaneHost` has and the dock mounts none, so it cannot be wired
- * here; a NON-plugin project layout could have been wired to its bound
+ * is `focusWorkspacePaneHostAction`, whose inputs are the route host's
+ * `hostActions` query and `hostAuthority` (the live contribution to admit
+ * against), which this pane does not hold — the control it focuses is
+ * `WorkspacePaneHostActions`' (mounted by `WorkspacePaneHostActionsFrame`
+ * for the CURRENT project view, so it is on the page only while Main shows
+ * that project) — so it cannot be wired here; a NON-plugin project layout
+ * could have been wired to its bound
  * project through `resolveLayoutLaunchAgent`, and that stays open. What was
  * not available to copy is `LayoutView`'s own tail — it ends
  * `setDockState(true); setActiveChat(null)`, which reveals Chat and selects
@@ -89,7 +93,7 @@ import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailab
  * renders: it opens a link or navigates without a launcher, and its author
  * is the layout's own owner.
  *
- * ## A plugin record's stored actions are dropped, not rendered
+ * ## A project plugin record's stored actions are dropped, not rendered
  *
  * `LayoutView` never renders a plugin layout's STORED actions as themselves:
  * its shape strips the stored globals (`hostOwnsGlobalActions: true`) and
@@ -98,12 +102,20 @@ import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailab
  * only what the LIVE contribution still carries; and the host action bar
  * renders no `external`/`internal` kind at all. A stored URL or route from a
  * withdrawn, replaced or never-admitted plugin is therefore never a live link
- * in the route host. This pane has no admission path, so for a record that
- * declares `config.plugin` it strips the stored globals the same way and
- * empties each tab's `actions` and `skills` — a link it cannot admit is not
- * rendered rather than rendered as a link (#2171 review H1). A layout with
- * no plugin keeps its own actions: nothing admits them in the route host
- * either, because their author is the layout's owner.
+ * in the route host. This pane has no admission path, so for a PROJECT
+ * record that declares `config.plugin` it strips the stored globals the same
+ * way and empties each tab's `actions` and `skills` — a link it cannot admit
+ * is not rendered rather than rendered as a link (#2171 review H1). A
+ * project layout with no plugin keeps its own actions: nothing admits them
+ * in the route host either, because their author is the layout's owner.
+ *
+ * A Board is NOT stripped, plugin word or not. A Board's `config.plugin` is
+ * the caller's own input into their own record (`personal-layouts.ts`), not
+ * a contribution a project host admits, and `PersonalBoardView` renders it
+ * with `hostOwnsGlobalActions: false` and no strip. The dock mirrors the
+ * route host of each family; a Board that showed its links at `/boards/…`
+ * and none in a dock would be the two-hosts-one-record divergence this
+ * pane exists not to introduce (#2171 delta review M2).
  *
  * ## Which kinds render, and which are refused
  *
@@ -250,17 +262,20 @@ export function LayoutWorkspacePane({
       );
   }
 
-  // A declared plugin record: see "A plugin record's stored actions are
-  // dropped" in the docblock. The same fact `LayoutView` reads
-  // (`typeof config.plugin === 'string'`), read the same way.
-  const pluginRecord = typeof record.data.config?.plugin === 'string';
+  // A PROJECT record declaring a plugin: see "A project plugin record's
+  // stored actions are dropped" in the docblock. The same fact `LayoutView`
+  // reads (`typeof config.plugin === 'string'`), read the same way — and
+  // only for the family whose route host reads it; a Board's plugin word is
+  // its owner's own record and `PersonalBoardView` strips nothing.
+  const pluginProjectRecord =
+    project !== null && typeof record.data.config?.plugin === 'string';
   const shape = layoutWorkspaceShape(record.data, {
     annotateAgentRef: (item) => item,
     reviewPluginAction: (item) => item,
-    hostOwnsGlobalActions: pluginRecord,
+    hostOwnsGlobalActions: pluginProjectRecord,
   });
   const layout =
-    shape && pluginRecord
+    shape && pluginProjectRecord
       ? {
           ...shape,
           tabs: shape.tabs.map((tab: { id: string }) => ({

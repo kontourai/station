@@ -468,6 +468,16 @@ describe('a docked Layout carrying prompts (#2171)', () => {
     actions: [{ type: 'prompt', label: 'Summarise', data: 'summarise' }],
     globalSkills: [{ id: 'g', label: 'Global', prompt: 'g' }],
   };
+  // Tab-level entries, including a link: the non-plugin half of the
+  // partition has to be pinned HERE, at the tab, or a strip that empties
+  // every record's tabs passes (delta review M1).
+  const tabEntries = {
+    actions: [
+      { type: 'external', label: 'Owner site', data: 'https://owner/' },
+      { type: 'prompt', label: 'Tab prompt', data: 'tab' },
+    ],
+    skills: [{ id: 't', label: 'Tab skill', prompt: 't' }],
+  };
 
   /**
    * A1. The route is at project `beta` (the navigation mock) and the layout
@@ -478,7 +488,7 @@ describe('a docked Layout carrying prompts (#2171)', () => {
   test('a project Layout with prompts: bound to its OWN project, declares no launch, hands no launcher', () => {
     sdk.layoutRecords['alpha/notes'] = {
       ...(sdk.layoutRecords['alpha/notes'] as object),
-      config: { tabs: [{ id: 'n', label: 'N', ...prompts }], ...prompts },
+      config: { tabs: [{ id: 'n', label: 'N', ...tabEntries }], ...prompts },
     };
     render(
       <LayoutWorkspacePane
@@ -489,11 +499,14 @@ describe('a docked Layout carrying prompts (#2171)', () => {
         })}
       />,
     );
-    // The shape still CARRIES the prompts — the host withholds the control,
-    // it does not strip the declaration.
+    // The shape still CARRIES the prompts, at both levels — the host
+    // withholds the control, it does not strip the declaration.
     expect(renderer.layouts[0]).toMatchObject({
       actions: prompts.actions,
       globalSkills: prompts.globalSkills,
+      tabs: [
+        { id: 'n', actions: tabEntries.actions, skills: tabEntries.skills },
+      ],
     });
     expect(renderer.boundProjectSlug).toEqual(['alpha']);
     expect(adapter.boundProjectSlug).toEqual(['alpha']);
@@ -505,27 +518,35 @@ describe('a docked Layout carrying prompts (#2171)', () => {
   test('a Board with prompts: no project bound, declares no launch, hands no launcher', () => {
     sdk.boardRecords['my-board'] = {
       ...(sdk.boardRecords['my-board'] as object),
-      config: { tabs: [{ id: 'one', label: 'One', ...prompts }], ...prompts },
+      config: {
+        tabs: [{ id: 'one', label: 'One', ...tabEntries }],
+        ...prompts,
+      },
     };
     render(
       <LayoutWorkspacePane
         instance={instanceFor({ kind: 'board', layoutId: LAYOUT })}
       />,
     );
-    expect(renderer.layouts[0]).toMatchObject({ actions: prompts.actions });
+    expect(renderer.layouts[0]).toMatchObject({
+      actions: prompts.actions,
+      tabs: [{ id: 'one', actions: tabEntries.actions }],
+    });
     expect(renderer.boundProjectSlug).toEqual([undefined]);
     expect(renderer.canLaunchPrompts).toEqual([false]);
     expect(renderer.onLaunchPrompt).toEqual([undefined]);
   });
 
   /**
-   * H1: a record that declares `config.plugin` carries stored actions the
-   * dock cannot admit — `LayoutView` strips its globals and routes its tab
-   * actions through live-contribution admission, and this host has no such
-   * path — so none of them reach the renderer, `external` links included.
-   * The non-plugin case above is the discriminating half: it keeps them.
+   * H1: a PROJECT record that declares `config.plugin` carries stored
+   * actions the dock cannot admit — `LayoutView` strips its globals and
+   * routes its tab actions through live-contribution admission, and this
+   * host has no such path — so none of them reach the renderer, `external`
+   * links included, on EVERY tab (a strip of index 0 alone passes a one-tab
+   * fixture). The non-plugin A1 case above pins the other half at tab level;
+   * the Board case below pins the other family.
    */
-  test('a plugin record: stored globals and tab actions never reach the renderer, a saved link included', () => {
+  test("a project plugin record: stored globals and every tab's actions never reach the renderer, a saved link included", () => {
     sdk.layoutRecords['alpha/notes'] = {
       ...(sdk.layoutRecords['alpha/notes'] as object),
       config: {
@@ -539,6 +560,14 @@ describe('a docked Layout carrying prompts (#2171)', () => {
               { type: 'internal', label: 'Acme page', data: '/acme' },
             ],
             skills: [{ id: 's', label: 'Skill', prompt: 's' }],
+          },
+          {
+            id: 'm',
+            label: 'M',
+            actions: [
+              { type: 'external', label: 'Acme more', data: 'https://acme/m' },
+            ],
+            skills: [{ id: 's2', label: 'Skill 2', prompt: 's2' }],
           },
         ],
         actions: [
@@ -563,9 +592,39 @@ describe('a docked Layout carrying prompts (#2171)', () => {
     };
     expect(layout.actions).toEqual([]);
     expect(layout.globalSkills).toEqual([]);
-    expect(layout.tabs).toHaveLength(1);
-    expect(layout.tabs[0].actions).toEqual([]);
-    expect(layout.tabs[0].skills).toEqual([]);
-    expect(JSON.stringify(layout)).not.toContain('acme');
+    expect(layout.tabs).toHaveLength(2);
+    for (const tab of layout.tabs) {
+      expect(tab.actions).toEqual([]);
+      expect(tab.skills).toEqual([]);
+    }
+  });
+
+  /**
+   * M2: a Board's `config.plugin` is its owner's own input into their own
+   * record, which `PersonalBoardView` renders with no strip; the dock
+   * mirrors that host, or one record would show its links at its route and
+   * none in a dock. Extending the strip to Boards reds this.
+   */
+  test('a Board declaring a plugin keeps its tab actions, links and skills in the dock', () => {
+    sdk.boardRecords['my-board'] = {
+      ...(sdk.boardRecords['my-board'] as object),
+      config: {
+        plugin: 'acme-plugin',
+        tabs: [{ id: 'one', label: 'One', ...tabEntries }],
+        ...prompts,
+      },
+    };
+    render(
+      <LayoutWorkspacePane
+        instance={instanceFor({ kind: 'board', layoutId: LAYOUT })}
+      />,
+    );
+    expect(renderer.layouts[0]).toMatchObject({
+      actions: prompts.actions,
+      globalSkills: prompts.globalSkills,
+      tabs: [
+        { id: 'one', actions: tabEntries.actions, skills: tabEntries.skills },
+      ],
+    });
   });
 });
