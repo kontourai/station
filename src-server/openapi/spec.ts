@@ -235,6 +235,9 @@ const FIRST_PASS_PATHS: Record<
       requestBodySchema: registryInstallSchema,
       summary: 'Install a plugin from the registry',
       tags: ['registry'],
+      responses: {
+        409: 'Registry trust or reviewed installation state refused; inspect and review again',
+      },
     },
   },
   '/api/registry/plugins/{id}': {
@@ -257,6 +260,9 @@ const FIRST_PASS_PATHS: Record<
       requestBodySchema: pluginPreviewSchema,
       summary: 'Preview a plugin before install',
       tags: ['plugins'],
+      responses: {
+        409: 'Registry trust or reviewed installation state refused; inspect and review again',
+      },
     },
   },
   '/api/plugins/install': {
@@ -265,6 +271,9 @@ const FIRST_PASS_PATHS: Record<
       requestBodySchema: pluginInstallSchema,
       summary: 'Install a plugin from a source',
       tags: ['plugins'],
+      responses: {
+        409: 'Registry trust or reviewed installation state refused; inspect and review again',
+      },
     },
   },
   '/api/plugins/check-updates': {
@@ -281,7 +290,7 @@ const FIRST_PASS_PATHS: Record<
         'Inspect retained plugin recovery and fresh permission requirements',
       tags: ['plugins'],
       responses: {
-        409: 'Installation cannot be recovered in its current state',
+        409: 'Installation or registry trust cannot be recovered in its current state',
         503: 'Permission storage is unavailable',
       },
     },
@@ -295,7 +304,7 @@ const FIRST_PASS_PATHS: Record<
       tags: ['plugins'],
       responses: {
         202: 'Recovery accepted; runtime activation is still pending',
-        409: 'Recovery or permission revision changed; review again',
+        409: 'Recovery, permission or registry trust revision refused; review again',
         503: 'Permission storage is unavailable',
       },
     },
@@ -305,6 +314,9 @@ const FIRST_PASS_PATHS: Record<
       operationId: 'updatePlugin',
       summary: 'Update an installed plugin',
       tags: ['plugins'],
+      responses: {
+        409: 'Registry trust or reviewed installation state refused; inspect and review again',
+      },
     },
   },
   '/api/plugins/{name}': {

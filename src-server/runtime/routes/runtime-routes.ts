@@ -353,6 +353,7 @@ import {
 } from '../../services/plugins/mcp-ui-permissions.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginVisibilityService } from '../../services/plugins/plugin-visibility-service.js';
+import { createLocalRegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { readCheckoutRemotes } from '../../services/projects/checkout-remote-reader.js';
 import { DiffCommentService } from '../../services/projects/diff-comment-service.js';
@@ -1764,6 +1765,12 @@ export function configureRuntimeRoutes(
         consentChannel: context.consentChannel,
         packageMcpJournal:
           context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+        registryTrustPolicyAuthority: context.orchestrationEventStore
+          ? createLocalRegistryTrustPolicyAuthority(
+              context.configLoader.getProjectHomeDir(),
+              context.orchestrationEventStore.createRegistryTrustPolicyDecisions(),
+            )
+          : undefined,
         installationHost: context.pluginInstallationHost,
         applyConfigurationMutation: context.applyAgentConfigurationMutation,
         refreshKitObservability: () =>
@@ -1837,6 +1844,12 @@ export function configureRuntimeRoutes(
         canSeePlugin: (c, pluginId) => canSeePluginForRequest(c, pluginId),
         packageMcpJournal:
           context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+        registryTrustPolicyAuthority: context.orchestrationEventStore
+          ? createLocalRegistryTrustPolicyAuthority(
+              context.configLoader.getProjectHomeDir(),
+              context.orchestrationEventStore.createRegistryTrustPolicyDecisions(),
+            )
+          : undefined,
         installationHost: context.pluginInstallationHost,
         applyConfigurationMutation: context.applyAgentConfigurationMutation,
         approveKitOperatorAction: (candidate) =>

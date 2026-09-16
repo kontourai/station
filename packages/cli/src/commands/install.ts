@@ -98,6 +98,7 @@ interface PluginPreviewResult {
     consent?: {
       contentDigest: string;
       grantRevision?: string;
+      registryTrustRevision?: string;
       permissions: string[];
       dependencies: string[];
       pendingConsent: Array<{ permission: string; tier: string }>;
@@ -105,6 +106,7 @@ interface PluginPreviewResult {
   }>;
   contentDigest?: string;
   grantRevision?: string;
+  registryTrustRevision?: string;
   permissions?: {
     required: string[];
     autoGranted: string[];
@@ -285,6 +287,7 @@ export async function install(
         consent: {
           permissions: previewed.permissions.required,
           contentDigest: previewed.contentDigest,
+          registryTrustRevision: previewed.registryTrustRevision,
           grantRevision: previewed.grantRevision,
           dependencies: (previewed.dependencies ?? []).map(
             (dependency) => dependency.id,
@@ -301,6 +304,8 @@ export async function install(
                             id: dependency.id,
                             permissions: dependency.consent.permissions,
                             contentDigest: dependency.consent.contentDigest,
+                            registryTrustRevision:
+                              dependency.consent.registryTrustRevision,
                             grantRevision: dependency.consent.grantRevision,
                             dependencies: dependency.consent.dependencies,
                           },
