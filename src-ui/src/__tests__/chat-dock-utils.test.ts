@@ -7,6 +7,7 @@ import {
   chatModelLabel,
   type DockChrome,
   effectiveChatModelId,
+  firstRunDockNudge,
   inboxPanelMounts,
   markDockFirstRunSeen,
   projectDisplayName,
@@ -62,6 +63,69 @@ describe('first-run dock nudge', () => {
       configurable: true,
     });
     expect(shouldOpenDockForFirstRun()).toBe(false);
+  });
+});
+
+/**
+ * #2151: the nudge opens the dock on first run only when the inbox is known
+ * and holds something. With nothing to show, an open dock was two empties
+ * side by side; the collapsed bar keeps the entry point.
+ */
+describe('firstRunDockNudge (#2151)', () => {
+  const base = {
+    isFullscreenPlacement: false,
+    sessionsStatus: 'success' as const,
+    sessionCount: 0,
+    firstRunPending: true,
+  };
+
+  test('waits, consuming nothing, while the inbox read is pending', () => {
+    expect(firstRunDockNudge({ ...base, sessionsStatus: 'pending' })).toBe(
+      'wait',
+    );
+    // Pending wins over everything except fullscreen: a slow first fetch must
+    // still nudge once it settles, so the one-shot flag is not spent here.
+    expect(
+      firstRunDockNudge({
+        ...base,
+        sessionsStatus: 'pending',
+        sessionCount: 3,
+      }),
+    ).toBe('wait');
+  });
+
+  test('settles collapsed when the inbox is known and empty', () => {
+    expect(firstRunDockNudge(base)).toBe('settle');
+  });
+
+  test('opens when the inbox is known and holds a chat', () => {
+    expect(firstRunDockNudge({ ...base, sessionCount: 1 })).toBe('open');
+  });
+
+  test('skips once the nudge has happened, whatever the inbox holds', () => {
+    expect(firstRunDockNudge({ ...base, firstRunPending: false })).toBe('skip');
+    expect(
+      firstRunDockNudge({ ...base, firstRunPending: false, sessionCount: 5 }),
+    ).toBe('skip');
+  });
+
+  test('skips a failed read rather than guessing', () => {
+    expect(firstRunDockNudge({ ...base, sessionsStatus: 'error' })).toBe(
+      'skip',
+    );
+    expect(
+      firstRunDockNudge({ ...base, sessionsStatus: 'error', sessionCount: 5 }),
+    ).toBe('skip');
+  });
+
+  test('skips a fullscreen placement even while pending', () => {
+    expect(
+      firstRunDockNudge({
+        ...base,
+        isFullscreenPlacement: true,
+        sessionsStatus: 'pending',
+      }),
+    ).toBe('skip');
   });
 });
 

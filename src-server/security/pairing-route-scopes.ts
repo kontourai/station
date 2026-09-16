@@ -194,6 +194,11 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   '/api/diff-comments',
   '/api/knowledge',
   '/api/feature-previews',
+  // #2144 slice 5: the settings deep-link registry. A separate top-level
+  // family from `/config` on purpose — it enumerates which controls EXIST
+  // and where they are, and carries no stored value, so it does not belong
+  // on the tier that reads and writes configuration.
+  '/api/settings',
   '/api/coding',
   '/api/templates',
   '/config',
@@ -2758,6 +2763,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/voice/sessions' },
     { method: 'DELETE', path: '/api/voice/sessions/:id' },
     { method: 'GET', path: '/api/voice/status' },
+    // #2144 slice 5: agent-facing enumeration of settings deep links;
+    // read-only, no secrets. The body is a checked-in generated artifact of
+    // labels, help sentences, scope names, section ids and URL paths — it
+    // discloses strictly less than the `/config/app` read already at this
+    // same tier, which returns the stored values themselves.
+    { method: 'GET', path: '/api/settings/registry' },
     { method: 'GET', path: '/api/feature-previews' },
     { method: 'PUT', path: '/api/feature-previews/:id' },
     { method: 'GET', path: '/bedrock/models' },
