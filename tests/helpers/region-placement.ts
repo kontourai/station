@@ -142,6 +142,39 @@ export async function showSurfaceInEmptyRegion(
 }
 
 /**
+ * Fills an EMPTY, VISIBLE region from its own body (#2154): the region's
+ * host renders a chooser — a list named "Add to <Region> region" of every
+ * registry surface declaring that region — and a row's press is the model's
+ * `openSurfaceInRegion(id, { region })`. A row for a surface held elsewhere
+ * reads "<title> Move here from <Region>" and is a move; this helper presses
+ * the row by its title whichever it is. The post-condition is the region's
+ * shell carrying the surface's own landmark, which only a placed pane
+ * produces. `showSurfaceInEmptyRegion` is the toolbar route to the same
+ * placement; this is the in-region one.
+ */
+export async function chooseSurfaceInEmptyRegion(
+  page: Page,
+  surfaceTitle: string,
+  regionLabel: 'Left' | 'Bottom' | 'Right',
+): Promise<void> {
+  const list = page.getByRole('list', {
+    name: `Add to ${regionLabel} region`,
+  });
+  await expect(
+    list,
+    `${regionLabel} region shows no chooser, so it is not empty and visible`,
+  ).toBeVisible();
+  await list
+    .getByRole('button', { name: new RegExp(`^${surfaceTitle}( |$)`) })
+    .click();
+  await expect(list).toBeHidden();
+  await expect(
+    surfaceDockShell(page, surfaceTitle),
+    `${surfaceTitle} did not become ${regionLabel}'s shell, so it was not placed there`,
+  ).toHaveClass(new RegExp(`chat-dock--${regionLabel.toLowerCase()}`));
+}
+
+/**
  * Moves ONE pane to another region through its tab's own menu (#2143): a
  * right-click on the tab opens "Move <title>", whose rows are the regions the
  * pane declares on this device minus the one it is in. `Main` hands the pane

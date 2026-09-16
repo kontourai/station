@@ -284,9 +284,10 @@ describe('known Workspace Pane declarations', () => {
     //
     // A new entry here claiming `docked` must have one of those two readers,
     // or the claim is a label nothing derives. Note File Preview IS declared
-    // to this catalog, so the region's "+" would list a card that can never
-    // open — `dockCatalogEntries` filters instance-keyed descriptors out for
-    // exactly that reason. Declaration order, so a reordering is visible too.
+    // to this catalog, but a region's chooser lists registry surfaces, and
+    // no prefix family is a registry key (`region-model.ts`), so it can never
+    // list a row that cannot open. Declaration order, so a reordering is
+    // visible too.
     const claimingDocked = KNOWN_WORKSPACE_PANE_DECLARATIONS.filter(
       ({ descriptor }) =>
         descriptor.placement.supportedRegions.includes('docked'),

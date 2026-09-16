@@ -847,6 +847,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/minimal-workspace-example.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Installs the actual portable minimal example, opens an explicit Project-bound Pane through the public SDK, proves local dock navigation without a chat mutation, and refuses the occurrence after uninstall.',
+    exceptions: [],
+  },
+  {
     path: 'tests/workspace-pane-host-actions-live.spec.ts',
     bucket: 'smoke-live',
     surface: 'Plugins',
@@ -1017,7 +1027,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Live bundled Registry install, persisted installed state, project Add Layout/use, unavailable-component recovery after uninstall, reinstall, and 390x844 overflow proof.',
+      'Live bundled Registry install through the UI, persisted installed state, project Add pane/use of the Minimal Workspace occurrence, pane withdrawal after uninstall, reinstall, and 390x844 overflow proof.',
     exceptions: [],
   },
   {

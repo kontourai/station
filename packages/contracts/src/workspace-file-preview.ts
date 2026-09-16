@@ -59,10 +59,11 @@ if (!parsedWorkspaceFilePreviewPaneDescriptor)
  * preview as a dock tab through `openInRegion`, keyed by the instance's
  * `file-preview:<nonce>` id.
  *
- * It is still not offered by a region's "+": it has no blank canonical
- * instance — an occurrence is keyed by a file path — so a card could be
- * listed but never opened. `RegionPaneCatalog` filters it out and names the
- * link handler as its opener.
+ * It is still not offered by a region's chooser: it has no blank canonical
+ * instance — an occurrence is keyed by a file path — so a row could be
+ * listed but never opened. The chooser lists registry surfaces, and no
+ * prefix family is a registry key (`region-model.ts`,
+ * `INSTANCE_SURFACE_PREFIXES`); the link handler is its opener.
  */
 export const WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR =
   parsedWorkspaceFilePreviewPaneDescriptor;

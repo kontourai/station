@@ -532,9 +532,10 @@ describe('region model', () => {
         defaultRegion: 'right',
       }),
       // #2050: this conversation's background work. Catalog-only and no
-      // chord like the coding panes, dock regions only like Activity, and
-      // unlike Activity it is not offered by the region's "+" either,
-      // because it is not declared to the server catalog at all.
+      // chord like the coding panes, dock regions only like Activity. Since
+      // #2154 an empty region's chooser (and the "+") lists it like every
+      // registry surface declaring the region; the server catalog never
+      // declared it.
       expect.objectContaining({
         id: 'workspace-agents',
         title: 'Agents',

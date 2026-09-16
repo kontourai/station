@@ -81,6 +81,9 @@ function CatalogContents({
 /**
  * The pane picker, mounted from BOTH `views/ProjectPage.tsx` and
  * `app-shell/ProjectLayoutRenderer.tsx` — two separately lazy-loaded routes.
+ * The dock no longer mounts it: a region's "+" and an empty region's body
+ * are `RegionEmptyChooser` (#2154), a registry-driven list rather than a
+ * catalog dialog.
  *
  * #1616: it used to hand `ResponsiveDialogSurface` the project page's own
  * `project-page__modal-overlay`/`project-page__modal` classes, which are
@@ -123,8 +126,8 @@ export function ProjectWorkspacePaneModal({
   /**
    * The dialog's name and the sentence under it. The defaults are the
    * layout picker's, which lists every known pane; a host that lists fewer
-   * (a dock region's catalog, #2047) must say so here rather than inherit a
-   * claim its list does not keep.
+   * (as #2047's dock catalog did, until #2154) must say so here rather than
+   * inherit a claim its list does not keep.
    */
   title?: string;
   subtitle?: string;
