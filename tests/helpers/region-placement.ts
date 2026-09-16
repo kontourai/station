@@ -153,9 +153,19 @@ export async function showSurfaceInEmptyRegion(
  * the right-click. Held past the control's 500ms threshold with room to
  * spare, because a hold measured to the millisecond is a flake.
  *
+ * THE PANEL IS ASSERTED WHILE THE POINTER IS STILL DOWN, and then again after
+ * the release. That ordering is the whole point of driving this from a
+ * browser at all (#2155 review B1): the hold opens the panel from a timer
+ * mid-gesture, so the panel's full-viewport dismiss backdrop is on screen
+ * before the release — and a backdrop that dismissed on any release, or a
+ * control that let the release go to it, would eat the gesture that opened
+ * it. Waiting for the panel BEFORE the release is also what stops this being
+ * a race: without it, a release that beat a cold lazy chunk's fetch would
+ * pass for the same reason a broken build would.
+ *
  * The toggle's ordinary click shows or hides the region, so a press that
- * lands short opens nothing and moves the region instead — which is why this
- * asserts the panel afterwards rather than assuming the gesture took.
+ * lands short opens nothing and toggles the region instead — which the
+ * caller's `aria-pressed` assertion around this catches.
  */
 export async function openChooserFromToggle(
   page: Page,
@@ -170,17 +180,21 @@ export async function openChooserFromToggle(
     box,
     `${regionLabel} region's toggle must have a rendered box`,
   ).not.toBeNull();
+  const menu = page.getByRole('menu', { name: `Add to ${regionLabel} region` });
   await page.mouse.move(
     (box?.x ?? 0) + (box?.width ?? 0) / 2,
     (box?.y ?? 0) + (box?.height ?? 0) / 2,
   );
   await page.mouse.down();
   await page.waitForTimeout(600);
-  await page.mouse.up();
-  const menu = page.getByRole('menu', { name: `Add to ${regionLabel} region` });
   await expect(
     menu,
     `the hold on ${regionLabel} region's toggle opened no chooser`,
+  ).toBeVisible();
+  await page.mouse.up();
+  await expect(
+    menu,
+    `the release that ended the hold on ${regionLabel} region's toggle dismissed the panel it had just opened`,
   ).toBeVisible();
   return menu;
 }
