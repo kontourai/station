@@ -1,6 +1,9 @@
 /** @vitest-environment jsdom */
 
-import { DEFAULT_NOTIFICATION_SOUND_PREFERENCES } from '@kontourai/station-contracts/device-settings';
+import {
+  DEFAULT_NOTIFICATION_SOUND_PREFERENCES,
+  DEVICE_SETTINGS_REGISTRY,
+} from '@kontourai/station-contracts/device-settings';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -177,12 +180,56 @@ vi.mock('../contexts/ConfigContext', () => ({
 let deviceChatFontSize: number | null = 14;
 const setDeviceSetting = vi.fn();
 const resetDeviceSetting = vi.fn();
+const resetDeviceSettings = vi.fn();
+/**
+ * #2144 slice 6 item D: what the disclosure query reports about a telemetry
+ * DESTINATION. Partial mock — only the shared hook is replaced, so the real
+ * `UsageTelemetryDisclosure` card and the real summary function still run.
+ */
+let telemetryEndpointConfigured: boolean | undefined;
+/** The read's own state, which the row must not speak ahead of. */
+let telemetryDisclosureSettled = true;
+let telemetryDisclosureIsError = false;
+vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../components/UsageTelemetryDisclosure')
+    >();
+  return {
+    ...actual,
+    useUsageTelemetryDisclosureState: () => ({
+      data:
+        telemetryEndpointConfigured === undefined
+          ? undefined
+          : { endpointConfigured: telemetryEndpointConfigured },
+      isError: telemetryDisclosureIsError,
+      settled: telemetryDisclosureSettled,
+      outstanding: false,
+    }),
+  };
+});
+
+/**
+ * The device store folds registry defaults in, so the harness starts from
+ * the real default object rather than `{}` — an empty object is a device
+ * that differs from its defaults in every field, which is not what an
+ * untouched device looks like (#2144 slice 6 items B and F).
+ */
+const DEFAULT_DEVICE_FEATURE_SETTINGS = DEVICE_SETTINGS_REGISTRY.find(
+  (definition) => definition.key === 'featureSettings',
+)!.defaultValue as unknown as Record<string, unknown>;
+let deviceFeatureSettings: Record<string, unknown> =
+  DEFAULT_DEVICE_FEATURE_SETTINGS;
 vi.mock('../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({
     chatFontSize: deviceChatFontSize,
+    // #2144 slice 6 item B: the Answer delivery row reads this.
+    featureSettings: deviceFeatureSettings,
     hapticsEnabled: true,
     accentColor: null,
     developerToolsEnabled: false,
+    // #2144 slice 6 item E: the Confirmations group in Appearance.
+    confirmConversationDelete: true,
     sidebarSections: {
       openChatsCollapsed: false,
       openChatsHidden: false,
@@ -190,7 +237,11 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
       draftsHidden: false,
     },
   }),
-  useDeviceSettingsActions: () => ({ setDeviceSetting, resetDeviceSetting }),
+  useDeviceSettingsActions: () => ({
+    setDeviceSetting,
+    resetDeviceSetting,
+    resetDeviceSettings,
+  }),
 }));
 let isMobile = false;
 let isDesktop = false;
@@ -273,8 +324,13 @@ describe('settings catalog completeness', () => {
     invalidateQuery.mockReset();
     invalidateQuery.mockImplementation(() => Promise.resolve());
     deviceChatFontSize = 14;
+    deviceFeatureSettings = DEFAULT_DEVICE_FEATURE_SETTINGS;
+    telemetryEndpointConfigured = undefined;
+    telemetryDisclosureSettled = true;
+    telemetryDisclosureIsError = false;
     setDeviceSetting.mockClear();
     resetDeviceSetting.mockClear();
+    resetDeviceSettings.mockClear();
     window.history.replaceState({}, '', '/settings');
   });
 
@@ -374,8 +430,10 @@ describe('settings catalog completeness', () => {
     // longer user-facing) and +2 (workspace-checkpoints,
     // default-chat-font-size). #2144 slice 2: +1
     // (default-workspace-isolation). Counted from the merged catalog, not
-    // added up.
-    expect(SETTINGS_CATALOG).toHaveLength(45);
+    // added up. #2144 slice 6: +4 (default-approval-mode,
+    // telemetry-destination, confirm-conversation-delete,
+    // reset-device-defaults).
+    expect(SETTINGS_CATALOG).toHaveLength(49);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
@@ -1172,6 +1230,220 @@ describe('settings catalog completeness', () => {
       expect(resetDeviceSetting).toHaveBeenCalledTimes(1);
       expect(resetDeviceSetting).toHaveBeenCalledWith('chatFontSize');
       expect(setDeviceSetting).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * #585 / #2144 slice 6 item B. The chat gear panel's half of this is in
+   * ChatSettingsPanel.test.tsx; this is the Settings row, and the point of
+   * having both is that they write the SAME device key with the same
+   * meaning rather than two controls that happen to look alike.
+   */
+  describe('Answer delivery', () => {
+    test('writes smoothReveal in both directions from the Appearance row', async () => {
+      const { unmount } = await renderSettings();
+      const select = screen.getByLabelText(
+        'Answer delivery',
+      ) as HTMLSelectElement;
+      expect(select.value).toBe('token');
+
+      fireEvent.change(select, { target: { value: 'smooth' } });
+      expect(setDeviceSetting).toHaveBeenCalledWith(
+        'featureSettings',
+        expect.objectContaining({ smoothReveal: true }),
+      );
+
+      setDeviceSetting.mockClear();
+      deviceFeatureSettings = { smoothReveal: true };
+      unmount();
+      const second = await renderSettings();
+      const reopened = screen.getByLabelText(
+        'Answer delivery',
+      ) as HTMLSelectElement;
+      expect(reopened.value).toBe('smooth');
+      fireEvent.change(reopened, { target: { value: 'token' } });
+      expect(setDeviceSetting).toHaveBeenCalledWith(
+        'featureSettings',
+        expect.objectContaining({ smoothReveal: false }),
+      );
+      second.unmount();
+    });
+
+    test('the retired mechanism-named toggle is gone', async () => {
+      await renderSettings();
+      expect(
+        screen.queryByRole('switch', { name: 'Smooth answer reveal' }),
+      ).toBeNull();
+    });
+  });
+
+  /**
+   * #2144 slice 6 item D. The toggle beside this row decides whether Station
+   * WOULD send; this row says whether there is anywhere to send to. Both
+   * answers are the host's, and the host itself is never named.
+   */
+  describe('Telemetry destination', () => {
+    test('reports a configured destination without naming it', async () => {
+      telemetryEndpointConfigured = true;
+      await renderSettings();
+      expect(
+        screen.getByText('Destination: configured by the operator.'),
+      ).toBeTruthy();
+    });
+
+    test('reports that nothing is sent when no destination exists', async () => {
+      telemetryEndpointConfigured = false;
+      await renderSettings();
+      expect(
+        screen.getByText('No destination configured; nothing is sent.'),
+      ).toBeTruthy();
+    });
+
+    test('a host that did not report the field is not folded into either answer', async () => {
+      telemetryEndpointConfigured = undefined;
+      await renderSettings();
+      expect(
+        screen.getByText(
+          'This Station has not reported whether a destination is configured.',
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText('No destination configured; nothing is sent.'),
+      ).toBeNull();
+    });
+
+    test('an in-flight read claims nothing about the host', async () => {
+      // Fix round 1: every fresh Settings mount starts here, and the row
+      // used to state "has not reported" before the request had landed.
+      telemetryDisclosureSettled = false;
+      telemetryEndpointConfigured = undefined;
+      const { container } = await renderSettings();
+
+      expect(
+        screen.queryByText(
+          'This Station has not reported whether a destination is configured.',
+        ),
+      ).toBeNull();
+      expect(
+        screen.queryByText('No destination configured; nothing is sent.'),
+      ).toBeNull();
+      // The row itself stays, so the catalog still enumerates it.
+      expect(
+        container.querySelector('[data-catalog-id="telemetry-destination"]'),
+      ).toBeTruthy();
+    });
+
+    test('a failed read says the read failed, not what the host holds', async () => {
+      telemetryDisclosureIsError = true;
+      telemetryEndpointConfigured = undefined;
+      await renderSettings();
+
+      expect(
+        screen.getByText('Could not read whether a destination is configured.'),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText(
+          'This Station has not reported whether a destination is configured.',
+        ),
+      ).toBeNull();
+    });
+  });
+
+  /**
+   * #2144 slice 6 item E. The consumer half — that ConversationHistory
+   * actually skips the modal — is in ConversationHistory.test.tsx; this is
+   * the control that writes it.
+   */
+  describe('Ask before deleting a conversation', () => {
+    test('renders on by default under a Confirmations group and round-trips', async () => {
+      const { container } = await renderSettings();
+      expect(
+        [...container.querySelectorAll('.settings__group-title')].map(
+          (node) => node.textContent,
+        ),
+      ).toContain('Confirmations');
+      const toggle = screen.getByRole('switch', {
+        name: 'Ask before deleting a conversation',
+      });
+      expect(toggle.getAttribute('aria-checked')).toBe('true');
+      fireEvent.click(toggle);
+      expect(setDeviceSetting).toHaveBeenCalledWith(
+        'confirmConversationDelete',
+        false,
+      );
+    });
+  });
+
+  /**
+   * #2144 slice 6 item F. The plan builder's own cases are in
+   * settings-station-reset.test.ts; these assert the wiring — the button
+   * reflects the plan, names it in the dialog, and confirming reaches the
+   * device store once per listed key.
+   */
+  describe('Restore device defaults', () => {
+    function button() {
+      return screen.getByRole('button', {
+        name: 'Restore device defaults',
+      }) as HTMLButtonElement;
+    }
+
+    test('is refused, and says so, on a device that has changed nothing', async () => {
+      deviceChatFontSize = null as unknown as number;
+      await renderSettings();
+      expect(button().disabled).toBe(true);
+      // Scoped to what the plan computes (PREFERENCE_DEVICE_KEYS), not to
+      // every setting the device holds.
+      expect(
+        screen.getByText(
+          'Every setting you can restore here is already at its default.',
+        ),
+      ).toBeTruthy();
+    });
+
+    test('names exactly the changed settings and restores each one', async () => {
+      // This device follows its defaults everywhere except the chat font.
+      deviceChatFontSize = 20;
+      await renderSettings();
+      expect(button().disabled).toBe(false);
+
+      fireEvent.click(button());
+      const dialog = screen.getByText(/This restores 1 setting on this device/);
+      expect(dialog.textContent).toContain('Chat font size');
+      // Not a list of everything: a plan that over-reported would promise to
+      // undo choices nobody made.
+      expect(dialog.textContent).not.toContain('Theme');
+      expect(dialog.textContent).not.toContain('Chat dock height');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
+      // One envelope write for the whole plan, not one per key.
+      expect(resetDeviceSettings.mock.calls).toEqual([[['chatFontSize']]]);
+    });
+
+    test('a multi-setting plan reads as plural in the dialog', async () => {
+      deviceChatFontSize = 20;
+      deviceFeatureSettings = {
+        ...DEFAULT_DEVICE_FEATURE_SETTINGS,
+        mobilePairingEnabled: true,
+      };
+      await renderSettings();
+
+      fireEvent.click(button());
+      const dialog = screen.getByText(
+        /This restores 2 settings on this device to their defaults/,
+      );
+      // The composite names the member a reader would not expect it to
+      // restore.
+      expect(dialog.textContent).toContain(
+        'Features, including notification sounds',
+      );
+    });
+
+    test('cancelling restores nothing', async () => {
+      deviceChatFontSize = 20;
+      await renderSettings();
+      fireEvent.click(button());
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(resetDeviceSettings).not.toHaveBeenCalled();
     });
   });
 

@@ -14,6 +14,7 @@ import {
   deriveComparisonView,
   serverIdentityMatchesView,
   TechnicalDetails,
+  UpdateChannelRow,
 } from './coreUpdatePresentation';
 
 /**
@@ -119,6 +120,7 @@ function SourceInstallationFacts({
       {checking && !status && (
         <SkeletonBlock count={1} label="Checking for updates" />
       )}
+      {status && !comparisonSuperseded && <UpdateChannelRow status={status} />}
       {status &&
         !comparisonSuperseded &&
         comparisonMetadata(status).length > 0 && (

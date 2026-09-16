@@ -29,7 +29,11 @@ import {
   SkeletonBlock,
 } from '../components/state';
 import { Toggle } from '../components/Toggle';
-import { UsageTelemetryDisclosure } from '../components/UsageTelemetryDisclosure';
+import {
+  UsageTelemetryDisclosure,
+  usageTelemetryDestinationSummary,
+  useUsageTelemetryDisclosureState,
+} from '../components/UsageTelemetryDisclosure';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useConfigActions, useConfigSnapshot } from '../contexts/ConfigContext';
 import {
@@ -43,6 +47,12 @@ import { useLocale } from '../i18n/LocaleContext';
 import { DeviceSettingsImportVersionError } from '../lib/device-settings-store';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import type { AppConfig, NavigationView } from '../types';
+import {
+  ANSWER_DELIVERY_OPTIONS,
+  answerDeliveryModeOf,
+  isAnswerDeliveryMode,
+  smoothRevealForAnswerDelivery,
+} from '../utils/answerDelivery';
 import { AccentColorPicker } from './settings/AccentColorPicker';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
@@ -199,9 +209,13 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     hapticsEnabled,
     developerToolsEnabled,
     sidebarSections,
+    confirmConversationDelete,
   } = useDeviceSettings();
   const { setDeviceSetting, resetDeviceSetting } = useDeviceSettingsActions();
   const { isMobile, isDesktop } = usePlatformProfile();
+  // #2144 slice 6 item D. The same query the disclosure card reads; React
+  // Query dedupes on its key so there is one request, not two answers.
+  const telemetryDisclosure = useUsageTelemetryDisclosureState();
   const { locale } = useLocale();
 
   const [config, setConfig] = useState<AppConfig>(
@@ -887,6 +901,30 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 onChange={setConfig}
                 projectOverride={projectOverride}
               />
+              {/* #2144 slice 6 item D: whether anything CAN be sent, beside
+                  the toggle that decides whether it is. Derived from the
+                  boolean the disclosure query already holds — React Query
+                  dedupes on the key, so this is the same request the
+                  disclosure below makes, not a second one. The host is not
+                  exposed (see `usageTelemetryDestinationSummary`). */}
+              <PageRow
+                {...settingsRow('telemetry-destination')}
+                description="Usage telemetry has somewhere to go only when the operator has configured a destination for this Station. Station does not show where that is."
+                control={(() => {
+                  // `null` is the in-flight read: the row keeps its place
+                  // (and its catalog identity) while saying nothing, rather
+                  // than asserting the host reported nothing.
+                  const summary = usageTelemetryDestinationSummary({
+                    endpointConfigured:
+                      telemetryDisclosure.data?.endpointConfigured,
+                    settled: telemetryDisclosure.settled,
+                    isError: telemetryDisclosure.isError,
+                  });
+                  return summary === null ? null : (
+                    <span className="settings__field-hint">{summary}</span>
+                  );
+                })()}
+              />
               <UsageTelemetryDisclosure />
               <LocalAccountsSection />
             </>
@@ -1055,20 +1093,34 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   </div>
                 }
               />
+              {/* #585 / #2144 slice 6 item B: one control naming BOTH
+                  outcomes, over the same `featureSettings.smoothReveal`
+                  boolean the two "Smooth answer reveal" toggles wrote. The
+                  in-chat gear panel renders the same options from the same
+                  mapping module. */}
               <PageRow
                 {...settingsRow('smooth-answer-reveal')}
-                description="Reveal incoming answer text steadily instead of showing network bursts all at once."
+                description="How streamed answer text appears on this device. Either way the same text arrives at the same time; only its pacing on screen differs."
                 control={
-                  <Toggle
-                    checked={featureSettings?.smoothReveal ?? false}
-                    onChange={(checked) =>
+                  <select
+                    className="editor-select"
+                    aria-label={settingsRow('smooth-answer-reveal').title}
+                    value={answerDeliveryModeOf(featureSettings?.smoothReveal)}
+                    onChange={(event) => {
+                      const mode = event.target.value;
+                      if (!isAnswerDeliveryMode(mode)) return;
                       setDeviceSetting('featureSettings', {
                         ...featureSettings,
-                        smoothReveal: checked,
-                      })
-                    }
-                    label={settingsRow('smooth-answer-reveal').title}
-                  />
+                        smoothReveal: smoothRevealForAnswerDelivery(mode),
+                      });
+                    }}
+                  >
+                    {ANSWER_DELIVERY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 }
               />
               <PageRow
@@ -1128,6 +1180,24 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 />
               )}
               <AccentColorPicker />
+              {/* #2144 slice 6 item E. A group, not a new section: slice 4
+                  owns the navigation, and only ONE destructive confirm has
+                  an action behind it today — archive and quit do not exist,
+                  and "Clear all conversations" deliberately keeps asking. */}
+              <h3 className="settings__group-title">Confirmations</h3>
+              <PageRow
+                {...settingsRow('confirm-conversation-delete')}
+                description="Deleting a conversation cannot be undone. Turn this off to delete immediately. Clearing all conversations always asks."
+                control={
+                  <Toggle
+                    checked={confirmConversationDelete}
+                    onChange={(checked) =>
+                      setDeviceSetting('confirmConversationDelete', checked)
+                    }
+                    label={settingsRow('confirm-conversation-delete').title}
+                  />
+                }
+              />
             </Section>
           )}
 
