@@ -483,7 +483,28 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     expect(within(left).queryByLabelText(/^Add pane to/)).toBeNull();
     // The chevron names the region too, so one name reaches the reader from
     // the landmark, the control and the placeholder alike.
-    expect(within(left).getByLabelText('Hide Left region')).toBeTruthy();
+    const chevron = within(left).getByLabelText('Hide Left region');
+    expect(chevron).toBeTruthy();
+    // And it advertises NO chord. `surfaceShortcutId` falls back to
+    // `dock.toggle` for a shell with no occupant — CHAT's chord, live in
+    // this tree because Chat's own shell in `right` registers it — so
+    // without the empty-region branch the tooltip would read "Hide Left
+    // region (⌘D)", naming a key that toggles Chat wherever Chat is rather
+    // than this region. This is the case that gives the assertion its power:
+    // the same check in a tree with no Chat shell passes either way, because
+    // an unregistered id displays nothing.
+    expect(chevron.title).toBe('Hide Left region');
+    // The control group: Chat's own chevron, in the same tree, DOES carry a
+    // chord hint. Compared as "the title adds something to the label" rather
+    // than against a literal, because the glyph is platform-dependent (⌘D on
+    // a Mac, Ctrl+D elsewhere) and this must not red on the runner's OS.
+    const chatChevron = within(
+      document.querySelector<HTMLElement>('#chat-dock') ?? left,
+    ).getByLabelText('Hide Chat');
+    expect(
+      chatChevron.title.startsWith('Hide Chat ('),
+      `the chord must be live in this tree, or the assertion above is vacuous (chat title: ${chatChevron.title})`,
+    ).toBe(true);
   });
 
   test('an occupant without a registered shell renders nothing', async () => {

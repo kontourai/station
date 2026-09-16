@@ -103,6 +103,12 @@ export interface DockShellChrome {
   visualViewport: ReturnType<typeof useMobileVisualViewport>;
   availableDockSlotPlacements: readonly DockMode[];
   effectiveDockSlotPlacement: DockMode;
+  /**
+   * The chord that toggles this shell's surface, for the chevron's tooltip.
+   * EMPTY STRING for an empty region (#2153): nothing toggles a region that
+   * holds no surface, and the registry answers nothing for an unknown id, so
+   * `withShortcutHint` leaves the label unadorned.
+   */
   surfaceShortcutId: string;
   /**
    * The registered title of the surface this shell holds, which is what its
@@ -754,10 +760,19 @@ export function useDockShellChrome({
     visualViewport,
     availableDockSlotPlacements,
     effectiveDockSlotPlacement,
-    surfaceShortcutId:
-      (shellOccupant
-        ? resolveRegionSurface(shellOccupant)?.shortcut?.id
-        : undefined) ?? 'dock.toggle',
+    surfaceShortcutId: shellOccupant
+      ? (resolveRegionSurface(shellOccupant)?.shortcut?.id ?? 'dock.toggle')
+      : // An EMPTY region under a model advertises NO chord (#2153). The
+        // `dock.toggle` fallback is Chat's, and it is right for the two
+        // mounts that ARE Chat's — the model-less ambient dock and the
+        // fullscreen pane, whose `shellOccupant` is the literal `'chat'`.
+        // An empty region is neither: nothing toggles IT, and a chevron
+        // reading "Hide Right region (⌘D)" would name a key that toggles
+        // Chat wherever Chat is. `withShortcutHint` leaves the bare label
+        // for an id the registry does not know.
+        regionModel && regionId
+        ? ''
+        : 'dock.toggle',
     // Three cases reach a fallback, and TWO of them are Chat's, because
     // neither has an occupant to name: the model-less ambient dock (Chat's
     // and nothing else's, the same mount `dock.toggle` above falls back for
