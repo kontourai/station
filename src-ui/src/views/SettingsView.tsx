@@ -138,7 +138,7 @@ export const SETTINGS_SAVE_DEADLINE_MS = 30_000;
  * still the better outcome against a Save button that never releases, but
  * it is a real gap, not a flicker.
  */
-export const SETTINGS_OVERRIDE_REFETCH_DEADLINE_MS = 3_000;
+const SETTINGS_OVERRIDE_REFETCH_DEADLINE_MS = 3_000;
 
 export interface SettingsViewProps {
   onBack: () => void;
