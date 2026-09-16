@@ -181,9 +181,14 @@ export async function moveLonePaneToRegion(
   surfaceTitle: string,
   regionLabel: 'Left' | 'Bottom' | 'Right' | 'Main',
 ): Promise<void> {
+  // Scoped to the surface's OWN shell: another region on the page may hold
+  // two panes and render a strip of its own, which says nothing about this
+  // one.
   await expect(
-    page.getByRole('tablist', { name: 'Region panes' }),
-    `${surfaceTitle} must be alone in its region, or this is not the lone pane's route`,
+    surfaceDockShell(page, surfaceTitle).getByRole('tablist', {
+      name: 'Region panes',
+    }),
+    `${surfaceTitle}'s region renders a tab strip, so it is not alone there and this is not the lone pane's route`,
   ).toHaveCount(0);
   const button = page.getByRole('button', {
     name: `Move ${surfaceTitle}`,

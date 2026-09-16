@@ -224,9 +224,14 @@ function RegionTabMoveMenu({
 /**
  * The one open move menu, and which trigger opened it (#2160). The state lives
  * in `RegionChromeBar` rather than in the strip so the strip's tabs and the
- * bar's Move button share ONE menu instance: opening from either closes the
- * other, and `from` is what lets the button report its own `aria-expanded`
- * honestly when a tab opened the menu for the same pane.
+ * bar's Move button share ONE menu instance. The button reports
+ * `aria-expanded` only when `from` is the bar AND the menu's pane is the pane
+ * the button names — the selection can move while the menu is open, and the
+ * button then names a different pane. Because the instance is shared, a
+ * second trigger UPDATES the open menu's props rather than remounting it
+ * (no `key`): the roving focus and the return-focus target stay with the
+ * first open. That transition is not reachable by pointer (the backdrop
+ * takes the press) and is pinned as state ownership, not as a gesture.
  */
 interface RegionMoveState {
   tab: RegionChromeTab;
@@ -438,6 +443,13 @@ function RegionTabStrip({
  * a catalog whose every Open would land a pane that cannot render is not
  * offered). It renders for a one-pane region too, the case the acceptance
  * starts from.
+ *
+ * The Move button (#2160): opens the selected pane's move menu — the same
+ * `RegionTabMoveMenu` a tab's context menu opens — so a lone pane, which
+ * renders no strip, can reach any region it declares, Main included. Fine
+ * pointer only and absent without `onMoveTab` or with nowhere to go. Like
+ * the "+", it renders on a COLLAPSED bar too: a collapsed region is still
+ * the region, and moving its pane is a bar action, not a body one.
  */
 export function RegionChromeBar({
   chrome,
@@ -470,6 +482,19 @@ export function RegionChromeBar({
   const barRef = useRef<HTMLDivElement | null>(null);
   // ONE open move menu for the whole bar, whichever trigger opened it (#2160).
   const [moving, setMoving] = useState<RegionMoveState | null>(null);
+  // The menu acts on ONE pane, and that pane can leave the region while the
+  // menu is open — its tab closed by ⌘D or a chord, a route or an agent
+  // unplacing it; the backdrop absorbs pointer presses but only Escape is
+  // intercepted on the keyboard. Before #2160 the menu lived in the strip and
+  // unmounted with it; at bar level it would outlive the pane and re-place
+  // one that is no longer here. Derived from the same `tabs` the strip
+  // renders, so the menu cannot outlive the state that justified it.
+  const movingIsStale =
+    moving !== null &&
+    !tabs.some((tab) => tab.surfaceId === moving.tab.surfaceId);
+  useEffect(() => {
+    if (movingIsStale) setMoving(null);
+  }, [movingIsStale]);
   const isDockOpen = chrome.isDockOpen;
   const isDockMaximized = chrome.isDockMaximized;
   const toggleShortcut = useShortcutDisplay(chrome.surfaceShortcutId);
@@ -575,7 +600,10 @@ export function RegionChromeBar({
             type="button"
             className="chat-dock__icon-btn"
             aria-haspopup="menu"
-            aria-expanded={moving?.from === 'bar'}
+            aria-expanded={
+              moving?.from === 'bar' &&
+              moving.tab.surfaceId === barMoveTab.surfaceId
+            }
             onClick={(event) =>
               setMoving({
                 tab: barMoveTab,
@@ -663,7 +691,7 @@ export function RegionChromeBar({
           </svg>
         </button>
       </div>
-      {moving && onMoveTab ? (
+      {moving && !movingIsStale && onMoveTab ? (
         <RegionTabMoveMenu
           tab={moving.tab}
           regions={moveTargets(moving.tab.surfaceId)}

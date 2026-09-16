@@ -299,6 +299,104 @@ describe('the region bar control set', () => {
     expect(screen.getByRole('menu', { name: 'Move Chat' })).toBeTruthy();
   });
 
+  /**
+   * The menu acts on ONE pane and closes with it. Before #2160 it lived in the
+   * strip and unmounted with the strip; at bar level it would outlive a pane
+   * that ⌘D, a chord, a route or an agent took out of the region — the
+   * backdrop absorbs pointer presses but only Escape is intercepted — and a
+   * row would then re-place a pane no longer here. Deleting the
+   * `movingIsStale` effect AND its render gate keeps the menu open below.
+   */
+  test('the move menu closes when its pane leaves the region', () => {
+    const { rerender } = render(
+      <RegionChromeBar
+        chrome={chromeStub()}
+        groupId="region:bottom"
+        tabs={TABS}
+        selectedSurfaceId="chat"
+        onSelectTab={handlers.onSelectTab}
+        onCloseTab={handlers.onCloseTab}
+        onReorderTab={handlers.onReorderTab}
+        onMoveTab={handlers.onMoveTab}
+        leadingSlotRef={() => {}}
+        trailingSlotRef={() => {}}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chat' }));
+    expect(screen.getByRole('menu', { name: 'Move Chat' })).toBeTruthy();
+
+    // Chat leaves; Activity stays alone (no strip).
+    rerender(
+      <RegionChromeBar
+        chrome={chromeStub({ surfaceTitle: 'Activity' })}
+        groupId="region:bottom"
+        tabs={[TABS[1]!]}
+        selectedSurfaceId="activity"
+        onSelectTab={handlers.onSelectTab}
+        onCloseTab={undefined}
+        onReorderTab={handlers.onReorderTab}
+        onMoveTab={handlers.onMoveTab}
+        leadingSlotRef={() => {}}
+        trailingSlotRef={() => {}}
+      />,
+    );
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.queryByLabelText('Close move menu for Chat')).toBeNull();
+    expect(handlers.onMoveTab).not.toHaveBeenCalled();
+  });
+
+  /**
+   * `aria-expanded` is THIS button's: the bar opened the menu for Chat, then
+   * the selection moved to Activity, so the button now names Activity and
+   * must not claim the open menu that moves Chat. Reverting the derivation to
+   * `moving?.from === 'bar'` reds the second assertion.
+   */
+  test('the bar button reports expanded only for the pane it names', () => {
+    const { rerender } = render(
+      <RegionChromeBar
+        chrome={chromeStub()}
+        groupId="region:bottom"
+        tabs={TABS}
+        selectedSurfaceId="chat"
+        onSelectTab={handlers.onSelectTab}
+        onCloseTab={handlers.onCloseTab}
+        onReorderTab={handlers.onReorderTab}
+        onMoveTab={handlers.onMoveTab}
+        leadingSlotRef={() => {}}
+        trailingSlotRef={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Move Chat' }));
+    expect(
+      screen
+        .getByRole('button', { name: 'Move Chat' })
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+
+    rerender(
+      <RegionChromeBar
+        chrome={chromeStub({ surfaceTitle: 'Activity' })}
+        groupId="region:bottom"
+        tabs={TABS}
+        selectedSurfaceId="activity"
+        onSelectTab={handlers.onSelectTab}
+        onCloseTab={handlers.onCloseTab}
+        onReorderTab={handlers.onReorderTab}
+        onMoveTab={handlers.onMoveTab}
+        leadingSlotRef={() => {}}
+        trailingSlotRef={() => {}}
+      />,
+    );
+    // The menu still moves Chat (its pane is still in the region)…
+    expect(screen.getByRole('menu', { name: 'Move Chat' })).toBeTruthy();
+    // …and the button, now Activity's, does not claim it.
+    expect(
+      screen
+        .getByRole('button', { name: 'Move Activity' })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
   test('the strip hides while the region is collapsed (D1), on a coarse device, and for one pane', () => {
     const { unmount } = renderBar({
       chrome: chromeStub({ isDockOpen: false }),

@@ -18,6 +18,7 @@ import {
   expectRegionTabs,
   FIRST_RENDER_TIMEOUT_MS,
   moveRegionThroughGrab,
+  moveTabToRegion,
   showRegionThroughOverflowMenu,
   showSurfaceInEmptyRegion,
   surfaceDockShell,
@@ -1048,6 +1049,21 @@ test.describe('ChatDock', () => {
       ),
       'returning to Chat must keep it a direct shell child',
     ).toMatch(/app__main/);
+
+    // #2143's tab route, driven end to end: with two panes in the region,
+    // Activity's TAB carries the move menu. "Move to Right" takes Activity
+    // out of the joined region into an empty Right, leaving Chat alone at
+    // the bottom — the strip is gone, the landmark is still Chat's.
+    await moveTabToRegion(page, 'Activity', 'Right');
+    await expect(
+      surfaceDockShell(page, 'Activity'),
+      'the moved pane must render its own region on the right',
+    ).toHaveClass(/chat-dock--right/);
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
+    await expect(
+      chatDockShell(page).getByRole('tablist', { name: 'Region panes' }),
+      'a one-pane region renders no strip',
+    ).toHaveCount(0);
   });
 });
 
