@@ -35,7 +35,25 @@ import {
  * mis-scoped pathspec fails loudly instead of reporting clean.
  */
 const ROOT = process.cwd();
-const SCANNED_ROOT = 'src-ui/src/views';
+/**
+ * The whole UI source tree, not just `views/`. Every `settingsRow` call site
+ * lives under `views/settings/` today, which is exactly why the narrower
+ * pathspec could not tell you that — a row rendered from `components/` would
+ * have been outside the scan and invisible, and the scan would still have
+ * reported clean.
+ */
+const SCANNED_ROOT = 'src-ui/src';
+
+/**
+ * Test files are excluded, and the exclusion is asserted below. A fixture
+ * naming a deliberately-invalid id (this file does, three times) is not a
+ * call site; counting one would turn the guard's own negative cases into
+ * violations, and counting a test's VALID id would let it stand in for a
+ * renderer that no longer exists.
+ */
+function isTestPath(path: string): boolean {
+  return path.includes('__tests__');
+}
 
 /**
  * Three files that call `settingsRow` with literals today. If the
@@ -84,7 +102,7 @@ function trackedTsxFiles(): readonly string[] {
     maxBuffer: 16 * 1024 * 1024,
   })
     .split('\n')
-    .filter((path) => path.endsWith('.tsx'));
+    .filter((path) => path.endsWith('.tsx') && !isTestPath(path));
 }
 
 /** Every `settingsRow('…')` literal, with the file it was written in. */
@@ -116,6 +134,14 @@ describe('settingsRow literal coverage', () => {
     for (const sentinel of SCOPE_SENTINEL_FILES) {
       expect(files, `${sentinel} left the enumeration`).toContain(sentinel);
     }
+    // The widened root reaches beyond `views/`, which is what makes the
+    // exclusion load-bearing: `views/settings/__tests__` and the component
+    // test directories are full of `.tsx` the filter has to drop.
+    expect(files.filter(isTestPath)).toEqual([]);
+    expect(
+      files.some((path) => !path.startsWith('src-ui/src/views/')),
+      'the scan never left views/, so widening the root did nothing',
+    ).toBe(true);
     // The sentinels are only a scope proof if they actually contribute
     // literals; a file that stopped calling `settingsRow` would leave the
     // enumeration proven and the corpus empty.

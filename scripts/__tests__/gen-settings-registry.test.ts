@@ -6,6 +6,7 @@ import {
   buildRegistryDocument,
   generateSettingsRegistry,
   loadRegistrySources,
+  MINIMUM_REGISTRY_CONFIG_KEYS,
   MINIMUM_REGISTRY_ENTRIES,
   serializeRegistry,
 } from '../gen-settings-registry';
@@ -85,6 +86,55 @@ describe('settings registry generator', () => {
         }),
       ).resolves.toEqual({ written: true, entries: MINIMUM_REGISTRY_ENTRIES });
       expect(existsSync(outputPath)).toBe(true);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  test('the config-key floor refuses a full-length catalog that lost its keys', async () => {
+    const scratch = mkdtempSync(join(tmpdir(), 'settings-registry-keys-'));
+    const outputPath = join(scratch, 'settings-registry.json');
+    try {
+      // The first floor cannot see this: every entry is still here, so the
+      // count is 45 and passes. What is gone is the key that resolves `help`.
+      const keyless = {
+        ...sources,
+        catalog: sources.catalog.map(
+          ({ configKeys: _dropped, ...rest }) => rest,
+        ),
+      };
+      const keylessDocument = buildRegistryDocument(keyless);
+      expect(keylessDocument.settings.length).toBeGreaterThanOrEqual(
+        MINIMUM_REGISTRY_ENTRIES,
+      );
+      expect(
+        keylessDocument.settings.filter(
+          (entry) => entry.configKey !== undefined,
+        ),
+      ).toHaveLength(0);
+
+      await expect(
+        generateSettingsRegistry({ sources: keyless, outputPath }),
+      ).rejects.toThrow(/carry a config key/);
+      expect(existsSync(outputPath), 'the refusal still wrote a file').toBe(
+        false,
+      );
+
+      // And the two floors are independent: 39 entries that all keep their
+      // keys clears this floor and is stopped by the other one, so neither
+      // is standing in for the other.
+      const short = {
+        ...sources,
+        catalog: sources.catalog.slice(0, MINIMUM_REGISTRY_ENTRIES - 1),
+      };
+      expect(
+        buildRegistryDocument(short).settings.filter(
+          (entry) => entry.configKey !== undefined,
+        ).length,
+      ).toBeGreaterThanOrEqual(MINIMUM_REGISTRY_CONFIG_KEYS);
+      await expect(
+        generateSettingsRegistry({ sources: short, outputPath }),
+      ).rejects.toThrow(/below the floor/);
     } finally {
       rmSync(scratch, { recursive: true, force: true });
     }

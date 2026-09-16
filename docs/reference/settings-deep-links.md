@@ -25,8 +25,8 @@ the caller that the link missed, which is why the rule below matters.
 
 ## `GET /api/settings/registry`
 
-Returns every control, its deep link, and the one-sentence consequence of
-setting it.
+Returns every control, its deep link, and, where one exists, the
+one-sentence consequence of setting it.
 
 **Scope**: `orchestration:read`. The response carries no stored configuration
 value — only labels, help sentences, scope names, section ids, and URL paths.
@@ -76,7 +76,10 @@ configures:
 
 1. **Answer with one control.** Name it and give its `route`. A list of five
    plausible sections is a worse answer than one link, and `help` is there to
-   tell them what it will do before they open it.
+   tell them what it will do before they open it. Not every control has one:
+   when `help` is absent, answer with the label and the `route` alone rather
+   than writing a consequence sentence of your own — an invented one reads
+   exactly like the generated ones and nothing behind it computed it.
 2. **If nothing matches, say so.** Say that Station has no setting for it.
    A neighbouring control offered as if it were the answer costs more than an
    honest "there isn't one".
