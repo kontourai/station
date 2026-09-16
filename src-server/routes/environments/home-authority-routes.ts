@@ -263,8 +263,9 @@ export function createHomeAuthorityRoutes(
                 // accepted it since #1615. #1659 swept this key into the
                 // generation rule above and turned every first transfer into
                 // a 400 that fired before authorization (#2196) — the stranger
-                // case answered 400 where 403 was the whole point.
-                !Number.isSafeInteger(data[key])
+                // case answered 400 where 403 was the whole point. Only a
+                // negative revision is malformed.
+                !Number.isSafeInteger(data[key]) || (data[key] as number) < 0
               : typeof data[key] !== 'string',
         )
       )
