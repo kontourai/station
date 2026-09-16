@@ -20,6 +20,13 @@
       "configKey": "telemetryEnabled"
     },
     {
+      "id": "telemetry-destination",
+      "label": "Telemetry destination",
+      "scope": "informational",
+      "section": "station-config",
+      "route": "/settings?view=station-config&highlight=telemetry-destination"
+    },
+    {
       "id": "default-max-turns",
       "label": "Default max turns",
       "help": "Station stops an agent run once it has taken this many steps.",
@@ -101,6 +108,15 @@
       "configKey": "defaultWorkspaceIsolation"
     },
     {
+      "id": "default-approval-mode",
+      "label": "Default approval mode",
+      "help": "New chats start in this approval posture unless the chat or its engine connection names its own.",
+      "scope": "station",
+      "section": "station-config",
+      "route": "/settings?view=station-config&highlight=default-approval-mode",
+      "configKey": "defaultApprovalMode"
+    },
+    {
       "id": "registry-url",
       "label": "Registry URL",
       "help": "The Registry page loads its catalog of agents, skills, and plugins from here.",
@@ -170,6 +186,13 @@
       "scope": "station",
       "section": "system",
       "route": "/settings?view=system&highlight=reset-defaults"
+    },
+    {
+      "id": "reset-device-defaults",
+      "label": "Restore device defaults",
+      "scope": "device",
+      "section": "system",
+      "route": "/settings?view=system&highlight=reset-device-defaults"
     },
     {
       "id": "feature-previews",
@@ -260,8 +283,8 @@
     },
     {
       "id": "smooth-answer-reveal",
-      "label": "Smooth answer reveal",
-      "help": "Only the optional features turned on here are active on this device.",
+      "label": "Answer delivery",
+      "help": "Only the optional features turned on here are active on this device, and this is where each notification category’s sound is kept.",
       "scope": "device",
       "section": "appearance",
       "route": "/settings?view=appearance&highlight=smooth-answer-reveal",
@@ -295,6 +318,15 @@
       "configKey": "hapticsEnabled"
     },
     {
+      "id": "confirm-conversation-delete",
+      "label": "Ask before deleting a conversation",
+      "help": "When on, deleting a conversation on this device asks for confirmation first; deleting is not undoable either way.",
+      "scope": "device",
+      "section": "appearance",
+      "route": "/settings?view=appearance&highlight=confirm-conversation-delete",
+      "configKey": "confirmConversationDelete"
+    },
+    {
       "id": "accent-color",
       "label": "Accent color",
       "help": "Accent-colored interface elements use this color on this device instead of the theme’s own.",
@@ -315,7 +347,7 @@
     {
       "id": "push-notifications",
       "label": "Push notifications",
-      "help": "Only the optional features turned on here are active on this device.",
+      "help": "Only the optional features turned on here are active on this device, and this is where each notification category’s sound is kept.",
       "scope": "device",
       "section": "notifications",
       "route": "/settings?view=notifications&highlight=push-notifications",
@@ -349,7 +381,7 @@
     {
       "id": "voice-pill",
       "label": "Voice pill (speech-to-speech)",
-      "help": "Only the optional features turned on here are active on this device.",
+      "help": "Only the optional features turned on here are active on this device, and this is where each notification category’s sound is kept.",
       "scope": "device",
       "section": "voice",
       "route": "/settings?view=voice&highlight=voice-pill",
@@ -358,7 +390,7 @@
     {
       "id": "mobile-pairing",
       "label": "Mobile pairing & network discovery",
-      "help": "Only the optional features turned on here are active on this device.",
+      "help": "Only the optional features turned on here are active on this device, and this is where each notification category’s sound is kept.",
       "scope": "device",
       "section": "voice",
       "route": "/settings?view=voice&highlight=mobile-pairing",
@@ -367,7 +399,7 @@
     {
       "id": "tts-readback",
       "label": "Read agent responses aloud (TTS)",
-      "help": "Only the optional features turned on here are active on this device.",
+      "help": "Only the optional features turned on here are active on this device, and this is where each notification category’s sound is kept.",
       "scope": "device",
       "section": "voice",
       "route": "/settings?view=voice&highlight=tts-readback",
