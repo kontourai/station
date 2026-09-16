@@ -620,58 +620,14 @@ describe('project layout chips in the real sidebar (#2063)', () => {
     });
 
     /**
-     * The regression that shipped and was caught in review: a chunk fetch that
-     * FAILS must not latch the menu off.
-     *
-     * `unavailable={() => null}` discards `LazyBoundary`'s own `onRetry`, so
-     * its `attempt` never moves; and re-opening does not unmount the boundary
-     * either, because right-clicking the same chip writes the `menuFor` value
-     * it already holds and a different chip only changes the boundary's props.
-     * Without the gesture-owned `key`, one failed fetch turned the chip's menu
-     * off for the life of the row, silently — while the component's own
-     * docblock claimed the next right-click retried.
-     *
-     * The import is made to REJECT rather than the failure being simulated at
-     * some inner seam: what is under test is the boundary's lifecycle, and a
-     * stub that resolved to a throwing component would exercise a different
-     * error path from the one a missing chunk takes.
+     * A chunk fetch that FAILS must not latch the menu off — the review's
+     * HIGH. It is pinned in
+     * `components/project-sidebar/__tests__/ProjectLayoutChipMenuRetry.test.tsx`
+     * rather than here: making the import reject needs `vi.doMock`, whose
+     * registry edit leaked into whichever case ran next in this file (observed
+     * twice, on two different neighbours, depending on the corpus). A file
+     * whose mock is declared once, with a flag, has no such edit to leak.
      */
-    test('a chip menu whose chunk fails to load is retried by the next gesture', async () => {
-      vi.doMock('../components/project-sidebar/ProjectLayoutChipMenu', () => {
-        throw new Error('chunk unavailable');
-      });
-      renderSidebar(<ProjectSidebar />);
-
-      await openChipMenu('Coding');
-      await act(async () => {});
-      // Nothing rendered, and nothing that could be dismissed: this is the
-      // state the fix has to be able to leave.
-      expect(menu()).toBeNull();
-
-      // Put the real module back, and back in the CACHE — the same device as
-      // this block's `beforeAll` and for the same reason: an unmocked module
-      // has to be re-registered before it can resolve in one microtask, and a
-      // longer flush here would make the assertion below a wait rather than a
-      // decision.
-      vi.doUnmock('../components/project-sidebar/ProjectLayoutChipMenu');
-      await import('../components/project-sidebar/ProjectLayoutChipMenu');
-
-      // The SAME chip, which is the case a key derived from `menuFor` would
-      // still fail: React bails out of a state write that changes nothing, so
-      // only a key the gesture itself moves can remount the boundary.
-      await openChipMenu('Coding');
-      await act(async () => {});
-      expect(menu()?.getAttribute('aria-label')).toBe('Coding actions');
-      act(() => {
-        fireEvent.click(
-          screen.getByRole('menuitem', { name: 'Open in Right' }),
-        );
-      });
-      expect(openSurfaceInRegion).toHaveBeenCalledWith(
-        `layout:${DEMO_PROJECT_ID}/${CODING_LAYOUT_ID}`,
-        { region: 'right' },
-      );
-    });
 
     test('a plain click still selects the layout', async () => {
       renderSidebar(<ProjectSidebar />);
