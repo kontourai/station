@@ -1,0 +1,13 @@
+// Stand-in for packages/contracts/src/device-settings.ts — the second non-JSX
+// copy source (epic #2144 slice 2). Its factory has a DIFFERENT name, so a
+// gate that scanned it with the app registry's opener would read no copy from
+// it at all; the fixture exists so the negative control proves the gate reads
+// this file, not merely that it lists it.
+export const DEVICE_SETTINGS_REGISTRY = [
+  defineDeviceSetting({
+    key: 'theme',
+    label: 'Theme',
+    help: 'The interface renders in this color scheme on this device.',
+    description: 'Light or dark interface theme.',
+  }),
+];

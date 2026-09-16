@@ -24,6 +24,11 @@ const sdkMocks = vi.hoisted(() => ({
   environmentsError: false,
   environmentsLoading: false,
   modelConnections: [] as Array<Record<string, unknown>>,
+  // `undefined` is the unread config — the picker must not claim a resolved
+  // mode it has not seen.
+  stationConfig: undefined as
+    | { defaultWorkspaceIsolation?: 'shared' | 'worktree' }
+    | undefined,
 }));
 
 const navigationMocks = vi.hoisted(() => ({
@@ -129,6 +134,14 @@ vi.mock('../views/project-settings/ResourcesSection', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // #2144 slice 2: the workspace picker names the mode the Station default
+  // currently resolves to, so this view now reads the Station config.
+  useConfigQuery: vi.fn(() => ({
+    data: sdkMocks.stationConfig,
+    error: null,
+    dataUpdatedAt: sdkMocks.stationConfig ? 1 : 0,
+    refetch: vi.fn(),
+  })),
   useSshEnvironmentsQuery: () => ({
     data:
       sdkMocks.environmentsError || sdkMocks.environmentsLoading
@@ -261,6 +274,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     sdkMocks.deleteFailure = null;
     sdkMocks.refetch.mockClear();
     sdkMocks.environments = [];
+    sdkMocks.stationConfig = {};
     sdkMocks.environmentsError = false;
     sdkMocks.environmentsLoading = false;
     sdkMocks.modelConnections = [
@@ -292,11 +306,18 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(container.querySelector('#section-workspace')).toBeTruthy();
     expect(container.querySelector('#section-basic-info')).toBeTruthy();
     expect(container.querySelector('#section-model')).toBeTruthy();
+    // #2144 slice 2: the fixture project names no workspace mode, so the
+    // picker shows the inherit option rather than claiming it chose 'shared'.
     expect(
       inputValue(
         screen.getByLabelText('Execution environment') as HTMLSelectElement,
       ),
-    ).toBe('shared');
+    ).toBe('inherit');
+    expect(
+      screen.getByRole('option', {
+        name: 'Use the Station default (currently: the current checkout)',
+      }),
+    ).toBeTruthy();
     expect(container.querySelector('#section-danger')).toBeTruthy();
   });
 
@@ -656,6 +677,61 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       }),
     );
     expect(screen.queryByText('unsaved')).toBeNull();
+  });
+
+  /**
+   * The option answers "what will inherit actually do?" at the point of the
+   * decision. It must name the mode the Station default RESOLVES to, and it
+   * must not name one before the config has been read: `shared` is also the
+   * resolver's fallback, so an unread config and a Station genuinely on
+   * `shared` would print the same sentence from different amounts of
+   * knowledge.
+   */
+  test('the inherit option names the mode the Station default resolves to', () => {
+    sdkMocks.stationConfig = { defaultWorkspaceIsolation: 'worktree' };
+    renderProjectSettings();
+    expect(
+      screen.getByRole('option', {
+        name: 'Use the Station default (currently: a fresh git worktree)',
+      }),
+    ).toBeTruthy();
+  });
+
+  test('the inherit option claims no resolved mode before the config is read', () => {
+    sdkMocks.stationConfig = undefined;
+    renderProjectSettings();
+    expect(
+      screen.getByRole('option', { name: 'Follow the Station default' }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/currently:/)).toBeNull();
+  });
+
+  /**
+   * #2144 slice 2, the regression this option exists to stop: the fixture
+   * project names no workspace mode, the person renames it, and the save must
+   * not write a concrete mode into a project that was following the Station
+   * default. Driven through the real form and the real Save button — the
+   * payload builder's own unit test cannot see whether the VIEW seeds
+   * 'inherit'.
+   */
+  test('renaming a project that names no workspace mode does not pin one', async () => {
+    const { container } = renderProjectSettings();
+
+    fireEvent.change(
+      container.querySelector('.project-settings__name-input') as Element,
+      { target: { value: 'Renamed' } },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          slug: 'demo',
+          name: 'Renamed',
+          defaultWorkspaceIsolation: null,
+        }),
+      ),
+    );
   });
 
   test('surfaces failed saves through the canonical ErrorState alert', async () => {

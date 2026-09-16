@@ -21,6 +21,8 @@ export function createRuntimeWorkspacePaneHostActions(input: {
     journal: input.journal,
     projects: input.projects,
     getConnection: input.getConnection,
+    stationDefaultWorkspaceIsolation: async () =>
+      await input.orchestration.resolveStationDefaultWorkspaceIsolation?.(),
     nativeAgentAvailable: (agentId, spec) =>
       input.orchestration.getProviderAdapter('station-agent') instanceof
         StationAgentAdapter &&

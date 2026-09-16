@@ -33,6 +33,7 @@ export const STATION_CONFIG_KEYS: readonly (keyof AppConfig)[] = [
   'surfaceTrustFromVeritasEvidence',
   'disableDefaultSkillRegistries',
   'workspaceCheckpoints',
+  'defaultWorkspaceIsolation',
   'registryUrl',
   'distributionProfile',
   'builtinAgentEngineConnectionId',

@@ -27,7 +27,10 @@ describe('project-settings utils', () => {
       // and an `undefined` would be dropped by JSON.stringify on save, so
       // clearing the connection would never reach the server.
       defaultProviderId: '',
-      defaultWorkspaceIsolation: 'shared',
+      // #2144 slice 2: a record with no mode has chosen NOTHING, not the
+      // shared checkout. Seeding 'shared' here is what made an unrelated
+      // save pin the project away from the Station default.
+      defaultWorkspaceIsolation: 'inherit',
       defaultEnvironment: { kind: 'current' },
       workingDirectory: '',
       agents: undefined,
@@ -49,18 +52,53 @@ describe('project-settings utils', () => {
         icon: '',
         description: '',
         defaultModel: '',
+        defaultWorkspaceIsolation: 'inherit',
         workingDirectory: '',
         agents: undefined,
-      }),
+      } as never),
     ).toEqual({
       name: 'Demo',
       icon: '',
       description: '',
       defaultModel: '',
+      // `null`, not absent: the route drops the override on null, and
+      // JSON.stringify would drop an `undefined` and leave a previously
+      // stored mode in place (#2144 slice 2).
+      defaultWorkspaceIsolation: null,
       defaultEnvironment: { kind: 'current' },
       workingDirectory: undefined,
       agents: null,
     });
+  });
+
+  /**
+   * The round trip the regression lived in: load a project that names no
+   * workspace mode, change something unrelated, save. The payload must not
+   * carry a concrete mode, or the save pins the project away from the
+   * Station default nobody asked to leave.
+   */
+  test('a record with no workspace mode round-trips a rename without writing one', () => {
+    const form = buildProjectForm({
+      name: 'Demo',
+      slug: 'demo',
+    } as never);
+    expect(form.defaultWorkspaceIsolation).toBe('inherit');
+    const payload = buildProjectSavePayload({ ...form, name: 'Renamed' });
+    expect(payload.name).toBe('Renamed');
+    expect(payload.defaultWorkspaceIsolation).toBeNull();
+  });
+
+  test('an explicit choice is sent verbatim', () => {
+    for (const mode of ['shared', 'worktree'] as const) {
+      const form = buildProjectForm({
+        name: 'Demo',
+        defaultWorkspaceIsolation: mode,
+      } as never);
+      expect(form.defaultWorkspaceIsolation).toBe(mode);
+      expect(buildProjectSavePayload(form).defaultWorkspaceIsolation).toBe(
+        mode,
+      );
+    }
   });
 
   test('globalAgentsOnly excludes project-owned agents from the availability filter list (station#1004 §3.3)', () => {
