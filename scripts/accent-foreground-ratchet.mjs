@@ -67,6 +67,7 @@ const SOURCE_ROOTS = [
   'src-ui/src',
   'packages/connect/src/react',
   'packages/sdk/src',
+  'examples/minimal-layout/src',
   'examples/getting-started-starter/src',
   'examples/coding-starter/src',
   'examples/knowledge-docs-starter/src',
