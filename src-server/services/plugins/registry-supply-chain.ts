@@ -43,10 +43,7 @@ const SIGNATURE = /^[A-Za-z0-9+/]+={0,2}$/;
 const MAX_SOURCE_CHARS = 2_048;
 const MAX_KEY_CHARS = 16 * 1_024;
 
-export type {
-  RegistryPackageClaim,
-  RegistryPackageSignature,
-} from '@kontourai/station-contracts/registry-trust';
+export type { RegistryPackageClaim } from '@kontourai/station-contracts/registry-trust';
 export interface RegistrySupplyChainPolicy {
   readonly signatures: 'optional' | 'required';
   readonly pins: 'exact';

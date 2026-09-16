@@ -14,9 +14,12 @@ data. It does not implement that migration operation or a publisher trust badge.
 configuration writer (`PUT /config/app`), schema, settings registry, and runtime
 application owner. Each profile selects the exact opaque `registryKey` exposed
 by its registry provider, a `signatures` value of `optional` or `required`, and a
-map of `trustedEd25519Keys`. Values are public Ed25519 SPKI PEMs; private-key PEMs
-are rejected before configuration is saved. There are at most 16 profiles and 16
-keys per profile. A registry cannot supply or install its own trust anchors.
+map of `trustedEd25519Keys`. Values are public Ed25519 SPKI PEMs. The
+configuration writer does not check the key format: the check lives where the
+policy identity is computed (`registryTrustPolicyIdentity`), which runs when a
+candidate is observed, admitted, or published as applied. A private-key PEM is
+therefore storable as a candidate and refuses at application, not at save.
+There are at most 16 profiles and 16 keys per profile. A registry cannot supply or install its own trust anchors.
 
 Profiles apply to their selected registry. An unrelated unsigned local source
 continues to work without a registry account. A supplied registry claim without
