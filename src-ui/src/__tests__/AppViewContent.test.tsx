@@ -116,9 +116,6 @@ vi.mock('../views/ConnectionsSectionFrame', () => ({
 vi.mock('../views/RegistryView', () => ({
   RegistryView: () => <div>Registry</div>,
 }));
-vi.mock('../views/ReviewQueueView', () => ({
-  ReviewQueueView: () => <div>ReviewQueue</div>,
-}));
 vi.mock('../views/ScheduleView', () => ({
   ScheduleView: () => <div data-testid="schedule-view">Schedule</div>,
 }));

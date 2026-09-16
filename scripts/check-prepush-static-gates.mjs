@@ -25,9 +25,10 @@
  * delegates to the existing scripts, so the counts, the ceilings, and the
  * remedies all keep coming from one voice.
  *
- * Cost, measured on this repo: eleven of the twelve run in under 500ms each
- * (~2s combined, random-uuid-guard included); `a11y` is ~5s because it runs
- * its own biome pass. A docs-only or workflow-only push pays none of it.
+ * Cost, measured on this repo: 8.6s for all twenty-two together. Most are
+ * under 500ms each; `a11y` is ~5s of that because it runs its own biome pass,
+ * and `ui-glyph-coverage` (~0.7s) and `stored-path-expansion` (~0.6s) are the
+ * next slowest. A docs-only or workflow-only push pays none of it.
  *
  * When the scope cannot be computed the gate runs anyway: "I could not look"
  * must not resolve to the same answer as "nothing changed"
@@ -67,6 +68,24 @@ export const PREPUSH_STATIC_GATES = Object.freeze([
   'random-uuid-guard',
   'dialog-surface-class-guard',
   'agent-plugin-validators-gate',
+  // #2067: fails when a handler returns plugin identity and no disposition is
+  // recorded for it. The family was found incomplete twice by review; this is
+  // what computes the promise the inventory makes.
+  'plugin-identity-enumeration-scan',
+  // #2096: these seven were in `gate:ui-contracts` and not here, so a lane
+  // could run this gate, read a clean result, and still be refused by the
+  // Windows portable floor on a ratchet it had no local way to run. It cost
+  // epic #2058 two round trips — accent-foreground on #2080, and
+  // stored-path-expansion on #2095 — each a real finding the lane could not
+  // see. `covers every gate the CI UI-contract chain runs` now derives the
+  // comparison rather than trusting this list to stay synced by hand.
+  'claim-fixture-ratchet',
+  'sdk-error-message-ratchet',
+  'accent-foreground-ratchet',
+  'font-origin-ratchet',
+  'unsaved-guard-gate',
+  'stored-path-expansion-guard',
+  'ui-glyph-coverage-ratchet',
   'a11y-ratchet',
 ]);
 

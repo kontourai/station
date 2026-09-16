@@ -111,20 +111,41 @@ export async function fetchMobileDeviceInventory(
   return result as unknown as MobileDeviceInventory;
 }
 
+/**
+ * Whether `captureMobileDevice` will send a request for this target at all.
+ *
+ * This client refuses a device id it does not recognise BEFORE anything
+ * leaves the browser — an iOS simulator id must be a UDID, an Android one an
+ * `emulator-<n>` serial — and the refusal is an indistinguishable
+ * `MobileDeviceRequestError(400)`. The host's own listing rule is wider than
+ * that in one case: it only enforces the emulator-serial spelling for a
+ * BOOTED Android device, so an inventory can legitimately contain a row this
+ * function answers `false` for.
+ *
+ * Exported so a caller can ask BEFORE offering the press, rather than
+ * discovering it as a failed capture — and exported rather than copied,
+ * because a second reader of this rule is a second reader that eventually
+ * gets it wrong. Widening the rule is a change to the validator, not to a
+ * consumer's mirror of it.
+ */
+export function isCaptureableMobileDeviceTarget(
+  selected: MobileDeviceTarget,
+): boolean {
+  return (
+    target(selected) &&
+    (selected.platform === 'ios'
+      ? /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(selected.deviceId)
+      : /^emulator-[0-9]+$/.test(selected.deviceId))
+  );
+}
+
 /** Capture is explicit and bounded. It does not create a stream or boot a device. */
 export async function captureMobileDevice(
   apiBase: string,
   selected: MobileDeviceTarget,
   options?: ClientRequestOptions,
 ): Promise<MobileDeviceCapture> {
-  if (
-    !target(selected) ||
-    (selected.platform === 'ios'
-      ? !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(
-          selected.deviceId,
-        )
-      : !/^emulator-[0-9]+$/.test(selected.deviceId))
-  )
+  if (!isCaptureableMobileDeviceTarget(selected))
     throw new MobileDeviceRequestError(400);
   const expected = { ...selected };
   const path = `/api/mobile-devices/hosts/${encodeURIComponent(expected.hostId)}/devices/${expected.platform}/${encodeURIComponent(expected.deviceId)}/capture`;

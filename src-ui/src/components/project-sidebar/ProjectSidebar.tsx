@@ -43,13 +43,25 @@ import { useProjectSidebarState } from './useProjectSidebarState';
 import { buildSidebarClassName } from './utils';
 import './ProjectSidebar.css';
 
-const loadProjectSidebarStatus = () =>
-  import('./ProjectSidebarStatus').then((module) => ({
-    default: module.ProjectSidebarStatus,
+const loadProjectSidebarFooter = () =>
+  import('./ProjectSidebarFooter').then((module) => ({
+    default: module.ProjectSidebarFooter,
   }));
 
 /** archive#3314: shared-inbox-row list, lazy so the row module (and its stylesheet)
  *  stays out of the entry chunk this sidebar belongs to. */
+/**
+ * #2062. Lazy for the reason the entry-bundle ceiling exists: the Boards
+ * section costs ~1.2 kB gzip of entry JS, and it renders NOTHING for a viewer
+ * with no Boards — which is every viewer until they make one. Behind a
+ * boundary it loads with the panel, off the critical path, and the ceiling
+ * stays where the last lane left it.
+ */
+const loadProjectSidebarBoards = () =>
+  import('./ProjectSidebarBoards').then((module) => ({
+    default: module.ProjectSidebarBoards,
+  }));
+
 const loadSidebarOpenChats = () =>
   import('./SidebarOpenChats').then((module) => ({
     default: module.SidebarOpenChats,
@@ -330,7 +342,10 @@ function ProjectSidebarImpl() {
               </svg>
             </button>
           )}
-          <div className="sidebar__section-label">Work</div>
+          {/* No "Work" header above Home and Activity (#2150). The panel
+              lists places, and a category label over its two unlabelled
+              places reintroduced the taxonomy #2059 removed. It was the one
+              header the design record (D3) does not draw. */}
           <button
             type="button"
             className={`sidebar__project-btn${isHomeActive ? ' sidebar__project-btn--active' : ''}`}
@@ -344,6 +359,34 @@ function ProjectSidebarImpl() {
             <span aria-hidden="true">⌂</span>
             <span className="sidebar__project-name">Home</span>
           </button>
+          {/* #2059 (D3): Activity sits directly under Home as the panel's
+              other place. The destination rows used to be a band at the
+              BOTTOM of the panel, below the projects, because that band was
+              mostly configuration; with the configuration gone the one row
+              left belongs beside the place it is a peer of. */}
+          <ProjectSidebarNav
+            collapsed={effectiveCollapsed}
+            isMobile={isMobile}
+            navigate={navigate}
+            activePath={pathname}
+            onAfterNavigate={() => setMobileOpen(false)}
+          />
+          {/* #2062 (D3): Boards sit between Activity and Projects — the
+              project-less places, above the projects they are a peer scope
+              of. The section renders itself away when the viewer has none,
+              so a Station where nobody has made a Board looks exactly as it
+              did before this shipped. */}
+          <LazyBoundary
+            load={loadProjectSidebarBoards}
+            pending={null}
+            componentProps={{
+              collapsed: effectiveCollapsed,
+              isMobile,
+              navigate,
+              activePath: pathname,
+              onAfterNavigate: () => setMobileOpen(false),
+            }}
+          />
           {/* archive#3314: Open chats is a mini-inbox — shared inbox rows (compact
               variant), collapsible with the nav groups' disclosure anatomy
               (aria-expanded + aria-controls + hidden), and removable
@@ -545,16 +588,14 @@ function ProjectSidebarImpl() {
           </span>
         </div>
 
-        <ProjectSidebarNav
-          collapsed={effectiveCollapsed}
-          isMobile={isMobile}
-          navigate={navigate}
-          activePath={pathname}
-          onAfterNavigate={() => setMobileOpen(false)}
-        />
         <LazyBoundary
-          load={loadProjectSidebarStatus}
-          componentProps={{}}
+          load={loadProjectSidebarFooter}
+          componentProps={{
+            activePath: pathname,
+            navigate,
+            isMobile,
+            onAfterNavigate: () => setMobileOpen(false),
+          }}
           pending={null}
         />
       </nav>

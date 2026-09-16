@@ -405,7 +405,6 @@ export type NavigationView =
   | { type: 'connections-computers' }
   | { type: 'plugins' }
   | { type: 'registry'; tab?: RegistryCatalogTab }
-  | { type: 'review-queue' }
   | { type: 'developer'; tab?: DeveloperTab }
   | { type: 'schedule' }
   | { type: 'settings' }
@@ -415,6 +414,13 @@ export type NavigationView =
   // archive#4079: the board face, reached by URL only (no sidebar
   // item this slice — see docs/design/... and page-frame-registry.ts).
   | { type: 'board'; reference: BoardReference }
+  /**
+   * #2062: one of the viewer's own Boards — a Layout owned by a principal
+   * rather than a project. Distinct from `board` above, which is the
+   * archive#4079 task/session board face; the two share an English word and
+   * nothing else (see docs/glossary.md).
+   */
+  | { type: 'personal-board'; boardSlug: string }
   | { type: 'project'; slug: string }
   | { type: 'project-session-board'; slug: string }
   | { type: 'project-flow-console'; slug: string; runId?: string }

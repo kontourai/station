@@ -396,6 +396,22 @@ describe('read-only home recovery preflight', () => {
     expect(plan.codes).toContain('invalid-json');
     expect(JSON.stringify(plan)).not.toContain('private');
   });
+  it('classifies the personal and instance layout roots rather than calling them unknown', () => {
+    const home = fixture();
+    // The exact on-disk shape `layoutOwnerDirectory` writes (station#2060):
+    // personal Boards under a principal key, instance-shared ones beside them.
+    put(home, 'layouts/personal/alice-0123456789abcdef/daily.json', {});
+    put(home, 'layouts/instance/ci-wall.json', {});
+    const plan = inspectStationHomeRecovery({ homeDir: home });
+    expect(plan.codes).not.toContain('unknown-store');
+    expect(plan.stores.find((row) => row.store === 'layouts')).toMatchObject({
+      entries: 1,
+      inspectedRecords: 0,
+      disposition: 'bindings-require-review',
+    });
+    // The root is counted, not walked, so no principal key reaches the plan.
+    expect(JSON.stringify(plan)).not.toContain('alice-0123456789abcdef');
+  });
   it('reports unknown stores without reading their bytes or enumerating unknown subtrees', () => {
     const home = fixture();
     put(home, 'private-name/nested/unrecognized.json', {});

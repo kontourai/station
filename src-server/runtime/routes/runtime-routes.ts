@@ -149,6 +149,7 @@ import {
   createStationControlMcpRoutes,
   STATION_CONTROL_MCP_PATH,
 } from '../../routes/mcp/station-control-mcp-route.js';
+import { createPersonalLayoutRoutes } from '../../routes/me/personal-layouts.js';
 import { createActionOperationRoutes } from '../../routes/operations/action-operations.js';
 import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
@@ -177,6 +178,7 @@ import {
 } from '../../routes/orchestration/tasks.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
+import { canRelayPluginIdentityEvent } from '../../routes/plugins/plugin-identity-enumeration.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
 import { createRegistryRoutes } from '../../routes/plugins/registry.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
@@ -207,9 +209,13 @@ import {
 import { createBootRoutes } from '../../routes/system/boot.js';
 import { createBrandingRoutes } from '../../routes/system/branding.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
-import { createConfigRoutes } from '../../routes/system/config.js';
+import {
+  createConfigProjectReader,
+  createConfigRoutes,
+} from '../../routes/system/config.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createFeaturePreviewRoutes } from '../../routes/system/feature-previews.js';
+import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
@@ -257,6 +263,7 @@ import {
   TurnCheckpointCaptureCoordinator,
   wireTurnCheckpointCaptureWhenEnabled,
 } from '../../services/checkpoints/turn-checkpoint-capture.js';
+import { appHomeActive } from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
@@ -317,6 +324,7 @@ import { createServerLogReader } from '../../services/infra/server-log-reader.js
 import { StationKitObservabilityHost } from '../../services/kits/kit-observability-host.js';
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
+import { ownedLayoutStore } from '../../services/layouts/personal-layout-service.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
@@ -344,6 +352,7 @@ import {
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { PluginVisibilityService } from '../../services/plugins/plugin-visibility-service.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { readCheckoutRemotes } from '../../services/projects/checkout-remote-reader.js';
 import { DiffCommentService } from '../../services/projects/diff-comment-service.js';
@@ -353,6 +362,7 @@ import { ProjectBindingsStore } from '../../services/projects/project-binding-st
 import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
+import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
@@ -1003,6 +1013,70 @@ export function configureRuntimeRoutes(
   // Unifying those two facts into one stable per-person identity is an
   // open, disclosed design question (decision-needed follow-up), not
   // something this fix resolves.
+  // #2067. ONE instance for this runtime, shared by the plugin routes' list
+  // projection, the operator grant surface, and the pane catalogue's
+  // visibility fact. Three readers of one grant record and one derivation —
+  // a second instance would not diverge (the service caches nothing), but a
+  // second CONSTRUCTION invites a second projectHomeDir.
+  const pluginVisibility = new PluginVisibilityService(
+    context.configLoader.getProjectHomeDir(),
+  );
+  /**
+   * The ONE per-request plugin-visibility predicate every projected route in
+   * this file shares (#2067) — the Pane catalogue, the layout catalog faces,
+   * and the Home-role status. One derivation rather than one per call site,
+   * because a second reader of an authorized store eventually gets the
+   * authorization wrong; this slice has now proved that four times.
+   *
+   * Fails CLOSED on every error class, not just an unresolvable caller: a
+   * grant record that cannot be read (oversized, corrupt, mid-write) is not
+   * evidence of a grant either. It logs, because a defect inside `canSee`
+   * would otherwise hide every plugin from every caller with no signal
+   * anywhere.
+   */
+  /**
+   * The subscriber's principal, or null when this request cannot be
+   * attributed. Null rather than a throw because the event relay asks this
+   * per frame on a long-lived stream, and a denial is the answer either way.
+   */
+  const resolveSubscriberPrincipal = (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+  ) => {
+    try {
+      return resolveOrchestrationRequestPrincipal(c);
+    } catch (error) {
+      // Logged, because the inline original logged it and the extraction
+      // dropped it: a stream that silently relays nothing is very hard to
+      // tell from one with nothing to relay.
+      context.logger.debug?.(
+        'Plugin event relay: the subscriber could not be attributed; relaying nothing',
+        { error: error instanceof Error ? error.message : error },
+      );
+      return null;
+    }
+  };
+  const canSeePluginForRequest = (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+    pluginId: string,
+  ): boolean => {
+    try {
+      return pluginVisibility.canSee(
+        resolveOrchestrationRequestPrincipal(c),
+        pluginId,
+      );
+    } catch (error) {
+      if (!(error instanceof PrincipalUnresolvedError)) {
+        context.logger.debug?.(
+          'Plugin visibility read failed; treating the plugin as not visible',
+          {
+            pluginId,
+            error: error instanceof Error ? error.message : error,
+          },
+        );
+      }
+      return false;
+    }
+  };
   const resolveOrchestrationRequestPrincipal = memoizePerRequest(
     (c: {
       env: unknown;
@@ -1560,6 +1634,11 @@ export function configureRuntimeRoutes(
     '/api/feature-previews',
     createFeaturePreviewRoutes(context.featurePreviews, context.logger),
   );
+  // #2144 slice 5: the agent-facing settings deep-link registry. Its own
+  // top-level prefix rather than a leaf under `/config`, so an enumeration
+  // that carries no stored values is not tiered with the route that reads
+  // and writes them.
+  context.app.route('/api/settings', createSettingsRegistryRoutes());
 
   configureDevicePairingHostRoutes(
     context.app,
@@ -1717,6 +1796,25 @@ export function configureRuntimeRoutes(
           context.pluginOperationalEventSubscriptions.quiesce(plugin),
         reconcileEventSubscriptions: () =>
           context.pluginOperationalEventSubscriptions.reconcile(),
+        // #2067. The SAME memoized, fail-closed resolver every other
+        // identity-bearing route in this file reads, so `GET /api/plugins`
+        // projects onto the request's own caller and no header or body can
+        // name one. The directory is the trusted device registry's own list
+        // (`DevicePairingService.listKnownPrincipals`); before the
+        // environment is initialised there is no registry, and the honest
+        // answer is that this instance has no pairing record yet — the
+        // visibility route adds the operator row itself.
+        visibility: {
+          service: pluginVisibility,
+          resolvePrincipal: resolveOrchestrationRequestPrincipal,
+          listKnownPrincipals: () => {
+            try {
+              return context.environmentSecurityService.devicePairing.listKnownPrincipals();
+            } catch {
+              return [];
+            }
+          },
+        },
       },
     ),
   );
@@ -1732,6 +1830,11 @@ export function configureRuntimeRoutes(
       context.reloadSkillsAndAgents,
       context.skillService,
       {
+        // #2067: the registry's plugin catalog faces are operator-only; this
+        // is the resolution they refuse with.
+        visibility: { resolvePrincipal: resolveOrchestrationRequestPrincipal },
+        // #2067: the layout catalog faces are PROJECTED rather than refused.
+        canSeePlugin: (c, pluginId) => canSeePluginForRequest(c, pluginId),
         packageMcpJournal:
           context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
         installationHost: context.pluginInstallationHost,
@@ -3038,6 +3141,49 @@ export function configureRuntimeRoutes(
       context.deploymentAuthentication?.publicOrigin,
     ),
   );
+  // #2061: the personal scope. Ownership comes from
+  // `resolveOrchestrationRequestPrincipal` — the SAME memoized, fail-closed
+  // resolver every other identity-bearing route in this file reads — so no
+  // path or body ever names a principal. Two devices see ONE set of Boards
+  // exactly when they resolve to one principal: a WhoIs identity, or a person
+  // binding on the pairing (`principalBinding` above). A bare paired device
+  // with no person binding and no Serve identity in front of it resolves to
+  // the coarser per-device fact instead, and its Boards are that device's —
+  // see the precedence comment on `resolveOrchestrationRequestPrincipal`
+  // above and `docs/design/principals.md`. Unifying those facts into one
+  // stable per-person identity is the open design question recorded there,
+  // not something this scope resolves.
+  // Built once at wiring time, not per request: `buildProjectResolutionRouteDeps`
+  // constructs a manifest store, a bindings store and a resolver, and the
+  // projects routes below take theirs the same way.
+  const personalLayoutResolver =
+    buildProjectResolutionRouteDeps(context).resolver;
+  context.app.route(
+    '/api/me',
+    createPersonalLayoutRoutes(ownedLayoutStore(context.storageAdapter), {
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      // #2062 review BLOCKING-2 — promote publishes into a project, so it must
+      // pass the admission that project's own create route applies. Both are
+      // wired from the SAME two expressions, a few lines apart, so the agent
+      // list and the workspace resolver cannot diverge between the two doors
+      // into one store.
+      listAgents: async () =>
+        (await context.agentService.listAgents()).map(({ slug, project }) => ({
+          slug: agentId(slug),
+          project,
+        })),
+      resolveWorkspacePath: async (projectSlug, resourceId) =>
+        await resolveProjectWorkspacePath(projectSlug, {
+          resolver: personalLayoutResolver,
+          resourceId,
+        }),
+      // #2090. The same projection and the same caller resolver the project
+      // layout routes read, so a Board tab and a project Layout tab naming a
+      // plugin this person cannot see answer with the same causeless
+      // placeholder instead of "not installed or registered".
+      canSeePlugin: canSeePluginForRequest,
+    }),
+  );
   context.app.route(
     '/api/projects',
     createProjectRoutes(
@@ -3069,6 +3215,15 @@ export function configureRuntimeRoutes(
         // the same project. The stores below share that pinned source for the
         // same reason.
         resolution: buildProjectResolutionRouteDeps(context),
+        // #2067/#2090/#2103. The visibility fact for every layout-facing
+        // route in this family, from the same projection `GET /api/plugins`
+        // applies and the same caller resolver. DISCOVERY: a plugin outside
+        // the projection is dropped from the Pane catalogue and the layout
+        // picker. REFERENCE: a saved layout that already names such a pane
+        // has its plugin binding withheld and carries a causeless per-tab
+        // verdict the host renders a placeholder from, and apply,
+        // from-plugin and the layout list answer the same way.
+        canSeePlugin: canSeePluginForRequest,
       },
     ),
   );
@@ -3094,9 +3249,14 @@ export function configureRuntimeRoutes(
       // the connection's SAVED config directly — never the in-memory
       // adapter state — same source of truth `runtimeDefaultConfig`/
       // `sanitizeRuntimeConfig` already treat as authoritative.
+      // station#2072: through `appHomeActive`, so an explicit
+      // `configHome` (which wins over the opt-in at spawn time) does not
+      // make this guard claim a station-managed profile is in use when the
+      // connection's spawns actually run from the configured home.
       isUseAppHomeEnabled: async (id) =>
-        (await context.connectionService.getConnection(id))?.config
-          ?.useAppHome === true,
+        appHomeActive(
+          (await context.connectionService.getConnection(id))?.config,
+        ),
       // Credential-profile management delegates all registry/application
       // state transitions to the single ConnectionService authority.
       connectionService: context.connectionService,
@@ -3731,6 +3891,9 @@ export function configureRuntimeRoutes(
       context.getManagedChatOrchestrationEnabled,
       context.rebindBuiltinAgents,
       context.getPluginFrameOrigin,
+      // #2144 slice 2: one project record for `GET /config/app?project=`.
+      // The reader owns which failures become "absent"; see its docblock.
+      createConfigProjectReader(context.storageAdapter),
     ),
   );
   context.app.route(
@@ -3951,7 +4114,18 @@ export function configureRuntimeRoutes(
     attentionProjection,
     webPushService,
     webPushEnabled,
-  } = configureRuntimeSupportServices(context, flowRunService);
+  } = configureRuntimeSupportServices(context, flowRunService, {
+    // #2064 (D4): the same aggregate `/api/survey-flow-reviews` serves, over
+    // the same live project inventory — one read, so a paused review counted
+    // by the bell is the same row the Review page lists.
+    // Whole aggregate, not just `items`: a project Station could not read
+    // must reach the inbox as a stated gap (#2064 review (c)), not as an
+    // absence indistinguishable from "nothing needs you".
+    listGateReviews: () =>
+      surveyReview.listAll(
+        context.projectService.listProjects().map((project) => project.slug),
+      ),
+  });
   const nativeInvocationRunReader =
     runtimeContext.orchestrationEventStore.nativeInvocationRunReader();
   const voiceTurnRunReader =
@@ -4061,6 +4235,41 @@ export function configureRuntimeRoutes(
       },
       logger: context.logger,
       readAuthorityForRequest,
+      /**
+       * #2067. The plugin lifecycle channels, gated by the same projection
+       * `GET /api/plugins` applies and the same memoized caller resolver.
+       *
+       * `plugins:updates-available` is the exception and the operator's own
+       * signal: its payload is a LIST of pending updates rather than one
+       * named plugin, and the route that produces it
+       * (`GET /api/plugins/check-updates`) is operator-only for the same
+       * reason. Filtering the list per subscriber would mean rewriting the
+       * frame body, and a half-filtered maintenance signal is a worse answer
+       * than not relaying it to somebody who cannot act on it.
+       *
+       * Every failure path denies: an unattributable caller, a payload that
+       * names no plugin, a grant record that cannot be read.
+       */
+      canReadPluginEvent: (event, data, c) =>
+        canRelayPluginIdentityEvent({
+          event,
+          data,
+          principal: resolveSubscriberPrincipal(c),
+          canSee: (principal, pluginName) => {
+            try {
+              return pluginVisibility.canSee(principal, pluginName);
+            } catch (error) {
+              context.logger.debug?.(
+                'Plugin event relay denied: the visibility record could not be read',
+                {
+                  event,
+                  error: error instanceof Error ? error.message : error,
+                },
+              );
+              return false;
+            }
+          },
+        }),
       canReadNotificationEvent: (_event, data, authority) => {
         const record = data as Record<string, unknown> | undefined;
         const sessionId = notificationSessionIdentity(record);

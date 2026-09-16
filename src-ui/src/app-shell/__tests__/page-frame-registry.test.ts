@@ -11,6 +11,7 @@ import { resolvePageFrame } from '../page-frame-registry';
  * difference in what a page looks like.
  */
 const ROUTES: NavigationView[] = [
+  { type: 'personal-board', boardSlug: 'daily' },
   { type: 'home' },
   { type: 'agents' },
   { type: 'agent-new' },
@@ -27,7 +28,6 @@ const ROUTES: NavigationView[] = [
   { type: 'connections-knowledge' },
   { type: 'plugins' },
   { type: 'registry' },
-  { type: 'review-queue' },
   { type: 'developer' },
   { type: 'schedule' },
   { type: 'settings' },
@@ -60,6 +60,7 @@ const UNFRAMED = new Set([
   'task', // task workspace owns its viewport
   'project', // project identity header is the content
   'layout', // a layout renders edge to edge
+  'personal-board', // a Board is a layout, rendered by the same renderer
   'workspace-pane', // a pane renderer is handed the whole area
   'project-new', // a route-level dialog
   'project-edit', // editor chrome: unsaved badge + Save/Back
@@ -144,7 +145,6 @@ describe('page-frame registry', () => {
       'connections-engines',
       'connections-tools',
       'plugins',
-      'review-queue',
       'guidance',
     ] as const) {
       const spec = resolvePageFrame({ type } as NavigationView);
@@ -179,7 +179,6 @@ describe('page-frame registry', () => {
       'connections',
       'registry',
       'plugins',
-      'review-queue',
       'activity',
       'schedule',
       'settings',

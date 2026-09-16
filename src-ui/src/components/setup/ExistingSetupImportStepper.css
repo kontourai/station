@@ -25,7 +25,7 @@
 
 .existing-setup-import__heading h3,
 .existing-setup-import__receipt h4 {
-  font-size: var(--font-size-md, 15px);
+  font-size: var(--text-15);
 }
 
 .existing-setup-import__heading p,
@@ -33,7 +33,7 @@
 .existing-setup-import__warnings {
   margin-top: var(--space-1, 4px);
   color: var(--color-text-secondary, var(--text-muted));
-  font-size: var(--font-size-sm, 13px);
+  font-size: var(--text-md);
   line-height: 1.45;
 }
 
@@ -71,7 +71,7 @@
   flex-wrap: wrap;
   gap: var(--space-2, 8px) var(--space-4, 16px);
   margin: 0;
-  font-size: var(--font-size-sm, 13px);
+  font-size: var(--text-md);
 }
 
 .existing-setup-import__facts div {
@@ -92,7 +92,7 @@
 .existing-setup-import__rename {
   display: grid;
   gap: var(--space-1, 4px);
-  font-size: var(--font-size-sm, 13px);
+  font-size: var(--text-md);
 }
 
 .existing-setup-import__actions {
@@ -102,8 +102,8 @@
 }
 .existing-setup-import__error {
   margin: 0;
-  color: var(--color-danger, #e53935);
-  font-size: var(--font-size-sm, 13px);
+  color: var(--error-text);
+  font-size: var(--text-md);
 }
 
 /* Same compact receipt-row presentation as the manual Skills importer, but

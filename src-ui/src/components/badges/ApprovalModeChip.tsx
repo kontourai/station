@@ -42,6 +42,12 @@ interface ApprovalModeChipProps {
   /** The Agent app connection's configured default, if any. */
   connectionDefault?: unknown;
   /**
+   * This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6) — the
+   * layer below the connection's own default. Absent leaves resolution
+   * exactly where it was.
+   */
+  stationDefault?: unknown;
+  /**
    * The mode the adapter last confirmed as actually applied (from
    * `session.configured` / `turn.started` metadata — see
    * ChatUIState.lastAppliedApprovalMode). With no session override it is the
@@ -92,6 +98,7 @@ export function ApprovalModeChip({
   toolPolicyDelivery,
   sessionOverride,
   connectionDefault,
+  stationDefault,
   lastAppliedApprovalMode,
   onChange,
 }: ApprovalModeChipProps) {
@@ -108,6 +115,7 @@ export function ApprovalModeChip({
     engineConnectionId,
     sessionOverride,
     connectionDefault,
+    stationDefault,
   });
   const appliedMode = isApprovalMode(lastAppliedApprovalMode)
     ? lastAppliedApprovalMode

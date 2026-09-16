@@ -22,7 +22,7 @@ export const WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS =
 const WINDOWS_ROUND_TRIP_UTC_ISO =
   /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{7}Z$/;
 
-function isWindowsRoundTripUtcIso(value) {
+export function isWindowsRoundTripUtcIso(value) {
   const match = WINDOWS_ROUND_TRIP_UTC_ISO.exec(value);
   if (!match) return false;
   const year = Number(match[1]);

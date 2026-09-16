@@ -9,7 +9,7 @@
 export const UNPAIRED_SAMPLE_PROJECT = 'Getting started';
 
 const UNPAIRED_SAMPLE_SURFACES = {
-  'review-queue': {
+  notifications: {
     title: 'Sample Task',
     eyebrow: 'Waiting for a decision',
     body: 'A weekly digest stopped here because someone still has to approve it. The decision, when it happens, stays with the run that asked for it.',

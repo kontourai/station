@@ -107,6 +107,8 @@ export function ProjectWorkspacePaneModal({
   show,
   onClose,
   notice,
+  title = 'Add workspace pane',
+  subtitle = 'Every known pane is listed. Available panes open directly; the others carry their state as a badge with the next step.',
   ...catalog
 }: CatalogProps & {
   show: boolean;
@@ -118,12 +120,20 @@ export function ProjectWorkspacePaneModal({
    * (`no-lease`) can resolve while the picker is still on screen.
    */
   notice?: string | null;
+  /**
+   * The dialog's name and the sentence under it. The defaults are the
+   * layout picker's, which lists every known pane; a host that lists fewer
+   * (a dock region's catalog, #2047) must say so here rather than inherit a
+   * claim its list does not keep.
+   */
+  title?: string;
+  subtitle?: string;
 }) {
   if (!show) return null;
   return (
     <Dialog
-      title="Add workspace pane"
-      subtitle="Every known pane is listed. Available panes open directly; the others carry their state as a badge with the next step."
+      title={title}
+      subtitle={subtitle}
       closeLabel="Close pane picker"
       size="lg"
       onClose={onClose}

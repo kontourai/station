@@ -212,6 +212,7 @@ test('the public recovery preview and mutation require fresh consent and preserv
     unlinkSync(join(home, 'plugins', 'recoverable'));
     const app = new Hono();
     registerPluginInstallRoutes(app, {
+      projectVisiblePlugins: () => (installed) => installed,
       projectHomeDir: home,
       pluginsDir: join(home, 'plugins'),
       agentsDir: join(home, 'agents'),

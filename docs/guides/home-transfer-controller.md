@@ -184,8 +184,25 @@ that channel remains unresolved. Finishing requires the exact admission identity
 and a stable receipt digest. A changed intent or receipt conflicts. Restarting,
 waiting, or losing a process does not finish an admission.
 
-This is private storage infrastructure: production room writers and Agent launch
-paths are not yet connected to it. Integrators must verify a durable local effect
+`ProjectTaskRoomHistory` also accepts a private optional write-admission port.
+With that port configured, a new append obtains admission inside the local
+write transaction after checking local authority, existing proposal identity,
+source seal and capacity. Local authority is checked again after admission.
+Committed and duplicate outcomes settle only from the validated durable receipt;
+a lost settlement acknowledgement returns unavailable, and the same intent can
+be retried on the open room, where it replays through the duplicate path.
+Duplicate replay does not request new admission. Each port call is bounded to
+one second. The admission phase as a whole (the local authority check, the port
+call and the repeated authority check) runs while the worker holds the write
+transaction and shares the worker's pre-existing five-second request budget;
+the authority checks are not separately bounded. A timeout never clears an
+unresolved controller record. Rooms without the port write through the same
+transaction without requesting admission. For every room, with or without the
+port, a commit-time local authority check that is unavailable now returns
+unavailable rather than denied.
+
+This is private integration infrastructure: production runtime composition and
+Agent launch paths are not yet connected to the controller journal. Integrators must verify a durable local effect
 receipt before calling finish; storing a digest does not verify the receipt or
 prove that execution stopped. A previously finished record is historical replay,
 never permission to run the effect again. No public admission endpoint is shipped.
@@ -210,17 +227,23 @@ session does not authorize room access or Agent execution.
 The controller stores one session record per paired home, bounded to 4,096
 records in the external authority database. The record stores capability and
 replay secrets only as SHA-256 digests, alongside their identity and generation
-metadata. The fresh
-256-bit capability and 256-bit replay secret remain in runtime memory and must
-never be written to a Station home, Project, peer record, log or portable
-archive. A new open or same-process retry supplies the open ID and replay
-secret. Knowing the inspectable open ID or copying the pairing credential is
-insufficient to recover the cached capability. After restart, a caller may
+metadata. The controller mints the 256-bit capability. The replay secret is
+supplied by the caller as a 64-character hex string; the controller checks only
+its format, never its entropy, so a caller must generate it with a
+cryptographically secure random source. Both values remain in runtime memory
+and must never be written to a Station home, Project, peer record, log or
+portable archive. A new open or same-process retry supplies the open ID and
+replay secret. Knowing the inspectable open ID or copying the pairing
+credential is insufficient to recover the cached capability, but only to the
+extent the caller's replay secret is unguessable. After restart, a caller may
 instead present the exact retained capability. If the controller loses its
 replay cache and the runtime has no retained capability, the result is
 `recovery-required`, even if the runtime still knows the replay secret. A
 different open cannot replace an active session. There is no timeout,
-process-ID expiry or automatic deletion path.
+process-ID expiry or automatic deletion path. Removing and re-granting
+`home:control` advances the grant revision: the existing session no longer
+binds, and a new open is refused as a conflict until an operator retires the
+old generation.
 
 Operator retirement names the exact paired device and expected session
 generation. It refuses while any admission for that home remains unresolved.

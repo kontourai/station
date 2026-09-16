@@ -168,6 +168,10 @@ function foregroundAdmission(): ForegroundInvocationAdmission {
       createdAt: '2026-09-04T00:00:00.000Z',
       updatedAt: '2026-09-04T00:00:00.000Z',
     },
+    // The captured mode this admission was minted with (#2144 slice 2).
+    // Shared here: this fixture's project names no workspace mode and the
+    // fixture Station has no default.
+    workspaceIsolationMode: 'shared',
     message: 'Captured host action body',
     invoke: vi.fn(async (_phase, _actual, effect) => effect()),
   };

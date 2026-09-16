@@ -890,6 +890,36 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     },
   );
 
+  /**
+   * #2062. Promote is the one `/api/me` leaf whose write lands outside the
+   * caller's own records, so the question "should it be a raised tier" has to
+   * be answered by derivation rather than by the family comment. It is
+   * answered NO, and this is the derivation: promote publishes through the
+   * same project transaction `POST /api/projects/:slug/layouts` uses, so a
+   * credential that can post a layout to a project directly can already
+   * produce the identical record. A tier above that would refuse a caller for
+   * taking the shorter route to a write it may already perform.
+   *
+   * If either side ever moves, this fails — which is the point. The equality
+   * is asserted between the two resolved scopes, not against a literal, so
+   * raising `/api/projects`'s tier alone is what reds it.
+   */
+  test('scopes promote exactly as writing the same layout to the project directly', () => {
+    const promote = matchPairingScopeRule(
+      'POST',
+      '/api/me/layouts/:layoutSlug/promote',
+    );
+    const projectLayoutWrite = matchPairingScopeRule(
+      'POST',
+      '/api/projects/:slug/layouts',
+    );
+    expect(promote?.scope).toBeDefined();
+    expect(promote?.scope).toBe(projectLayoutWrite?.scope);
+    expect(
+      isLeafScopeDeclared('POST', '/api/me/layouts/:layoutSlug/promote'),
+    ).toBe(true);
+  });
+
   test('does not let an exact ACP provider override classify a trailing descendant', () => {
     const path = '/acp/connections/:id/providers/set/future';
     expect(matchPairingScopeRule('POST', path)).toMatchObject({

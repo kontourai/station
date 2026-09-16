@@ -103,9 +103,9 @@
 }
 
 .skill-detail__badge--installed {
-  background: rgba(52, 211, 153, 0.12);
-  color: #34d399;
-  border: 1px solid rgba(52, 211, 153, 0.2);
+  background: var(--success-bg);
+  color: var(--success-text);
+  border: 1px solid var(--success-border);
 }
 
 .skill-detail__badge--registry {
@@ -168,9 +168,9 @@
 }
 
 .skill-detail__btn--uninstall:hover:not(:disabled) {
-  color: #ef4444;
-  border-color: rgba(239, 68, 68, 0.4);
-  background: rgba(239, 68, 68, 0.06);
+  color: var(--error-text);
+  border-color: var(--error-border);
+  background: var(--error-bg);
 }
 
 .skill-detail__btn-icon {

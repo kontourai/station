@@ -1,0 +1,204 @@
+/* Ships with the lazy footer chunk, like the rest of the footer's styles. */
+
+.sidebar__footer-presence {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.sidebar__presence-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px 4px;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.sidebar__presence-trigger:hover {
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.sidebar__presence-stack {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Overlapped faces read as one group; the leading face keeps its own edge. */
+.sidebar__presence-stack .sidebar__presence-avatar + .sidebar__presence-avatar {
+  margin-left: -6px;
+}
+
+.sidebar__presence-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--bg-secondary);
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  /* A FIXED light literal, deliberately, and NOT a theme token.
+     `--text-inverse` was defined in no theme root, so this always rendered the
+     `#fff` fallback anyway; what the reference did was make an unthemed colour
+     look themed (station#3050).
+     The colour is right, and a theme-adaptive token here would be wrong. Every
+     identity avatar overrides `background` INLINE with
+     `hsl(<identiconHue> 45% 32%)` (ProjectSidebarPresenceTray.tsx), so the
+     `--bg-tertiary` above never applies to one: the real backdrop is a fixed
+     dark chip in BOTH themes, and its text must be fixed and light to match.
+     Measured against that chip across all 72 hues: `#fff` gives 4.75-12.02:1,
+     clearing AA everywhere, while `--text-primary` in the LIGHT theme
+     (`--k-text`, #202124) gives 1.34-3.39:1 and `--text-inverted`
+     (`--k-brand-contrast`, #1b1205) gives 1.54-3.89:1 — both fail at every
+     hue. Pointing this at either would be a real light-theme regression.
+     `--bg-tertiary` above is the backdrop only for an avatar rendered with no
+     identicon, and the one such render (`--overflow`, below) restates both its
+     background and its own themed `color`. */
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.sidebar__presence-avatar--overflow {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+/* Rendered at every width and in every state (see the component comment): it
+   is what guarantees the trigger is never an empty box. It must NOT be hidden
+   on the collapsed rail, which hides the stack and the count. */
+.sidebar__presence-glyph {
+  display: inline-flex;
+  align-items: center;
+  /* Muted against the footer's own muted text: the glyph must not read as a
+     live indicator. */
+  opacity: 0.55;
+  font-size: 15px;
+}
+
+.sidebar__presence-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar__presence-tray {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: 264px;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--bg-secondary);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.sidebar__presence-reads {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.sidebar__presence-rows {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.sidebar__presence-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: var(--text-sm);
+}
+
+.sidebar__presence-label {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__presence-work {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__presence-action {
+  flex-shrink: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  padding: 2px 8px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.sidebar__presence-action:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.sidebar__presence-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sidebar__presence-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+/* The collapsed rail is 48px of icon column: the count and the stack have
+   nowhere to go. The glyph is deliberately absent from this hide list — it is
+   the child that keeps the trigger from rendering as an empty box here, and
+   the component renders it unconditionally so that is true for every roster,
+   not only an empty one. `src-ui/src/__tests__/ProjectSidebarFooter.test.tsx`
+   applies this stylesheet under a real `.sidebar--collapsed` ancestor and pins
+   the COMPUTED display of all three children. It used to pin the weaker
+   property of the glyph class being absent from this rule's selector list,
+   which a reviewer defeated in one line by routing the same `display: none`
+   through `.sidebar__footer-presence` instead. */
+.sidebar--collapsed .sidebar__presence-count,
+.sidebar--collapsed .sidebar__presence-stack {
+  display: none;
+}
+
+.sidebar--collapsed .sidebar__presence-tray {
+  left: 0;
+  width: 232px;
+}
+
+/* The touch-target floor for these controls lives in the footer's own mobile
+   block (`ProjectSidebarFooter.css`), with the bell's and the gear's. One
+   at-rule for one surface: a second copy here would be a second page-local
+   responsive rule for the same footer, which is what the mobile-CSS ratchet
+   exists to stop. */

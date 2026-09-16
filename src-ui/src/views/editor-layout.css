@@ -1113,11 +1113,22 @@
   flex-shrink: 0;
 }
 .status-dot--connected {
-  background: var(--success-text, #22c55e);
+  background: var(--success-text);
 }
 .status-dot--disconnected {
   background: var(--text-muted);
   opacity: 0.4;
+}
+/* The integration list's third state (`integration.enabled === false`). It
+   was emitted by `views/integrations/utils.tsx` with no rule behind it, so a
+   disabled integration showed the bare 8px circle with no fill — the same
+   glyph as nothing at all. Distinct from `--disconnected` (dimmed muted
+   fill: reachable but not answering) by being hollow: switched off, not
+   failing. */
+.status-dot--disabled {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--text-muted);
+  opacity: 0.6;
 }
 
 /* ── Integration server name in agent editor ── */
@@ -1412,7 +1423,7 @@
   cursor: pointer;
 }
 .editor-required {
-  color: var(--color-danger, #e53935);
+  color: var(--error-text);
   margin-left: 2px;
 }
 .agents-list__acp-icon {
@@ -1451,8 +1462,8 @@
   font-size: var(--text-xl);
 }
 .editor-btn--icon:hover {
-  color: var(--color-danger, #e53935);
-  border-color: var(--color-danger, #e53935);
+  color: var(--error-text);
+  border-color: var(--error-text);
 }
 .editor-btn--ghost {
   background: transparent;

@@ -1,0 +1,31 @@
+/* #2144 slice 3 — the status strip a generic settings row carries: scope
+   badge, provenance chip, the inheritance popover trigger, and
+   reset-to-inherited. Layout only; the badges and popover panel are
+   @kontourai/ui's own. */
+.setting-row-status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+.setting-row-status__inheritance-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.setting-row-status__inheritance-trigger:hover {
+  color: var(--text-primary);
+}
+.setting-row-status__pending {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}

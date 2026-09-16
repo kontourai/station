@@ -132,9 +132,10 @@ describe('portalled header menus stay reachable from the keyboard', () => {
 describe('arrow-key navigation belongs to a role=menu container', () => {
   /**
    * A minimal `role="menu"`, because the two properties under test are the
-   * HOOK's — wrapping, and the ends. Both real consumers (the toolbar's Layout
-   * menu, the dock header's More menu) pin them again against their own rows in
-   * their own suites.
+   * HOOK's — wrapping, and the ends. The real consumers (the toolbar's folded
+   * and empty-region menus, a tab's move menu, the dock header's More menu)
+   * rely on this pin; their own suites assert what they open and how it
+   * dismisses, not the roving order.
    */
   function Menu({ count = 3 }: { count?: number }) {
     const ref = useMenuFocus<HTMLDivElement>(true);

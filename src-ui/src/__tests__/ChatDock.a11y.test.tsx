@@ -6,7 +6,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { ChatPaneFileDropBoundary } from '../components/chat-dock/ChatPaneFileDropBoundary';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../contexts/NavigationContext';
-import { AmbientChatDockPaneHost } from '../workspace-panes/AmbientChatDockPaneHost';
+import { RegionPaneHost } from '../workspace-panes/RegionPaneHost';
 
 // archive#4525: `DockShell` (via `useDockShellChrome`) now reads
 // `useProjects` for its project-binding deletion cleanup — mocked here the
@@ -18,6 +18,9 @@ vi.mock('../contexts/ProjectsContext', () => ({
     isLoading: false,
     isConfirmedLoaded: true,
   }),
+  // #2047: the region host resolves the dock's project through this read;
+  // no project here, so the panes that need one derive none.
+  useProject: () => ({ project: undefined, isLoading: false }),
 }));
 
 const source = readFileSync(
@@ -40,7 +43,7 @@ describe('ChatDock activity region', () => {
       // its own.
       <KeyboardShortcutsProvider>
         <NavigationProvider>
-          <AmbientChatDockPaneHost
+          <RegionPaneHost
             renderChatPane={() => (
               <ChatPaneFileDropBoundary
                 enabled

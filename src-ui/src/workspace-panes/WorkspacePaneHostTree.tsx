@@ -29,7 +29,11 @@ import { WorkspacePaneHostOpenContext } from './WorkspacePaneHostOpenContext';
 import type { WorkspacePaneHostPanePresentation } from './WorkspacePaneHostTabs';
 import { WorkspacePaneHostTabs } from './WorkspacePaneHostTabs';
 import { useWorkspacePaneHostController } from './workspacePaneHostController';
-import { workspacePaneHostTupleId } from './workspacePaneHostIdentity';
+import {
+  workspacePaneHostPanelIdentity,
+  workspacePaneHostTabIdentity,
+  workspacePaneHostTupleId,
+} from './workspacePaneHostIdentity';
 import type { WorkspacePaneHostLockManager } from './workspacePaneHostLease';
 import { workspacePaneHostGroupContaining } from './workspacePaneHostReducerTree';
 import { WorkspacePaneHostRuntime } from './workspacePaneHostRuntime';
@@ -44,7 +48,7 @@ import type {
 import './WorkspacePaneHost.css';
 import { paneCloseConfirmationProps } from './workspacePaneCloseConfirmation';
 
-type WorkspacePaneHostPresentation = 'tabbed' | 'chromeless';
+type WorkspacePaneHostPresentation = 'tabbed' | 'chromeless' | 'dock';
 
 export interface WorkspacePaneHostTreeProps {
   document: WorkspacePaneHostDocumentV1;
@@ -64,8 +68,30 @@ export interface WorkspacePaneHostTreeProps {
    * because the shell chrome that mounts it owns those affordances instead.
    * It is a presentation choice only: persistence, navigation authority and
    * the controller are unchanged.
+   *
+   * `dock` is a dock region's host (#2046 2b): chromeless plus the ARIA the
+   * region's own tab strip needs. The strip is not this host's — it is the
+   * region bar's, rendered by `RegionPaneHost` from the region model, whose
+   * `panes`/`occupant` this document is derived from — so the host renders
+   * the active pane as a `tabpanel` labelled by the strip's tab
+   * (`dockGroupId` is the id the two share) and nothing else: no tablist, no
+   * commands, no persistence notice, and no element of its own around the
+   * panel, for the reason the chromeless branch states.
    */
   presentation?: WorkspacePaneHostPresentation;
+  /**
+   * The group id the `dock` presentation's panel and the caller's tab strip
+   * derive their `id`/`aria-labelledby`/`aria-controls` pairs from
+   * (`workspacePaneHostTabIdentity`/`workspacePaneHostPanelIdentity`).
+   * Defaults to the document's root group id.
+   */
+  dockGroupId?: string;
+  /**
+   * Whether the host's selection is a navigation fact (`?pane=`, a history
+   * entry). Default true; a region host passes false — its selection
+   * authority is the region model (see the controller's option).
+   */
+  navigationSelection?: boolean;
   runtime?: WorkspacePaneHostRuntime;
   storage?: WorkspacePaneHostStorage;
   /** Injectable only at the browser-lock boundary; production uses Web Locks. */
@@ -132,6 +158,8 @@ export function WorkspacePaneHostTree({
   renderPane,
   compact = false,
   presentation = 'tabbed',
+  dockGroupId,
+  navigationSelection,
   runtime,
   storage,
   lockManager,
@@ -168,6 +196,7 @@ export function WorkspacePaneHostTree({
   const controller = useWorkspacePaneHostController({
     document,
     compact,
+    navigationSelection,
     runtime,
     storage,
     lockManager,
@@ -332,11 +361,32 @@ export function WorkspacePaneHostTree({
   };
 
   // Chromeless wins over `compact`: compact is a projection of the tab chrome,
-  // and there is no tab chrome here to project.
-  if (presentation === 'chromeless') {
+  // and there is no tab chrome here to project. The dock presentation is the
+  // chromeless one with the active pane wrapped as the region strip's
+  // `tabpanel`; a pane behind a tab is not mounted (its live state is its own
+  // persistence's, the way the chromeless host has always shown one pane).
+  if (presentation === 'chromeless' || presentation === 'dock') {
     const occupant = paneById.get(state.document.activeInstanceId);
     const failed =
       occupant && controller.state.rendererFailures[occupant.instanceId];
+    const groupId =
+      dockGroupId ??
+      (state.document.root.type === 'tabs'
+        ? state.document.root.id
+        : state.document.id);
+    const wrapPanel = (instanceId: string, content: ReactNode) =>
+      presentation === 'dock' ? (
+        <div
+          id={workspacePaneHostPanelIdentity(groupId, instanceId)}
+          className="workspace-pane-host__panel--dock"
+          role="tabpanel"
+          aria-labelledby={workspacePaneHostTabIdentity(groupId, instanceId)}
+        >
+          {content}
+        </div>
+      ) : (
+        content
+      );
     return (
       <WorkspacePaneHostOpenContext.Provider
         value={{
@@ -355,35 +405,41 @@ export function WorkspacePaneHostTree({
             So there is no labelled container here either. That label belongs
             to a tab strip's group of panes, and a host with one always-active
             occupant and no tabs has no group to name. */}
-        {occupant && failed ? (
-          // Not chrome: without it a failed renderer leaves the slot blank
-          // with no way back. This branch DOES take an element, because an
-          // unavailable pane is a message and a message needs a box.
-          <section
-            className="workspace-pane-host workspace-pane-host--chromeless-failure"
-            aria-label={`${paneLabel(occupant)} unavailable`}
-          >
-            <p>{paneLabel(occupant)} could not open.</p>
-            <button
-              type="button"
-              onClick={() => void controller.retry(occupant.instanceId)}
-            >
-              Retry pane
-            </button>
-          </section>
-        ) : null}
-        {occupant && !failed ? (
-          <WorkspacePaneFrame
-            elementless
-            instanceId={occupant.instanceId}
-            paneName={paneLabel(occupant)}
-            runtime={runtime}
-            onFailure={controller.fail}
-            onRetry={controller.retry}
-          >
-            {renderPane(occupant, CHROMELESS_PANE_PRESENTATION)}
-          </WorkspacePaneFrame>
-        ) : null}
+        {occupant && failed
+          ? // Not chrome: without it a failed renderer leaves the slot blank
+            // with no way back. This branch DOES take an element, because an
+            // unavailable pane is a message and a message needs a box.
+            wrapPanel(
+              occupant.instanceId,
+              <section
+                className="workspace-pane-host workspace-pane-host--chromeless-failure"
+                aria-label={`${paneLabel(occupant)} unavailable`}
+              >
+                <p>{paneLabel(occupant)} could not open.</p>
+                <button
+                  type="button"
+                  onClick={() => void controller.retry(occupant.instanceId)}
+                >
+                  Retry pane
+                </button>
+              </section>,
+            )
+          : null}
+        {occupant && !failed
+          ? wrapPanel(
+              occupant.instanceId,
+              <WorkspacePaneFrame
+                elementless
+                instanceId={occupant.instanceId}
+                paneName={paneLabel(occupant)}
+                runtime={runtime}
+                onFailure={controller.fail}
+                onRetry={controller.retry}
+              >
+                {renderPane(occupant, CHROMELESS_PANE_PRESENTATION)}
+              </WorkspacePaneFrame>,
+            )
+          : null}
         {closeDialog}
       </WorkspacePaneHostOpenContext.Provider>
     );

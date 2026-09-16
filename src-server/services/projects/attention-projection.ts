@@ -2,12 +2,18 @@ import type { FlowConsoleGateProjection } from '@kontourai/flow';
 import {
   type AttentionItem,
   type AttentionProjection,
+  type AttentionSourceUnavailable,
   type DevicePairingAttentionItem,
+  type GateReviewAttentionItem,
+  isAcknowledgeableAttentionKind,
+  isPendingAttentionItem,
   isStandingAttentionKind,
+  type ProposedChangeAttentionItem,
   type SessionFailedAttentionItem,
   type SetupIncompleteAttentionItem,
 } from '@kontourai/station-contracts/attention';
 import type { DevicePairingRequest } from '@kontourai/station-contracts/environment-security';
+import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
 import type { Notification } from '@kontourai/station-contracts/notification';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
@@ -51,11 +57,15 @@ import {
   truncateRequestText as truncate,
 } from '../orchestration/request-presentation.js';
 import { DEVICE_PAIRING_NOTIFICATION_SOURCE } from '../ssh/device-pairing-notifications.js';
+import type { ProposedChangeService } from './proposed-change-service.js';
 
 const ACTIVE_NOTIFICATION_STATUSES = ['delivered', 'pending'];
 
 /** Bound the cost of readSessionFlowRun (it replays session events) across reads. */
 const FLOW_RUN_CACHE_TTL_MS = 5_000;
+
+/** See `AttentionProjectionService.gateReviewCache` (#2064 review LOW-4). */
+const GATE_REVIEW_CACHE_TTL_MS = 5_000;
 
 type FlowRunBinding = {
   runId: string;
@@ -63,6 +73,47 @@ type FlowRunBinding = {
   cwd: string;
   run: FlowRunStatus;
 } | null;
+
+/**
+ * #2064 (D4): the subset of `SurveyFlowReviewService`'s queue item this
+ * projection reads. Structural rather than an import of the service's own
+ * type so the projection depends on the SHAPE it consumes, not on Survey's
+ * review-workbench types transitively — and so a fixture cannot be a
+ * different thing that happens to typecheck.
+ */
+export interface PausedGateReviewSource {
+  readonly reviewSessionRef: string;
+  readonly projectSlug: string;
+  readonly workflowSubjectRef: string;
+  readonly sessionName: string;
+  readonly updatedAt: string;
+  /**
+   * #2064 review MED-2: items with no recorded decision — the continuation
+   * precondition itself, counted at the source by
+   * `SurveyFlowReviewService`'s `pendingDecisionCount`. Deliberately NOT
+   * `summary.unresolved`, which buckets an undecided `escalated` item under
+   * `escalated` and an undecided `resolved` item under `accepted`; a gate
+   * whose remaining items are all escalated blocked the run while reporting
+   * `unresolved: 0`, and projected nothing.
+   */
+  readonly pendingDecisions: number;
+}
+
+/**
+ * #2064 review (c): a project whose review sessions could not be read
+ * contributes no gate items, and "no gate items" must never be silently
+ * "could not read" — the same partial-source honesty the Review page already
+ * renders. Carried on the projection so the inbox says so from the SAME read
+ * its counts came from, rather than a second fetch that could disagree about
+ * which projects were covered.
+ */
+export interface PausedGateReviewAggregate {
+  readonly items: readonly PausedGateReviewSource[];
+  readonly unavailableProjects: readonly {
+    readonly projectSlug: string;
+    readonly reason: string;
+  }[];
+}
 
 /**
  * Read-only projection over the existing notification, orchestration, and
@@ -90,6 +141,22 @@ export class AttentionProjectionService {
     string,
     { requests: Map<string, RequestOpenedEvent>; expiresAt: number }
   >();
+
+  /**
+   * #2064 review LOW-4: bound the cost of the Survey aggregate across reads.
+   *
+   * `/api/attention` polls every 10s per connected client, and the aggregate
+   * walks every project's workspace and replays every review session — plus
+   * it warns once per unreadable project, so a single broken workspace
+   * produced a log line every 10s per client forever. Same mechanism and the
+   * same 5s TTL as `flowRunCache` above, and the same accepted cost: a
+   * decision recorded in the workbench can take up to one TTL to leave the
+   * inbox.
+   */
+  private gateReviewCache?: {
+    aggregate: PausedGateReviewAggregate;
+    expiresAt: number;
+  };
 
   /**
    * When the CURRENT setup requirement was first observed (#1536 review M2).
@@ -172,6 +239,30 @@ export class AttentionProjectionService {
       agentName: string;
       reason: string;
     } | null>,
+    /**
+     * #2064 (D4): pending proposed changes, read through the SAME
+     * `ProposedChangeService.list` call `/review-queue` makes — never a
+     * second store or a cached count. A decision taken on either surface
+     * (or by the CLI) stops projecting on the next read because the source
+     * is the source, not a mirror.
+     *
+     * Optional so every existing caller/test keeps compiling with
+     * proposed-change attention simply unavailable.
+     */
+    private readonly proposedChanges?: Pick<
+      ProposedChangeService,
+      'list'
+    > | null,
+    /**
+     * #2064 (D4): paused Survey/Flow gate review sessions, from the same
+     * `SurveyFlowReviewService` aggregate `/review-queue` reads. A thunk
+     * rather than the service itself because the aggregate needs the live
+     * project inventory, which the composition root owns; this projection
+     * has no project service of its own and must not grow one.
+     *
+     * Optional for the same reason as above.
+     */
+    private readonly listGateReviews?: () => Promise<PausedGateReviewAggregate>,
   ) {}
 
   /**
@@ -297,10 +388,15 @@ export class AttentionProjectionService {
 
     const setupItems = await this.projectSetupRequirement(readAuthority);
 
+    const proposedChangeItems = this.projectProposedChanges(readAuthority);
+    const gateReviews = await this.projectGateReviews(readAuthority);
+
     const undecorated = [
       ...approvals,
       ...lifecycle,
       ...gateItems,
+      ...proposedChangeItems,
+      ...gateReviews.items,
       ...pairingItems,
       ...setupItems,
     ];
@@ -318,9 +414,17 @@ export class AttentionProjectionService {
     // Acked items stay IN `items` (history, never deleted) but drop out of
     // the actionable count — the whole point of archive#1914's
     // acknowledge-not-dismiss design for a kind with nothing to delete.
-    const pendingCount = items.filter((item) => !item.acknowledgedAt).length;
+    const pendingCount = items.filter(isPendingAttentionItem).length;
     attentionProjectionResults.record(items.length);
-    return { items, pendingCount };
+    return {
+      items,
+      pendingCount,
+      // #2064 review (c): absent when the read covered everything, so a
+      // consumer cannot mistake an empty array for "not reported".
+      ...(gateReviews.unavailable.length > 0
+        ? { unavailableSources: gateReviews.unavailable }
+        : {}),
+    };
   }
 
   /**
@@ -341,9 +445,11 @@ export class AttentionProjectionService {
     const { items } = await this.list(readAuthority);
     const item = items.find((candidate) => candidate.id === itemId);
     if (!item) return false;
-    // A standing notice is still true after the dismissal, so there is nothing
-    // an acknowledgement could honestly record — see `isStandingAttentionKind`.
-    if (isStandingAttentionKind(item.kind)) return false;
+    // Two disjoint refusals, one declaration each, both in the contract: a
+    // standing notice is still true after the dismissal, and a
+    // decision-resolved item (#2064 (a)) has exactly one way to stop being
+    // true — someone decides it. See `isAcknowledgeableAttentionKind`.
+    if (!isAcknowledgeableAttentionKind(item.kind)) return false;
     this.acknowledgementStore.acknowledge({
       userId: readAuthority.userId,
       conversationId: item.id,
@@ -660,6 +766,7 @@ export class AttentionProjectionService {
       kind === 'review_pending' && openRequest
         ? attentionRequestReference(openRequest, session.threadId)
         : undefined;
+    const projectSlug = sessionProjectSlug(session);
     return {
       id: `${kind}:${session.threadId}`,
       kind,
@@ -669,6 +776,9 @@ export class AttentionProjectionService {
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       sessionId: session.threadId,
+      // #2064 (D4): the project row's count reads this. Omitted, never
+      // guessed, for a project-less session.
+      ...(projectSlug ? { projectSlug } : {}),
       openHref: sessionOpenHref(session),
       source: { threadId: session.threadId },
       ...(kind === 'needs_input' &&
@@ -836,6 +946,135 @@ export class AttentionProjectionService {
         openHref: '/connections/models',
       },
     ];
+  }
+
+  /**
+   * #2064 (D4): every proposed change still awaiting a decision.
+   *
+   * The filter is `status: 'pending'` and nothing else — the same read
+   * `/review-queue` performs. There is no stored "needs attention" flag to
+   * consult and deliberately none introduced: the item exists exactly while
+   * the change is undecided, so approving it anywhere (this inbox, the Review
+   * page, the CLI) removes it from the very next projection, and the count
+   * that includes it moves with it.
+   *
+   * Hosted reads project nothing, the same posture device pairing and the
+   * setup requirement take. `ProposedChangeService.list` has no tenancy
+   * predicate at all, so a tenant-scoped read has no standing to see another
+   * tenant's proposed work; surfacing it here would be the first place in
+   * this projection where a hosted read saw unfiltered host data. Making
+   * proposed changes tenant-readable is its own change, with its own
+   * authorization, not a side effect of widening the inbox.
+   */
+  private projectProposedChanges(
+    authority: SessionReadAuthority,
+  ): ProposedChangeAttentionItem[] {
+    if (!this.proposedChanges) return [];
+    if (isHostedSessionReadAuthority(authority)) return [];
+    return this.proposedChanges.list({ status: ['pending'] }).map((change) => ({
+      id: `proposed-change:${change.id}`,
+      kind: 'proposed-change' as const,
+      title: change.path,
+      body: `${change.changeType} from ${change.sourceRuntime}`,
+      createdAt: change.createdAt,
+      updatedAt: change.updatedAt,
+      projectSlug: change.projectId,
+      path: change.path,
+      contentKind: change.contentKind,
+      sourceRuntime: change.sourceRuntime,
+      // The row's own Approve/Reject are the decision; this link is where
+      // the diff is readable. #2065 retired the global `/review-queue`, so
+      // it points at the owning Project's Review layout — the change's own
+      // project, never a queue spanning all of them.
+      openHref: projectReviewLayoutHref(change.projectId, {
+        change: change.id,
+      }),
+      source: { proposedChangeId: change.id, projectSlug: change.projectId },
+    }));
+  }
+
+  /**
+   * #2064 (D4): paused Survey/Flow gate review sessions with unresolved
+   * items.
+   *
+   * `summary.unresolved > 0` is the whole adjudication and it is a
+   * derivation: the store records review items and their state, never a
+   * "paused" or "needs attention" marker, so a session whose items are all
+   * resolved stops projecting because there is nothing left unresolved — not
+   * because anything cleared a flag. A session Station cannot read
+   * contributes nothing (the aggregate already degrades per project and
+   * reports its own unavailability to the Review surface); this projection
+   * does not invent an item for a project it could not read.
+   *
+   * Hosted reads project nothing, for the same reason proposed changes do
+   * not: the aggregate is built over the host's whole project inventory.
+   */
+  private async projectGateReviews(authority: SessionReadAuthority): Promise<{
+    items: GateReviewAttentionItem[];
+    unavailable: AttentionSourceUnavailable[];
+  }> {
+    const empty = { items: [], unavailable: [] };
+    if (!this.listGateReviews) return empty;
+    if (isHostedSessionReadAuthority(authority)) return empty;
+    let aggregate: PausedGateReviewAggregate;
+    try {
+      aggregate = await this.readGateReviews();
+    } catch {
+      // One unreadable source must not blank every other item in this read —
+      // the same isolation `readOpenRequests` applies for the same reason.
+      // It is reported rather than swallowed: the aggregate failing WHOLE is
+      // not "no gate reviews".
+      return {
+        items: [],
+        unavailable: [
+          { source: 'gate-reviews', reason: 'review sessions unreadable' },
+        ],
+      };
+    }
+    return {
+      items: aggregate.items
+        // MED-2: items still awaiting a decision, which is what keeps the run
+        // paused — see `PausedGateReviewSource.pendingDecisions`.
+        .filter((review) => review.pendingDecisions > 0)
+        .map((review) => ({
+          id: `gate-review:${review.reviewSessionRef}`,
+          kind: 'gate-review' as const,
+          title: review.sessionName,
+          body: `${review.pendingDecisions} awaiting a decision · ${review.workflowSubjectRef}`,
+          createdAt: review.updatedAt,
+          updatedAt: review.updatedAt,
+          projectSlug: review.projectSlug,
+          pendingDecisions: review.pendingDecisions,
+          openHref: projectReviewLayoutHref(review.projectSlug, {
+            review: review.reviewSessionRef,
+          }),
+          source: {
+            reviewSessionRef: review.reviewSessionRef,
+            projectSlug: review.projectSlug,
+            workflowSubjectRef: review.workflowSubjectRef,
+          },
+        })),
+      unavailable: aggregate.unavailableProjects.map((project) => ({
+        source: 'gate-reviews' as const,
+        projectSlug: project.projectSlug,
+        reason: project.reason,
+      })),
+    };
+  }
+
+  /** See `gateReviewCache`. */
+  private async readGateReviews(): Promise<PausedGateReviewAggregate> {
+    const now = Date.now();
+    if (this.gateReviewCache && this.gateReviewCache.expiresAt > now) {
+      return this.gateReviewCache.aggregate;
+    }
+    // biome-ignore lint/style/noNonNullAssertion: guarded by the caller.
+    const aggregate = await this.listGateReviews!();
+    this.gateReviewCache = {
+      aggregate,
+      expiresAt: now + GATE_REVIEW_CACHE_TTL_MS,
+    };
+    return aggregate;
   }
 
   private projectDevicePairingItems(
@@ -1036,6 +1275,9 @@ function projectGateOutcome(
     createdAt: session.updatedAt,
     updatedAt: session.updatedAt,
     sessionId: session.threadId,
+    // #2064 (D4): a gate always binds inside a project workspace — the caller
+    // has already refused to project a gate item without one.
+    projectSlug,
     openHref,
     source: {
       threadId: session.threadId,
@@ -1123,6 +1365,11 @@ export function buildSessionFailedItem(
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     sessionId: session.threadId,
+    // #2064 (D4): see `projectLifecycle` — the same derivation, omitted for a
+    // project-less session rather than guessed.
+    ...(sessionProjectSlug(session)
+      ? { projectSlug: sessionProjectSlug(session) }
+      : {}),
     openHref: failedSessionOpenHref(session),
     source: { threadId: session.threadId },
     engine: session.provider,
@@ -1149,8 +1396,21 @@ function failedSessionOpenHref(session: OrchestrationSessionSummary): string {
   return activityDeepLink({ sessionId: session.threadId });
 }
 
+/**
+ * #2064 (D4): the ONE derivation of which project a session's attention item
+ * belongs to — delegation binding first, then the session's own slug, which
+ * is the precedence `sessionOpenHref` already used to decide where the item's
+ * link lands. The count and the link therefore name the same project by
+ * construction; two spellings of this precedence would eventually disagree.
+ */
+function sessionProjectSlug(
+  session: OrchestrationSessionSummary,
+): string | undefined {
+  return session.delegation?.projectSlug ?? session.projectSlug;
+}
+
 function sessionOpenHref(session: OrchestrationSessionSummary): string {
-  const projectSlug = session.delegation?.projectSlug ?? session.projectSlug;
+  const projectSlug = sessionProjectSlug(session);
   if (projectSlug) {
     // archive#1284 (AC4): `dock=open` so the deep link actually opens the
     // chat dock instead of landing on the project layout with the dock

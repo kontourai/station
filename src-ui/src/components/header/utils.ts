@@ -95,8 +95,6 @@ function sectionLabel(view: NavigationView): string | null {
       return 'Plugins';
     case 'registry':
       return 'Registry';
-    case 'review-queue':
-      return 'Review';
     case 'developer':
       return 'Developer';
     case 'schedule':

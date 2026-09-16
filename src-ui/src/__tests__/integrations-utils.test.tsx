@@ -132,6 +132,23 @@ describe('integrations utils', () => {
     expect(
       disconnectedContainer.querySelector('.status-dot--disconnected'),
     ).toBeTruthy();
+
+    // The third state. `enabled === false` emitted `status-dot--disabled`
+    // with no rule behind it, so a switched-off integration drew the bare
+    // 8px circle — the same glyph as nothing at all. Asserting the class is
+    // emitted is the half this file can prove; the rule now exists in
+    // editor-layout.css and is hollow rather than dimmed, so off and
+    // not-answering stop sharing a look.
+    const [disabledItem] = filterIntegrationItems(
+      [{ ...baseIntegration, id: 'disabled', enabled: false }],
+      '',
+    );
+    const { container: disabledContainer } = render(
+      disabledItem.icon as ReactElement,
+    );
+    expect(
+      disabledContainer.querySelector('.status-dot--disabled'),
+    ).toBeTruthy();
   });
 
   test('names disabled, failed, and never-probed health without fabricating green', () => {

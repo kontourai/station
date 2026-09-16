@@ -92,8 +92,12 @@ vi.mock('../views/SessionsView', () => ({
 }));
 // The Chat shell would mount the whole chat data stack; this file needs the
 // region surface HOST, not what Chat renders inside it.
+// Since #2045 `RegionShells` renders Chat as a pane of the region's host
+// through `renderAmbientChatPane`; `ChatDock` is the model-less mount this
+// harness never takes.
 vi.mock('../components/chat-dock/ChatDock', () => ({
   ChatDock: () => <div data-testid="chat-shell" />,
+  renderAmbientChatPane: () => <div data-testid="chat-shell" />,
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
@@ -104,6 +108,9 @@ vi.mock('../contexts/ProjectsContext', () => ({
     isLoading: false,
     isConfirmedLoaded: true,
   }),
+  // #2047: the region host resolves the dock's project through this read;
+  // no project here, so the panes that need one derive none.
+  useProject: () => ({ project: undefined, isLoading: false }),
 }));
 
 let model: ReturnType<typeof useRegionModel> | null = null;
@@ -194,8 +201,19 @@ test('a maximized Activity region carries the shell class the rules key on', asy
   // assertion below would pass on a selector that matches every shell.
   expect(activityShell.matches(compound)).toBe(false);
 
+  // Since #2045/#2055 the Activity pane mounts behind its own lazy boundary
+  // INSIDE the shell (`renderActivityDockPane`), so the shell's section —
+  // and its skeleton — exist one async hop before the header carrying the
+  // expand control does. The section's existence says nothing about the
+  // control's; wait for the control where it renders. (Observed live as a
+  // deterministic red on pristine main: the click ran against a shell whose
+  // pane boundary was still showing its skeleton.)
   fireEvent.click(
-    within(activityShell).getByLabelText('Expand dock region to workspace'),
+    await within(activityShell).findByLabelText(
+      'Expand dock region to workspace',
+      {},
+      { timeout: 10_000 },
+    ),
   );
   await waitFor(() => expect(model?.regions.right.maximized).toBe(true), {
     timeout: 10_000,

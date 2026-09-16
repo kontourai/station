@@ -47,7 +47,14 @@ if (!parsedWorkspaceBrowserPreviewPaneDescriptor) {
   throw new Error('Canonical Browser Preview pane descriptor must be valid');
 }
 
-/** One code-owned descriptor shared by catalog and renderer admission. */
+/**
+ * One code-owned descriptor shared by catalog and renderer admission.
+ *
+ * Deliberately NOT `docked` (#2047): a Browser Preview has no blank canonical
+ * instance — it is keyed by a URL and opened by intent — so a dock catalog
+ * could list it but never open it. Its dock reader is #2049's `openInRegion`
+ * over instance-keyed panes; declare `docked` there, with that reader.
+ */
 export const WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR =
   parsedWorkspaceBrowserPreviewPaneDescriptor;
 

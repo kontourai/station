@@ -4,14 +4,18 @@ import { useState } from 'react';
 import './ActivityTimeline.css';
 import { describeReadFailure, ErrorState, SkeletonBlock } from './state';
 
+// Series rungs are theme tokens, not literals (#2140). These were the dark
+// chart palette written into `style={}`, which the theme cannot reach, so the
+// light theme painted the same six fills at 2.2-2.7:1 against a white panel
+// -- under the 3:1 graphic floor. index.css carries a measured rung per theme.
 const AGENT_COLORS = [
   'var(--accent-primary)',
-  '#a78bfa',
-  '#f59e0b',
-  '#22c55e',
-  '#06b6d4',
-  '#f472b6',
-  '#fb923c',
+  'var(--series-1)',
+  'var(--series-2)',
+  'var(--series-3)',
+  'var(--series-4)',
+  'var(--series-5)',
+  'var(--series-6)',
 ];
 
 function fmt(d: Date) {

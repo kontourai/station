@@ -79,6 +79,8 @@ function renderHeader(
     onOpenProject?: (() => void) | null;
     openProjectName?: string | null;
     showConnection?: boolean;
+    regionPanes?: { id: string; title: string; selected: boolean }[];
+    onSelectRegionPane?: ReturnType<typeof vi.fn<(id: string) => void>>;
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
@@ -140,6 +142,8 @@ function renderHeader(
         onExpandDock: vi.fn(),
         onRestoreDock: vi.fn(),
         isDockMaximized: false,
+        regionPanes: overrides.regionPanes,
+        onSelectRegionPane: overrides.onSelectRegionPane,
       }}
     />,
   );
@@ -288,5 +292,35 @@ describe('the mobile dock bar control set (#928 C2b)', () => {
     await openActions();
     await screen.findByRole('menuitem', { name: 'Chat settings' });
     expect(screen.queryByRole('menuitem', { name: /^Switch to/ })).toBeNull();
+  });
+
+  /**
+   * #2046 2b: a coarse device has no tab strip, so the sheet is where a pane
+   * sharing Chat's region is switched to — one row per OTHER pane, from the
+   * chrome's `regionPanes` (D2). The selected pane (Chat, here) gets no row:
+   * a "switch to" the pane on screen would be a control that does nothing.
+   * Reverting the rows fails the first assertion; listing every pane fails
+   * the second.
+   */
+  test('the ⋯ sheet lists the region’s other panes as switch rows', async () => {
+    const onSelectRegionPane = vi.fn<(id: string) => void>();
+    renderHeader({
+      regionPanes: [
+        { id: 'chat', title: 'Chat', selected: true },
+        { id: 'activity', title: 'Activity', selected: false },
+      ],
+      onSelectRegionPane,
+    });
+    await openActions();
+    const row = await screen.findByRole('menuitem', {
+      name: 'Switch to Activity',
+    });
+    expect(
+      screen.queryByRole('menuitem', { name: 'Switch to Chat' }),
+    ).toBeNull();
+    fireEvent.click(row);
+    expect(onSelectRegionPane).toHaveBeenCalledWith('activity');
+    // The sheet closes with the switch, as every row does.
+    expect(screen.queryByRole('dialog', { name: 'Chat actions' })).toBeNull();
   });
 });

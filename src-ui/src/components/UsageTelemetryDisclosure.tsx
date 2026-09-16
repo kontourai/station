@@ -406,6 +406,43 @@ export function usageTelemetryDisclosureSummary(
 }
 
 /**
+ * Whether a destination exists for usage telemetry on this Station, for the
+ * informational row beside the Usage telemetry toggle (epic #2144 slice 6
+ * item D).
+ *
+ * The HOST is deliberately not exposed. `endpointConfigured` is a boolean
+ * precisely because the endpoint itself is read from the environment in
+ * `UsageTelemetryService`'s constructor and never left the server; naming it
+ * here would add an egress the privacy inventory does not declare.
+ *
+ * Four answers, not two, and `null` for a fifth state that is no answer at
+ * all. An in-flight read is NOT a settled report: returning the
+ * "has not reported" sentence before the request lands told every fresh
+ * Settings mount something about the host that nothing had yet observed
+ * (fix round 1). A failed read says the READ failed, never anything about
+ * the host. `undefined` on a settled, successful read keeps its own sentence
+ * rather than being folded into "none is configured", which would be a claim
+ * derived from silence — same doctrine as
+ * {@link usageTelemetryDisclosureSummary}, which drops its clause in that
+ * case.
+ */
+export function usageTelemetryDestinationSummary(state: {
+  endpointConfigured: boolean | undefined;
+  /** The query has answered — with an inventory or with a failure. */
+  settled: boolean;
+  isError: boolean;
+}): string | null {
+  if (!state.settled) return null;
+  if (state.isError)
+    return 'Could not read whether a destination is configured.';
+  if (state.endpointConfigured === true)
+    return 'Destination: configured by the operator.';
+  if (state.endpointConfigured === false)
+    return 'No destination configured; nothing is sent.';
+  return 'This Station has not reported whether a destination is configured.';
+}
+
+/**
  * The two decisions the first screen offers, named after what they do.
  *
  * Both are derived from the EFFECTIVE setting, never from the label: on a

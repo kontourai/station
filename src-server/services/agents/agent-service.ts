@@ -26,6 +26,7 @@ import {
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { resolveAgentConfigSlug } from '../../domain/config-loader-agents.js';
+import { describeLayoutOwner } from '../../domain/layout-owner-storage.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { isExternalEngineBoundAgent } from '../../runtime/agents/agent-engine-classification.js';
 import { agentOps } from '../../telemetry/metrics.js';
@@ -659,9 +660,18 @@ export class AgentService {
     await this.assertMutableAgent(slug);
     const dependentLayouts = this.storageAdapter.findLayoutsUsingAgent(slug);
     if (dependentLayouts.length > 0) {
+      // Layouts, not "project layouts": the sweep now covers principal- and
+      // instance-owned Boards too (#2060), and naming them by project would
+      // print an owner they do not have.
       return {
         success: false,
-        error: `Cannot delete agent '${slug}' - it is referenced by project layouts: ${dependentLayouts.map(({ projectSlug, layoutSlug }) => `${projectSlug}/${layoutSlug}`).join(', ')}`,
+        error: `Cannot delete agent '${slug}' - it is referenced by layouts: ${dependentLayouts
+          .map((reference) =>
+            reference.owner.kind === 'project'
+              ? `${reference.owner.projectSlug}/${reference.layoutSlug}`
+              : `${describeLayoutOwner(reference.owner)}: ${reference.layoutSlug}`,
+          )
+          .join(', ')}`,
       };
     }
 
