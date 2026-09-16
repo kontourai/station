@@ -14,8 +14,8 @@ export type ManagementDestinationId =
 /**
  * #2144 slice 4: which Settings navigation group a nav-only entry sits in.
  *
- * These are IDs, not the words on screen. The group headings ("SET UP",
- * "CONTROL", "THIS STATION") are presentation and belong to `SettingsView`,
+ * These are IDs, not the words on screen. The group headings ("Set up",
+ * "Control", "This Station") are presentation and belong to `SettingsView`,
  * which is free to retitle them without this file — and without any settings
  * section id — moving.
  */

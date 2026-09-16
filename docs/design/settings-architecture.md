@@ -160,11 +160,11 @@ links to the section for the rest; both surfaces write the same device-settings
 keys through the same store, so neither holds a copy of the other's state.
 
 The Settings section navigation groups those sections under four names —
-SET UP, THIS STATION, CONTROL, YOU — plus Knowledge, which keeps a group of its
+Set up, This Station, Control, You — plus Knowledge, which keeps a group of its
 own for now. The names are presentation: no section id moved with them, and
-what DECIDES a setting is still the row's own scope, stated on the row. SET UP
+what DECIDES a setting is still the row's own scope, stated on the row. Set up
 holds no sections at all; its rows are links to other surfaces (Agents, Skills,
-Engines & Models, Plugins, Schedule, and Developer under THIS STATION when
+Engines & Models, Plugins, Schedule, and Developer under This Station when
 device developer tools are on), which replaced the separate "Manage" grid that
 used to sit below the nav. Registry has no row of its own: it is reached from
 Plugins, which carries the step to the catalogue.

@@ -1434,7 +1434,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
  *   and nothing at all to a screen reader; a heading says it to both and puts
  *   the groups in the heading rotor.
  * - The group names are no longer a restatement of the scope captions below.
- *   They are an IA: SET UP holds surfaces that are not sections of this page
+ *   They are an IA: Set up holds surfaces that are not sections of this page
  *   at all, and the remaining three name what a group is ABOUT rather than
  *   where it is saved. Persistence is stated per ROW now (#2144 slice 3), so
  *   the group is free to say something the caption cannot.
@@ -1445,7 +1445,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
  * `SectionNav`, not `Tabs`: these are real, deep-linkable URL sections
  * (`?view=`) navigated via `useSectionNavigation`'s `hrefForSection`, not an
  * in-place tab widget — see `components/SectionNav.tsx`'s docblock for why
- * that distinction is load-bearing (archive#4463). The SET UP rows are the
+ * that distinction is load-bearing (archive#4463). The Set up rows are the
  * exception that proves it: they are ordinary links to other routes, and
  * `SettingsSectionNav` sends them to the navigation store instead of the
  * section resolver.
@@ -1456,17 +1456,21 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
  * the strip a reader skims and the page they scroll agree. Adding a group
  * here without moving its bodies would desynchronise a scroll-spy nav.
  */
+// Sentence case in the DOM; `.section-nav__group-label` is what draws them as
+// small caps. Writing "SET UP" here would put shouted text in the accessibility
+// tree for a purely visual treatment, and some screen readers spell short
+// all-caps strings out letter by letter.
 const NAV_GROUPS = [
-  // SET UP holds no settings sections at all — only rows that leave this page
+  // Set up holds no settings sections at all — only rows that leave this page
   // for the surface they name.
-  { id: 'set-up', label: 'SET UP' },
-  { id: 'this-station', label: 'THIS STATION' },
-  { id: 'control', label: 'CONTROL' },
-  { id: 'you', label: 'YOU' },
-  { id: 'knowledge', label: 'KNOWLEDGE' },
+  { id: 'set-up', label: 'Set up' },
+  { id: 'this-station', label: 'This Station' },
+  { id: 'control', label: 'Control' },
+  { id: 'you', label: 'You' },
+  { id: 'knowledge', label: 'Knowledge' },
 ] as const satisfies readonly {
   // Both vocabularies: a group can hold sections, nav-only rows, or both.
-  // THIS STATION holds both — its sections, plus Developer when this device
+  // This Station holds both — its sections, plus Developer when this device
   // has developer tools on.
   id: SettingsNavGroup | SettingsNavGroupId;
   label: string;

@@ -18,7 +18,7 @@
  *   `<nav aria-label="Settings sections">`; four nav landmarks would be four
  *   things to skip past.
  *
- * It also pins the SET UP rows — links that leave this page for another
+ * It also pins the Set up rows — links that leave this page for another
  * route — because they are the ones that can go wrong silently: a nav-only key
  * that leaked into the section vocabulary would be validated away by
  * `useSectionNavigation` and scroll to the top instead of opening Agents.
@@ -76,11 +76,11 @@ describe('settingsSectionNavItems', () => {
     const items = settingsSectionNavItems(hrefForSection);
     const labelled = items.filter((item) => item.groupLabel);
     expect(labelled.map((item) => item.groupLabel)).toEqual([
-      'SET UP',
-      'THIS STATION',
-      'CONTROL',
-      'YOU',
-      'KNOWLEDGE',
+      'Set up',
+      'This Station',
+      'Control',
+      'You',
+      'Knowledge',
     ]);
     // A `groupLabel` is carried BY an item, so a heading can only exist where
     // a row does — an empty group cannot render a label over nothing.
@@ -97,9 +97,9 @@ describe('settingsSectionNavItems', () => {
     ]);
   });
 
-  test('places a nav-only row in ITS OWN group, not all of them under SET UP', () => {
+  test('places a nav-only row in ITS OWN group, not all of them under Set up', () => {
     // The defect this catches shipped once: every nav-only row was emitted as
-    // one SET UP block, so Developer — which the registry puts under THIS
+    // one Set up block, so Developer — which the registry puts under THIS
     // STATION, beside this Station's own sections — appeared among the entity
     // lists instead. Invisible to the flagless projection, because Developer
     // is the only nav-only row in another group and it is not in it.
@@ -116,28 +116,28 @@ describe('settingsSectionNavItems', () => {
       }
       return null;
     };
-    expect(groupOf('nav:developer')).toBe('THIS STATION');
-    expect(groupOf('nav:agents')).toBe('SET UP');
+    expect(groupOf('nav:developer')).toBe('This Station');
+    expect(groupOf('nav:agents')).toBe('Set up');
     // And it leads its group rather than trailing the sections: it is a
     // surface, and the heading opens on it.
     expect(
-      withDeveloper.find((item) => item.groupLabel === 'THIS STATION'),
+      withDeveloper.find((item) => item.groupLabel === 'This Station'),
     ).toMatchObject({ key: 'nav:developer' });
   });
 
   test('renders no heading for a group with nothing in it', () => {
     // Every group is populated today, so this drives the branch with a
     // fixture rather than waiting for a section to become conditional: with
-    // no nav-only rows at all, SET UP holds nothing and must not appear.
+    // no nav-only rows at all, Set up holds nothing and must not appear.
     const labels = settingsSectionNavItems(hrefForSection, []).map(
       (item) => item.groupLabel,
     );
-    expect(labels).not.toContain('SET UP');
+    expect(labels).not.toContain('Set up');
     expect(labels.filter(Boolean)).toEqual([
-      'THIS STATION',
-      'CONTROL',
-      'YOU',
-      'KNOWLEDGE',
+      'This Station',
+      'Control',
+      'You',
+      'Knowledge',
     ]);
   });
 
@@ -167,14 +167,16 @@ describe('Settings section nav rendered through SectionNav', () => {
 
     // Headings, not decoration: found BY ROLE, which a `<span>` or an
     // `aria-hidden` element could not satisfy — the exact failure archive#4463
-    // left behind when it replaced the labels with dividers.
+    // left behind when it replaced the labels with dividers. Asserted in
+    // SENTENCE case: the small caps are a CSS treatment, and the text a screen
+    // reader receives must not be shouted.
     const headings = screen.getAllByRole('heading');
     expect(headings.map((heading) => heading.textContent)).toEqual([
-      'SET UP',
-      'THIS STATION',
-      'CONTROL',
-      'YOU',
-      'KNOWLEDGE',
+      'Set up',
+      'This Station',
+      'Control',
+      'You',
+      'Knowledge',
     ]);
     for (const heading of headings) {
       expect(nav.contains(heading)).toBe(true);
