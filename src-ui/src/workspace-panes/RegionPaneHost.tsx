@@ -749,13 +749,18 @@ export function RegionPaneHost({
             // Before the project branches below: an empty region has no pane
             // whose rendering the project read could be holding up, so a
             // region emptied while that read is in flight must not sit on the
-            // skeleton (it would never resolve into anything). The chooser's
-            // rows follow the read: a coding row disabled while it is in
-            // flight is enabled by the re-render the settled context causes.
+            // skeleton (it would never resolve into anything). The rows take
+            // the same rule as the "+" (review M3): while the read is in
+            // flight the context is projectless, and a coding row disabled
+            // "until you choose a project" on a dock that HAS one would be a
+            // remedy for a state the user is not in — and a disabled→enabled
+            // flip with the reason in the accessible name. So `pending`
+            // renders the sentence alone, and the rows arrive with the read.
             <RegionEmptyChooser
               regionId={regionId}
               context={context}
               variant="inline"
+              pending={projectPending}
             />
           ) : document && selectedSupplied ? (
             <WorkspacePaneHost

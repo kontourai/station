@@ -870,3 +870,49 @@ test('a file preview from another project keeps its tab and says it is unavailab
     ),
   ).toBeTruthy();
 });
+
+/**
+ * #2154 review M1: an EMPTY region while the dock's project read is in
+ * flight renders its sentence and NO rows — the same rule the "+" applies.
+ * The read-time context is projectless, so the rows would otherwise list
+ * Terminal, Diff and Files disabled with "Choose a project for this dock",
+ * a remedy for a state the user is not in, and then flip enabled when the
+ * read settles. Reverting the inline `pending` gate reds the no-rows
+ * assertion; once the read settles the rows arrive, enabled.
+ */
+test('an empty region shows no rows while the dock’s project read is in flight, and the rows arrive enabled when it settles', async () => {
+  projectRead.pending = true;
+  deviceSettingsStore.set('chatDockProjectSlug', 'alpha');
+  renderShells();
+  await waitFor(() => expect(model).not.toBeNull());
+  await waitFor(() =>
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+  );
+  act(() => currentModel().setRegion('right', { visible: true }));
+  const rightShell = await waitFor(() => shell('right'));
+  expect(
+    within(rightShell).getByText('Nothing in the Right region yet'),
+  ).toBeTruthy();
+  expect(
+    within(rightShell).queryByRole('list', { name: 'Add to Right region' }),
+  ).toBeNull();
+  expect(
+    within(rightShell).queryAllByRole('button', { name: /Choose a project/ }),
+  ).toHaveLength(0);
+  expect(within(rightShell).queryByText(/Choose a project/)).toBeNull();
+  expect(within(rightShell).queryByLabelText('Add pane to Right')).toBeNull();
+
+  projectRead.pending = false;
+  act(() => currentModel().setRegion('right', { size: 401 }));
+  const list = await waitFor(() =>
+    within(shell('right')).getByRole('list', { name: 'Add to Right region' }),
+  );
+  expect(
+    within(list)
+      .getByRole('button', { name: 'Terminal' })
+      .getAttribute('aria-disabled'),
+  ).toBeNull();
+  expect(
+    within(shell('right')).getByLabelText('Add pane to Right'),
+  ).toBeTruthy();
+});

@@ -395,3 +395,47 @@ test('the panel variant is a menu that closes on a choice, on Escape and on its 
     'That pane cannot be placed in that region.',
   );
 });
+
+/**
+ * The panel flips ABOVE its anchor when there is no room below (#2112's
+ * rule: never slide up over the trigger). jsdom measures every rect 0×0,
+ * so the flip is proved by stubbing the menu's box (300 tall) and the
+ * viewport (200 tall) with the anchor near the bottom: the panel's `top` is
+ * then the anchor's top minus the gap minus the menu's height, clamped at 0,
+ * not the anchor's bottom plus the gap. Replacing the flip with `top =
+ * below` reds the assertion (it would read 174).
+ */
+test('the panel flips above the "+" when the menu does not fit below it', () => {
+  const innerHeight = window.innerHeight;
+  Object.defineProperty(window, 'innerHeight', {
+    configurable: true,
+    value: 200,
+  });
+  const rect = HTMLElement.prototype.getBoundingClientRect;
+  HTMLElement.prototype.getBoundingClientRect = function () {
+    const box = rect.call(this);
+    return this.getAttribute('role') === 'menu'
+      ? { ...box, width: 224, height: 300, toJSON: () => ({}) }
+      : box;
+  };
+  try {
+    render(
+      <RegionEmptyChooser
+        regionId="right"
+        context={NO_PROJECT}
+        variant="panel"
+        anchor={{ right: 400, top: 150, bottom: 170 }}
+        onClose={() => {}}
+      />,
+    );
+    const menu = screen.getByRole('menu', { name: 'Add to Right region' });
+    // 150 - 4 - 300 < 0, clamped to the viewport's top edge.
+    expect(menu.style.top).toBe('0px');
+  } finally {
+    HTMLElement.prototype.getBoundingClientRect = rect;
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: innerHeight,
+    });
+  }
+});

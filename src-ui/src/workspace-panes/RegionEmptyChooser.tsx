@@ -302,6 +302,7 @@ export function RegionEmptyChooser({
   variant,
   anchor,
   onClose,
+  pending = false,
 }: {
   regionId: DockRegionId;
   /** The dock's project binding, which decides which rows are enabled. */
@@ -311,6 +312,13 @@ export function RegionEmptyChooser({
   anchor?: { right: number; top: number; bottom: number };
   /** Closes the panel; ignored inline. */
   onClose?: () => void;
+  /**
+   * The dock's project read is in flight (inline only): the sentence
+   * renders with NO rows, the rule the host's "+" applies — a projectless
+   * `context` during the read would list the coding rows disabled with a
+   * remedy for a state the user is not in, then flip them enabled.
+   */
+  pending?: boolean;
 }) {
   const model = useRegionModel();
   const [notice, setNotice] = useState<string | null>(null);
@@ -359,20 +367,22 @@ export function RegionEmptyChooser({
         <p className="region-chooser__label">
           Nothing in the {label} region yet
         </p>
-        <ul
-          className="region-chooser__list"
-          aria-label={`Add to ${label} region`}
-        >
-          {rows.map((row) => (
-            <li key={row.surface.id}>
-              <ChooserRowButton
-                row={row}
-                menuitem={false}
-                onSelect={() => select(row.surface.id)}
-              />
-            </li>
-          ))}
-        </ul>
+        {pending ? null : (
+          <ul
+            className="region-chooser__list"
+            aria-label={`Add to ${label} region`}
+          >
+            {rows.map((row) => (
+              <li key={row.surface.id}>
+                <ChooserRowButton
+                  row={row}
+                  menuitem={false}
+                  onSelect={() => select(row.surface.id)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
         {alert}
       </div>
     </div>
