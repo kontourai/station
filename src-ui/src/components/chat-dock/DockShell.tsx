@@ -7,6 +7,7 @@ import {
 } from '../../hooks/useDockShellChrome';
 import {
   regionHoldsChat,
+  regionLabel,
   resolveRegionSurface,
 } from '../../regions/region-model';
 import type { DockMode } from '../../types';
@@ -59,9 +60,15 @@ export function DockShell({
     regionId && regionModel
       ? regionHoldsChat(regionModel.regions, regionId)
       : true;
+  // An EMPTY region names itself — "Right region" (#2153). It has no pane to
+  // be named after, and "Dock" would give a second shell the landmark that is
+  // Chat's; the region's own name is also what its toolbar toggle and its
+  // placeholder call it, so a reader meets one name for it in three places.
   const landmarkLabel = holdsChat
     ? 'Dock'
-    : (resolveRegionSurface(occupant ?? '')?.title ?? 'Dock');
+    : occupant === null && regionId
+      ? `${regionLabel(regionId)} region`
+      : (resolveRegionSurface(occupant ?? '')?.title ?? 'Dock');
   const resizeLabel = holdsChat
     ? 'Resize chat dock'
     : `Resize ${landmarkLabel}`;

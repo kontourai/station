@@ -188,7 +188,8 @@ function parseOccupant(
  * the caller should treat as absent. See the module comment for the
  * per-field fail-closed rules; in addition, a surface named by two regions
  * keeps the first in `REGION_IDS` order and is dropped from the later
- * regions' panes — a region left with nothing reads as empty and hidden.
+ * regions' panes — a region left with nothing reads as empty, with the
+ * visibility the record stored (#2153).
  */
 export function parseRegionArrangementRecord(
   value: unknown,
@@ -215,9 +216,14 @@ export function parseRegionArrangementRecord(
         }
       : { ...fallback };
     if (state.panes.some((pane) => seen.has(pane))) {
-      // A duplicate is dropped from the later region; a region left with
-      // nothing is emptied AND hidden: an empty dock region is never shown
-      // (`placeSurface` hides a vacated one).
+      // A duplicate is dropped from the later region, which may empty it —
+      // and an emptied region KEEPS THE VISIBILITY THE RECORD STORED (#2153):
+      // a dock region may be visible and empty, so coercing it to hidden here
+      // would close a region the record says is open on the strength of a
+      // pane it does not get to keep. This matches the live model's CLOSE
+      // rule (`removeRegionPane` keeps an emptied region's visibility); a
+      // MOVE hides, but a parse is neither. The maximize clamp below still
+      // applies: an empty region is never maximized.
       Object.assign(
         state,
         normalizeRegionPanes(
@@ -226,7 +232,6 @@ export function parseRegionArrangementRecord(
           state.occupant,
         ),
       );
-      if (state.panes.length === 0) state.visible = id === 'main';
     }
     for (const pane of state.panes) seen.add(pane);
     // The same invariants `updateRegion` holds for live state: `main` is

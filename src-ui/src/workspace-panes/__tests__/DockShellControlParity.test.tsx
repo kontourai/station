@@ -581,4 +581,58 @@ describe('the docked Chat gets the full dock chrome (station#4460)', () => {
       'the bottom-dock resize handle must be present regardless of occupant',
     ).not.toBeNull();
   });
+
+  /**
+   * #2153, through the REAL `useDockShellChrome`: a visible EMPTY region has
+   * no occupant to be named after, so the chrome names the REGION and every
+   * control that reads `surfaceTitle` follows — the chevron ("Hide Right
+   * region"), the landmark and the resize grip.
+   *
+   * Reverting `surfaceTitle`'s empty-region branch in `useDockShellChrome.ts`
+   * to the bare `'Chat'` fallback reds all three: the shell would offer
+   * "Hide Chat" on a region holding no Chat, which is #1386's defect
+   * relocated. `canMaximize` stays false for an empty region (it reads
+   * `shellOccupant !== null`), which is why no maximize control is here.
+   */
+  test('an empty region names ITSELF in the chevron, the landmark and the grip', async () => {
+    render(
+      <KeyboardShortcutsProvider>
+        <NavigationProvider>
+          <RegionModelProvider>
+            <RegionModelProbe />
+            <RegionPaneHost
+              regionId="right"
+              renderChatPane={() => <p>unused</p>}
+            />
+          </RegionModelProvider>
+        </NavigationProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    const empty = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>(
+        'section[aria-label="Right region"]',
+      );
+      if (!element) throw new Error('the empty region shell never rendered');
+      return element;
+    });
+    expect(currentRegionModel().regions.right).toMatchObject({
+      panes: [],
+      occupant: null,
+      visible: false,
+    });
+    // Hidden to start: the chevron offers to SHOW it, under the region's own
+    // name. Pressing it is the real model write — an empty region can be
+    // shown (#2153) — and the name follows the new state.
+    fireEvent.click(within(empty).getByLabelText('Show Right region'));
+    await waitFor(() =>
+      expect(currentRegionModel().regions.right.visible).toBe(true),
+    );
+    expect(within(empty).getByLabelText('Hide Right region')).toBeTruthy();
+    expect(within(empty).getByLabelText('Resize Right region')).toBeTruthy();
+    // No maximize for an empty region, and no tabs.
+    expect(
+      within(empty).queryByLabelText(/^Expand .* to workspace$/),
+    ).toBeNull();
+    expect(within(empty).queryAllByRole('tab')).toHaveLength(0);
+  });
 });
