@@ -154,13 +154,15 @@ is S3 device scope, so Settings now carries a `chat` section holding all of
 them — the two that used to sit under Appearance (`chat-font-size`,
 `smooth-answer-reveal`) plus the five that had a device-settings contract row
 and no Settings row at all (`chat-show-reasoning`, `chat-show-tool-details`,
-`chat-dock-auto-hide`, `diff-style`, `diff-wrap`), which made the panel their
-only surface. The panel keeps the handful someone changes mid-conversation and
+`chat-dock-auto-hide`, `diff-style`, `diff-wrap`). The panel was the only
+surface for the first three; `diff-style` and `diff-wrap` were never on it,
+and were reachable only from `DiffPanel`'s own style toggle and Wrap button,
+which write the same two device keys. The panel keeps the handful someone changes mid-conversation and
 links to the section for the rest; both surfaces write the same device-settings
 keys through the same store, so neither holds a copy of the other's state.
 
 The Settings section navigation groups those sections under four names —
-Set up, This Station, Control, You — plus Knowledge, which keeps a group of its
+Set up, This Station, Control, This device — plus Knowledge, which keeps a group of its
 own for now. The names are presentation: no section id moved with them, and
 what DECIDES a setting is still the row's own scope, stated on the row. Set up
 holds no sections at all; its rows are links to other surfaces (Agents, Skills,

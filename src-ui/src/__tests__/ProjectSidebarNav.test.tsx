@@ -88,8 +88,11 @@ describe('ProjectSidebarNav', () => {
   });
 
   // The flag gate is unchanged by the move, and it must not resurrect a row:
-  // Developer is advertised in Settings' Manage group now (covered by
-  // SettingsManageSection.test.tsx), never in the panel.
+  // Developer is advertised as a row of Settings' own section navigation now,
+  // never in the panel. That the row exists, points at /developer, and
+  // disappears with the flag is covered by `developer-reachable.test.ts`;
+  // that it sits under This Station rather than among the Set up entity lists
+  // is covered by `SettingsSectionNav.test.tsx`.
   test('keeps Developer out of the panel even with developer tools enabled', () => {
     flagsState.flags = new Set([DEVELOPER_TOOLS_FLAG]);
     render(

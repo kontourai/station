@@ -15,6 +15,10 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  APP_DESTINATION_REGISTRY,
+  DEVELOPER_TOOLS_FLAG,
+} from '../app-shell/destination-registry';
+import {
   SETTINGS_CATALOG,
   visibleCatalogIds,
 } from '../views/settings/settings-catalog';
@@ -269,10 +273,12 @@ vi.mock('../platform/PlatformProfileContext', () => ({
 }));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
-  // #2059: the page's Manage group navigates to other DESTINATIONS (Agents,
-  // Connections, …) rather than to a `?view=` section of this page, so it
-  // reads the navigation actions directly. Its own behaviour is covered by
-  // SettingsManageSection.test.tsx; here it only has to mount.
+  // #2059: the page's nav-only rows navigate to other DESTINATIONS (Agents,
+  // Skills, Engines & Models, …) rather than to a `?view=` section of this
+  // page, so the section nav reads the navigation actions directly. Where
+  // those rows sit and where they point is covered by
+  // `SettingsSectionNav.test.tsx` and `developer-reachable.test.ts`; here the
+  // nav only has to mount.
   useNavigationActions: () => ({ navigate: vi.fn() }),
 }));
 vi.mock('../contexts/KeyboardShortcutsContext', () => {
@@ -1009,6 +1015,25 @@ describe('settings catalog completeness', () => {
     },
   );
 
+  // The reverse of the case above, and not covered by it: the healing is
+  // driven by the ENTRY's own section, so a link that names `chat` for a row
+  // that lives in Appearance has to be corrected the other way. A fix that
+  // only ever moved a reader towards `chat` — the direction #2144's move
+  // went — would satisfy the pair above and fail here.
+  test('a link naming ?view=chat for a row that lives in Appearance lands on Appearance', async () => {
+    window.history.replaceState({}, '', '/settings?view=chat&highlight=theme');
+    const { container } = await renderSettings();
+
+    await waitFor(() =>
+      expect(container.querySelector('[data-catalog-id="theme"]')).toBeTruthy(),
+    );
+    await waitFor(() =>
+      expect(window.location.search).toBe('?view=appearance'),
+    );
+    expect(container.querySelector('#section-chat')).toBeNull();
+    expect(container.querySelector('#section-appearance')).toBeTruthy();
+  });
+
   test('focuses a deep-linked editable field in the Defaults section', async () => {
     // The `.agent-defaults__disclosure` assertion that used to close this
     // test is gone with the disclosure itself: these fields render directly
@@ -1029,6 +1054,44 @@ describe('settings catalog completeness', () => {
     expect(container.querySelector('.agent-defaults__disclosure')).toBeNull();
   });
 
+  // #2144 slice 4. Turning developer tools on changes nothing where the switch
+  // is: it adds a row to the navigation strip at the top of the page, under a
+  // heading four groups above, in a strip that scrolls sideways. So the row
+  // has to say where to look — and the sentence has to be checked against the
+  // placement, or it goes on describing the old one after a move. Both halves
+  // are DERIVED here: the row's label from the registry projection, the
+  // heading from the nav the page actually builds.
+  test('the developer-tools row names the row it reveals and the group it opens', async () => {
+    window.history.replaceState({}, '', '/settings?view=developer-tools');
+    const { settingsSectionNavItems } = await import('../views/SettingsView');
+    const { container, unmount } = await renderSettings();
+
+    const withDeveloper = APP_DESTINATION_REGISTRY.getSettingsNav(
+      new Set([DEVELOPER_TOOLS_FLAG]),
+    );
+    const developer = withDeveloper.find((entry) => entry.id === 'developer');
+    expect(developer).toBeTruthy();
+    const navItems = settingsSectionNavItems(
+      (section) => `/settings?view=${section}`,
+      withDeveloper,
+    );
+    const index = navItems.findIndex((item) => item.href === developer!.route);
+    expect(index).toBeGreaterThan(-1);
+    let groupLabel: string | undefined;
+    for (let cursor = index; cursor >= 0 && !groupLabel; cursor -= 1) {
+      groupLabel = navItems[cursor]!.groupLabel;
+    }
+    expect(groupLabel).toBeTruthy();
+
+    const description = container.querySelector(
+      '[data-catalog-id="enable-developer-tools"] .page-row__description',
+    );
+    expect(description).toBeTruthy();
+    expect(description!.textContent).toContain(developer!.label);
+    expect(description!.textContent).toContain(groupLabel!);
+    unmount();
+  });
+
   test('removes an invalid highlight without disturbing route and shell query state', async () => {
     window.history.replaceState(
       {},
@@ -1043,6 +1106,62 @@ describe('settings catalog completeness', () => {
       ),
     );
     expect(window.location.search).toBe('?dock=true&locale=fr&view=appearance');
+  });
+
+  // Both halves of the link wrong at once, which is what a bookmark from two
+  // renames ago looks like. Neither correction can lean on the other here: the
+  // view is not in the section vocabulary, so the resolver drops it rather
+  // than opening it, and the id is not in the catalog, so there is no entry to
+  // heal the view towards. The page lands on overview — not blank, not on a
+  // section that does not exist — and says the target is gone.
+  test('drops a retired highlight and the retired view named beside it', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/settings?view=manage&highlight=retired-control',
+    );
+    const { container } = await renderSettings();
+
+    await waitFor(() =>
+      expect(container.textContent).toContain(
+        'That Settings target is no longer available.',
+      ),
+    );
+    await waitFor(() => expect(window.location.search).toBe(''));
+    // Overview: every section on screen, rather than the reader stranded on
+    // the one the dead `view` named.
+    expect(container.querySelector('#section-appearance')).toBeTruthy();
+    expect(container.querySelector('#section-chat')).toBeTruthy();
+  });
+
+  // #2144 slice 4 renamed these. They are the only place the page states which
+  // persistence rule a run of sections is under to someone who cannot see the
+  // caption's position, and nothing asserted them — so the rename was free.
+  test('each scope group carries its persistence rule as a landmark name', async () => {
+    window.history.replaceState({}, '', '/settings');
+    const { container } = await renderSettings();
+
+    await waitFor(() =>
+      expect(container.querySelector('.settings__scope-group')).toBeTruthy(),
+    );
+    const groups = [
+      ...container.querySelectorAll<HTMLElement>('.settings__scope-group'),
+    ];
+    expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
+      'This Station settings',
+      'Control settings',
+      'This device settings',
+      'Knowledge settings',
+    ]);
+    // Named regions, not styling wrappers: the name has to reach the
+    // accessibility tree or it is decoration.
+    for (const group of groups) {
+      expect(
+        screen.getByRole('region', {
+          name: group.getAttribute('aria-label')!,
+        }),
+      ).toBe(group);
+    }
   });
 
   test('does not steal focus from a person while a config-gated target mounts', async () => {
@@ -1300,13 +1419,17 @@ describe('settings catalog completeness', () => {
    */
   /**
    * #2144 slice 4. Each of these five had a device-settings contract row and
-   * no Settings row, so the in-chat gear panel was the only place they could
-   * be changed. Both directions per row, because either half alone passes for
-   * a broken control: a write-only assertion passes for a row that ignores
-   * what is stored, and a read-only one passes for a row that writes
-   * NOTHING — or, the failure an orchestrator injection actually produced
-   * here, writes its NEIGHBOUR's key, which every other test in this file was
-   * blind to.
+   * no Settings row, so nothing on this page could change them. Three of them
+   * (`chatShowReasoning`, `chatShowToolDetails`, `chatDockAutoHide`) were
+   * reachable only from the in-chat gear panel; the two diff keys were
+   * reachable only from `DiffPanel`'s own toolbar, which is why this file
+   * covers both directions for every one of them rather than trusting the
+   * other surface's test. Both directions per row, because either half alone
+   * passes for a broken control: a write-only assertion passes for a row
+   * that ignores what is stored, and a read-only one passes for a row that
+   * writes NOTHING — or, the failure an orchestrator injection actually
+   * produced here, writes its NEIGHBOUR's key, which every other test in this
+   * file was blind to.
    */
   describe('Chat section device rows', () => {
     test.each([

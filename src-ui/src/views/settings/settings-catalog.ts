@@ -57,8 +57,9 @@ export interface SettingsCatalogEntry {
  * Which navigation group a section is listed under.
  *
  * IDs, not the words on screen: #2144 decision 6 renamed the groups a reader
- * sees ("THIS STATION", "CONTROL", "YOU") without moving a single section id,
- * and it must be able to do that again. `SettingsView` owns the mapping from
+ * sees ("This Station", "Control", "This device" — the last of which `SettingsView`
+ * still keys as `you`) without moving a single section id, and it must be able
+ * to do that again. `SettingsView` owns the mapping from
  * these ids to labels, and it is the only consumer — a group is a presentation
  * fact about the nav strip, never a persistence or authority fact. What
  * DECIDES a setting is the row's own `scope`, stated on the row (#2144
@@ -340,8 +341,14 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['featureSettings'],
   },
   // The five below had a device-settings contract row and no catalog row, so
-  // the in-chat gear panel was the ONLY place they could be changed and
-  // Settings' own search could not find them at all.
+  // Settings' own search could not find them at all. Where they COULD be
+  // changed splits: the in-chat gear panel was the only surface for
+  // `chat-show-reasoning`, `chat-show-tool-details` and `chat-dock-auto-hide`
+  // (`components/chat/ChatSettingsPanel.tsx` renders those three, plus font
+  // size and answer delivery, and nothing else). `diff-style` and `diff-wrap`
+  // were never on that panel at all — they were reachable only from
+  // `DiffPanel`'s own toolbar, whose style toggle and Wrap button write these
+  // same two device keys, and had no Settings home.
   {
     id: 'chat-show-reasoning',
     title: 'Show reasoning',

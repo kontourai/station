@@ -7,7 +7,7 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
-import { useNavigation } from '../../contexts/NavigationContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
 import {
   ANSWER_DELIVERY_OPTIONS,
   answerDeliveryModeOf,
@@ -74,7 +74,7 @@ export function ChatSettingsPanel({
   const autoHideId = useId();
   const answerDeliveryId = useId();
   const { featureSettings, developerToolsEnabled } = useDeviceSettings();
-  const { navigate } = useNavigation();
+  const { navigate } = useNavigationActions();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const dismissSummary = useDismissSessionSummaryMutation();
   const showSummary = useShowSessionSummaryMutation();

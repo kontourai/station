@@ -13,7 +13,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 const navigate = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate }),
+  useNavigationActions: () => ({ navigate }),
 }));
 
 function props() {

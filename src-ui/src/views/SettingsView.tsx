@@ -45,7 +45,7 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../contexts/DeviceSettingsContext';
-import { useNavigation } from '../contexts/NavigationContext';
+import { useNavigationActions } from '../contexts/NavigationContext';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
@@ -786,11 +786,13 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       // stay exactly as they are.
       <div className="settings">
         {highlightNotice}
-        {/* #2059: rendered in BOTH branches for the same reason the section
-            nav is — it is derived from the destination registry and the
-            device flags, so it never waits on `/api/config/app`. A failed or
-            slow config read must not be able to strand the only in-app way
-            back to Agents, Connections or Plugins. */}
+        {/* #2059: the section nav renders in BOTH the loaded and the
+            not-yet-loaded branch, because nothing it draws comes from the
+            config read. Its rows are derived from the destination registry,
+            the device flags and `SETTINGS_SECTIONS`, so it is complete before
+            `/api/config/app` answers — and a failed or slow read must not be
+            able to strand the only in-app way back to Agents, Skills, Engines
+            & Models, Plugins, Schedule or Developer. */}
         <SettingsSectionNav
           activeSection={activeSection}
           hrefForSection={hrefForSection}
@@ -1046,7 +1048,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         </section>
 
         {/* ── This device scope ── */}
-        <section aria-label="Your settings" className="settings__scope-group">
+        <section
+          aria-label="This device settings"
+          className="settings__scope-group"
+        >
           <p className="settings__scope-caption">
             Saved to this device only — these choices won’t follow you to
             another device.
@@ -1136,9 +1141,14 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               LOOKS and BEHAVES like on this device. Two of them moved here
               from Appearance (their ids, and therefore every `highlight=`
               deep link, are unchanged); the other five had a device-settings
-              contract row and no Settings row at all, so the in-chat gear
-              panel was the only surface that could change them and Settings'
-              own search returned nothing for "reasoning" or "diff".
+              contract row and no Settings row at all, so Settings' own search
+              returned nothing for "reasoning" or "diff".
+
+              Only THREE of those five had the gear panel as their one
+              surface — Show reasoning, Show tool details and Auto-hide chat
+              dock. The panel has never offered the diff rows; those were
+              changed from `DiffPanel`'s own toolbar and nowhere else, which
+              is what the note above them says.
 
               Both surfaces write the SAME device-settings keys through the
               same store, so neither is a copy of the other's state: the gear
@@ -1328,7 +1338,13 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             >
               <PageRow
                 {...settingsRow('enable-developer-tools')}
-                description="Show the Developer surface (logs, system, telemetry, memory, archive) in the sidebar and command palette on this device. Deep links to /developer keep working either way."
+                // Where the result APPEARS, because it is not here: the row
+                // this adds opens the This Station group of the navigation
+                // strip at the top of this page, four headings above the
+                // switch being pressed, and the strip scrolls sideways.
+                // Nothing else on the page moves, so without the sentence the
+                // press reads as having done nothing.
+                description="Show the Developer surface (logs, system, telemetry, memory, archive) on this device. A Developer row appears in the navigation at the top of this page, first under This Station, and Developer joins the sidebar and the command palette. Deep links to /developer keep working either way."
                 control={
                   <Toggle
                     checked={developerToolsEnabled}
@@ -1433,11 +1449,24 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
  *   visual control. The divider said "the subject changed" to sighted readers
  *   and nothing at all to a screen reader; a heading says it to both and puts
  *   the groups in the heading rotor.
- * - The group names are no longer a restatement of the scope captions below.
- *   They are an IA: Set up holds surfaces that are not sections of this page
- *   at all, and the remaining three name what a group is ABOUT rather than
- *   where it is saved. Persistence is stated per ROW now (#2144 slice 3), so
- *   the group is free to say something the caption cannot.
+ * - The group names are deliberately ALIGNED with the page below, not
+ *   independent of it. This page's structure IS persistence-shaped: its body
+ *   is a run of `.settings__scope-group` sections, each opening with the rule
+ *   its settings are saved under, and four of the five nav groups map onto
+ *   one of those boxes each. "This Station" is its box's caption restated,
+ *   and that is the point — a nav that named the page's structure differently
+ *   would mislabel a box a reader is about to scroll into. Set up is the one
+ *   group with no box, because it holds no sections of this page at all.
+ *   archive#4463's collision was two label vocabularies over ONE control, and
+ *   what answers it is that a group label is a non-interactive heading and
+ *   never a place to press — not that its words have to differ from the
+ *   caption's.
+ * - "Control" is the one name that is not a storage location. Its box is
+ *   saved on the Station exactly as This Station's is, so a name drawn from
+ *   persistence could not tell the two apart; what separates them is the rest
+ *   of its caption — these are the values "used when a chat, project, or
+ *   agent doesn't set its own value". The name states that authority
+ *   relationship, which is the only thing that distinguishes the group.
  *
  * The landmark stays single (`aria-label="Settings sections"`): one
  * navigation with headings inside, not one landmark per group.
@@ -1466,7 +1495,11 @@ const NAV_GROUPS = [
   { id: 'set-up', label: 'Set up' },
   { id: 'this-station', label: 'This Station' },
   { id: 'control', label: 'Control' },
-  { id: 'you', label: 'You' },
+  // The id stays as minted: it is internal, and no URL, registry record or
+  // deep link carries it. The LABEL is the owner decision on #2144 — a
+  // heading reading "You" over a caption that says "Saved to this device
+  // only" named a person where the box names a machine.
+  { id: 'you', label: 'This device' },
   { id: 'knowledge', label: 'Knowledge' },
 ] as const satisfies readonly {
   // Both vocabularies: a group can hold sections, nav-only rows, or both.
@@ -1538,7 +1571,9 @@ function SettingsSectionNav({
   hrefForSection: (section: string) => string;
   navigateToSection: (section: string) => void;
 }) {
-  const { navigate } = useNavigation();
+  // The narrow hook: this destructure is actions only, and the bare
+  // `useNavigation()` re-renders the strip on every navigation-store write.
+  const { navigate } = useNavigationActions();
   // The SAME flag set every other advertisement surface filters on, so
   // Developer appears here exactly when it appears in the palette — and
   // disappears from the nav, not merely from the old Manage grid, when

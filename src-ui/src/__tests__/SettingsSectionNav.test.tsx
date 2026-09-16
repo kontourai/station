@@ -67,9 +67,39 @@ describe('settingsSectionNavItems', () => {
       'overview',
       ...SETTINGS_SECTIONS.map((section) => section.id),
     ]);
-    for (const entry of NAV_ONLY) {
-      expect(sectionKeys.has(`nav:${entry.id}`)).toBe(false);
+    // Read off what the function PRODUCES. Rebuilding the key here from a
+    // `nav:` literal would assert this test's own arithmetic and hold however
+    // the production prefix changed — including to the empty string. A
+    // nav-only row is identified by its HREF being a destination route rather
+    // than a `?view=` on this page, which is the one signal available that
+    // does not run through the prefix under test.
+    const produced = settingsSectionNavItems(hrefForSection);
+    const navOnlyKeys = produced
+      .filter((item) => !item.href.startsWith('/settings?view='))
+      .map((item) => item.key);
+    expect(navOnlyKeys).toHaveLength(NAV_ONLY.length);
+    for (const key of navOnlyKeys) {
+      expect(sectionKeys.has(key)).toBe(false);
     }
+
+    // The rows above cannot by themselves prove the prefix does anything: no
+    // destination id in today's inventory is also a section id, so they read
+    // the same with no prefix at all. This entry IS a section id, so the key
+    // built from it has to be moved out of the section vocabulary by the
+    // prefix or not at all.
+    const collidingId: string = SETTINGS_SECTIONS[0]!.id;
+    const colliding = settingsSectionNavItems(hrefForSection, [
+      {
+        id: collidingId,
+        group: 'set-up',
+        order: 1,
+        label: 'Colliding',
+        route: '/colliding',
+      },
+    ]).find((item) => item.href === '/colliding');
+    expect(colliding).toBeTruthy();
+    expect(colliding!.key).not.toBe(collidingId);
+    expect(sectionKeys.has(colliding!.key)).toBe(false);
   });
 
   test('opens each group at its first item, in page order, and never over an empty group', () => {
@@ -79,14 +109,9 @@ describe('settingsSectionNavItems', () => {
       'Set up',
       'This Station',
       'Control',
-      'You',
+      'This device',
       'Knowledge',
     ]);
-    // A `groupLabel` is carried BY an item, so a heading can only exist where
-    // a row does — an empty group cannot render a label over nothing.
-    expect(labelled).toHaveLength(
-      new Set(labelled.map((item) => item.key)).size,
-    );
     // Each label opens its group: the item carrying it is that group's first.
     expect(labelled.map((item) => item.key)).toEqual([
       `nav:${NAV_ONLY[0]!.id}`,
@@ -136,7 +161,7 @@ describe('settingsSectionNavItems', () => {
     expect(labels.filter(Boolean)).toEqual([
       'This Station',
       'Control',
-      'You',
+      'This device',
       'Knowledge',
     ]);
   });
@@ -175,7 +200,7 @@ describe('Settings section nav rendered through SectionNav', () => {
       'Set up',
       'This Station',
       'Control',
-      'You',
+      'This device',
       'Knowledge',
     ]);
     for (const heading of headings) {
